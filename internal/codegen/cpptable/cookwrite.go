@@ -213,7 +213,7 @@ func cookElementBytes(u *ir.Unit, f *ir.Field) int64 {
 // record also refuses a reference the numbering did not carry.
 func (g *tableGen) cookBodySignature(st *ir.Struct) string {
 	if g.isVar(st.Name) {
-		return fmt.Sprintf("template <typename Ctx>\ninline bool %sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
+		return fmt.Sprintf("template <typename Ctx>\ninline bool %[1]sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %[2]s & value, TableByteOrder order )", st.Name, st.Name)
 	}
 	return fmt.Sprintf("inline bool %sCookBody( uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
 }
@@ -415,7 +415,7 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 		// a fixed field's slot holds its RAW scaled integer, the same bytes
 		// the storage holds; the 128-bit widths go as two lanes
 		if t.Width == 128 {
-			g.pf("%s{\n%s    serialize::uint128_t raw_v = serialize::uint128_t( %s );\n%s    table_cook_put128( %s, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order );\n%s}\n", indent, indent, value, indent, at, indent)
+			g.pf("%[1]s{\n%[1]s    serialize::uint128_t raw_v = serialize::uint128_t( %[2]s );\n%[1]s    table_cook_put128( %[3]s, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order );\n%[1]s}\n", indent, value, at)
 			return
 		}
 		g.pf("%stable_cook_put( %s, (uint64_t) %s, %d, order );\n", indent, at, value, int64(t.Width)/8)

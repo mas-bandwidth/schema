@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,7 @@ func runCookFind(t *testing.T, plant bool) (string, bool) {
 }
 
 func TestJavaCookMapFind(t *testing.T) {
+	slowtest.Gate(t, "javac (cooked map lookup)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	if out, ok := runCookFind(t, false); !ok || !strings.Contains(out, "find ok") {
@@ -77,6 +79,7 @@ func TestJavaCookMapFind(t *testing.T) {
 }
 
 func TestJavaCookMapFindNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "javac (cooked map lookup)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	if out, ok := runCookFind(t, true); ok {

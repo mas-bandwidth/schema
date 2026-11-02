@@ -1171,7 +1171,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -6302,6 +6302,7 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
 }
@@ -6310,7 +6311,7 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 // the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
 inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
 {
-    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
     return schema_integrity_seal( buffer, n );
 }
 
@@ -6329,7 +6330,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 )
+    if ( buffer == NULL || bytes < 1 )
     {
         br.report->malformed = true;
         return -1;
@@ -10942,9 +10943,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.grade = Grade::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.grade ) )
                 {
                     value.grade = Grade::None;
@@ -11001,9 +11004,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                     {
                         {
                             uint64_t variant_ref = 0;
-                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true;
+                                break; }
                             if ( variant_ref == 0 ) { value.grades[(int32_t) i] = Grade::None; } // the zero reference is the enum's None
-                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                                break; }
                             else if ( !TableEnumValue( r.ids->at( variant_ref ), value.grades[(int32_t) i] ) )
                             {
                                 value.grades[(int32_t) i] = Grade::None;
@@ -11068,9 +11073,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
                     {
                         {
                             uint64_t variant_ref = 0;
-                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true;
+                                break; }
                             if ( variant_ref == 0 ) { value.podium[(int32_t) i] = Grade::None; } // the zero reference is the enum's None
-                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                                break; }
                             else if ( !TableEnumValue( r.ids->at( variant_ref ), value.podium[(int32_t) i] ) )
                             {
                                 value.podium[(int32_t) i] = Grade::None;
@@ -15913,17 +15920,39 @@ constexpr int64_t WeaponConfigFixedLayoutBytes = (int64_t) sizeof( WeaponConfigF
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst WeaponConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // WeaponConfig
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
+    {
+        0, 0, 0, 0, 0
+    }, // WeaponConfig
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
 };
 
 // THE IDENTITY PLAN, coalesced out of 8 leaves by the schema compiler —
@@ -16332,49 +16361,135 @@ constexpr int64_t LoadoutConfigFixedLayoutBytes = (int64_t) sizeof( LoadoutConfi
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst LoadoutConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // LoadoutConfig
-    { 0, 0, 0, 0, 0 }, // grade
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 1, 1, 8, 1, 0 }, // grades
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 12, 1, 0, 0, 0 }, // podium
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 16, 0, 0, 0, 0 }, // perks
-    { 24, 0, 0, 0, 0 }, // primary
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 52, 28, 0, 0, 0 }, // backups
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 108, 8, 172, 1, 0 }, // attachments
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // slot
-    { 4, 0, 0, 0, 0 }, // power
+    {
+        0, 0, 0, 0, 0
+    }, // LoadoutConfig
+    {
+        0, 0, 0, 0, 0
+    }, // grade
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        1, 1, 8, 1, 0
+    }, // grades
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        12, 1, 0, 0, 0
+    }, // podium
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        16, 0, 0, 0, 0
+    }, // perks
+    {
+        24, 0, 0, 0, 0
+    }, // primary
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        52, 28, 0, 0, 0
+    }, // backups
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        108, 8, 172, 1, 0
+    }, // attachments
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // slot
+    {
+        4, 0, 0, 0, 0
+    }, // power
 };
 
 // THE IDENTITY PLAN, coalesced out of 31 leaves by the schema compiler —
@@ -16859,64 +16974,180 @@ constexpr int64_t ProfileConfigFixedLayoutBytes = (int64_t) sizeof( ProfileConfi
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst ProfileConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // ProfileConfig
-    { 36, 0, 0, 0, 1 }, // name
-    { 40, 1, 56, 1, 3 }, // icon
-    { 0, 0, 0, 0, 0 }, // u8
-    { 60, 0, 0, 0, 0 }, // experience
-    { 64, 0, 0, 0, 0 }, // tilt
-    { 66, 0, 0, 0, 0 }, // heading
-    { 72, 0, 0, 0, 0 }, // timestamp
-    { 80, 0, 0, 0, 0 }, // badge
-    { 82, 0, 0, 0, 0 }, // port
-    { 88, 0, 0, 0, 0 }, // epoch
-    { 96, 0, 0, 0, 0 }, // precision
-    { 104, 4, 0, 0, 0 }, // ratings
-    { 0, 0, 0, 0, 0 }, // element
-    { 120, 0, 0, 0, 0 }, // has_loadout
-    { 128, 0, 0, 0, 0 }, // loadout
-    { 0, 0, 0, 0, 0 }, // grade
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 1, 1, 8, 1, 0 }, // grades
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 12, 1, 0, 0, 0 }, // podium
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 16, 0, 0, 0, 0 }, // perks
-    { 24, 0, 0, 0, 0 }, // primary
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 52, 28, 0, 0, 0 }, // backups
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 108, 8, 172, 1, 0 }, // attachments
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // slot
-    { 4, 0, 0, 0, 0 }, // power
+    {
+        0, 0, 0, 0, 0
+    }, // ProfileConfig
+    {
+        36, 0, 0, 0, 1
+    }, // name
+    {
+        40, 1, 56, 1, 3
+    }, // icon
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        60, 0, 0, 0, 0
+    }, // experience
+    {
+        64, 0, 0, 0, 0
+    }, // tilt
+    {
+        66, 0, 0, 0, 0
+    }, // heading
+    {
+        72, 0, 0, 0, 0
+    }, // timestamp
+    {
+        80, 0, 0, 0, 0
+    }, // badge
+    {
+        82, 0, 0, 0, 0
+    }, // port
+    {
+        88, 0, 0, 0, 0
+    }, // epoch
+    {
+        96, 0, 0, 0, 0
+    }, // precision
+    {
+        104, 4, 0, 0, 0
+    }, // ratings
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        120, 0, 0, 0, 0
+    }, // has_loadout
+    {
+        128, 0, 0, 0, 0
+    }, // loadout
+    {
+        0, 0, 0, 0, 0
+    }, // grade
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        1, 1, 8, 1, 0
+    }, // grades
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        12, 1, 0, 0, 0
+    }, // podium
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        16, 0, 0, 0, 0
+    }, // perks
+    {
+        24, 0, 0, 0, 0
+    }, // primary
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        52, 28, 0, 0, 0
+    }, // backups
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        108, 8, 172, 1, 0
+    }, // attachments
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // slot
+    {
+        4, 0, 0, 0, 0
+    }, // power
 };
 
 // THE IDENTITY PLAN, coalesced out of 43 leaves by the schema compiler —
@@ -17447,79 +17678,225 @@ constexpr int64_t RootConfigFixedLayoutBytes = (int64_t) sizeof( RootConfigFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst RootConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // RootConfig
-    { 20, 0, 0, 0, 1 }, // version_note
-    { 24, 28, 248, 1, 0 }, // weapons
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 256, 304, 1472, 1, 0 }, // profiles
-    { 0, 0, 0, 0, 0 }, // element
-    { 36, 0, 0, 0, 1 }, // name
-    { 40, 1, 56, 1, 3 }, // icon
-    { 0, 0, 0, 0, 0 }, // u8
-    { 60, 0, 0, 0, 0 }, // experience
-    { 64, 0, 0, 0, 0 }, // tilt
-    { 66, 0, 0, 0, 0 }, // heading
-    { 72, 0, 0, 0, 0 }, // timestamp
-    { 80, 0, 0, 0, 0 }, // badge
-    { 82, 0, 0, 0, 0 }, // port
-    { 88, 0, 0, 0, 0 }, // epoch
-    { 96, 0, 0, 0, 0 }, // precision
-    { 104, 4, 0, 0, 0 }, // ratings
-    { 0, 0, 0, 0, 0 }, // element
-    { 120, 0, 0, 0, 0 }, // has_loadout
-    { 128, 0, 0, 0, 0 }, // loadout
-    { 0, 0, 0, 0, 0 }, // grade
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 1, 1, 8, 1, 0 }, // grades
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 12, 1, 0, 0, 0 }, // podium
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // Bronze
-    { 0, 0, 0, 0, 0 }, // Silver
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 16, 0, 0, 0, 0 }, // perks
-    { 24, 0, 0, 0, 0 }, // primary
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 52, 28, 0, 0, 0 }, // backups
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // damage
-    { 4, 0, 0, 0, 0 }, // speed
-    { 8, 0, 0, 0, 0 }, // penetration
-    { 12, 0, 0, 0, 0 }, // channel
-    { 16, 0, 0, 0, 0 }, // homing
-    { 20, 0, 20, 0, 0 }, // effect
-    { 4, 0, 0, 0, 0 }, // buff
-    { 0, 0, 0, 0, 0 }, // multiplier
-    { 4, 0, 0, 0, 0 }, // debuff
-    { 0, 0, 0, 0, 0 }, // amount
-    { 108, 8, 172, 1, 0 }, // attachments
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // slot
-    { 4, 0, 0, 0, 0 }, // power
+    {
+        0, 0, 0, 0, 0
+    }, // RootConfig
+    {
+        20, 0, 0, 0, 1
+    }, // version_note
+    {
+        24, 28, 248, 1, 0
+    }, // weapons
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        256, 304, 1472, 1, 0
+    }, // profiles
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        36, 0, 0, 0, 1
+    }, // name
+    {
+        40, 1, 56, 1, 3
+    }, // icon
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        60, 0, 0, 0, 0
+    }, // experience
+    {
+        64, 0, 0, 0, 0
+    }, // tilt
+    {
+        66, 0, 0, 0, 0
+    }, // heading
+    {
+        72, 0, 0, 0, 0
+    }, // timestamp
+    {
+        80, 0, 0, 0, 0
+    }, // badge
+    {
+        82, 0, 0, 0, 0
+    }, // port
+    {
+        88, 0, 0, 0, 0
+    }, // epoch
+    {
+        96, 0, 0, 0, 0
+    }, // precision
+    {
+        104, 4, 0, 0, 0
+    }, // ratings
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        120, 0, 0, 0, 0
+    }, // has_loadout
+    {
+        128, 0, 0, 0, 0
+    }, // loadout
+    {
+        0, 0, 0, 0, 0
+    }, // grade
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        1, 1, 8, 1, 0
+    }, // grades
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        12, 1, 0, 0, 0
+    }, // podium
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // Bronze
+    {
+        0, 0, 0, 0, 0
+    }, // Silver
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        16, 0, 0, 0, 0
+    }, // perks
+    {
+        24, 0, 0, 0, 0
+    }, // primary
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        52, 28, 0, 0, 0
+    }, // backups
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // damage
+    {
+        4, 0, 0, 0, 0
+    }, // speed
+    {
+        8, 0, 0, 0, 0
+    }, // penetration
+    {
+        12, 0, 0, 0, 0
+    }, // channel
+    {
+        16, 0, 0, 0, 0
+    }, // homing
+    {
+        20, 0, 20, 0, 0
+    }, // effect
+    {
+        4, 0, 0, 0, 0
+    }, // buff
+    {
+        0, 0, 0, 0, 0
+    }, // multiplier
+    {
+        4, 0, 0, 0, 0
+    }, // debuff
+    {
+        0, 0, 0, 0, 0
+    }, // amount
+    {
+        108, 8, 172, 1, 0
+    }, // attachments
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // slot
+    {
+        4, 0, 0, 0, 0
+    }, // power
 };
 
 // THE IDENTITY PLAN, coalesced out of 239 leaves by the schema compiler —
@@ -18841,9 +19218,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.grade = Grade::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.grade ) )
                 {
                     value.grade = Grade::None;
@@ -18900,9 +19279,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                     {
                         {
                             uint64_t variant_ref = 0;
-                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true;
+                                break; }
                             if ( variant_ref == 0 ) { value.grades[(int32_t) i] = Grade::None; } // the zero reference is the enum's None
-                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                                break; }
                             else if ( !TableEnumValue( r.ids->at( variant_ref ), value.grades[(int32_t) i] ) )
                             {
                                 value.grades[(int32_t) i] = Grade::None;
@@ -18967,9 +19348,11 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
                     {
                         {
                             uint64_t variant_ref = 0;
-                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( variant_ref ) ) { r.report->malformed = true;
+                                break; }
                             if ( variant_ref == 0 ) { value.podium[(int32_t) i] = Grade::None; } // the zero reference is the enum's None
-                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; break; }
+                            else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                                break; }
                             else if ( !TableEnumValue( r.ids->at( variant_ref ), value.podium[(int32_t) i] ) )
                             {
                                 value.podium[(int32_t) i] = Grade::None;

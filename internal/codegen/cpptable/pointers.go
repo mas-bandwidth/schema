@@ -45,7 +45,7 @@ func (g *tableGen) measureCall(f *ir.Field, name, expr string) string {
 		return fmt.Sprintf("%sMeasureBodyRetain( ids, %s, retain, %s )", name, expr, g.step(f))
 	}
 	if g.isVar(name) {
-		return fmt.Sprintf("%sMeasureBody( ctx, numbering, ids, %s )", name, expr)
+		return fmt.Sprintf("%[1]sMeasureBody( ctx, numbering, ids, %[2]s )", name, expr)
 	}
 	return fmt.Sprintf("%sMeasureBody( ids, %s )", name, expr)
 }
@@ -58,7 +58,7 @@ func (g *tableGen) saveCall(f *ir.Field, name, expr string) string {
 		return fmt.Sprintf("%sSaveBodyRetain( w, ids, %s, retain, %s )", name, expr, g.step(f))
 	}
 	if g.isVar(name) {
-		return fmt.Sprintf("%sSaveBody( ctx, numbering, w, ids, %s )", name, expr)
+		return fmt.Sprintf("%[1]sSaveBody( ctx, numbering, w, ids, %[2]s )", name, expr)
 	}
 	return fmt.Sprintf("%sSaveBody( w, ids, %s )", name, expr)
 }
@@ -486,9 +486,9 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	g.pf("// ---- codecs: measure/save/load per closure member ----\n\n")
 	for _, st := range members {
 		if g.isVar(st.Name) {
-			g.pf("template <typename Ctx>\ninline int64_t %sMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline bool %sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline bool %sSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline int64_t %[1]sMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %[2]s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %[2]s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %[2]s & value );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadBody( TableReader & r, const TableNodeMap & nodes, %s & value );\n", st.Name, st.Name)
 			continue
 		}
@@ -500,9 +500,9 @@ func (g *tableGen) emitCodecDeclarations(members []*ir.Struct) {
 	if vars := g.varMembers(members); len(vars) > 0 {
 		g.pf("// ---- pointer-graph walkers: number (measure/save), pack (Lock) ----\n\n")
 		for _, st := range vars {
-			g.pf("template <typename Ctx>\ninline bool %sNumber( const Ctx & ctx, TableNumbering & numbering, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline int64_t %sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %s & value );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline bool %sPack( const Ctx & ctx, TablePackMap & seen, const %s & src, %s & dst, uint8_t * base, int64_t capacity, int64_t & used );\n", st.Name, st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sNumber( const Ctx & ctx, TableNumbering & numbering, const %[2]s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline int64_t %[1]sPackMeasure( const Ctx & ctx, TablePackMap & seen, const %[2]s & value );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sPack( const Ctx & ctx, TablePackMap & seen, const %[2]s & src, %[3]s & dst, uint8_t * base, int64_t capacity, int64_t & used );\n", st.Name, st.Name, st.Name)
 		}
 		g.pf("\n")
 		g.emitNodeThunkOverloads(vars)
@@ -530,8 +530,8 @@ func (g *tableGen) emitNodeThunkOverloads(vars []*ir.Struct) {
 			g.pf("template <typename Ctx> inline bool TableNodeSave( const Ctx &, const TableNumbering &, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( w, ids, value ); }\n", st.Name, st.Name)
 			continue
 		}
-		g.pf("template <typename Ctx>\ninline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %s & value ) { return %sMeasureBody( ctx, numbering, ids, value ); }\n", st.Name, st.Name)
-		g.pf("template <typename Ctx>\ninline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %s & value ) { return %sSaveBody( ctx, numbering, w, ids, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx>\ninline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const %[1]s & value ) { return %[2]sMeasureBody( ctx, numbering, ids, value ); }\n", st.Name, st.Name)
+		g.pf("template <typename Ctx>\ninline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const %[1]s & value ) { return %[2]sSaveBody( ctx, numbering, w, ids, value ); }\n", st.Name, st.Name)
 	}
 	g.pf("\n")
 }
@@ -908,7 +908,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("        TableSlot<%s> slot = main.Alloc<%s>();\n", n, n)
 	g.pf("        root_ref = slot.ref;\n")
 	g.pf("    }\n")
-	g.pf("    ~%sBuilder()\n    {\n        TableArenaShutdown( arena );\n        table_release( arena.allocator, region );\n    }\n", n)
+	g.pf("    ~%[1]sBuilder()\n    {\n        TableArenaShutdown( arena );\n        table_release( arena.allocator, region );\n    }\n", n)
 	g.pf("    %sBuilder( const %sBuilder & ) = delete;\n", n, n)
 	g.pf("    %sBuilder & operator=( const %sBuilder & ) = delete;\n\n", n, n)
 	g.pf("    // Alloc a node in THIS thread's slab: no lock, no atomic per node.\n")
@@ -980,7 +980,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    // rehashes nothing.\n")
 	g.pf("    TablePackMapReset( seen );\n")
 	g.pf("    if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||\n")
-	g.pf("        !%sPack( ctx, seen, root, *destination, packed, total, used ) || used != total )\n    {\n", n)
+	g.pf("        !%[1]sPack( ctx, seen, root, *destination, packed, total, used ) || used != total )\n    {\n", n)
 	g.pf("        TablePackMapShutdown( seen );\n")
 	g.pf("        table_release( arena.allocator, packed );\n        return false;\n    }\n")
 	g.pf("    TablePackMapShutdown( seen );\n")
@@ -1039,7 +1039,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name\n")
 	g.pf("    // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).\n")
-	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) || numbering.shared )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
+	g.pf("    if ( !%[1]sNumberFrom( ctx, numbering, root ) || numbering.shared )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity leaves the four trailer bytes untouched, and the seal
 	// covers every byte before it, as the Go oracle's tableIntegritySeal does
@@ -1384,7 +1384,7 @@ func (g *tableGen) emitRootNodeDispatch(st *ir.Struct) {
 	} else {
 		g.pf("    switch ( type_id )\n    {\n")
 		for _, t := range reachable {
-			g.pf("        case 0x%016xull:\n        {\n            %s * node = new ( at ) %s;\n            %sReset( *node );\n            break;\n        } // %s\n",
+			g.pf("        case 0x%016[1]xull:\n        {\n            %[2]s * node = new ( at ) %[3]s;\n            %[4]sReset( *node );\n            break;\n        } // %[5]s\n",
 				ir.TableWireId(t.WireName()), t.Name, t.Name, t.Name, t.Name)
 		}
 		for _, b := range blobs {

@@ -1,6 +1,7 @@
 package javatable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,7 @@ import (
 //     array is reserved (MCNodeExtentChildrenFirst.cfg);
 //   - unsorted_map: a map's entries laid in the value's order, not by key.
 func TestJavaCookExtentNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "javac (cook extent negative controls)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	witnesses := []struct{ name, from, to string }{
@@ -105,6 +107,7 @@ func TestJavaCookExtentNegativeControl(t *testing.T) {
 // every depth before cooking and requires the same golden bytes in both
 // orders; the unsorted_map witness above is its control.
 func TestJavaCookMapWriterHoldsTheSort(t *testing.T) {
+	slowtest.Gate(t, "javac (cook extent negative controls)")
 	t.Parallel()
 	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
 	javac, javaBin := javaTools(t)

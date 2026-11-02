@@ -823,7 +823,7 @@ end
 -- (docs/SPEC-TABLES.md §3.3). maxBytes is the vocabulary field's byte bound,
 -- checked from its own length before an entry is touched; maxEntries is the
 -- receiver's entry capacity. Zero or nil takes the conforming defaults.
-function M.announceRead(_T, vocab, data, report, maxBytes, maxEntries)
+function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
   report = report or {}
   if vocab.announced or vocab.refused then
     report.refused = 1
@@ -968,7 +968,8 @@ local function message_root(T, root)
     error(
       "message: "
         .. tostring(root)
-        .. " is not a fixed table: the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)",
+        .. " is not a fixed table: "
+        .. "the message form is fixed tables only (docs/SPEC-TABLES.md §3.3)",
       0
     )
   end

@@ -1139,7 +1139,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5234,6 +5234,7 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
 }
@@ -5242,7 +5243,7 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 // the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
 inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
 {
-    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
     return schema_integrity_seal( buffer, n );
 }
 
@@ -5261,7 +5262,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 )
+    if ( buffer == NULL || bytes < 1 )
     {
         br.report->malformed = true;
         return -1;
@@ -5997,7 +5998,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         const uint64_t ref_spawn = ids.ref_at( 8, 0x4328f78ab20e1f98ull );
         const int64_t body_spawn = PoseMeasureBody( ids, value.spawn );
         if ( body_spawn < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.header( ref_spawn, 13 ); w.putleb( (uint64_t) body_spawn ); // spawn
+        w.header( ref_spawn, 13 );
+            w.putleb( (uint64_t) body_spawn ); // spawn
         if ( !PoseSaveBody( w, ids, value.spawn ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8777,42 +8779,114 @@ constexpr int64_t SimStateFixedLayoutBytes = (int64_t) sizeof( SimStateFixedLayo
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst SimStateFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // SimState
-    { 0, 0, 0, 0, 0 }, // tilt
-    { 4, 0, 0, 0, 0 }, // angle
-    { 8, 0, 0, 0, 0 }, // position
-    { 16, 0, 0, 0, 0 }, // reach
-    { 32, 0, 0, 0, 0 }, // ticks
-    { 36, 0, 0, 0, 0 }, // ratio
-    { 40, 0, 0, 0, 0 }, // speed
-    { 48, 0, 0, 0, 0 }, // span
-    { 64, 0, 0, 0, 0 }, // mass
-    { 80, 0, 0, 0, 0 }, // frames
-    { 96, 0, 0, 0, 0 }, // flux
-    { 112, 0, 0, 0, 0 }, // energy
-    { 128, 0, 0, 0, 0 }, // entity_id
-    { 144, 0, 0, 0, 0 }, // scale
-    { 148, 4, 0, 0, 0 }, // samples
-    { 0, 0, 0, 0, 0 }, // element
-    { 160, 2, 168, 1, 0 }, // weights
-    { 0, 0, 0, 0, 0 }, // element
-    { 176, 8, 0, 0, 0 }, // axes
-    { 0, 0, 0, 0, 0 }, // Axis
-    { 0, 0, 0, 0, 0 }, // X
-    { 0, 0, 0, 0, 0 }, // Y
-    { 0, 0, 0, 0, 0 }, // Z
-    { 0, 0, 0, 0, 0 }, // element
-    { 208, 16, 240, 1, 0 }, // seeds
-    { 0, 0, 0, 0, 0 }, // element
-    { 248, 0, 0, 0, 0 }, // pose
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // heading
-    { 0, 0, 296, 0, 0 }, // spawn ?
-    { 272, 0, 0, 0, 0 }, // spawn
-    { 0, 0, 0, 0, 0 }, // x
-    { 8, 0, 0, 0, 0 }, // y
-    { 16, 0, 0, 0, 0 }, // heading
+    {
+        0, 0, 0, 0, 0
+    }, // SimState
+    {
+        0, 0, 0, 0, 0
+    }, // tilt
+    {
+        4, 0, 0, 0, 0
+    }, // angle
+    {
+        8, 0, 0, 0, 0
+    }, // position
+    {
+        16, 0, 0, 0, 0
+    }, // reach
+    {
+        32, 0, 0, 0, 0
+    }, // ticks
+    {
+        36, 0, 0, 0, 0
+    }, // ratio
+    {
+        40, 0, 0, 0, 0
+    }, // speed
+    {
+        48, 0, 0, 0, 0
+    }, // span
+    {
+        64, 0, 0, 0, 0
+    }, // mass
+    {
+        80, 0, 0, 0, 0
+    }, // frames
+    {
+        96, 0, 0, 0, 0
+    }, // flux
+    {
+        112, 0, 0, 0, 0
+    }, // energy
+    {
+        128, 0, 0, 0, 0
+    }, // entity_id
+    {
+        144, 0, 0, 0, 0
+    }, // scale
+    {
+        148, 4, 0, 0, 0
+    }, // samples
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        160, 2, 168, 1, 0
+    }, // weights
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        176, 8, 0, 0, 0
+    }, // axes
+    {
+        0, 0, 0, 0, 0
+    }, // Axis
+    {
+        0, 0, 0, 0, 0
+    }, // X
+    {
+        0, 0, 0, 0, 0
+    }, // Y
+    {
+        0, 0, 0, 0, 0
+    }, // Z
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        208, 16, 240, 1, 0
+    }, // seeds
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        248, 0, 0, 0, 0
+    }, // pose
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // heading
+    {
+        0, 0, 296, 0, 0
+    }, // spawn ?
+    {
+        272, 0, 0, 0, 0
+    }, // spawn
+    {
+        0, 0, 0, 0, 0
+    }, // x
+    {
+        8, 0, 0, 0, 0
+    }, // y
+    {
+        16, 0, 0, 0, 0
+    }, // heading
 };
 
 // THE IDENTITY PLAN, coalesced out of 27 leaves by the schema compiler —

@@ -1133,7 +1133,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5373,6 +5373,7 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
 }
@@ -5381,7 +5382,7 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 // the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
 inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
 {
-    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
     return schema_integrity_seal( buffer, n );
 }
 
@@ -5400,7 +5401,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 )
+    if ( buffer == NULL || bytes < 1 )
     {
         br.report->malformed = true;
         return -1;
@@ -6282,81 +6283,231 @@ constexpr int64_t FixedTableFixedLayoutBytes = (int64_t) sizeof( FixedTableFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst FixedTableFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // FixedTable
-    { 0, 0, 0, 0, 0 }, // value
-    { 0, 0, 0, 0, 0 }, // sequence
-    { 4, 0, 0, 0, 0 }, // ack_sequence
-    { 8, 0, 0, 0, 0 }, // ack_bits
-    { 16, 0, 0, 0, 0 }, // session_id
-    { 24, 0, 0, 0, 0 }, // client_id
-    { 32, 0, 0, 0, 0 }, // nonce
-    { 40, 0, 0, 0, 0 }, // world_time
-    { 48, 0, 0, 0, 0 }, // frame_tick
-    { 56, 0, 0, 0, 0 }, // server_time
-    { 64, 64, 576, 1, 0 }, // entities
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // entity_id
-    { 4, 0, 0, 0, 0 }, // pos_x
-    { 8, 0, 0, 0, 0 }, // pos_y
-    { 12, 0, 0, 0, 0 }, // pos_z
-    { 16, 0, 0, 0, 0 }, // yaw
-    { 20, 0, 0, 0, 0 }, // pitch
-    { 24, 0, 0, 0, 0 }, // vel_x
-    { 28, 0, 0, 0, 0 }, // vel_y
-    { 32, 0, 0, 0, 0 }, // vel_z
-    { 36, 0, 0, 0, 0 }, // health
-    { 40, 0, 0, 0, 0 }, // weapon
-    { 0, 0, 0, 0, 0 }, // Fists
-    { 0, 0, 0, 0, 0 }, // Pistol
-    { 0, 0, 0, 0, 0 }, // Shotgun
-    { 0, 0, 0, 0, 0 }, // Rifle
-    { 0, 0, 0, 0, 0 }, // Sniper
-    { 0, 0, 0, 0, 0 }, // Smg
-    { 0, 0, 0, 0, 0 }, // Rocket
-    { 0, 0, 0, 0, 0 }, // Grenade
-    { 0, 0, 0, 0, 0 }, // Plasma
-    { 0, 0, 0, 0, 0 }, // Railgun
-    { 0, 0, 0, 0, 0 }, // Flamer
-    { 0, 0, 0, 0, 0 }, // Mine
-    { 0, 0, 0, 0, 0 }, // Turret
-    { 0, 0, 0, 0, 0 }, // Drone
-    { 0, 0, 0, 0, 0 }, // Repair
-    { 48, 0, 0, 0, 0 }, // damage
-    { 56, 0, 0, 0, 0 }, // moving
-    { 57, 0, 0, 0, 0 }, // firing
-    { 580, 8, 1220, 1, 0 }, // stats
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // stat_id
-    { 4, 0, 0, 0, 0 }, // delta
-    { 1224, 0, 1224, 0, 0 }, // game_event
-    { 4, 0, 0, 0, 0 }, // hit
-    { 0, 0, 0, 0, 0 }, // target_id
-    { 4, 0, 0, 0, 0 }, // damage
-    { 8, 0, 0, 0, 0 }, // hit_kind
-    { 12, 0, 0, 0, 0 }, // crit
-    { 4, 0, 0, 0, 0 }, // chat
-    { 0, 0, 0, 0, 0 }, // channel
-    { 4, 0, 0, 0, 0 }, // speaker
-    { 4, 0, 0, 0, 0 }, // pickup
-    { 0, 0, 0, 0, 0 }, // item_id
-    { 4, 0, 0, 0, 0 }, // amount
-    { 1244, 1, 0, 0, 0 }, // loadout
-    { 0, 0, 0, 0, 0 }, // element
-    { 1264, 0, 1248, 0, 1 }, // player_name
-    { 1268, 1, 1284, 1, 3 }, // payload
-    { 0, 0, 0, 0, 0 }, // u8
-    { 1288, 0, 0, 0, 0 }, // aim_x
-    { 1292, 0, 0, 0, 0 }, // aim_y
-    { 1296, 0, 0, 0, 0 }, // aim_z
-    { 1300, 0, 0, 0, 0 }, // recoil
-    { 1304, 0, 0, 0, 0 }, // drift
-    { 1312, 0, 0, 0, 0 }, // wide_key
-    { 1328, 0, 0, 0, 0 }, // flux
-    { 1344, 0, 0, 0, 0 }, // ping
-    { 1348, 0, 0, 0, 0 }, // crc_hint
-    { 1352, 0, 0, 0, 0 }, // has_extra
-    { 1356, 0, 0, 0, 0 }, // extra
-    { 1360, 0, 0, 0, 0 }, // idle_ticks
+    {
+        0, 0, 0, 0, 0
+    }, // FixedTable
+    {
+        0, 0, 0, 0, 0
+    }, // value
+    {
+        0, 0, 0, 0, 0
+    }, // sequence
+    {
+        4, 0, 0, 0, 0
+    }, // ack_sequence
+    {
+        8, 0, 0, 0, 0
+    }, // ack_bits
+    {
+        16, 0, 0, 0, 0
+    }, // session_id
+    {
+        24, 0, 0, 0, 0
+    }, // client_id
+    {
+        32, 0, 0, 0, 0
+    }, // nonce
+    {
+        40, 0, 0, 0, 0
+    }, // world_time
+    {
+        48, 0, 0, 0, 0
+    }, // frame_tick
+    {
+        56, 0, 0, 0, 0
+    }, // server_time
+    {
+        64, 64, 576, 1, 0
+    }, // entities
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // entity_id
+    {
+        4, 0, 0, 0, 0
+    }, // pos_x
+    {
+        8, 0, 0, 0, 0
+    }, // pos_y
+    {
+        12, 0, 0, 0, 0
+    }, // pos_z
+    {
+        16, 0, 0, 0, 0
+    }, // yaw
+    {
+        20, 0, 0, 0, 0
+    }, // pitch
+    {
+        24, 0, 0, 0, 0
+    }, // vel_x
+    {
+        28, 0, 0, 0, 0
+    }, // vel_y
+    {
+        32, 0, 0, 0, 0
+    }, // vel_z
+    {
+        36, 0, 0, 0, 0
+    }, // health
+    {
+        40, 0, 0, 0, 0
+    }, // weapon
+    {
+        0, 0, 0, 0, 0
+    }, // Fists
+    {
+        0, 0, 0, 0, 0
+    }, // Pistol
+    {
+        0, 0, 0, 0, 0
+    }, // Shotgun
+    {
+        0, 0, 0, 0, 0
+    }, // Rifle
+    {
+        0, 0, 0, 0, 0
+    }, // Sniper
+    {
+        0, 0, 0, 0, 0
+    }, // Smg
+    {
+        0, 0, 0, 0, 0
+    }, // Rocket
+    {
+        0, 0, 0, 0, 0
+    }, // Grenade
+    {
+        0, 0, 0, 0, 0
+    }, // Plasma
+    {
+        0, 0, 0, 0, 0
+    }, // Railgun
+    {
+        0, 0, 0, 0, 0
+    }, // Flamer
+    {
+        0, 0, 0, 0, 0
+    }, // Mine
+    {
+        0, 0, 0, 0, 0
+    }, // Turret
+    {
+        0, 0, 0, 0, 0
+    }, // Drone
+    {
+        0, 0, 0, 0, 0
+    }, // Repair
+    {
+        48, 0, 0, 0, 0
+    }, // damage
+    {
+        56, 0, 0, 0, 0
+    }, // moving
+    {
+        57, 0, 0, 0, 0
+    }, // firing
+    {
+        580, 8, 1220, 1, 0
+    }, // stats
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // stat_id
+    {
+        4, 0, 0, 0, 0
+    }, // delta
+    {
+        1224, 0, 1224, 0, 0
+    }, // game_event
+    {
+        4, 0, 0, 0, 0
+    }, // hit
+    {
+        0, 0, 0, 0, 0
+    }, // target_id
+    {
+        4, 0, 0, 0, 0
+    }, // damage
+    {
+        8, 0, 0, 0, 0
+    }, // hit_kind
+    {
+        12, 0, 0, 0, 0
+    }, // crit
+    {
+        4, 0, 0, 0, 0
+    }, // chat
+    {
+        0, 0, 0, 0, 0
+    }, // channel
+    {
+        4, 0, 0, 0, 0
+    }, // speaker
+    {
+        4, 0, 0, 0, 0
+    }, // pickup
+    {
+        0, 0, 0, 0, 0
+    }, // item_id
+    {
+        4, 0, 0, 0, 0
+    }, // amount
+    {
+        1244, 1, 0, 0, 0
+    }, // loadout
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        1264, 0, 1248, 0, 1
+    }, // player_name
+    {
+        1268, 1, 1284, 1, 3
+    }, // payload
+    {
+        0, 0, 0, 0, 0
+    }, // u8
+    {
+        1288, 0, 0, 0, 0
+    }, // aim_x
+    {
+        1292, 0, 0, 0, 0
+    }, // aim_y
+    {
+        1296, 0, 0, 0, 0
+    }, // aim_z
+    {
+        1300, 0, 0, 0, 0
+    }, // recoil
+    {
+        1304, 0, 0, 0, 0
+    }, // drift
+    {
+        1312, 0, 0, 0, 0
+    }, // wide_key
+    {
+        1328, 0, 0, 0, 0
+    }, // flux
+    {
+        1344, 0, 0, 0, 0
+    }, // ping
+    {
+        1348, 0, 0, 0, 0
+    }, // crc_hint
+    {
+        1352, 0, 0, 0, 0
+    }, // has_extra
+    {
+        1356, 0, 0, 0, 0
+    }, // extra
+    {
+        1360, 0, 0, 0, 0
+    }, // idle_ticks
 };
 
 // THE IDENTITY PLAN, coalesced out of 148 leaves by the schema compiler —

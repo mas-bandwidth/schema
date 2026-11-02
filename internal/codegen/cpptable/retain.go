@@ -1435,9 +1435,9 @@ func (g *tableGen) emitRetainDeclarations(members []*ir.Struct) {
 	g.pf("// that does not ask instantiates none of them.\n\n")
 	for _, st := range members {
 		if g.isVar(st.Name) {
-			g.pf("template <typename Ctx>\ninline int64_t %sMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline bool %sSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
-			g.pf("template <typename Ctx>\ninline bool %sSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline int64_t %[1]sMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const %[2]s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %[2]s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
+			g.pf("template <typename Ctx>\ninline bool %[1]sSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const %[2]s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
 			g.pf("inline bool %sLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, %s & value, TableRetain * retain, const TableRetainPath & path );\n", st.Name, st.Name)
 			continue
 		}
@@ -1475,11 +1475,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	dispatch := func(ind string) {
 		g.pf("%sauto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t {\n", ind)
 		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
-		g.pf("%s    (void) c;\n", ind)
-		g.pf("%s    (void) nn;\n", ind)
-		g.pf("%s    (void) ii;\n", ind)
-		g.pf("%s    (void) rt;\n", ind)
-		g.pf("%s    (void) at;\n", ind)
+		g.pf("%[1]s    (void) c;\n%[1]s    (void) nn;\n%[1]s    (void) ii;\n%[1]s    (void) rt;\n%[1]s    (void) at;\n", ind)
 		if nodeDispatchEmpty(reachable, blobs) {
 			g.pf("%s    (void) type_id;\n", ind)
 		} else {
@@ -1501,12 +1497,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	saveDispatch := func(ind string) {
 		g.pf("%sauto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool {\n", ind)
 		g.pf("%s    const TableRetainPath at = TableRetainPathRoot( node, 0 );\n", ind)
-		g.pf("%s    (void) c;\n", ind)
-		g.pf("%s    (void) nn;\n", ind)
-		g.pf("%s    (void) ww;\n", ind)
-		g.pf("%s    (void) ii;\n", ind)
-		g.pf("%s    (void) rt;\n", ind)
-		g.pf("%s    (void) at;\n", ind)
+		g.pf("%[1]s    (void) c;\n%[1]s    (void) nn;\n%[1]s    (void) ww;\n%[1]s    (void) ii;\n%[1]s    (void) rt;\n%[1]s    (void) at;\n", ind)
 		if nodeDispatchEmpty(reachable, blobs) {
 			g.pf("%s    (void) type_id;\n", ind)
 		} else {
@@ -1565,7 +1556,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, TableDefaultAllocator() );\n")
 	dispatch("    ")
 	saveDispatch("    ")
-	g.pf("    if ( !%sNumberFrom( ctx, numbering, root ) )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
+	g.pf("    if ( !%[1]sNumberFrom( ctx, numbering, root ) )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity leaves the four trailer bytes untouched, and the seal
 	// covers every byte before it, as the Go oracle's emitIntegrityRetain and

@@ -2183,7 +2183,7 @@ defmodule Benchtable.Table do
         {:error, reason, reasoned(empty_report(), reason)}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob, desc.variable) do
+        case entries(body, ids, desc, desc.variable) do
           {:error, _} ->
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
@@ -2336,14 +2336,14 @@ defmodule Benchtable.Table do
   # unknown (§4). It is :nested for every other body (a by-value table, an
   # element, an entry, a node record), where the id is malformed: a second
   # numbering cannot exist.
-  defp entries(bin, ids, string_blob, transport),
-    do: entries(bin, ids, string_blob, transport, [], [])
+  defp entries(bin, ids, allowed, transport),
+    do: entries(bin, ids, allowed, transport, [], [])
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, string_blob, transport, acc, nodes) do
+  defp entries(bin, ids, allowed, transport, acc, nodes) do
     case leb(bin) do
       :error ->
         {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
@@ -2371,27 +2371,27 @@ defmodule Benchtable.Table do
                     {:ok, payload, rest3} ->
                       if id == @node_id and transport == true do
                         # the reserved node id is a variable root's own transport
-                        # (§3.1): the body reads it as the node table, and a body
-                        # that carries it under another kind steps over it, never
-                        # counting it unknown. A fixed root has no such arm.
+                        # (§3.1): its framing is whole or malformed. Any other
+                        # kind damages the numbering and discards the load.
+                        # A fixed root has no such transport arm.
                         if kind == 12 do
-                          case node_table(payload, ids, string_blob) do
+                          case node_table(payload, ids, allowed) do
                             {:ok, ns} ->
                               # a node table riding twice: the LAST is the
                               # numbering (§3 last-wins; framing N7)
-                              entries(rest3, ids, string_blob, transport, acc, ns)
+                              entries(rest3, ids, allowed, transport, acc, ns)
 
                             :error ->
                               {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                           end
                         else
-                          entries(rest3, ids, string_blob, transport, acc, nodes)
+                          {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                         end
                       else
                         entries(
                           rest3,
                           ids,
-                          string_blob,
+                          allowed,
                           transport,
                           [{id, kind, payload} | acc],
                           nodes
@@ -2426,13 +2426,13 @@ defmodule Benchtable.Table do
   # nothing: the scan reads records until the payload is consumed, and a count
   # that disagrees with the scan makes the table malformed, so every pointer in
   # the save reads null.
-  defp node_table(bin, ids, string_blob) do
+  defp node_table(bin, ids, allowed) do
     case leb(bin) do
       {l, rest} when byte_size(rest) >= l ->
         content = binary_part(rest, 0, l)
 
         case leb(content) do
-          {n, cr} -> node_records(cr, n, [], ids, string_blob)
+          {n, cr} -> node_records(cr, n, [], ids, allowed)
           :error -> :error
         end
 
@@ -2441,11 +2441,11 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp node_records(<<>>, n, acc, _ids, _string_blob) do
+  defp node_records(<<>>, n, acc, _ids, _allowed) do
     if n == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
   end
 
-  defp node_records(rest, n, acc, ids, string_blob) do
+  defp node_records(rest, n, acc, ids, allowed) do
     with {sref, r1} <- leb(rest),
          true <- sref != 0 and sref <= div(byte_size(ids), 8),
          {len, r2} <- leb(r1),
@@ -2461,21 +2461,30 @@ defmodule Benchtable.Table do
             # a *string blob this reader can name is its UTF-8 bytes; a record
             # whose content is not text is malformed, and the root that reaches
             # no *string cannot place the record at all (§3.1)
-            if string_blob do
-              if utf8_valid?(bytes), do: {:blob, bytes}, else: :malformed
+            if is_map(allowed) and allowed.string_blob do
+              if utf8_valid?(bytes), do: {:blob, :string, bytes}, else: :malformed
             else
               :unknown
             end
 
           tid ->
             case Map.fetch(@node_types, tid) do
-              {:ok, :bytes} -> {:blob, bytes}
-              {:ok, name} -> {:table, name, bytes}
-              :error -> :unknown
+              {:ok, :bytes} ->
+                if is_map(allowed) and allowed.bytes_blob,
+                  do: {:blob, :bytes, bytes},
+                  else: :unknown
+
+              {:ok, name} ->
+                if is_map(allowed) and Map.get(allowed.node_types, tid) == name,
+                  do: {:table, name, bytes},
+                  else: :unknown
+
+              :error ->
+                :unknown
             end
         end
 
-      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, string_blob)
+      node_records(binary_part(r2, len, byte_size(r2) - len), n, [node | acc], ids, allowed)
     else
       _ -> :error
     end
@@ -2563,7 +2572,7 @@ defmodule Benchtable.Table do
     if Map.get(f, :elem) == root, do: %{__wire_node__: 1}, else: nil
   end
 
-  defp node_value(_nodes, idx, _ids) do
+  defp node_value(_nodes, idx, _ids, expected) do
     {_root, directory} = Process.get(:elixir_node_directory)
     at = idx - 2
 
@@ -2571,9 +2580,16 @@ defmodule Benchtable.Table do
       :out_of_range
     else
       case elem(directory, at) do
-        {:blob, bytes} -> {:value, bytes}
-        {:table, _name, _body} -> {:value, %{__wire_node__: idx}}
-        _ -> :null
+        {:blob, kind, bytes} ->
+          if Map.get(expected, :blob) == kind, do: {:value, bytes}, else: {:value, :wrong_type}
+
+        {:table, name, _body} ->
+          if Map.get(expected, :elem) == name,
+            do: {:value, %{__wire_node__: idx}},
+            else: {:value, :wrong_type}
+
+        _ ->
+          :null
       end
     end
   end
@@ -2581,7 +2597,7 @@ defmodule Benchtable.Table do
   defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
-    case entries(body, ids, desc.string_blob, :nested) do
+    case entries(body, ids, desc, :nested) do
       {:ok, fields, []} -> {desc, fields}
       _ -> throw(:wire_damaged)
     end
@@ -2814,7 +2830,7 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp read_payload(%{t: :blob} = _f, payload, nodes, ids, report) do
+  defp read_payload(%{t: :blob} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report}
@@ -2825,7 +2841,7 @@ defmodule Benchtable.Table do
         {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
 
       {idx, _} ->
-        case node_value(nodes, idx, ids) do
+        case node_value(nodes, idx, ids, f) do
           {:value, bytes} when is_binary(bytes) ->
             {:cont, blob_named(idx, bytes), report}
 
@@ -2860,7 +2876,7 @@ defmodule Benchtable.Table do
         end
 
       {idx, _} ->
-        case node_value(nodes, idx, ids) do
+        case node_value(nodes, idx, ids, f) do
           {:value, v} when is_map(v) ->
             {:cont, v, report}
 
@@ -3380,7 +3396,7 @@ defmodule Benchtable.Table do
         # the node count is malformed and THAT slot reads null, the array kept
         # at its count; a blob node under a *T slot is a kind mismatch
         {value, report} =
-          case node_value(nodes, idx, ids) do
+          case node_value(nodes, idx, ids, f) do
             {:value, v} when is_map(v) -> {v, report}
             {:value, _} -> {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
             :out_of_range -> {nil, %{report | malformed: true}}
@@ -6049,7 +6065,6 @@ defmodule Benchtable.Table do
     end
   end
 
-
   defp arm_extent(arm, body, ids, at),
     do: field_extent(arm, leb_encode(byte_size(body)) <> body, ids, at)
 
@@ -6116,7 +6131,6 @@ defmodule Benchtable.Table do
 
           kind == 12 and Map.get(field, :text_unbounded, false) ->
             text_elements_extent(elems, count, at)
-
 
           true ->
             {:ok, at}
@@ -6903,7 +6917,7 @@ defmodule Benchtable.Table do
         {:error, :malformed, reasoned(report, refusal), retain}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc.string_blob, desc.variable) do
+        case entries(body, ids, desc, desc.variable) do
           {:ok, fields, nodes} ->
             # the node directory's memo: a node a second pointer names is the
             # one value, read and retained once (§6.6, the path's first step)
@@ -7488,7 +7502,7 @@ defmodule Benchtable.Table do
         end
 
       {idx, _} ->
-        case node_value_retain(nodes, idx, ids, report, retain) do
+        case node_value_retain(nodes, idx, ids, f, report, retain) do
           {{:value, v}, report, retain} when is_map(v) ->
             {:cont, v, report, retain}
 
@@ -7624,7 +7638,7 @@ defmodule Benchtable.Table do
   # one nested body read under its path: the entries failing to frame leave the
   # table's declared defaults and one malformed.
   defp read_body_retain(desc, body, nodes, ids, report, retain, path) do
-    case entries(body, ids, desc.string_blob, :nested) do
+    case entries(body, ids, desc, :nested) do
       {:ok, fields, []} ->
         # a body whose terminator is not the last byte of its L is damage (§3),
         # as the plain read's read_element holds it
@@ -7813,7 +7827,7 @@ defmodule Benchtable.Table do
         {value, report, retain} =
           case if(idx == 1,
                  do: {{:value, root_reference(f)}, report, retain},
-                 else: node_value_retain(nodes, idx, ids, report, retain)
+                 else: node_value_retain(nodes, idx, ids, f, report, retain)
                ) do
             {{:value, v}, report, retain} when is_map(v) ->
               {v, report, retain}
@@ -7835,8 +7849,8 @@ defmodule Benchtable.Table do
     end
   end
 
-  defp node_value_retain(nodes, idx, ids, report, retain),
-    do: {node_value(nodes, idx, ids), report, retain}
+  defp node_value_retain(nodes, idx, ids, f, report, retain),
+    do: {node_value(nodes, idx, ids, f), report, retain}
 
   defp decode_directory_retain(desc, fields, nodes, ids, retain, report) do
     report = directory_report(nodes, report, true)

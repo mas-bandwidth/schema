@@ -518,7 +518,7 @@ func fpCookRows(t *testing.T, model *tabletext.Model) []fpRow {
 }
 
 var fpCookSabotage = [][2]string{{
-	"  if (!_M.Cook(T, root, value, blob(total), 1)) return -1;\n",
+	"  if (!_M.Cook(T, save, root, value, blob(total), 1)) return -1;\n",
 	"",
 }}
 

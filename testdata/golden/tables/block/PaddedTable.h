@@ -1139,7 +1139,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5455,6 +5455,7 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
 }
@@ -5463,7 +5464,7 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 // the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
 inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
 {
-    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
     return schema_integrity_seal( buffer, n );
 }
 
@@ -5482,7 +5483,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 )
+    if ( buffer == NULL || bytes < 1 )
     {
         br.report->malformed = true;
         return -1;
@@ -8093,23 +8094,57 @@ constexpr int64_t PaddedRowFixedLayoutBytes = (int64_t) sizeof( PaddedRowFixedLa
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PaddedRowFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // PaddedRow
-    { 0, 0, 0, 0, 0 }, // tag
-    { 8, 0, 0, 0, 0 }, // value
-    { 16, 0, 0, 0, 0 }, // flag
-    { 20, 0, 0, 0, 0 }, // id
-    { 40, 0, 24, 0, 1 }, // label
-    { 44, 2, 0, 0, 0 }, // slots
-    { 0, 0, 0, 0, 0 }, // element
-    { 52, 1, 0, 0, 0 }, // teams
-    { 0, 0, 0, 0, 0 }, // Team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 60, 0, 0 }, // counter ?
-    { 56, 0, 0, 0, 0 }, // counter
+    {
+        0, 0, 0, 0, 0
+    }, // PaddedRow
+    {
+        0, 0, 0, 0, 0
+    }, // tag
+    {
+        8, 0, 0, 0, 0
+    }, // value
+    {
+        16, 0, 0, 0, 0
+    }, // flag
+    {
+        20, 0, 0, 0, 0
+    }, // id
+    {
+        40, 0, 24, 0, 1
+    }, // label
+    {
+        44, 2, 0, 0, 0
+    }, // slots
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        52, 1, 0, 0, 0
+    }, // teams
+    {
+        0, 0, 0, 0, 0
+    }, // Team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 60, 0, 0
+    }, // counter ?
+    {
+        56, 0, 0, 0, 0
+    }, // counter
 };
 
 // THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
@@ -8506,29 +8541,75 @@ constexpr int64_t PaddedFrameFixedLayoutBytes = (int64_t) sizeof( PaddedFrameFix
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PaddedFrameFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // PaddedFrame
-    { 0, 0, 0, 0, 0 }, // marker
-    { 8, 0, 0, 0, 0 }, // stamp
-    { 16, 64, 4112, 1, 0 }, // rows
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 0, 0, 0 }, // tag
-    { 8, 0, 0, 0, 0 }, // value
-    { 16, 0, 0, 0, 0 }, // flag
-    { 20, 0, 0, 0, 0 }, // id
-    { 40, 0, 24, 0, 1 }, // label
-    { 44, 2, 0, 0, 0 }, // slots
-    { 0, 0, 0, 0, 0 }, // element
-    { 52, 1, 0, 0, 0 }, // teams
-    { 0, 0, 0, 0, 0 }, // Team
-    { 0, 0, 0, 0, 0 }, // Red
-    { 0, 0, 0, 0, 0 }, // Blue
-    { 0, 0, 0, 0, 0 }, // Green
-    { 0, 0, 0, 0, 0 }, // Gold
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 60, 0, 0 }, // counter ?
-    { 56, 0, 0, 0, 0 }, // counter
-    { 4116, 1, 4128, 1, 3 }, // blob
-    { 0, 0, 0, 0, 0 }, // u8
+    {
+        0, 0, 0, 0, 0
+    }, // PaddedFrame
+    {
+        0, 0, 0, 0, 0
+    }, // marker
+    {
+        8, 0, 0, 0, 0
+    }, // stamp
+    {
+        16, 64, 4112, 1, 0
+    }, // rows
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // tag
+    {
+        8, 0, 0, 0, 0
+    }, // value
+    {
+        16, 0, 0, 0, 0
+    }, // flag
+    {
+        20, 0, 0, 0, 0
+    }, // id
+    {
+        40, 0, 24, 0, 1
+    }, // label
+    {
+        44, 2, 0, 0, 0
+    }, // slots
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        52, 1, 0, 0, 0
+    }, // teams
+    {
+        0, 0, 0, 0, 0
+    }, // Team
+    {
+        0, 0, 0, 0, 0
+    }, // Red
+    {
+        0, 0, 0, 0, 0
+    }, // Blue
+    {
+        0, 0, 0, 0, 0
+    }, // Green
+    {
+        0, 0, 0, 0, 0
+    }, // Gold
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 60, 0, 0
+    }, // counter ?
+    {
+        56, 0, 0, 0, 0
+    }, // counter
+    {
+        4116, 1, 4128, 1, 3
+    }, // blob
+    {
+        0, 0, 0, 0, 0
+    }, // u8
 };
 
 // THE IDENTITY PLAN, coalesced out of 580 leaves by the schema compiler —

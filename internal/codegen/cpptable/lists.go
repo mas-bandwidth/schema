@@ -754,7 +754,7 @@ func (g *tableGen) emitListWriteField(f *ir.Field) {
 	restore := g.openElemCache(f, listElementWireKind(f), 0, "            ", "_"+f.Name)
 	defer restore()
 	g.emitArrayBodyMeasure(f, listElementWireKind(f), "body_"+f.Name, cursor+".count", cursor+"[%s]", "            ", "return false;", "_"+f.Name)
-	g.pf("            w.header( ref_%s, %d );\n            w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkArray, f.Name, f.Name)
+	g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkArray, f.Name, f.Name)
 	g.emitArrayBodyWrite(f, listElementWireKind(f), cursor+".count", cursor+"[%s]", "            ", "_"+f.Name)
 	g.pf("        }\n")
 	g.pf("    }\n")
@@ -769,7 +769,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	ind := "                "
 	elemKind := listElementWireKind(f)
 	g.pf("%suint64_t body_len = 0;\n", ind)
-	g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
+	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 	g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps\n", ind)
 	g.pf("%s// the value it has, no counter is raised, and the walk continues past L.\n", ind)
@@ -785,7 +785,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
-		g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
+		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
 		g.pf("%s        r.report->widened++;\n", ind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
@@ -809,15 +809,15 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	g.pf("%s        // fill's refusal, and it moves no counter.\n", ind)
 	g.emitRetainReplaced(f, ind+"        ")
 	g.pf("%s        TableListFill<%s> fill = TableListFillBegin( nodes, value.%s, count );\n", ind, g.listTypeArg(f), f.Name)
-	g.pf("%s        if ( fill.refused )\n%[1]s        {\n%[1]s            nodes.refused = true;\n%[1]s            return false;\n%[1]s        }\n", ind)
-	g.pf("%s        if ( !fill.ok )\n%[1]s        {\n%[1]s            r.report->malformed = true;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind)
+	g.pf("%[1]s        if ( fill.refused )\n%[1]s        {\n%[1]s            nodes.refused = true;\n%[1]s            return false;\n%[1]s        }\n", ind)
+	g.pf("%[1]s        if ( !fill.ok )\n%[1]s        {\n%[1]s            r.report->malformed = true;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        // elements are BOUNDED by the field body: a count the length cannot\n", ind)
 	g.pf("%s        // cover is damage, flags malformed, and the load is discarded\n", ind)
 	g.pf("%s        // whole (§4)\n", ind)
 	g.pf("%s        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 	g.pf("%s        for ( uint64_t i = 0; i < count; i++ )\n%s        {\n", ind, ind)
 	g.pf("%s            %s * slot = TableListFillNext( fill );\n", ind, g.listElementType(f))
-	g.pf("%s            if ( slot == NULL )\n%[1]s            {\n%[1]s                r.report->malformed = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
+	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                r.report->malformed = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
 	g.pf("%s            bool landed = false;\n", ind)
 	g.pf("%s            do\n%s            {\n", ind, ind)
 	if widened {
@@ -829,7 +829,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	}
 	g.pf("%s                landed = true;\n", ind)
 	g.pf("%s            } while ( 0 );\n", ind)
-	g.pf("%s            if ( !landed )\n%[1]s            {\n%[1]s                TableListFillDrop( fill );\n%[1]s                break;\n%[1]s            } // the element's own framing gave out before it decoded\n", ind)
+	g.pf("%[1]s            if ( !landed )\n%[1]s            {\n%[1]s                TableListFillDrop( fill );\n%[1]s                break;\n%[1]s            } // the element's own framing gave out before it decoded\n", ind)
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)
 }

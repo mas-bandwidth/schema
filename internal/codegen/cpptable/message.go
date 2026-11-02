@@ -73,7 +73,7 @@ static const int64_t kTableMessageEntriesHere = %d;
 
 	b.WriteString(cppMessageRuntime)
 
-	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %d entries and %d bytes. It is an
+	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %[1]d entries and %[2]d bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -91,7 +91,7 @@ static const int64_t kTableMessageEntriesHere = %d;
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = %d;
+static const int64_t kTableAnnounceBytes = %[3]d;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids

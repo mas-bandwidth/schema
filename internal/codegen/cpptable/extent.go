@@ -676,7 +676,7 @@ func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind string, onBad ...string)
 
 // cookExtentSignature is one record's extent writer.
 func (g *tableGen) cookExtentSignature(st *ir.Struct) string {
-	return fmt.Sprintf("template <typename Ctx>\ninline bool %sCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %s & value, TableByteOrder order )", st.Name, st.Name)
+	return fmt.Sprintf("template <typename Ctx>\ninline bool %[1]sCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %[2]s & value, TableByteOrder order )", st.Name, st.Name)
 }
 
 // emitCookExtent emits one record's extent writer: every list and map
@@ -773,7 +773,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 func (g *tableGen) emitCookNode(st *ir.Struct) {
 	record := ir.CookExtentStart(g.unit, st)
 	g.pf("// %sCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).\n", st.Name)
-	g.pf("template <typename Ctx>\ninline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline bool %[1]sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %[2]s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
 	if g.isVar(st.Name) {
 		g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
 	} else {
@@ -822,9 +822,9 @@ func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 		return
 	}
 	g.pf("%s{\n", ind)
-	g.pf("%s    const int64_t extent = %sExtent<Ctx, true>( ctx, %s );\n", ind, st.Name, expr)
-	g.pf("%s    if ( extent < 0 ) { %s }\n", ind, onBad)
-	g.pf("%s    size = %d + extent;\n%s    node_align = %d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ind, ir.CookNodeAlign(g.unit, st))
+	g.pf("%[1]s    const int64_t extent = %[2]sExtent<Ctx, true>( ctx, %[3]s );\n", ind, st.Name, expr)
+	g.pf("%[1]s    if ( extent < 0 ) { %[2]s }\n", ind, onBad)
+	g.pf("%[1]s    size = %[2]d + extent;\n%[1]s    node_align = %[3]d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ir.CookNodeAlign(g.unit, st))
 	g.pf("%s}\n", ind)
 }
 

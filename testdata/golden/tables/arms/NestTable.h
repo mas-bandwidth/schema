@@ -1190,7 +1190,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -4873,6 +4873,7 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
 }
@@ -4881,7 +4882,7 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 // the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
 inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
 {
-    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
     return schema_integrity_seal( buffer, n );
 }
 
@@ -4900,7 +4901,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 )
+    if ( buffer == NULL || bytes < 1 )
     {
         br.report->malformed = true;
         return -1;

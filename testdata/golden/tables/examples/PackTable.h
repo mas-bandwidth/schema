@@ -1171,7 +1171,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -6302,6 +6302,7 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
 }
@@ -6310,7 +6311,7 @@ inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 // the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
 inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
 {
-    if ( buffer == NULL || n < 0 || n + 4 > capacity ) { return -1; }
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
     return schema_integrity_seal( buffer, n );
 }
 
@@ -6329,7 +6330,7 @@ inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const 
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 )
+    if ( buffer == NULL || bytes < 1 )
     {
         br.report->malformed = true;
         return -1;
@@ -10297,7 +10298,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
         const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBody( ids, value.gunner );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
+        w.header( ref_gunner, 13 );
+            w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerSettingsSaveBody( w, ids, value.gunner ) ) return false;
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11273,9 +11275,11 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBody( TableReader & r, GlobalSetti
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.difficulty = Difficulty::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.difficulty ) )
                 {
                     value.difficulty = Difficulty::None;
@@ -13278,10 +13282,18 @@ constexpr int64_t GunnerSettingsFixedLayoutBytes = (int64_t) sizeof( GunnerSetti
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst GunnerSettingsFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // GunnerSettings
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
-    { 32, 0, 5, 0, 1 }, // callsign
+    {
+        0, 0, 0, 0, 0
+    }, // GunnerSettings
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
+    {
+        32, 0, 5, 0, 1
+    }, // callsign
 };
 
 // THE IDENTITY PLAN, coalesced out of 3 leaves by the schema compiler —
@@ -13645,17 +13657,39 @@ constexpr int64_t ShipEntryFixedLayoutBytes = (int64_t) sizeof( ShipEntryFixedLa
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst ShipEntryFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // ShipEntry
-    { 36, 0, 0, 0, 1 }, // display_name
-    { 40, 0, 0, 0, 0 }, // health
-    { 44, 0, 0, 0, 0 }, // mass
-    { 48, 4, 64, 1, 0 }, // hardpoints
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 104, 0, 0 }, // gunner ?
-    { 68, 0, 0, 0, 0 }, // gunner
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
-    { 32, 0, 5, 0, 1 }, // callsign
+    {
+        0, 0, 0, 0, 0
+    }, // ShipEntry
+    {
+        36, 0, 0, 0, 1
+    }, // display_name
+    {
+        40, 0, 0, 0, 0
+    }, // health
+    {
+        44, 0, 0, 0, 0
+    }, // mass
+    {
+        48, 4, 64, 1, 0
+    }, // hardpoints
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 104, 0, 0
+    }, // gunner ?
+    {
+        68, 0, 0, 0, 0
+    }, // gunner
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
+    {
+        32, 0, 5, 0, 1
+    }, // callsign
 };
 
 // THE IDENTITY PLAN, coalesced out of 9 leaves by the schema compiler —
@@ -14030,15 +14064,33 @@ constexpr int64_t GlobalSettingsFixedLayoutBytes = (int64_t) sizeof( GlobalSetti
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst GlobalSettingsFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // GlobalSettings
-    { 0, 0, 0, 0, 0 }, // tick_rate
-    { 4, 0, 0, 0, 0 }, // difficulty
-    { 0, 0, 0, 0, 0 }, // Easy
-    { 0, 0, 0, 0, 0 }, // Normal
-    { 0, 0, 0, 0, 0 }, // Hard
-    { 56, 0, 5, 0, 1 }, // build_note
-    { 60, 4, 0, 0, 0 }, // spawn_delays
-    { 0, 0, 0, 0, 0 }, // element
+    {
+        0, 0, 0, 0, 0
+    }, // GlobalSettings
+    {
+        0, 0, 0, 0, 0
+    }, // tick_rate
+    {
+        4, 0, 0, 0, 0
+    }, // difficulty
+    {
+        0, 0, 0, 0, 0
+    }, // Easy
+    {
+        0, 0, 0, 0, 0
+    }, // Normal
+    {
+        0, 0, 0, 0, 0
+    }, // Hard
+    {
+        56, 0, 5, 0, 1
+    }, // build_note
+    {
+        60, 4, 0, 0, 0
+    }, // spawn_delays
+    {
+        0, 0, 0, 0, 0
+    }, // element
 };
 
 // THE IDENTITY PLAN, coalesced out of 4 leaves by the schema compiler —
@@ -14444,51 +14496,141 @@ constexpr int64_t PackConfigFixedLayoutBytes = (int64_t) sizeof( PackConfigFixed
 // entry cannot carry, which is what a plan compiled from another writer's
 // layout lands values through.
 constexpr TableFixedDst PackConfigFixedDst[] = {
-    { 0, 0, 0, 0, 0 }, // PackConfig
-    { 0, 0, 0, 0, 0 }, // version
-    { 4, 0, 0, 0, 0 }, // global
-    { 0, 0, 0, 0, 0 }, // tick_rate
-    { 4, 0, 0, 0, 0 }, // difficulty
-    { 0, 0, 0, 0, 0 }, // Easy
-    { 0, 0, 0, 0, 0 }, // Normal
-    { 0, 0, 0, 0, 0 }, // Hard
-    { 56, 0, 5, 0, 1 }, // build_note
-    { 60, 4, 0, 0, 0 }, // spawn_delays
-    { 0, 0, 0, 0, 0 }, // element
-    { 76, 108, 0, 0, 0 }, // ships
-    { 0, 0, 0, 0, 0 }, // ShipType
-    { 0, 0, 0, 0, 0 }, // Fighter
-    { 0, 0, 0, 0, 0 }, // Bomber
-    { 0, 0, 0, 0, 0 }, // Scout
-    { 0, 0, 0, 0, 0 }, // element
-    { 36, 0, 0, 0, 1 }, // display_name
-    { 40, 0, 0, 0, 0 }, // health
-    { 44, 0, 0, 0, 0 }, // mass
-    { 48, 4, 64, 1, 0 }, // hardpoints
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 104, 0, 0 }, // gunner ?
-    { 68, 0, 0, 0, 0 }, // gunner
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
-    { 32, 0, 5, 0, 1 }, // callsign
-    { 400, 4, 0, 0, 0 }, // thresholds
-    { 0, 0, 0, 0, 0 }, // Difficulty
-    { 0, 0, 0, 0, 0 }, // Easy
-    { 0, 0, 0, 0, 0 }, // Normal
-    { 0, 0, 0, 0, 0 }, // Hard
-    { 0, 0, 0, 0, 0 }, // element
-    { 412, 108, 736, 1, 0 }, // reserves
-    { 0, 0, 0, 0, 0 }, // element
-    { 36, 0, 0, 0, 1 }, // display_name
-    { 40, 0, 0, 0, 0 }, // health
-    { 44, 0, 0, 0, 0 }, // mass
-    { 48, 4, 64, 1, 0 }, // hardpoints
-    { 0, 0, 0, 0, 0 }, // element
-    { 0, 0, 104, 0, 0 }, // gunner ?
-    { 68, 0, 0, 0, 0 }, // gunner
-    { 0, 0, 0, 0, 0 }, // reaction
-    { 4, 0, 0, 0, 0 }, // tracking
-    { 32, 0, 5, 0, 1 }, // callsign
+    {
+        0, 0, 0, 0, 0
+    }, // PackConfig
+    {
+        0, 0, 0, 0, 0
+    }, // version
+    {
+        4, 0, 0, 0, 0
+    }, // global
+    {
+        0, 0, 0, 0, 0
+    }, // tick_rate
+    {
+        4, 0, 0, 0, 0
+    }, // difficulty
+    {
+        0, 0, 0, 0, 0
+    }, // Easy
+    {
+        0, 0, 0, 0, 0
+    }, // Normal
+    {
+        0, 0, 0, 0, 0
+    }, // Hard
+    {
+        56, 0, 5, 0, 1
+    }, // build_note
+    {
+        60, 4, 0, 0, 0
+    }, // spawn_delays
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        76, 108, 0, 0, 0
+    }, // ships
+    {
+        0, 0, 0, 0, 0
+    }, // ShipType
+    {
+        0, 0, 0, 0, 0
+    }, // Fighter
+    {
+        0, 0, 0, 0, 0
+    }, // Bomber
+    {
+        0, 0, 0, 0, 0
+    }, // Scout
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        36, 0, 0, 0, 1
+    }, // display_name
+    {
+        40, 0, 0, 0, 0
+    }, // health
+    {
+        44, 0, 0, 0, 0
+    }, // mass
+    {
+        48, 4, 64, 1, 0
+    }, // hardpoints
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 104, 0, 0
+    }, // gunner ?
+    {
+        68, 0, 0, 0, 0
+    }, // gunner
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
+    {
+        32, 0, 5, 0, 1
+    }, // callsign
+    {
+        400, 4, 0, 0, 0
+    }, // thresholds
+    {
+        0, 0, 0, 0, 0
+    }, // Difficulty
+    {
+        0, 0, 0, 0, 0
+    }, // Easy
+    {
+        0, 0, 0, 0, 0
+    }, // Normal
+    {
+        0, 0, 0, 0, 0
+    }, // Hard
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        412, 108, 736, 1, 0
+    }, // reserves
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        36, 0, 0, 0, 1
+    }, // display_name
+    {
+        40, 0, 0, 0, 0
+    }, // health
+    {
+        44, 0, 0, 0, 0
+    }, // mass
+    {
+        48, 4, 64, 1, 0
+    }, // hardpoints
+    {
+        0, 0, 0, 0, 0
+    }, // element
+    {
+        0, 0, 104, 0, 0
+    }, // gunner ?
+    {
+        68, 0, 0, 0, 0
+    }, // gunner
+    {
+        0, 0, 0, 0, 0
+    }, // reaction
+    {
+        4, 0, 0, 0, 0
+    }, // tracking
+    {
+        32, 0, 5, 0, 1
+    }, // callsign
 };
 
 // THE IDENTITY PLAN, coalesced out of 61 leaves by the schema compiler —
@@ -15162,7 +15304,8 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBodyRetain( TableWriter & w, TableRetai
         const uint64_t ref_gunner = ids.ref_at( 38, 0x40dbb648c0cd44aaull );
         const int64_t body_gunner = GunnerSettingsMeasureBodyRetain( ids, value.gunner, retain, TableRetainStepInto( path, 4, (uint32_t) ( 0 ) ) );
         if ( body_gunner < 0 ) return false; // storage invariant, refused as measure refuses it
-        w.header( ref_gunner, 13 ); w.putleb( (uint64_t) body_gunner ); // gunner
+        w.header( ref_gunner, 13 );
+            w.putleb( (uint64_t) body_gunner ); // gunner
         if ( !GunnerSettingsSaveBodyRetain( w, ids, value.gunner, retain, TableRetainStepInto( path, 4, (uint32_t) ( 0 ) ) ) ) return false;
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -15633,9 +15776,11 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsLoadBodyRetain( TableReader & r, Globa
                     break;
                 }
                 uint64_t variant_ref = 0;
-                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( variant_ref ) ) { r.report->malformed = true;
+                    return false; }
                 if ( variant_ref == 0 ) { value.difficulty = Difficulty::None; } // the zero reference is the enum's None
-                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; }
+                else if ( variant_ref > (uint64_t) r.ids->count ) { r.report->malformed = true;
+                    return false; }
                 else if ( !TableEnumValue( r.ids->at( variant_ref ), value.difficulty ) )
                 {
                     value.difficulty = Difficulty::None;

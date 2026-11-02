@@ -19,6 +19,7 @@ func init() {
 // the two functions, backed by the cookwrite runtime.
 func cookWriteModule(m *Module) {
 	m.Runtime("cookwrite")
+	m.Runtime("save")
 	m.Printf("// THE COOKED FORM's WRITE side (docs/SPEC-TABLES.md §7.6): CookMeasure\n")
 	m.Printf("// answers the whole cooked file's bytes, Cook writes it into the caller's\n")
 	m.Printf("// buffer in the byte order the target build reads, and both use the layout\n")
@@ -26,8 +27,8 @@ func cookWriteModule(m *Module) {
 	// CookReason names a refusal, non_finite_float: <Owner>.<field> for a NaN
 	// or an infinity (docs/SPEC-TABLES.md §3.3), null otherwise
 	m.Printf("_M.CookReason <- null;\n")
-	m.Printf("_M.CookMeasure <- function(root, value) { local n = _rt_cookwrite.CookMeasure(_M, root, value); _M.CookReason = _rt_cookwrite.CookReason; return n; };\n")
-	m.Printf("_M.Cook <- function(root, value, bytes, order) { local ok = _rt_cookwrite.Cook(_M, root, value, bytes, order); _M.CookReason = _rt_cookwrite.CookReason; return ok; };\n")
+	m.Printf("_M.CookMeasure <- function(root, value) { local n = _rt_cookwrite.CookMeasure(_M, _rt_save, root, value); _M.CookReason = _rt_cookwrite.CookReason; return n; };\n")
+	m.Printf("_M.Cook <- function(root, value, bytes, order) { local ok = _rt_cookwrite.Cook(_M, _rt_save, root, value, bytes, order); _M.CookReason = _rt_cookwrite.CookReason; return ok; };\n")
 	// The UNION OVERLAY's cook offsets (docs/SPEC-TABLES.md §2.6, §7.2): the
 	// tag at the union's base and each arm at the union layout's arm offset.
 	// The read-side cookForm carries the union field whole, so the write side

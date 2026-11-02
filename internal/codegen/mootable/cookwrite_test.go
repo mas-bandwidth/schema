@@ -453,3 +453,30 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		}
 	}
 }
+
+// The span itself is eight-aligned, but a 128-bit element requires a
+// sixteen-aligned node and extent start. Keep both immutable corpus pins.
+func TestMooCookWideListExtent(t *testing.T) {
+	slowtest.Gate(t, "moo (wide list cooked extent alignment)")
+	var rows []cookWriteRow
+	for _, row := range cookWriteRows(t) {
+		if row.row.caseName == "widelist_wide" {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) != 1 {
+		t.Fatalf("wide list corpus row count %d", len(rows))
+	}
+	fails, answered, cache := cookWriteFailures(t, rows, nil)
+	for _, f := range fails {
+		t.Error(f)
+	}
+	if answered != 2 {
+		t.Fatalf("wide list answered %d of 2 byte orders", answered)
+	}
+	for key, g := range cache {
+		if out := g.analyze(t); out != "" {
+			t.Errorf("%s analyze: %s", key, out)
+		}
+	}
+}

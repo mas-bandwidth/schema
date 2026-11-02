@@ -311,7 +311,12 @@ inline bool TableJsonMapKeyValue( const char * token, int32_t length, const Tabl
 inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
-    if ( graph == NULL ) { in.report->malformed = true; in.bad = true; return false; }
+    if ( graph == NULL )
+    {
+        in.report->malformed = true;
+        in.bad = true;
+        return false;
+    }
     if ( TableJsonPeek( in ) != '{' ) { in.bad = true; return false; }
     if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
     in.pos++;
@@ -679,7 +684,7 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("    const bool malformed_before = to->malformed;\n")
 		g.pf("    to->malformed = false;\n")
 		g.pf("    const bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, to );\n", st.Name)
-		g.pf("    if ( !ok || to->malformed )\n    {\n        to->malformed = true;\n        %sTableType()->reset( root );\n        return false;\n    } // damage discards the whole load (§4)\n", st.Name)
+		g.pf("    if ( !ok || to->malformed )\n    {\n        to->malformed = true;\n        %[1]sTableType()->reset( root );\n        return false;\n    } // damage discards the whole load (§4)\n", st.Name)
 		g.pf("    to->malformed = malformed_before;\n")
 		g.pf("    return true;\n}\n\n")
 		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers

@@ -349,12 +349,9 @@ key_order = function(s, key, entry, a, b)
   local bt = b + key.at
   local width = key.width
   local x, y
-  if width == 1 then
-    x, y = string.unpack("<I1", s.data, at + 1), string.unpack("<I1", s.data, bt + 1)
-  elseif width == 2 then
-    x, y = string.unpack("<I2", s.data, at + 1), string.unpack("<I2", s.data, bt + 1)
-  elseif width == 4 then
-    x, y = string.unpack("<I4", s.data, at + 1), string.unpack("<I4", s.data, bt + 1)
+  if width <= 4 then
+    local format = "<" .. (key.signed and "i" or "I") .. width
+    x, y = string.unpack(format, s.data, at + 1), string.unpack(format, s.data, bt + 1)
   else
     x, y = u64(s.data, at), u64(s.data, bt)
   end
