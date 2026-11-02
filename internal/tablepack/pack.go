@@ -281,10 +281,15 @@ func (p *packer) keyedDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry) {
 	f := fv.Def
 	placed := 0
+	var spent int64
+	full := false
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
 		if _, ok := entryKey(e); !ok || e.IsDir() {
 			p.refusef("%s: an array's directory holds `.json` element files and nothing else (docs/SPEC-TABLES.md §17.1)", path)
+			continue
+		}
+		if full {
 			continue
 		}
 		if placed >= int(f.ArrayBound) {
@@ -309,6 +314,10 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 			} else {
 				p.refusef("%s: not one JSON value for an element of %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(f))
 			}
+		}
+		if !p.m.KeepTextTotal(fv, placed, &spent, p.report) {
+			full = true
+			continue
 		}
 		placed++
 	}

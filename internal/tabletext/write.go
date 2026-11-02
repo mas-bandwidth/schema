@@ -96,6 +96,9 @@ func (m *Model) countInstance(g *graphOut, inst *Instance, open map[*Instance]bo
 }
 
 func (m *Model) countField(g *graphOut, fv *Field, open map[*Instance]bool) error {
+	if err := ValidateTextTotal(fv); err != nil {
+		return err
+	}
 	f := fv.Def
 	switch {
 	case f.Type.Blob():

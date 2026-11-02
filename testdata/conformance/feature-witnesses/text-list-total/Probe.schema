@@ -1,0 +1,7 @@
+package probe
+table Totals {
+ a [..3]string(5) | total=5
+ b [..3]?string(5) | total=5
+ c []string(5) | total=5
+ d []?string(5) | total=5
+}
