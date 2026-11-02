@@ -3722,6 +3722,13 @@ defmodule Bench.Table do
   end
 
   def from_json(table, text) when is_binary(text) do
+    # Exactly one BOM may prefix the document; it is not general whitespace.
+    text =
+      case text do
+        <<0xEF, 0xBB, 0xBF, rest::binary>> -> rest
+        _ -> text
+      end
+
     desc = Map.fetch!(@tables, table)
     Process.put(:elixir_json_defs, %{})
     Process.put(:elixir_json_open, %{})
