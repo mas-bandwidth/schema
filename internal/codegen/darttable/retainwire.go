@@ -32,39 +32,45 @@ func (g *wireGen) emitRetainRuntime() {
 // in the loaded region and are accounted as unreachable by the save.
 func (g *wireGen) retainForgetCases() string {
 	var b strings.Builder
-	add := func(f *ir.Field, expr string) {
+	child := func(f *ir.Field, expr string) string {
 		if f.Type.Pointer || f.Type.Blob() {
-			return
+			return ""
 		}
 		if f.IsMap() || f.Array != ir.ArrayNone {
 			if f.IsMap() || tableRef(f) != nil || unionRef(f) != nil {
-				fmt.Fprintf(&b, "          pending.addAll(%s);\n", expr)
+				return fmt.Sprintf("          pending.addAll(%s);\n", expr)
 			}
 		} else if tableRef(f) != nil || unionRef(f) != nil {
-			fmt.Fprintf(&b, "          pending.add(%s);\n", expr)
+			return fmt.Sprintf("          pending.add(%s);\n", expr)
+		}
+		return ""
+	}
+	emit := func(name, body string) {
+		if body != "" {
+			fmt.Fprintf(&b, "        case %s v:\n%s          break;\n", name, body)
 		}
 	}
 	for _, st := range g.closure {
-		fmt.Fprintf(&b, "        case %s v:\n", st.Name)
+		var body strings.Builder
 		for _, f := range st.Fields {
-			add(f, "v."+fieldMember(f))
+			body.WriteString(child(f, "v."+fieldMember(f)))
 		}
-		b.WriteString("          break;\n")
+		emit(st.Name, body.String())
 	}
 	for _, un := range g.closureUnions() {
-		fmt.Fprintf(&b, "        case %s v:\n", un.Name)
+		var body strings.Builder
 		for _, arm := range un.Variants {
 			if !arm.Void() {
-				add(arm.F, "v."+armMember(arm))
+				body.WriteString(child(arm.F, "v."+armMember(arm)))
 			}
 		}
-		b.WriteString("          break;\n")
+		emit(un.Name, body.String())
 	}
 	return b.String()
 }
 
-// dartRetainRuntime is the Dart source of the retain-unknown runtime, with one
-// %s placeholder for the unit's known-id set (docs/SPEC-TABLES.md §6.6). It
+// dartRetainRuntime is the Dart source of the retain-unknown runtime, with
+// placeholders for its owned-child walk and unit's known-id set (docs/SPEC-TABLES.md §6.6). It
 // reuses the wire runtime's reader and writer, so a retained record's resolved
 // bytes are the same canonical framing the plain save writes.
 const dartRetainRuntime = `
