@@ -919,7 +919,7 @@ final class _ExtentScan {
         if (!union(r, f.uni)) return false;
         continue;
       }
-      if (kind != 13 && kind != 14 && kind != 16) {
+      if (kind != 13 && kind != 14 && kind != 16 && !(kind == 12 && f.mode == 3)) {
         if (!r.skipKind(kind)) return true;
         continue;
       }
@@ -930,9 +930,12 @@ final class _ExtentScan {
     }
   }
 
+  bool text(int n){if(n==0)return true;if(n>0xffffffff)return false;at=(at+7)&-8;at+=_round(9+n);return true;}
+
   // field is extentScan.field over the payload [start, end).
   bool field(TableWireReader p, _MF f, int start, int end) {
     if (f.mode == 0) return true;
+    if (f.mode == 3) return text(end-start);
     final r = TableWireReader.sub(p, start, end);
     if (f.mode == 2) return record(r, f.child);
     if (!r.has(2)) return true;
@@ -946,7 +949,7 @@ final class _ExtentScan {
       at = (at + f.align - 1) & -f.align;
       at += count * f.size;
     }
-    if (kind != 13 && kind != 15) return true;
+    if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
     // a count above 2^63 reads negative here; Go's loop runs on to the end of
     // the body, as this one does
     for (var i = 0; (count < 0 || i < count) && r.has(1); i++) {
@@ -957,7 +960,8 @@ final class _ExtentScan {
       }
       final b = _body(r);
       if (b == null) return true;
-      if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
+      if(f.mode==4){if(!text(b.$2-b.$1))return false;}
+      else if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
     }
     return true;
   }
@@ -1010,7 +1014,7 @@ bool _lebValid(Uint8List d, int off, int len) {
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
-  if (len <= bound) return len;
+  if (bound < 0 || len <= bound) return len;
   var cut = bound;
   while (cut > 0 && (d[off + cut] & 0xC0) == 0x80) {
     cut--;
@@ -1914,6 +1918,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	id := fieldId(f)
 	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
 	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
+	if f.Type.TextUnbounded() {
+		guard := ""
+		if f.Type.Optional {
+			guard = "v." + hasMember(f) + " && "
+		}
+		g.pf("%sif(%s!tableTextValueValid(%s,-1))throw StateError('invalid_value: unbounded text');\n", ind, guard, expr)
+		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)throw StateError('blob_over_size_cap');\n", ind, guard, expr)
+	}
 	switch {
 	case ir.TextListPlain(f):
 		g.emitSavePlainTextList(f, expr, ind, id)
@@ -2498,7 +2510,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tif (!_lebValid(r.data, r.pos, len)) { r.report.malformed = true; v.%s = %s; r.pos += len; break; }\n", ind, name, g.stringDefault(f))
-		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, f.Type.Size)
+		g.pf("%s\t\tfinal keep = _textBoundary(r.data, r.pos, len, %d);\n", ind, textBound(f))
 		g.pf("%s\t\tif (keep != len) r.report.clamped++;\n", ind)
 		g.pf("%s\t\tv.%s = utf8.decode(r.data.sublist(r.pos, r.pos + keep));\n", ind, name)
 		g.pf("%s\t\tr.pos += len;\n", ind)
@@ -2705,7 +2717,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
 		if f.IsTextList() {
-			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, ir.TextListValue(f).Type.Size)
+			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, textBound(ir.TextListValue(f)))
 			g.pf("%s\t\t\tif(kept!=elen){r.report.clamped++;if(r.report.clampedField.isEmpty)r.report.clampedField=%q;}\n", ind, f.TextListElem().MapEntryOf)
 			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));\n", ind, f.Type.Name, arr, arr, arr)
 			g.emitTextTotalKeep(f, "kept", ind+"\t\t\t")
@@ -3222,9 +3234,14 @@ func (g *wireGen) measureSpec(root *ir.Struct) measureSpec {
 			single = f.Array == ir.ArrayNone && !f.Type.Pointer
 		}
 		switch {
+		case f.Type.TextUnbounded():
+			mode = 3
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 		case f.IsMap() || f.IsList() || f.Array != ir.ArrayNone || f.KeyEnum != "":
 			mode = 1
+			if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+				mode = 4
+			}
 			elemKind = ir.TableWireElemKind(f)
 			if f.IsMap() {
 				elemKind = ir.TableKindTable

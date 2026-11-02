@@ -7,6 +7,13 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+func textBound(f *ir.Field) int64 {
+	if f.Type.TextUnbounded() {
+		return -1
+	}
+	return f.Type.Size
+}
+
 func textListWriteCheck(f *ir.Field, expr, ind, prefix, refusal string) string {
 	if !f.IsTextList() {
 		return ""
@@ -22,7 +29,7 @@ func textListWriteCheck(f *ir.Field, expr, ind, prefix, refusal string) string {
 	if ir.TextListOptional(f) {
 		fmt.Fprintf(&b, "%s  if (!element.hasValue) continue;\n", ind)
 	}
-	fmt.Fprintf(&b, "%s  if (!%stableTextValueValid(element.value, %d)) %s\n", ind, prefix, ir.TextListValue(f).Type.Size, refusal)
+	fmt.Fprintf(&b, "%s  if (!%stableTextValueValid(element.value, %d)) %s\n", ind, prefix, textBound(ir.TextListValue(f)), refusal)
 	if f.TextTotal > 0 {
 		fmt.Fprintf(&b, "%s  textSpent += %stableTextByteLength(element.value); if(textSpent > %d) %s\n", ind, prefix, f.TextTotal, refusal)
 	}
@@ -59,7 +66,7 @@ func (g *wireGen) jsonTextListRead(f *ir.Field, val string, d int, fallback stri
 		bound = f.ArrayBound
 	}
 	et := f.Type.Name
-	read := fmt.Sprintf("e.value=_jsonStringField(item,%d,r);", ir.TextListValue(f).Type.Size)
+	read := fmt.Sprintf("e.value=_jsonStringField(item,%d,r);", textBound(ir.TextListValue(f)))
 	if ir.TextListOptional(f) {
 		read = fmt.Sprintf("if(item is String){e.hasValue=true;%s}else if(item!=null){r.kindMismatch++;}", read)
 	}
@@ -73,7 +80,7 @@ func (g *wireGen) jsonTextListRead(f *ir.Field, val string, d int, fallback stri
 const textListWireRuntime = `
 int tableTextByteLength(String value) => utf8.encode(value).length;
 bool tableTextValueValid(String value,int bound) =>
-    _wideValid(value.codeUnits) && (bound < 0 || utf8.encode(value).length <= bound);
+    _wideValid(value.codeUnits) && (utf8.encode(value).length <= (bound < 0 ? 0xffffffff : bound));
 `
 
 func textListTotalCheck(f *ir.Field, expr, ind, refusal string) string {

@@ -600,7 +600,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 	case f.Type.Kind == ir.TString:
 		g.pf("%sfinal len = %s.limit - %s.pos;\n", ind, p, p)
 		g.pf("%sif (!_lebValid(%s.data, %s.pos, len)) %s\n", ind, p, p, bad)
-		g.pf("%sfinal keep = _textBoundary(%s.data, %s.pos, len, %d);\n", ind, p, p, f.Type.Size)
+		g.pf("%sfinal keep = _textBoundary(%s.data, %s.pos, len, %d);\n", ind, p, p, textBound(f))
 		g.pf("%sif (keep != len) %s.report.clamped++;\n", ind, p)
 		g.pf("%s%s = utf8.decode(%s.data.sublist(%s.pos, %s.pos + keep));\n", ind, dest, p, p, p)
 		g.pf("%s%s.pos = %s.limit;\n", ind, p, p)
@@ -1084,7 +1084,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	keyKind := ir.TableWireScalarKind(keyField)
 	keySize := -1
 	if keyField.Type.Kind == ir.TString {
-		keySize = int(keyField.Type.Size)
+		keySize = int(textBound(keyField))
 	}
 	keyWidens := ""
 	for k := 1; k <= 40; k++ {

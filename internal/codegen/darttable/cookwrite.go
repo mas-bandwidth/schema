@@ -643,7 +643,7 @@ func recordHasExtentSeen(u *ir.Unit, st *ir.Struct, seenS map[*ir.Struct]bool, s
 	}
 	seenS[st] = true
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() || valueHasExtentSeen(u, f, seenS, seenU) {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() || valueHasExtentSeen(u, f, seenS, seenU) {
 			return true
 		}
 	}
@@ -653,6 +653,9 @@ func recordHasExtentSeen(u *ir.Unit, st *ir.Struct, seenS map[*ir.Struct]bool, s
 // valueHasExtentSeen reports one VALUE of f's declared type — the element of
 // an array or a list — whose by-value storage can hold a list or a map.
 func valueHasExtentSeen(u *ir.Unit, f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
+	if f != nil && f.Type.TextUnbounded() {
+		return true
+	}
 	if f == nil || f.IsMap() || f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return false
 	}
@@ -774,6 +777,10 @@ func addrPlus(addr string, off int64) string {
 // by-value value holds — every element of a bounded array (a counted array's
 // live ones, which in Dart are all it holds), a record, or a union's set arm.
 func (g *cookGen) emitCookExtentField(f *ir.Field, val, addr, ind string, write bool, base string) {
+	if f.Type.TextUnbounded() {
+		g.emitCookTextExtent(f, val, addr, ind, write, base)
+		return
+	}
 	if f.Type.Optional && f.IsMap() {
 		owner := val[:lastDot(val)]
 		g.pf("%sif (!%s.%s && %s.isNotEmpty) return -1;\n", ind, owner, hasMember(f), val)
@@ -1161,6 +1168,8 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		g.emitCookRef(ind, fmt.Sprintf("at + %d", offset), expr)
 	case isByValueTable(f):
 		g.pf("%sif (!_cook%s(%s, c, at + %d)) return false;\n", ind, tableRef(f).Name, expr, offset)
+	case f.Type.TextUnbounded():
+		g.pf("%sif(!wire.tableTextValueValid(%s,-1))return false;\n", ind, expr)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.needConvert = true
 		text := dartName(f.Name) + "Text"

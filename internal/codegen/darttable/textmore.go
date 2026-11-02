@@ -517,7 +517,7 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (len > bound || len > 255) {
+  if (bound >= 0 && (len > bound || len > 255)) {
     r.clamped++;
     return null;
   }
@@ -892,7 +892,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		key, value := f.MapEntry.Fields[0], f.MapEntry.Fields[1]
 		var keyExpr string
 		if key.Type.Kind == ir.TString {
-			keyExpr = fmt.Sprintf("_jsonStringKey(k%d, %d, r)", d, key.Type.Size)
+			keyExpr = fmt.Sprintf("_jsonStringKey(k%d, %d, r)", d, textBound(key))
 		} else {
 			lo, hi := jsonIntBounds(key)
 			keyExpr = fmt.Sprintf("_jsonIntKey(k%d, r, %s, %s, %s)", d, lo, hi, jsonUnsigned(key))
@@ -959,7 +959,7 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 	case f.Type.Kind == ir.TWString:
 		return fmt.Sprintf("_jsonWStringField(%s, %d, r%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TString:
-		return fmt.Sprintf("_jsonStringField(%s, %d, r%s)", val, f.Type.Size, fbArg)
+		return fmt.Sprintf("_jsonStringField(%s, %d, r%s)", val, textBound(f), fbArg)
 	case f.Type.Kind == ir.TBytes:
 		return fmt.Sprintf("_jsonBytesField(%s, r, %d%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TBool:

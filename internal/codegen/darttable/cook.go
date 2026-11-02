@@ -426,6 +426,7 @@ func (g *cookGen) emitRecordCursor(record string, ml *ir.MemberLayout) {
 		return
 	}
 	g.needData = true
+	g.needHome = true // record accessors may resolve unbounded text slots
 	bg := &blockGen{unit: g.unit, file: g.file, blocks: g.blocks, imports: g.imports, inCook: true}
 	g.pf("// %s as a cooked RECORD: a view and an offset, and every field read where\n", record)
 	g.pf("// it lies. the offset is settable so a walk reuses one cursor (§7.2). A POINTER\n")
@@ -706,7 +707,7 @@ func (g *cookGen) emitCookRecordDescriptor(owner, record string) {
 		// pointer's cooked slot is one eight-byte reference — it has no inline
 		// length companion and no inline buffer, so the pieces it would index
 		// are not there. Only the INLINE string/bytes takes a count companion.
-		if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer {
+		if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer && !f.Type.TextUnbounded() {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
@@ -730,7 +731,7 @@ func (g *cookGen) emitCookRecordDescriptor(owner, record string) {
 				isArray = false
 			}
 		}
-		if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer {
+		if (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) && !f.Type.Pointer && !f.Type.TextUnbounded() {
 			// the COUNT COMPANION of a string or a `bytes` bounds a walker just
 			// as an array's does (§7.4), and the bound is the declared length;
 			// a POINTER string carries no inline buffer and takes the
@@ -739,7 +740,7 @@ func (g *cookGen) emitCookRecordDescriptor(owner, record string) {
 			isArray = false
 		}
 		presentOffset := int64(-1)
-		if f.Type.Optional && !f.Type.Pointer {
+		if f.Type.Optional && !f.Type.Pointer && !f.Type.TextUnbounded() {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			presentOffset = pieces[len(pieces)-1].Offset
 		}
@@ -751,6 +752,7 @@ func (g *cookGen) emitCookRecordDescriptor(owner, record string) {
 		g.pf("        isArray: %v,\n", isArray)
 		g.pf("        arrayBound: %d,\n", bound)
 		g.pf("        isPointer: %v,\n", f.Type.Pointer)
+		g.pf("        unboundedText: %v,\n", f.Type.TextUnbounded())
 		g.pf("        countOffset: %d,\n", countOffset)
 		g.pf("        presentOffset: %d,\n", presentOffset)
 		g.pf("        storage: TableCookStorage.%s,\n", dartCookStorageKind(f))
@@ -775,7 +777,7 @@ func dartCookInfoSymbol(owner, record string) string {
 // descriptors name the storage rather than reuse a wire kind, and a walker
 // reads a slot with the width `elemSize` gives and the signedness this names.
 func dartCookStorageKind(f *ir.Field) string {
-	if f.Type.Pointer {
+	if f.Type.Pointer || f.Type.TextUnbounded() {
 		return "reference"
 	}
 	switch f.Type.Kind {
@@ -891,13 +893,20 @@ func (g *blockGen) emitCookMapAccessors(f *ir.Field, offset int64, ind, origin s
 	// probe, negative when the entry's sorts first
 	g.pf("%sint _%sOrder(int entry, %s key) {\n", ind, name, keyType)
 	if key.Type.Kind == ir.TString {
-		pieces := ir.FieldPieces(g.unit, key, keyOffset)
-		g.pf("%s  var used = view.getInt32(entry + %d, Endian.little);\n", ind, pieces[1].Offset)
-		g.pf("%s  if (used < 0 || used > %d) {\n%s    used = 0;\n%s  }\n", ind, key.Type.Size, ind, ind)
-		g.pf("%s  for (var i = 0; i < used && i < key.length; i++) {\n", ind)
-		g.pf("%s    final order = view.getUint8(entry + %d + i) - key[i];\n", ind, keyOffset)
-		g.pf("%s    if (order != 0) {\n%s      return order;\n%s    }\n%s  }\n", ind, ind, ind, ind)
-		g.pf("%s  return used - key.length;\n", ind)
+		if key.Type.TextUnbounded() {
+			g.pf("%s  final data=tableCookTextStart(view,entry+%d);\n", ind, keyOffset)
+			g.pf("%s  final used=data<0?0:view.getUint32(data,Endian.little);\n", ind)
+			g.pf("%s  for(var i=0;i<used&&i<key.length;i++){final order=view.getUint8(data+8+i)-key[i];if(order!=0)return order;}\n", ind)
+			g.pf("%s  return used-key.length;\n", ind)
+		} else {
+			pieces := ir.FieldPieces(g.unit, key, keyOffset)
+			g.pf("%s  var used = view.getInt32(entry + %d, Endian.little);\n", ind, pieces[1].Offset)
+			g.pf("%s  if (used < 0 || used > %d) {\n%s    used = 0;\n%s  }\n", ind, key.Type.Size, ind, ind)
+			g.pf("%s  for (var i = 0; i < used && i < key.length; i++) {\n", ind)
+			g.pf("%s    final order = view.getUint8(entry + %d + i) - key[i];\n", ind, keyOffset)
+			g.pf("%s    if (order != 0) {\n%s      return order;\n%s    }\n%s  }\n", ind, ind, ind, ind)
+			g.pf("%s  return used - key.length;\n", ind)
+		}
 	} else {
 		g.pf("%s  final stored = %s;\n", ind, g.readAt(key, fmt.Sprintf("entry + %d", keyOffset)))
 		if !key.Type.Signed && key.Type.Width == 64 {

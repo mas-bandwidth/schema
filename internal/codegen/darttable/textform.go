@@ -223,7 +223,7 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
     return def;
   }
   val = _jsonText(val);
-  if (utf8.encode(val).length <= bound) return val;
+  if (utf8.encode(val).length <= bound || bound < 0) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -1017,7 +1017,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tv.%s = _jsonIntField(val, r, %s, %s, %s, v.%s);\n", name, lo, hi, jsonUnsigned(f), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TString:
-		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r, v.%s);\n", name, f.Type.Size, name)
+		g.pf("\t\t\t\tv.%s = _jsonStringField(val, %d, r, v.%s);\n", name, textBound(f), name)
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBits:
 		hi := "null"
