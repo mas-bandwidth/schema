@@ -808,7 +808,7 @@ public final class Driver {
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4]);
                 byte[] saved = codec.save(value);
-                if (saved == null && sharesABlob(value)) {
+                if (saved == null && (codec.count(report, "blobShared") > 0 || sharesABlob(value))) {
                     // §2.5: a blob two slots name is refused by every writer; the
                     // tolerant load kept the one node, so the save refuses it by
                     // name rather than writing the reference's bytes

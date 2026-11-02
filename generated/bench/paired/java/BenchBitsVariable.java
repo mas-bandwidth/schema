@@ -621,6 +621,9 @@ public final class BenchBitsVariable {
     }
 
     public static Value load(byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;

@@ -242,3 +242,6 @@ arm_length_empty_float tabledemo RootConfig testdata/wire/tables/fuzz-vectors/ar
 wire_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/wire_length_overflow.bin
 node_table_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_length_overflow.bin
 node_table_negative_length graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_negative_length.bin
+
+# An enum array reference above the trailing id-table count is framing damage.
+enum_array_ref_outside tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_ref_outside.bin

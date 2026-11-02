@@ -67,14 +67,14 @@ public final class BlobSharedDriver {
         byte[] swire = Files.readAllBytes(Paths.get(args[1]));
         blobdemo.TableVariable.Report report = new blobdemo.TableVariable.Report();
         blobdemo.CatalogVariable.Value loaded = blobdemo.CatalogVariable.load(wire, report);
-        System.out.println("loaded " + (loaded != null) + " one-node " + (loaded != null && loaded.thumb == loaded.alias));
+        System.out.println("loaded " + (loaded != null && report.blobShared == 1) + " one-node " + (loaded != null && loaded.thumb == loaded.alias));
         System.out.println("loaded-save " + (blobdemo.CatalogVariable.save(loaded) == null ? "refused" : "written"));
         System.out.println("loaded-json " + (blobdemo.CatalogVariable.toJson(loaded) == null ? "refused" : "written"));
 
         blobdemo.TableRetain retain = new blobdemo.TableRetain(1 << 20, 1024);
         blobdemo.TableVariable.Report rreport = new blobdemo.TableVariable.Report();
         blobdemo.CatalogVariable.Value rloaded = blobdemo.CatalogRetain.loadRetain(wire, retain, rreport);
-        System.out.println("loaded-retain-save " + (blobdemo.CatalogRetain.saveRetain(rloaded, retain, rreport) == null ? "refused" : "written"));
+        System.out.println("loaded-retain-save " + (rreport.blobShared == 1 && blobdemo.CatalogRetain.saveRetain(rloaded, retain, rreport) == null ? "refused" : "written"));
         System.out.println("loaded-retain-measure " + (blobdemo.CatalogRetain.measureRetain(rloaded, retain) < 0 ? "refused" : "written"));
 
         blobdemo.CatalogDescriptor.tableType().reset.accept(loaded);
@@ -82,7 +82,7 @@ public final class BlobSharedDriver {
 
         mapdemo.TableVariable.Report sreport = new mapdemo.TableVariable.Report();
         mapdemo.DocsVariable.Value sloaded = mapdemo.DocsVariable.load(swire, sreport);
-        System.out.println("str-loaded " + (sloaded != null)
+        System.out.println("str-loaded " + (sloaded != null && sreport.blobShared == 1)
                 + " save " + (mapdemo.DocsVariable.save(sloaded) == null ? "refused" : "written")
                 + " json " + (mapdemo.DocsVariable.toJson(sloaded) == null ? "refused" : "written"));
         mapdemo.TableRetain sretain = new mapdemo.TableRetain(1 << 20, 1024);
