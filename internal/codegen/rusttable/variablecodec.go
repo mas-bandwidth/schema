@@ -1254,6 +1254,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.clamped += 1; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
 	}
+	if f.IsTextList() && f.TextTotal > 0 {
+		fmt.Fprintf(b, "%slet mut text_spent = 0u64;\n", i4)
+	}
 	fmt.Fprintf(b, "%sfor j in 0..keep {\n", i4)
 	i5 := i4 + "    "
 	fmt.Fprintf(b, "%slet _ = j;\n", i5)
@@ -1306,6 +1309,13 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet Some(raw) = %s(wire, off, sub, ek) else { report.malformed = true; break; };\n", i5, scalarReadFn(f))
 		emitScalarConvert(b, f, g.floatOwner(f), "let e", "ek", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
+	}
+	if f.IsTextList() && f.TextTotal > 0 {
+		length := "e.value.len()"
+		if ir.TextListOptional(f) {
+			length = "e.value.as_ref().map_or(0, |text| text.len())"
+		}
+		fmt.Fprintf(b, "%slet text_len = %s.last().map_or(0, |e| %s) as u64;\n%sif text_len > %d - text_spent { %s.pop(); report.clamped += 1; break; }\n%stext_spent += text_len;\n", i5, field, length, i5, f.TextTotal, field, i5)
 	}
 	fmt.Fprintf(b, "%s}\n", i4)
 	if f.Array == ir.ArrayFixed {
