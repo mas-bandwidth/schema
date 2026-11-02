@@ -5070,10 +5070,8 @@ const variableRetainSource = `
   end
 
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
-    case read_payload(f, payload, nodes, ids, report) do
-      {:cont, v, report} -> {:cont, v, report, retain}
-      {:halt, v, report} -> {:halt, v, report, retain}
-    end
+    {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
+    {:cont, v, report, retain}
   end
 
   # a bounded array keeps its first bound elements and counts one clamped
@@ -5129,14 +5127,18 @@ const variableRetainSource = `
                     framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
                     arm_path = path ++ [{ordinal, a.ordinal}]
 
-                    read_arm_payload_retain(
-                      a,
-                      name,
-                      inner,
-                      framed,
-                      {nodes, ids, report, retain},
-                      arm_path
-                    )
+                    if arm_framing_damaged?(a, inner) do
+                      {:cont, nil, %{report | malformed: true}, retain}
+                    else
+                      read_arm_payload_retain(
+                        a,
+                        name,
+                        inner,
+                        framed,
+                        {nodes, ids, report, retain},
+                        arm_path
+                      )
+                    end
 
                   {l, content} when byte_size(content) >= l ->
                     {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
