@@ -556,6 +556,9 @@ typedef struct TableTypeInfo
     const char * doc;
     int32_t num_tags;
     const char * const * tags;
+    /* | json = "array" (docs/SPEC-TABLES.md §16.10): the one-field table
+       whose text form is that field's array directly */
+    int json_array;
 } TableTypeInfo;
 
 ` + wireRuntime + keyed + fixed + `
