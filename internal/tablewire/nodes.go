@@ -257,6 +257,16 @@ func visitSlots(m *tabletext.Model, inst *tabletext.Instance, everyGuard bool, v
 			continue
 		}
 		if f.IsMap() {
+			if everyGuard {
+				// Cycle detection needs every stored edge, not writer numbering.
+				// Walk entries directly so this read-side pass never sorts keys.
+				for at := range fv.Entries {
+					if sub := fv.Entries[at].Tab; sub != nil {
+						visitSlots(m, sub, everyGuard, visit)
+					}
+				}
+				continue
+			}
 			// A MAP IS A BY-VALUE EDGE OF THE ONE DECLARATION-ORDER WALK
 			// (§2.8, §3.1): it is reached at its field's position, its entries
 			// are visited in ASCENDING KEY ORDER — the order the wire carries

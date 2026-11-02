@@ -6,8 +6,8 @@
 //
 // The wire is neutral, evolution-tolerant TLV: field identity is the name
 // hash, unknown fields skip, absent fields default, changed kinds skip
-// (never misdecode), out-of-range values clamp, framing damage stops the
-// decode with a partial result — and every event lands in the TableReport.
+// (never misdecode), out-of-range values clamp, damage discards the whole
+// load (docs/SPEC-TABLES.md §4) — and every event lands in the TableReport.
 // Plain byte code with no serialize dependency — a unit whose closure
 // declares a 128-bit field takes exactly one thing from serialize.h, the
 // 128-bit storage type — so a Table header is includable from any
@@ -1980,7 +1980,8 @@ func orderTables(tables []*ir.Struct) []*ir.Struct {
 	indeg := make([]int, n)
 	for i, st := range tables {
 		for _, f := range st.Fields {
-			if f.Type.Kind != ir.TNamed {
+			// Pointer storage is TableRef, so the target is not a by-value dependency.
+			if f.Type.Kind != ir.TNamed || f.Type.Pointer {
 				continue
 			}
 			edge := func(name string) {

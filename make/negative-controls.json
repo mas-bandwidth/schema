@@ -532,6 +532,9 @@
         "tables-cpp-cycle-linear-negative-control",
         "tables-engine-cycle-negative-control",
         "tables-engine-cycle-linear-negative-control",
+        "tables-cpp-builder-discard-negative-control",
+        "tables-cpp-retain-refusal-negative-control",
+        "tables-cpp-fixed-refusal-negative-control",
         "tables-wire-fuzz-nested-arm-trailing-negative-control",
         "tables-wire-fuzz-oracle-negative-control"
       ]

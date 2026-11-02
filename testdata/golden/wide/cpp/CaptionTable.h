@@ -4634,7 +4634,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                             {
                                 const int64_t arm_units = sub.size / 2;
                                 int64_t arm_keep = arm_units;
-                                // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts
+                                // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                 if ( !TableUtf16Valid( sub.buffer + sub.offset, arm_units ) ) { value.body.type = BodyType::None; r.report->malformed = true; break; }
                                 if ( arm_keep > 4 ) { arm_keep = TableUtf16Clamp( sub.buffer + sub.offset, arm_units, 4 ); r.report->clamped++; } // never splitting a pair
                                 for ( int64_t i = 0; i < arm_keep; i++ ) { value.body.wide.value[i] = (char16_t) TableUtf16Unit( sub.buffer + sub.offset, i ); }
@@ -4659,7 +4659,7 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
                             {
                                 uint32_t arm_len = uint32_t( sub.size );
                                 uint32_t arm_keep = arm_len;
-                                // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts
+                                // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                 if ( !TableUtf8Valid( sub.buffer + sub.offset, sub.size ) ) { value.body.type = BodyType::None; r.report->malformed = true; break; }
                                 if ( arm_keep > 4 ) { arm_keep = (uint32_t) TableUtf8Clamp( sub.buffer + sub.offset, sub.size, 4 ); r.report->clamped++; } // at a code point boundary
                                 memcpy( value.body.narrow.value, sub.buffer + sub.offset, arm_keep );
@@ -6628,22 +6628,29 @@ inline int64_t CaptionFixedLoadTolerant( Caption * values, int64_t capacity, con
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         CaptionReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { CaptionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, CaptionFixedGuards );
         TableFixedClampKnownRanges( CaptionFixedKnownRanges[lineage_at], CaptionFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !CaptionFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { CaptionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -6969,22 +6976,29 @@ inline int64_t StampFixedLoadTolerant( Stamp * values, int64_t capacity, const u
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         StampReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { StampReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, StampFixedGuards );
         TableFixedClampKnownRanges( StampFixedKnownRanges[lineage_at], StampFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !StampFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { StampReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;

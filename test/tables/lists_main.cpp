@@ -644,8 +644,7 @@ static void test_reader()
     {
         // A COUNT THE BODY CANNOT COVER (§2.9): into a REGION, LoadMeasure
         // answers -1 with the reason count_over_length and no Load runs. Into a
-        // BUILDER, the prefix the body covers lands, malformed counts, and the
-        // parent reads on past the field's L
+        // BUILDER, the same damage refuses the whole load.
         IntsSpec spec = ints_spec();
         spec.declared_n = 1000;
         Wire w = build_ints( spec );
@@ -654,11 +653,8 @@ static void test_reader()
         CHECK( reason == count_over_length );
         IntsBuilder into;
         TableReport t;
-        CHECK( IntsLoadBuilderTolerant( into, w.bytes, w.size, &t ) );
+        CHECK( !IntsLoadBuilderTolerant( into, w.bytes, w.size, &t ) );
         CHECK( t.malformed );
-        CHECK_EQ( t.kind_mismatch + t.clamped + t.unknown + t.duplicate, 0 );
-        CHECK_EQ( into.GetRoot()->values.count, 3 ); // the prefix the body covers
-        CHECK_EQ( into.GetRoot()->past, 777 );
     }
     {
         // A BODY TOO SHORT TO CARRY ITS OWN HEADER IS INERT (§4): no element,
@@ -681,8 +677,8 @@ static void test_reader()
     }
     {
         // A DAMAGED ELEMENT inside a good count: a list of TABLES whose third
-        // element's L runs past the body keeps the two it decoded, counts
-        // malformed, and the parent reads on past the field's L
+        // element's L runs past the body refuses the entire load, including
+        // the two preceding elements and the field after the list.
         WireBuilder b;
         b.field( "items", 14 );
         const int64_t body = b.open_len();
@@ -709,19 +705,12 @@ static void test_reader()
         if ( region == NULL ) { return; }
         TableReport r;
         const Row * row = RowLoadTolerant( region, need, w.bytes, w.size, &r );
-        CHECK( row != NULL );
+        CHECK( row == NULL );
         CHECK( r.malformed );
-        if ( row != NULL )
-        {
-            CHECK_EQ( row->items.size(), 2 ); // the element that never landed is not counted
-            if ( row->items.size() == 2 ) { CHECK_EQ( row->items[1].v, 6 ); }
-            CHECK_EQ( row->label, 9 );
-        }
         RowBuilder into;
         TableReport t;
-        RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
-        reports_agree( t, r );
-        CHECK_EQ( into.GetRoot()->items.count, 2 );
+        CHECK( !RowLoadBuilderTolerant( into, w.bytes, w.size, &t ) );
+        CHECK( t.malformed );
         free( region );
     }
 }

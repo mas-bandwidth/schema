@@ -7986,15 +7986,21 @@ inline int64_t ArchiveConfigFixedLoadTolerant( ArchiveConfig * values, int64_t c
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         ArchiveConfigReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { ArchiveConfigReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ArchiveConfigFixedGuards );
         if ( !ArchiveConfigFixedFiniteBody( values[k] ) )
         {
@@ -8007,8 +8013,9 @@ inline int64_t ArchiveConfigFixedLoadTolerant( ArchiveConfig * values, int64_t c
                                     (uint8_t *) &values[k], report );
         if ( !ArchiveConfigFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { ArchiveConfigReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;

@@ -598,6 +598,44 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
+// The cycle check needs stored entries, not canonical writer order. Visit
+// each entry directly, with no sort or temporary pointer array.
+template <typename Entry, typename Visit>
+inline bool TableMapVisitStored( const TableRegionCtx &, const TableMap<Entry> & map, Visit visit )
+{
+    if ( map.count < 0 ) { return false; }
+    const Entry * entries = map.Entries();
+    if ( map.count > 0 && entries == NULL ) { return false; }
+    for ( int32_t i = 0; i < map.count; i++ )
+    {
+        if ( !visit( entries[i] ) ) { return false; }
+    }
+    return true;
+}
+
+template <typename Entry, typename Visit>
+inline bool TableMapVisitStored( const TableArenaCtx & ctx, const TableMap<Entry> & map, Visit visit )
+{
+    if ( map.count < 0 ) { return false; }
+    if ( map.entries.value == 0 ) { return map.count == 0; }
+    const TableMapHead * head = (const TableMapHead *) TableArenaAt( *ctx.arena, (uint32_t) map.entries.value );
+    if ( head->live != map.count ) { return false; }
+    int32_t seen = 0;
+    TableRef segment_ref = head->first;
+    while ( segment_ref.value != 0 )
+    {
+        const TableMapSegment<Entry> * segment = (const TableMapSegment<Entry> *) TableArenaAt( *ctx.arena, (uint32_t) segment_ref.value );
+        for ( int32_t i = 0; i < segment->used; i++ )
+        {
+            if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
+            if ( seen >= map.count || !visit( segment->entries[i] ) ) { return false; }
+            seen++;
+        }
+        segment_ref = segment->next;
+    }
+    return seen == map.count;
+}
+
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -1209,7 +1247,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 // emitMapReadField decodes one map field, and it is where every reader rule
 // §2.8 states lands: the key before the slot, ascending against the key of the
 // last entry that LANDED, a duplicate that resets the slot it took, a
-// descending key that stops the map and lets the parent read on, a key that
+// descending key that is damage and discards the whole load (§4), a key that
 // does not fit skipped by its L and counted clamped, and a key kind the
 // reader does not declare emptying the map for one kind_mismatch.
 func (g *tableGen) emitMapReadField(f *ir.Field) {
