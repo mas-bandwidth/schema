@@ -3180,7 +3180,7 @@ typedef struct tabledemo_table_node_map_t
     uint8_t * base;
     tabledemo_table_node_dir_entry_t * entries;
     uint64_t count;
-    int good, arena, refused;
+    int good, arena, refused, cycle_indices;
     tabledemo_table_sink_t * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
 } tabledemo_table_node_map_t;
@@ -3195,6 +3195,11 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
     entry = &nodes->entries[index-1];
     if ( entry->offset == UINT64_MAX ) { return; }
     if ( entry->type_id != target ) { report->kind_mismatch++; return; }
+    if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
+    {
+        slot->value = (int64_t)index;
+        return;
+    }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -3263,6 +3268,189 @@ static SCHEMA_UNUSED int tabledemo_table_node_scan_next( tabledemo_table_node_sc
 static SCHEMA_UNUSED int tabledemo_table_node_scan_whole( const tabledemo_table_node_scan_t * scan )
 {
     return !scan->malformed && (!scan->present || scan->declared == scan->records);
+}
+/* ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
+
+   During construction table pointer slots hold validated wire indices. Kahn's
+   two passes therefore reach the directory directly: each node is entered once
+   and each slot is visited a fixed number of times, with no sorting or reverse
+   offset lookup. A final pass resolves the slots to their published offsets.
+   The directory's type_id word carries the degree (low 32 bits) and stack link
+   (high 32 bits); its offset high bits carry the type ordinal. Both words are
+   restored before the load returns. Region and builder loads allocate nothing
+   here and no pointer graph is recursed.
+
+   The vertices are the directory's TABLE nodes: the root and every record
+   this build can name. A byte buffer reaches nothing and takes no part. The
+   edges are every non-null table pointer slot STORED in a node's by-value
+   closure, under a false guard too: the storage holds it, so the graph has it.
+   A cycle anywhere, reached from the root or not, refuses the load. */
+#define TABLEDEMO_K_TABLE_CYCLE_ABSENT ( (uint64_t)1 << 63 )
+#define TABLEDEMO_K_TABLE_CYCLE_VERTEX ( (uint64_t)1 << 62 )
+#define TABLEDEMO_K_TABLE_CYCLE_ORDINAL_SHIFT 48
+#define TABLEDEMO_K_TABLE_CYCLE_OFFSET_MASK ( ( (uint64_t)1 << 48 ) - 1 )
+
+typedef struct tabledemo_table_cycle_t
+{
+    tabledemo_table_node_dir_entry_t * entries; /* position p is node index p + 1 */
+    int64_t count;
+    uint8_t * base;              /* a REGION: a slot resolves to a self-relative delta */
+    const tabledemo_table_arena_t * arena;    /* a BUILDER: a slot resolves to the arena offset */
+    tabledemo_table_ctx_t ctx;
+    uint32_t head;               /* position + 1 of the stack's top, 0 when empty */
+    int64_t vertices, processed;
+    int releasing, resolving, broken;
+} tabledemo_table_cycle_t;
+
+static SCHEMA_UNUSED int tabledemo_table_cycle_is_vertex( const tabledemo_table_cycle_t * c, int64_t p )
+{
+    return ( c->entries[p].offset & ( TABLEDEMO_K_TABLE_CYCLE_ABSENT | TABLEDEMO_K_TABLE_CYCLE_VERTEX ) ) == TABLEDEMO_K_TABLE_CYCLE_VERTEX;
+}
+
+static SCHEMA_UNUSED uint32_t tabledemo_table_cycle_ordinal_at( const tabledemo_table_cycle_t * c, int64_t p )
+{
+    return (uint32_t)( ( c->entries[p].offset >> TABLEDEMO_K_TABLE_CYCLE_ORDINAL_SHIFT ) & 0x3FFFu );
+}
+
+static SCHEMA_UNUSED const void * tabledemo_table_cycle_node( const tabledemo_table_cycle_t * c, int64_t p )
+{
+    const uint64_t offset = c->entries[p].offset & TABLEDEMO_K_TABLE_CYCLE_OFFSET_MASK;
+    if ( c->arena != NULL ) { return (const void *)tabledemo_table_arena_at( c->arena, (uint32_t)offset ); }
+    return (const void *)( c->base + offset );
+}
+
+static SCHEMA_UNUSED void tabledemo_table_cycle_push( tabledemo_table_cycle_t * c, int64_t p )
+{
+    c->entries[p].type_id = ( c->entries[p].type_id & UINT64_C(0xFFFFFFFF) ) | ( (uint64_t)c->head << 32 );
+    c->head = (uint32_t)( p + 1 );
+}
+
+/* table_cycle_slot is one stored pointer slot: pass one counts the in-degree
+   of the node it names, pass two takes the count down and stacks the node when
+   the last slot naming it has been met, and the final pass resolves the
+   temporary construction index to the published offset. */
+static SCHEMA_UNUSED int tabledemo_table_cycle_slot( tabledemo_table_cycle_t * c, const tabledemo_table_ref_t * slot )
+{
+    uint64_t index;
+    uint32_t degree;
+    int64_t p;
+    if ( slot->value == 0 ) { return 1; }
+    index = (uint64_t)slot->value;
+    if ( index - 1 >= (uint64_t)c->count ) { c->broken = 1; return 0; }
+    p = (int64_t)index - 1;
+    if ( !tabledemo_table_cycle_is_vertex( c, p ) ) { c->broken = 1; return 0; }
+    if ( c->resolving )
+    {
+        const uint64_t offset = c->entries[p].offset & TABLEDEMO_K_TABLE_CYCLE_OFFSET_MASK;
+        tabledemo_table_ref_t * output = (tabledemo_table_ref_t *)(uintptr_t)slot;
+        output->value = c->arena != NULL ? (int64_t)offset
+                                         : (int64_t)( ( c->base + offset ) - (const uint8_t *)(const void *)slot );
+        return 1;
+    }
+    degree = (uint32_t)c->entries[p].type_id;
+    if ( !c->releasing )
+    {
+        if ( degree == UINT32_MAX ) { c->broken = 1; return 0; }
+        c->entries[p].type_id += 1;
+        return 1;
+    }
+    if ( degree == 0 ) { c->broken = 1; return 0; }
+    c->entries[p].type_id -= 1;
+    if ( degree == 1 ) { tabledemo_table_cycle_push( c, p ); } /* the last slot naming it: its descent is free */
+    return 1;
+}
+
+typedef uint32_t ( *tabledemo_table_cycle_ordinal_fn_t )( uint64_t type_id );
+typedef int ( *tabledemo_table_cycle_node_fn_t )( tabledemo_table_cycle_t * c, uint32_t ordinal, const void * value );
+typedef uint64_t ( *tabledemo_table_cycle_id_fn_t )( uint32_t ordinal );
+
+/* table_cycle_restore gives every entry back the offset and type id the load
+   wrote, whatever state the check stopped in. */
+static SCHEMA_UNUSED void tabledemo_table_cycle_restore( tabledemo_table_cycle_t * c, tabledemo_table_cycle_id_fn_t id )
+{
+    int64_t p;
+    for ( p = 0; p < c->count; p++ )
+    {
+        tabledemo_table_node_dir_entry_t * e = &c->entries[p];
+        if ( e->offset == UINT64_MAX ) { continue; }
+        if ( ( e->offset & TABLEDEMO_K_TABLE_CYCLE_ABSENT ) != 0 ) { e->offset = UINT64_MAX; continue; }
+        if ( ( e->offset & TABLEDEMO_K_TABLE_CYCLE_VERTEX ) != 0 ) { e->type_id = id( tabledemo_table_cycle_ordinal_at( c, p ) ); }
+        e->offset &= TABLEDEMO_K_TABLE_CYCLE_OFFSET_MASK;
+    }
+}
+
+/* table_cycle_begin tags the directory: ORDINAL names each table node's type
+   (0 for a byte buffer). Zero is a directory this check cannot carry, and the
+   caller refuses the load. */
+static SCHEMA_UNUSED int tabledemo_table_cycle_begin( tabledemo_table_cycle_t * c, tabledemo_table_cycle_ordinal_fn_t ordinal )
+{
+    int64_t p;
+    if ( c->count <= 0 || c->count >= ( (int64_t)1 << 31 ) ) { c->broken = 1; return 0; }
+    for ( p = 0; p < c->count; p++ )
+    {
+        const tabledemo_table_node_dir_entry_t * e = &c->entries[p];
+        if ( e->offset == UINT64_MAX ) { continue; }
+        if ( e->offset > TABLEDEMO_K_TABLE_CYCLE_OFFSET_MASK || ordinal( e->type_id ) > 0x3FFFu ) { c->broken = 1; return 0; }
+    }
+    for ( p = 0; p < c->count; p++ )
+    {
+        tabledemo_table_node_dir_entry_t * e = &c->entries[p];
+        uint32_t kind;
+        if ( e->offset == UINT64_MAX ) { e->offset = TABLEDEMO_K_TABLE_CYCLE_ABSENT; continue; }
+        kind = ordinal( e->type_id );
+        if ( kind == 0 ) { continue; } /* a byte buffer */
+        e->offset |= TABLEDEMO_K_TABLE_CYCLE_VERTEX | ( (uint64_t)kind << TABLEDEMO_K_TABLE_CYCLE_ORDINAL_SHIFT );
+        e->type_id = 0; /* scratch: the in-degree, low; the stack link, high */
+        c->vertices++;
+    }
+    return 1;
+}
+
+/* table_cycle_acyclic checks the graph, then resolves its slots: 1 when the
+   stored graph has no cycle, 0 when it has one or the check cannot carry the
+   directory. */
+static SCHEMA_UNUSED int tabledemo_table_cycle_acyclic( tabledemo_table_node_map_t * nodes, const tabledemo_table_arena_t * arena,
+    tabledemo_table_cycle_ordinal_fn_t ordinal, tabledemo_table_cycle_node_fn_t node, tabledemo_table_cycle_id_fn_t id )
+{
+    tabledemo_table_cycle_t c;
+    int64_t p;
+    int acyclic = 0;
+    memset( &c, 0, sizeof( c ) );
+    c.entries = nodes->entries;
+    c.count = (int64_t)nodes->count;
+    c.base = nodes->base;
+    c.arena = nodes->arena ? arena : NULL;
+    c.ctx.arena = c.arena;
+    if ( nodes->arena && arena == NULL ) { return 0; }
+    if ( tabledemo_table_cycle_begin( &c, ordinal ) )
+    {
+        for ( p = 0; p < c.count && !c.broken; p++ ) /* pass one: every in-degree */
+        {
+            if ( tabledemo_table_cycle_is_vertex( &c, p ) && !node( &c, tabledemo_table_cycle_ordinal_at( &c, p ), tabledemo_table_cycle_node( &c, p ) ) ) { c.broken = 1; }
+        }
+        for ( p = 0; p < c.count && !c.broken; p++ )
+        {
+            if ( tabledemo_table_cycle_is_vertex( &c, p ) && (uint32_t)c.entries[p].type_id == 0 ) { tabledemo_table_cycle_push( &c, p ); }
+        }
+        c.releasing = 1;
+        while ( c.head != 0 && !c.broken ) /* pass two: free each node when nothing left names it */
+        {
+            const int64_t at = (int64_t)c.head - 1;
+            c.head = (uint32_t)( c.entries[at].type_id >> 32 );
+            if ( ++c.processed > c.vertices || !node( &c, tabledemo_table_cycle_ordinal_at( &c, at ), tabledemo_table_cycle_node( &c, at ) ) ) { c.broken = 1; }
+        }
+        if ( !c.broken && c.processed == c.vertices ) /* an unfreed node sits on a cycle */
+        {
+            c.resolving = 1;
+            for ( p = 0; p < c.count && !c.broken; p++ )
+            {
+                if ( tabledemo_table_cycle_is_vertex( &c, p ) && !node( &c, tabledemo_table_cycle_ordinal_at( &c, p ), tabledemo_table_cycle_node( &c, p ) ) ) { c.broken = 1; }
+            }
+            acyclic = !c.broken;
+        }
+    }
+    tabledemo_table_cycle_restore( &c, id );
+    return acyclic;
 }
 #endif
 
@@ -4055,9 +4243,9 @@ static SCHEMA_UNUSED int64_t tabledemo_table_cook_layout(tabledemo_table_numberi
         int64_t size=type->size, node_align=type->alignment;
         if(type->blob) { size=8+(int64_t)((const tabledemo_table_blob_t *)entry->value)->length+(type->blob==2); }
         else if(type->has_extent) {
-            int64_t extent=0;
-            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TABLEDEMO_TABLE_BYTE_ORDER_LITTLE) || size>INT64_MAX-7) { return -1; }
-            size=(size+7)&~INT64_C(7); if(extent>INT64_MAX-size) { return -1; } size+=extent;
+            int64_t extent=0, extent_align=node_align>8 ? node_align : 8;
+            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TABLEDEMO_TABLE_BYTE_ORDER_LITTLE) || size>INT64_MAX-(extent_align-1)) { return -1; }
+            size=(size+extent_align-1)&~(extent_align-1); if(extent>INT64_MAX-size) { return -1; } size+=extent;
         }
         if(node_align<1 || total>INT64_MAX-(node_align-1)) { return -1; }
         total=(total+node_align-1)&~(node_align-1);
@@ -4088,7 +4276,7 @@ static SCHEMA_UNUSED int64_t tabledemo_table_graph_cook(const tabledemo_table_ct
             int64_t extent=0;
             if(!entry->type->cook_body(&n,at,entry->value,order)) { goto done; }
             if(entry->type->has_extent) {
-                int64_t expected=0,record=(entry->type->size+7)&~INT64_C(7);
+                int64_t expected=0,extent_align=entry->type->alignment>8 ? entry->type->alignment : 8,record=(entry->type->size+extent_align-1)&~(extent_align-1);
                 if(!entry->type->cook_extent(&n,entry->value,NULL,NULL,&expected,order) ||
                    !entry->type->cook_extent(&n,entry->value,at,at+record,&extent,order) || extent!=expected) { goto done; }
             }
@@ -4752,6 +4940,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_cook_body_(struct tabledemo_tab
 SCHEMA_TABLE_STATIC_ASSERT( tabledemo_schema_tabledemo_patrol_arena_alignment_, SCHEMA_TABLE_ALIGNOF(tabledemo_patrol_t) <= TABLEDEMO_K_TABLE_ALIGN, "a table node's alignment must fit the arena's" );
 static const tabledemo_table_node_type_t schema_tabledemo_patrol_node_type_;
 static SCHEMA_UNUSED int schema_tabledemo_patrol_graph_edges_( tabledemo_table_numbering_t * numbering, const void * storage );
+static SCHEMA_UNUSED int schema_tabledemo_patrol_cycle_edges_( tabledemo_table_cycle_t * cycle, const void * storage );
 static SCHEMA_UNUSED int schema_tabledemo_patrol_extent_(tabledemo_table_numbering_t * n,const void * storage,uint8_t * target,int64_t * at);
 static SCHEMA_UNUSED int schema_tabledemo_patrol_wire_extent_(tabledemo_table_reader_t r,int64_t * at);
 static SCHEMA_UNUSED int64_t schema_tabledemo_patrol_wire_storage_(const tabledemo_table_reader_t * r);
@@ -5417,6 +5606,12 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_graph_edges_( tabledemo_table_n
     }
     return 1;
 }
+static SCHEMA_UNUSED int schema_tabledemo_patrol_cycle_edges_( tabledemo_table_cycle_t * cycle, const void * storage )
+{
+    const tabledemo_patrol_t * value=(const tabledemo_patrol_t *)storage;
+    (void)value; (void)cycle;
+    return 1;
+}
 static const tabledemo_table_node_type_t schema_tabledemo_patrol_node_type_ = { UINT64_C(0x1c182e1c2529027b), sizeof(tabledemo_patrol_t), schema_tabledemo_patrol_node_save_, schema_tabledemo_patrol_graph_edges_, 0, schema_tabledemo_patrol_extent_, schema_tabledemo_patrol_wire_storage_, 4, 0, schema_tabledemo_patrol_cook_body_, NULL };
 
 /* ---- Patrol: the variable-length life (docs/SPEC-TABLES.md §2, §6, §9) ----
@@ -5541,6 +5736,27 @@ static SCHEMA_UNUSED int64_t tabledemo_patrol_load_measure(const uint8_t * wire,
     if (!tabledemo_table_wire_open(&reader,wire,bytes,&report)) { return -1; }
     total=schema_tabledemo_patrol_load_layout_(&reader,&data,&records); return total>=0 ? total : -1;
 }
+static SCHEMA_UNUSED uint32_t schema_tabledemo_patrol_cycle_ordinal_(uint64_t type_id)
+{
+    switch(type_id) {
+        case UINT64_C(0x1c182e1c2529027b): return 1u;
+        default: return 0u;
+    }
+}
+static SCHEMA_UNUSED uint64_t schema_tabledemo_patrol_cycle_id_(uint32_t ordinal)
+{
+    switch(ordinal) {
+        case 1u: return UINT64_C(0x1c182e1c2529027b);
+        default: return 0u;
+    }
+}
+static SCHEMA_UNUSED int schema_tabledemo_patrol_cycle_node_(tabledemo_table_cycle_t * cycle, uint32_t ordinal, const void * value)
+{
+    switch(ordinal) {
+        case 1u: return schema_tabledemo_patrol_cycle_edges_(cycle,value);
+        default: return 1;
+    }
+}
 static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_reader_t * reader, tabledemo_patrol_t * root, tabledemo_table_node_map_t * nodes, tabledemo_table_node_dir_entry_t * directory, tabledemo_table_sink_t * sink)
 {
     tabledemo_table_node_scan_t scan=tabledemo_table_node_scan_begin(reader); tabledemo_table_reader_t body; uint64_t id,k=0; int32_t unknown=0; int32_t non_finite_before=reader->report->non_finite_floats;
@@ -5562,7 +5778,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
         }
         k++;
     }
-    nodes->good=tabledemo_table_node_scan_whole(&scan);
+    nodes->cycle_indices=1; nodes->good=tabledemo_table_node_scan_whole(&scan);
     if(nodes->good) { reader->report->unknown+=unknown;  } else { reader->report->malformed=1; }
     if(nodes->good) {
         scan=tabledemo_table_node_scan_begin(reader); k=0;
@@ -5587,6 +5803,8 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
       nodes->sink=&carve;  read_ok=tabledemo_patrol_load_body(reader,root); nodes->sink=NULL;
       /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
       if(tabledemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
+      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !tabledemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_tabledemo_patrol_cycle_ordinal_,schema_tabledemo_patrol_cycle_node_,schema_tabledemo_patrol_cycle_id_)) { reader->report->malformed=1; return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
 /* patrol_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
@@ -5693,6 +5911,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
         }
         k++;
     }
+    nodes->cycle_indices=1;
     nodes->good=tabledemo_table_node_scan_whole(&scan);
     if(nodes->good) { reader->report->unknown+=unknown;
     if(retention.retain)reader->report->retain_lost+=unknown;
@@ -5744,6 +5963,10 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_retain_(tabledemo_ta
       nodes->sink=NULL;
       /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
       if(tabledemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0;
+      }
+      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */
+      if(nodes->good && !nodes->refused && !tabledemo_table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,schema_tabledemo_patrol_cycle_ordinal_,schema_tabledemo_patrol_cycle_node_,schema_tabledemo_patrol_cycle_id_)) { reader->report->malformed=1;
+      return 0;
       }
       return !nodes->refused && (!nodes->arena || read_ok);
       }
