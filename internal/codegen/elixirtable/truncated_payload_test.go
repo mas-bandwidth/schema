@@ -103,6 +103,24 @@ for result<-[T.load("RootConfig",wire),T.load_retain("RootConfig",wire,store,zer
 end
 IO.puts("PINNED_NESTED_FLOAT_OK")
 `, hex.EncodeToString(wire))
+	enumWire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/enum_array_foreign_variant.bin")
+	if e != nil {
+		t.Fatal(e)
+	}
+	var enumReport tabletext.Report
+	enumStore := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
+	enumOK, e := tablewire.DecodeRetain(m, m.New(u.Tables["RootConfig"]), enumWire, &enumStore, &enumReport)
+	if e != nil || !enumOK || enumReport.Malformed || enumReport.Unknown != 1 || enumReport.RetainLost != 1 || enumReport.Retained != 0 {
+		t.Fatalf("pinned enum loss oracle: %v %+v %v", enumOK, enumReport, e)
+	}
+	probe += fmt.Sprintf(`
+wire=Base.decode16!(%q,case: :lower)
+{:ok,_,plain}=T.load("RootConfig",wire)
+unless plain.unknown==1 and plain.retain_lost==0,do: raise("plain enum pin "<>inspect(plain))
+{:ok,_,kept,_}=T.load_retain("RootConfig",wire,store,zero)
+unless kept.unknown==1 and kept.retain_lost==1 and kept.retained==0,do: raise("retained enum pin "<>inspect(kept))
+`, hex.EncodeToString(enumWire))
+
 	// Compile the complete unit together: its fixed structs have cross-file
 	// dependencies, so alphabetic serial requires are not a valid build.
 	dir := t.TempDir()
