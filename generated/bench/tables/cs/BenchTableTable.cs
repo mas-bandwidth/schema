@@ -2859,7 +2859,8 @@ namespace Benchtable
             public static bool Read(object value, TableTypeInfo info, ReadOnlySpan<byte> text, TableReport report)
             {
                 In input = new In();
-                input.Pos = 0;
+                // The dialect accepts a single UTF-8 BOM only at byte offset 0 (§16.2, §16.12).
+                input.Pos = text.Length >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF ? 3 : 0;
                 // a caller with no report is off the read path this section prices: it
                 // gets one rather than a branch on every counter
                 input.Report = report != null ? report : new TableReport();

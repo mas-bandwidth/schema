@@ -917,7 +917,7 @@ tables-java-t14:
 .PHONY: tables-java-json-differential tables-java-json-differential-negative-control
 tables-java-json-differential:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl)$$'
+		go test -count=1 -timeout 600s -v ./internal/codegen/javatable/ -run '^(TestTextDifferentialJava|TestTextDifferentialJavaNegativeControl|TestJsonLeadingBOMBoundaryJava)$$'
 	@echo 'tables Java text differential: 200 random float instances agree with the Go engine byte for byte, both directions, and a six-digit float32 writer is red'
 tables-java-json-differential-negative-control:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \

@@ -1145,6 +1145,7 @@ public final class MixedEntityVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
+        in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v);
         if (in.bad) {

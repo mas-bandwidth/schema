@@ -2169,6 +2169,14 @@ public final class TableJson {
             this.rep = rep;
         }
 
+        // byteOrderMark skips a leading UTF-8 byte-order mark (docs/SPEC-TABLES.md
+        // §16.2, §16.12): EF BB BF as the text's first three bytes and nowhere else.
+        public void byteOrderMark() {
+            if (p == 0 && t.length >= 3 && (t[0] & 0xff) == 0xef && (t[1] & 0xff) == 0xbb && (t[2] & 0xff) == 0xbf) {
+                p = 3;
+            }
+        }
+
         // space skips whitespace and both comment forms (§16.2). An unclosed
         // block comment is malformed, as an unclosed string is.
         void space() {
@@ -3735,6 +3743,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 	fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
 	fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
+	fmt.Fprintf(b, "        in.byteOrderMark();\n")
 	fmt.Fprintf(b, "        Value v = new Value();\n")
 	fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
 	fmt.Fprintf(b, "        if (in.bad) { report.malformed = true; }\n")
