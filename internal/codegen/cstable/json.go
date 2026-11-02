@@ -1956,7 +1956,10 @@ public static class TableJson
         }
         if (input.Bad || !ok)
         {
+            // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
+            // the walk placed before the damage is handed back.
             input.Report.Malformed = true;
+            info.Reset(value);
             return false;
         }
         return true;

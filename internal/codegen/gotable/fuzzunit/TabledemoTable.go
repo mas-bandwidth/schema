@@ -2614,8 +2614,9 @@ func tableRegionMeasure(wire []byte, root *TableTypeInfo, nodeType func(uint64) 
 // tableRegionMeasureReason is the one measure body; a second copy would leave the
 // lists.go:154 container patch on the first only. Strict by default, it refuses any
 // framing damage. A trailing true makes it tolerant: it skips the framing walk and the
-// whole-scan check, so tableRegionMeasure and tableRegionLoad keep the decoded prefix
-// of a damaged wire (mas-bandwidth/schema docs/SPEC-TABLES.md section 4). No new package-scope name.
+// whole-scan check, so tableRegionLoad can size a region for a damaged wire, read it,
+// count the report, and then discard the whole load (mas-bandwidth/schema docs/SPEC-TABLES.md section 4).
+// No new package-scope name.
 func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, tolerant ...bool) (int64, int64, TableOpenVerdict, TableRefuseReason) {
 	strict := len(tolerant) == 0 || !tolerant[0]
 	var ignored TableReport
@@ -2712,6 +2713,9 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 		var ignored TableReport
 		report = &ignored
 	}
+	pre := report.Malformed
+	report.Malformed = false
+	defer func() { report.Malformed = report.Malformed || pre }()
 	r, verdict := tableOpenFramed(wire, report)
 	report.Verdict = verdict
 	if verdict != TableOpenOk {
@@ -2803,7 +2807,11 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	if tableNonFiniteRefused(report) {
 		return nil
 	}
-	return base
+	if report.Malformed {
+		clear(region)
+		return nil
+	}
+	return base // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
 	if e.info != nil {
@@ -2960,6 +2968,14 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 		var ignored TableReport
 		report = &ignored
 	}
+	pre := report.Malformed
+	report.Malformed = false
+	defer func() {
+		if report.Malformed && p != nil {
+			root.Reset(p)
+		}
+		report.Malformed = report.Malformed || pre
+	}()
 	r, verdict := tableOpenFramed(wire, report)
 	report.Verdict = verdict
 	if verdict != TableOpenOk {
@@ -3080,7 +3096,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	if tableNonFiniteRefused(report) {
 		return false
 	}
-	return ok && !worker.refused
+	return ok && !worker.refused && !report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 
 func tableWireExtent(r *TableReader, t *TableTypeInfo, at *int64, nodes int64) TableRefuseReason {
@@ -4260,6 +4276,9 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 		var ignored TableReport
 		report = &ignored
 	}
+	pre := report.Malformed
+	report.Malformed = false
+	defer func() { report.Malformed = report.Malformed || pre }()
 	r, verdict := tableOpenFramed(wire, report)
 	report.Verdict = verdict
 	if verdict != TableOpenOk {
@@ -4355,7 +4374,12 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	if tableNonFiniteRefused(report) {
 		return nil
 	}
-	return base
+	if report.Malformed {
+		clear(region)
+		retain.reset(nil, nil)
+		return nil
+	}
+	return base // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
 func tableRegionSaveRetain(root unsafe.Pointer, info *TableTypeInfo, buffer []byte, measure bool, retain *TableRetain, report *TableReport, allocator ...TableAllocator) int64 {
 	if retain != nil {

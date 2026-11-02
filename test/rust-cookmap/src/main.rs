@@ -156,11 +156,13 @@ fn main() {
     cook_case!("list_nested", listdemo, sheet_load, sheet_cook_write);
     cook_case!("list_of_maps", listdemo, army_load, army_cook_write);
     cook_case!("list_migrates", listdemo, unbounded_load, unbounded_cook_write);
+    // a 128-bit element at sizeof = 8 mod 16: the node aligns to sixteen
+    cook_case!("widelist_wide", widelistdemo, wide_load, wide_cook_write);
     read_half();
     let failures = FAILURES.load(Ordering::Relaxed);
     if failures > 0 {
         println!("rust cook map: {failures} failure(s)");
         exit(1);
     }
-    println!("rust cook map: 23 map and list instances land on the tool's cook in both byte orders");
+    println!("rust cook map: 24 map and list instances land on the tool's cook in both byte orders");
 }

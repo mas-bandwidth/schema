@@ -546,8 +546,10 @@ func measureMalformedWStringProbe() string {
 // that moves any of them changed what the tolerant load recovers. Seeds 4 and 1
 // moved when table floats went finite only (SPEC-TABLES §3.3, 2026-10-27): the
 // damaged wires whose float bytes became a NaN or an infinity are now refused
-// by the tolerant load, by design, instead of landed.
-var measureMalformedDigests = map[int]string{2: "87deb3208575b8e9", 4: "b96fc5b8d8564d8c", 1: "7b597995a4b1475e", 0: "63ddc043eeaf9665", 5: "7e55fc79c537f278"}
+// by the tolerant load, by design, instead of landed. All five moved when
+// damage came to discard the whole load (SPEC-TABLES §4): a damaged wire that
+// had landed a partial value now leaves the builder's root at its defaults.
+var measureMalformedDigests = map[int]string{2: "4f7ea154e044e937", 4: "ea01d2327f79c3bf", 1: "a0e7f82fb137110c", 0: "cf4da4e7984c1dbc", 5: "93e76472c04be725"}
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)

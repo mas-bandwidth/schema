@@ -114,7 +114,7 @@ func TestValues(t *testing.T){
  wire:=make([]byte,RootMeasure(b.GetRoot(),&b.Arena));RootSave(b.GetRoot(),wire,&b.Arena)
  // A pointer arm's payload is exactly its index, with no trailing byte.
  wire[5]=2;size:=RootLoadMeasure(wire);raw:=make([]byte,size+16);off:=(-uintptr(unsafe.Pointer(&raw[0])))&15;var r TableReport;v:=RootLoadTolerant(raw[off:off+uintptr(size)],wire,&r)
- if v==nil||!r.Malformed||v.Value.Type!=ValueTypeNone{t.Fatalf("pointer arm length: %+v %+v",v,r)}
+ if v!=nil||!r.Malformed{t.Fatalf("pointer arm length: damage must discard the whole load: %+v %+v",v,r)}
 }
 `)
 }
