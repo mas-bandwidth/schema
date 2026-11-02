@@ -382,3 +382,80 @@ func TestCMapOptionalValues(t *testing.T) {
 		t.Fatalf("optional map values probe failed: %v\n%s", err, out)
 	}
 }
+
+func TestCOptionalMapCookAndUnreachedRefusal(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C compiler")
+	schema := "package probe\n\ntable M\n{\n    id   int32\n    tags ?map[string(8)]int32\n}\n"
+	u := unitFrom(t, schema)
+	out, err := cHeldRun(t, u, `
+    #define CHECK(x) do { if (!(x)) { fprintf(stderr,"line %d: %s\n",__LINE__,#x); return 1; } } while(0)
+    static uint8_t raw_cook[8192];
+    uint8_t * cooked = raw_cook;
+    int shape;
+    while (((uintptr_t)cooked & 63u) != 0u) { cooked++; }
+
+    for (shape = 0; shape < 3; ++shape) {
+        MBuilder b;
+        M * root;
+        const M * v;
+        const M * cr;
+        int64_t cn;
+        int32_t * slot;
+        CHECK(m_builder_init(&b));
+        root = m_builder_root(&b);
+        CHECK(root != NULL);
+        root->id = 1;
+        if (shape == 1) {
+            root->tags_present = 1;
+        } else if (shape == 2) {
+            root->tags_present = 1;
+            slot = m_tags_insert(&b.main, &root->tags, "a");
+            CHECK(slot != NULL);
+            *slot = 5;
+        }
+        CHECK(m_builder_lock(&b));
+        v = (const M *)(const void *)b.region;
+        cn = m_cook_measure(NULL, v);
+        CHECK(cn > 0 && cn <= 4096);
+        CHECK(m_cook(NULL, v, cooked, (uint64_t)cn, TableByteOrder_Little));
+        cr = m_open(cooked, (uint64_t)cn);
+        CHECK(cr != NULL && cr->id == 1);
+        if (shape == 0) {
+            CHECK(cr->tags_present == 0 && cr->tags.count == 0);
+        } else if (shape == 1) {
+            CHECK(cr->tags_present == 1 && cr->tags.count == 0);
+        } else {
+            const int32_t * found = m_tags_find(&cr->tags, "a");
+            CHECK(cr->tags_present == 1 && cr->tags.count == 1 && found != NULL && *found == 5);
+        }
+        m_builder_shutdown(&b);
+    }
+
+    /* Unreached non-empty container (tags_present == 0 with count == 1) must refuse lock and cook */
+    {
+        MBuilder ub;
+        M * uroot;
+        TableCtx ctx;
+        int32_t * slot;
+        CHECK(m_builder_init(&ub));
+        uroot = m_builder_root(&ub);
+        CHECK(uroot != NULL);
+        uroot->id = 1;
+        slot = m_tags_insert(&ub.main, &uroot->tags, "a");
+        CHECK(slot != NULL);
+        *slot = 5;
+        uroot->tags_present = 0;
+        CHECK(uroot->tags.count == 1);
+        ctx.arena = &ub.arena;
+        CHECK(m_cook_measure(&ctx, uroot) < 0);
+        CHECK(!m_cook(&ctx, uroot, cooked, 4096, TableByteOrder_Little));
+        CHECK(!m_builder_lock(&ub));
+        m_builder_shutdown(&ub);
+    }
+    #undef CHECK
+`)
+	if err != nil {
+		t.Fatalf("optional map cook and unreached refusal probe failed: %v\n%s", err, out)
+	}
+}
