@@ -117,6 +117,7 @@ namespace Blockhome
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + PartRowBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -124,6 +125,7 @@ namespace Blockhome
             PartRowWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -236,6 +238,7 @@ namespace Blockhome
             int cachedElemSlots = !measure ? type.RootElemSlots : 0;
             Span<long> rootElemSizes = stackalloc long[cachedElemSlots];
             long n = 1 + PartFrameBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             scoped TableWire.Writer w = new TableWire.Writer(buffer);
@@ -243,6 +246,7 @@ namespace Blockhome
             PartFrameWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
 
@@ -290,6 +294,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.PartRow(); };
                 info.StorageSize = 352; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -328,6 +333,7 @@ namespace Blockhome
                 info.Create = delegate { return new global::Blockhome.PartFrame(); };
                 info.StorageSize = 11280; info.StorageAlign = 8; info.RegionAlign = 8;
                 info.Variable = false;
+                info.Integrity = false;
                 info.RootElemSlots = 32;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
@@ -1217,7 +1223,7 @@ namespace Blockhome
 
         public static long PartRowFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + PartRowFixedLayoutBytes + count * PartRowFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + PartRowFixedLayoutBytes + count * PartRowFixedRecordBytes + 0;
         }
 
         public static long PartRowFixedSave(ReadOnlySpan<PartRow> values, Span<byte> buffer)
@@ -14111,7 +14117,7 @@ namespace Blockhome
 
         public static long PartFrameFixedMeasure(long count)
         {
-            return TableFixedWire.HeaderBytes + 4 + PartFrameFixedLayoutBytes + count * PartFrameFixedRecordBytes;
+            return TableFixedWire.HeaderBytes + 4 + PartFrameFixedLayoutBytes + count * PartFrameFixedRecordBytes + 0;
         }
 
         public static long PartFrameFixedSave(ReadOnlySpan<PartFrame> values, Span<byte> buffer)

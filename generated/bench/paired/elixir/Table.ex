@@ -3736,20 +3736,20 @@ defmodule Bench.Table do
     Process.put(:elixir_json_variable, desc.variable)
 
     try do
-      case json_value(text, 0) do
-        {:ok, {:obj, pairs}, rest} ->
-          if json_skip(rest) != <<>> or Process.get(:elixir_json_bad) do
-            {:error, :malformed, empty_report()}
+      with {:ok, raw, rest} <- json_value(text, 0),
+           {:ok, pairs} <- json_root_pairs(desc, raw) do
+        if json_skip(rest) != <<>> or Process.get(:elixir_json_bad) do
+          {:error, :malformed, empty_report()}
+        else
+          {value, report} = json_fields(desc, pairs)
+
+          if Process.get(:elixir_json_bad) or report.malformed do
+            {:error, :malformed, %{report | malformed: true}}
           else
-            {value, report} = json_fields(desc, pairs)
-
-            if Process.get(:elixir_json_bad) or report.malformed do
-              {:error, :malformed, %{report | malformed: true}}
-            else
-              {:ok, Map.merge(defaults(desc), value), report}
-            end
+            {:ok, Map.merge(defaults(desc), value), report}
           end
-
+        end
+      else
         _ ->
           {:error, :malformed, empty_report()}
       end
@@ -3760,6 +3760,11 @@ defmodule Bench.Table do
       Process.delete(:elixir_json_variable)
     end
   end
+
+  # The root requires the declared shape. Nested mismatches use the normal
+  # skipped kind-mismatch field result instead of a whole-document refusal.
+  defp json_root_pairs(_desc, {:obj, pairs}), do: {:ok, pairs}
+  defp json_root_pairs(_desc, _raw), do: :error
 
   # tally_refs counts pointer slots and blob slots. A node named twice is one
   # label (§16.7). Descent is once per content, so a shared child is not
@@ -4559,9 +4564,18 @@ defmodule Bench.Table do
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  defp json_read_field(%{t: :table} = f, {:obj, pairs}, report) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), pairs)
-    {v, merge_report(report, elem_report)}
+  defp json_read_field(%{t: :table} = f, raw, report) do
+    desc = Map.fetch!(@tables, f.elem)
+
+    case json_root_pairs(desc, raw) do
+      {:ok, pairs} ->
+        {v, elem_report} = json_fields(desc, pairs)
+        {v, merge_report(report, elem_report)}
+
+      _ ->
+        json_skip_value(raw)
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
   end
 
   # A map reads entries in input order, so node labels keep their document
@@ -4604,11 +4618,6 @@ defmodule Bench.Table do
   end
 
   defp json_read_field(%{t: :map}, raw, report) do
-    json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
-  end
-
-  defp json_read_field(%{t: :table}, raw, report) do
     json_skip_value(raw)
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
@@ -4912,10 +4921,8 @@ defmodule Bench.Table do
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
 
-  defp json_read_list_elem(%{elem_kind: 13} = f, {:obj, pairs}, report) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), pairs)
-    {v, merge_report(report, elem_report)}
-  end
+  defp json_read_list_elem(%{elem_kind: 13} = f, raw, report),
+    do: json_read_field(%{t: :table, elem: f.elem}, raw, report)
 
   defp json_read_list_elem(%{elem_kind: 17} = _f, nil, report), do: {nil, report}
 
