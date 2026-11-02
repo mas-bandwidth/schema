@@ -280,15 +280,17 @@ func tableJSONRequiredWalk(walk string, u *ir.Unit) string {
 		if end >= 0 {
 			end += start + 3
 			body := walk[start:end]
+			body = tableSourceReplace(body, "\tvar seen [8]uint64\n", "\tvar seenInline [8]uint64\n\tseen := seenInline[:]\n\tif words := (len(info.Fields) + 63) >> 6; words > len(seen) {\n\t\tseen = make([]uint64, words)\n\t}\n", 1)
+			body = tableSourceReplace(body, "\t\t\tif index < 512 {\n\t\t\t\tbit := uint64(1) << (index & 63)\n\t\t\t\tif seen[index>>6]&bit != 0 {\n\t\t\t\t\tin.report.Duplicate++\n\t\t\t\t}\n\t\t\t\tseen[index>>6] |= bit\n\t\t\t}", "\t\t\tbit := uint64(1) << (index & 63)\n\t\t\tif seen[index>>6]&bit != 0 {\n\t\t\t\tin.report.Duplicate++\n\t\t\t}\n\t\t\tseen[index>>6] |= bit", 1)
 			// A unit with no required field under a guard keeps the old call
 			// and close text byte for byte, so generated Go changes only for
 			// tables that hold one (docs/SPEC-TABLES.md §2.3, §3).
 			if guarded {
-				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, base, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, base, info, seen)\n\t\t}\n\t\tif c == 0 {", 1)
+				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, base, info, seen)\n\t\t}\n\t\tin.bad = true", 1)
 			} else {
-				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, info, &seen)\n\t\t}\n\t\tif c == 0 {", 1)
-				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, info, &seen)\n\t\t}\n\t\tin.bad = true", 1)
+				body = tableSourceReplace(body, "\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tif c == 0 {", "\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, info, seen)\n\t\t}\n\t\tif c == 0 {", 1)
+				body = tableSourceReplace(body, "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn true\n\t\t}\n\t\tin.bad = true", "\t\tif c == '}' {\n\t\t\tin.pos++\n\t\t\treturn tableJSONRequireSeen(in, info, seen)\n\t\t}\n\t\tin.bad = true", 1)
 			}
 			walk = walk[:start] + body + walk[end:]
 		}
@@ -385,12 +387,12 @@ func tableJSONRequiredFor(info *TableTypeInfo) []string { return tableJSONRequir
 // off it is absent and no refusal is owed. The bounded seen bitmap is the
 // duplicate tracker; a table with more than 512 fields keeps its old reading
 // for the fields past the window.
-func tableJSONRequireSeen(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, seen *[8]uint64) bool {
+func tableJSONRequireSeen(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, seen []uint64) bool {
 	required := tableJSONRequiredFor(info)
 	var missing string
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if i >= 512 || !tableJSONNameIn(required, f.Name) {
+		if !tableJSONNameIn(required, f.Name) {
 			continue
 		}
 		if f.Guard != "" && !tableJSONGuardHolds(base, info, f.Guard) {
@@ -418,12 +420,12 @@ func tableJSONRequireSeen(in *tableJSONIn, base unsafe.Pointer, info *TableTypeI
 // reader refuses a record that omitted it. The bounded seen bitmap is the
 // duplicate tracker; a table with more than 512 fields keeps its old reading
 // for the fields past the window.
-func tableJSONRequireSeen(in *tableJSONIn, info *TableTypeInfo, seen *[8]uint64) bool {
+func tableJSONRequireSeen(in *tableJSONIn, info *TableTypeInfo, seen []uint64) bool {
 	required := tableJSONRequiredFor(info)
 	var missing string
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if i >= 512 || !tableJSONNameIn(required, f.Name) {
+		if !tableJSONNameIn(required, f.Name) {
 			continue
 		}
 		if seen[i>>6]&(uint64(1)<<(i&63)) == 0 {
