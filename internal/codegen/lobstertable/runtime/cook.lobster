@@ -609,6 +609,8 @@ class CookCarve:
     at:int = 0
 
 def cc_has_field(c:CookCarve, fd:FieldDescriptor) -> bool:
+    if fd.s == "arr":
+        return cc_has_field(c, elem_of(fd))
     if fd.s == "tab":
         let t = cook_table_of(fd.t)
         return t and t.extent
@@ -628,6 +630,7 @@ def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
     if fd.present != "" and not sl.present:
         return
     if fd.s == "map":
+        cc_map(c, at, sl, fd)
         return
     if fd.s == "arr" and fd.array == "list":
         cc_list(c, at, sl, cf, fd)
@@ -703,9 +706,36 @@ def cc_list(c:CookCarve, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> v
         cc_elem(c, c.extent_at + start + i * cf.lsize, e, sl.elems[i], cf)
         i++
 
-def cc_extent(rec:Record, t:CookTable, write:bool, o:CookOut?, big:bool, g:CookGraph?, extent_at:int) -> int:
+// Entry storage and all nested extents follow canonical key order without
+// changing the caller's entries.
+def cc_map(c:CookCarve, at:int, sl:Slot, fd:FieldDescriptor) -> void:
+    let ct = cook_table_of(fd.t)
+    assert ct
+    let order = sg_map_order(fd, sl)
+    let count = length(order)
+    c.at = cook_align_up(c.at, fd.lalign)
+    let start = c.at
+    c.at += count * fd.lsize
+    if c.write:
+        let o = c.o
+        let g = c.g
+        assert o
+        assert g
+        let cw = CookWrite { o: o, g: g, big: c.big }
+        co_u64(o, at, if count > 0: c.extent_at + start - at else: 0, c.big)
+        co_u32(o, at + 8, count, c.big)
+        for(order) entry, i:
+            let rec = sl.entries[entry].tab
+            assert rec
+            cw_record(cw, c.extent_at + start + i * fd.lsize, rec, ct)
+    for(order) entry, i:
+        let rec = sl.entries[entry].tab
+        assert rec
+        cc_record(c, c.extent_at + start + i * fd.lsize, rec, ct)
+
+def cc_extent(rec:Record, t:CookTable, write:bool, o:CookOut?, big:bool, g:CookGraph?, record_at:int, extent_at:int) -> int:
     let c = CookCarve { write: write, o: o, big: big, g: g, extent_at: extent_at }
-    cc_record(c, 0, rec, t)
+    cc_record(c, record_at, rec, t)
     return c.at
 
 // ---- measure, write (docs/SPEC-TABLES.md §7.6) ----
@@ -736,7 +766,7 @@ def cg_place(g:CookGraph) -> int, int:
             n.off = off
             n.record = t.record
             if t.extent:
-                n.extent = cc_extent(rec, t, false, nil, false, nil, 0)
+                n.extent = cc_extent(rec, t, false, nil, false, nil, 0, 0)
             else:
                 n.extent = 0
             off += n.record + n.extent
@@ -792,7 +822,7 @@ def cook_write(rec:Record, build:int, big:bool) -> string:
             assert t
             cw_record(cw, base, node, t)
             if t.extent or n.extent != 0:
-                let got = cc_extent(node, t, true, o, big, g, base + n.record)
+                let got = cc_extent(node, t, true, o, big, g, base, base + n.record)
                 assert got == n.extent
         i++
     var at = cook_header_bytes + data
@@ -817,12 +847,30 @@ def cook_write(rec:Record, build:int, big:bool) -> string:
 // ---- the cooked read (docs/SPEC-TABLES.md §7.5; uncook.go) ----
 
 class CookRead:
+    bad:bool = false
+    end:int = 0
     data:string
     big:bool = false
     dir:[int] = []
     tids:[int] = []
     nodes:[Record?] = []
     blobs:[string] = []
+
+// The cooked header has already bounded end to the data region. Validate
+// self-relative container spans with subtraction before addition/multiplication.
+def cr_container(c:CookRead, at:int, count:int, stride:int) -> int:
+    if at < cook_header_bytes or at > c.end or 12 > c.end - at:
+        c.bad = true
+        return 0
+    let delta = cr_word(c, at)
+    if count < 0 or stride <= 0 or delta < cook_header_bytes - at or delta > c.end - at:
+        c.bad = true
+        return 0
+    let start = at + delta
+    if (count > 0 and delta < 12) or count > (c.end - start) / stride:
+        c.bad = true
+        return 0
+    return start
 
 def cr_word(c:CookRead, at:int) -> int:
     return cook_word(c.data, at, c.big)
@@ -860,6 +908,15 @@ def cr_int(c:CookRead, at:int, width:int) -> int:
     if width == 4:
         return cr_word32(c, at)
     return cr_word(c, at)
+
+// Narrow signed map keys must retain their sign before canonical sorting.
+def cr_scalar_int(c:CookRead, at:int, width:int, signed:bool) -> int:
+    var v = cr_int(c, at, width)
+    if signed and width > 0 and width < 8:
+        let bits = width * 8
+        if (v & shl(1, bits - 1)) != 0:
+            v -= shl(1, bits)
+    return v
 
 def cr_wide(c:CookRead, at:int) -> Int128:
     if c.big:
@@ -905,6 +962,11 @@ def cr_units(c:CookRead, at:int, countoff:int, bufsize:int) -> [int]:
     return units
 
 def cr_record(c:CookRead, base:int, rec:Record, t:CookTable) -> void:
+    if c.bad:
+        return
+    if base < cook_header_bytes or base > c.end or t.size > c.end - base:
+        c.bad = true
+        return
     var i = 0
     while i < length(rec.fields) and i < length(t.fields):
         cr_field(c, base + t.fields[i].off, rec.fields[i], t.fields[i])
@@ -954,19 +1016,19 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
         else:
             sl.cell.f = f64frombits(cr_word(c, at))
     elif s == "enum":
-        sl.cell.i = cr_int(c, at, cf.size)
+        sl.cell.i = cr_scalar_int(c, at, cf.size, fd.signed)
     elif s == "arr":
         if fd.array == "list":
             cr_list(c, at, sl, cf, fd)
         else:
             cr_array(c, at, sl, cf, fd)
     elif s == "map":
-        return
+        cr_map(c, at, sl, fd)
     else:
         if cook_wide(fd):
             sl.cell.w = cr_wide_at(c, at, cf.size, fd.signed)
         else:
-            sl.cell.i = cr_int(c, at, cf.size)
+            sl.cell.i = cr_scalar_int(c, at, cf.size, fd.signed)
 
 def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:int) -> Value:
     let s = e.s
@@ -1003,12 +1065,12 @@ def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:
         else:
             v.f = f64frombits(cr_word(c, at))
     elif s == "enum":
-        v.i = cr_int(c, at, vsize)
+        v.i = cr_scalar_int(c, at, vsize, e.signed)
     else:
         if cook_wide(e):
             v.w = cr_wide_at(c, at, vsize, e.signed)
         else:
-            v.i = cr_int(c, at, vsize)
+            v.i = cr_scalar_int(c, at, vsize, e.signed)
     return v
 
 def cr_array(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
@@ -1026,13 +1088,14 @@ def cr_array(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> v
 // elements at the array the delta names, in index order. The elements are not
 // inline in the record; they ride in the holder's extent.
 def cr_list(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> void:
-    let delta = cr_word(c, at)
     let count = cr_word32(c, at + 8)
     sl.elems = []
-    if delta == 0 or count <= 0:
+    if count == 0:
         sl.count = 0
         return
-    let start = at + delta
+    let start = cr_container(c, at, count, cf.lsize)
+    if c.bad:
+        return
     let e = elem_of(fd)
     var i = 0
     while i < count:
@@ -1041,6 +1104,25 @@ def cr_list(c:CookRead, at:int, sl:Slot, cf:CookField, fd:FieldDescriptor) -> vo
         push(sl.elems, v)
         i++
     sl.count = count
+
+def cr_map(c:CookRead, at:int, sl:Slot, fd:FieldDescriptor) -> void:
+    let count = cr_word32(c, at + 8)
+    sl.entries = []
+    if count == 0:
+        return
+    let start = cr_container(c, at, count, fd.lsize)
+    if c.bad:
+        return
+    let ct = cook_table_of(fd.t)
+    if not ct:
+        c.bad = true
+        return
+    var i = 0
+    while i < count and not c.bad:
+        let rec = new_record(table_of(fd.t))
+        cr_record(c, start + i * fd.lsize, rec, ct)
+        push(sl.entries, Value { tab: rec })
+        i++
 
 def cr_union(c:CookRead, at:int, v:Value, fd:FieldDescriptor) -> void:
     let un = cook_union_named(fd.t)
@@ -1073,6 +1155,7 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
     let data_offset = cook_align_up(cook_header_bytes, cr_word(c, 40))
     let data_length = cr_word(c, 24)
     let attrib_length = cr_word(c, 32)
+    c.end = data_offset + data_length
     if attrib_length % cook_directory_entry != 0:
         return nil
     let count = attrib_length / cook_directory_entry
@@ -1118,7 +1201,7 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
             cr_record(c, c.dir[i], rec, ct)
         i++
     let root = c.nodes[0]
-    if not root:
+    if c.bad or not root:
         return nil
     if root.d.id != desc.id:
         return nil
