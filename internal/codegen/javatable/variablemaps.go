@@ -50,12 +50,14 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    static List<%s> order_%s(List<%s> entries) {\n", entry, m, entry)
 		fmt.Fprintf(b, "        java.util.TreeMap<%s,%s> ordered = new java.util.TreeMap<>(%sVariable::compare_%s);\n", entry, entry, st.Name, m)
 		fmt.Fprintf(b, "        for (%s entry : entries) ordered.put(entry,entry);\n        return new ArrayList<>(ordered.values());\n    }\n", entry)
-		fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
-		writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
-		b.WriteString("    }\n")
-		fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
-		readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
-		b.WriteString("    }\n")
+		if unitCarriesForm(u, "json") {
+			fmt.Fprintf(b, "    static void jsonMapValue_%s(StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
+			writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			b.WriteString("    }\n")
+			fmt.Fprintf(b, "    static void readMapValue_%s(TableJson.In in, %s v) {\n", m, entry)
+			readJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
+			b.WriteString("    }\n")
+		}
 
 		rawKey := *key
 		rawKey.HasIntRange = false

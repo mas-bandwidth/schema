@@ -77,6 +77,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
@@ -409,6 +412,9 @@ func generateCookFiles(u *ir.Unit, ck *cookUnit) (map[string][]byte, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		if !u.Tables[name].CarriesForm("cook") {
+			continue
+		}
 		var b strings.Builder
 		if !ck.opens(name) {
 			fmt.Fprintf(&b, "// table %s has NO Java cook Open: %s (docs/SPEC-TABLES.md §7, §19.3).\n", name, ck.skipped[name])

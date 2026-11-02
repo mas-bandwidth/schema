@@ -1446,6 +1446,13 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			ind, lo, lo, rep, hi, hi, rep)
 		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
 		g.pf("%s}\n", ind)
+	} else if ulo, uhi, ok := fixedRawUnsigned64Range(owner); ok {
+		g.pf("%s{\n", ind)
+		g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, w, f.Type.Signed))
+		g.pf("%s    if (Long.compareUnsigned(q, 0x%xL) < 0) { q = 0x%xL; %s.clamped++; } else if (Long.compareUnsigned(q, 0x%xL) > 0) { q = 0x%xL; %s.clamped++; }\n",
+			ind, ulo, ulo, rep, uhi, uhi, rep)
+		g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(typ, "q"))
+		g.pf("%s}\n", ind)
 	} else {
 		g.pf("%s%s = %s;\n", ind, expr, fixedLoadAs(buf, at, off, w, f.Type.Signed, typ))
 	}
@@ -1483,6 +1490,25 @@ func fixedRawRange(f *ir.Field) (int64, int64, bool) {
 		return 0, 0, false
 	}
 	return lo.Int64(), hi.Int64(), true
+}
+
+func fixedRawUnsigned64Range(f *ir.Field) (uint64, uint64, bool) {
+	if f == nil || !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+		return 0, 0, false
+	}
+	switch f.Type.Kind {
+	case ir.TInt, ir.TBits, ir.TFixed:
+	default:
+		return 0, 0, false
+	}
+	if f.Type.Signed || f.Type.Width != 64 {
+		return 0, 0, false
+	}
+	lo, hi, ok := ir.TableRawRange(f)
+	if !ok || (lo.IsInt64() && hi.IsInt64()) || !lo.IsUint64() || !hi.IsUint64() {
+		return 0, 0, false
+	}
+	return lo.Uint64(), hi.Uint64(), true
 }
 
 func fixedNarrow(typ, expr string) string {
