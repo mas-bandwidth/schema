@@ -237,3 +237,8 @@ node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vecto
 
 # A shortened union table body must not decode its truncated float payload.
 arm_length_empty_float tabledemo RootConfig testdata/wire/tables/fuzz-vectors/arm_length_empty_float.bin
+
+# Length bounds are checked before cursor addition; huge signed lengths cannot wrap.
+wire_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/wire_length_overflow.bin
+node_table_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_length_overflow.bin
+node_table_negative_length graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_negative_length.bin
