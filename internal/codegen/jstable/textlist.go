@@ -47,7 +47,7 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
     if (ch === "]") { inp.p++; return true; }
     if (ch === "") { inp.bad = true; return false; }
     if (count >= bound || dropped) {
-      if (count >= bound) { TableVariableTextListClamp(fd, report); }
+      if (!dropped && count >= bound) { TableVariableTextListClamp(fd, report); }
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {
       const record = fd.e.c.make(), shape = inp.shape();

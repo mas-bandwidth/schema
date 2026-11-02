@@ -129,7 +129,7 @@ for(const mode of ["json","wire"]){
  const plain=mode==="json"?m.ListsFromJson(spec.input,r):m.ListsLoad(bytes(spec.wide),r);
  const limited=mode==="json"?m.TotalsFromJson(spec.input,t):m.TotalsLoad(bytes(spec.wide),t);
  expect(plain!==null&&JSON.stringify(vals(plain))===JSON.stringify(expected)&&r.clamped===6,"element/count clamps "+mode+" "+JSON.stringify(r)+" "+JSON.stringify(plain));
- expect(limited!==null&&JSON.stringify(vals(limited))===JSON.stringify(totalExpected)&&t.clamped===10,"total prefix "+mode+" "+JSON.stringify(t)+" "+JSON.stringify(limited));
+ expect(limited!==null&&JSON.stringify(vals(limited))===JSON.stringify(totalExpected)&&t.clamped===(mode==="wire"?10:8),"total prefix "+mode+" "+JSON.stringify(t)+" "+JSON.stringify(limited));
  expect(t.clampedField==="Totals.a","first named clamp "+mode+" "+t.clampedField);
 }
 for(const root of ["Lists","Totals"]){
