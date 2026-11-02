@@ -716,12 +716,16 @@ func (g *gen) emitWriteFoldedEnum(ref *ir.Enum, name, ind string) {
 // emitWriteBareInt writes a bare integer at its storage width. Signed Number
 // values mask through the same-width unsigned domain first (the sign
 // extension a wider write would smear corrupts neighboring wire data,
-// exactly as in C++); signed BigInt values wrap inside the runtime's own
-// BigInt.asUintN, so the 64-bit call takes storage directly.
+// exactly as in C++). Signed BigInt values likewise need their unsigned
+// two's-complement bit pattern before calling the runtime bit writer.
 func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	if f.Type.Width == 64 {
 		scratch := g.bigScratch()
-		g.pf("%s%s.value = %s;\n", ind, scratch, name)
+		bits := name
+		if f.Type.Signed {
+			bits = "BigInt.asUintN(64, " + name + ")"
+		}
+		g.pf("%s%s.value = %s;\n", ind, scratch, bits)
 		g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, 64)", scratch), "")
 		return
 	}

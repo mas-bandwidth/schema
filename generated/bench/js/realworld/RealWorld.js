@@ -575,7 +575,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.f029I64;
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f029I64);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -751,7 +751,7 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 9)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.f063I64;
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.f063I64);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
