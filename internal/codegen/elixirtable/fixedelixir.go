@@ -1768,6 +1768,9 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 	g.pf("  def %s_fixed_measure(count) do\n", snake)
 	head := fmt.Sprintf("R.file_header_bytes() + byte_size(@%s_layout) +", snake)
 	tail := fmt.Sprintf("count * @%s_record_bytes", snake)
+	if st.Integrity != "" {
+		tail += " + 4"
+	}
 	if fits(4, 0, head+" "+tail) {
 		g.pf("    %s %s\n", head, tail)
 	} else {
@@ -1789,9 +1792,18 @@ func (g *fixedGen) rootSurface(st *ir.Struct) {
 		fmt.Sprintf("@%s_layout::binary", snake),
 	}}, 4))
 	g.emitLines([]string{""})
-	g.pf("    R.each(values, head, fn value, acc ->\n")
-	g.pf("      %s\n", call(snake+"_fixed_write_into", raw("value"), rawf("<<acc::binary, @%s_hash::little-unsigned-64>>", snake)).render(6, 6, 0))
-	g.pf("    end)\n")
+	indent := 4
+	if st.Integrity != "" {
+		g.pf("    data =\n")
+		indent = 6
+	}
+	pad := strings.Repeat(" ", indent)
+	g.pf("%sR.each(values, head, fn value, acc ->\n", pad)
+	g.pf("%s  %s\n", pad, call(snake+"_fixed_write_into", raw("value"), rawf("<<acc::binary, @%s_hash::little-unsigned-64>>", snake)).render(indent+2, indent+2, 0))
+	g.pf("%send)\n", pad)
+	if st.Integrity != "" {
+		g.pf("\n    R.integrity_seal(data)\n")
+	}
 	g.pf("  end\n\n")
 
 	g.emitLoad(st, snake)
@@ -1812,6 +1824,15 @@ func (g *fixedGen) emitLoad(st *ir.Struct, snake string) {
 	g.pf("  another, and the only thing that differs is which plan it was handed.\n")
 	g.pf("  \"\"\"\n")
 	g.pf("  def %s_fixed_load(data, opts \\\\ []) when is_binary(data) do\n", snake)
+	if st.Integrity != "" {
+		g.pf("    with {:ok, body} <- R.integrity_open(data, 3) do\n")
+		g.pf("      %s_fixed_load_raw(body, opts)\n", snake)
+		g.pf("    else\n      {:error, :integrity_mismatch} ->\n")
+		g.pf("        report = %%{R.report() | malformed: true}\n")
+		g.pf("        {:error, :integrity_mismatch, Map.put(report, :reason, \"integrity_mismatch\")}\n")
+		g.pf("    end\n  end\n\n")
+		g.pf("  defp %s_fixed_load_raw(data, opts) do\n", snake)
+	}
 	g.pf("    report = R.report()\n\n")
 	g.pf("    # A FORM BYTE THIS BUILD DOES NOT CARRY IS A REFUSAL BY NAME and never\n")
 	g.pf("    # damage: nothing is decoded and no counter moves. The registry is\n")

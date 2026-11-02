@@ -65,8 +65,7 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  import Bitwise\n\n")
 	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ir.TableAnnouncement(u))))
 	fmt.Fprintf(&b, "  @entries_here %d\n\n", len(ir.TableVocabulary(u)))
-	b.WriteString(messageRuntimeBody)
-	b.WriteString(messageBatchRuntimeBody)
+	b.WriteString(messageIntegrity(u, messageRuntimeBody+messageBatchRuntimeBody))
 	b.WriteString("end\n")
 	return []byte(b.String())
 }

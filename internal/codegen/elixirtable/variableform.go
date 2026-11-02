@@ -201,6 +201,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	if len(unionNames) > 0 {
 		retain = withRetainArmKinds(retain, armKinds)
 	}
+	runtime, retain = variableIntegrity(u, runtime, retain)
 	attrs, runtime, cook := restrictFormRuntime(u, names, runtime, cook)
 	b.WriteString(attrs)
 	b.WriteString(runtime)
@@ -6863,11 +6864,15 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
 	_, str := ir.PointerReachableBlobs(st)
+	integrity := ""
+	if st.Integrity != "" {
+		integrity = ", integrity: true"
+	}
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, string_blob: %v, variable: %v%s, doc: %s, tags: %s, fields: [\n",
-		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], jsonArrayDescriptor(st), elixirQuote(st.Doc), elixirTags(st.Tags))
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, string_blob: %v, variable: %v%s%s, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], jsonArrayDescriptor(st), integrity, elixirQuote(st.Doc), elixirTags(st.Tags))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, st.DeclaredName(), f, i, ml.FieldByName(f.Name)))
 	}

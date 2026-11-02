@@ -44,6 +44,9 @@ func fixedRuntimeModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.FixedRuntime do\n", ns)
 	b.WriteString(fixedRuntimeBody)
+	if hasIntegrity(u) {
+		b.WriteString("\n" + integritySource(true))
+	}
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
