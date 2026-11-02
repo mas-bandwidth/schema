@@ -859,6 +859,7 @@ pub struct TableReport {
     pub kind_mismatch: u64,
     pub widened: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,

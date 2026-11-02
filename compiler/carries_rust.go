@@ -15,5 +15,5 @@ package compiler
 // seals each file or message batch once; native corruption tests cover every
 // wire form and caller-owned output buffers.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity, carryTextList)
 }
