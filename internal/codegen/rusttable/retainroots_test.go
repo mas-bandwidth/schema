@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 	"os/exec"
@@ -97,7 +98,7 @@ func TestRetainsAndWidensOnEveryRootRust(t *testing.T) {
 				}
 				p := s
 				p.name += "+unknown"
-				p.data = plantUnknown(t, wire)
+				p.data = plantUnknown(t, wire, units[s.unit].unit.Tables[s.root].Integrity)
 				seeds = append(seeds, p)
 			}
 		}
@@ -215,12 +216,25 @@ func repeatedUnionSeeds(t *testing.T) []rosterSeed {
 // trailer gains, which every reader skips as one `unknown` and a retaining
 // reader keeps. References are trailer slots and node indices, never offsets,
 // so nothing behind the planted field moves meaning.
-func plantUnknown(t *testing.T, wire []byte) []byte {
+func plantUnknown(t *testing.T, wire []byte, integrity string) []byte {
 	t.Helper()
 	if len(wire) < 9 || wire[0] != byte(ir.TableWireForm) {
 		t.Fatalf("a seed is not a variable-form file")
 	}
+	if integrity != "" {
+		if integrity != "crc32c" || len(wire) < 13 {
+			t.Fatal("unsupported integrity seed")
+		}
+		n := len(wire) - 4
+		if crc32.Checksum(wire[:n], crc32.MakeTable(crc32.Castagnoli)) != binary.LittleEndian.Uint32(wire[n:]) {
+			t.Fatal("invalid seed CRC")
+		}
+		wire = wire[:n]
+	}
 	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])
+	if count > uint64((len(wire)-9)/8) {
+		t.Fatal("seed ID table exceeds input")
+	}
 	estart := len(wire) - 8 - 8*int(count)
 	const planted = uint64(0x52455441494e0001) // "RETAIN" and a one
 	for i := 0; i < int(count); i++ {
@@ -235,7 +249,11 @@ func plantUnknown(t *testing.T, wire []byte) []byte {
 	out = append(out, wire[1:estart]...)
 	out = append(out, wire[estart:len(wire)-8]...)
 	out = binary.LittleEndian.AppendUint64(out, planted)
-	return binary.LittleEndian.AppendUint64(out, count+1)
+	out = binary.LittleEndian.AppendUint64(out, count+1)
+	if integrity != "" {
+		out = binary.LittleEndian.AppendUint32(out, crc32.Checksum(out, crc32.MakeTable(crc32.Castagnoli)))
+	}
+	return out
 }
 
 // manifestRoster reads the default roster's FILE seeds from the conformance

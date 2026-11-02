@@ -19,7 +19,8 @@ gen=${*:-./bin/schema}
 dir=$out.d
 rm -rf "$dir"
 mkdir -p "$dir/src"
-for unit in backenddemo:tables/backend \
+for unit in featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema \
+	backenddemo:tables/backend \
 	blobdemo:tables/blobs \
 	graphdemo:tables/pointers \
 	listdemo:tables/lists \

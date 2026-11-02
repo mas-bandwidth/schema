@@ -213,6 +213,8 @@ table Node
     data  *bytes
     items []Item
 }
+
+table Checked | integrity="crc32c" { value int32 }
 `
 
 // fixedFormSrc reaches every shape §3.4's constant-size table names that this
