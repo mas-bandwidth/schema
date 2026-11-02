@@ -2086,6 +2086,9 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	case shape != Shape(fv.Def):
 		report.KindMismatch++
 		ok = in.skipValue(0)
+		if ok && fv.Def.Type.Optional {
+			fv.Present = true
+		}
 	default:
 		ok = in.readField(fv, 0)
 		if ok && fv.Def.Type.Optional {

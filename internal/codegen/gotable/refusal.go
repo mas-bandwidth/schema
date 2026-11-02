@@ -184,7 +184,7 @@ if r.Verdict==TableOpenRefused || r.Reason=="previous_form" || r.Reason=="newer_
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
-if r.Malformed {return TableRefuseMalformed}
+if r.Malformed {const p="malformed: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseMalformed}
 // A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
 // the one node and counts it; the strict read refuses it by name.
 if r.BlobShared>0 {return TableRefuseBlobShared}
@@ -212,5 +212,14 @@ func tableTextClamped(clampedField *string,field string){if clampedField!=nil&&*
 type TableClampedField struct{ Field string }
 func (e TableClampedField) Error() string { return "clamped: " + e.Field }
 func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
+// tableTextMalformed names the text list or map whose element or key a read
+// refused (docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
+func tableTextMalformed(r *TableReport,field string){if r!=nil&&r.Reason==""{r.Reason="malformed: "+field}}
+// TableMalformedField is a strict read's malformed refusal naming the text
+// list or map it refused (docs/SPEC-TABLES.md §2.13.1):
+// errors.Is(err, TableRefuseMalformed) holds.
+type TableMalformedField struct{ Field string }
+func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
 
 `

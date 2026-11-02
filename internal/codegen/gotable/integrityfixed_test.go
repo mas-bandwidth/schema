@@ -154,3 +154,117 @@ func TestGoWireIntegrityFixedForm(t *testing.T) {
 		runGenerated(t, integrityFixedSchema, integrityFixedProbe)
 	})
 }
+
+const integrityFixedVarFormSchema = `package probe
+fixed table FixedRow | integrity = "crc32c"
+{
+    value int32
+}
+fixed table PlainFixedRow
+{
+    value int32
+}
+`
+
+const integrityFixedVarFormGolden = "0101041100000000ea0ce83094fde47c0100000000000000db895d2b"
+const integrityFixedVarFormPlainGolden = "0101041100000000ea0ce83094fde47c0100000000000000"
+
+const integrityFixedVarFormProbe = `package probe
+import ("encoding/base64"; "encoding/binary"; "encoding/hex"; "errors"; "hash/crc32"; "testing")
+
+func TestIntegrityFixedVariableForm(t *testing.T) {
+	t.Parallel()
+	row := FixedRow{Value: 17}
+	plain := PlainFixedRow{Value: 17}
+	if FixedRowMeasure(&row) != 28 {
+		t.Fatalf("FixedRowMeasure = %d, want 28", FixedRowMeasure(&row))
+	}
+	if PlainFixedRowMeasure(&plain) != 24 {
+		t.Fatalf("PlainFixedRowMeasure = %d, want 24", PlainFixedRowMeasure(&plain))
+	}
+	if n, err := FixedRowMeasureReason(&row); n != 28 || err != nil {
+		t.Fatalf("FixedRowMeasureReason = (%d, %v), want (28, nil)", n, err)
+	}
+	kw := make([]byte, FixedRowMeasure(&row))
+	if n := FixedRowSave(&row, kw); n != int64(len(kw)) {
+		t.Fatalf("FixedRowSave = %d, want %d", n, len(kw))
+	}
+	if n := FixedRowSave(&row, make([]byte, len(kw)-1)); n >= 0 {
+		t.Fatal("FixedRowSave into a buffer one byte short did not refuse")
+	}
+	pw := make([]byte, PlainFixedRowMeasure(&plain))
+	if n := PlainFixedRowSave(&plain, pw); n != int64(len(pw)) {
+		t.Fatalf("PlainFixedRowSave = %d, want %d", n, len(pw))
+	}
+	if got := hex.EncodeToString(kw); got != "` + integrityFixedVarFormGolden + `" {
+		t.Fatalf("FixedRowSave golden = %s, want ` + integrityFixedVarFormGolden + `", got)
+	}
+	if got := hex.EncodeToString(pw); got != "` + integrityFixedVarFormPlainGolden + `" {
+		t.Fatalf("PlainFixedRowSave golden = %s, want ` + integrityFixedVarFormPlainGolden + `", got)
+	}
+	body := kw[:len(kw)-4]
+	if binary.LittleEndian.Uint32(kw[len(body):]) != crc32.Checksum(body, crc32.MakeTable(crc32.Castagnoli)) {
+		t.Fatal("FixedRowSave trailer is not the CRC-32C of the bytes before it")
+	}
+	text, err := FixedRowSaveText(&row)
+	if err != nil || text != base64.StdEncoding.EncodeToString(kw) {
+		t.Fatalf("FixedRowSaveText = (%q, %v)", text, err)
+	}
+	var got FixedRow
+	var r TableReport
+	if !FixedRowLoad(&got, kw, &r) || r != (TableReport{}) || got != row {
+		t.Fatalf("FixedRowLoad round trip: got=%+v report=%+v", got, r)
+	}
+	if gotStrict, err := FixedRowReadStrict(kw); err != nil || *gotStrict != row {
+		t.Fatalf("FixedRowReadStrict: got=%+v err=%v", gotStrict, err)
+	}
+	if gotText, err := FixedRowLoadText(text, &r); err != nil || r != (TableReport{}) || *gotText != row {
+		t.Fatalf("FixedRowLoadText: got=%+v report=%+v err=%v", gotText, r, err)
+	}
+	for i := range kw {
+		for _, x := range []byte{0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xff} {
+			bad := append([]byte(nil), kw...)
+			bad[i] ^= x
+			out := FixedRow{Value: -99}
+			var rr TableReport
+			if FixedRowLoad(&out, bad, &rr) {
+				t.Fatalf("byte %d ^ 0x%02x read clean: %+v", i, x, out)
+			}
+			if out != (FixedRow{}) {
+				t.Fatalf("byte %d ^ 0x%02x did not reset out: %+v", i, x, out)
+			}
+			if i == 0 {
+				if rr.Verdict != TableOpenRefused || rr.Malformed || rr.Reason == "integrity_mismatch" {
+					t.Fatalf("form byte ^ 0x%02x: got %+v", x, rr)
+				}
+				continue
+			}
+			if rr != (TableReport{Verdict: TableOpenDamaged, Malformed: true, Reason: "integrity_mismatch"}) {
+				t.Fatalf("byte %d ^ 0x%02x: report %+v, want integrity_mismatch", i, x, rr)
+			}
+			if _, err := FixedRowReadStrict(bad); !errors.Is(err, TableRefuseIntegrityMismatch) {
+				t.Fatalf("byte %d ^ 0x%02x: FixedRowReadStrict err = %v, want TableRefuseIntegrityMismatch", i, x, err)
+			}
+			var tr TableReport
+			if _, err := FixedRowLoadText(base64.StdEncoding.EncodeToString(bad), &tr); !errors.Is(err, TableRefuseIntegrityMismatch) {
+				t.Fatalf("byte %d ^ 0x%02x: FixedRowLoadText err = %v, want TableRefuseIntegrityMismatch", i, x, err)
+			}
+		}
+	}
+	var pr TableReport
+	var pout PlainFixedRow
+	if PlainFixedRowLoad(&pout, kw, &pr) || !pr.Malformed {
+		t.Fatalf("trailered form-1 wire under keyless PlainFixedRowLoad: %+v", pr)
+	}
+	var kr TableReport
+	var kout FixedRow
+	if FixedRowLoad(&kout, pw, &kr) || kr.Reason != "integrity_mismatch" {
+		t.Fatalf("trailerless form-1 wire under keyed FixedRowLoad: %+v", kr)
+	}
+}
+`
+
+func TestGoWireIntegrityFixedTableVariableForm(t *testing.T) {
+	t.Parallel()
+	runGenerated(t, integrityFixedVarFormSchema, integrityFixedVarFormProbe)
+}
