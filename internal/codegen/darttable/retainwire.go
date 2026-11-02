@@ -502,6 +502,12 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\t\tretain.reset();\n")
 	g.pf("\t\treturn %s();\n", n)
 	g.pf("\t}\n")
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
+	// decoded lands and nothing is retained.
+	g.pf("\tif (r.report.malformed) {\n")
+	g.pf("\t\tretain.reset();\n")
+	g.pf("\t\treturn %s();\n", n)
+	g.pf("\t}\n")
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 

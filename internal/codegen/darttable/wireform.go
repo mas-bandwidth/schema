@@ -2894,6 +2894,10 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// any damage the walk met (docs/SPEC-TABLES.md §3.3): nothing lands, and
 	// the caller holds the type's defaults.
 	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) return %s();\n", n)
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
+	// met damage anywhere hands back nothing it decoded, only the type's
+	// defaults, with the report saying malformed.
+	g.pf("\tif (r.report.malformed) return %s();\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }

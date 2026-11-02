@@ -358,10 +358,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"tableFixedSelect", "tableFixedLineagePlans", "TableFixedKnownLayout",
 		"TableFixedLineagePlan", "TableFixedLimits", "TableFixedPlan",
 		"TableFixedRefusal", "TableFixedReport", "TableFixedView")
-	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode")
+	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode", "init"+capitalize(st.Name))
 	finite := fixedHoldsFloat(st, map[string]bool{})
 	if finite {
-		g.needHome(lower+"FixedFiniteBody", "init"+capitalize(st.Name))
+		g.needHome(lower + "FixedFiniteBody")
 	}
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
@@ -748,6 +748,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      plan.image,\n      plan.imageView,\n      remap,\n      plan.conv,\n")
 	g.pf("      report,\n    );\n")
 	g.pf("    if (runWhy != TableFixedRefusal.none) {\n")
+	// a refused read hands back nothing: the records before this one go back
+	// to their defaults (docs/SPEC-TABLES.md §4)
+	g.pf("      for (var j = 0; j < k; j++) {\n")
+	g.pf("        init%s(values[j]);\n", capitalize(st.Name))
+	g.pf("      }\n")
 	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
