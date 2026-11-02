@@ -67,13 +67,12 @@
 #if defined( _MSC_VER )
 #define MAPDEMO_TABLE_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define MAPDEMO_TABLE_INLINE inline __attribute__(( always_inline ))
+#define MAPDEMO_TABLE_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define MAPDEMO_TABLE_INLINE inline
 #endif
 
 namespace mapdemo {
-
 
 
 // WHY A FILE WAS REFUSED, by name (docs/SPEC-TABLES.md §6.5, §7, §19.2): the
@@ -149,8 +148,8 @@ enum TableRefuseReason : int32_t
 // reason text rather than in the enum. They sit in a private high range so a
 // value Go appends later can never collide with them, which the enum's
 // int32_t underlying type keeps inside its own range.
-constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
-constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
@@ -385,8 +384,8 @@ struct TableFieldInfo
     // node it names, or NULL; `emplace` allocates one in a BUILDER's
     // arena and points the slot at it. NULL on every field that is not
     // a pointer, and emitted only in a unit that declares one.
-    const void * (*resolve)( const void * slot );
-    void * (*emplace)( TableWorker & worker, void * slot );
+    const void * ( *resolve )( const void * slot );
+    void * ( *emplace )( TableWorker & worker, void * slot );
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
@@ -424,34 +423,34 @@ struct TableFieldInfo
     // the vocabulary's names, indexed the same way enum_max bounds: an enum's
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
-    const char * (*enum_name)( uint64_t value );
+    const char * ( *enum_name )( uint64_t value );
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
-    uint64_t (*variant_id)( uint64_t value );
+    uint64_t ( *variant_id )( uint64_t value );
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
     // NULL on every other field.
     const char * key_type_name;
-    const char * (*key_name)( uint64_t value );
-    uint64_t (*key_id)( uint64_t value );
+    const char * ( *key_name )( uint64_t value );
+    uint64_t ( *key_id )( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
-    const TableUnionInfo * (*arms)();
+    const TableUnionInfo * ( *arms )();
     // an OUT-OF-LINE array (docs/SPEC-TABLES.md §8.1): place one element and
     // hand it back at its defaults. A MAP places BY KEY, a string key comes
     // in as the bytes and the length, an integer key as the value, and NULL
     // is NOT INSERTED: a key past the bound, or an arena that could not carve
     // another segment. A LIST ignores the key and APPENDS, NULL at the arena
     // or the int32 cap. NULL on every field that is neither.
-    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
+    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -483,7 +482,7 @@ struct TableTypeInfo
     // absent field takes, and it holds no type to spell — this is the one
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
-    void (*reset)( void * storage );
+    void ( *reset )( void * storage );
     // the DERIVED mode (docs/SPEC-TABLES.md): false = fixed-size, a plain
     // relocatable struct; true = variable-length, built through a Builder
     // and read through a region root. Nobody declares it; the compiler
@@ -514,13 +513,25 @@ struct TableWriter
 
     MAPDEMO_TABLE_INLINE void raw( const void * data, int64_t bytes )
     {
-        if ( offset + bytes > capacity ) { overflow = true; return; }
+        if ( offset + bytes > capacity )
+        {
+            overflow = true;
+            return;
+        }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    MAPDEMO_TABLE_INLINE void put8( uint8_t v )   { raw( &v, 1 ); }
-    MAPDEMO_TABLE_INLINE void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    MAPDEMO_TABLE_INLINE void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    MAPDEMO_TABLE_INLINE void put8( uint8_t v ) { raw( &v, 1 ); }
+    MAPDEMO_TABLE_INLINE void put16( uint16_t v )
+    {
+        uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) };
+        raw( b, 2 );
+    }
+    MAPDEMO_TABLE_INLINE void put32( uint32_t v )
+    {
+        uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) };
+        raw( b, 4 );
+    }
     // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
     // once: little-endian, lowest byte first. One capacity test rather than
     // two, and NOT ONE FEWER — raw still asks before it copies, so an
@@ -528,7 +539,7 @@ struct TableWriter
     MAPDEMO_TABLE_INLINE void put64( uint64_t v )
     {
         uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
-                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+            uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
     // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
@@ -541,9 +552,9 @@ struct TableWriter
     MAPDEMO_TABLE_INLINE void put128( uint64_t lo, uint64_t hi )
     {
         uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
-                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
-                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
-                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+            uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+            uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+            uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
         raw( b, 16 );
     }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
@@ -563,7 +574,11 @@ struct TableWriter
     {
         uint8_t b[10];
         int64_t n = 0;
-        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        while ( v >= 0x80 )
+        {
+            b[n++] = uint8_t( v ) | 0x80;
+            v >>= 7;
+        }
         b[n++] = uint8_t( v );
         raw( b, n );
     }
@@ -599,7 +614,11 @@ struct TableWriter
 inline int64_t TableLebBytes( uint64_t v )
 {
     int64_t n = 1;
-    while ( v >= 0x80 ) { v >>= 7; n++; }
+    while ( v >= 0x80 )
+    {
+        v >>= 7;
+        n++;
+    }
     return n;
 }
 
@@ -620,9 +639,9 @@ struct TableIds
     static const int32_t kCapacity = 76;
     static const int32_t kBuckets = 256;
 
-    uint64_t ids[ kCapacity ];
-    int32_t chain[ kCapacity ];
-    int32_t head[ kBuckets ];
+    uint64_t ids[kCapacity];
+    int32_t chain[kCapacity];
+    int32_t head[kBuckets];
     // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
     // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
     // the unit's id vocabulary, the same ascending set kCapacity counts. slot
@@ -631,15 +650,20 @@ struct TableIds
     // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
     // The pair is what lets truncate undo the cache in O(popped) rather than
     // walking the whole vocabulary.
-    int32_t slot[ kCapacity ];
-    int16_t ordinal_of[ kCapacity ];
+    int32_t slot[kCapacity];
+    int16_t ordinal_of[kCapacity];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ )
+        {
+            slot[i] = -1;
+            ids[i] = 0;
+            chain[i] = -1;
+        }
     }
 
     static MAPDEMO_TABLE_INLINE uint32_t bucket_of( uint64_t id )
@@ -657,8 +681,16 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
+        if ( count >= kCapacity )
+        {
+            overflow = true;
+            return 1;
+        }
+        ids[count] = id;
+        chain[count] = head[b];
+        ordinal_of[count] = -1;
+        head[b] = count;
+        count++;
         return uint64_t( count );
     }
 
@@ -677,7 +709,7 @@ struct TableIds
         // answered 1, which is not this id's reference (§3).
         if ( overflow ) { return r; }
         slot[ordinal] = int32_t( r ) - 1;
-        ordinal_of[ int32_t( r ) - 1 ] = int16_t( ordinal );
+        ordinal_of[int32_t( r ) - 1] = int16_t( ordinal );
         return r;
     }
 
@@ -690,7 +722,7 @@ struct TableIds
         while ( count > mark )
         {
             count--;
-            head[ bucket_of( ids[count] ) ] = chain[count];
+            head[bucket_of( ids[count] )] = chain[count];
             const int32_t o = ordinal_of[count];
             if ( o >= 0 ) { slot[o] = -1; }
         }
@@ -722,7 +754,7 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     if ( count > 0 )
     {
-        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+        memcpy( dst, ids.ids, (size_t) ( count * 8 ) );
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
@@ -785,11 +817,30 @@ struct TableReader
     // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
     // length looks like room.
     MAPDEMO_TABLE_INLINE bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
-    MAPDEMO_TABLE_INLINE uint8_t get8()   { return buffer[offset++]; }
-    MAPDEMO_TABLE_INLINE uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    MAPDEMO_TABLE_INLINE uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    MAPDEMO_TABLE_INLINE uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
-    MAPDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
+    MAPDEMO_TABLE_INLINE uint8_t get8() { return buffer[offset++]; }
+    MAPDEMO_TABLE_INLINE uint16_t get16()
+    {
+        uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset + 1] ) << 8;
+        offset += 2;
+        return v;
+    }
+    MAPDEMO_TABLE_INLINE uint32_t get32()
+    {
+        uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset + 1] ) << 8 | uint32_t( buffer[offset + 2] ) << 16 | uint32_t( buffer[offset + 3] ) << 24;
+        offset += 4;
+        return v;
+    }
+    MAPDEMO_TABLE_INLINE uint64_t get64()
+    {
+        uint64_t lo = get32();
+        uint64_t hi = get32();
+        return lo | ( hi << 32 );
+    }
+    MAPDEMO_TABLE_INLINE void get128( uint64_t & lo, uint64_t & hi )
+    {
+        lo = get64();
+        hi = get64();
+    }
 
     // ONE CANONICAL UNSIGNED LEB128 (docs/SPEC-TABLES.md §3), and a
     // non-minimal spelling is MALFORMED: 0x80 0x00 and 0x00 both spell zero,
@@ -822,13 +873,25 @@ struct TableReader
         uint32_t shift = 0;
         for ( int32_t i = 0; i < 10; i++ )
         {
-            if ( !has( 1 ) ) { offset = at; return false; }
+            if ( !has( 1 ) )
+            {
+                offset = at;
+                return false;
+            }
             const uint8_t b = get8();
-            if ( i == 9 && b > 1 ) { offset = at; return false; }
+            if ( i == 9 && b > 1 )
+            {
+                offset = at;
+                return false;
+            }
             value |= uint64_t( b & 0x7F ) << shift;
             if ( ( b & 0x80 ) == 0 )
             {
-                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                if ( i > 0 && b == 0 )
+                {
+                    offset = at;
+                    return false;
+                } // a redundant continuation
                 return true;
             }
             shift += 7;
@@ -858,21 +921,47 @@ struct TableReader
         {
             // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
             // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
-            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3:
+            case 7:
+            case 21:
+            case 26: return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27: return has( 4 ) ? ( offset += 4, true ) : false;
             // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
             // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
             // an unnamed or kind-mismatched timestamp skips cleanly, exactly
             // as internal/tablewire/timestamp_skip_test.go pins for Go.
-            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
-            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
-            case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+            case 36: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18:
+            case 19:
+            case 24:
+            case 29: return has( 16 ) ? ( offset += 16, true ) : false;
+            case 17:
+            case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
+            case 12:
+            case 13:
+            case 14:
+            case 16:
+            case 31:
+            case 32:
+            case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -910,9 +999,13 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
 {
     switch ( declared )
     {
-        case 3: case 4: case 5: return kind >= 2 && kind < declared;
+        case 3:
+        case 4:
+        case 5: return kind >= 2 && kind < declared;
         case 18: return kind >= 2 && kind <= 5;
-        case 7: case 8: case 9: return kind >= 6 && kind < declared;
+        case 7:
+        case 8:
+        case 9: return kind >= 6 && kind < declared;
         case 19: return kind >= 6 && kind <= 9;
         case 11: return kind == 10;
     }
@@ -926,11 +1019,30 @@ inline int64_t TableKindWidth( uint8_t kind )
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: return 1;
-        case 3: case 7: case 21: case 26: return 2;
-        case 4: case 8: case 10: case 22: case 27: return 4;
-        case 5: case 9: case 11: case 23: case 28: case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
-        case 18: case 19: case 24: case 29: return 16;
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
     }
     return 0;
 }
@@ -953,10 +1065,22 @@ inline bool TableReadUnsignedAt( TableReader & r, uint8_t kind, uint64_t & out )
 {
     switch ( kind )
     {
-        case 6: if ( !r.has( 1 ) ) { return false; } out = r.get8(); return true;
-        case 7: if ( !r.has( 2 ) ) { return false; } out = r.get16(); return true;
-        case 8: if ( !r.has( 4 ) ) { return false; } out = r.get32(); return true;
-        default: if ( !r.has( 8 ) ) { return false; } out = r.get64(); return true;
+        case 6:
+            if ( !r.has( 1 ) ) { return false; }
+            out = r.get8();
+            return true;
+        case 7:
+            if ( !r.has( 2 ) ) { return false; }
+            out = r.get16();
+            return true;
+        case 8:
+            if ( !r.has( 4 ) ) { return false; }
+            out = r.get32();
+            return true;
+        default:
+            if ( !r.has( 8 ) ) { return false; }
+            out = r.get64();
+            return true;
     }
 }
 
@@ -981,11 +1105,30 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
         uint64_t continuations;
         uint32_t code_point;
         if ( lead == 0 ) { return false; }
-        if ( lead < 0x80 ) { i++; continue; }
-        else if ( ( lead & 0xE0 ) == 0xC0 ) { continuations = 1; code_point = lead & 0x1F; }
-        else if ( ( lead & 0xF0 ) == 0xE0 ) { continuations = 2; code_point = lead & 0x0F; }
-        else if ( ( lead & 0xF8 ) == 0xF0 ) { continuations = 3; code_point = lead & 0x07; }
-        else { return false; }
+        if ( lead < 0x80 )
+        {
+            i++;
+            continue;
+        }
+        else if ( ( lead & 0xE0 ) == 0xC0 )
+        {
+            continuations = 1;
+            code_point = lead & 0x1F;
+        }
+        else if ( ( lead & 0xF0 ) == 0xE0 )
+        {
+            continuations = 2;
+            code_point = lead & 0x0F;
+        }
+        else if ( ( lead & 0xF8 ) == 0xF0 )
+        {
+            continuations = 3;
+            code_point = lead & 0x07;
+        }
+        else
+        {
+            return false;
+        }
         if ( i + continuations >= length ) { return false; }
         for ( uint64_t k = 1; k <= continuations; k++ )
         {
@@ -1114,7 +1257,13 @@ static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProb
 //   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
 //                     could not be walked to its own terminator. What it
 //                     decoded before that is kept, as everywhere on this wire.
-enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+enum TableOpenVerdict
+{
+    TableOpenOk,
+    TableOpenRefused,
+    TableOpenDamaged,
+    TableOpenBodyStopped
+};
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
@@ -1163,8 +1312,8 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // is touched at all.
     if ( table.count > 1 )
     {
-        uint64_t seen[ kTableProbeSlots ];
-        uint64_t used[ kTableProbeSlots / 64 ];
+        uint64_t seen[kTableProbeSlots];
+        uint64_t used[kTableProbeSlots / 64];
         for ( int32_t w = 0; w < kTableProbeSlots / 64; w++ ) { used[w] = 0; }
         for ( int64_t i = 0; i < table.count; i++ )
         {
@@ -1173,9 +1322,9 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
             for ( ;; )
             {
                 const uint64_t bit = 1ull << ( s & 63 );
-                if ( ( used[ s >> 6 ] & bit ) == 0 )
+                if ( ( used[s >> 6] & bit ) == 0 )
                 {
-                    used[ s >> 6 ] |= bit;
+                    used[s >> 6] |= bit;
                     seen[s] = id;
                     break;
                 }
@@ -1261,9 +1410,7 @@ static const int64_t kTableMessageEntriesHere = 75;
 // instead of one touch a byte, and the BITS ON THE WIRE do not move.
 inline uint64_t table_message_byteswap64( uint64_t v )
 {
-    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-         | ( v << 56 );
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull ) | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull ) | ( v << 56 );
 }
 
 inline uint64_t table_message_load64( const uint8_t * p )
@@ -1306,7 +1453,12 @@ struct TableBitWriter
     void put( uint64_t value, int64_t n )
     {
         if ( n <= 0 ) { return; }
-        if ( ( bits + n + 7 ) / 8 > capacity ) { overflow = true; bits += n; return; }
+        if ( ( bits + n + 7 ) / 8 > capacity )
+        {
+            overflow = true;
+            bits += n;
+            return;
+        }
         if ( n < 64 ) { value &= ( uint64_t( 1 ) << n ) - 1; } // a caller's high bits never leak
         const int64_t index = bits >> 3;
         const int64_t bit = bits & 7;
@@ -1336,7 +1488,12 @@ struct TableBitWriter
         if ( n <= 0 ) { return; }
         if ( ( bits & 7 ) == 0 )
         {
-            if ( ( bits >> 3 ) + n > capacity ) { overflow = true; bits += n * 8; return; }
+            if ( ( bits >> 3 ) + n > capacity )
+            {
+                overflow = true;
+                bits += n * 8;
+                return;
+            }
             memcpy( buffer + ( bits >> 3 ), data, (size_t) n );
             bits += n * 8;
             return;
@@ -1423,7 +1580,12 @@ struct TableBitReader
         return true;
     }
 
-    bool skip( int64_t n ) { if ( !has( n ) ) { return false; } offset += n; return true; }
+    bool skip( int64_t n )
+    {
+        if ( !has( n ) ) { return false; }
+        offset += n;
+        return true;
+    }
 
     // the pad to the next byte boundary is VERIFIED ZERO, which is the packet
     // wire's rule for the same reason (SPEC.md §4.3)
@@ -1443,7 +1605,11 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
     if ( max <= min ) { return 0; }
     uint64_t span = (uint64_t) ( max - min );
     int64_t n = 0;
-    while ( span > 0 ) { n++; span >>= 1; }
+    while ( span > 0 )
+    {
+        n++;
+        span >>= 1;
+    }
     return n;
 }
 
@@ -1496,10 +1662,23 @@ inline int64_t TableMessageKindBits( uint8_t kind )
 {
     switch ( kind )
     {
-        case 2: case 6: case 20: case 25: return 8;
-        case 3: case 7: case 21: case 26: return 16;
-        case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 8;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 16;
+        case 4:
+        case 8:
+        case 22:
+        case 27: return 32;
+        case 5:
+        case 9:
+        case 23:
+        case 28:
+        case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -1526,11 +1705,16 @@ inline bool TableMessageQuantization( float qmin, float qmax, float qres, float 
 // rounds to float32 BEFORE the add, which a compiler permitted to contract
 // would otherwise fuse into one rounding and move the wire.
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
-#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+w"( x ) )
 #elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
-#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+x"( x ) )
 #else
-#define TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float table_float_force_round_slot = ( x ); ( x ) = table_float_force_round_slot; } while ( 0 )
+#define TABLE_FLOAT_FORCE_ROUND( x ) \
+    do \
+    { \
+        volatile float table_float_force_round_slot = ( x ); \
+        ( x ) = table_float_force_round_slot; \
+    } while ( 0 )
 #endif
 
 // TableMessageQuantize is the writer's half: the index a value takes.
@@ -1578,7 +1762,7 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
     for ( int64_t shift = 0; at < size; shift += 7 )
     {
         if ( shift >= 64 ) { return false; }
-        const uint8_t by = in[ at++ ];
+        const uint8_t by = in[at++];
         if ( shift == 63 && by > 1 ) { return false; }
         value |= uint64_t( by & 0x7F ) << shift;
         if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
@@ -1590,9 +1774,18 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
 // or its element's, which is the one nesting this wire has.
 struct TableMessageShapeFacts
 {
-    uint8_t & packing; int64_t & value_bits; int64_t & base_lo; int64_t & base_hi;
-    float & qmin; float & qmax; float & qres; float & qdelta; uint32_t & qcount;
-    int64_t & min; int64_t & max; uint8_t & elem_kind;
+    uint8_t & packing;
+    int64_t & value_bits;
+    int64_t & base_lo;
+    int64_t & base_hi;
+    float & qmin;
+    float & qmax;
+    float & qres;
+    float & qdelta;
+    uint32_t & qcount;
+    int64_t & min;
+    int64_t & max;
+    uint8_t & elem_kind;
 };
 
 inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f );
@@ -1606,8 +1799,8 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
 {
     if ( at + 9 > size ) { return false; }
     entry = TableMessageEntry();
-    for ( int i = 0; i < 8; i++ ) { entry.id |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
-    entry.kind = in[ at + 8 ];
+    for ( int i = 0; i < 8; i++ ) { entry.id |= uint64_t( in[at + i] ) << ( 8 * i ); }
+    entry.kind = in[at + 8];
     at += 9;
     if ( !TableMessageKnownKind( entry.kind ) ) { return false; }
     // The parse lands in LOCALS and the entry keeps what a decode reads: the
@@ -1617,8 +1810,8 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
     float qmin = 0.0f, qmax = 0.0f, qres = 0.0f, qdelta = 0.0f;
     uint32_t qcount = 0;
     TableMessageShapeFacts own = { packing, bits, base_lo, base_hi,
-                                   qmin, qmax, qres, qdelta, qcount,
-                                   min, max, elem_kind };
+        qmin, qmax, qres, qdelta, qcount,
+        min, max, elem_kind };
     if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
     entry.packing = packing;
     entry.value_bits = (int16_t) TableMessageValueBits( entry.kind, packing, bits );
@@ -1637,8 +1830,8 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
         float elem_qmin = 0.0f, elem_qmax = 0.0f, elem_qres = 0.0f, elem_qdelta = 0.0f;
         uint32_t elem_qcount = 0;
         TableMessageShapeFacts elem = { elem_packing, elem_bits, elem_base_lo, elem_base_hi,
-                                        elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
-                                        elem_min, elem_max, inner_kind };
+            elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
+            elem_min, elem_max, inner_kind };
         if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
         entry.elem_packing = elem_packing;
         entry.elem_value_bits = (int16_t) TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits );
@@ -1665,7 +1858,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) || kind == 10 )
     {
         if ( at >= size ) { return false; }
-        f.packing = in[ at++ ];
+        f.packing = in[at++];
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
@@ -1675,22 +1868,29 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
             {
                 if ( at + 16 > size ) { return false; }
                 uint64_t lo = 0, hi = 0;
-                for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
-                for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[ at + 8 + i ] ) << ( 8 * i ); }
-                f.base_lo = (int64_t) lo; f.base_hi = (int64_t) hi;
+                for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[at + i] ) << ( 8 * i ); }
+                for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[at + 8 + i] ) << ( 8 * i ); }
+                f.base_lo = (int64_t) lo;
+                f.base_hi = (int64_t) hi;
                 at += 16;
                 return true;
             }
             if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
             if ( kind >= 2 && kind <= 5 ) { f.base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); } // zigzag
-            else { f.base_lo = (int64_t) v; }                                                       // the unsigned domain, whole
+            else
+            {
+                f.base_lo = (int64_t) v;
+            }                                                       // the unsigned domain, whole
             return true;
         }
         if ( f.packing == 2 && kind == 10 )
         {
             if ( at + 12 > size ) { return false; }
             uint32_t raw[3] = { 0, 0, 0 };
-            for ( int k = 0; k < 3; k++ ) { for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[ at + 4 * k + i ] ) << ( 8 * i ); } }
+            for ( int k = 0; k < 3; k++ )
+            {
+                for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[at + 4 * k + i] ) << ( 8 * i ); }
+            }
             at += 12;
             memcpy( &f.qmin, &raw[0], 4 );
             memcpy( &f.qmax, &raw[1], 4 );
@@ -1723,7 +1923,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( (int64_t) v < f.min ) { return false; }
         f.max = (int64_t) v;
         if ( at >= size ) { return false; }
-        f.elem_kind = in[ at++ ];
+        f.elem_kind = in[at++];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
         // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
         // announcement, rather than at the skip that would meet it (§3.3): no
@@ -1749,10 +1949,22 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
         if ( packing == 1 ) { return value_bits; }
         switch ( kind )
         {
-            case 2: case 6: case 20: case 25: return 8;
-            case 3: case 7: case 21: case 26: return 16;
-            case 4: case 8: case 22: case 27: return 32;
-            case 5: case 9: case 23: case 28: return 64;
+            case 2:
+            case 6:
+            case 20:
+            case 25: return 8;
+            case 3:
+            case 7:
+            case 21:
+            case 26: return 16;
+            case 4:
+            case 8:
+            case 22:
+            case 27: return 32;
+            case 5:
+            case 9:
+            case 23:
+            case 28: return 64;
             default: return 128;
         }
     }
@@ -1786,82 +1998,907 @@ static const int64_t kTableAnnounceBytes = 901;
 // group the linker discards strands any surviving reference to it. One
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
-inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
-    0x01, 0x01, 0x09, 0x24, 0x69, 0x6a, 0xfd, 0x26, 0xca, 0x28, 0x9f, 0x02,
-    0x0e, 0xdd, 0x06, 0x06, 0xda, 0x06, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
-    0xc9, 0x3d, 0x06, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
-    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b, 0x36,
-    0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x08, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd,
-    0xe4, 0x7c, 0x11, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c,
-    0x20, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0d, 0xec, 0x10,
-    0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0x10, 0xec, 0x10, 0x5b, 0x36,
-    0x19, 0x4a, 0xc9, 0x3d, 0x03, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a,
-    0xc9, 0x3d, 0x08, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
-    0x0e, 0x02, 0x02, 0x11, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c,
-    0x0e, 0x03, 0x03, 0x04, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9,
-    0x3d, 0x04, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e,
-    0x00, 0x0a, 0x06, 0x00, 0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d,
-    0x07, 0x00, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x21, 0x06,
-    0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0c, 0x10, 0x38, 0x81,
-    0x0a, 0xf1, 0x1f, 0x06, 0xa7, 0xa3, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
-    0x0f, 0x0d, 0xe9, 0xea, 0x71, 0x6f, 0x0f, 0x01, 0x82, 0xbf, 0x04, 0x00,
-    0x5b, 0x92, 0xde, 0x9c, 0xab, 0xea, 0xe2, 0x14, 0x0e, 0x00, 0xff, 0xff,
-    0xff, 0xff, 0x0f, 0x0d, 0x90, 0x10, 0x39, 0x5e, 0x67, 0x94, 0xd5, 0x79,
-    0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea, 0x0c, 0xe8, 0x30,
-    0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x02, 0x11, 0xaf, 0x5c, 0xca, 0x21,
-    0x19, 0xaa, 0x08, 0x1a, 0x0d, 0x02, 0xfc, 0xa1, 0xce, 0xa2, 0x59, 0x64,
-    0x1f, 0x0e, 0x00, 0x03, 0x0d, 0x5d, 0xf1, 0x50, 0x95, 0xf2, 0x1f, 0x55,
-    0x70, 0x10, 0x02, 0x0d, 0xb5, 0xcc, 0x70, 0x05, 0x19, 0xc0, 0x56, 0xe7,
-    0x0f, 0x9f, 0x76, 0x48, 0x6a, 0xa7, 0xda, 0x01, 0xab, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x4f, 0x81, 0x68, 0xf2, 0xff, 0x28, 0xb7,
-    0xaf, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xec, 0x10, 0x5b,
-    0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x0c, 0xac, 0x02, 0x29, 0xbe, 0xb7, 0x2b,
-    0x19, 0xea, 0x7d, 0x2b, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d,
-    0xec, 0x10, 0x5b, 0x36, 0x19, 0x4a, 0xc9, 0x3d, 0x09, 0x00, 0x44, 0xad,
-    0xe1, 0x13, 0x49, 0x5c, 0x4a, 0x29, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff,
-    0x0f, 0x0d, 0x04, 0x34, 0x8d, 0xe9, 0x46, 0x4c, 0x02, 0x7b, 0x0e, 0x00,
-    0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x5d, 0x81, 0xb3, 0xa4, 0xc4, 0xa0,
-    0xdf, 0x63, 0x11, 0x70, 0xf0, 0xf5, 0xf0, 0xb3, 0xa1, 0x4f, 0x29, 0x0e,
-    0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xce, 0xe3, 0xda, 0x5f, 0x6c,
-    0xdc, 0xd8, 0x6d, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x74,
-    0xa2, 0x79, 0x44, 0x8e, 0xe2, 0xe5, 0xb1, 0x04, 0x00, 0x46, 0x56, 0xee,
-    0xb1, 0x6b, 0x2e, 0x8c, 0xe6, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x53, 0xa2, 0x45, 0x08, 0x2c, 0xa7, 0xb2, 0xc5, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0x16, 0x68, 0x56, 0xb2, 0x8a, 0xfc, 0x7d,
-    0x43, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea, 0x0c, 0xe8,
-    0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0x04, 0x0d, 0x86, 0x1b, 0x63,
-    0x8e, 0xba, 0xad, 0xbc, 0xc4, 0x0c, 0x40, 0xcf, 0xa9, 0x8b, 0x28, 0xb5,
-    0xd4, 0x69, 0x7f, 0x04, 0x00, 0x61, 0xb0, 0x72, 0x30, 0x30, 0x48, 0x65,
-    0x7f, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0xea, 0x0c, 0xe8,
-    0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x10, 0x02, 0x04, 0x00, 0xbd, 0x0f, 0x47,
-    0x9c, 0x60, 0x32, 0x53, 0x75, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0x42, 0x4f, 0x4f, 0x30, 0x0d, 0x39, 0x84, 0x1c, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x0d, 0xca, 0x5c, 0x71, 0x55, 0xf6, 0xf1, 0x33,
-    0xa6, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x0d, 0x14, 0x6d, 0x5b,
-    0x5a, 0xad, 0x50, 0x42, 0x12, 0x0e, 0x00, 0xff, 0xff, 0xff, 0xff, 0x0f,
-    0x0d, 0xea, 0x0c, 0xe8, 0x30, 0x94, 0xfd, 0xe4, 0x7c, 0x0e, 0x00, 0xff,
-    0xff, 0xff, 0xff, 0x0f, 0x11, 0x8b, 0xe1, 0x45, 0xc2, 0xcb, 0x04, 0xda,
-    0x4f, 0x00, 0x87, 0x94, 0xb6, 0x96, 0xa7, 0x62, 0xb5, 0xa0, 0x00, 0x31,
-    0x63, 0x3e, 0xd6, 0x95, 0xbb, 0xc2, 0xd5, 0x0d, 0x07, 0xb2, 0x52, 0x16,
-    0x4e, 0x19, 0x4d, 0xfd, 0x04, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0x00, 0xe4, 0x4f, 0x1c, 0x4f, 0x47, 0xc0, 0x2e, 0x2f, 0x00,
-    0x58, 0xfc, 0xaf, 0xfa, 0xd8, 0xe0, 0x4b, 0x70, 0x00, 0xc7, 0xd4, 0x7b,
-    0x26, 0xb0, 0x9d, 0x29, 0x5f, 0x00, 0x52, 0x51, 0x2b, 0x1a, 0xc0, 0x1d,
-    0x78, 0x1f, 0x00, 0x83, 0x39, 0x21, 0xa6, 0x7b, 0x20, 0x6c, 0x81, 0x00,
-    0x51, 0x86, 0x08, 0x60, 0x00, 0x94, 0x5b, 0xc8, 0x00, 0x4a, 0x0d, 0xe3,
-    0x6f, 0xdc, 0xd0, 0x31, 0x32, 0x00, 0x52, 0x68, 0x82, 0x60, 0x73, 0xfe,
-    0x6f, 0x03, 0x00, 0xf8, 0x36, 0xa0, 0x45, 0xf0, 0x0a, 0x13, 0xe8, 0x00,
-    0xaf, 0x79, 0xa2, 0xfb, 0x0a, 0xe0, 0x53, 0x0a, 0x00, 0x06, 0x68, 0x47,
-    0x98, 0xd1, 0xa1, 0xcf, 0x52, 0x00, 0x86, 0x70, 0x33, 0xab, 0x0d, 0x20,
-    0x04, 0x14, 0x00, 0xfb, 0x06, 0xc9, 0xfe, 0x19, 0xe1, 0x13, 0xa0, 0x00,
-    0xbb, 0xc2, 0xc8, 0x70, 0x2b, 0xdd, 0x7b, 0xea, 0x00, 0x0d, 0x4f, 0xb1,
-    0xd1, 0xd2, 0x52, 0x82, 0x75, 0x00, 0xa6, 0xd4, 0x21, 0x39, 0xcd, 0x15,
-    0x6b, 0xf9, 0x00, 0x76, 0xba, 0x6b, 0x24, 0xf1, 0xe3, 0x3d, 0x03, 0x00,
-    0x91, 0x0a, 0x55, 0x60, 0xf7, 0xa2, 0x07, 0xec, 0x00, 0x5e, 0xb4, 0x05,
-    0x1b, 0xfb, 0xf5, 0x92, 0x24, 0x00, 0x50, 0xb1, 0x8f, 0xa7, 0x74, 0x87,
-    0x57, 0xb4, 0x00, 0x16, 0xa3, 0x71, 0x35, 0x4e, 0x96, 0x13, 0xb4, 0x00,
-    0x00, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfd, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
+    0x01,
+    0x01,
+    0x09,
+    0x24,
+    0x69,
+    0x6a,
+    0xfd,
+    0x26,
+    0xca,
+    0x28,
+    0x9f,
+    0x02,
+    0x0e,
+    0xdd,
+    0x06,
+    0x06,
+    0xda,
+    0x06,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x06,
+    0x00,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x0c,
+    0x08,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x11,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x0c,
+    0x20,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0d,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x0c,
+    0x10,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x03,
+    0x00,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x08,
+    0x00,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x02,
+    0x02,
+    0x11,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x03,
+    0x03,
+    0x04,
+    0x00,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x04,
+    0x00,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x00,
+    0x0a,
+    0x06,
+    0x00,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x07,
+    0x00,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x21,
+    0x06,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0c,
+    0x10,
+    0x38,
+    0x81,
+    0x0a,
+    0xf1,
+    0x1f,
+    0x06,
+    0xa7,
+    0xa3,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xe9,
+    0xea,
+    0x71,
+    0x6f,
+    0x0f,
+    0x01,
+    0x82,
+    0xbf,
+    0x04,
+    0x00,
+    0x5b,
+    0x92,
+    0xde,
+    0x9c,
+    0xab,
+    0xea,
+    0xe2,
+    0x14,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x90,
+    0x10,
+    0x39,
+    0x5e,
+    0x67,
+    0x94,
+    0xd5,
+    0x79,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x00,
+    0x02,
+    0x11,
+    0xaf,
+    0x5c,
+    0xca,
+    0x21,
+    0x19,
+    0xaa,
+    0x08,
+    0x1a,
+    0x0d,
+    0x02,
+    0xfc,
+    0xa1,
+    0xce,
+    0xa2,
+    0x59,
+    0x64,
+    0x1f,
+    0x0e,
+    0x00,
+    0x03,
+    0x0d,
+    0x5d,
+    0xf1,
+    0x50,
+    0x95,
+    0xf2,
+    0x1f,
+    0x55,
+    0x70,
+    0x10,
+    0x02,
+    0x0d,
+    0xb5,
+    0xcc,
+    0x70,
+    0x05,
+    0x19,
+    0xc0,
+    0x56,
+    0xe7,
+    0x0f,
+    0x9f,
+    0x76,
+    0x48,
+    0x6a,
+    0xa7,
+    0xda,
+    0x01,
+    0xab,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x4f,
+    0x81,
+    0x68,
+    0xf2,
+    0xff,
+    0x28,
+    0xb7,
+    0xaf,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x0c,
+    0xac,
+    0x02,
+    0x29,
+    0xbe,
+    0xb7,
+    0x2b,
+    0x19,
+    0xea,
+    0x7d,
+    0x2b,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xec,
+    0x10,
+    0x5b,
+    0x36,
+    0x19,
+    0x4a,
+    0xc9,
+    0x3d,
+    0x09,
+    0x00,
+    0x44,
+    0xad,
+    0xe1,
+    0x13,
+    0x49,
+    0x5c,
+    0x4a,
+    0x29,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x04,
+    0x34,
+    0x8d,
+    0xe9,
+    0x46,
+    0x4c,
+    0x02,
+    0x7b,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x5d,
+    0x81,
+    0xb3,
+    0xa4,
+    0xc4,
+    0xa0,
+    0xdf,
+    0x63,
+    0x11,
+    0x70,
+    0xf0,
+    0xf5,
+    0xf0,
+    0xb3,
+    0xa1,
+    0x4f,
+    0x29,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xce,
+    0xe3,
+    0xda,
+    0x5f,
+    0x6c,
+    0xdc,
+    0xd8,
+    0x6d,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x74,
+    0xa2,
+    0x79,
+    0x44,
+    0x8e,
+    0xe2,
+    0xe5,
+    0xb1,
+    0x04,
+    0x00,
+    0x46,
+    0x56,
+    0xee,
+    0xb1,
+    0x6b,
+    0x2e,
+    0x8c,
+    0xe6,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x53,
+    0xa2,
+    0x45,
+    0x08,
+    0x2c,
+    0xa7,
+    0xb2,
+    0xc5,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x16,
+    0x68,
+    0x56,
+    0xb2,
+    0x8a,
+    0xfc,
+    0x7d,
+    0x43,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x00,
+    0x04,
+    0x0d,
+    0x86,
+    0x1b,
+    0x63,
+    0x8e,
+    0xba,
+    0xad,
+    0xbc,
+    0xc4,
+    0x0c,
+    0x40,
+    0xcf,
+    0xa9,
+    0x8b,
+    0x28,
+    0xb5,
+    0xd4,
+    0x69,
+    0x7f,
+    0x04,
+    0x00,
+    0x61,
+    0xb0,
+    0x72,
+    0x30,
+    0x30,
+    0x48,
+    0x65,
+    0x7f,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x10,
+    0x02,
+    0x04,
+    0x00,
+    0xbd,
+    0x0f,
+    0x47,
+    0x9c,
+    0x60,
+    0x32,
+    0x53,
+    0x75,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x42,
+    0x4f,
+    0x4f,
+    0x30,
+    0x0d,
+    0x39,
+    0x84,
+    0x1c,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xca,
+    0x5c,
+    0x71,
+    0x55,
+    0xf6,
+    0xf1,
+    0x33,
+    0xa6,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0x14,
+    0x6d,
+    0x5b,
+    0x5a,
+    0xad,
+    0x50,
+    0x42,
+    0x12,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x0d,
+    0xea,
+    0x0c,
+    0xe8,
+    0x30,
+    0x94,
+    0xfd,
+    0xe4,
+    0x7c,
+    0x0e,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x0f,
+    0x11,
+    0x8b,
+    0xe1,
+    0x45,
+    0xc2,
+    0xcb,
+    0x04,
+    0xda,
+    0x4f,
+    0x00,
+    0x87,
+    0x94,
+    0xb6,
+    0x96,
+    0xa7,
+    0x62,
+    0xb5,
+    0xa0,
+    0x00,
+    0x31,
+    0x63,
+    0x3e,
+    0xd6,
+    0x95,
+    0xbb,
+    0xc2,
+    0xd5,
+    0x0d,
+    0x07,
+    0xb2,
+    0x52,
+    0x16,
+    0x4e,
+    0x19,
+    0x4d,
+    0xfd,
+    0x04,
+    0x00,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x00,
+    0xe4,
+    0x4f,
+    0x1c,
+    0x4f,
+    0x47,
+    0xc0,
+    0x2e,
+    0x2f,
+    0x00,
+    0x58,
+    0xfc,
+    0xaf,
+    0xfa,
+    0xd8,
+    0xe0,
+    0x4b,
+    0x70,
+    0x00,
+    0xc7,
+    0xd4,
+    0x7b,
+    0x26,
+    0xb0,
+    0x9d,
+    0x29,
+    0x5f,
+    0x00,
+    0x52,
+    0x51,
+    0x2b,
+    0x1a,
+    0xc0,
+    0x1d,
+    0x78,
+    0x1f,
+    0x00,
+    0x83,
+    0x39,
+    0x21,
+    0xa6,
+    0x7b,
+    0x20,
+    0x6c,
+    0x81,
+    0x00,
+    0x51,
+    0x86,
+    0x08,
+    0x60,
+    0x00,
+    0x94,
+    0x5b,
+    0xc8,
+    0x00,
+    0x4a,
+    0x0d,
+    0xe3,
+    0x6f,
+    0xdc,
+    0xd0,
+    0x31,
+    0x32,
+    0x00,
+    0x52,
+    0x68,
+    0x82,
+    0x60,
+    0x73,
+    0xfe,
+    0x6f,
+    0x03,
+    0x00,
+    0xf8,
+    0x36,
+    0xa0,
+    0x45,
+    0xf0,
+    0x0a,
+    0x13,
+    0xe8,
+    0x00,
+    0xaf,
+    0x79,
+    0xa2,
+    0xfb,
+    0x0a,
+    0xe0,
+    0x53,
+    0x0a,
+    0x00,
+    0x06,
+    0x68,
+    0x47,
+    0x98,
+    0xd1,
+    0xa1,
+    0xcf,
+    0x52,
+    0x00,
+    0x86,
+    0x70,
+    0x33,
+    0xab,
+    0x0d,
+    0x20,
+    0x04,
+    0x14,
+    0x00,
+    0xfb,
+    0x06,
+    0xc9,
+    0xfe,
+    0x19,
+    0xe1,
+    0x13,
+    0xa0,
+    0x00,
+    0xbb,
+    0xc2,
+    0xc8,
+    0x70,
+    0x2b,
+    0xdd,
+    0x7b,
+    0xea,
+    0x00,
+    0x0d,
+    0x4f,
+    0xb1,
+    0xd1,
+    0xd2,
+    0x52,
+    0x82,
+    0x75,
+    0x00,
+    0xa6,
+    0xd4,
+    0x21,
+    0x39,
+    0xcd,
+    0x15,
+    0x6b,
+    0xf9,
+    0x00,
+    0x76,
+    0xba,
+    0x6b,
+    0x24,
+    0xf1,
+    0xe3,
+    0x3d,
+    0x03,
+    0x00,
+    0x91,
+    0x0a,
+    0x55,
+    0x60,
+    0xf7,
+    0xa2,
+    0x07,
+    0xec,
+    0x00,
+    0x5e,
+    0xb4,
+    0x05,
+    0x1b,
+    0xfb,
+    0xf5,
+    0x92,
+    0x24,
+    0x00,
+    0x50,
+    0xb1,
+    0x8f,
+    0xa7,
+    0x74,
+    0x87,
+    0x57,
+    0xb4,
+    0x00,
+    0x16,
+    0xa3,
+    0x71,
+    0x35,
+    0x4e,
+    0x96,
+    0x13,
+    0xb4,
+    0x00,
+    0x00,
+    0xfe,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xfd,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0xff,
+    0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
     0x00,
 };
 
@@ -1913,7 +2950,7 @@ struct TableVocabulary
 // ARRAY INDEX into the caller's resolved storage, no parse and no branch.
 inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary & vocabulary, uint64_t slot )
 {
-    return vocabulary.entries[ slot - 1 ];
+    return vocabulary.entries[slot - 1];
 }
 
 // AnnounceRead reads an announcement into one direction's vocabulary (§3.3).
@@ -1950,24 +2987,40 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
 
 inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to )
 {
-    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( bytes < 1 )
+    {
+        to->malformed = true;
+        return false;
+    }
     if ( buffer[0] != kTableWireForm )
     {
         to->refused = true;
         to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         return false;
     }
-    if ( bytes < 9 ) { to->malformed = true; return false; }
+    if ( bytes < 9 )
+    {
+        to->malformed = true;
+        return false;
+    }
     TableIdTable table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
     if ( verdict != TableOpenOk )
     {
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; to->reason = newer_form; }
+        else
+        {
+            to->refused = true;
+            to->reason = newer_form;
+        }
         return false;
     }
-    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        to->malformed = true;
+        return false;
+    }
     TableReader r( buffer + 1, body_bytes, to, &table );
     uint64_t version = 0;
     const uint8_t * words = NULL;
@@ -1976,14 +3029,26 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.getleb( ref ) ) { to->malformed = true; return false; }
+        if ( !r.getleb( ref ) )
+        {
+            to->malformed = true;
+            return false;
+        }
         if ( ref == 0 ) { break; }
-        if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
+        if ( ref > (uint64_t) table.count || !r.has( 1 ) )
+        {
+            to->malformed = true;
+            return false;
+        }
         const uint64_t id = table.at( ref );
         const uint8_t kind = r.get8();
         if ( id == kTableBuildVersionFieldId )
         {
-            if ( kind != 9 || !r.has( 8 ) ) { to->malformed = true; return false; }
+            if ( kind != 9 || !r.has( 8 ) )
+            {
+                to->malformed = true;
+                return false;
+            }
             version = r.get64();
             // THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so
             // that a refusal on this connection NAMES IT (§3.3). It is not the
@@ -1997,23 +3062,48 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             // kind 14 over element kind 6, which is §3's spelling for an
             // opaque run of bytes
             uint64_t framed = 0;
-            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) ) { to->malformed = true; return false; }
+            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) )
+            {
+                to->malformed = true;
+                return false;
+            }
             const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
             r.offset = end;
-            if ( begin >= end || r.buffer[ begin ] != 6 ) { to->malformed = true; return false; }
+            if ( begin >= end || r.buffer[begin] != 6 )
+            {
+                to->malformed = true;
+                return false;
+            }
             int64_t at = begin + 1;
             uint64_t length = 0;
-            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
-            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end )
+            {
+                to->malformed = true;
+                return false;
+            }
+            if ( (int64_t) length > vocabulary.max_bytes )
+            {
+                to->refused = true;
+                to->reason = vocabulary_too_large;
+                return false;
+            }
             words = r.buffer + at;
             words_bytes = (int64_t) length;
             seen_vocabulary++;
             continue;
         }
         to->unknown++;
-        if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+        if ( !r.skip( kind ) )
+        {
+            to->malformed = true;
+            return false;
+        }
     }
-    if ( seen_version != 1 || seen_vocabulary != 1 ) { to->malformed = true; return false; }
+    if ( seen_version != 1 || seen_vocabulary != 1 )
+    {
+        to->malformed = true;
+        return false;
+    }
 
     // THE ENTRIES, RESOLVED ONCE into the caller's storage (§3.3): every width
     // is checked here and never again, and no body after this parses a byte of
@@ -2022,16 +3112,36 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     int64_t at = 0, count = 0, node_table_slots = 0;
     while ( at < words_bytes )
     {
-        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
-        TableMessageEntry & parsed = vocabulary.entries[ count ];
+        if ( count >= vocabulary.max_entries )
+        {
+            to->refused = true;
+            to->reason = vocabulary_too_large;
+            return false;
+        }
+        TableMessageEntry & parsed = vocabulary.entries[count];
         const int64_t began = at;
-        if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
+        if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) )
+        {
+            to->malformed = true;
+            return false;
+        }
         // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
         // own two never take a slot, and the node-table id takes exactly one,
         // so a vocabulary carrying either of the first or a SECOND node-table
         // id is malformed whole and sets nothing
-        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
-        if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
+        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId )
+        {
+            to->malformed = true;
+            return false;
+        }
+        if ( parsed.id == kTableNodeTableFieldId )
+        {
+            if ( node_table_slots++ > 0 )
+            {
+                to->malformed = true;
+                return false;
+            }
+        }
         // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
         // agree on the id, the kind and every fact of the shape are malformed
         // (§3.3): no writer this wire has produces one, and a reader that took
@@ -2052,8 +3162,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         const int64_t length = at - began;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
-            const TableMessageEntry & other = vocabulary.entries[ seen ];
-            if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 ) { to->malformed = true; return false; }
+            const TableMessageEntry & other = vocabulary.entries[seen];
+            if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 )
+            {
+                to->malformed = true;
+                return false;
+            }
         }
         parsed.min = began;
         parsed.max = at;
@@ -2063,7 +3177,11 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     at = 0;
     for ( int64_t slot = 0; slot < count; slot++ )
     {
-        if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[ slot ] ) ) { to->malformed = true; return false; }
+        if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
+        {
+            to->malformed = true;
+            return false;
+        }
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
@@ -2142,7 +3260,8 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     if ( depth > 128 ) { return false; }
     switch ( entry.elem_kind )
     {
-        case 0: case 32: return true;
+        case 0:
+        case 32: return true;
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
         case 30: return TableMessageSkipVariant( r, vocabulary );
         case 17: return index_bits > 0 && r.skip( index_bits );
@@ -2173,8 +3292,12 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         // a nested body, a union arm, an enum's variant and a node index each
         // RESOLVE something, and a resolve that contradicts its position is
         // damage this reader must still find, so they are walked
-        case 13: case 15: case 30: case 17: return -1;
-        case 0: case 32: elem = 0; break;
+        case 13:
+        case 15:
+        case 30:
+        case 17: return -1;
+        case 0:
+        case 32: elem = 0; break;
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
@@ -2199,7 +3322,8 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     if ( depth > 128 ) { return false; }
     switch ( entry.kind )
     {
-        case 0: case 32: return true;              // a name, and a payload-free arm
+        case 0:
+        case 32: return true;              // a name, and a payload-free arm
         case 30: return TableMessageSkipVariant( r, vocabulary );
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
         case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
@@ -2233,7 +3357,8 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 14: case 16:
+        case 14:
+        case 16:
         {
             uint64_t n = (uint64_t) entry.min;
             const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
@@ -2354,12 +3479,30 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 ) { br.report->malformed = true; return -1; }
-    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
-    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = no_vocabulary; return -1; }
+    if ( bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !vocabulary.announced )
+    {
+        br.report->refused = true;
+        br.report->reason = no_vocabulary;
+        return -1;
+    }
     br.r = TableBitReader( buffer + 1, bytes - 1 );
     uint64_t count = 0;
-    if ( !br.r.get( count, 8 ) ) { br.report->malformed = true; return -1; }
+    if ( !br.r.get( count, 8 ) )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
     br.remaining = (int64_t) count + 1;
     return br.remaining;
 }
@@ -2379,7 +3522,11 @@ inline void TableMessageRefuseBatch( TableReport * report )
 // left over describes no batch this reader can name (§3.3).
 inline bool TableMessageBatchClose( TableMessageBatchReader & br )
 {
-    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits ) { br.report->malformed = true; return false; }
+    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits )
+    {
+        br.report->malformed = true;
+        return false;
+    }
     return true;
 }
 
@@ -2493,10 +3640,30 @@ struct TableKeyed
     ConstIterator end() const { return ConstIterator{ slots, kSlots }; }
 };
 
-inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
-inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
-inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
-inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+inline float table_bits_to_float( uint32_t bits )
+{
+    float f;
+    memcpy( &f, &bits, 4 );
+    return f;
+}
+inline uint32_t table_float_to_bits( float f )
+{
+    uint32_t b;
+    memcpy( &b, &f, 4 );
+    return b;
+}
+inline double table_bits_to_double( uint64_t bits )
+{
+    double d;
+    memcpy( &d, &bits, 8 );
+    return d;
+}
+inline uint64_t table_double_to_bits( double d )
+{
+    uint64_t b;
+    memcpy( &b, &d, 8 );
+    return b;
+}
 // the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
 // never written, and measure answers -1 for it as save answers false
 inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }
@@ -2511,8 +3678,8 @@ inline bool TableFloatFinite( double d ) { return TableBitsFinite64( table_doubl
 #define SCHEMA_HAS_FIXED_REASON_NAMES 1
 struct TableFixedReason
 {
-    static constexpr TableRefuseReason layout_unknown    = TableRefuseReason::layout_unknown;
-    static constexpr TableRefuseReason truncated         = TableRefuseReason::truncated;
+    static constexpr TableRefuseReason layout_unknown = TableRefuseReason::layout_unknown;
+    static constexpr TableRefuseReason truncated = TableRefuseReason::truncated;
     static constexpr TableRefuseReason reserved_not_zero = TableRefuseReason::reserved_not_zero;
 };
 
@@ -2534,7 +3701,7 @@ constexpr uint8_t kTableFixedForm = 3;
 // header names the layout ONCE for the file, and a record names the layout it
 // was stamped by.
 constexpr int64_t kTableFixedHeaderBytes = 16;
-constexpr int64_t kTableFixedHashAt     = 8;
+constexpr int64_t kTableFixedHashAt = 8;
 
 
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries copy, count, text and
@@ -2546,22 +3713,22 @@ constexpr int64_t kTableFixedHashAt     = 8;
 // memcpy into a C++ bool never lands 0x02 as an object holding 2 (fix 2).
 enum : uint8_t
 {
-    kTableFixedCopy    = 0, // move size bytes
-    kTableFixedCount   = 1, // a count: clamp it to the reader's own bound
-    kTableFixedText    = 2, // a length, then the units, then terminate
+    kTableFixedCopy = 0, // move size bytes
+    kTableFixedCount = 1, // a count: clamp it to the reader's own bound
+    kTableFixedText = 2, // a length, then the units, then terminate
     kTableFixedOrdinal = 3, // a variant ordinal, remapped through the plan's own table
-    kTableFixedWiden   = 4, // a narrower source into a wider destination
-    kTableFixedConst   = 5, // a constant this reader's own storage takes: a remapped union tag
-    kTableFixedWidenF  = 6, // f32 into f64, §4's float rung
+    kTableFixedWiden = 4, // a narrower source into a wider destination
+    kTableFixedConst = 5, // a constant this reader's own storage takes: a remapped union tag
+    kTableFixedWidenF = 6, // f32 into f64, §4's float rung
     kTableFixedPresent = 7, // T into ?T: unguarded constant 1 into the present byte (bill §12.8)
-    kTableFixedBool    = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
+    kTableFixedBool = 8, // a bool or a present flag: land byte != 0 as 1, never verbatim
 };
 
 // meta on a kTableFixedText entry
 enum : uint8_t
 {
-    kTableFixedTextUtf8  = 1,
-    kTableFixedTextWide  = 2,
+    kTableFixedTextUtf8 = 1,
+    kTableFixedTextWide = 2,
     kTableFixedTextBytes = 3,
 };
 
@@ -2603,7 +3770,7 @@ constexpr uint32_t kTableFixedNoGuard = 0xFFFFFFFFu;
 #if defined( _MSC_VER )
 #define TABLE_FIXED_INLINE __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define TABLE_FIXED_INLINE inline __attribute__(( always_inline ))
+#define TABLE_FIXED_INLINE inline __attribute__( ( always_inline ) )
 #else
 #define TABLE_FIXED_INLINE inline
 #endif
@@ -2705,11 +3872,31 @@ struct TableFixedEntry
 // ---- the little-endian moves -----------------------------------------------
 
 inline void TableFixedPut8( uint8_t * b, uint8_t v ) { b[0] = v; }
-inline void TableFixedPut16( uint8_t * b, uint16_t v ) { b[0] = (uint8_t)( v ); b[1] = (uint8_t)( v >> 8 ); }
-inline void TableFixedPut32( uint8_t * b, uint32_t v ) { for ( int i = 0; i < 4; ++i ) { b[i] = (uint8_t)( v >> ( 8 * i ) ); } }
-inline void TableFixedPut64( uint8_t * b, uint64_t v ) { for ( int i = 0; i < 8; ++i ) { b[i] = (uint8_t)( v >> ( 8 * i ) ); } }
-inline void TableFixedPutF32( uint8_t * b, float v ) { uint32_t w; memcpy( &w, &v, 4 ); TableFixedPut32( b, w ); }
-inline void TableFixedPutF64( uint8_t * b, double v ) { uint64_t w; memcpy( &w, &v, 8 ); TableFixedPut64( b, w ); }
+inline void TableFixedPut16( uint8_t * b, uint16_t v )
+{
+    b[0] = (uint8_t) ( v );
+    b[1] = (uint8_t) ( v >> 8 );
+}
+inline void TableFixedPut32( uint8_t * b, uint32_t v )
+{
+    for ( int i = 0; i < 4; ++i ) { b[i] = (uint8_t) ( v >> ( 8 * i ) ); }
+}
+inline void TableFixedPut64( uint8_t * b, uint64_t v )
+{
+    for ( int i = 0; i < 8; ++i ) { b[i] = (uint8_t) ( v >> ( 8 * i ) ); }
+}
+inline void TableFixedPutF32( uint8_t * b, float v )
+{
+    uint32_t w;
+    memcpy( &w, &v, 4 );
+    TableFixedPut32( b, w );
+}
+inline void TableFixedPutF64( uint8_t * b, double v )
+{
+    uint64_t w;
+    memcpy( &w, &v, 8 );
+    TableFixedPut64( b, w );
+}
 inline uint32_t TableFixedGet32( const uint8_t * b )
 {
     uint32_t v = 0;
@@ -2770,18 +3957,24 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
         if ( n >= 8 )
         {
             uint64_t a, b;
-            memcpy( &a, s, 8 ); memcpy( &b, s + n - 8, 8 );
-            memcpy( d, &a, 8 ); memcpy( d + n - 8, &b, 8 );
+            memcpy( &a, s, 8 );
+            memcpy( &b, s + n - 8, 8 );
+            memcpy( d, &a, 8 );
+            memcpy( d + n - 8, &b, 8 );
         }
         else if ( n >= 4 )
         {
             uint32_t a, b;
-            memcpy( &a, s, 4 ); memcpy( &b, s + n - 4, 4 );
-            memcpy( d, &a, 4 ); memcpy( d + n - 4, &b, 4 );
+            memcpy( &a, s, 4 );
+            memcpy( &b, s + n - 4, 4 );
+            memcpy( d, &a, 4 );
+            memcpy( d + n - 4, &b, 4 );
         }
         else if ( n > 0 )
         {
-            d[0] = s[0]; d[n >> 1] = s[n >> 1]; d[n - 1] = s[n - 1];
+            d[0] = s[0];
+            d[n >> 1] = s[n >> 1];
+            d[n - 1] = s[n - 1];
         }
         return;
     }
@@ -2796,8 +3989,10 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
     if ( n <= 32 )
     {
         uint64_t w[2];
-        memcpy( w, s, 16 ); memcpy( d, w, 16 );
-        memcpy( w, s + n - 16, 16 ); memcpy( d + n - 16, w, 16 );
+        memcpy( w, s, 16 );
+        memcpy( d, w, 16 );
+        memcpy( w, s + n - 16, 16 );
+        memcpy( d + n - 16, w, 16 );
         return;
     }
     if ( n <= 64 )
@@ -2805,9 +4000,12 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
         // n >= 33 here, so n - 32 is at least 1 and the tail move begins
         // inside the run, exactly as the two moves in front of it do.
         uint64_t w[4];
-        memcpy( w, s, 16 ); memcpy( d, w, 16 );
-        memcpy( w, s + 16, 16 ); memcpy( d + 16, w, 16 );
-        memcpy( w, s + n - 32, 32 ); memcpy( d + n - 32, w, 32 );
+        memcpy( w, s, 16 );
+        memcpy( d, w, 16 );
+        memcpy( w, s + 16, 16 );
+        memcpy( d + 16, w, 16 );
+        memcpy( w, s + n - 32, 32 );
+        memcpy( d + n - 32, w, 32 );
         return;
     }
     memcpy( d, s, n );
@@ -2819,8 +4017,8 @@ TABLE_FIXED_INLINE void TableFixedCopyRun( uint8_t * d, const uint8_t * s, uint3
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's.
 TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_t * base,
-                             const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                             int32_t & clamped, int32_t & widened )
+    const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
+    int32_t & clamped, int32_t & widened )
 {
     switch ( p.op )
     {
@@ -2842,8 +4040,16 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
         case kTableFixedCount:
         {
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( v > (int32_t) p.size ) { v = (int32_t) p.size; clamped++; }
+            if ( v < 0 )
+            {
+                v = 0;
+                clamped++;
+            }
+            else if ( v > (int32_t) p.size )
+            {
+                v = (int32_t) p.size;
+                clamped++;
+            }
             memcpy( dst + p.dst, &v, 4 );
             break;
         }
@@ -2852,8 +4058,16 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
             const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 ) { v = 0; clamped++; }
-            else if ( (uint32_t) v > cap ) { v = (int32_t) cap; clamped++; }
+            if ( v < 0 )
+            {
+                v = 0;
+                clamped++;
+            }
+            else if ( (uint32_t) v > cap )
+            {
+                v = (int32_t) cap;
+                clamped++;
+            }
             memcpy( dst + p.dst, &v, 4 );
             TableFixedCopyRun( dst + p.aux, src + p.src + 4, p.size );
             if ( p.meta != kTableFixedTextBytes )
@@ -2944,8 +4158,8 @@ TABLE_FIXED_INLINE void TableFixedApply( const TableFixedEntry & p, const uint8_
 // is the only thing that differs between reading this build's own record and
 // reading anybody else's.
 inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t guarded,
-                           const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
-                           TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
+    const uint8_t * TABLE_RESTRICT src, uint8_t * TABLE_RESTRICT dst,
+    TableReport * report, const TableFixedGuardLink * guard_pool = nullptr )
 {
     // THE COUNTERS ARE LOCAL AND WRITTEN BACK ONCE. A report the loop wrote
     // through is a pointer the compiler must assume aliases the destination,
@@ -2968,9 +4182,12 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
             bool matches = true;
             for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
             {
-                const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
-                    ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg )
+                {
+                    matches = false;
+                    break;
+                }
             }
             if ( !matches ) { continue; }
         }
@@ -2996,9 +4213,9 @@ inline void TableFixedRun( const TableFixedEntry * plan, int32_t count, int32_t 
 // source and writes nothing. It answers true with the refusal in why; false
 // means the plan holds the record's counts and lengths.
 inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, int32_t guarded,
-                                 const uint8_t * src,
-                                 const TableFixedGuardLink * guard_pool,
-                                 TableMessageReason & why )
+    const uint8_t * src,
+    const TableFixedGuardLink * guard_pool,
+    TableMessageReason & why )
 {
     for ( int32_t i = 0; i < count; ++i )
     {
@@ -3016,9 +4233,12 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
                 bool matches = true;
                 for ( int32_t j = 0; j < (int32_t) p.guard_count; ++j )
                 {
-                    const TableFixedGuardLink & l = * ( const TableFixedGuardLink * ) ( const void * )
-                        ( ( const uint8_t * ) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
-                    if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg ) { matches = false; break; }
+                    const TableFixedGuardLink & l = *(const TableFixedGuardLink *) (const void *) ( (const uint8_t *) guard_pool + p.guard_index + j * (int32_t) sizeof( TableFixedGuardLink ) );
+                    if ( TableFixedTagAt( src, l.guard, l.argw ) != l.arg )
+                    {
+                        matches = false;
+                        break;
+                    }
                 }
                 if ( !matches ) { continue; }
             }
@@ -3031,14 +4251,22 @@ inline bool TableFixedRefuseScan( const TableFixedEntry * plan, int32_t count, i
         if ( p.op == kTableFixedCount )
         {
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || v > (int32_t) p.size ) { why = count_over_bound; return true; }
+            if ( v < 0 || v > (int32_t) p.size )
+            {
+                why = count_over_bound;
+                return true;
+            }
         }
         else if ( p.op == kTableFixedText )
         {
             const uint32_t unit = ( p.meta == kTableFixedTextWide ) ? 2u : 1u;
             const uint32_t cap = p.size / unit;
             int32_t v = (int32_t) TableFixedGet32( src + p.src );
-            if ( v < 0 || (uint32_t) v > cap ) { why = length_over_bound; return true; }
+            if ( v < 0 || (uint32_t) v > cap )
+            {
+                why = length_over_bound;
+                return true;
+            }
         }
     }
     return false;
@@ -3073,7 +4301,7 @@ struct TableFixedFill
 // else. The default image is the caller's own storage reset once per read, not
 // per record.
 inline void TableFixedFillRun( const TableFixedFill * fill, int32_t count,
-                               const uint8_t * TABLE_RESTRICT defaults, uint8_t * TABLE_RESTRICT dst )
+    const uint8_t * TABLE_RESTRICT defaults, uint8_t * TABLE_RESTRICT dst )
 {
     for ( int32_t i = 0; i < count; ++i )
     {
@@ -3120,8 +4348,8 @@ inline void TableFixedEntryLands( const TableFixedEntry & e, uint32_t * lands )
 // length per RUN of the answer, once per file and never per record. The plan's
 // length is the caller's declared plan capacity, which is what bounds it.
 inline int32_t TableFixedFills( const TableFixedEntry * plan, int32_t count,
-                                const TableFixedFill * cover, int32_t cover_count,
-                                TableFixedFill * out )
+    const TableFixedFill * cover, int32_t cover_count,
+    TableFixedFill * out )
 {
     int32_t n = 0;
     for ( int32_t r = 0; r < cover_count; ++r )
@@ -3141,13 +4369,24 @@ inline int32_t TableFixedFills( const TableFixedEntry * plan, int32_t count,
                     const uint32_t lo = lands[q];
                     const uint32_t top = lands[q + 1];
                     if ( top <= lo ) { continue; }
-                    if ( lo <= pos && pos < top ) { if ( top > end ) { end = top; } }
+                    if ( lo <= pos && pos < top )
+                    {
+                        if ( top > end ) { end = top; }
+                    }
                     else if ( lo > pos && lo < next ) { next = lo; }
                 }
             }
-            if ( end > pos ) { pos = end; continue; }
+            if ( end > pos )
+            {
+                pos = end;
+                continue;
+            }
             if ( next > hi ) { next = hi; }
-            if ( out != NULL ) { out[n].dst = pos; out[n].size = next - pos; }
+            if ( out != NULL )
+            {
+                out[n].dst = pos;
+                out[n].size = next - pos;
+            }
             n++;
             pos = next;
         }
@@ -3197,7 +4436,11 @@ struct TableFixedLayoutView
 inline TableFixedLayoutEntry TableFixedEntryAt( const TableFixedLayoutView & b, int32_t i )
 {
     TableFixedLayoutEntry out;
-    if ( b.bytes == NULL || i < 0 || i >= b.count ) { out.kind = 0xFFu; return out; }
+    if ( b.bytes == NULL || i < 0 || i >= b.count )
+    {
+        out.kind = 0xFFu;
+        return out;
+    }
     const uint8_t * e = b.bytes + kTableFixedLayoutHeaderBytes + (int64_t) i * kTableFixedEntryBytes;
     out.id = TableFixedGet64( e );
     out.kind = e[8];
@@ -3277,7 +4520,11 @@ struct TableFixedCheck
 
 inline void TableFixedFail( TableFixedCheck & c, TableMessageReason why )
 {
-    if ( !c.bad ) { c.bad = true; c.why = why; }
+    if ( !c.bad )
+    {
+        c.bad = true;
+        c.why = why;
+    }
 }
 
 // A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
@@ -3290,24 +4537,30 @@ inline bool TableFixedLeafSize( uint8_t kind, uint32_t size, bool & is_leaf )
     is_leaf = true;
     switch ( kind )
     {
-        case 1:  return size == 1u;                  // bool
-        case 2:  return size == 1u;                  // i8
-        case 3:  return size == 2u;                  // i16
-        case 4:  return size == 4u;                  // i32
-        case 5:  return size == 8u;                  // i64
-        case 6:  return size == 1u || size == 4u;    // u8,  and bits( 1 .. 8 )
-        case 7:  return size == 2u || size == 4u;    // u16, and bits( 9 .. 16 )
-        case 8:  return size == 4u;                  // u32, and bits( 17 .. 32 )
-        case 9:  return size == 8u;                  // u64, flags, and bits( 33 .. 64 )
+        case 1: return size == 1u;                  // bool
+        case 2: return size == 1u;                  // i8
+        case 3: return size == 2u;                  // i16
+        case 4: return size == 4u;                  // i32
+        case 5: return size == 8u;                  // i64
+        case 6: return size == 1u || size == 4u;    // u8,  and bits( 1 .. 8 )
+        case 7: return size == 2u || size == 4u;    // u16, and bits( 9 .. 16 )
+        case 8: return size == 4u;                  // u32, and bits( 17 .. 32 )
+        case 9: return size == 8u;                  // u64, flags, and bits( 33 .. 64 )
         case 10: return size == 4u;                  // f32
         case 11: return size == 8u;                  // f64
         case 17: return size == 4u;                  // a pointer index, which no fixed table carries
-        case 18: case 19: return size == 16u;        // i128, u128
-        case 20: case 25: return size == 1u;         // fixed8, ufixed8
-        case 21: case 26: return size == 2u;
-        case 22: case 27: return size == 4u;
-        case 23: case 28: return size == 8u;
-        case 24: case 29: return size == 16u;
+        case 18:
+        case 19: return size == 16u;        // i128, u128
+        case 20:
+        case 25: return size == 1u;         // fixed8, ufixed8
+        case 21:
+        case 26: return size == 2u;
+        case 22:
+        case 27: return size == 4u;
+        case 23:
+        case 28: return size == 8u;
+        case 24:
+        case 29: return size == 16u;
         case 32: return size == 0u;                  // a variant, and an arm that holds nothing
     }
     is_leaf = false;
@@ -3334,13 +4587,29 @@ inline bool TableFixedKnownKind( uint8_t kind )
 inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t depth )
 {
     if ( c.bad ) { return 0; }
-    if ( i < 0 || i >= c.layout->count ) { TableFixedFail( c, layout_tree_unclosed ); return 0; }
-    if ( depth > kTableFixedMaxDepth ) { TableFixedFail( c, layout_too_deep ); return 0; }
+    if ( i < 0 || i >= c.layout->count )
+    {
+        TableFixedFail( c, layout_tree_unclosed );
+        return 0;
+    }
+    if ( depth > kTableFixedMaxDepth )
+    {
+        TableFixedFail( c, layout_too_deep );
+        return 0;
+    }
     const TableFixedLayoutEntry e = TableFixedEntryAt( *c.layout, i );
     // THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
     // and is refused whole, never walked and never stepped over.
-    if ( !TableFixedKnownKind( e.kind ) ) { TableFixedFail( c, layout_kind_unknown ); return 0; }
-    if ( e.size > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }
+    if ( !TableFixedKnownKind( e.kind ) )
+    {
+        TableFixedFail( c, layout_kind_unknown );
+        return 0;
+    }
+    if ( e.size > kTableFixedRecordMaxBytes )
+    {
+        TableFixedFail( c, layout_record_too_large );
+        return 0;
+    }
 
     // THE CHILDREN FIRST, in the pre-order the layout is written in.
     int32_t at = i + 1;
@@ -3356,78 +4625,171 @@ inline int32_t TableFixedCheckEntry( TableFixedCheck & c, int32_t i, int32_t dep
         const int32_t used = TableFixedCheckEntry( c, child, depth + 1 );
         if ( c.bad ) { return 0; }
         const TableFixedLayoutEntry ce = TableFixedEntryAt( *c.layout, child );
-        if ( k == 0 ) { first_size = ce.size; first_kind = ce.kind; first_children = ce.children; }
+        if ( k == 0 )
+        {
+            first_size = ce.size;
+            first_kind = ce.kind;
+            first_children = ce.children;
+        }
         if ( k == 1 ) { second_size = ce.size; }
         if ( ce.kind != 32 ) { kids_are_variants = false; }
         sum += ce.size;
         if ( ce.size > widest ) { widest = ce.size; }
-        if ( sum > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }
+        if ( sum > kTableFixedRecordMaxBytes )
+        {
+            TableFixedFail( c, layout_record_too_large );
+            return 0;
+        }
         at += used;
     }
 
     bool is_leaf = false;
-    if ( !TableFixedLeafSize( e.kind, e.size, is_leaf ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+    if ( !TableFixedLeafSize( e.kind, e.size, is_leaf ) )
+    {
+        TableFixedFail( c, layout_size_mismatch );
+        return 0;
+    }
     if ( is_leaf )
     {
-        if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+        if ( e.children != 0u )
+        {
+            TableFixedFail( c, layout_kind_invalid );
+            return 0;
+        }
         return at - i;
     }
     switch ( e.kind )
     {
         case 13: // a TABLE: its size is the SUM of its fields'
         {
-            if ( (uint64_t) e.size != sum ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( (uint64_t) e.size != sum )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         case 35: // the OPTIONAL WRAPPER: one child, one present byte in front of it
         {
-            if ( e.children != 1u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( (uint64_t) e.size != sum + 1u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 1u )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( (uint64_t) e.size != sum + 1u )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         case 14: // an ARRAY: a whole number of elements, behind a count or not
         {
-            if ( e.children != 1u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( first_size == 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 1u )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( first_size == 0u )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             const bool bare = ( e.size % first_size ) == 0u;
             const bool counted = e.size >= 4u && ( ( e.size - 4u ) % first_size ) == 0u;
-            if ( !bare && !counted ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( !bare && !counted )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         case 16: // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
         {
-            if ( e.children != 2u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( first_kind != 30 ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( second_size == 0u || ( e.size % second_size ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 2u )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( first_kind != 30 )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( second_size == 0u || ( e.size % second_size ) != 0u )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             // AT LEAST one slot per variant. Not exactly one: an enum widened
             // by an explicit max has more slots than it has names, and the
             // layout carries only the names.
-            if ( e.size / second_size < first_children ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.size / second_size < first_children )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         case 15: // a UNION: the TAG at its own width, then the WIDEST ARM
         {
-            if ( e.children == 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( e.size <= widest ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
-            if ( !TableFixedOrdinalWidth( e.size - widest ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children == 0u )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( e.size <= widest )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
+            if ( !TableFixedOrdinalWidth( e.size - widest ) )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         case 30: // an ENUM: the ordinal's storage width, and its children are VARIANTS
         {
-            if ( !TableFixedOrdinalWidth( e.size ) ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
-            if ( e.children != 0u && !kids_are_variants ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
+            if ( !TableFixedOrdinalWidth( e.size ) )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
+            if ( e.children != 0u && !kids_are_variants )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
             break;
         }
         case 12: // string(N): the length, then N bytes
         {
-            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( e.size < 4u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 0u )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( e.size < 4u )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
         {
-            if ( e.children != 0u ) { TableFixedFail( c, layout_kind_invalid ); return 0; }
-            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u ) { TableFixedFail( c, layout_size_mismatch ); return 0; }
+            if ( e.children != 0u )
+            {
+                TableFixedFail( c, layout_kind_invalid );
+                return 0;
+            }
+            if ( e.size < 4u || ( ( e.size - 4u ) % 2u ) != 0u )
+            {
+                TableFixedFail( c, layout_size_mismatch );
+                return 0;
+            }
             break;
         }
         // Every kind of the closed set is either a leaf above or a case here,
@@ -3444,7 +4806,11 @@ inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableF
 {
     out.bytes = NULL;
     out.count = 0;
-    if ( bytes == NULL || length < kTableFixedLayoutHeaderBytes ) { why = layout_malformed; return false; }
+    if ( bytes == NULL || length < kTableFixedLayoutHeaderBytes )
+    {
+        why = layout_malformed;
+        return false;
+    }
     // 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
     const uint32_t count = TableFixedGet32( bytes );
     if ( count == 0u || (int64_t) count * kTableFixedEntryBytes + kTableFixedLayoutHeaderBytes != length )
@@ -3457,22 +4823,36 @@ inline bool TableFixedParseLayout( const uint8_t * bytes, int64_t length, TableF
     view.count = (int32_t) count;
     // 2. THE ROOT IS A TABLE, and its size is the record's body
     const TableFixedLayoutEntry root = TableFixedEntryAt( view, 0 );
-    if ( root.kind != 13 ) { why = layout_kind_invalid; return false; }
-    if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { why = layout_record_too_large; return false; }
+    if ( root.kind != 13 )
+    {
+        why = layout_kind_invalid;
+        return false;
+    }
+    if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )
+    {
+        why = layout_record_too_large;
+        return false;
+    }
     // 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
     //    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
     TableFixedCheck c;
     c.layout = &view;
     const int32_t used = TableFixedCheckEntry( c, 0, 0 );
-    if ( c.bad ) { why = c.why; return false; }
+    if ( c.bad )
+    {
+        why = c.why;
+        return false;
+    }
     // 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
     //    the layout has nothing left over
-    if ( used != view.count ) { why = layout_tree_unclosed; return false; }
+    if ( used != view.count )
+    {
+        why = layout_tree_unclosed;
+        return false;
+    }
     out = view;
     return true;
 }
-
-
 
 
 // ---- THE PLAN COMPILER -----------------------------------------------------
@@ -3526,9 +4906,9 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
         const uint8_t gw = e.argw == 0 ? 1u : e.argw;
         const uint8_t gw2 = e.argw2 == 0 ? 1u : e.argw2;
         const bool guard_out = ( e.guard != kTableFixedNoGuard &&
-            ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
+                                   ( e.guard >= c.record || (uint64_t) e.guard + gw > (uint64_t) c.record ) ) ||
             ( e.guard2 != kTableFixedNoGuard &&
-            ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
+                ( e.guard2 >= c.record || (uint64_t) e.guard2 + gw2 > (uint64_t) c.record ) );
         const uint64_t reach = (uint64_t) e.src + (uint64_t) e.size + ( ( e.op == kTableFixedText || e.op == kTableFixedCount ) ? 4ull : 0ull );
         if ( reach > (uint64_t) c.record || guard_out )
         {
@@ -3537,7 +4917,11 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
         }
     }
     const int32_t room = c.capacity - ( c.pool + (int32_t) sizeof( TableFixedEntry ) - 1 ) / (int32_t) sizeof( TableFixedEntry );
-    if ( c.count >= room ) { c.overflow = true; return; }
+    if ( c.count >= room )
+    {
+        c.overflow = true;
+        return;
+    }
     c.plan[c.count++] = e;
 }
 
@@ -3546,11 +4930,19 @@ inline void TableFixedPush( TableFixedCompiler & c, TableFixedEntry e )
 // coalescing pass, which only moves entries down, never moves one.
 inline uint32_t TableFixedLayTable( TableFixedCompiler & c, const uint16_t * values, int32_t n )
 {
-    if ( n < 0 || n > 65535 ) { c.overflow = true; return 0; }
+    if ( n < 0 || n > 65535 )
+    {
+        c.overflow = true;
+        return 0;
+    }
     const int32_t bytes = ( n + 1 ) * (int32_t) sizeof( uint16_t );
     const int32_t total = (int32_t) sizeof( TableFixedEntry ) * c.capacity;
     c.pool += bytes;
-    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) )
+    {
+        c.overflow = true;
+        return 0;
+    }
     const uint32_t at = (uint32_t) ( total - c.pool );
     uint16_t * dst = (uint16_t *) (void *) ( (uint8_t *) c.plan + at );
     dst[0] = (uint16_t) n;
@@ -3572,15 +4964,19 @@ inline uint32_t TableFixedLayFills( TableFixedCompiler & c, int32_t n )
     // ROUNDED SO THE ARRAY IS ALIGNED: a remap table is laid in units of two
     // bytes and this array's members are four wide.
     c.pool = ( c.pool + n * (int32_t) sizeof( TableFixedFill ) + 3 ) & ~3;
-    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) ) { c.overflow = true; return 0; }
+    if ( total - c.pool < c.count * (int32_t) sizeof( TableFixedEntry ) )
+    {
+        c.overflow = true;
+        return 0;
+    }
     return (uint32_t) ( total - c.pool );
 }
 
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
-                                    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
-                                    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint64_t arg, int census );
+    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg, int census );
 
 // TableFixedMatchChildren walks a TABLE's children on both sides.
 //
@@ -3590,9 +4986,9 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 // writer's field dropped from a [4]Item is counted four times and the report says 4
 // where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11).
 inline void TableFixedMatchChildren( TableFixedCompiler & c,
-                                     const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
-                                     const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                     uint32_t guard, uint64_t arg, int census )
+    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg, int census )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -3624,7 +5020,11 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
         int32_t mc_at = mi + 1;
         for ( uint32_t k = 0; k < me.children && mc_at < mine.count; ++k )
         {
-            if ( TableFixedEntryAt( mine, mc_at ).id == tc.id ) { named = true; break; }
+            if ( TableFixedEntryAt( mine, mc_at ).id == tc.id )
+            {
+                named = true;
+                break;
+            }
             mc_at += TableFixedSubtree( mine, mc_at );
         }
         if ( !named && census && c.report != NULL ) { c.report->unknown++; }
@@ -3633,9 +5033,9 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 }
 
 inline void TableFixedCompileEntry( TableFixedCompiler & c,
-                                    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
-                                    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
-                                    uint32_t guard, uint64_t arg, int census )
+    const TableFixedLayoutView & theirs, int32_t ti, uint32_t their_at,
+    const TableFixedLayoutView & mine, int32_t mi, const TableFixedDst * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg, int census )
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
@@ -3644,7 +5044,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     // THE NESTING A STRANGER'S LAYOUT CAN ASK FOR IS CAPPED. The language's own
     // closure is nowhere near this deep, and a wire does not get to pick a
     // recursion depth.
-    if ( c.depth > 64 ) { c.hostile = true; return; }
+    if ( c.depth > 64 )
+    {
+        c.hostile = true;
+        return;
+    }
     struct TableFixedDepth
     {
         TableFixedCompiler & owner;
@@ -3659,7 +5063,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
     if ( me.kind == 35 && te.kind != 35 )
     {
         TableFixedEntry e;
-        e.dst = aux_at; e.size = 1; e.guard = guard; e.arg = arg; e.op = kTableFixedPresent;
+        e.dst = aux_at;
+        e.size = 1;
+        e.guard = guard;
+        e.arg = arg;
+        e.op = kTableFixedPresent;
         TableFixedPush( c, e );
         TableFixedCompileEntry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
         return;
@@ -3669,8 +5077,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         if ( TableFixedWidens( te.kind, me.kind ) )
         {
             TableFixedEntry e;
-            e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
-            e.guard = guard; e.arg = arg;
+            e.src = their_at;
+            e.dst = at;
+            e.size = te.size;
+            e.dstsize = (uint8_t) me.size;
+            e.guard = guard;
+            e.arg = arg;
             e.op = ( te.kind == 10 ) ? kTableFixedWidenF : kTableFixedWiden;
             e.sign = TableFixedSignedKind( te.kind ) ? 1u : 0u;
             TableFixedPush( c, e );
@@ -3685,7 +5097,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         case 35: // the OPTIONAL wrapper: the present byte, then the payload whole
         {
             TableFixedEntry e;
-            e.src = their_at; e.dst = aux_at; e.size = 1; e.guard = guard; e.op = kTableFixedBool; e.arg = arg;
+            e.src = their_at;
+            e.dst = aux_at;
+            e.size = 1;
+            e.guard = guard;
+            e.op = kTableFixedBool;
+            e.arg = arg;
             TableFixedPush( c, e );
             TableFixedCompileEntry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
             break;
@@ -3701,7 +5118,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             // four-byte count is a mismatch the head subtraction below would
             // underflow: refuse it rather than land a count op that over-reads.
             // break, as the C twin does, so both leave the switch the same way.
-            if ( d.counted && te.size < 4u ) { c.hostile = true; break; }
+            if ( d.counted && te.size < 4u )
+            {
+                c.hostile = true;
+                break;
+            }
             const TableFixedLayoutEntry tel = TableFixedEntryAt( theirs, ti + 1 );
             const TableFixedLayoutEntry mel = TableFixedEntryAt( mine, mi + 1 );
             const uint32_t head = d.counted ? 4u : 0u;
@@ -3712,13 +5133,18 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             if ( d.counted )
             {
                 TableFixedEntry e;
-                e.src = their_at; e.dst = aux_at; e.size = n; e.guard = guard; e.op = kTableFixedCount; e.arg = arg;
+                e.src = their_at;
+                e.dst = aux_at;
+                e.size = n;
+                e.guard = guard;
+                e.op = kTableFixedCount;
+                e.arg = arg;
                 TableFixedPush( c, e );
             }
             for ( uint32_t i = 0; i < n; ++i )
             {
                 TableFixedCompileEntry( c, theirs, ti + 1, their_base + i * tel.size,
-                                        mine, mi + 1, dst, at + i * d.stride, guard, arg, census && i == 0 );
+                    mine, mi + 1, dst, at + i * d.stride, guard, arg, census && i == 0 );
             }
             break;
         }
@@ -3736,7 +5162,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 {
                     if ( TableFixedEntryAt( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                     TableFixedCompileEntry( c, theirs, tel, their_at + j * tee.size,
-                                            mine, mel, dst, at + k * d.stride, guard, arg, census && k == 0 );
+                        mine, mel, dst, at + k * d.stride, guard, arg, census && k == 0 );
                     break;
                 }
             }
@@ -3765,8 +5191,13 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 const uint8_t inner_argw = c.argw;
                 if ( guard != kTableFixedNoGuard ) { c.argw = saved_argw ? saved_argw : 1u; }
                 TableFixedEntry none;
-                none.src = their_at; none.dst = aux_at; none.size = my_tag;
-                none.aux = 0; none.guard = guard; none.op = kTableFixedConst; none.arg = arg;
+                none.src = their_at;
+                none.dst = aux_at;
+                none.size = my_tag;
+                none.aux = 0;
+                none.guard = guard;
+                none.op = kTableFixedConst;
+                none.arg = arg;
                 // Writer arm count, for a tag past the old set (bill §12.5).
                 if ( te.children > 0 && te.children <= 255u ) { none.dstsize = (uint8_t) te.children; }
                 TableFixedPush( c, none );
@@ -3784,12 +5215,17 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                     {
                         // MY tag value, written under THEIR tag's guard
                         TableFixedEntry tag;
-                        tag.src = their_at; tag.dst = aux_at; tag.size = my_tag;
-                        tag.aux = k + 1; tag.guard = their_at; tag.op = kTableFixedConst; tag.arg = (uint64_t) j + 1u;
+                        tag.src = their_at;
+                        tag.dst = aux_at;
+                        tag.size = my_tag;
+                        tag.aux = k + 1;
+                        tag.guard = their_at;
+                        tag.op = kTableFixedConst;
+                        tag.arg = (uint64_t) j + 1u;
                         tag.argw = c.argw;
                         TableFixedPush( c, tag );
                         TableFixedCompileEntry( c, theirs, their_arm, their_at + their_tag,
-                                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                            mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
                         break;
                     }
                     their_arm += TableFixedSubtree( theirs, their_arm );
@@ -3809,7 +5245,11 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                     // A THIRD NESTED UNION HAS A THIRD CONDITION and two lanes
                     // cannot carry it: the plan REFUSES BY NAME rather than
                     // drop one (the guard chain is the follow-on, §5.8 row 6).
-                    if ( c.plan[q].guard2 != kTableFixedNoGuard ) { c.hostile = true; break; }
+                    if ( c.plan[q].guard2 != kTableFixedNoGuard )
+                    {
+                        c.hostile = true;
+                        break;
+                    }
                     c.plan[q].guard2 = guard;
                     c.plan[q].arg2 = arg;
                     c.plan[q].argw2 = outer_w;
@@ -3827,8 +5267,14 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             if ( te.size < me.size )
             {
                 TableFixedEntry e;
-                e.src = their_at; e.dst = at; e.size = te.size; e.dstsize = (uint8_t) me.size;
-                e.guard = guard; e.arg = arg; e.op = kTableFixedWiden; e.sign = 0;
+                e.src = their_at;
+                e.dst = at;
+                e.size = te.size;
+                e.dstsize = (uint8_t) me.size;
+                e.guard = guard;
+                e.arg = arg;
+                e.op = kTableFixedWiden;
+                e.sign = 0;
                 TableFixedPush( c, e );
                 break;
             }
@@ -3845,30 +5291,49 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
                 uint16_t landed = 0;
                 for ( uint32_t k = 0; k < me.children && mi + 1 + (int32_t) k < mine.count; ++k )
                 {
-                    if ( TableFixedEntryAt( mine, mi + 1 + (int32_t) k ).id == vid ) { landed = (uint16_t) ( k + 1 ); break; }
+                    if ( TableFixedEntryAt( mine, mi + 1 + (int32_t) k ).id == vid )
+                    {
+                        landed = (uint16_t) ( k + 1 );
+                        break;
+                    }
                 }
                 map[1 + j] = landed;
             }
             TableFixedEntry e;
-            e.src = their_at; e.dst = at; e.size = te.size; e.guard = guard; e.op = kTableFixedOrdinal;
-            e.arg = arg; e.dstsize = (uint8_t) me.size;
+            e.src = their_at;
+            e.dst = at;
+            e.size = te.size;
+            e.guard = guard;
+            e.op = kTableFixedOrdinal;
+            e.arg = arg;
+            e.dstsize = (uint8_t) me.size;
             e.aux = at_map;
             TableFixedPush( c, e );
             break;
         }
-        case 12: case 33: // text
+        case 12:
+        case 33: // text
         {
             const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
             TableFixedEntry e;
-            e.src = their_at; e.dst = at; e.size = units; e.aux = aux_at; e.guard = guard;
-            e.op = kTableFixedText; e.arg = arg; e.meta = d.meta;
+            e.src = their_at;
+            e.dst = at;
+            e.size = units;
+            e.aux = aux_at;
+            e.guard = guard;
+            e.op = kTableFixedText;
+            e.arg = arg;
+            e.meta = d.meta;
             TableFixedPush( c, e );
             break;
         }
         default:
         {
             TableFixedEntry e;
-            e.src = their_at; e.dst = at; e.guard = guard; e.arg = arg;
+            e.src = their_at;
+            e.dst = at;
+            e.guard = guard;
+            e.arg = arg;
             if ( te.size == me.size )
             {
                 e.size = me.size;
@@ -3877,7 +5342,9 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
             }
             else if ( te.size < me.size && me.size <= 8 )
             {
-                e.size = te.size; e.dstsize = (uint8_t) me.size; e.op = kTableFixedWiden;
+                e.size = te.size;
+                e.dstsize = (uint8_t) me.size;
+                e.op = kTableFixedWiden;
                 TableFixedPush( c, e );
             }
             else if ( c.report != NULL )
@@ -3890,12 +5357,12 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
 }
 
 inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
-                                  const uint8_t * my_layout, int32_t my_layout_bytes,
-                                  const TableFixedDst * dst,
-                                  const TableFixedFill * cover, int32_t cover_count,
-                                  TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
-                                  uint32_t * fill_at, int32_t * fill_count,
-                                  TableReport * report )
+    const uint8_t * my_layout, int32_t my_layout_bytes,
+    const TableFixedDst * dst,
+    const TableFixedFill * cover, int32_t cover_count,
+    TableFixedEntry * plan, int32_t plan_capacity, int32_t * guarded,
+    uint32_t * fill_at, int32_t * fill_count,
+    TableReport * report )
 {
     TableFixedLayoutView mine;
     TableMessageReason why = layout_malformed;
@@ -3926,16 +5393,16 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     for ( int32_t i = 0; i < c.count; ++i )
     {
         if ( i == plain ) { split = out; }
-        if ( out > split && plan[out-1].op == plan[i].op &&
-             ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
-             plan[out-1].guard == plan[i].guard && plan[out-1].arg == plan[i].arg &&
-             plan[out-1].argw == plan[i].argw &&
-             plan[out-1].guard2 == plan[i].guard2 && plan[out-1].arg2 == plan[i].arg2 &&
-             plan[out-1].argw2 == plan[i].argw2 &&
-             plan[out-1].src + plan[out-1].size == plan[i].src &&
-             plan[out-1].dst + plan[out-1].size == plan[i].dst )
+        if ( out > split && plan[out - 1].op == plan[i].op &&
+            ( plan[i].op == kTableFixedCopy || plan[i].op == kTableFixedBool ) &&
+            plan[out - 1].guard == plan[i].guard && plan[out - 1].arg == plan[i].arg &&
+            plan[out - 1].argw == plan[i].argw &&
+            plan[out - 1].guard2 == plan[i].guard2 && plan[out - 1].arg2 == plan[i].arg2 &&
+            plan[out - 1].argw2 == plan[i].argw2 &&
+            plan[out - 1].src + plan[out - 1].size == plan[i].src &&
+            plan[out - 1].dst + plan[out - 1].size == plan[i].dst )
         {
-            plan[out-1].size += plan[i].size;
+            plan[out - 1].size += plan[i].size;
             continue;
         }
         plan[out++] = plan[i];
@@ -3990,7 +5457,7 @@ struct TableFixedKnownRange
 };
 
 inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int32_t n,
-                                        uint8_t * dst, TableReport * report )
+    uint8_t * dst, TableReport * report )
 {
     if ( ranges == NULL || n <= 0 || dst == NULL ) { return; }
     int32_t clamped = 0;
@@ -4013,8 +5480,16 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
             v = (int64_t) raw;
         }
         int64_t landed = v;
-        if ( landed < b.lo ) { landed = b.lo; clamped++; }
-        else if ( landed > b.hi ) { landed = b.hi; clamped++; }
+        if ( landed < b.lo )
+        {
+            landed = b.lo;
+            clamped++;
+        }
+        else if ( landed > b.hi )
+        {
+            landed = b.hi;
+            clamped++;
+        }
         if ( landed == v ) { continue; }
         uint64_t out = (uint64_t) landed;
         memcpy( dst + b.dst, &out, b.width );
@@ -4121,8 +5596,8 @@ static const uint32_t kTableSegmentBits = 22;                          // 4 MiB 
 static const uint32_t kTableSegmentSize = 1u << kTableSegmentBits;
 static const uint32_t kTableSegmentMask = kTableSegmentSize - 1u;
 static const uint32_t kTableMaxSegments = 1u << ( 32 - kTableSegmentBits ); // 1024 -> 4 GiB
-static const uint32_t kTableSlabBytes   = 64u * 1024u;                 // one atomic per slab
-static const uint32_t kTableAlign       = 8;                           // every node starts 8-aligned
+static const uint32_t kTableSlabBytes = 64u * 1024u;                 // one atomic per slab
+static const uint32_t kTableAlign = 8;                           // every node starts 8-aligned
 static const uint32_t kTableAllocFailed = 0xFFFFFFFFu;
 
 // ---- THE CALLER'S ALLOCATOR (docs/SPEC-TABLES.md §6.5) ----
@@ -4149,8 +5624,16 @@ struct TableAllocator
 // The default pair, and it is the one every entry point takes when the caller
 // names none. It calls schema_allocate / schema_release, so a program with its
 // own C-library replacement can move the floor without writing a struct at all.
-inline void * table_default_alloc( void * context, int64_t bytes ) { (void) context; return schema_allocate( bytes ); }
-inline void table_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+inline void * table_default_alloc( void * context, int64_t bytes )
+{
+    (void) context;
+    return schema_allocate( bytes );
+}
+inline void table_default_free( void * context, void * pointer )
+{
+    (void) context;
+    schema_release( pointer );
+}
 
 inline TableAllocator TableDefaultAllocator()
 {
@@ -4206,7 +5689,8 @@ struct TableRef
 
 // TableSlot is what Alloc hands back: usable as the node pointer (write
 // fields through it) AND as the reference to store in a pointer field.
-template <typename T> struct TableSlot
+template <typename T>
+struct TableSlot
 {
     T * ptr = NULL;
     TableRef ref;
@@ -4300,7 +5784,7 @@ struct TableStringSlot
 // plus threads x 64 KiB. That is the price of never synchronizing per node.
 struct TableArena
 {
-    std::atomic<uint8_t *> segments[ kTableMaxSegments ];
+    std::atomic<uint8_t *> segments[kTableMaxSegments];
     std::atomic<uint32_t> cursor; // (segment << kTableSegmentBits) | bytes handed out
     bool locked = false;          // MONOTONIC: Lock() is one-way, there is no unlock
     // THE ARENA CARRIES ITS OWN, so everything downstream of a builder —
@@ -4333,7 +5817,7 @@ inline void TableArenaShutdown( TableArena & arena )
 // one L1 load plus an add: the segment table is 8 KiB and stays hot
 inline uint8_t * TableArenaAt( const TableArena & arena, uint32_t offset )
 {
-    return arena.segments[ offset >> kTableSegmentBits ].load( std::memory_order_relaxed ) + ( offset & kTableSegmentMask );
+    return arena.segments[offset >> kTableSegmentBits].load( std::memory_order_relaxed ) + ( offset & kTableSegmentMask );
 }
 
 // TableArenaGrabSlab hands one worker its next private slab. Returns
@@ -4429,7 +5913,8 @@ struct TableWorker
     uint32_t next = 0;
     uint32_t end = 0;
 
-    template <typename T> TableSlot<T> Alloc()
+    template <typename T>
+    TableSlot<T> Alloc()
     {
         static_assert( alignof( T ) <= kTableAlign, "a table node's alignment must fit the arena's" );
         TableSlot<T> slot;
@@ -4489,7 +5974,11 @@ struct TableWorker
         if ( bytes > (int64_t) kTableSlabBytes )
         {
             at = TableArenaGrabSpan( *arena, bytes );
-            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
+            if ( at == kTableAllocFailed )
+            {
+                at = 0;
+                return NULL;
+            }
         }
         else
         {
@@ -4523,7 +6012,11 @@ struct TableWorker
         if ( rounded > (int64_t) kTableSlabBytes )
         {
             at = TableArenaGrabSpan( *arena, rounded );
-            if ( at == kTableAllocFailed ) { at = 0; return NULL; }
+            if ( at == kTableAllocFailed )
+            {
+                at = 0;
+                return NULL;
+            }
             return TableArenaAt( *arena, at );
         }
         if ( end == 0 || next + (uint32_t) rounded > end )
@@ -4639,7 +6132,7 @@ inline int64_t TablePackMapSlot( const TablePackMap & map, const void * key )
 inline TablePackEntry * TablePackMapFind( TablePackMap & map, const void * key )
 {
     if ( map.capacity == 0 ) { return NULL; }
-    TablePackEntry * entry = &map.entries[ TablePackMapSlot( map, key ) ];
+    TablePackEntry * entry = &map.entries[TablePackMapSlot( map, key )];
     return entry->key == key ? entry : NULL;
 }
 
@@ -4658,7 +6151,7 @@ inline bool TablePackMapGrow( TablePackMap & map )
     for ( int64_t i = 0; i < map.capacity; i++ )
     {
         if ( map.entries[i].key == NULL ) { continue; }
-        grown.entries[ TablePackMapSlot( grown, map.entries[i].key ) ] = map.entries[i];
+        grown.entries[TablePackMapSlot( grown, map.entries[i].key )] = map.entries[i];
         grown.count++;
     }
     table_release( map.allocator, map.entries );
@@ -4712,8 +6205,10 @@ inline void TablePackMapClose( TablePackMap & map, const void * key, int64_t hin
 
 // ---- resolution contexts: which encoding a walk is reading ----
 
-struct TableArenaCtx { const TableArena * arena; };
-struct TableRegionCtx {};
+struct TableArenaCtx
+{ const TableArena * arena; };
+struct TableRegionCtx
+{};
 
 // ---- a BYTE BUFFER's resolution (docs/SPEC-TABLES.md §2.5, §6.3) ----
 //
@@ -4746,13 +6241,21 @@ inline const TableBlob * TableBlobAt( const TableArena & arena, const TableRef &
 inline TableBytesView TableBytesViewOf( const TableBlob * blob )
 {
     TableBytesView view = { NULL, 0 };
-    if ( blob != NULL ) { view.data = (const uint8_t *) ( blob + 1 ); view.length = (int64_t) blob->length; }
+    if ( blob != NULL )
+    {
+        view.data = (const uint8_t *) ( blob + 1 );
+        view.length = (int64_t) blob->length;
+    }
     return view;
 }
 inline TableStringView TableStringViewOf( const TableBlob * blob )
 {
     TableStringView view = { NULL, 0 };
-    if ( blob != NULL ) { view.data = (const char *) ( blob + 1 ); view.length = (int64_t) blob->length; }
+    if ( blob != NULL )
+    {
+        view.data = (const char *) ( blob + 1 );
+        view.length = (int64_t) blob->length;
+    }
     return view;
 }
 
@@ -4761,8 +6264,10 @@ inline TableBytesView TableBytesAt( const TableRef & ref ) { return TableBytesVi
 inline TableStringView TableStringAt( const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ref ) ); }
 // and the context forms a walk uses: a region context, an arena context, or
 // the arena itself while the builder is mutable
-template <typename Ctx> inline TableBytesView TableBytesAt( const Ctx & ctx, const TableRef & ref ) { return TableBytesViewOf( TableBlobAt( ctx, ref ) ); }
-template <typename Ctx> inline TableStringView TableStringAt( const Ctx & ctx, const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ctx, ref ) ); }
+template <typename Ctx>
+inline TableBytesView TableBytesAt( const Ctx & ctx, const TableRef & ref ) { return TableBytesViewOf( TableBlobAt( ctx, ref ) ); }
+template <typename Ctx>
+inline TableStringView TableStringAt( const Ctx & ctx, const TableRef & ref ) { return TableStringViewOf( TableBlobAt( ctx, ref ) ); }
 
 // allocate a blob in the arena and point the slot at it; the slot holds the
 // arena offset, as every slot does while the builder is mutable
@@ -4820,8 +6325,8 @@ struct TableNodeEntry
 {
     const void * node;
     uint64_t type_id;
-    int64_t ( * measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
-    bool ( * save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
+    int64_t ( *measure )( const void * ctx, const TableNumbering & numbering, TableIds & ids, const void * node );
+    bool ( *save )( const void * ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const void * node );
 };
 
 struct TableNumbering
@@ -4864,7 +6369,7 @@ inline void TableNumberingShutdown( TableNumbering & n )
 inline bool TableNumberingIndex( const TableNumbering & n, const void * node, uint64_t & index )
 {
     if ( n.seen.capacity == 0 ) { return false; }
-    const TablePackEntry & entry = n.seen.entries[ TablePackMapSlot( n.seen, node ) ];
+    const TablePackEntry & entry = n.seen.entries[TablePackMapSlot( n.seen, node )];
     if ( entry.key != node ) { return false; }
     index = (uint64_t) entry.offset;
     return true;
@@ -5073,7 +6578,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         // second slot naming it is blob_shared and still resolves to the one
         // node. No other target has this reading.
         if ( !map.once || entry.type_id != ~target ||
-             ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
+            ( target != kTableBytesTypeId && target != kTableStringTypeId ) )
         {
             report->kind_mismatch++;
             return;
@@ -5090,7 +6595,7 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
         return;
     }
     slot.value = map.arena ? (int64_t) entry.offset
-                          : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
 }
 
 // ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
@@ -5138,18 +6643,30 @@ inline const void * TableCycleNode( const TableCycle & c, int64_t p )
     return (const void *) ( c.base + offset );
 }
 
-inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( * ordinal )( uint64_t type_id ) )
+inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( *ordinal )( uint64_t type_id ) )
 {
     c.entries = entries;
     c.count = count;
     c.base = base;
     c.arena = arena;
-    if ( count <= 0 || count >= ( 1ll << 31 ) ) { c.broken = true; return false; }
+    if ( count <= 0 || count >= ( 1ll << 31 ) )
+    {
+        c.broken = true;
+        return false;
+    }
     for ( int64_t p = 0; p < count; p++ )
     {
         TableNodeDirEntry & e = entries[p];
-        if ( e.offset == kTableNodeAbsent ) { e.offset = kTableCycleAbsent; continue; }
-        if ( e.offset > kTableCycleOffsetMask ) { c.broken = true; return false; }
+        if ( e.offset == kTableNodeAbsent )
+        {
+            e.offset = kTableCycleAbsent;
+            continue;
+        }
+        if ( e.offset > kTableCycleOffsetMask )
+        {
+            c.broken = true;
+            return false;
+        }
         const uint32_t kind = ordinal( e.type_id );
         if ( kind == 0 ) { continue; } // a byte buffer or an already marked blob
         e.offset |= kTableCycleVertex | ( (uint64_t) kind << kTableCycleOrdinalShift );
@@ -5172,9 +6689,17 @@ inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
 {
     if ( slot.value == 0 ) { return true; }
     const uint64_t index = (uint64_t) slot.value;
-    if ( index - 1 >= (uint64_t) c.count ) { c.broken = true; return false; }
+    if ( index - 1 >= (uint64_t) c.count )
+    {
+        c.broken = true;
+        return false;
+    }
     const int64_t p = (int64_t) index - 1;
-    if ( !TableCycleIsVertex( c, p ) ) { c.broken = true; return false; }
+    if ( !TableCycleIsVertex( c, p ) )
+    {
+        c.broken = true;
+        return false;
+    }
     if ( c.resolving )
     {
         const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
@@ -5182,17 +6707,25 @@ inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
         // construction slots. No caller can observe their temporary indices.
         TableRef & output = const_cast<TableRef &>( slot );
         output.value = c.arena != NULL ? (int64_t) offset
-                                      : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
+                                       : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
         return true;
     }
     const uint32_t degree = (uint32_t) c.entries[p].type_id;
     if ( !c.releasing )
     {
-        if ( degree == 0xFFFFFFFFu ) { c.broken = true; return false; }
+        if ( degree == 0xFFFFFFFFu )
+        {
+            c.broken = true;
+            return false;
+        }
         c.entries[p].type_id += 1;
         return true;
     }
-    if ( degree == 0 ) { c.broken = true; return false; }
+    if ( degree == 0 )
+    {
+        c.broken = true;
+        return false;
+    }
     c.entries[p].type_id -= 1;
     if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free
     return true;
@@ -5207,7 +6740,11 @@ inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
     if ( c.broken ) { return false; }
     for ( int64_t p = 0; p < c.count; p++ )
     {
-        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) ) { c.broken = true; return false; }
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
     }
     c.releasing = true;
     for ( int64_t p = 0; p < c.count; p++ )
@@ -5219,14 +6756,26 @@ inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
         const int64_t p = (int64_t) c.head - 1;
         c.head = (uint32_t) ( c.entries[p].type_id >> 32 );
         // a node is entered ONCE: more entries than nodes is a walk gone wrong
-        if ( ++c.processed > c.vertices ) { c.broken = true; return false; }
-        if ( !visit( ctx, c, p ) ) { c.broken = true; return false; }
+        if ( ++c.processed > c.vertices )
+        {
+            c.broken = true;
+            return false;
+        }
+        if ( !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
     }
     if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle
     c.resolving = true;
     for ( int64_t p = 0; p < c.count; p++ )
     {
-        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) ) { c.broken = true; return false; }
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
     }
     return !c.broken;
 }
@@ -5245,7 +6794,10 @@ inline void TableCycleEnd( TableCycle & c )
     {
         uint64_t & offset = c.entries[p].offset;
         if ( ( offset & kTableCycleAbsent ) != 0 ) { offset = kTableNodeAbsent; }
-        else { offset &= kTableCycleOffsetMask; }
+        else
+        {
+            offset &= kTableCycleOffsetMask;
+        }
     }
 }
 
@@ -5295,9 +6847,17 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
         if ( id == kTableNodeTableFieldId )
         {
             s.present = true;
-            if ( kind != 12 ) { s.malformed = true; return false; }
+            if ( kind != 12 )
+            {
+                s.malformed = true;
+                return false;
+            }
             uint64_t length = 0;
-            if ( !s.fields.getleb( length ) || !s.fields.room( length ) ) { s.malformed = true; return false; }
+            if ( !s.fields.getleb( length ) || !s.fields.room( length ) )
+            {
+                s.malformed = true;
+                return false;
+            }
             s.payload = s.fields.buffer + s.fields.offset;
             s.payload_size = (int64_t) length;
             s.fields.offset += (int64_t) length;
@@ -5307,14 +6867,18 @@ inline bool TableNodeScanOpen( TableNodeScan & s )
     }
     if ( s.payload == NULL ) { return false; }
     TableReader head( s.payload, s.payload_size, s.fields.report, s.ids );
-    if ( !head.getleb( s.declared ) ) { s.malformed = true; return false; }
+    if ( !head.getleb( s.declared ) )
+    {
+        s.malformed = true;
+        return false;
+    }
     s.payload_offset = head.offset;
     return true;
 }
 
 // the next record, or false at the end of the table — s.malformed says whether
 // the end was the end or the framing giving out
-inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t * & body, int64_t & length )
+inline bool TableNodeScanNext( TableNodeScan & s, uint64_t & type_id, const uint8_t *& body, int64_t & length )
 {
     if ( !s.opened && !TableNodeScanOpen( s ) ) { return false; }
     if ( s.payload == NULL || s.payload_offset >= s.payload_size ) { return false; }
@@ -5398,7 +6962,7 @@ struct TableRetainPath
     const void * at;
     uint32_t node;
     int32_t depth;
-    TableRetainStep steps[ kTableRetainDepthMax ];
+    TableRetainStep steps[kTableRetainDepthMax];
 };
 
 inline TableRetainPath TableRetainPathRoot( const void * at, uint32_t node )
@@ -5418,8 +6982,8 @@ inline TableRetainPath TableRetainStepInto( const TableRetainPath & path, uint32
     TableRetainPath out = path;
     if ( out.depth < kTableRetainDepthMax )
     {
-        out.steps[ out.depth ].ordinal = ordinal;
-        out.steps[ out.depth ].index = index;
+        out.steps[out.depth].ordinal = ordinal;
+        out.steps[out.depth].index = index;
     }
     out.depth++;
     return out;
@@ -5485,7 +7049,10 @@ inline uint64_t TableRetainRead64( const uint8_t * p )
 
 inline void TableRetainWrite32( uint8_t * p, uint32_t v )
 {
-    p[0] = uint8_t( v ); p[1] = uint8_t( v >> 8 ); p[2] = uint8_t( v >> 16 ); p[3] = uint8_t( v >> 24 );
+    p[0] = uint8_t( v );
+    p[1] = uint8_t( v >> 8 );
+    p[2] = uint8_t( v >> 16 );
+    p[3] = uint8_t( v >> 24 );
 }
 
 inline void TableRetainWrite64( uint8_t * p, uint64_t v )
@@ -5517,7 +7084,7 @@ inline const void * TableRetainRecordAt( const TableRetain & retain, const uint8
 {
     const uint32_t node = TableRetainRecordNode( record );
     if ( retain.directory == NULL || node == 0 || (int64_t) node > retain.directory_count ) { return NULL; }
-    return (const void *) ( retain.base + retain.directory[ node - 1 ].offset );
+    return (const void *) ( retain.base + retain.directory[node - 1].offset );
 }
 
 // Does this record belong to the body the walk is standing in? The node first,
@@ -5544,26 +7111,83 @@ static const int32_t kTableRetainKnownIds = 76;
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
 // the hoisted descriptor's tag lists and wide ranges take.
-inline const uint64_t kTableRetainKnown[ kTableRetainKnownIds ] = {
-    0x033de3f1246bba76ull, 0x036ffe7360826852ull, 0x099d588c4981296dull, 0x0a53e00afba279afull,
-    0x0c2643993e3ece2eull, 0x11e7ec757c03c70aull, 0x124250ad5a5b6d14ull, 0x1404200dab337086ull,
-    0x14e2eaab9cde925bull, 0x18691a70a0e3fe31ull, 0x1a08aa1921ca5cafull, 0x1c84390d304f4f42ull,
-    0x1f6459a2cea1fc02ull, 0x1f781dc01a2b5152ull, 0x2492f5fb1b05b45eull, 0x294a5c4913e1ad44ull,
-    0x294fa1b3f0f5f070ull, 0x29cf72329075c5aaull, 0x2b7dea192bb7be29ull, 0x2f2ec0474f1c4fe4ull,
-    0x3231d0dc6fe30d4aull, 0x3dc94a19365b10ecull, 0x3e8426f7e349c9dcull, 0x437dfc8ab2566816ull,
-    0x4fda04cbc245e18bull, 0x52cfa1d198476806ull, 0x5de00b6a76064442ull, 0x610dcbb318a2e4faull,
-    0x63dfa0c4a4b3815dull, 0x6dd8dc6c5fdae3ceull, 0x704be0d8faaffc58ull, 0x70551ff29550f15dull,
-    0x755332609c470fbdull, 0x758252d2d1b14f0dull, 0x79d594675e391090ull, 0x7b024c46e98d3404ull,
-    0x7ce4fd9430e80ceaull, 0x7d015e53d7cb2c7cull, 0x7f6548303072b061ull, 0x7f69d4b5288ba9cfull,
-    0x8119d921e2250c6aull, 0x816c207ba6213983ull, 0x8dc5f55c70e0f637ull, 0x8ec370bd37dc5e06ull,
-    0x9b18b54fbe8e2161ull, 0xa013e119fec906fbull, 0xa0b562a796b69487ull, 0xa3a7061ff10a8138ull,
-    0xa633f1f655715ccaull, 0xab01daa76a48769full, 0xaf05dfb30c5ca3deull, 0xafb728fff268814full,
-    0xb1e5e28e4479a274ull, 0xb413964e3571a316ull, 0xb4578774a78fb150ull, 0xbc08b7f228c93506ull,
-    0xbf82010f6f71eae9ull, 0xc4bcadba8e631b86ull, 0xc5b2a72c0845a253ull, 0xc85b940060088651ull,
-    0xd5c2bb95d63e6331ull, 0xda73c178dfcf57b7ull, 0xdcdbddf89c9310a1ull, 0xde1c38d5bac1485dull,
-    0xe1185043515c812bull, 0xe68c2e6bb1ee5646ull, 0xe756c0190570ccb5ull, 0xe8130af045a036f8ull,
-    0xea7bdd2b70c8c2bbull, 0xec07a2f760550a91ull, 0xf03923dbb2943618ull, 0xf96b15cd3921d4a6ull,
-    0xfa903574575fc678ull, 0xfd4d194e1652b207ull, 0xfedcb40b5d600538ull, 0xffffffffffffffffull,
+inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
+    0x033de3f1246bba76ull,
+    0x036ffe7360826852ull,
+    0x099d588c4981296dull,
+    0x0a53e00afba279afull,
+    0x0c2643993e3ece2eull,
+    0x11e7ec757c03c70aull,
+    0x124250ad5a5b6d14ull,
+    0x1404200dab337086ull,
+    0x14e2eaab9cde925bull,
+    0x18691a70a0e3fe31ull,
+    0x1a08aa1921ca5cafull,
+    0x1c84390d304f4f42ull,
+    0x1f6459a2cea1fc02ull,
+    0x1f781dc01a2b5152ull,
+    0x2492f5fb1b05b45eull,
+    0x294a5c4913e1ad44ull,
+    0x294fa1b3f0f5f070ull,
+    0x29cf72329075c5aaull,
+    0x2b7dea192bb7be29ull,
+    0x2f2ec0474f1c4fe4ull,
+    0x3231d0dc6fe30d4aull,
+    0x3dc94a19365b10ecull,
+    0x3e8426f7e349c9dcull,
+    0x437dfc8ab2566816ull,
+    0x4fda04cbc245e18bull,
+    0x52cfa1d198476806ull,
+    0x5de00b6a76064442ull,
+    0x610dcbb318a2e4faull,
+    0x63dfa0c4a4b3815dull,
+    0x6dd8dc6c5fdae3ceull,
+    0x704be0d8faaffc58ull,
+    0x70551ff29550f15dull,
+    0x755332609c470fbdull,
+    0x758252d2d1b14f0dull,
+    0x79d594675e391090ull,
+    0x7b024c46e98d3404ull,
+    0x7ce4fd9430e80ceaull,
+    0x7d015e53d7cb2c7cull,
+    0x7f6548303072b061ull,
+    0x7f69d4b5288ba9cfull,
+    0x8119d921e2250c6aull,
+    0x816c207ba6213983ull,
+    0x8dc5f55c70e0f637ull,
+    0x8ec370bd37dc5e06ull,
+    0x9b18b54fbe8e2161ull,
+    0xa013e119fec906fbull,
+    0xa0b562a796b69487ull,
+    0xa3a7061ff10a8138ull,
+    0xa633f1f655715ccaull,
+    0xab01daa76a48769full,
+    0xaf05dfb30c5ca3deull,
+    0xafb728fff268814full,
+    0xb1e5e28e4479a274ull,
+    0xb413964e3571a316ull,
+    0xb4578774a78fb150ull,
+    0xbc08b7f228c93506ull,
+    0xbf82010f6f71eae9ull,
+    0xc4bcadba8e631b86ull,
+    0xc5b2a72c0845a253ull,
+    0xc85b940060088651ull,
+    0xd5c2bb95d63e6331ull,
+    0xda73c178dfcf57b7ull,
+    0xdcdbddf89c9310a1ull,
+    0xde1c38d5bac1485dull,
+    0xe1185043515c812bull,
+    0xe68c2e6bb1ee5646ull,
+    0xe756c0190570ccb5ull,
+    0xe8130af045a036f8ull,
+    0xea7bdd2b70c8c2bbull,
+    0xec07a2f760550a91ull,
+    0xf03923dbb2943618ull,
+    0xf96b15cd3921d4a6ull,
+    0xfa903574575fc678ull,
+    0xfd4d194e1652b207ull,
+    0xfedcb40b5d600538ull,
+    0xffffffffffffffffull,
 };
 
 inline bool TableRetainNameable( uint64_t id )
@@ -5573,7 +7197,11 @@ inline bool TableRetainNameable( uint64_t id )
     {
         const int32_t mid = low + ( high - low ) / 2;
         if ( kTableRetainKnown[mid] == id ) { return true; }
-        if ( kTableRetainKnown[mid] < id ) { low = mid + 1; } else { high = mid - 1; }
+        if ( kTableRetainKnown[mid] < id ) { low = mid + 1; }
+        else
+        {
+            high = mid - 1;
+        }
     }
     return false;
 }
@@ -5587,7 +7215,7 @@ inline bool TableRetainNameable( uint64_t id )
 struct TableRetainIds
 {
     TableIds known;
-    int32_t known_slot[ TableIds::kCapacity ];
+    int32_t known_slot[TableIds::kCapacity];
     TableRetain * retain;
     int32_t count;
     bool overflow;
@@ -5600,9 +7228,13 @@ struct TableRetainIds
     {
         const int32_t before = known.count;
         const uint64_t k = known.ref( id );
-        if ( known.overflow ) { overflow = true; return 1; }
-        if ( known.count != before ) { known_slot[ (int32_t) k - 1 ] = ++count; }
-        return (uint64_t) known_slot[ (int32_t) k - 1 ];
+        if ( known.overflow )
+        {
+            overflow = true;
+            return 1;
+        }
+        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
     // THE MERGED NUMBERING IS NOT THE GENERATED TABLE'S, so the ordinal slot
@@ -5625,14 +7257,22 @@ struct TableRetainIds
     uint64_t record_ref( uint64_t id )
     {
         if ( TableRetainNameable( id ) ) { return ref( id ); }
-        if ( retain == NULL ) { lost = true; return 0; }
+        if ( retain == NULL )
+        {
+            lost = true;
+            return 0;
+        }
         for ( int32_t i = 0; i < retain->id_used; i++ )
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity ) { lost = true; return 0; }
-        retain->ids[ retain->id_used ].id = id;
-        retain->ids[ retain->id_used ].slot = ++count;
+        if ( retain->id_used >= retain->id_capacity )
+        {
+            lost = true;
+            return 0;
+        }
+        retain->ids[retain->id_used].id = id;
+        retain->ids[retain->id_used].slot = ++count;
         retain->id_used++;
         return (uint64_t) count;
     }
@@ -5641,8 +7281,8 @@ struct TableRetainIds
     // slot order, so an entry removed is the last one of its store.
     void truncate( int32_t mark )
     {
-        while ( known.count > 0 && known_slot[ known.count - 1 ] > mark ) { known.truncate( known.count - 1 ); }
-        while ( retain != NULL && retain->id_used > 0 && retain->ids[ retain->id_used - 1 ].slot > mark ) { retain->id_used--; }
+        while ( known.count > 0 && known_slot[known.count - 1] > mark ) { known.truncate( known.count - 1 ); }
+        while ( retain != NULL && retain->id_used > 0 && retain->ids[retain->id_used - 1].slot > mark ) { retain->id_used--; }
         count = mark;
     }
 };
@@ -5730,7 +7370,11 @@ inline void TableRetainInLeb( TableRetainIn & s, uint64_t v )
 {
     uint8_t b[10];
     int64_t n = 0;
-    while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+    while ( v >= 0x80 )
+    {
+        b[n++] = uint8_t( v ) | 0x80;
+        v >>= 7;
+    }
     b[n++] = uint8_t( v );
     TableRetainInRaw( s, b, n );
 }
@@ -5749,7 +7393,7 @@ inline bool TableRetainInLebRead( TableRetainIn & s, uint64_t & value )
     for ( int32_t i = 0; i < 10; i++ )
     {
         if ( s.at >= s.size ) { return false; }
-        const uint8_t b = s.in[ s.at++ ];
+        const uint8_t b = s.in[s.at++];
         if ( i == 9 && b > 1 ) { return false; }
         value |= uint64_t( b & 0x7F ) << shift;
         if ( ( b & 0x80 ) == 0 ) { return i == 0 || b != 0; }
@@ -5796,7 +7440,7 @@ static const int64_t kTableRetainSlotBytes = 8;
 inline int64_t TableRetainInSlot( TableRetainIn & s )
 {
     const int64_t at = s.out_at;
-    const uint8_t zero[ kTableRetainSlotBytes ] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    const uint8_t zero[kTableRetainSlotBytes] = { 0, 0, 0, 0, 0, 0, 0, 0 };
     TableRetainInRaw( s, zero, kTableRetainSlotBytes );
     return at;
 }
@@ -5836,11 +7480,15 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
                 // THE TERMINATOR IS A REFERENCE, and a reference in the
                 // resolved form is a fixed eight-byte id: the zero that ends a
                 // body rides at the width every other one does.
-                if ( ref == 0 ) { TableRetainInId( s, 0 ); break; }
+                if ( ref == 0 )
+                {
+                    TableRetainInId( s, 0 );
+                    break;
+                }
                 s.at = mark;
                 if ( !TableRetainInRef( s, false ) ) { return -1; }
                 if ( s.at >= end ) { return -1; }
-                const uint8_t field_kind = s.in[ s.at++ ];
+                const uint8_t field_kind = s.in[s.at++];
                 TableRetainInRaw( s, &field_kind, 1 );
                 if ( TableRetainInPayload( s, field_kind, depth ) < 0 ) { return -1; }
                 if ( s.at > end ) { return -1; }
@@ -5850,7 +7498,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
         case 14: // an ARRAY body: the element kind, the count, then the elements
         {
             if ( s.at >= end ) { return -1; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainInRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainInLebRead( s, n ) ) { return -1; }
@@ -5865,7 +7513,7 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
         case 16: // an ENUM-KEYED body: N triples of a KEY REFERENCE, an L and the element
         {
             if ( s.at >= end ) { return -1; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainInRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainInLebRead( s, n ) ) { return -1; }
@@ -5881,7 +7529,8 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             }
             break;
         }
-        case 15: case 30:
+        case 15:
+        case 30:
             // A UNION ARM AND AN ENUM'S VARIANT REFERENCE RESOLVE AS A FRAMED
             // CONTENT TOO (§6.6): a kind 15 arm whose own payload is a union,
             // and a kind 16 slot whose element kind is 15 or 30, both arrive
@@ -5910,19 +7559,53 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
     const int64_t began = s.out_at;
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25: // the fixed-width kinds, by width
-        case 3: case 7: case 21: case 26:
-        case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28: case 36:
-        case 18: case 19: case 24: case 29:
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: // the fixed-width kinds, by width
+        case 3:
+        case 7:
+        case 21:
+        case 26:
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27:
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36:
+        case 18:
+        case 19:
+        case 24:
+        case 29:
         {
             int64_t width = 1;
             switch ( kind )
             {
-                case 3: case 7: case 21: case 26: width = 2; break;
-                case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
-                case 18: case 19: case 24: case 29: width = 16; break;
+                case 3:
+                case 7:
+                case 21:
+                case 26: width = 2; break;
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27: width = 4; break;
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
+                case 18:
+                case 19:
+                case 24:
+                case 29: width = 16; break;
                 default: width = 1; break;
             }
             if ( s.at + width > s.size ) { return -1; }
@@ -5930,7 +7613,10 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33: // L, then L bytes, nothing framed inside
+        case 12:
+        case 31:
+        case 32:
+        case 33: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -5940,7 +7626,9 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             s.at += (int64_t) length;
             break;
         }
-        case 13: case 14: case 16: // L, then a body the walk resolves
+        case 13:
+        case 14:
+        case 16: // L, then a body the walk resolves
         {
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -5957,7 +7645,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             if ( !TableRetainInRef( s, true ) ) { return -1; }
             if ( arm == 0 ) { break; }
             if ( s.at >= s.size ) { return -1; }
-            const uint8_t arm_kind = s.in[ s.at++ ];
+            const uint8_t arm_kind = s.in[s.at++];
             TableRetainInRaw( s, &arm_kind, 1 );
             uint64_t length = 0;
             if ( !TableRetainInLebRead( s, length ) ) { return -1; }
@@ -5984,7 +7672,7 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
 // for, and nothing else: retention can lose a field, it can never turn a good
 // read into a bad one.
 inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const TableRetainPath & path,
-                                uint64_t field_id, uint8_t kind )
+    uint64_t field_id, uint8_t kind )
 {
     const int64_t start = r.offset;
     if ( !r.skip( kind ) ) { return false; }
@@ -6013,7 +7701,11 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     probe.out = NULL;
     probe.out_at = 0;
     const int64_t payload = TableRetainInPayload( probe, kind, 0 );
-    if ( payload < 0 || probe.at != wire_bytes ) { r.report->retain_lost++; return true; }
+    if ( payload < 0 || probe.at != wire_bytes )
+    {
+        r.report->retain_lost++;
+        return true;
+    }
 
     const int64_t need = kTableRetainRecordHeader + 8 * (int64_t) path.depth + payload;
     if ( need > 0xFFFFFFFFll || retain->used + need > retain->capacity )
@@ -6043,7 +7735,11 @@ inline bool TableRetainCapture( TableRetain * retain, TableReader & r, const Tab
     write.ids = r.ids;
     write.out = record + kTableRetainRecordHeader + 8 * (int64_t) path.depth;
     write.out_at = 0;
-    if ( TableRetainInPayload( write, kind, 0 ) < 0 ) { r.report->retain_lost++; return true; }
+    if ( TableRetainInPayload( write, kind, 0 ) < 0 )
+    {
+        r.report->retain_lost++;
+        return true;
+    }
     retain->used += need;
     retain->count++;
     r.report->retained++;
@@ -6082,7 +7778,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 // inside one occurrence of a map, where the field is read once and the entry
 // twice.
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
-                              const TableRetainPath & path, bool field, uint32_t ordinal )
+    const TableRetainPath & path, bool field, uint32_t ordinal )
 {
     if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
@@ -6175,7 +7871,7 @@ inline bool TableRetainOutLebRead( TableRetainOut & s, uint64_t & value )
     for ( int32_t i = 0; i < 10; i++ )
     {
         if ( s.at >= s.size ) { return false; }
-        const uint8_t b = s.in[ s.at++ ];
+        const uint8_t b = s.in[s.at++];
         value |= uint64_t( b & 0x7F ) << shift;
         if ( ( b & 0x80 ) == 0 ) { return true; }
         shift += 7;
@@ -6188,7 +7884,11 @@ inline bool TableRetainOutRef( TableRetainOut & s )
     if ( s.at + 8 > s.size ) { return false; }
     const uint64_t id = TableRetainRead64( s.in + s.at );
     s.at += 8;
-    if ( id == 0 ) { TableRetainOutLeb( s, 0 ); return true; } // the wire's own no-id
+    if ( id == 0 )
+    {
+        TableRetainOutLeb( s, 0 );
+        return true;
+    } // the wire's own no-id
     const uint64_t ref = s.ids->record_ref( id );
     if ( s.ids->lost || s.ids->overflow ) { return false; }
     TableRetainOutLeb( s, ref );
@@ -6243,10 +7943,15 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             {
                 if ( s.at + 8 > end ) { return false; }
                 const uint64_t id = TableRetainRead64( s.in + s.at );
-                if ( id == 0 ) { s.at += 8; TableRetainOutLeb( s, 0 ); break; }
+                if ( id == 0 )
+                {
+                    s.at += 8;
+                    TableRetainOutLeb( s, 0 );
+                    break;
+                }
                 if ( !TableRetainOutRef( s ) ) { return false; }
                 if ( s.at >= end ) { return false; }
-                const uint8_t field_kind = s.in[ s.at++ ];
+                const uint8_t field_kind = s.in[s.at++];
                 TableRetainOutRaw( s, &field_kind, 1 );
                 if ( !TableRetainOutPayload( s, field_kind, depth ) ) { return false; }
             }
@@ -6255,7 +7960,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
         case 14:
         {
             if ( s.at >= end ) { return false; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainOutRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainOutLebRead( s, n ) ) { return false; }
@@ -6269,7 +7974,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
         case 16:
         {
             if ( s.at >= end ) { return false; }
-            const uint8_t elem_kind = s.in[ s.at++ ];
+            const uint8_t elem_kind = s.in[s.at++];
             TableRetainOutRaw( s, &elem_kind, 1 );
             uint64_t n = 0;
             if ( !TableRetainOutLebRead( s, n ) ) { return false; }
@@ -6281,7 +7986,8 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             }
             break;
         }
-        case 15: case 30:
+        case 15:
+        case 30:
             // the emit side of the capture's own rule (§6.6): an arm and a
             // variant reference resolve as a framed content too
             if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
@@ -6300,19 +8006,53 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
 {
     switch ( kind )
     {
-        case 1: case 2: case 6: case 20: case 25:
-        case 3: case 7: case 21: case 26:
-        case 4: case 8: case 10: case 22: case 27:
-        case 5: case 9: case 11: case 23: case 28: case 36:
-        case 18: case 19: case 24: case 29:
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25:
+        case 3:
+        case 7:
+        case 21:
+        case 26:
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27:
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36:
+        case 18:
+        case 19:
+        case 24:
+        case 29:
         {
             int64_t width = 1;
             switch ( kind )
             {
-                case 3: case 7: case 21: case 26: width = 2; break;
-                case 4: case 8: case 10: case 22: case 27: width = 4; break;
-                case 5: case 9: case 11: case 23: case 28: case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
-                case 18: case 19: case 24: case 29: width = 16; break;
+                case 3:
+                case 7:
+                case 21:
+                case 26: width = 2; break;
+                case 4:
+                case 8:
+                case 10:
+                case 22:
+                case 27: width = 4; break;
+                case 5:
+                case 9:
+                case 11:
+                case 23:
+                case 28:
+                case 36: width = 8; break; // 36 is the timestamp, the i64's eight bytes (§2.11, §3)
+                case 18:
+                case 19:
+                case 24:
+                case 29: width = 16; break;
                 default: width = 1; break;
             }
             if ( s.at + width > s.size ) { return false; }
@@ -6320,7 +8060,10 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += width;
             break;
         }
-        case 12: case 31: case 32: case 33:
+        case 12:
+        case 31:
+        case 32:
+        case 33:
         {
             uint64_t length = 0;
             if ( !TableRetainOutLebRead( s, length ) ) { return false; }
@@ -6330,7 +8073,9 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             s.at += (int64_t) length;
             break;
         }
-        case 13: case 14: case 16:
+        case 13:
+        case 14:
+        case 16:
         {
             if ( !TableRetainOutFramed( s, kind, depth + 1 ) ) { return false; }
             break;
@@ -6342,7 +8087,7 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             if ( !TableRetainOutRef( s ) ) { return false; }
             if ( arm == 0 ) { break; }
             if ( s.at >= s.size ) { return false; }
-            const uint8_t arm_kind = s.in[ s.at++ ];
+            const uint8_t arm_kind = s.in[s.at++];
             TableRetainOutRaw( s, &arm_kind, 1 );
             if ( !TableRetainOutFramed( s, arm_kind, depth + 1 ) ) { return false; }
             break;
@@ -6459,7 +8204,7 @@ inline void TableRetainClearPlaced( TableRetain * retain )
     int64_t at = 0;
     for ( int32_t k = 0; k < retain->count; k++ )
     {
-        retain->bytes[ at + 25 ] = 0;
+        retain->bytes[at + 25] = 0;
         at += TableRetainRecordBytes( retain->bytes + at );
     }
 }
@@ -6483,7 +8228,7 @@ inline void TableRetainCountLost( const TableRetain * retain, TableReport * repo
 // cost this feature is not allowed to have.
 template <typename Ctx, typename Measure>
 inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
-                                            TableRetain * retain, Measure measure )
+    TableRetain * retain, Measure measure )
 {
     int64_t payload = TableLebBytes( (uint64_t) n.count );
     for ( int64_t k = 0; k < n.count; k++ )
@@ -6498,7 +8243,7 @@ inline int64_t TableNodeTablePayloadRetain( const Ctx & ctx, TableRetainIds & id
 
 template <typename Ctx, typename Measure>
 inline int64_t TableNodeTableMeasureRetain( const Ctx & ctx, TableRetainIds & ids, const TableNumbering & n,
-                                            TableRetain * retain, Measure measure )
+    TableRetain * retain, Measure measure )
 {
     if ( n.count == 0 ) { return 0; }
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
@@ -6509,7 +8254,7 @@ inline int64_t TableNodeTableMeasureRetain( const Ctx & ctx, TableRetainIds & id
 
 template <typename Ctx, typename Measure, typename Save>
 inline bool TableNodeTableSaveRetain( const Ctx & ctx, TableWriter & w, TableRetainIds & ids, const TableNumbering & n,
-                                      TableRetain * retain, Measure measure, Save save )
+    TableRetain * retain, Measure measure, Save save )
 {
     if ( n.count == 0 ) { return true; }
     const uint64_t ref = ids.ref( kTableNodeTableFieldId );
@@ -6562,7 +8307,7 @@ inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 // The measure reads no field value: it walks each record's field headers,
 // skipping every payload by its framing, to reach each N at every depth. A
 // false is a REFUSAL, and it carries its reason (§6.5).
-typedef bool ( * TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+typedef bool ( *TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
 
 // the framing walk over an ARRAY OF TABLES held by value: its elements' own
 // lists and maps are part of this node's extent too
@@ -7364,18 +9109,28 @@ static const int32_t kTableListSegmentElements = 32;
 
 // THE ELEMENT STORAGE: T itself, and a TableRef slot for a []*T, whose
 // elements are references exactly as a pointer field's slot is (§2.1)
-template <typename T> struct TableListStorage { typedef T Element; };
-template <typename T> struct TableListStorage<T *> { typedef TableRef Element; };
+template <typename T>
+struct TableListStorage
+{
+    typedef T Element;
+};
+template <typename T>
+struct TableListStorage<T *>
+{
+    typedef TableRef Element;
+};
 
 // WHAT THE CONST FORM ANSWERS: the element by reference, and on a []*T the
 // RESOLVED pointer, one add on the self-relative delta, NULL for a null slot,
 // exactly as <T>At answers it (§6.2, §6.3)
-template <typename T> struct TableListConst
+template <typename T>
+struct TableListConst
 {
     typedef const T & Result;
     static Result At( const T * element ) { return *element; }
 };
-template <typename T> struct TableListConst<T *>
+template <typename T>
+struct TableListConst<T *>
 {
     typedef const T * Result;
     static Result At( const TableRef * element )
@@ -7391,7 +9146,8 @@ template <typename T> struct TableListConst<T *>
 // arena it names the builder's HEAD, in a region it is the delta from the slot
 // to the first element, and 0 is the empty list in both. It is the map's slot
 // exactly, because it is the same two facts.
-template <typename T> struct TableList
+template <typename T>
+struct TableList
 {
     typedef typename TableListStorage<T>::Element Element;
 
@@ -7439,7 +9195,11 @@ template <typename T> struct TableList
     {
         const Element * at;
         typename TableListConst<T>::Result operator*() const { return TableListConst<T>::At( at ); }
-        ConstIterator & operator++() { at++; return *this; }
+        ConstIterator & operator++()
+        {
+            at++;
+            return *this;
+        }
         bool operator==( const ConstIterator & other ) const { return at == other.at; }
         bool operator!=( const ConstIterator & other ) const { return at != other.at; }
     };
@@ -7463,18 +9223,19 @@ struct TableListHead
     int32_t dead;
 };
 
-template <typename Element> struct TableListSegment
+template <typename Element>
+struct TableListSegment
 {
     TableRef next;
     int32_t used;                                          // elements carved from this segment
     int32_t padding;
-    uint32_t dead[ ( kTableListSegmentElements + 31 ) / 32 ]; // Erase marks one bit, never the element
-    Element elements[ kTableListSegmentElements ];
+    uint32_t dead[( kTableListSegmentElements + 31 ) / 32]; // Erase marks one bit, never the element
+    Element elements[kTableListSegmentElements];
 };
 
 inline bool TableListSegmentDead( const uint32_t * dead, int32_t index )
 {
-    return ( dead[ index / 32 ] & ( 1u << ( index % 32 ) ) ) != 0;
+    return ( dead[index / 32] & ( 1u << ( index % 32 ) ) ) != 0;
 }
 
 // the head, allocated when the first element is added
@@ -7571,7 +9332,7 @@ inline bool TableListErase( TableArena & arena, TableList<T> & list, const typen
         {
             const int32_t i = (int32_t) ( element - segment->elements );
             if ( TableListSegmentDead( segment->dead, i ) ) { return false; } // already erased
-            segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+            segment->dead[i / 32] |= 1u << ( i % 32 );
             head->live--;
             head->dead++;
             list.count--;
@@ -7583,7 +9344,8 @@ inline bool TableListErase( TableArena & arena, TableList<T> & list, const typen
 }
 
 // ---- iterate on the BUILDER: INDEX order, live elements only (§2.9) ----
-template <typename T> struct TableListEach
+template <typename T>
+struct TableListEach
 {
     typedef typename TableList<T>::Element Element;
     const TableArena * arena;
@@ -7606,12 +9368,21 @@ template <typename T> struct TableListEach
                     index = 0;
                     continue;
                 }
-                if ( TableListSegmentDead( segment->dead, index ) ) { index++; continue; }
+                if ( TableListSegmentDead( segment->dead, index ) )
+                {
+                    index++;
+                    continue;
+                }
                 return;
             }
         }
         Element * operator*() const { return segment->elements + index; }
-        Iterator & operator++() { index++; Skip(); return *this; }
+        Iterator & operator++()
+        {
+            index++;
+            Skip();
+            return *this;
+        }
         // the end is a NULL segment at any index: the loop body then never sees a NULL segment
         bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
@@ -7623,7 +9394,11 @@ template <typename T> struct TableListEach
         it.Skip();
         return it;
     }
-    Iterator end() const { Iterator it = { arena, NULL, 0 }; return it; }
+    Iterator end() const
+    {
+        Iterator it = { arena, NULL, 0 };
+        return it;
+    }
 };
 
 template <typename T>
@@ -7647,7 +9422,8 @@ inline TableListEach<T> TableListEachOf( const TableArena & arena, const TableLi
 // i + 2, so the cursor remembers where the last access landed and moves one
 // live slot per step. An access behind the memo restarts from the first
 // segment, which no walk here does.
-template <typename Element> struct TableListCursor
+template <typename Element>
+struct TableListCursor
 {
     const Element * elements = NULL; // the region's form: the array in place
     const TableArena * arena = NULL; // the builder's form: the segments
@@ -7708,7 +9484,12 @@ inline TableListCursor<typename TableList<T>::Element> TableListElements( const 
     TableListCursor<typename TableList<T>::Element> cursor;
     cursor.arena = &arena;
     cursor.count = list.count;
-    if ( list.elements.value == 0 || list.count <= 0 ) { cursor.ok = list.count == 0; cursor.count = 0; return cursor; }
+    if ( list.elements.value == 0 || list.count <= 0 )
+    {
+        cursor.ok = list.count == 0;
+        cursor.count = 0;
+        return cursor;
+    }
     const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
     if ( head->live != list.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
     cursor.first = head->first;
@@ -7728,7 +9509,8 @@ inline TableListCursor<typename TableList<T>::Element> TableListElements( const 
 // cannot tell which it has: a REGION carves the element array out of the
 // holder node's own extent, PRE-ORDER, and the TOOL's path appends into the
 // builder's arena.
-template <typename T> struct TableListFill
+template <typename T>
+struct TableListFill
 {
     typedef typename TableList<T>::Element Element;
     TableList<T> * list = NULL;
@@ -7778,7 +9560,8 @@ inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableLis
 
 // the next slot, at the element's declared defaults. NULL when the arena
 // could not carve, which the decoder reports as framing damage
-template <typename T> inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
+template <typename T>
+inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
 {
     typedef typename TableList<T>::Element Element;
     if ( fill.array != NULL )
@@ -7796,7 +9579,8 @@ template <typename T> inline typename TableList<T>::Element * TableListFillNext(
 // framing gave out was not decoded. That is damage, and the load that met it is
 // discarded whole (§4); until it is, the region's form uncounts the slot and the
 // builder's marks it dead, which is what the storage rule allows mid-build.
-template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
+template <typename T>
+inline void TableListFillDrop( TableListFill<T> & fill )
 {
     typedef typename TableList<T>::Element Element;
     if ( fill.array != NULL )
@@ -7811,7 +9595,7 @@ template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
     if ( segment->used <= 0 ) { return; }
     const int32_t i = segment->used - 1;
     if ( TableListSegmentDead( segment->dead, i ) ) { return; }
-    segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+    segment->dead[i / 32] |= 1u << ( i % 32 );
     head->live--;
     head->dead++;
     fill.list->count--;
@@ -7819,7 +9603,8 @@ template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
 
 // an EMPTY list's reference is null in both encodings, so a load that placed
 // nothing leaves the slot exactly as a Reset does
-template <typename T> inline void TableListFillEnd( TableListFill<T> & fill )
+template <typename T>
+inline void TableListFillEnd( TableListFill<T> & fill )
 {
     if ( fill.array != NULL && fill.list->count == 0 ) { fill.list->elements.value = 0; }
 }
@@ -7832,8 +9617,8 @@ template <typename T> inline void TableListFillEnd( TableListFill<T> & fill )
 // headers under it. Every -1 carries its REASON (§6.5): the int32 cap first,
 // because a count past it cannot fit any body, and then the body's own L.
 inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t & at,
-                                 int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
-                                 TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+    int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
+    TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
@@ -7848,9 +9633,17 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
-    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        reason = count_over_extent_cap;
+        return false;
+    }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / elem_floor ) ) { reason = count_over_length; return false; } // an N the list's L cannot carry
+    if ( n > (uint64_t) ( rest / elem_floor ) )
+    {
+        reason = count_over_length;
+        return false;
+    } // an N the list's L cannot carry
     at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
     at += (int64_t) n * elem_size;
     if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
@@ -7998,9 +9791,7 @@ inline const uint8_t * TableCookRefuse( TableRefuseReason * reason, TableRefuseR
 
 inline uint64_t table_cook_byteswap64( uint64_t v )
 {
-    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-         | ( v << 56 );
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull ) | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull ) | ( v << 56 );
 }
 
 inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint64_t root_size, uint64_t root_align, TableRefuseReason * reason )
@@ -8104,8 +9895,16 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
 // order, exactly as a u64 is one lane of eight (docs/SPEC-TABLES.md §7.2).
 inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByteOrder order )
 {
-    if ( order == TableByteOrder::Little ) { table_cook_put( at, lo, 8, order ); table_cook_put( at + 8, hi, 8, order ); }
-    else { table_cook_put( at, hi, 8, order ); table_cook_put( at + 8, lo, 8, order ); }
+    if ( order == TableByteOrder::Little )
+    {
+        table_cook_put( at, lo, 8, order );
+        table_cook_put( at + 8, hi, 8, order );
+    }
+    else
+    {
+        table_cook_put( at, hi, 8, order );
+        table_cook_put( at + 8, lo, 8, order );
+    }
 }
 
 // A buffer piece: the USED bytes and nothing else. The tail is already zero —
@@ -8174,7 +9973,11 @@ struct TableCookRegion
 // rather than written as a delta to nowhere.
 inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const void * pointee, TableByteOrder order )
 {
-    if ( pointee == NULL ) { table_cook_put( at, 0, 8, order ); return true; }
+    if ( pointee == NULL )
+    {
+        table_cook_put( at, 0, 8, order );
+        return true;
+    }
     uint64_t index = 0;
     if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
     if ( index == 0 || index > (uint64_t) region.count ) { return false; }
@@ -8191,7 +9994,8 @@ namespace mapdemo {
 
 // table CrewsMembersEntry — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
-struct CrewsMembersEntry {
+struct CrewsMembersEntry
+{
     uint32_t key = 0;
     TableRef value[2]; // [..2]*Item — used count beside it; every slot null until assigned
     int32_t value_count = 0;
@@ -8199,7 +10003,8 @@ struct CrewsMembersEntry {
 
 // table Crews — TABLE-wire storage: relocatable, bounded, defaults in the
 // member initializers (docs/SPEC-TABLES.md)
-struct Crews {
+struct Crews
+{
     TableMap<CrewsMembersEntry> members; // map[uint32]*Item — the sorted entry array, empty until an insert
     int32_t past = 0;
 };
@@ -8242,30 +10047,46 @@ inline void TableReset( Crews & value ) { CrewsReset( value ); }
 
 // ---- codecs: measure/save/load per closure member ----
 
-template <typename Ctx> inline int64_t CrewsMembersEntryMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const CrewsMembersEntry & value );
-template <typename Ctx> inline bool CrewsMembersEntrySaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const CrewsMembersEntry & value );
-template <typename Ctx> inline bool CrewsMembersEntrySaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const CrewsMembersEntry & value );
+template <typename Ctx>
+inline int64_t CrewsMembersEntryMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const CrewsMembersEntry & value );
+template <typename Ctx>
+inline bool CrewsMembersEntrySaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const CrewsMembersEntry & value );
+template <typename Ctx>
+inline bool CrewsMembersEntrySaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const CrewsMembersEntry & value );
 inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nodes, CrewsMembersEntry & value );
-template <typename Ctx> inline int64_t CrewsMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Crews & value );
-template <typename Ctx> inline bool CrewsSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Crews & value );
-template <typename Ctx> inline bool CrewsSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Crews & value );
+template <typename Ctx>
+inline int64_t CrewsMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Crews & value );
+template <typename Ctx>
+inline bool CrewsSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Crews & value );
+template <typename Ctx>
+inline bool CrewsSaveBody( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Crews & value );
 inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & value );
 
 // ---- pointer-graph walkers: number (measure/save), pack (Lock) ----
 
-template <typename Ctx> inline bool CrewsMembersEntryNumber( const Ctx & ctx, TableNumbering & numbering, const CrewsMembersEntry & value );
-template <typename Ctx> inline int64_t CrewsMembersEntryPackMeasure( const Ctx & ctx, TablePackMap & seen, const CrewsMembersEntry & value );
-template <typename Ctx> inline bool CrewsMembersEntryPack( const Ctx & ctx, TablePackMap & seen, const CrewsMembersEntry & src, CrewsMembersEntry & dst, uint8_t * base, int64_t capacity, int64_t & used );
-template <typename Ctx> inline bool CrewsNumber( const Ctx & ctx, TableNumbering & numbering, const Crews & value );
-template <typename Ctx> inline int64_t CrewsPackMeasure( const Ctx & ctx, TablePackMap & seen, const Crews & value );
-template <typename Ctx> inline bool CrewsPack( const Ctx & ctx, TablePackMap & seen, const Crews & src, Crews & dst, uint8_t * base, int64_t capacity, int64_t & used );
+template <typename Ctx>
+inline bool CrewsMembersEntryNumber( const Ctx & ctx, TableNumbering & numbering, const CrewsMembersEntry & value );
+template <typename Ctx>
+inline int64_t CrewsMembersEntryPackMeasure( const Ctx & ctx, TablePackMap & seen, const CrewsMembersEntry & value );
+template <typename Ctx>
+inline bool CrewsMembersEntryPack( const Ctx & ctx, TablePackMap & seen, const CrewsMembersEntry & src, CrewsMembersEntry & dst, uint8_t * base, int64_t capacity, int64_t & used );
+template <typename Ctx>
+inline bool CrewsNumber( const Ctx & ctx, TableNumbering & numbering, const Crews & value );
+template <typename Ctx>
+inline int64_t CrewsPackMeasure( const Ctx & ctx, TablePackMap & seen, const Crews & value );
+template <typename Ctx>
+inline bool CrewsPack( const Ctx & ctx, TablePackMap & seen, const Crews & src, Crews & dst, uint8_t * base, int64_t capacity, int64_t & used );
 
 // ---- the numbering's bridge to each member's codec (docs/SPEC-TABLES.md §3.1) ----
 
-template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const CrewsMembersEntry & value ) { return CrewsMembersEntryMeasureBody( ctx, numbering, ids, value ); }
-template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const CrewsMembersEntry & value ) { return CrewsMembersEntrySaveBody( ctx, numbering, w, ids, value ); }
-template <typename Ctx> inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Crews & value ) { return CrewsMeasureBody( ctx, numbering, ids, value ); }
-template <typename Ctx> inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Crews & value ) { return CrewsSaveBody( ctx, numbering, w, ids, value ); }
+template <typename Ctx>
+inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const CrewsMembersEntry & value ) { return CrewsMembersEntryMeasureBody( ctx, numbering, ids, value ); }
+template <typename Ctx>
+inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const CrewsMembersEntry & value ) { return CrewsMembersEntrySaveBody( ctx, numbering, w, ids, value ); }
+template <typename Ctx>
+inline int64_t TableNodeMeasure( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Crews & value ) { return CrewsMeasureBody( ctx, numbering, ids, value ); }
+template <typename Ctx>
+inline bool TableNodeSave( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Crews & value ) { return CrewsSaveBody( ctx, numbering, w, ids, value ); }
 
 // ---- CrewsMembersEntry: the order, the key and the value (docs/SPEC-TABLES.md §2.8) ----
 //
@@ -8354,13 +10175,19 @@ inline CrewsMembersEntryKeyRead CrewsMembersEntryReadKey( const uint8_t * body, 
 // three above are untouched and cost nothing for these being here: a caller
 // that does not ask instantiates none of them.
 
-template <typename Ctx> inline int64_t CrewsMembersEntryMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
-template <typename Ctx> inline bool CrewsMembersEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
-template <typename Ctx> inline bool CrewsMembersEntrySaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx>
+inline int64_t CrewsMembersEntryMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx>
+inline bool CrewsMembersEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx>
+inline bool CrewsMembersEntrySaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
 inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, CrewsMembersEntry & value, TableRetain * retain, const TableRetainPath & path );
-template <typename Ctx> inline int64_t CrewsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Crews & value, TableRetain * retain, const TableRetainPath & path );
-template <typename Ctx> inline bool CrewsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Crews & value, TableRetain * retain, const TableRetainPath & path );
-template <typename Ctx> inline bool CrewsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Crews & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx>
+inline int64_t CrewsMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Crews & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx>
+inline bool CrewsSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Crews & value, TableRetain * retain, const TableRetainPath & path );
+template <typename Ctx>
+inline bool CrewsSaveBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Crews & value, TableRetain * retain, const TableRetainPath & path );
 inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Crews & value, TableRetain * retain, const TableRetainPath & path );
 
 template <typename Ctx>
@@ -8411,8 +10238,10 @@ inline bool CrewsMembersEntrySaveBodyFields( const Ctx & ctx, const TableNumberi
                 body_value += TableLebBytes( slot_index );
             }
         }
-        w.header( ref_value, 14 ); w.putleb( (uint64_t) body_value ); // value
-        w.put8( 17 ); w.putleb( (uint64_t) ( value.value_count ) );
+        w.header( ref_value, 14 );
+        w.putleb( (uint64_t) body_value ); // value
+        w.put8( 17 );
+        w.putleb( (uint64_t) ( value.value_count ) );
         for ( int32_t elem_i = 0; elem_i < value.value_count; elem_i++ )
         {
             {
@@ -8441,11 +10270,23 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
     for ( ;; )
     {
         uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( !r.getleb( field_ref ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
+        {
+            r.report->malformed = true;
+            return false;
+        } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
-        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        if ( !r.has( 1 ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         uint8_t kind = r.get8();
         if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
@@ -8469,7 +10310,11 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         uint64_t widened_v = 0;
-                        if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        if ( !TableReadUnsignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         uint32_t decoded_v = (uint32_t) widened_v;
                         value.key = decoded_v;
                         break;
@@ -8477,11 +10322,19 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t decoded_v = uint32_t( r.get32( ) );
+                if ( !r.has( 4 ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
+                uint32_t decoded_v = uint32_t( r.get32() );
                 value.key = decoded_v;
                 break;
             }
@@ -8492,11 +10345,19 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
                 uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
                 // count, so fewer than two bytes — is INERT (§4): the field keeps the
@@ -8526,7 +10387,11 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
                     {
                         {
                             uint64_t node_index = 0;
-                            if ( !sub.getleb( node_index ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( node_index ) )
+                            {
+                                r.report->malformed = true;
+                                break;
+                            }
                             TableNodeResolve( nodes, value.value[(int32_t) i], node_index, 0x52cfa1d198476806ull, r.report ); // *Item
                         }
                         decoded = i + 1;
@@ -8542,13 +10407,21 @@ inline bool CrewsMembersEntryLoadBody( TableReader & r, const TableNodeMap & nod
             }
             case 0xffffffffffffffffull:
             {
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                if ( !r.skip( kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
             default:
             {
                 r.report->unknown++;
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                if ( !r.skip( kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
         }
@@ -8632,11 +10505,23 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
     for ( ;; )
     {
         uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( !r.getleb( field_ref ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
+        {
+            r.report->malformed = true;
+            return false;
+        } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
-        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        if ( !r.has( 1 ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         uint8_t kind = r.get8();
         if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
@@ -8658,11 +10543,19 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
                 uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 if ( body_len >= 2 )
                 {
@@ -8673,8 +10566,17 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
                     // kind mismatch of §4, and nothing about a map is special-cased
                     if ( elem_kind != 13 ) { r.report->kind_mismatch++; r.offset = body_end; break; }
                     TableMapFill<CrewsMembersEntry> fill = TableMapFillBegin( nodes, value.members, count );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( fill.refused )
+                    {
+                        nodes.refused = true;
+                        return false;
+                    }
+                    if ( !fill.ok )
+                    {
+                        r.report->malformed = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -8748,7 +10650,11 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.past = decoded_v;
                         r.report->widened++;
@@ -8757,23 +10663,39 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                int32_t decoded_v = int32_t( r.get32( ) );
+                if ( !r.has( 4 ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
+                int32_t decoded_v = int32_t( r.get32() );
                 value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
             {
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                if ( !r.skip( kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
             default:
             {
                 r.report->unknown++;
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                if ( !r.skip( kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
         }
@@ -8785,7 +10707,11 @@ inline bool CrewsLoadBody( TableReader & r, const TableNodeMap & nodes, Crews & 
 // expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).
 inline bool CrewsMembersEntryWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )
 {
-    (void) body; (void) length; (void) at; (void) ids; (void) reason; // no list or map below this record
+    (void) body;
+    (void) length;
+    (void) at;
+    (void) ids;
+    (void) reason; // no list or map below this record
     return true;
 }
 
@@ -8794,14 +10720,17 @@ inline bool CrewsMembersEntryWireExtent( const uint8_t * body, int64_t length, i
 template <typename Ctx>
 inline bool CrewsMembersEntryExtentAt( const Ctx & ctx, const CrewsMembersEntry & value, int64_t & at )
 {
-    (void) ctx; (void) value; (void) at; // no list or map below this record
+    (void) ctx;
+    (void) value;
+    (void) at; // no list or map below this record
     return true;
 }
 
 template <typename Ctx>
 inline int64_t CrewsMembersEntryExtent( const Ctx & ctx, const CrewsMembersEntry & value )
 {
-    (void) ctx; (void) value; // no list or map below this record
+    (void) ctx;
+    (void) value; // no list or map below this record
     return 0;
 }
 
@@ -8811,7 +10740,12 @@ inline int64_t CrewsMembersEntryExtent( const Ctx & ctx, const CrewsMembersEntry
 template <typename Ctx>
 inline bool CrewsMembersEntryExtentPack( const Ctx & ctx, const CrewsMembersEntry & src, CrewsMembersEntry & dst, uint8_t * extent, int64_t & at, int64_t capacity )
 {
-    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no list or map below this record
+    (void) ctx;
+    (void) src;
+    (void) dst;
+    (void) extent;
+    (void) at;
+    (void) capacity; // no list or map below this record
     return true;
 }
 
@@ -9037,7 +10971,9 @@ inline bool CrewsMembersEntryNumber( const Ctx & ctx, TableNumbering & numbering
 template <typename Ctx>
 inline bool CrewsMembersEntryCycleSlots( const Ctx & ctx, TableCycle & cycle, const CrewsMembersEntry & value )
 {
-    (void) ctx; (void) cycle; (void) value;
+    (void) ctx;
+    (void) cycle;
+    (void) value;
     for ( int32_t k = 0; k < value.value_count && k < 2; k++ ) // value: [..2]*Item
     {
     if ( !TableCycleEdge( cycle, value.value[k] ) ) { return false; } // value
@@ -9161,7 +11097,9 @@ inline bool CrewsNumber( const Ctx & ctx, TableNumbering & numbering, const Crew
 template <typename Ctx>
 inline bool CrewsCycleSlots( const Ctx & ctx, TableCycle & cycle, const Crews & value )
 {
-    (void) ctx; (void) cycle; (void) value;
+    (void) ctx;
+    (void) cycle;
+    (void) value;
     if ( !TableMapVisitStored( ctx, value.members, [&]( const CrewsMembersEntry & entry )
     {
         return CrewsMembersEntryCycleSlots( ctx, cycle, entry );
@@ -9259,14 +11197,19 @@ struct CrewsBuilder
         TableSlot<Crews> slot = main.Alloc<Crews>();
         root_ref = slot.ref;
     }
-    ~CrewsBuilder() { TableArenaShutdown( arena ); table_release( arena.allocator, region ); }
+    ~CrewsBuilder()
+    {
+        TableArenaShutdown( arena );
+        table_release( arena.allocator, region );
+    }
     CrewsBuilder( const CrewsBuilder & ) = delete;
     CrewsBuilder & operator=( const CrewsBuilder & ) = delete;
 
     // Alloc a node in THIS thread's slab: no lock, no atomic per node.
     // The result is usable both as the node pointer and as the reference
     // to store in a pointer field.
-    template <typename T> TableSlot<T> Alloc() { return main.Alloc<T>(); }
+    template <typename T>
+    TableSlot<T> Alloc() { return main.Alloc<T>(); }
     // a BYTE BUFFER's node of exactly `length` bytes (docs/SPEC-TABLES.md §2.5):
     // the bytes to write through, and the reference to store in a *bytes
     // or *string slot; a blob past a slab takes a span of its own
@@ -9274,7 +11217,12 @@ struct CrewsBuilder
     TableStringSlot AllocString( int64_t length ) { return main.AllocString( length ); }
     // one worker per thread; allocate on your own, and synchronize your own
     // writes to nodes another worker allocated
-    TableWorker Worker() { TableWorker worker; worker.arena = &arena; return worker; }
+    TableWorker Worker()
+    {
+        TableWorker worker;
+        worker.arena = &arena;
+        return worker;
+    }
 
     // GetRoot/AsConst, not Root/Const: a member function hides the type
     // name it shares, and `table Root` is this spec's own canonical
@@ -9310,15 +11258,27 @@ inline bool CrewsBuilder::Lock()
     {
         below = CrewsPackMeasure( ctx, seen, root );
     }
-    if ( below < 0 ) { TablePackMapShutdown( seen ); return false; } // a data cycle, named at the reference that closes it
+    if ( below < 0 )
+    {
+        TablePackMapShutdown( seen );
+        return false;
+    } // a data cycle, named at the reference that closes it
     int64_t root_extent = CrewsExtent( ctx, root );
-    if ( root_extent < 0 ) { TablePackMapShutdown( seen ); return false; } // the sort could not run
+    if ( root_extent < 0 )
+    {
+        TablePackMapShutdown( seen );
+        return false;
+    } // the sort could not run
     int64_t total = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Crews ) ) + root_extent ) + below;
     // the AUTHORING path may allocate (§6.5), and it does so through the
     // builder's own pair. The region comes back ZEROED, which is the
     // allocator's contract: a packed region carries node padding.
     uint8_t * packed = (uint8_t *) table_allocate( arena.allocator, total );
-    if ( packed == NULL ) { TablePackMapShutdown( seen ); return false; }
+    if ( packed == NULL )
+    {
+        TablePackMapShutdown( seen );
+        return false;
+    }
     int64_t used = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Crews ) ) + root_extent );
     Crews * destination = new ( packed ) Crews; // lifetime only: the Pack below memcpy's the whole node over it
     // The pack walk RE-DERIVES the same numbering rather than carrying the
@@ -9328,7 +11288,7 @@ inline bool CrewsBuilder::Lock()
     // rehashes nothing.
     TablePackMapReset( seen );
     if ( TablePackMapReach( seen, (const void *) &root, 0, root_taken, root_slot ) == NULL ||
-         !CrewsPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
+        !CrewsPack( ctx, seen, root, *destination, packed, total, used ) || used != total )
     {
         TablePackMapShutdown( seen );
         table_release( arena.allocator, packed );
@@ -9378,7 +11338,12 @@ inline void CrewsNodePlace( uint64_t type_id, uint8_t * at, int64_t length )
     (void) length;
     switch ( type_id )
     {
-        case 0x52cfa1d198476806ull: { Item * node = new ( at ) Item; ItemReset( *node ); break; } // Item
+        case 0x52cfa1d198476806ull:
+        {
+            Item * node = new ( at ) Item;
+            ItemReset( *node );
+            break;
+        } // Item
         default: break;
     }
 }
@@ -9504,7 +11469,11 @@ inline int64_t CrewsSaveWire( const Ctx & ctx, const Crews & root, uint8_t * buf
     TableNumberingInit( numbering, allocator );
     // THE WRITERS REFUSE A GRAPH WHOSE TWO SLOTS NAME ONE BLOB, by name
     // blob_shared, never with a bare -1 from a copy per slot (docs/SPEC-TABLES.md §2.5, §16.7).
-    if ( !CrewsNumberFrom( ctx, numbering, root ) || numbering.shared ) { TableNumberingShutdown( numbering ); return -1; }
+    if ( !CrewsNumberFrom( ctx, numbering, root ) || numbering.shared )
+    {
+        TableNumberingShutdown( numbering );
+        return -1;
+    }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -9567,7 +11536,11 @@ inline int64_t CrewsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     // a short or mismatched form-1 trailer is damage named integrity_mismatch;
     // empty and other-form inputs keep TableOpen's classification.
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
-    if ( verdict == TableOpenRefused ) { if ( reason_out != NULL ) { *reason_out = unknown_form; } return -1; }
+    if ( verdict == TableOpenRefused )
+    {
+        if ( reason_out != NULL ) { *reason_out = unknown_form; }
+        return -1;
+    }
     if ( verdict != TableOpenOk ) { return -1; }
     // ANY BYTE BETWEEN THE ROOT'S TERMINATOR AND THE TABLE'S FIRST ENTRY
     // IS MALFORMED (docs/SPEC-TABLES.md §3): the two ends of the file have
@@ -9578,7 +11551,11 @@ inline int64_t CrewsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &ignored, &ids_table );
     TableRefuseReason reason = count_over_length;
     int64_t root_extent = 0;
-    if ( !CrewsWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; }
+    if ( !CrewsWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        if ( reason_out != NULL ) { *reason_out = reason; }
+        return -1;
+    }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Crews ) ) + root_extent );
     int64_t records = 0;
     uint64_t type_id = 0;
@@ -9588,7 +11565,11 @@ inline int64_t CrewsLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
     {
         records++;
         int64_t storage = CrewsNodeStorage( type_id, length, reason );
-        if ( storage == kTableNodeRefused ) { if ( reason_out != NULL ) { *reason_out = reason; } return -1; } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
+        if ( storage == kTableNodeRefused )
+        {
+            if ( reason_out != NULL ) { *reason_out = reason; }
+            return -1;
+        } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
@@ -9616,8 +11597,21 @@ inline const Crews * CrewsLoadTolerant( uint8_t * region, int64_t region_bytes, 
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
-        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged )
+        {
+            out->malformed = true;
+            out->refuse_reason = wire_damaged;
+        }
+        else
+        {
+            out->refused = true;
+            out->refuse_reason = unknown_form;
+            if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
+            else
+            {
+                out->reason = newer_form;
+            }
+        }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
@@ -9628,8 +11622,16 @@ inline const Crews * CrewsLoadTolerant( uint8_t * region, int64_t region_bytes, 
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
-    if ( region == NULL || region_bytes < (int64_t) sizeof( Crews ) ) { out->malformed = true; return NULL; }
-    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Crews ) )
+    {
+        out->malformed = true;
+        return NULL;
+    }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )
+    {
+        out->malformed = true;
+        return NULL;
+    }
     memset( region, 0, (size_t) region_bytes );
     uint64_t type_id = 0;
     const uint8_t * body = NULL;
@@ -9638,7 +11640,11 @@ inline const Crews * CrewsLoadTolerant( uint8_t * region, int64_t region_bytes, 
     // the record count and the data bytes, from the FRAMING alone
     TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !CrewsWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
+    if ( !CrewsWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        out->malformed = true;
+        return NULL;
+    }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Crews ) ) + root_extent );
     int64_t records = 0;
     {
@@ -9648,12 +11654,20 @@ inline const Crews * CrewsLoadTolerant( uint8_t * region, int64_t region_bytes, 
         {
             records++;
             int64_t storage = CrewsNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage == kTableNodeRefused )
+            {
+                out->malformed = true;
+                return NULL;
+            }
             if ( storage > 0 ) { data += storage; }
         }
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+    if ( data + attribution > region_bytes )
+    {
+        out->malformed = true;
+        return NULL;
+    }
 
     TableNodeMap nodes;
     nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
@@ -9699,7 +11713,11 @@ inline const Crews * CrewsLoadTolerant( uint8_t * region, int64_t region_bytes, 
         // the table is whole or it is nothing: a scan that failed counts
         // malformed and NOT the unknowns it met on the way, because the
         // numbering they belonged to does not exist (§3.1)
-        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; }
+        else
+        {
+            out->malformed = true;
+        }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -9730,24 +11748,37 @@ inline const Crews * CrewsLoadTolerant( uint8_t * region, int64_t region_bytes, 
     CrewsLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) )
+    {
+        out->malformed = out->malformed || malformed_before;
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    }
     if ( !out->malformed && nodes.good )
     {
         TableCycle cycle;
         TableRegionCtx cycle_ctx;
         const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &CrewsCycleOrdinal ) &&
-                             TableCycleAcyclic( cycle, cycle_ctx, &CrewsCycleNode<TableRegionCtx> );
+            TableCycleAcyclic( cycle, cycle_ctx, &CrewsCycleNode<TableRegionCtx> );
         TableCycleRestore( cycle, 0, 0xc85b940060088651ull );
         {
             TableReport restoring;
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
             int64_t k = 0;
-            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
         }
         TableCycleEnd( cycle );
         if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
+    if ( out->malformed )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        return NULL;
+    } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
 }
@@ -9773,7 +11804,10 @@ inline const Crews * CrewsLoad( uint8_t * region, int64_t region_bytes, const ui
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
-            else { out->refuse_reason = wire_damaged; }
+            else
+            {
+                out->refuse_reason = wire_damaged;
+            }
         }
         return NULL;
     }
@@ -9797,8 +11831,16 @@ inline bool CrewsLoadBuilderTolerant( CrewsBuilder & builder, const uint8_t * wi
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
-        else { out->refused = true; out->refuse_reason = unknown_form; }
+        if ( verdict == TableOpenDamaged )
+        {
+            out->malformed = true;
+            out->refuse_reason = wire_damaged;
+        }
+        else
+        {
+            out->refused = true;
+            out->refuse_reason = unknown_form;
+        }
         return false;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
@@ -9810,7 +11852,11 @@ inline bool CrewsLoadBuilderTolerant( CrewsBuilder & builder, const uint8_t * wi
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
     Crews * root = builder.GetRoot();
-    if ( root == NULL ) { out->malformed = true; return false; }
+    if ( root == NULL )
+    {
+        out->malformed = true;
+        return false;
+    }
     uint64_t type_id = 0;
     const uint8_t * body = NULL;
     int64_t length = 0;
@@ -9825,7 +11871,11 @@ inline bool CrewsLoadBuilderTolerant( CrewsBuilder & builder, const uint8_t * wi
     // builder reaches, and the entries come back zeroed.
     const TableAllocator allocator = builder.arena.allocator;
     TableNodeDirEntry * directory = (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) );
-    if ( directory == NULL ) { out->malformed = true; return false; }
+    if ( directory == NULL )
+    {
+        out->malformed = true;
+        return false;
+    }
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xc85b940060088651ull;
     TableNodeMap nodes;
@@ -9856,7 +11906,11 @@ inline bool CrewsLoadBuilderTolerant( CrewsBuilder & builder, const uint8_t * wi
             k++;
         }
         nodes.good = TableNodeScanWhole( scan );
-        if ( nodes.good ) { out->unknown += unknown_records; } else { out->malformed = true; }
+        if ( nodes.good ) { out->unknown += unknown_records; }
+        else
+        {
+            out->malformed = true;
+        }
     }
     if ( nodes.good )
     {
@@ -9890,7 +11944,7 @@ inline bool CrewsLoadBuilderTolerant( CrewsBuilder & builder, const uint8_t * wi
         TableCycle cycle;
         TableArenaCtx cycle_ctx = { &builder.arena };
         const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &CrewsCycleOrdinal ) &&
-                             TableCycleAcyclic( cycle, cycle_ctx, &CrewsCycleNode<TableArenaCtx> );
+            TableCycleAcyclic( cycle, cycle_ctx, &CrewsCycleNode<TableArenaCtx> );
         TableCycleEnd( cycle );
         if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
@@ -9927,7 +11981,10 @@ inline bool CrewsLoadBuilder( CrewsBuilder & builder, const uint8_t * wire_file,
             else if ( out->blob_shared ) { out->refuse_reason = blob_shared; } // §2.5, §16.7
             else if ( out->clamped ) { out->refuse_reason = clamped; }
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
-            else { out->refuse_reason = wire_damaged; }
+            else
+            {
+                out->refuse_reason = wire_damaged;
+            }
         }
         Crews * refused_root = builder.GetRoot();
         if ( refused_root != NULL ) { CrewsReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
@@ -9948,7 +12005,11 @@ inline const Crews * CrewsReadStrict( const uint8_t * wire_file, int64_t wire_fi
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = CrewsLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 ) { if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; } return NULL; }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
+        return NULL;
+    }
     CrewsBuilder builder( allocator );
     TableReport report;
     const bool decoded = CrewsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
@@ -9962,11 +12023,18 @@ inline const Crews * CrewsReadStrict( const uint8_t * wire_file, int64_t wire_fi
             else if ( report.blob_shared ) { *reason = blob_shared; } // §2.5, §16.7
             else if ( report.clamped ) { *reason = clamped; }
             else if ( report.kind_mismatch ) { *reason = kind_mismatch; }
-            else { *reason = wire_damaged; }
+            else
+            {
+                *reason = wire_damaged;
+            }
         }
         return NULL;
     }
-    if ( !builder.Lock() ) { if ( reason != NULL ) { *reason = allocation_failed; } return NULL; }
+    if ( !builder.Lock() )
+    {
+        if ( reason != NULL ) { *reason = allocation_failed; }
+        return NULL;
+    }
     const Crews * root = builder.AsConst();
     // the packed region is the caller's from here on, not the builder's
     builder.region = NULL;
@@ -10024,8 +12092,10 @@ inline bool CrewsMembersEntrySaveBodyFieldsRetain( const Ctx & ctx, const TableN
                 body_value += TableLebBytes( slot_index );
             }
         }
-        w.header( ref_value, 14 ); w.putleb( (uint64_t) body_value ); // value
-        w.put8( 17 ); w.putleb( (uint64_t) ( value.value_count ) );
+        w.header( ref_value, 14 );
+        w.putleb( (uint64_t) body_value ); // value
+        w.put8( 17 );
+        w.putleb( (uint64_t) ( value.value_count ) );
         for ( int32_t elem_i = 0; elem_i < value.value_count; elem_i++ )
         {
             {
@@ -10060,11 +12130,23 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
     for ( ;; )
     {
         uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( !r.getleb( field_ref ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
+        {
+            r.report->malformed = true;
+            return false;
+        } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
-        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        if ( !r.has( 1 ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         uint8_t kind = r.get8();
         if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
@@ -10088,7 +12170,11 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         uint64_t widened_v = 0;
-                        if ( !TableReadUnsignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        if ( !TableReadUnsignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         uint32_t decoded_v = (uint32_t) widened_v;
                         value.key = decoded_v;
                         break;
@@ -10096,11 +12182,19 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                uint32_t decoded_v = uint32_t( r.get32( ) );
+                if ( !r.has( 4 ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
+                uint32_t decoded_v = uint32_t( r.get32() );
                 value.key = decoded_v;
                 break;
             }
@@ -10111,11 +12205,19 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
                 uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 // A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the
                 // count, so fewer than two bytes — is INERT (§4): the field keeps the
@@ -10145,7 +12247,11 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
                     {
                         {
                             uint64_t node_index = 0;
-                            if ( !sub.getleb( node_index ) ) { r.report->malformed = true; break; }
+                            if ( !sub.getleb( node_index ) )
+                            {
+                                r.report->malformed = true;
+                                break;
+                            }
                             TableNodeResolve( nodes, value.value[(int32_t) i], node_index, 0x52cfa1d198476806ull, r.report ); // *Item
                         }
                         decoded = i + 1;
@@ -10161,13 +12267,21 @@ inline bool CrewsMembersEntryLoadBodyRetain( TableReader & r, const TableNodeMap
             }
             case 0xffffffffffffffffull:
             {
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                if ( !r.skip( kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
             default:
             {
                 r.report->unknown++;
-                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
         }
@@ -10258,11 +12372,23 @@ inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Cr
     for ( ;; )
     {
         uint64_t field_ref = 0;
-        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }
+        if ( !r.getleb( field_ref ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
-        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count
+        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
+        {
+            r.report->malformed = true;
+            return false;
+        } // a reference ABOVE the entry count
         const uint64_t field_id = r.ids->at( field_ref );
-        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }
+        if ( !r.has( 1 ) )
+        {
+            r.report->malformed = true;
+            return false;
+        }
         uint8_t kind = r.get8();
         if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )
         {
@@ -10284,11 +12410,19 @@ inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Cr
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
                 uint64_t body_len = 0;
-                if ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }
+                if ( !r.getleb( body_len ) || !r.room( body_len ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 int64_t body_end = r.offset + (int64_t) body_len;
                 if ( body_len >= 2 )
                 {
@@ -10302,8 +12436,17 @@ inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Cr
                     // records under this field go with the value it is about to lose.
                     TableRetainDiscardField( retain, path, 0 );
                     TableMapFill<CrewsMembersEntry> fill = TableMapFillBegin( nodes, value.members, count );
-                    if ( fill.refused ) { nodes.refused = true; return false; }
-                    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }
+                    if ( fill.refused )
+                    {
+                        nodes.refused = true;
+                        return false;
+                    }
+                    if ( !fill.ok )
+                    {
+                        r.report->malformed = true;
+                        r.offset = body_end;
+                        break;
+                    }
                     TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );
                     uint32_t last_key = 0;
                     bool landed = false;
@@ -10377,7 +12520,11 @@ inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Cr
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true; return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.past = decoded_v;
                         r.report->widened++;
@@ -10386,23 +12533,39 @@ inline bool CrewsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Cr
                     // AT A POSITION THE READER DOES NAME, a field under
                     // kind 31 or kind 32 takes this same rule and no other (§3)
                     r.report->kind_mismatch++;
-                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                    if ( !r.skip( kind ) )
+                    {
+                        r.report->malformed = true;
+                        return false;
+                    }
                     break;
                 }
-                if ( !r.has( 4 ) ) { r.report->malformed = true; return false; }
-                int32_t decoded_v = int32_t( r.get32( ) );
+                if ( !r.has( 4 ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
+                int32_t decoded_v = int32_t( r.get32() );
                 value.past = decoded_v;
                 break;
             }
             case 0xffffffffffffffffull:
             {
-                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }
+                if ( !r.skip( kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
             default:
             {
                 r.report->unknown++;
-                if ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }
+                if ( !TableRetainCapture( retain, r, path, field_id, kind ) )
+                {
+                    r.report->malformed = true;
+                    return false;
+                }
                 break;
             }
         }
@@ -10464,8 +12627,21 @@ inline const Crews * CrewsLoadRetain( uint8_t * region, int64_t region_bytes, co
     const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );
     if ( verdict != TableOpenOk )
     {
-        if ( verdict == TableOpenDamaged ) { out->malformed = true; out->refuse_reason = wire_damaged; }
-        else { out->refused = true; out->refuse_reason = unknown_form; if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; } else { out->reason = newer_form; } }
+        if ( verdict == TableOpenDamaged )
+        {
+            out->malformed = true;
+            out->refuse_reason = wire_damaged;
+        }
+        else
+        {
+            out->refused = true;
+            out->refuse_reason = unknown_form;
+            if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
+            else
+            {
+                out->reason = newer_form;
+            }
+        }
         return NULL;
     }
     if ( TableBodyEndsEarly( wire_file + 1, body_bytes, ids_table ) )
@@ -10476,8 +12652,16 @@ inline const Crews * CrewsLoadRetain( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
-    if ( region == NULL || region_bytes < (int64_t) sizeof( Crews ) ) { out->malformed = true; return NULL; }
-    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 ) { out->malformed = true; return NULL; }
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Crews ) )
+    {
+        out->malformed = true;
+        return NULL;
+    }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )
+    {
+        out->malformed = true;
+        return NULL;
+    }
     memset( region, 0, (size_t) region_bytes );
     uint64_t type_id = 0;
     const uint8_t * body = NULL;
@@ -10486,7 +12670,11 @@ inline const Crews * CrewsLoadRetain( uint8_t * region, int64_t region_bytes, co
     // the record count and the data bytes, from the FRAMING alone
     TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
     int64_t root_extent = 0;
-    if ( !CrewsWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { out->malformed = true; return NULL; }
+    if ( !CrewsWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        out->malformed = true;
+        return NULL;
+    }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Crews ) ) + root_extent );
     int64_t records = 0;
     {
@@ -10496,12 +12684,20 @@ inline const Crews * CrewsLoadRetain( uint8_t * region, int64_t region_bytes, co
         {
             records++;
             int64_t storage = CrewsNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused ) { out->malformed = true; return NULL; }
+            if ( storage == kTableNodeRefused )
+            {
+                out->malformed = true;
+                return NULL;
+            }
             if ( storage > 0 ) { data += storage; }
         }
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
-    if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
+    if ( data + attribution > region_bytes )
+    {
+        out->malformed = true;
+        return NULL;
+    }
 
     TableNodeMap nodes;
     nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
@@ -10556,7 +12752,15 @@ inline const Crews * CrewsLoadRetain( uint8_t * region, int64_t region_bytes, co
         // A NODE RECORD whose type id this reader cannot name is one of the
         // SIX EXCLUDED CLASSES (§6.6): it is a whole node, and putting one
         // back means renumbering a graph the writer numbers from its own edges.
-        if ( nodes.good ) { out->unknown += unknown_records; out->retain_lost += unknown_records; } else { out->malformed = true; }
+        if ( nodes.good )
+        {
+            out->unknown += unknown_records;
+            out->retain_lost += unknown_records;
+        }
+        else
+        {
+            out->malformed = true;
+        }
     }
 
     // PASS TWO: decode each body into its own storage. A forward index
@@ -10587,24 +12791,39 @@ inline const Crews * CrewsLoadRetain( uint8_t * region, int64_t region_bytes, co
     CrewsLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) )
+    {
+        out->malformed = out->malformed || malformed_before;
+        memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
+        return NULL;
+    }
     if ( !out->malformed && nodes.good )
     {
         TableCycle cycle;
         TableRegionCtx cycle_ctx;
         const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &CrewsCycleOrdinal ) &&
-                             TableCycleAcyclic( cycle, cycle_ctx, &CrewsCycleNode<TableRegionCtx> );
+            TableCycleAcyclic( cycle, cycle_ctx, &CrewsCycleNode<TableRegionCtx> );
         TableCycleRestore( cycle, 0, 0xc85b940060088651ull );
         {
             TableReport restoring;
             TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
             int64_t k = 0;
-            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
         }
         TableCycleEnd( cycle );
         if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
-    if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
+    if ( out->malformed )
+    {
+        memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
+        return NULL;
+    } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
 }
@@ -10619,10 +12838,13 @@ inline int64_t CrewsMeasureWireRetain( const Ctx & ctx, const Crews & root, Tabl
     TableNumbering numbering;
     TableNumberingInit( numbering, allocator );
     int64_t bytes = -1;
-    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
-    {
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
-        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        (void) c;
+        (void) nn;
+        (void) ii;
+        (void) rt;
+        (void) at;
         switch ( type_id )
         {
             case 0x52cfa1d198476806ull: return ItemMeasureBodyRetain( ii, *(const Item *) node, rt, at ); // Item
@@ -10650,10 +12872,13 @@ inline int64_t CrewsSaveWireRetain( const Ctx & ctx, const Crews & root, TableRe
 {
     TableNumbering numbering;
     TableNumberingInit( numbering, TableDefaultAllocator() );
-    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t
-    {
+    auto retain_measure = []( const Ctx & c, const TableNumbering & nn, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> int64_t {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
-        (void) c; (void) nn; (void) ii; (void) rt; (void) at;
+        (void) c;
+        (void) nn;
+        (void) ii;
+        (void) rt;
+        (void) at;
         switch ( type_id )
         {
             case 0x52cfa1d198476806ull: return ItemMeasureBodyRetain( ii, *(const Item *) node, rt, at ); // Item
@@ -10661,10 +12886,14 @@ inline int64_t CrewsSaveWireRetain( const Ctx & ctx, const Crews & root, TableRe
         }
         return -1;
     };
-    auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool
-    {
+    auto retain_save = []( const Ctx & c, const TableNumbering & nn, TableWriter & ww, TableRetainIds & ii, uint64_t type_id, const void * node, TableRetain * rt ) -> bool {
         const TableRetainPath at = TableRetainPathRoot( node, 0 );
-        (void) c; (void) nn; (void) ww; (void) ii; (void) rt; (void) at;
+        (void) c;
+        (void) nn;
+        (void) ww;
+        (void) ii;
+        (void) rt;
+        (void) at;
         switch ( type_id )
         {
             case 0x52cfa1d198476806ull: return ItemSaveBodyRetain( ww, ii, *(const Item *) node, rt, at ); // Item
@@ -10672,7 +12901,11 @@ inline int64_t CrewsSaveWireRetain( const Ctx & ctx, const Crews & root, TableRe
         }
         return false;
     };
-    if ( !CrewsNumberFrom( ctx, numbering, root ) ) { TableNumberingShutdown( numbering ); return -1; }
+    if ( !CrewsNumberFrom( ctx, numbering, root ) )
+    {
+        TableNumberingShutdown( numbering );
+        return -1;
+    }
     TableWriter w( buffer, capacity );
     TableRetainIds ids( retain );
     if ( retain != NULL ) { retain->id_used = 0; }
@@ -10682,7 +12915,7 @@ inline int64_t CrewsSaveWireRetain( const Ctx & ctx, const Crews & root, TableRe
     // field: a retained field is one of the root's own values, and the tail
     // is pinned before the large and damage-prone part (§6.6, §3.1)
     bool ok = CrewsSaveBodyFieldsRetain( ctx, numbering, w, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) ) &&
-              TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );
+        TableNodeTableSaveRetain( ctx, w, ids, numbering, retain, retain_measure, retain_save );
     TableNumberingShutdown( numbering );
     if ( !ok || ids.overflow ) { return -1; }
     w.put8( 0 ); // the ZERO REFERENCE that ends the root body
@@ -10753,10 +12986,13 @@ inline const Crews * CrewsOpen( const void * bytes, uint64_t length, TableRefuse
 // content-addressed by (asset hash, build version), so two writers of one
 // instance produce ONE artifact or the pair means nothing.
 
-template <typename Ctx> inline bool CrewsMembersEntryCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool CrewsCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Crews & value, TableByteOrder order );
+template <typename Ctx>
+inline bool CrewsMembersEntryCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order );
+template <typename Ctx>
+inline bool CrewsCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Crews & value, TableByteOrder order );
 
-template <typename Ctx> inline bool CrewsMembersEntryCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order )
+template <typename Ctx>
+inline bool CrewsMembersEntryCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.key, 4, order );
     for ( int32_t i = 0; i < 2; i++ ) // value: an array of pointers, every slot
@@ -10767,31 +13003,43 @@ template <typename Ctx> inline bool CrewsMembersEntryCookBody( const Ctx & ctx, 
     return true;
 }
 
-template <typename Ctx> inline bool CrewsCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Crews & value, TableByteOrder order )
+template <typename Ctx>
+inline bool CrewsCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Crews & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
+    (void) ctx;
+    (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure
     table_cook_put( at + 0, 0, 8, order ); // members: the array's delta, filled by the extent writer
     table_cook_put( at + 8, 0, 4, order ); // and its count
     table_cook_put( at + 16, (uint64_t) value.past, 4, order );
     return true;
 }
 
-template <typename Ctx> inline bool CrewsMembersEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const CrewsMembersEntry & value, TableByteOrder order );
-template <typename Ctx> inline bool CrewsCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Crews & value, TableByteOrder order );
+template <typename Ctx>
+inline bool CrewsMembersEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const CrewsMembersEntry & value, TableByteOrder order );
+template <typename Ctx>
+inline bool CrewsCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Crews & value, TableByteOrder order );
 
 // CrewsMembersEntryCookExtent: CrewsMembersEntry's arrays into the node's extent, PRE-ORDER, a map's entries
 // in ASCENDING key order and a list's elements in INDEX order, each through its
 // own cook writer (§2.8, §2.9, §7.6).
-template <typename Ctx> inline bool CrewsMembersEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const CrewsMembersEntry & value, TableByteOrder order )
+template <typename Ctx>
+inline bool CrewsMembersEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const CrewsMembersEntry & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
     return true; // no list or map below this record
 }
 
 // CrewsCookExtent: Crews's arrays into the node's extent, PRE-ORDER, a map's entries
 // in ASCENDING key order and a list's elements in INDEX order, each through its
 // own cook writer (§2.8, §2.9, §7.6).
-template <typename Ctx> inline bool CrewsCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Crews & value, TableByteOrder order )
+template <typename Ctx>
+inline bool CrewsCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Crews & value, TableByteOrder order )
 {
     (void) region; // a table element's and an entry's references resolve through their own bodies
     { // members
@@ -10813,7 +13061,8 @@ template <typename Ctx> inline bool CrewsCookExtent( const Ctx & ctx, const Tabl
 }
 
 // CrewsMembersEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
-template <typename Ctx> inline bool CrewsMembersEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order )
+template <typename Ctx>
+inline bool CrewsMembersEntryCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const CrewsMembersEntry & value, TableByteOrder order )
 {
     if ( !CrewsMembersEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
@@ -10821,7 +13070,8 @@ template <typename Ctx> inline bool CrewsMembersEntryCookNode( const Ctx & ctx, 
 }
 
 // CrewsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
-template <typename Ctx> inline bool CrewsCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Crews & value, TableByteOrder order )
+template <typename Ctx>
+inline bool CrewsCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const Crews & value, TableByteOrder order )
 {
     if ( !CrewsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
