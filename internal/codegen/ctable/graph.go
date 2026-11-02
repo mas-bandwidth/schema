@@ -555,13 +555,17 @@ static SCHEMA_UNUSED int table_cycle_begin( TableCycle * c, TableCycleOrdinalFn 
     if ( c->count <= 0 || c->count >= ( (int64_t)1 << 31 ) ) { c->broken = 1; return 0; }
     for ( p = 0; p < c->count; p++ )
     {
+        const TableNodeDirEntry * e = &c->entries[p];
+        if ( e->offset == UINT64_MAX ) { continue; }
+        if ( e->offset > kTableCycleOffsetMask || ordinal( e->type_id ) > 0x3FFFu ) { c->broken = 1; return 0; }
+    }
+    for ( p = 0; p < c->count; p++ )
+    {
         TableNodeDirEntry * e = &c->entries[p];
         uint32_t kind;
         if ( e->offset == UINT64_MAX ) { e->offset = kTableCycleAbsent; continue; }
-        if ( e->offset > kTableCycleOffsetMask ) { c->broken = 1; return 0; }
         kind = ordinal( e->type_id );
         if ( kind == 0 ) { continue; } /* a byte buffer */
-        if ( kind > 0x3FFFu ) { c->broken = 1; return 0; }
         e->offset |= kTableCycleVertex | ( (uint64_t)kind << kTableCycleOrdinalShift );
         e->type_id = 0; /* scratch: the in-degree, low; the stack link, high */
         c->vertices++;

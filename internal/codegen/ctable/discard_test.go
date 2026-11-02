@@ -704,7 +704,8 @@ func TestDiamondChainLoadsLinearC(t *testing.T) {
 
 // TestCycleOrdinalBoundaryC verifies that table_cycle_begin accepts the maximum
 // 14-bit type ordinal (0x3fff) and refuses an ordinal beyond the 14-bit field
-// (0x4000) fail-closed before mutating the directory entry.
+// (0x4000) fail-closed before mutating any directory entry (including earlier
+// valid entries).
 func TestCycleOrdinalBoundaryC(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
@@ -737,18 +738,26 @@ func TestCycleOrdinalBoundaryC(t *testing.T) {
 #include <stdio.h>
 
 static uint32_t ordinal_max( uint64_t type_id ) { (void)type_id; return 0x3FFFu; }
-static uint32_t ordinal_overflow( uint64_t type_id ) { (void)type_id; return 0x4000u; }
-static uint64_t restore_id( uint32_t ordinal ) { return ordinal == 0x3FFFu ? UINT64_C(0x123456789ABCDEF0) : 0u; }
+static uint32_t ordinal_second_overflow( uint64_t type_id )
+{
+    return type_id == UINT64_C(0x1111111111111111) ? 1u : 0x4000u;
+}
+static uint64_t restore_id( uint32_t ordinal )
+{
+    if ( ordinal == 1u ) { return UINT64_C(0x1111111111111111); }
+    if ( ordinal == 0x3FFFu ) { return UINT64_C(0x123456789ABCDEF0); }
+    return 0u;
+}
 
 int main( void )
 {
-    TableNodeDirEntry e;
+    TableNodeDirEntry entries[2];
     TableCycle c;
 
-    e.offset = 64u;
-    e.type_id = UINT64_C(0x123456789ABCDEF0);
+    entries[0].offset = 64u;
+    entries[0].type_id = UINT64_C(0x123456789ABCDEF0);
     memset( &c, 0, sizeof( c ) );
-    c.entries = &e;
+    c.entries = entries;
     c.count = 1;
     if ( !table_cycle_begin( &c, ordinal_max ) || c.broken || c.vertices != 1 )
     {
@@ -761,31 +770,35 @@ int main( void )
         return 1;
     }
     table_cycle_restore( &c, restore_id );
-    if ( e.offset != 64u || e.type_id != UINT64_C(0x123456789ABCDEF0) )
+    if ( entries[0].offset != 64u || entries[0].type_id != UINT64_C(0x123456789ABCDEF0) )
     {
         printf( "ordinal 0x3fff did not restore entry\n" );
         return 1;
     }
 
-    e.offset = 64u;
-    e.type_id = UINT64_C(0x123456789ABCDEF0);
+    entries[0].offset = 64u;
+    entries[0].type_id = UINT64_C(0x1111111111111111);
+    entries[1].offset = 128u;
+    entries[1].type_id = UINT64_C(0x2222222222222222);
     memset( &c, 0, sizeof( c ) );
-    c.entries = &e;
-    c.count = 1;
-    if ( table_cycle_begin( &c, ordinal_overflow ) || !c.broken || c.vertices != 0 )
+    c.entries = entries;
+    c.count = 2;
+    if ( table_cycle_begin( &c, ordinal_second_overflow ) || !c.broken || c.vertices != 0 )
     {
-        printf( "ordinal 0x4000 was not refused\n" );
+        printf( "ordinal 0x4000 at entry 1 was not refused\n" );
         return 1;
     }
-    if ( e.offset != 64u || e.type_id != UINT64_C(0x123456789ABCDEF0) )
+    if ( entries[0].offset != 64u || entries[0].type_id != UINT64_C(0x1111111111111111) ||
+         entries[1].offset != 128u || entries[1].type_id != UINT64_C(0x2222222222222222) )
     {
-        printf( "ordinal 0x4000 mutated entry before refusing\n" );
+        printf( "ordinal 0x4000 mutated entries before refusing\n" );
         return 1;
     }
     table_cycle_restore( &c, restore_id );
-    if ( e.offset != 64u || e.type_id != UINT64_C(0x123456789ABCDEF0) )
+    if ( entries[0].offset != 64u || entries[0].type_id != UINT64_C(0x1111111111111111) ||
+         entries[1].offset != 128u || entries[1].type_id != UINT64_C(0x2222222222222222) )
     {
-        printf( "ordinal 0x4000 restore corrupted entry\n" );
+        printf( "ordinal 0x4000 restore corrupted entries\n" );
         return 1;
     }
     return 0;
