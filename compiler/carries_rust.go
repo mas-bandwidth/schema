@@ -11,7 +11,9 @@ package compiler
 // Array-root JSON shape is held across every by-value position by the native
 // array-root closure corpus, including named wrong-root diagnostics. Timestamp
 // text, variable/fixed/message wire and cook use the shared boundary corpus and
-// independent native Go bytes in rusttable's timestamp tests.
+// independent native Go bytes in rusttable's timestamp tests. CRC-32C integrity
+// seals each file or message batch once; native corruption tests cover every
+// wire form and caller-owned output buffers.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity)
 }

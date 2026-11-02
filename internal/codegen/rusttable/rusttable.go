@@ -51,6 +51,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, nil
 	}
 	out := map[string][]byte{}
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		out[integrityRuntimeModule+".rs"] = []byte(header(runtimeSourceName(u), u.Package, "CRC-32C integrity trailers") + integrityRuntimeRust)
+	}
 
 	closure := ir.TableClosure(u)
 	blocks := ir.Blocks(u)
