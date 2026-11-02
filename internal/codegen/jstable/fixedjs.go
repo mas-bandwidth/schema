@@ -373,22 +373,22 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 	g.store(ind, "view", off(base, at), f.Type, expr)
 }
 
-// fixedFieldHasFloat is true for a field that holds a float32 or a float64,
+// fixedFieldNeedsValueCheck covers finite floats and required scalar ranges,
 // here or anywhere below it (a struct by value, a union arm, an array).
-func fixedFieldHasFloat(f *ir.Field) bool {
+func fixedFieldNeedsValueCheck(f *ir.Field) bool {
 	if f == nil {
 		return false
 	}
-	if fixedIsFloat(f.Type) {
+	if fixedIsFloat(f.Type) || (f.Required && f.HasIntRange) {
 		return true
 	}
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return slices.ContainsFunc(r.Fields, fixedFieldHasFloat)
+			return slices.ContainsFunc(r.Fields, fixedFieldNeedsValueCheck)
 		case *ir.Union:
 			for _, v := range r.Variants {
-				if fixedFieldHasFloat(v.F) {
+				if fixedFieldNeedsValueCheck(v.F) {
 					return true
 				}
 			}
@@ -400,17 +400,17 @@ func fixedFieldHasFloat(f *ir.Field) bool {
 // emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S FINITE CHECK
 // (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "tables go finite-only too,
 // same rule as packets"): false when any float the record would carry is a
-// NaN or an infinity, a float32 one past the float32 range included, so the
+// NaN or an infinity, or a required scalar is outside its declared range, so the
 // save refuses (-1) before it writes a byte. Only a type that holds a float
-// gets one; the save of a root without one has nothing to check.
+// or a required range gets one; other roots have nothing to check.
 func (g *fixedGen) emitCheckBody(st *ir.Struct) {
-	if !slices.ContainsFunc(st.Fields, fixedFieldHasFloat) {
+	if !slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck) {
 		return
 	}
-	g.pf("// %s's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).\n", st.Name)
+	g.pf("// %s's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).\n", st.Name)
 	g.pf("export function %sFixedCheckBody(value) {\n", st.Name)
 	for _, f := range st.Fields {
-		if !fixedFieldHasFloat(f) {
+		if !fixedFieldNeedsValueCheck(f) {
 			continue
 		}
 		if f.Type.Optional {
@@ -447,6 +447,13 @@ func (g *fixedGen) emitCheckValueLoop(f *ir.Field, count, expr, ind string) {
 }
 
 func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
+	if f.Required {
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		} else if lo, hi, ok := ir.TableRawRange(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, fixedIsBig(f.Type)), expr, jsIntLit(hi, fixedIsBig(f.Type)))
+		}
+	}
 	switch f.Type.Kind {
 	case ir.TFloat32:
 		g.pf("%sif (!Number.isFinite(Math.fround(%s))) { return false; }\n", ind, expr)
@@ -464,7 +471,7 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	case *ir.Union:
 		g.pf("%sswitch (%s.type) {\n", ind, expr)
 		for i, v := range r.Variants {
-			if !fixedFieldHasFloat(v.F) {
+			if !fixedFieldNeedsValueCheck(v.F) {
 				continue
 			}
 			g.pf("%s  case %d: {\n", ind, i+1)

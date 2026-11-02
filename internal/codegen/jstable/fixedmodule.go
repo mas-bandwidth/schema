@@ -214,7 +214,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"TableFixedKnownLayout", "TableFixedDecodeLayout", "TableFixedSelect",
 		"TableFixedRefuseHash", "TableFixedLineagePlans")
 	g.needHome(st.Name+"FixedWriteBody", st.Name+"FixedDecode", st.Name, "Init"+st.Name)
-	finite := slices.ContainsFunc(st.Fields, fixedFieldHasFloat)
+	finite := slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
 	if finite {
 		g.needHome(st.Name + "FixedCheckBody")
 	}
