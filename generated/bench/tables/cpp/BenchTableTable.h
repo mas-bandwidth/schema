@@ -15264,7 +15264,7 @@ inline void TablePickupEventSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const TableEntity * TableEntityOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const TableEntity *) TableCookOpen( bytes, length, (uint64_t) sizeof( TableEntity ), (uint64_t) alignof( TableEntity ), reason );
+    return (const TableEntity *) TableCookOpen( bytes, length, (uint64_t) sizeof( TableEntity ), (uint64_t) 8, reason );
 }
 
 // TableStatOpen: match the header and POINT. On a match the bytes ARE what this
@@ -15294,7 +15294,7 @@ inline const TableEntity * TableEntityOpen( const void * bytes, uint64_t length,
 // parameter on a load.
 inline const TableStat * TableStatOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const TableStat *) TableCookOpen( bytes, length, (uint64_t) sizeof( TableStat ), (uint64_t) alignof( TableStat ), reason );
+    return (const TableStat *) TableCookOpen( bytes, length, (uint64_t) sizeof( TableStat ), (uint64_t) 4, reason );
 }
 
 // TableMixedOpen: match the header and POINT. On a match the bytes ARE what this
@@ -15324,7 +15324,7 @@ inline const TableStat * TableStatOpen( const void * bytes, uint64_t length, Tab
 // parameter on a load.
 inline const TableMixed * TableMixedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const TableMixed *) TableCookOpen( bytes, length, (uint64_t) sizeof( TableMixed ), (uint64_t) alignof( TableMixed ), reason );
+    return (const TableMixed *) TableCookOpen( bytes, length, (uint64_t) sizeof( TableMixed ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

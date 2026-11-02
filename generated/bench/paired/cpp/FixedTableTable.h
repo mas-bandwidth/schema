@@ -5330,8 +5330,9 @@ inline void TableFixedPlanCacheInit( TableFixedPlanCache & cache, TableFixedEntr
 // family everywhere else (docs/SPEC-TABLES.md §3).
 inline void TableFixedPut128( uint8_t * b, serialize::int128_t v )
 {
-    TableFixedPut64( b, (uint64_t) v );
-    TableFixedPut64( b + 8, (uint64_t) ( v >> 64 ) );
+    const auto bits = static_cast<serialize::uint128_t>( v );
+    TableFixedPut64( b, static_cast<uint64_t>( bits ) );
+    TableFixedPut64( b + 8, static_cast<uint64_t>( bits >> 64 ) );
 }
 inline void TableFixedPut128( uint8_t * b, serialize::uint128_t v )
 {
@@ -6844,7 +6845,7 @@ inline void FixedTableSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const FixedTable * FixedTableOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const FixedTable *) TableCookOpen( bytes, length, (uint64_t) sizeof( FixedTable ), (uint64_t) alignof( FixedTable ), reason );
+    return (const FixedTable *) TableCookOpen( bytes, length, (uint64_t) sizeof( FixedTable ), (uint64_t) 16, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
