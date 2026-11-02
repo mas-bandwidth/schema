@@ -347,7 +347,7 @@ typedef struct TableNodeMap
     uint8_t * base;
     TableNodeDirEntry * entries;
     uint64_t count;
-    int good, arena, refused;
+    int good, arena, refused, cycle_indices;
     TableSink * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
 } TableNodeMap;
@@ -362,6 +362,11 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
     entry = &nodes->entries[index-1];
     if ( entry->offset == UINT64_MAX ) { return; }
     if ( entry->type_id != target ) { report->kind_mismatch++; return; }
+    if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
+    {
+        slot->value = (int64_t)index;
+        return;
+    }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -431,6 +436,189 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
 {
     return !scan->malformed && (!scan->present || scan->declared == scan->records);
 }
+/* ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
+
+   During construction table pointer slots hold validated wire indices. Kahn's
+   two passes therefore reach the directory directly: each node is entered once
+   and each slot is visited a fixed number of times, with no sorting or reverse
+   offset lookup. A final pass resolves the slots to their published offsets.
+   The directory's type_id word carries the degree (low 32 bits) and stack link
+   (high 32 bits); its offset high bits carry the type ordinal. Both words are
+   restored before the load returns. Region and builder loads allocate nothing
+   here and no pointer graph is recursed.
+
+   The vertices are the directory's TABLE nodes: the root and every record
+   this build can name. A byte buffer reaches nothing and takes no part. The
+   edges are every non-null table pointer slot STORED in a node's by-value
+   closure, under a false guard too: the storage holds it, so the graph has it.
+   A cycle anywhere, reached from the root or not, refuses the load. */
+#define kTableCycleAbsent ( (uint64_t)1 << 63 )
+#define kTableCycleVertex ( (uint64_t)1 << 62 )
+#define kTableCycleOrdinalShift 48
+#define kTableCycleOffsetMask ( ( (uint64_t)1 << 48 ) - 1 )
+
+typedef struct TableCycle
+{
+    TableNodeDirEntry * entries; /* position p is node index p + 1 */
+    int64_t count;
+    uint8_t * base;              /* a REGION: a slot resolves to a self-relative delta */
+    const TableArena * arena;    /* a BUILDER: a slot resolves to the arena offset */
+    TableCtx ctx;
+    uint32_t head;               /* position + 1 of the stack's top, 0 when empty */
+    int64_t vertices, processed;
+    int releasing, resolving, broken;
+} TableCycle;
+
+static SCHEMA_UNUSED int table_cycle_is_vertex( const TableCycle * c, int64_t p )
+{
+    return ( c->entries[p].offset & ( kTableCycleAbsent | kTableCycleVertex ) ) == kTableCycleVertex;
+}
+
+static SCHEMA_UNUSED uint32_t table_cycle_ordinal_at( const TableCycle * c, int64_t p )
+{
+    return (uint32_t)( ( c->entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
+}
+
+static SCHEMA_UNUSED const void * table_cycle_node( const TableCycle * c, int64_t p )
+{
+    const uint64_t offset = c->entries[p].offset & kTableCycleOffsetMask;
+    if ( c->arena != NULL ) { return (const void *)table_arena_at( c->arena, (uint32_t)offset ); }
+    return (const void *)( c->base + offset );
+}
+
+static SCHEMA_UNUSED void table_cycle_push( TableCycle * c, int64_t p )
+{
+    c->entries[p].type_id = ( c->entries[p].type_id & UINT64_C(0xFFFFFFFF) ) | ( (uint64_t)c->head << 32 );
+    c->head = (uint32_t)( p + 1 );
+}
+
+/* table_cycle_slot is one stored pointer slot: pass one counts the in-degree
+   of the node it names, pass two takes the count down and stacks the node when
+   the last slot naming it has been met, and the final pass resolves the
+   temporary construction index to the published offset. */
+static SCHEMA_UNUSED int table_cycle_slot( TableCycle * c, const TableRef * slot )
+{
+    uint64_t index;
+    uint32_t degree;
+    int64_t p;
+    if ( slot->value == 0 ) { return 1; }
+    index = (uint64_t)slot->value;
+    if ( index - 1 >= (uint64_t)c->count ) { c->broken = 1; return 0; }
+    p = (int64_t)index - 1;
+    if ( !table_cycle_is_vertex( c, p ) ) { c->broken = 1; return 0; }
+    if ( c->resolving )
+    {
+        const uint64_t offset = c->entries[p].offset & kTableCycleOffsetMask;
+        TableRef * output = (TableRef *)(uintptr_t)slot;
+        output->value = c->arena != NULL ? (int64_t)offset
+                                         : (int64_t)( ( c->base + offset ) - (const uint8_t *)(const void *)slot );
+        return 1;
+    }
+    degree = (uint32_t)c->entries[p].type_id;
+    if ( !c->releasing )
+    {
+        if ( degree == UINT32_MAX ) { c->broken = 1; return 0; }
+        c->entries[p].type_id += 1;
+        return 1;
+    }
+    if ( degree == 0 ) { c->broken = 1; return 0; }
+    c->entries[p].type_id -= 1;
+    if ( degree == 1 ) { table_cycle_push( c, p ); } /* the last slot naming it: its descent is free */
+    return 1;
+}
+
+typedef uint32_t ( *TableCycleOrdinalFn )( uint64_t type_id );
+typedef int ( *TableCycleNodeFn )( TableCycle * c, uint32_t ordinal, const void * value );
+typedef uint64_t ( *TableCycleIdFn )( uint32_t ordinal );
+
+/* table_cycle_restore gives every entry back the offset and type id the load
+   wrote, whatever state the check stopped in. */
+static SCHEMA_UNUSED void table_cycle_restore( TableCycle * c, TableCycleIdFn id )
+{
+    int64_t p;
+    for ( p = 0; p < c->count; p++ )
+    {
+        TableNodeDirEntry * e = &c->entries[p];
+        if ( e->offset == UINT64_MAX ) { continue; }
+        if ( ( e->offset & kTableCycleAbsent ) != 0 ) { e->offset = UINT64_MAX; continue; }
+        if ( ( e->offset & kTableCycleVertex ) != 0 ) { e->type_id = id( table_cycle_ordinal_at( c, p ) ); }
+        e->offset &= kTableCycleOffsetMask;
+    }
+}
+
+/* table_cycle_begin tags the directory: ORDINAL names each table node's type
+   (0 for a byte buffer). Zero is a directory this check cannot carry, and the
+   caller refuses the load. */
+static SCHEMA_UNUSED int table_cycle_begin( TableCycle * c, TableCycleOrdinalFn ordinal )
+{
+    int64_t p;
+    if ( c->count <= 0 || c->count >= ( (int64_t)1 << 31 ) ) { c->broken = 1; return 0; }
+    for ( p = 0; p < c->count; p++ )
+    {
+        const TableNodeDirEntry * e = &c->entries[p];
+        if ( e->offset == UINT64_MAX ) { continue; }
+        if ( e->offset > kTableCycleOffsetMask || ordinal( e->type_id ) > 0x3FFFu ) { c->broken = 1; return 0; }
+    }
+    for ( p = 0; p < c->count; p++ )
+    {
+        TableNodeDirEntry * e = &c->entries[p];
+        uint32_t kind;
+        if ( e->offset == UINT64_MAX ) { e->offset = kTableCycleAbsent; continue; }
+        kind = ordinal( e->type_id );
+        if ( kind == 0 ) { continue; } /* a byte buffer */
+        e->offset |= kTableCycleVertex | ( (uint64_t)kind << kTableCycleOrdinalShift );
+        e->type_id = 0; /* scratch: the in-degree, low; the stack link, high */
+        c->vertices++;
+    }
+    return 1;
+}
+
+/* table_cycle_acyclic checks the graph, then resolves its slots: 1 when the
+   stored graph has no cycle, 0 when it has one or the check cannot carry the
+   directory. */
+static SCHEMA_UNUSED int table_cycle_acyclic( TableNodeMap * nodes, const TableArena * arena,
+    TableCycleOrdinalFn ordinal, TableCycleNodeFn node, TableCycleIdFn id )
+{
+    TableCycle c;
+    int64_t p;
+    int acyclic = 0;
+    memset( &c, 0, sizeof( c ) );
+    c.entries = nodes->entries;
+    c.count = (int64_t)nodes->count;
+    c.base = nodes->base;
+    c.arena = nodes->arena ? arena : NULL;
+    c.ctx.arena = c.arena;
+    if ( nodes->arena && arena == NULL ) { return 0; }
+    if ( table_cycle_begin( &c, ordinal ) )
+    {
+        for ( p = 0; p < c.count && !c.broken; p++ ) /* pass one: every in-degree */
+        {
+            if ( table_cycle_is_vertex( &c, p ) && !node( &c, table_cycle_ordinal_at( &c, p ), table_cycle_node( &c, p ) ) ) { c.broken = 1; }
+        }
+        for ( p = 0; p < c.count && !c.broken; p++ )
+        {
+            if ( table_cycle_is_vertex( &c, p ) && (uint32_t)c.entries[p].type_id == 0 ) { table_cycle_push( &c, p ); }
+        }
+        c.releasing = 1;
+        while ( c.head != 0 && !c.broken ) /* pass two: free each node when nothing left names it */
+        {
+            const int64_t at = (int64_t)c.head - 1;
+            c.head = (uint32_t)( c.entries[at].type_id >> 32 );
+            if ( ++c.processed > c.vertices || !node( &c, table_cycle_ordinal_at( &c, at ), table_cycle_node( &c, at ) ) ) { c.broken = 1; }
+        }
+        if ( !c.broken && c.processed == c.vertices ) /* an unfreed node sits on a cycle */
+        {
+            c.resolving = 1;
+            for ( p = 0; p < c.count && !c.broken; p++ )
+            {
+                if ( table_cycle_is_vertex( &c, p ) && !node( &c, table_cycle_ordinal_at( &c, p ), table_cycle_node( &c, p ) ) ) { c.broken = 1; }
+            }
+            acyclic = !c.broken;
+        }
+    }
+    table_cycle_restore( &c, id );
+    return acyclic;
+}
 #endif
 `
 
@@ -441,6 +629,7 @@ func (g *tableGen) emitGraphDeclarations(members []*ir.Struct) {
 		g.emitStaticAssert(g.sym(st.Name, "arena_alignment"), fmt.Sprintf("SCHEMA_TABLE_ALIGNOF(%s) <= kTableAlign", st.Name), "a table node's alignment must fit the arena's")
 		g.pf("static const TableNodeType %s;\n", g.graphType(st.Name))
 		g.pf("static SCHEMA_UNUSED int %s( TableNumbering * numbering, const void * storage );\n", g.sym(st.Name, "graph_edges"))
+		g.pf("static SCHEMA_UNUSED int %s( TableCycle * cycle, const void * storage );\n", g.sym(st.Name, "cycle_edges"))
 	}
 }
 
@@ -460,6 +649,16 @@ func (g *tableGen) emitGraphBodies(members []*ir.Struct) {
 			if guards[f.Name] != "" {
 				g.pf("    }\n")
 			}
+		}
+		g.pf("    return 1;\n}\n")
+		// THE CYCLE CHECK's edges (docs/SPEC-TABLES.md §3.1): every table
+		// pointer slot the node's by-value closure STORES, a false guard's
+		// included, in any order.
+		g.pf("static SCHEMA_UNUSED int %s( TableCycle * cycle, const void * storage )\n{\n", g.sym(st.Name, "cycle_edges"))
+		g.pf("    const %s * value=(const %s *)storage;\n    (void)value; (void)cycle;\n", st.Name, st.Name)
+		cstep := 0
+		for _, f := range st.Fields {
+			g.emitCycleEdge(f, "value->"+f.Name, "    ", &cstep)
 		}
 		g.pf("    return 1;\n}\n")
 		extent, hasExtent := "NULL", 0
@@ -523,6 +722,94 @@ func (g *tableGen) emitGraphEdge(f *ir.Field, value, ind string, step *int) {
 	if f.Type.Optional {
 		g.pf("%s}\n", strings.TrimSuffix(ind, "    "))
 	}
+}
+
+// emitCycleEdge is emitGraphEdge for the cycle check: no guard is consulted,
+// a sequence is walked in storage order (no map is sorted, so nothing is
+// allocated), and a blob pointer is skipped, since a byte buffer reaches
+// nothing.
+func (g *tableGen) emitCycleEdge(f *ir.Field, value, ind string, step *int) {
+	if f.Type.Optional {
+		g.pf("%sif (%s_present) {\n", ind, value)
+		ind += "    "
+	}
+	switch {
+	case f.IsList() || f.IsMap():
+		*step++
+		label := fmt.Sprintf("cycle%d", *step)
+		typ := g.sequenceType(f)
+		g.pf("%s{ TableSequenceCursor %s=table_sequence_cursor(&cycle->ctx,&%s,sizeof(%s)); int32_t %s_i;\n", ind, label, value, typ, label)
+		g.pf("%s  if(!%s.ok) { return 0; } for(%s_i=0;%s_i<%s.count;%s_i++) {\n", ind, label, label, label, value, label)
+		g.pf("%s    const %s * %s_value=(const %s *)table_sequence_next(&%s); if(%s_value==NULL) { return 0; }\n", ind, typ, label, typ, label, label)
+		g.emitCycleEdge(sequenceElement(f), "(*"+label+"_value)", ind+"    ", step)
+		g.pf("%s  }\n%s}\n", ind, ind)
+	case f.Array != ir.ArrayNone:
+		*step++
+		index := fmt.Sprintf("cycle_i%d", *step)
+		count := fmt.Sprint(f.ArrayBound)
+		if f.Array == ir.ArrayCounted {
+			count = value + "_count"
+			g.pf("%sif (%s<0 || %s>%d) { return 0; }\n", ind, count, count, f.ArrayBound)
+		}
+		g.pf("%s{ int32_t %s; for (%s=0; %s<%s; %s++) {\n", ind, index, index, index, count, index)
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.Type.Optional = false
+		g.emitCycleEdge(&elem, value+"["+index+"]", ind+"    ", step)
+		g.pf("%s} }\n", ind)
+	case f.Type.Pointer:
+		if !f.Type.Blob() {
+			g.pf("%sif (!table_cycle_slot(cycle,&%s)) { return 0; }\n", ind, value)
+		}
+	default:
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if g.isVar(ref.Name) {
+				g.pf("%sif (!%s(cycle,&%s)) { return 0; }\n", ind, g.sym(ref.Name, "cycle_edges"), value)
+			}
+		case *ir.Union:
+			g.pf("%sswitch (%s.type) {\n", ind, value)
+			for _, v := range ref.Variants {
+				g.pf("%scase %s: {\n", ind, enumConst(ref.Name+"Type", v.Name))
+				if !v.Void() {
+					g.emitCycleEdge(v.F, armValue(value, v), ind+"    ", step)
+				}
+				g.pf("%s    break; }\n", ind)
+			}
+			g.pf("%sdefault: break;\n%s}\n", ind, ind)
+		}
+	}
+	if f.Type.Optional {
+		g.pf("%s}\n", strings.TrimSuffix(ind, "    "))
+	}
+}
+
+// emitCycleRoot emits a root's three cycle-check helpers (docs/SPEC-TABLES.md
+// §3.1): the ordinal of each table type the root's graph can hold (0 for
+// anything else), the edge walk by ordinal, and the type id back from it.
+func (g *tableGen) emitCycleRoot(st *ir.Struct) {
+	n := st.Name
+	types := []*ir.Struct{st}
+	for _, t := range ir.PointerReachable(st) {
+		if t.Name != st.Name {
+			types = append(types, t)
+		}
+	}
+	g.pf("static SCHEMA_UNUSED uint32_t %s(uint64_t type_id)\n{\n    switch(type_id) {\n", g.sym(n, "cycle_ordinal"))
+	for i, t := range types {
+		g.pf("        case UINT64_C(0x%016x): return %du;\n", ir.TableWireId(t.WireName()), i+1)
+	}
+	g.pf("        default: return 0u;\n    }\n}\n")
+	g.pf("static SCHEMA_UNUSED uint64_t %s(uint32_t ordinal)\n{\n    switch(ordinal) {\n", g.sym(n, "cycle_id"))
+	for i, t := range types {
+		g.pf("        case %du: return UINT64_C(0x%016x);\n", i+1, ir.TableWireId(t.WireName()))
+	}
+	g.pf("        default: return 0u;\n    }\n}\n")
+	g.pf("static SCHEMA_UNUSED int %s(TableCycle * cycle, uint32_t ordinal, const void * value)\n{\n    switch(ordinal) {\n", g.sym(n, "cycle_node"))
+	for i, t := range types {
+		g.pf("        case %du: return %s(cycle,value);\n", i+1, g.sym(t.Name, "cycle_edges"))
+	}
+	g.pf("        default: return 1;\n    }\n}\n")
 }
 
 func (g *tableGen) emitGraphLock(st *ir.Struct) {
@@ -591,6 +878,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	g.pf("    TableReport report; TableReader reader; int64_t data,records,total; memset(&report,0,sizeof(report));\n")
 	g.pf("    if (!table_wire_open(&reader,wire,bytes,&report)) { return -1; }\n")
 	g.pf("    total=%s(&reader,&data,&records); return total>=0 ? total : -1;\n}\n", g.sym(n, "load_layout"))
+	g.emitCycleRoot(st)
 	g.emitGraphLoad(st)
 	if !g.retain {
 		n := st.Name
@@ -614,7 +902,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedUnknown = "if(retention.retain)reader->report->retain_lost+=unknown;"
 	}
-	g.pf("    nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
+	g.pf("    nodes->cycle_indices=1; nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
 	for _, blob := range []struct {
 		enabled bool
@@ -635,7 +923,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedRoot = "retention.path=table_retain_root(root,1);"
 	}
-	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { return 0; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL;\n      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"))
+	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { return 0; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok; TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL;\n      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      if(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->malformed=1; return 0; }\n      return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
 	if g.retain {
 		return
 	}

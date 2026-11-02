@@ -517,7 +517,9 @@
       "when": "pull-request",
       "why": "the C leg's WHOLE-LOAD DISCARD control (docs/SPEC-TABLES.md \u00a74, damage discards the whole load): it removes each read's discard from the emitted C in turn (the value read, the region read, the retaining read, the builder read and both text reads) and requires exactly that read's rows of TestDamageDiscardsTheWholeLoadC red and every other row green. Six small cc builds of one probe unit, about 10 s together on hetzner1, so well inside the rule on its own row.",
       "targets": [
-        "tables-c-discard-negative-control"
+        "tables-c-discard-negative-control",
+        "tables-c-cycle-negative-control",
+        "tables-c-cycle-linear-negative-control"
       ]
     },
     {

@@ -2016,3 +2016,59 @@ tables-c-discard-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the discard control was skipped, so it is watching nothing"; cat build/c-discard/control.log; exit 1; }
 	@echo 'negative control: each C read with its discard removed hands back a value, on exactly its own rows'
 test-c: tables-c-discard
+
+# A CYCLIC WIRE IS DAMAGE, C LEG (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# 2026-10-31). The C check is Kahn's algorithm over the load's directory
+# (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
+# 1-based directory indices during construction and resolving offsets once
+# acyclicity holds. The first control drops the cycle verdict in a copy of
+# graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
+# must go red on it. The linear control stacks a node at every slot naming it
+# rather than the last, and TestDiamondChainLoadsLinearC must go red on it.
+C_CYCLE_NC := build/c-cycle-nc
+C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
+.PHONY: tables-c-cycle tables-c-cycle-negative-control tables-c-cycle-linear-negative-control
+tables-c-cycle:
+	@mkdir -p build/c-cycle
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC|CycleOrdinalBoundaryC)$$' > build/c-cycle/pin.log 2>&1 || \
+		{ cat build/c-cycle/pin.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-cycle/pin.log || \
+		{ echo "tables-c-cycle: the pin was skipped, so it held nothing"; cat build/c-cycle/pin.log; exit 1; }
+	@echo 'C cycle: cyclic wire graphs are refused as damage and diamond DAGs load in linear time'
+tables-c-cycle-negative-control:
+	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
+	@sed -e 's#if ( !c.broken && c.processed == c.vertices ) /\* an unfreed node sits on a cycle \*/#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
+		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
+	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedC$$' \
+			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
+		cat $(C_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "cycle: the region load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(C_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
+	@echo "negative control: removing the C cycle verdict turns the cycle gate RED"
+tables-c-cycle-linear-negative-control:
+	@rm -rf $(C_CYCLE_LINEAR_NC) && mkdir -p $(C_CYCLE_LINEAR_NC)
+	@sed -e 's#if ( degree == 1 ) { table_cycle_push( c, p ); } /\* the last slot naming it: its descent is free \*/#table_cycle_push( c, p ); /* NEGATIVE CONTROL: entered once per path */#' \
+		internal/codegen/ctable/graph.go > $(C_CYCLE_LINEAR_NC)/graph.go.txt
+	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_LINEAR_NC)/graph.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_LINEAR_NC)/graph.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_LINEAR_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 300s -overlay $(C_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearC$$' \
+			./internal/codegen/ctable > $(C_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
+		cat $(C_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(C_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(C_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "diamond:" $(C_CYCLE_LINEAR_NC)/log
+	@echo "negative control: entering a shared node once per path turns the C diamond gate RED"
+test-c: tables-c-cycle
