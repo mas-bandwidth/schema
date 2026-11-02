@@ -1107,6 +1107,10 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 
 // emitTextWriteOne emits the writer of ONE value of the field.
 func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	if f.Type.Timestamp {
+		fmt.Fprintf(b, "%sjson_escape(&table_timestamp_text(%s), &mut w.out);\n", ind, x)
+		return
+	}
 	switch classOf(f) {
 	case vBlob:
 		fmt.Fprintf(b, "%smatch %s {\n", ind, borrowOf(x))
@@ -1469,6 +1473,13 @@ func scalarOnly(f *ir.Field) *ir.Field {
 // `dst` (§16.2's rows): a value of the wrong JSON type is kind_mismatch,
 // skipped, never coerced.
 func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string) {
+	if f.Type.Timestamp {
+		fmt.Fprintf(b, "%sif jr.peek() == b'\\\"' { if let Some(s) = jr.read_string() { match table_timestamp_parse(&s) {\n", in)
+		fmt.Fprintf(b, "%s    Some(value) => %s = value,\n", in, dst)
+		fmt.Fprintf(b, "%s    None => { jr.malformed = true; jr.reason = TableReason::TimestampNotRfc3339; jr.text_error = %q; }\n", in, "timestamp_not_rfc3339: "+f.Name)
+		fmt.Fprintf(b, "%s} } } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
+		return
+	}
 	switch classOf(f) {
 	case vBlob:
 		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", in, dst)

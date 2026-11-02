@@ -9,7 +9,9 @@ package compiler
 // and cook by rusttable.TestRustOneSidedRangeNative. Optional maps are held by
 // the native presence, graph, ordering, text and cook probes in rusttable.
 // Array-root JSON shape is held across every by-value position by the native
-// array-root closure corpus, including named wrong-root diagnostics.
+// array-root closure corpus, including named wrong-root diagnostics. Timestamp
+// text, variable/fixed/message wire and cook use the shared boundary corpus and
+// independent native Go bytes in rusttable's timestamp tests.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp)
 }

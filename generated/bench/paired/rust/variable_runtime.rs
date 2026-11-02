@@ -48,6 +48,7 @@ pub enum TableReason {
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
     JsonRootNotArray,
+    TimestampNotRfc3339,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -84,6 +85,7 @@ impl TableReason {
             TableReason::WireDamaged => "wire_damaged",
             TableReason::NonFiniteFloat => "non_finite_float",
             TableReason::JsonRootNotArray => "json_root_not_array",
+            TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
         }
     }
 }

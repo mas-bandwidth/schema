@@ -1469,6 +1469,9 @@ pub static KNOWN_IDS: &[u64] = &[
 	}
 	b.WriteString("];\n")
 	b.WriteString(textHelpers())
+	if len(ir.TableTimestampFields(u)) > 0 {
+		b.WriteString(timestampHelpersRust)
+	}
 	b.WriteString(cookRegionWriterRust)
 	b.WriteString(cookCarveRust)
 	text := b.String()

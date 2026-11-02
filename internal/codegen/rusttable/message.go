@@ -500,7 +500,7 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind) || kind == 36
 }
 
 fn integer_kind(kind: u8) -> bool {
@@ -698,7 +698,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
         3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
         4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
-        5 | 9 | 11 | 23 | 28 => skip_width(bytes, at, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => skip_width(bytes, at, 8),
         18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
         // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
         // stop
@@ -797,6 +797,7 @@ pub enum TableReason {
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
     JsonRootNotArray,
+    TimestampNotRfc3339,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -833,6 +834,7 @@ impl TableReason {
             TableReason::WireDamaged => "wire_damaged",
             TableReason::NonFiniteFloat => "non_finite_float",
             TableReason::JsonRootNotArray => "json_root_not_array",
+            TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
         }
     }
 }
