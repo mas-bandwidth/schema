@@ -730,7 +730,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
 		// L, the element kind, the live count, the elements; empty elides.
-		fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
@@ -780,6 +780,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, g.blob_index(Rc::as_ptr(n) as *const u8 as usize));\n", inner)
+		if f.Required {
+			fmt.Fprintf(b, "%s} else { leb_write(out, ids.id_ref(0x%016x)); out.push(%d); out.push(0);\n", ind, id, kind)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vPointer:
 		// NULL IS INDEX 0, AND NULL IS ELIDED; a non-null pointer always rides (§3.1)
@@ -787,6 +790,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, g.node_index(n));\n", inner)
+		if f.Required {
+			fmt.Fprintf(b, "%s} else { leb_write(out, ids.id_ref(0x%016x)); out.push(%d); out.push(0);\n", ind, id, kind)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vTable:
 		// AN ELIDED FIELD COSTS NOTHING IN THE ID TABLE EITHER (§3): the field
@@ -797,7 +803,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		emitTableBodyInto(b, f, "&"+x, "body", fmt.Sprintf("path.step(%d, 0)", ordinal), inner)
-		fmt.Fprintf(b, "%sif body.len() <= 1 {\n", inner)
+		fmt.Fprintf(b, "%sif %t && body.len() <= 1 {\n", inner, !f.Required)
 		fmt.Fprintf(b, "%s    ids.rollback(mark);\n", inner)
 		fmt.Fprintf(b, "%s} else {\n", inner)
 		fmt.Fprintf(b, "%s    leb_write(out, r);\n", inner)
@@ -815,7 +821,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if len(f.DefBytes) > 0 {
 			guard = x + ".as_bytes() != " + rustByteArray(f.DefBytes)
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, %s.len() as u64);\n", inner, x)
@@ -830,7 +836,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if len(f.DefBytes) > 0 {
 			guard = x + ".as_slice() != " + rustByteArray(f.DefBytes)
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		fmt.Fprintf(b, "%sbody.push(%d); // the element kind: u8\n", inner, ir.TableKindU8)
@@ -842,7 +848,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vEnum:
-		fmt.Fprintf(b, "%sif %s != %s {\n", ind, x, enumDefault(f))
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, x+" != "+enumDefault(f)))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%slet vref = %s;\n", inner, enumRef(f, x))
@@ -861,7 +867,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 				guard = "!" + x
 			}
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, guard)
+		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%s%s\n", inner, g.scalarWrite(f, x, "out"))
@@ -2201,7 +2207,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 // writer bound (internal/codegen/gotable/write.go's Length > N check).
 func (g *gen) emitWideSaveField(b *strings.Builder, f *ir.Field, x, ind string) {
 	inner := ind + "    "
-	fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+	fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
 	fmt.Fprintf(b, "%slet n = table_wide_fit(ids, &%s, %d, %q);\n", inner, x, f.Type.Size, wideOwner(g.unit, f)+"."+f.Name)
 	fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, ir.TableFieldWireId(f))
 	fmt.Fprintf(b, "%sout.push(%d);\n", inner, ir.TableKindWstring)
@@ -2310,4 +2316,12 @@ func wideOwner(u *ir.Unit, f *ir.Field) string {
 		}
 	}
 	return "?"
+}
+
+// requiredWriteGuard preserves field presence even when its value is the default.
+func requiredWriteGuard(f *ir.Field, differs string) string {
+	if f.Required {
+		return "true"
+	}
+	return differs
 }
