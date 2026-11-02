@@ -984,6 +984,32 @@ public final class TableVariable {
         return off + w <= limit ? off + w : -1;
     }
 
+    public static long utf8Len(String s) {
+        if (s == null) {
+            return 0;
+        }
+        int n = s.length();
+        long len = 0;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c < 0x80) {
+                len += 1;
+            } else if (c < 0x800) {
+                len += 2;
+            } else if (Character.isHighSurrogate(c)
+                    && i + 1 < n
+                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                len += 4;
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                len += 1;
+            } else {
+                len += 3;
+            }
+        }
+        return len;
+    }
+
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not

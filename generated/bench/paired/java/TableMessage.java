@@ -802,7 +802,7 @@ public final class TableMessage {
     }
 
     public static int integritySeal(byte[] buffer, int n) {
-        if (n < 0 || n + 4 > buffer.length) {
+        if (buffer == null || n < 0 || buffer.length < 4 || n > buffer.length - 4) {
             return -1;
         }
         int crc = crc32c(buffer, n);

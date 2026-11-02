@@ -318,6 +318,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_is_enum( const blockdemo_table_fie
 
 static SCHEMA_UNUSED char blockdemo_table_json_shape( const blockdemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 'a'; }
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( blockdemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( blockdemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
@@ -337,6 +338,7 @@ static SCHEMA_UNUSED char blockdemo_table_json_shape( const blockdemo_table_fiel
 /* the ELEMENT shape of an array field — the same classifier one level down */
 static SCHEMA_UNUSED char blockdemo_table_json_element_shape( const blockdemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 's'; }
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
     if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
@@ -786,8 +788,40 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_jso
 static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_json_out_t * out, const void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+static SCHEMA_UNUSED int schema_blockdemo_table_json_write_text_element_( blockdemo_table_json_out_t * out, const void * p, const blockdemo_table_field_info_t * f )
+{
+    const blockdemo_table_field_info_t * v = &f->table->fields[0];
+    int32_t n;
+    if ( f->text_list == 2 && blockdemo_table_json_get_raw( (const uint8_t *) p + v->present_offset, 1 ) == 0 )
+    {
+        blockdemo_table_json_raw( out, "null", 4 );
+        return 1;
+    }
+    n = blockdemo_table_json_count( p, v );
+    if ( n < 0 || n > v->array_bound ) { return 0; }
+    blockdemo_table_json_write_string( out, (const char *) p + v->offset, n );
+    return 1;
+}
+
+static SCHEMA_UNUSED int64_t schema_blockdemo_table_json_text_bytes_( const void * p, int32_t count, const blockdemo_table_field_info_t * f )
+{
+    const blockdemo_table_field_info_t * v = &f->table->fields[0];
+    int64_t spent = 0;
+    int32_t i;
+    for ( i = 0; i < count; i++ )
+    {
+        const uint8_t * e = (const uint8_t *) p + (int64_t) i * f->elem_size;
+        int32_t n;
+        if ( f->text_list == 2 && blockdemo_table_json_get_raw( e + v->present_offset, 1 ) == 0 ) { continue; }
+        n = blockdemo_table_json_count( e, v );
+        if ( n > 0 ) { spent += (int64_t) n; }
+    }
+    return spent;
+}
+
 static SCHEMA_UNUSED int blockdemo_table_json_write_scalar( blockdemo_table_json_out_t * out, const void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
+    if ( f->text_list != 0 ) { return schema_blockdemo_table_json_write_text_element_( out, storage, f ); }
     if ( f->kind == 17 ) { return blockdemo_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
@@ -912,7 +946,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_
     if ( f->kind == 33 ) {
         blockdemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, blockdemo_table_json_count( base, f ) ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         blockdemo_table_json_write_string( out, (const char *) storage, blockdemo_table_json_count( base, f ) );
         return 1;
@@ -954,6 +988,10 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_
     {
         int32_t count = blockdemo_table_json_count( base, f );
         int32_t i;
+        if ( f->text_total > 0 && schema_blockdemo_table_json_text_bytes_( storage, count, f ) > f->text_total )
+        {
+            return 0;
+        }
         if ( count == 0 )
         {
             blockdemo_table_json_raw( out, "[]", 2 );
@@ -1992,11 +2030,32 @@ static SCHEMA_UNUSED int schema_blockdemo_table_json_timestamp_parse_( blockdemo
     return 1;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_table_json_read_text_element_( blockdemo_table_json_in_t * in, void * p, const blockdemo_table_field_info_t * f, int32_t depth )
+{
+    const blockdemo_table_type_info_t * t = f->table;
+    const blockdemo_table_field_info_t * v = &t->fields[0];
+    t->reset( p );
+    if ( blockdemo_table_json_value_shape( in ) == 'z' ) { return blockdemo_table_json_literal( in, "null" ); }
+    if ( !blockdemo_table_json_read_field( in, p, v, depth ) ) { return 0; }
+    if ( f->text_list == 2 ) { blockdemo_table_json_set_raw( (uint8_t *) p + v->present_offset, 1, 1 ); }
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_table_json_text_total_keep_( blockdemo_table_json_in_t * in, void * p, const blockdemo_table_field_info_t * f, int64_t * spent )
+{
+    *spent += schema_blockdemo_table_json_text_bytes_( p, 1, f );
+    if ( *spent <= f->text_total ) { return 1; }
+    f->table->reset( p );
+    in->report->clamped++;
+    return 0;
+}
+
 static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     char token[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
+    if ( f->text_list != 0 ) { return schema_blockdemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( blockdemo_table_json_value_shape(in) == 'z' ) { blockdemo_table_json_set_raw(storage,f->elem_size,0); return blockdemo_table_json_literal(in,"null"); }
@@ -2230,7 +2289,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         ((uint16_t *)(void *)storage)[length] = 0;
         blockdemo_table_json_set_count( base, f, length ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
         if ( !blockdemo_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
@@ -2405,7 +2464,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         char shape;
         if ( blockdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
-        if ( f->kind == 13 )
+        int64_t spent = 0;
+        int full = 0;
+        if ( f->kind == 13 || f->text_list != 0 )
         {
             int32_t i;
             for ( i = 0; i < f->array_bound; i++ )
@@ -2424,14 +2485,18 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
             char c = blockdemo_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( placed >= f->array_bound )
+            if ( full )
+            {
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
                 if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( blockdemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && blockdemo_table_json_value_shape(in) == 'z') )
+            else if ( blockdemo_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && blockdemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
                 if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2439,8 +2504,16 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
             }
             else
             {
-                if ( !blockdemo_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
-                placed++;
+                uint8_t * elem = storage + (int64_t) placed * f->elem_size;
+                if ( !blockdemo_table_json_read_scalar( in, elem, f, depth + 1 ) ) { return 0; }
+                if ( f->text_total > 0 && !schema_blockdemo_table_json_text_total_keep_( in, elem, f, &spent ) )
+                {
+                    full = 1;
+                }
+                else
+                {
+                    placed++;
+                }
             }
             c = blockdemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
@@ -2654,23 +2727,23 @@ static const blockdemo_table_variant_info_t schema_blockdemo_padded_row_teams_ke
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_padded_row_fields_[] = {
-    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, tag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, value ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, flag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, id ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( blockdemo_padded_row_t, label ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->label ), (uint32_t) offsetof( blockdemo_padded_row_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 0, 4, (uint32_t) offsetof( blockdemo_padded_row_t, slots ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, 0, (int32_t) BLOCKDEMO_TEAM_MAX, (uint32_t) offsetof( blockdemo_padded_row_t, teams ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, counter ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( blockdemo_padded_row_t, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, tag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->tag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, value ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, flag ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->flag ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, id ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( blockdemo_padded_row_t, label ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->label ), (uint32_t) offsetof( blockdemo_padded_row_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, 1, 0, 0, 0, 4, (uint32_t) offsetof( blockdemo_padded_row_t, slots ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->slots[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, 1, 0, 0, 0, (int32_t) BLOCKDEMO_TEAM_MAX, (uint32_t) offsetof( blockdemo_padded_row_t, teams ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->teams[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Team", schema_blockdemo_padded_row_teams_keys_, 4, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, 0, 0, 1, 0, 0, (uint32_t) offsetof( blockdemo_padded_row_t, counter ), (uint32_t) sizeof( ( (blockdemo_padded_row_t *) 0 )->counter ), 0xffffffffu, (uint32_t) offsetof( blockdemo_padded_row_t, counter_present ), NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_padded_row_info_ = { "PaddedRow", (uint32_t) sizeof( blockdemo_padded_row_t ), 8, schema_blockdemo_padded_row_fields_, schema_blockdemo_padded_row_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const blockdemo_table_field_info_t schema_blockdemo_padded_frame_fields_[] = {
-    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, marker ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, stamp ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 0, 64, (uint32_t) offsetof( blockdemo_padded_frame_t, rows ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->rows[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 0, 12, (uint32_t) offsetof( blockdemo_padded_frame_t, blob ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->blob[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, marker ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_padded_frame_t, stamp ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, 1, 1, 0, 0, 64, (uint32_t) offsetof( blockdemo_padded_frame_t, rows ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->rows[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, rows_count ), 0xffffffffu, &schema_blockdemo_padded_row_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, 1, 1, 0, 0, 12, (uint32_t) offsetof( blockdemo_padded_frame_t, blob ), (uint32_t) sizeof( ( (blockdemo_padded_frame_t *) 0 )->blob[0] ), (uint32_t) offsetof( blockdemo_padded_frame_t, blob_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_padded_frame_info_ = { "PaddedFrame", (uint32_t) sizeof( blockdemo_padded_frame_t ), 4, schema_blockdemo_padded_frame_fields_, schema_blockdemo_padded_frame_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

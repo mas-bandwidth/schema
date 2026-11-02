@@ -318,6 +318,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_is_enum( const blockdemo_table_fie
 
 static SCHEMA_UNUSED char blockdemo_table_json_shape( const blockdemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 'a'; }
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( blockdemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( blockdemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
@@ -337,6 +338,7 @@ static SCHEMA_UNUSED char blockdemo_table_json_shape( const blockdemo_table_fiel
 /* the ELEMENT shape of an array field — the same classifier one level down */
 static SCHEMA_UNUSED char blockdemo_table_json_element_shape( const blockdemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 's'; }
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
     if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
@@ -786,8 +788,40 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_jso
 static SCHEMA_UNUSED int blockdemo_table_json_write_pointer( blockdemo_table_json_out_t * out, const void * slot, const blockdemo_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+static SCHEMA_UNUSED int schema_blockdemo_table_json_write_text_element_( blockdemo_table_json_out_t * out, const void * p, const blockdemo_table_field_info_t * f )
+{
+    const blockdemo_table_field_info_t * v = &f->table->fields[0];
+    int32_t n;
+    if ( f->text_list == 2 && blockdemo_table_json_get_raw( (const uint8_t *) p + v->present_offset, 1 ) == 0 )
+    {
+        blockdemo_table_json_raw( out, "null", 4 );
+        return 1;
+    }
+    n = blockdemo_table_json_count( p, v );
+    if ( n < 0 || n > v->array_bound ) { return 0; }
+    blockdemo_table_json_write_string( out, (const char *) p + v->offset, n );
+    return 1;
+}
+
+static SCHEMA_UNUSED int64_t schema_blockdemo_table_json_text_bytes_( const void * p, int32_t count, const blockdemo_table_field_info_t * f )
+{
+    const blockdemo_table_field_info_t * v = &f->table->fields[0];
+    int64_t spent = 0;
+    int32_t i;
+    for ( i = 0; i < count; i++ )
+    {
+        const uint8_t * e = (const uint8_t *) p + (int64_t) i * f->elem_size;
+        int32_t n;
+        if ( f->text_list == 2 && blockdemo_table_json_get_raw( e + v->present_offset, 1 ) == 0 ) { continue; }
+        n = blockdemo_table_json_count( e, v );
+        if ( n > 0 ) { spent += (int64_t) n; }
+    }
+    return spent;
+}
+
 static SCHEMA_UNUSED int blockdemo_table_json_write_scalar( blockdemo_table_json_out_t * out, const void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
+    if ( f->text_list != 0 ) { return schema_blockdemo_table_json_write_text_element_( out, storage, f ); }
     if ( f->kind == 17 ) { return blockdemo_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
@@ -912,7 +946,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_
     if ( f->kind == 33 ) {
         blockdemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, blockdemo_table_json_count( base, f ) ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         blockdemo_table_json_write_string( out, (const char *) storage, blockdemo_table_json_count( base, f ) );
         return 1;
@@ -954,6 +988,10 @@ static SCHEMA_UNUSED int blockdemo_table_json_write_field( blockdemo_table_json_
     {
         int32_t count = blockdemo_table_json_count( base, f );
         int32_t i;
+        if ( f->text_total > 0 && schema_blockdemo_table_json_text_bytes_( storage, count, f ) > f->text_total )
+        {
+            return 0;
+        }
         if ( count == 0 )
         {
             blockdemo_table_json_raw( out, "[]", 2 );
@@ -1992,11 +2030,32 @@ static SCHEMA_UNUSED int schema_blockdemo_table_json_timestamp_parse_( blockdemo
     return 1;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_table_json_read_text_element_( blockdemo_table_json_in_t * in, void * p, const blockdemo_table_field_info_t * f, int32_t depth )
+{
+    const blockdemo_table_type_info_t * t = f->table;
+    const blockdemo_table_field_info_t * v = &t->fields[0];
+    t->reset( p );
+    if ( blockdemo_table_json_value_shape( in ) == 'z' ) { return blockdemo_table_json_literal( in, "null" ); }
+    if ( !blockdemo_table_json_read_field( in, p, v, depth ) ) { return 0; }
+    if ( f->text_list == 2 ) { blockdemo_table_json_set_raw( (uint8_t *) p + v->present_offset, 1, 1 ); }
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_blockdemo_table_json_text_total_keep_( blockdemo_table_json_in_t * in, void * p, const blockdemo_table_field_info_t * f, int64_t * spent )
+{
+    *spent += schema_blockdemo_table_json_text_bytes_( p, 1, f );
+    if ( *spent <= f->text_total ) { return 1; }
+    f->table->reset( p );
+    in->report->clamped++;
+    return 0;
+}
+
 static SCHEMA_UNUSED int blockdemo_table_json_read_scalar( blockdemo_table_json_in_t * in, void * storage, const blockdemo_table_field_info_t * f, int32_t depth )
 {
     char token[BLOCKDEMO_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
+    if ( f->text_list != 0 ) { return schema_blockdemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( blockdemo_table_json_value_shape(in) == 'z' ) { blockdemo_table_json_set_raw(storage,f->elem_size,0); return blockdemo_table_json_literal(in,"null"); }
@@ -2230,7 +2289,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         ((uint16_t *)(void *)storage)[length] = 0;
         blockdemo_table_json_set_count( base, f, length ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
         if ( !blockdemo_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
@@ -2405,7 +2464,9 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
         char shape;
         if ( blockdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
-        if ( f->kind == 13 )
+        int64_t spent = 0;
+        int full = 0;
+        if ( f->kind == 13 || f->text_list != 0 )
         {
             int32_t i;
             for ( i = 0; i < f->array_bound; i++ )
@@ -2424,14 +2485,18 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
             char c = blockdemo_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( placed >= f->array_bound )
+            if ( full )
+            {
+                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
                 if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( blockdemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && blockdemo_table_json_value_shape(in) == 'z') )
+            else if ( blockdemo_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && blockdemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
                 if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2439,8 +2504,16 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
             }
             else
             {
-                if ( !blockdemo_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
-                placed++;
+                uint8_t * elem = storage + (int64_t) placed * f->elem_size;
+                if ( !blockdemo_table_json_read_scalar( in, elem, f, depth + 1 ) ) { return 0; }
+                if ( f->text_total > 0 && !schema_blockdemo_table_json_text_total_keep_( in, elem, f, &spent ) )
+                {
+                    full = 1;
+                }
+                else
+                {
+                    placed++;
+                }
             }
             c = blockdemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
@@ -2647,12 +2720,12 @@ static SCHEMA_UNUSED int64_t blockdemo_table_json_write( const void * value, con
 /* ---- json walk: end ---- */
 
 static const blockdemo_table_field_info_t schema_blockdemo_render_camera_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, position ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, camera_id ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->camera_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, camera_type ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->camera_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, fov ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->fov ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, position ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, camera_id ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->camera_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, camera_type ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->camera_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_camera_t, fov ), (uint32_t) sizeof( ( (blockdemo_render_camera_t *) 0 )->fov ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_camera_info_ = { "RenderCamera", (uint32_t) sizeof( blockdemo_render_camera_t ), 6, schema_blockdemo_render_camera_fields_, schema_blockdemo_render_camera_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2677,17 +2750,17 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_ship_team_va
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_ship_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, position ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_flags_variants_, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, thrust ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->thrust ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, ship_type ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->ship_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_ship_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, team ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_ship_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, has_target_lock ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, predicted_explode ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, position ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_flags_variants_, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, thrust ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->thrust ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, ship_type ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->ship_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_ship_ship_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, team ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_ship_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, has_target_lock ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_ship_t, predicted_explode ), (uint32_t) sizeof( ( (blockdemo_render_ship_t *) 0 )->predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_ship_info_ = { "RenderShip", (uint32_t) sizeof( blockdemo_render_ship_t ), 11, schema_blockdemo_render_ship_fields_, schema_blockdemo_render_ship_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2700,15 +2773,15 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_turret_team_
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_turret_fields_[] = {
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, parent_object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, turret_index ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->turret_index ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, team ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_turret_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, has_target_lock ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, parent_object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, turret_index ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->turret_index ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, target_object_id ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->target_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, team ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_turret_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_turret_t, has_target_lock ), (uint32_t) sizeof( ( (blockdemo_render_turret_t *) 0 )->has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_turret_info_ = { "RenderTurret", (uint32_t) sizeof( blockdemo_render_turret_t ), 9, schema_blockdemo_render_turret_fields_, schema_blockdemo_render_turret_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2726,13 +2799,13 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_missile_team
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_missile_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, position ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, missile_type ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->missile_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_missile_missile_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, team ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_missile_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, position ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, missile_type ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->missile_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_missile_missile_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_missile_t, team ), (uint32_t) sizeof( ( (blockdemo_render_missile_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_missile_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_missile_info_ = { "RenderMissile", (uint32_t) sizeof( blockdemo_render_missile_t ), 7, schema_blockdemo_render_missile_fields_, schema_blockdemo_render_missile_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2751,13 +2824,13 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_dynamic_prop
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_dynamic_prop_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_dynamic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_dynamic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, object_id ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, object_sequence ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->object_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_dynamic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_dynamic_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_dynamic_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_dynamic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_dynamic_prop_info_ = { "RenderDynamicProp", (uint32_t) sizeof( blockdemo_render_dynamic_prop_t ), 7, schema_blockdemo_render_dynamic_prop_fields_, schema_blockdemo_render_dynamic_prop_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2776,13 +2849,13 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_static_prop_
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_static_prop_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, scale ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, static_prop_id ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_static_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_static_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, scale ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, static_prop_id ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_static_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_static_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_static_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_static_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_static_prop_info_ = { "RenderStaticProp", (uint32_t) sizeof( blockdemo_render_static_prop_t ), 7, schema_blockdemo_render_static_prop_fields_, schema_blockdemo_render_static_prop_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2801,14 +2874,14 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_cosmetic_pro
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_cosmetic_prop_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, scale ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, cosmetic_prop_id ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, prop_sequence ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_cosmetic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_cosmetic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, position ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, scale ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->scale ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, flags ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->flags ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, cosmetic_prop_id ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, prop_sequence ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, prop_type ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->prop_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_blockdemo_render_cosmetic_prop_prop_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_cosmetic_prop_t, team ), (uint32_t) sizeof( ( (blockdemo_render_cosmetic_prop_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_cosmetic_prop_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_cosmetic_prop_info_ = { "RenderCosmeticProp", (uint32_t) sizeof( blockdemo_render_cosmetic_prop_t ), 8, schema_blockdemo_render_cosmetic_prop_fields_, schema_blockdemo_render_cosmetic_prop_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2826,12 +2899,12 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_laser_team_v
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_laser_fields_[] = {
-    { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, start ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->start ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, finish ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->finish ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, t ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, laser_id ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->laser_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, laser_type ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->laser_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_laser_laser_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, team ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_laser_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, start ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->start ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, finish ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->finish ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, t ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, laser_id ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->laser_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, laser_type ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->laser_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_laser_laser_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_laser_t, team ), (uint32_t) sizeof( ( (blockdemo_render_laser_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_laser_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_laser_info_ = { "RenderLaser", (uint32_t) sizeof( blockdemo_render_laser_t ), 6, schema_blockdemo_render_laser_fields_, schema_blockdemo_render_laser_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -2849,45 +2922,45 @@ static const blockdemo_table_variant_info_t schema_blockdemo_render_explosion_te
     { "Gold", 0xc416c97e0d3218b3ull },
 };
 static const blockdemo_table_field_info_t schema_blockdemo_render_explosion_fields_[] = {
-    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, position ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, t ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, explosion_id ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->explosion_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, parent_object_id ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, explosion_type ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->explosion_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_explosion_explosion_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, team ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_explosion_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, position ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->position ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_vector3_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, rotation ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->rotation ), 0xffffffffu, 0xffffffffu, &schema_blockdemo_render_quaternion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, t ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->t ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, explosion_id ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->explosion_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, parent_object_id ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, explosion_type ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->explosion_type ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 2, schema_blockdemo_render_explosion_explosion_type_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_explosion_t, team ), (uint32_t) sizeof( ( (blockdemo_render_explosion_t *) 0 )->team ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 4, schema_blockdemo_render_explosion_team_variants_, 1, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_explosion_info_ = { "RenderExplosion", (uint32_t) sizeof( blockdemo_render_explosion_t ), 7, schema_blockdemo_render_explosion_fields_, schema_blockdemo_render_explosion_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const blockdemo_table_field_info_t schema_blockdemo_render_frame_fields_[] = {
-    { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_frame_t, version ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, 1, 1, 0, 0, 1, (uint32_t) offsetof( blockdemo_render_frame_t, cameras ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->cameras[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, cameras_count ), 0xffffffffu, &schema_blockdemo_render_camera_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, 1, 1, 0, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, ships ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->ships[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, ships_count ), 0xffffffffu, &schema_blockdemo_render_ship_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, 1, 1, 0, 0, 1024, (uint32_t) offsetof( blockdemo_render_frame_t, turrets ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->turrets[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, turrets_count ), 0xffffffffu, &schema_blockdemo_render_turret_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, 1, 1, 0, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, missiles ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->missiles[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, missiles_count ), 0xffffffffu, &schema_blockdemo_render_missile_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, 1, 1, 0, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, dynamic_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->dynamic_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, dynamic_props_count ), 0xffffffffu, &schema_blockdemo_render_dynamic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, 1, 1, 0, 0, 20000, (uint32_t) offsetof( blockdemo_render_frame_t, static_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->static_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, static_props_count ), 0xffffffffu, &schema_blockdemo_render_static_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, 1, 1, 0, 0, 8192, (uint32_t) offsetof( blockdemo_render_frame_t, cosmetic_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->cosmetic_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, cosmetic_props_count ), 0xffffffffu, &schema_blockdemo_render_cosmetic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, 1, 1, 0, 0, 32000, (uint32_t) offsetof( blockdemo_render_frame_t, lasers ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->lasers[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, lasers_count ), 0xffffffffu, &schema_blockdemo_render_laser_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, 1, 1, 0, 0, 32000, (uint32_t) offsetof( blockdemo_render_frame_t, explosions ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->explosions[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, explosions_count ), 0xffffffffu, &schema_blockdemo_render_explosion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_frame_t, version ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, 1, 1, 0, 0, 1, (uint32_t) offsetof( blockdemo_render_frame_t, cameras ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->cameras[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, cameras_count ), 0xffffffffu, &schema_blockdemo_render_camera_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, 1, 1, 0, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, ships ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->ships[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, ships_count ), 0xffffffffu, &schema_blockdemo_render_ship_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, 1, 1, 0, 0, 1024, (uint32_t) offsetof( blockdemo_render_frame_t, turrets ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->turrets[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, turrets_count ), 0xffffffffu, &schema_blockdemo_render_turret_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, 1, 1, 0, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, missiles ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->missiles[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, missiles_count ), 0xffffffffu, &schema_blockdemo_render_missile_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, 1, 1, 0, 0, 4096, (uint32_t) offsetof( blockdemo_render_frame_t, dynamic_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->dynamic_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, dynamic_props_count ), 0xffffffffu, &schema_blockdemo_render_dynamic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, 1, 1, 0, 0, 20000, (uint32_t) offsetof( blockdemo_render_frame_t, static_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->static_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, static_props_count ), 0xffffffffu, &schema_blockdemo_render_static_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, 1, 1, 0, 0, 8192, (uint32_t) offsetof( blockdemo_render_frame_t, cosmetic_props ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->cosmetic_props[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, cosmetic_props_count ), 0xffffffffu, &schema_blockdemo_render_cosmetic_prop_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, 1, 1, 0, 0, 32000, (uint32_t) offsetof( blockdemo_render_frame_t, lasers ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->lasers[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, lasers_count ), 0xffffffffu, &schema_blockdemo_render_laser_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, 1, 1, 0, 0, 32000, (uint32_t) offsetof( blockdemo_render_frame_t, explosions ), (uint32_t) sizeof( ( (blockdemo_render_frame_t *) 0 )->explosions[0] ), (uint32_t) offsetof( blockdemo_render_frame_t, explosions_count ), 0xffffffffu, &schema_blockdemo_render_explosion_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_frame_info_ = { "RenderFrame", (uint32_t) sizeof( blockdemo_render_frame_t ), 10, schema_blockdemo_render_frame_fields_, schema_blockdemo_render_frame_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const blockdemo_table_field_info_t schema_blockdemo_render_vector3_fields_[] = {
-    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, x ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, y ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, z ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, x ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, y ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_vector3_t, z ), (uint32_t) sizeof( ( (blockdemo_render_vector3_t *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_vector3_info_ = { "RenderVector3", (uint32_t) sizeof( blockdemo_render_vector3_t ), 3, schema_blockdemo_render_vector3_fields_, schema_blockdemo_render_vector3_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const blockdemo_table_field_info_t schema_blockdemo_render_quaternion_fields_[] = {
-    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, x ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, y ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, z ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, w ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->w ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "x", "x", "float64", 0xaf63f54c86021707ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, x ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->x ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "y", "y", "float64", 0xaf63f44c86021554ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, y ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->y ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, z ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->z ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( blockdemo_render_quaternion_t, w ), (uint32_t) sizeof( ( (blockdemo_render_quaternion_t *) 0 )->w ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
 const blockdemo_table_type_info_t schema_blockdemo_render_quaternion_info_ = { "RenderQuaternion", (uint32_t) sizeof( blockdemo_render_quaternion_t ), 4, schema_blockdemo_render_quaternion_fields_, schema_blockdemo_render_quaternion_reset_raw_, BLOCKDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

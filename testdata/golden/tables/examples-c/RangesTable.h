@@ -217,6 +217,8 @@ typedef struct tabledemo_table_field_info_t
     int32_t num_tags;
     const char * const * tags;
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
+    int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } tabledemo_table_field_info_t;
 
@@ -6179,13 +6181,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_message_body(tabledemo_tab
 }
 static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_measure_messages(const tabledemo_ranged_signed_t * values,int64_t count,tabledemo_table_report_t * report)
 {
- tabledemo_table_bit_writer_t w=tabledemo_table_bit_writer(NULL,INT64_MAX);
+ tabledemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!tabledemo_ranged_signed_save_message_body(&w,values+i)) return -1;
@@ -6194,7 +6197,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_measure_messages(const tabl
 }
 static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_save_messages(const tabledemo_ranged_signed_t * values,int64_t count,uint8_t * buffer,int64_t capacity,tabledemo_table_report_t * report)
 {
- tabledemo_table_bit_writer_t w=tabledemo_table_bit_writer(buffer,capacity);
+ tabledemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -6202,6 +6205,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_save_messages(const tablede
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!tabledemo_ranged_signed_save_message_body(&w,values+i)) return -1;
@@ -7721,13 +7725,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_message_body(tabledemo_t
 }
 static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_measure_messages(const tabledemo_ranged_unsigned_t * values,int64_t count,tabledemo_table_report_t * report)
 {
- tabledemo_table_bit_writer_t w=tabledemo_table_bit_writer(NULL,INT64_MAX);
+ tabledemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!tabledemo_ranged_unsigned_save_message_body(&w,values+i)) return -1;
@@ -7736,7 +7741,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_measure_messages(const ta
 }
 static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_save_messages(const tabledemo_ranged_unsigned_t * values,int64_t count,uint8_t * buffer,int64_t capacity,tabledemo_table_report_t * report)
 {
- tabledemo_table_bit_writer_t w=tabledemo_table_bit_writer(buffer,capacity);
+ tabledemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -7744,6 +7749,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_save_messages(const table
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!tabledemo_ranged_unsigned_save_message_body(&w,values+i)) return -1;
@@ -8611,13 +8617,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_message_body(tabledemo_tab
 }
 static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_measure_messages(const tabledemo_ranged_widths_t * values,int64_t count,tabledemo_table_report_t * report)
 {
- tabledemo_table_bit_writer_t w=tabledemo_table_bit_writer(NULL,INT64_MAX);
+ tabledemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!tabledemo_ranged_widths_save_message_body(&w,values+i)) return -1;
@@ -8626,7 +8633,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_measure_messages(const tabl
 }
 static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_save_messages(const tabledemo_ranged_widths_t * values,int64_t count,uint8_t * buffer,int64_t capacity,tabledemo_table_report_t * report)
 {
- tabledemo_table_bit_writer_t w=tabledemo_table_bit_writer(buffer,capacity);
+ tabledemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -8634,6 +8641,7 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_save_messages(const tablede
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!tabledemo_ranged_widths_save_message_body(&w,values+i)) return -1;

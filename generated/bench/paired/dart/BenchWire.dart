@@ -1357,16 +1357,6 @@ final class TableRetain {
         for (final entries in maps.values) { pending.addAll(entries); }
       }
       switch (value) {
-        case MixedEntity v:
-          break;
-        case MixedStat v:
-          break;
-        case MixedHitEvent v:
-          break;
-        case MixedChatEvent v:
-          break;
-        case MixedPickupEvent v:
-          break;
         case BenchMixed v:
           pending.addAll(v.entities);
           pending.addAll(v.stats);

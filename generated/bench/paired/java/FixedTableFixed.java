@@ -239,7 +239,7 @@ public final class FixedTableFixed {
             return -1;
         }
         final int need = measure(count);
-        if (buffer.length < need) {
+        if (need < 0 || buffer.length < need) {
             return -1;
         }
         for (int k = 0; k < count; k++) {

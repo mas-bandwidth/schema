@@ -221,6 +221,8 @@ typedef struct bench_table_field_info_t
     int32_t num_tags;
     const char * const * tags;
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
+    int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } bench_table_field_info_t;
 
@@ -3433,13 +3435,14 @@ static SCHEMA_UNUSED int bench_fixed_table_save_message_body(bench_table_bit_wri
 }
 static SCHEMA_UNUSED int64_t bench_fixed_table_measure_messages(const bench_fixed_table_t * values,int64_t count,bench_table_report_t * report)
 {
- bench_table_bit_writer_t w=bench_table_bit_writer(NULL,INT64_MAX);
+ bench_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BENCH_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BENCH_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=bench_table_bit_writer(NULL,INT64_MAX);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!bench_fixed_table_save_message_body(&w,values+i)) return -1;
@@ -3448,7 +3451,7 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_measure_messages(const bench_fixe
 }
 static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_table_t * values,int64_t count,uint8_t * buffer,int64_t capacity,bench_table_report_t * report)
 {
- bench_table_bit_writer_t w=bench_table_bit_writer(buffer,capacity);
+ bench_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BENCH_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -3456,6 +3459,7 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_save_messages(const bench_fixed_t
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=bench_table_bit_writer(buffer,capacity);
  bench_table_bit_put(&w,2,8);
  bench_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!bench_fixed_table_save_message_body(&w,values+i)) return -1;

@@ -963,6 +963,7 @@ defmodule Benchtable.Table do
           ordinal: 14,
           t: :string,
           size: 15,
+          unbounded: false,
           cook_off: 1248,
           count_off: 1264,
           present_off: -1,
@@ -1448,12 +1449,8 @@ defmodule Benchtable.Table do
   # walks a record by name and kind with, no per-version struct on hand.
   def descriptors, do: @tables
 
-  # roots that reach a map, a union or an enum-keyed array (docs/SPEC-TABLES.md
-  # §2.4, §2.6, §2.8, §11). The id-table wire and the text form carry them
-  # (§3, §3.2, §16) and the cook write lays them out (§7.2); the wire-fuzz
-  # roster does not yet, so carried?/1 answers false for them there and the
-  # roster sends it no mutant.
-  @uncarried ["TableMixed"]
+  # Maps, keyed arrays and union payloads participate in region measurement.
+  @uncarried []
 
   def carried?(table), do: table not in @uncarried
 
@@ -2773,7 +2770,7 @@ defmodule Benchtable.Table do
           not utf8_valid?(raw) ->
             {:cont, "", %{report | malformed: true}}
 
-          len > f.size ->
+          not Map.get(f, :unbounded, false) and len > f.size ->
             {:cont, utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
 
           true ->
@@ -3310,7 +3307,7 @@ defmodule Benchtable.Table do
             not utf8_valid?(raw) ->
               {"", %{report | malformed: true}}
 
-            len > f.text_size ->
+            not Map.get(f, :text_unbounded, false) and len > f.text_size ->
               {utf8_prefix(raw, f.text_size), %{report | clamped: report.clamped + 1}}
 
             true ->
@@ -3576,6 +3573,14 @@ defmodule Benchtable.Table do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
         validate_text_list(f, Map.get(value, f.name, f.default))
+      end
+
+      if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
+        text = Map.get(value, f.name, f.default)
+
+        unless Map.get(f, :optional, false) and text == nil do
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+        end
       end
 
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
@@ -3929,8 +3934,9 @@ defmodule Benchtable.Table do
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or byte_size(value) > f.text_size,
-          do: throw(:invalid_value)
+        if not is_binary(value) or not utf8_valid?(value) or
+             (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
+           do: throw(:invalid_value)
       end
 
       used = used + if(value == nil, do: 0, else: byte_size(value))
@@ -4255,8 +4261,10 @@ defmodule Benchtable.Table do
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
 
   defp json_field(%{t: :map} = f, values, depth) do
-    value_field = Map.fetch!(@tables, f.elem).fields |> Enum.at(1)
+    entry_desc = Map.fetch!(@tables, f.elem)
+    value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
+    Enum.each(pairs, &validate_record(entry_desc, &1))
 
     if pairs == [] do
       "{}"
@@ -4687,7 +4695,7 @@ defmodule Benchtable.Table do
   defp json_read_field(%{t: :string} = f, raw, report) when is_binary(raw) do
     report = json_text_zero(f, raw, report)
 
-    if byte_size(raw) > f.size do
+    if not Map.get(f, :unbounded, false) and byte_size(raw) > f.size do
       {utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
     else
       {raw, report}
@@ -5053,9 +5061,13 @@ defmodule Benchtable.Table do
   end
 
   # A map key is an identity: reject, never clamp it into another key.
-  # The text key scanner's shared capacity is 255 decoded UTF-8 bytes.
+  # A bare string key has no declared byte bound; bounded keys retain their
+  # declaration's token limit.
   defp json_map_key(field, key) do
     cond do
+      field.t == :string and Map.get(field, :unbounded, false) ->
+        {:ok, key}
+
       field.t == :string ->
         if byte_size(key) > min(field.size, 255), do: {:skip, :clamped}, else: {:ok, key}
 
@@ -5239,7 +5251,7 @@ defmodule Benchtable.Table do
   defp json_read_list_elem(%{text_list: true} = f, raw, report) when is_binary(raw) do
     report = json_text_zero(f, raw, report)
 
-    if byte_size(raw) > f.text_size do
+    if not Map.get(f, :text_unbounded, false) and byte_size(raw) > f.text_size do
       {%{"value" => utf8_prefix(raw, f.text_size)}, %{report | clamped: report.clamped + 1}}
     else
       {%{"value" => raw}, report}
@@ -5891,8 +5903,6 @@ defmodule Benchtable.Table do
   # the measure to the framing's bound. A wire this reader cannot open, or a
   # list count past the storage cap, answers -1.
 
-  def load_measure(table, _data) when table in @uncarried, do: -1
-
   def load_measure(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
@@ -5945,6 +5955,48 @@ defmodule Benchtable.Table do
     end
   end
 
+  defp field_extent(%{t: :map, elem: name}, payload, ids, at) do
+    with {_length, <<13, rest::binary>>} <- leb(payload),
+         {count, elems} <- leb(rest) do
+      if count > 0x7FFFFFFF or count > div(byte_size(elems), 2) do
+        :error
+      else
+        entry = Map.fetch!(@tables, name)
+        next = align_to(at, entry.align) + count * entry.size
+        elements_extent(entry, elems, count, ids, next)
+      end
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :keyed} = field, payload, ids, at) do
+    with {_length, <<kind, rest::binary>>} <- leb(payload),
+         true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
+         {count, pairs} <- leb(rest) do
+      if kind == 13,
+        do: keyed_extent(field.item, pairs, count, ids, at),
+        else: {:ok, at}
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :union, elem: name}, payload, ids, at) do
+    un = Map.fetch!(@unions, name)
+
+    # Sizing follows the known arm's declared shape; the value reader diagnoses
+    # an incompatible arm kind separately, after reserving its region.
+    with {ref, <<_kind, rest::binary>>} when ref != 0 <- leb(payload),
+         id when id != :error <- resolve(ids, ref),
+         {:ok, arm_name} <- Map.fetch(un.by_id, id),
+         {length, body} when byte_size(body) >= length <- leb(rest) do
+      arm_extent(Map.fetch!(un.by_name, arm_name), binary_part(body, 0, length), ids, at)
+    else
+      _ -> {:ok, at}
+    end
+  end
+
   defp field_extent(%{t: :list} = field, payload, ids, at) do
     case leb(payload) do
       {_length, array} -> list_extent(field, array, ids, at)
@@ -5959,18 +6011,95 @@ defmodule Benchtable.Table do
     end
   end
 
+  defp field_extent(%{t: :string, unbounded: true}, payload, _ids, at) do
+    case leb(payload) do
+      {length, body} when byte_size(body) >= length -> text_extent(length, at)
+      _ -> {:ok, at}
+    end
+  end
+
   defp field_extent(_field, _payload, _ids, at), do: {:ok, at}
+
+  defp text_extent(0, at), do: {:ok, at}
+
+  defp text_extent(length, at) when length <= 0xFFFFFFFF,
+    do: {:ok, align_to(at, 8) + region_round(9 + length)}
+
+  defp text_extent(_length, _at), do: :error
+
+  defp text_elements_extent(_elems, 0, at), do: {:ok, at}
+
+  defp text_elements_extent(elems, count, at) do
+    case leb(elems) do
+      {length, body} when byte_size(body) >= length ->
+        case text_extent(length, at) do
+          {:ok, at} ->
+            text_elements_extent(
+              binary_part(body, length, byte_size(body) - length),
+              count - 1,
+              at
+            )
+
+          :error ->
+            :error
+        end
+
+      _ ->
+        {:ok, at}
+    end
+  end
+
+
+  defp arm_extent(arm, body, ids, at),
+    do: field_extent(arm, leb_encode(byte_size(body)) <> body, ids, at)
+
+  # Keyed table slots are inline, but every framed value can hold extents.
+  # Unknown keys still reserve the storage declared by the complete framing.
+  defp keyed_extent(_field, _pairs, 0, _ids, at), do: {:ok, at}
+
+  defp keyed_extent(field, pairs, count, ids, at) do
+    with {_key, rest} <- leb(pairs),
+         {length, body} when byte_size(body) >= length <- leb(rest) do
+      value = binary_part(body, 0, length)
+      remaining = binary_part(body, length, byte_size(body) - length)
+
+      case field_extent(field, leb_encode(length) <> value, ids, at) do
+        {:ok, next} -> keyed_extent(field, remaining, count - 1, ids, next)
+        :error -> :error
+      end
+    else
+      _ -> {:ok, at}
+    end
+  end
+
+  defp union_elements_extent(_name, _elems, 0, _ids, at), do: {:ok, at}
+
+  defp union_elements_extent(name, elems, count, ids, at) do
+    case slice(elems, 15) do
+      {:ok, arm, rest} ->
+        case field_extent(%{t: :union, elem: name}, arm, ids, at) do
+          {:ok, next} -> union_elements_extent(name, rest, count - 1, ids, next)
+          :error -> :error
+        end
+
+      _ ->
+        {:ok, at}
+    end
+  end
 
   # a header whose element kind is not the declared one is a kind mismatch the
   # read answers as an empty list, so it places nothing (internal/tablewire
-  # extent.go): only a list DECLARED of tables descends into table elements.
+  # extent.go). Table and union payloads descend using the declared element type.
   defp list_extent(field, arr, ids, at) do
     with <<kind, count_rest::binary>> <- arr,
          true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
          {count, elems} <- leb(count_rest) do
-      count = min(count, Map.get(field, :array_bound, count))
+      # The count's byte floor is the incoming element width, before any
+      # widening. Bounded arrays reserve no element extent of their own.
+      floor = if kind == 13, do: 2, else: max(kind_width(kind), 1)
+      list = field.array == :list
 
-      if count > 0x7FFFFFFF or count > byte_size(elems) do
+      if list and (count > 0x7FFFFFFF or count > div(byte_size(elems), floor)) do
         :error
       else
         at =
@@ -5978,9 +6107,20 @@ defmodule Benchtable.Table do
             do: align_to(at, field.elem_align) + count * field.elem_size,
             else: at
 
-        if kind == 13,
-          do: elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at),
-          else: {:ok, at}
+        cond do
+          kind == 13 ->
+            elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at)
+
+          kind == 15 ->
+            union_elements_extent(field.elem, elems, count, ids, at)
+
+          kind == 12 and Map.get(field, :text_unbounded, false) ->
+            text_elements_extent(elems, count, at)
+
+
+          true ->
+            {:ok, at}
+        end
       end
     else
       _ -> {:ok, at}
@@ -6463,6 +6603,8 @@ defmodule Benchtable.Table do
   defp cook_value(%{t: :blob, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
     cook_ref(buf, base + off, id, v, index, order)
   end
+
+  defp cook_value(%{t: :string, unbounded: true}, _v, _base, _index, _order, buf), do: buf
 
   defp cook_value(%{t: :pointer, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
     cook_ref(buf, base + off, id, v, index, order)
@@ -7275,7 +7417,8 @@ defmodule Benchtable.Table do
           report,
           retain,
           f.ordinal,
-          path
+          path,
+          0
         )
 
       clamp_retain(value, f, report, retain)
@@ -7723,10 +7866,22 @@ defmodule Benchtable.Table do
     {value, report, retain}
   end
 
-  defp read_elements_retain(_desc, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
-    do: {Enum.reverse(acc), report, retain}
+  defp read_elements_retain(
+         _desc,
+         _rest,
+         0,
+         _nodes,
+         _ids,
+         acc,
+         report,
+         retain,
+         _ordinal,
+         _path,
+         _index
+       ),
+       do: {Enum.reverse(acc), report, retain}
 
-  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path) do
+  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path, index) do
     case leb(rest) do
       {len, body} when byte_size(body) >= len ->
         sub = binary_part(body, 0, len)
@@ -7737,7 +7892,7 @@ defmodule Benchtable.Table do
           {Enum.reverse(acc), %{report | malformed: true}, retain}
         else
           {value, report, retain} =
-            read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
+            read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index)
 
           case text_list_keep(desc, value, report) do
             {:keep, desc, report} ->
@@ -7751,11 +7906,12 @@ defmodule Benchtable.Table do
                 report,
                 retain,
                 ordinal,
-                path
+                path,
+                index + 1
               )
 
             {:drop, report} ->
-              retain = retain_reset(retain, path, ordinal, length(acc))
+              retain = retain_reset(retain, path, ordinal, index)
               {Enum.reverse(acc), report, retain}
           end
         end

@@ -131,6 +131,7 @@ public final class TableCookWrite {
     }
 
     private static final long FLOOR = 8; // the region's alignment floor (§7.1)
+    private static final long REGION_ALIGN = 16L;
 
     // where a node's extent begins: its record's size rounded to the greater of
     // the floor and every element alignment its types can hold (§7.6)
@@ -364,6 +365,34 @@ public final class TableCookWrite {
             TableCookFieldInfo f)
             throws ReflectiveOperationException {
         if (f.isPointer || absentRecord(value, f)) {
+            return;
+        }
+        if (f.storage == TableCookStorage.STRING && f.countOffset < 0) {
+            long slot = at + f.offset;
+            if (f.presentOffset >= 0
+                    && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) {
+                Object raw = field(value, f.sourceName);
+                if (raw instanceof String && !((String) raw).isEmpty()) {
+                    throw new IllegalArgumentException("absent optional text holds extent");
+                }
+                put(out, order, slot, 0, 8);
+                return;
+            }
+            String s = (String) field(value, f.sourceName);
+            if (s == null || s.isEmpty()) {
+                put(out, order, slot, 0, 8);
+                return;
+            }
+            byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int n = bytes.length;
+            cursor[0] = aligned(cursor[0], 8);
+            long blob = base + cursor[0];
+            cursor[0] += aligned(8L + n + 1L, REGION_ALIGN);
+            put(out, order, slot, blob - slot, 8);
+            put(out, order, blob, n, 4);
+            if (out != null) {
+                System.arraycopy(bytes, 0, out, (int) (blob + 8L), n);
+            }
             return;
         }
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
@@ -676,7 +705,9 @@ public final class TableCookWrite {
         }
         // a LIST's or a MAP's holder is written by the extent's carve, which
         // places the array it points at (§7.6)
-        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+        if (f.storage == TableCookStorage.LIST
+                || f.storage == TableCookStorage.MAP
+                || (f.storage == TableCookStorage.STRING && !f.isPointer && f.countOffset < 0)) {
             return;
         }
         Object v = field(source, f.sourceName);

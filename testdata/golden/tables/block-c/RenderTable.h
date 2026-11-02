@@ -216,6 +216,8 @@ typedef struct blockdemo_table_field_info_t
     int32_t num_tags;
     const char * const * tags;
     int sequence; /* 0 inline field, 1 unbounded list, 2 map */
+    uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
+    int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
 } blockdemo_table_field_info_t;
 
@@ -4060,13 +4062,14 @@ static SCHEMA_UNUSED int blockdemo_render_camera_save_message_body(blockdemo_tab
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_measure_messages(const blockdemo_render_camera_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_camera_save_message_body(&w,values+i)) return -1;
@@ -4075,7 +4078,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_measure_messages(const bloc
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_camera_save_messages(const blockdemo_render_camera_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -4083,6 +4086,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_camera_save_messages(const blockde
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_camera_save_message_body(&w,values+i)) return -1;
@@ -4860,13 +4864,14 @@ static SCHEMA_UNUSED int blockdemo_render_ship_save_message_body(blockdemo_table
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure_messages(const blockdemo_render_ship_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
@@ -4875,7 +4880,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_measure_messages(const blockd
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo_render_ship_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -4883,6 +4888,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_ship_save_messages(const blockdemo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_ship_save_message_body(&w,values+i)) return -1;
@@ -5700,13 +5706,14 @@ static SCHEMA_UNUSED int blockdemo_render_turret_save_message_body(blockdemo_tab
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure_messages(const blockdemo_render_turret_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
@@ -5715,7 +5722,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_measure_messages(const bloc
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockdemo_render_turret_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -5723,6 +5730,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_turret_save_messages(const blockde
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_turret_save_message_body(&w,values+i)) return -1;
@@ -6398,13 +6406,14 @@ static SCHEMA_UNUSED int blockdemo_render_missile_save_message_body(blockdemo_ta
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure_messages(const blockdemo_render_missile_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
@@ -6413,7 +6422,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_measure_messages(const blo
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockdemo_render_missile_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -6421,6 +6430,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_missile_save_messages(const blockd
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_missile_save_message_body(&w,values+i)) return -1;
@@ -7066,13 +7076,14 @@ static SCHEMA_UNUSED int blockdemo_render_dynamic_prop_save_message_body(blockde
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure_messages(const blockdemo_render_dynamic_prop_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
@@ -7081,7 +7092,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_measure_messages(cons
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const blockdemo_render_dynamic_prop_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -7089,6 +7100,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_dynamic_prop_save_messages(const b
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_dynamic_prop_save_message_body(&w,values+i)) return -1;
@@ -7768,13 +7780,14 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_save_message_body(blockdem
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure_messages(const blockdemo_render_static_prop_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
@@ -7783,7 +7796,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_measure_messages(const
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const blockdemo_render_static_prop_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -7791,6 +7804,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_static_prop_save_messages(const bl
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_static_prop_save_message_body(&w,values+i)) return -1;
@@ -8504,13 +8518,14 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_message_body(blockd
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure_messages(const blockdemo_render_cosmetic_prop_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
@@ -8519,7 +8534,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_measure_messages(con
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const blockdemo_render_cosmetic_prop_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -8527,6 +8542,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_cosmetic_prop_save_messages(const 
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_cosmetic_prop_save_message_body(&w,values+i)) return -1;
@@ -9158,13 +9174,14 @@ static SCHEMA_UNUSED int blockdemo_render_laser_save_message_body(blockdemo_tabl
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure_messages(const blockdemo_render_laser_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
@@ -9173,7 +9190,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_measure_messages(const block
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdemo_render_laser_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -9181,6 +9198,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_laser_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_laser_save_message_body(&w,values+i)) return -1;
@@ -9839,13 +9857,14 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_save_message_body(blockdemo_
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure_messages(const blockdemo_render_explosion_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
@@ -9854,7 +9873,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_measure_messages(const b
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const blockdemo_render_explosion_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -9862,6 +9881,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_save_messages(const bloc
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_explosion_save_message_body(&w,values+i)) return -1;
@@ -11253,13 +11273,14 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_message_body(blockdemo_tabl
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_measure_messages(const blockdemo_render_frame_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_frame_save_message_body(&w,values+i)) return -1;
@@ -11268,7 +11289,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_measure_messages(const block
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages(const blockdemo_render_frame_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -11276,6 +11297,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages(const blockdem
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_frame_save_message_body(&w,values+i)) return -1;
@@ -11875,13 +11897,14 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_message_body(blockdemo_ta
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_measure_messages(const blockdemo_render_vector3_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_vector3_save_message_body(&w,values+i)) return -1;
@@ -11890,7 +11913,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_measure_messages(const blo
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save_messages(const blockdemo_render_vector3_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -11898,6 +11921,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_vector3_save_messages(const blockd
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_vector3_save_message_body(&w,values+i)) return -1;
@@ -12424,13 +12448,14 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_message_body(blockdemo
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_measure_messages(const blockdemo_render_quaternion_t * values,int64_t count,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(NULL,INT64_MAX);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
  report->reason=SCHEMA_BLOCKDEMO_TABLE_BATCH_TOO_LARGE;
  }return -1;
  }
+ w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_quaternion_save_message_body(&w,values+i)) return -1;
@@ -12439,7 +12464,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_measure_messages(const 
 }
 static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save_messages(const blockdemo_render_quaternion_t * values,int64_t count,uint8_t * buffer,int64_t capacity,blockdemo_table_report_t * report)
 {
- blockdemo_table_bit_writer_t w=blockdemo_table_bit_writer(buffer,capacity);
+ blockdemo_table_bit_writer_t w;
  int64_t i;
  if(count<1 || values==NULL) return -1;
  if(count>BLOCKDEMO_K_TABLE_MESSAGE_BATCH_MAX) {if(report!=NULL) {report->refused=1;
@@ -12447,6 +12472,7 @@ static SCHEMA_UNUSED int64_t blockdemo_render_quaternion_save_messages(const blo
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
  for(i=0;i<count;i++) if(!blockdemo_render_quaternion_save_message_body(&w,values+i)) return -1;

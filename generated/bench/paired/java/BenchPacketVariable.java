@@ -1002,8 +1002,11 @@ public final class BenchPacketVariable {
         if (in.bad) {
             report.malformed = true;
         }
+        if (report.refused) {
+            return null;
+        }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
-        if (report.refused || report.malformed) {
+        if (report.malformed) {
             return null;
         }
         return v;
