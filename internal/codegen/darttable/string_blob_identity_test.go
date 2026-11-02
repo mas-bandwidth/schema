@@ -22,7 +22,8 @@ union Choice { text *string }
 table Root { a *string
  b *string
  child *Child
- choice Choice }
+ choice Choice
+ tags map[string(8)]*string }
 `)
 	files, err := Generate(u)
 	if err != nil {
@@ -37,6 +38,7 @@ table Root { a *string
 		`{"a":"same","b":"same"}`,
 		`{"a":"","b":"","child":{"caption":""},"choice":{"text":""}}`,
 		`{"a":"","b":null}`,
+		`{"a":"","tags":{"one":"","two":""},"choice":{"text":""}}`,
 	} {
 		v := m.New(u.Tables["Root"])
 		var r tabletext.Report
@@ -72,12 +74,11 @@ table Root { a *string
 		}
 		fmt.Fprintf(&b, "check(w.rootToJson(v)==%q,'distinct string node JSON');\n", string(txt)+"\n")
 		b.WriteString("}\n")
-		// Changing a slot must invalidate its incoming token. Restoring two
-		// authored slots to the same String then exercises genuine authored sharing.
+		// Every explicit assignment owns its String slot, even when Dart
+		// canonicalizes the assigned value or it equals another slot's value.
 		b.WriteString(`v.a='changed';final changed=w.rootWireSave(v);final changedBack=w.rootWireLoad(changed);check(changedBack.a=='changed','changed slot value');
  final shared='new-shared-value';v.a=shared;v.b=shared;
- var refused=false;try{w.rootWireSave(v);}on StateError catch(e){refused=e.message.toString().contains('blob_shared');}
- check(refused,'changed slots no longer inherit distinct tokens');
+ check(w.rootWireSave(v).isNotEmpty,'authored equal strings own distinct nodes');
  }
 `)
 	}
@@ -115,7 +116,73 @@ table Root { a *string
 		}
 		fmt.Fprintf(&b, "{final out=Uint8List(c.RootCook.cookMeasure(v));check(c.RootCook.cook(v,out,%s)&&hex(out)==%q,'shared string cook preserves one node');}\n", order, hex.EncodeToString(cooked))
 	}
-	b.WriteString("v.a='replacement';check(w.rootWireSave(v).isNotEmpty,'changed shared slot becomes independent');}\n")
+	v.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte("")}
+	detached, err := tablewire.Encode(m, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Fprintf(&b, "v.a=v.a;check(hex(w.rootWireSave(v))==%q,'same-value assignment detaches shared slot');\n", hex.EncodeToString(detached))
+	for _, big := range []bool{false, true} {
+		cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
+		if err != nil {
+			t.Fatal(err)
+		}
+		order := "Endian.little"
+		if big {
+			order = "Endian.big"
+		}
+		fmt.Fprintf(&b, "{final out=Uint8List(c.RootCook.cookMeasure(v));check(c.RootCook.cook(v,out,%s)&&hex(out)==%q,'reassigned same-value cook owns two nodes');}\n", order, hex.EncodeToString(cooked))
+	}
+	b.WriteString("}\n")
+	b.WriteString("}\n")
+	runFormsProbe(t, files, b.String())
+}
+
+func TestDartAuthoredStringBlobOwnership(t *testing.T) {
+	slowtest.Gate(t, "dart")
+	u := unitFrom(t, `package probe
+table Root { a *string
+ b *string }
+`)
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, packetFiles(t, u))
+	m := tabletext.NewModel(u)
+	var b strings.Builder
+	b.WriteString(strings.Replace(dartClosurePrelude, "import 'ProbeWire.dart' as w;", "import 'ProbeWire.dart' as w;\nimport 'ProbeCook.dart' as c;", 1))
+	for _, value := range []string{"", "equal"} {
+		v := m.New(u.Tables["Root"])
+		v.Fields[0].Cell.Blob = &tabletext.Blob{Data: []byte(value)}
+		v.Fields[1].Cell.Blob = &tabletext.Blob{Data: []byte(value)}
+		wire, err := tablewire.Encode(m, v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		txt, err := m.Write(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&b, `{final v=w.Root();final same=%q;v.a=same;v.b=same;
+ check(hex(w.rootWireSave(v))==%q,'authored equal strings exact wire');
+ check(w.rootToJson(v)==%q,'authored equal strings JSON');
+ final store=w.TableRetain(65536,List.filled(1024,0));final rr=w.TableWireReport();final retained=w.rootWireLoadRetain(w.rootWireSave(v),store,rr);
+ check(hex(w.rootWireSaveRetain(retained,store,w.TableWireReport()))==%q,'authored distinct nodes retained');
+`, value, hex.EncodeToString(wire), string(txt)+"\n", hex.EncodeToString(wire))
+		for _, big := range []bool{false, true} {
+			cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
+			if err != nil {
+				t.Fatal(err)
+			}
+			order := "Endian.little"
+			if big {
+				order = "Endian.big"
+			}
+			fmt.Fprintf(&b, "{final out=Uint8List(c.RootCook.cookMeasure(v));check(c.RootCook.cook(v,out,%s)&&hex(out)==%q,'authored distinct node cook');}\n", order, hex.EncodeToString(cooked))
+		}
+		b.WriteString("v.a=null;check(v.a==null,'authored null clears slot');v.a=same;check(v.a==same,'authored slot can be restored');}\n")
+	}
 	b.WriteString("}\n")
 	runFormsProbe(t, files, b.String())
 }

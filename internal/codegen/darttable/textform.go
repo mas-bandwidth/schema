@@ -951,7 +951,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			g.pf("\t\t\t\tv.%s = _jsonStringBlob(val, r, v.%s, v, %q);\n", name, name, name)
+			g.pf("\t\t\t\tv.%s = _jsonStringBlob(val, r, v.%s);\n", name, name)
 		} else {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
 			g.pf("\t\t\t\telse { v.%s = _jsonBytesBlob(val, r, v.%s); }\n", name, name)

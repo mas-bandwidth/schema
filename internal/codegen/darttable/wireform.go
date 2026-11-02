@@ -616,6 +616,20 @@ final class WireState {
   static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
       Expando<Map<String, ({String value, Object token})>>();
 
+  static String? _getStringBlob(Object owner, String field) =>
+      _stringBlobOrigins[owner]?[field]?.value;
+
+  static void _setStringBlob(Object owner, String field, String? value) {
+    if (value == null) {
+      _stringBlobOrigins[owner]?.remove(field);
+      return;
+    }
+    final slots = _stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    // An explicit assignment owns this slot, even for a canonical String
+    // identical to its prior value. Decoders install incoming tokens directly.
+    slots[field] = (value: value, token: Object());
+  }
+
   static Object _blobIdentity(Object blob, Object? owner, String? field) {
     if (blob is String && owner != null && field != null) {
       final slots = _stringBlobOrigins[owner];
@@ -692,8 +706,8 @@ final class WireState {
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
   // ids — the node-table write does, in record order (§3). Authored String
-  // fields without input metadata retain Dart's object identity semantics;
-  // canonical authored strings cannot express distinct node ownership.
+  // fields own one node per slot; their setters distinguish explicit
+  // reassignment from multiple slots resolving one incoming node.
   int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
     final identity = _blobIdentity(blob, owner, field);
     final found = _blobIndex[identity];
@@ -2391,7 +2405,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\t\tv.%s = r.resolveString(idx, v, %q);\n", ind, name, name)
+			g.pf("%s\t\tr.resolveString(idx, v, %q);\n", ind, name)
 		} else {
 			g.pf("%s\t\tv.%s = r.resolveBytes(idx);\n", ind, name)
 		}

@@ -179,7 +179,7 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return g.fixedStorageDecl(f, name)
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			return fmt.Sprintf("String? %s;", name)
+			return fmt.Sprintf("String? get %s => WireState._getStringBlob(this, %q);\n  set %s(String? value) => WireState._setStringBlob(this, %q, value);", name, name, name, name)
 		}
 		return fmt.Sprintf("Uint8List? %s;", name)
 	case f.CountedOnWire():
@@ -496,7 +496,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal idx = %s.readLeb();\n", ind, p)
 		g.pf("%sif (idx == null || %s.pos != %s.limit) %s\n", ind, p, p, bad)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s%s = %s.resolveString(idx, %s);\n", ind, dest, p, stringBlobSlot(dest))
+			g.pf("%s%s.resolveString(idx, %s);\n", ind, p, stringBlobSlot(dest))
 		} else {
 			g.pf("%s%s = %s.resolveBytes(idx);\n", ind, dest, p)
 		}
