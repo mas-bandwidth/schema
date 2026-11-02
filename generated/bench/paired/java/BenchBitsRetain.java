@@ -16,6 +16,9 @@ public final class BenchBitsRetain {
     // loss, never retained silently.
     public static BenchBitsVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return BenchBitsVariable.load(data, report);
         }

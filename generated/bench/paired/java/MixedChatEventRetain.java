@@ -16,6 +16,9 @@ public final class MixedChatEventRetain {
     // loss, never retained silently.
     public static MixedChatEventVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return MixedChatEventVariable.load(data, report);
         }

@@ -16,6 +16,9 @@ public final class FixedTableRetain {
     // loss, never retained silently.
     public static FixedTableVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return FixedTableVariable.load(data, report);
         }
