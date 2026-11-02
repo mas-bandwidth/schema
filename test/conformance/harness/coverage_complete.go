@@ -153,6 +153,12 @@ func originalCoverageProblems(rows []coverageRow, fixed map[string]string, shape
 // coverageReport always renders available evidence before returning failure.
 // Default mode remains an informational report; completion is opt-in.
 func coverageReport(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireNine bool) error {
+	return coverageReportWithImplementationCheck(w, in, manifestPath, jsonDir, reportsPath, requireNine, originalImplementationProblems)
+}
+
+// The internal check parameter lets report tests isolate independent obligations.
+// The public command always supplies the real implementation/corpus checker.
+func coverageReportWithImplementationCheck(w io.Writer, in, manifestPath, jsonDir, reportsPath string, requireNine bool, implementationCheck func(*Manifest) []string) error {
 	rows, fixed, readErr := readCoverage(in)
 	coverageMarkdown(w, rows, fixed)
 	var problems []string
@@ -162,6 +168,13 @@ func coverageReport(w io.Writer, in, manifestPath, jsonDir, reportsPath string, 
 	if requireNine {
 		m, err := ReadManifest(manifestPath, jsonDir)
 		if err == nil {
+			implementationProblems := implementationCheck(m)
+			if len(implementationProblems) == 0 {
+				fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: PASS.")
+			} else {
+				fmt.Fprintln(w, "Original-nine implementation/corpus prerequisites: FAIL.")
+				problems = append(problems, implementationProblems...)
+			}
 			var reports map[string]Counts
 			reports, err = readReports(reportsPath)
 			if err == nil {
@@ -176,8 +189,9 @@ func coverageReport(w io.Writer, in, manifestPath, jsonDir, reportsPath string, 
 			problems = append(problems, "manifest expectations: "+err.Error())
 		}
 		fmt.Fprint(w, "## Original nine completion\n\n")
+		problems = append(problems, originalReadinessProblems(w, in)...)
 		if len(problems) == 0 {
-			fmt.Fprintln(w, "PASS: every original-nine surface/class matches the manifest; all cases are answered or give an allowed named refusal, and all eight port fixed-form gates pass.")
+			fmt.Fprintln(w, "PASS: every original-nine surface/class matches the manifest; all cases are answered or give an allowed named refusal, all eight port fixed-form gates pass, the implementation/corpus prerequisites pass, all nine full runtime acceptance receipts pass, and the original-nine roadmap is complete and current.")
 		}
 	}
 	if len(problems) > 0 {
