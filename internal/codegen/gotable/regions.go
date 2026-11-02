@@ -43,7 +43,7 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 		columns += fmt.Sprintf(", CycleIndex:%d, CycleType:tableCycleType", index)
 	}
 	ml := ir.RecordLayout(g.unit, st)
-	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
+	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ir.CookNodeAlign(g.unit, st))
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder

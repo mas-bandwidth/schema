@@ -39,7 +39,8 @@ const (
 	// -7200: variable tables carry no message form: no body codecs, region-message or retain-message runtime for them
 	// +431: damage discards the whole load (SPEC-TABLES §4): every fixed tolerant read resets its value on malformed, the region, builder and text reads discard, and the message batch delivers no body
 	// +257: iterative all-node cycle check and guarded/container edge walk, measured by TestGoGeneratedSizeBudget.
-	goExamplesLineBudget = 59546
+	// +1: align the cooked node extent before placing nested containers.
+	goExamplesLineBudget = 59547
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
