@@ -2456,7 +2456,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp kind_width(kind) when kind in [20, 25], do: 1
   defp kind_width(kind) when kind in [21, 26], do: 2
   defp kind_width(kind) when kind in [22, 27], do: 4
-  defp kind_width(kind) when kind in [23, 28], do: 8
+  defp kind_width(kind) when kind in [23, 28, 36], do: 8
   defp kind_width(kind) when kind in [18, 19, 24, 29], do: 16
   defp kind_width(_), do: 0
 
@@ -2777,7 +2777,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp slice(bin, kind) when kind in [1, 2, 6, 20, 25], do: take(bin, 1)
   defp slice(bin, kind) when kind in [3, 7, 21, 26], do: take(bin, 2)
   defp slice(bin, kind) when kind in [4, 8, 10, 22, 27], do: take(bin, 4)
-  defp slice(bin, kind) when kind in [5, 9, 11, 23, 28], do: take(bin, 8)
+  defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
   defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32, 33], do: body(bin)
@@ -2894,6 +2894,63 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: clamp_int(v, %{min: lo, max: hi}, report)
 
   defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
+
+  # Keep nanoseconds outside DateTime's microsecond storage. The calendar
+  # validates whole seconds; the fractional digits remain exact integers.
+  defp timestamp_text(nanos) do
+    seconds = Integer.floor_div(nanos, 1_000_000_000)
+    fraction = nanos - seconds * 1_000_000_000
+    date = DateTime.from_unix!(seconds, :second) |> DateTime.to_iso8601()
+
+    if fraction == 0 do
+      date
+    else
+      digits = fraction |> Integer.to_string() |> String.pad_leading(9, "0")
+      String.trim_trailing(date, "Z") <> "." <> String.trim_trailing(digits, "0") <> "Z"
+    end
+  end
+
+  defp json_read_timestamp(name, raw, report) when is_binary(raw) do
+    case timestamp_parse(raw) do
+      {:ok, nanos} ->
+        {nanos, report}
+
+      :error ->
+        {:skip, %{report | malformed: true, reason: "timestamp_not_rfc3339: " <> name}}
+    end
+  end
+
+  defp json_read_timestamp(_name, raw, report) do
+    json_skip_value(raw)
+    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
+  defp timestamp_parse(raw) do
+    pattern =
+      ~r/\A([0-9]{4}-[0-9]{2}-[0-9]{2})[Tt]([0-9]{2}:[0-9]{2}:[0-9]{2})(?:\.([0-9]+))?([Zz]|[+-][0-9]{2}:[0-9]{2})\z/
+
+    case Regex.run(pattern, raw) do
+      [_, day, time, fraction, offset] ->
+        offset = if offset == "-00:00", do: "Z", else: String.upcase(offset)
+
+        case DateTime.from_iso8601(day <> "T" <> time <> offset) do
+          {:ok, value, _} ->
+            digits = binary_part(fraction, 0, min(byte_size(fraction), 9))
+            nanos = DateTime.to_unix(value, :second) * 1_000_000_000
+            nanos = nanos + String.to_integer(String.pad_trailing(digits, 9, "0"))
+
+            if nanos >= -9_223_372_036_854_775_808 and nanos <= 9_223_372_036_854_775_807,
+              do: {:ok, nanos},
+              else: :error
+
+          _ ->
+            :error
+        end
+
+      _ ->
+        :error
+    end
+  end
 
   # tableUtf8Valid (docs/SPEC-TABLES.md §4): well-formed UTF-8 without NUL.
   defp utf8_valid?(raw) do
@@ -3282,6 +3339,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  defp json_field(%{timestamp: _}, v, _depth), do: ["\"", timestamp_text(v), "\""]
   defp json_field(%{t: :int, frac: frac}, v, _depth), do: fixed_text(v, frac)
   defp json_field(%{t: :int}, v, _depth), do: Integer.to_string(v)
   defp json_field(%{t: :float} = f, v, _depth), do: json_float(v, f.width)
@@ -3750,6 +3808,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     json_skip_value(raw)
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
+
+  defp json_read_field(%{timestamp: name}, raw, report),
+    do: json_read_timestamp(name, raw, report)
 
   defp json_read_field(%{t: :int} = f, raw, report) when is_integer(raw) do
     clamp_json_int(raw, f, report)
@@ -4323,6 +4384,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # merge_report folds one nested value's report into the enclosing one
   # (§16.2): the counters sum and malformed sticks, so an event inside a list
   # element is never lost when the element's own walk returns.
+  defp merge_reason(%{reason: reason}, _b) when reason != "", do: reason
+  defp merge_reason(_a, b), do: Map.get(b, :reason, "")
+
   defp merge_report(a, b) do
     base = %{
       unknown: a.unknown + b.unknown,
@@ -4332,7 +4396,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       malformed: a.malformed or b.malformed,
       retained: a.retained + b.retained,
       retain_lost: a.retain_lost + b.retain_lost,
-      reason: Map.get(a, :reason, "")
+      reason: merge_reason(a, b)
     }
 
     case Map.get(a, :duplicate, 0) + Map.get(b, :duplicate, 0) do
@@ -6580,6 +6644,9 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 	id := ir.TableFieldWireId(f)
 	kind := ir.TableWireFieldKind(f)
 	fmt.Fprintf(&b, "%%{name: %q, json: %q, type_name: %s, id: 0x%016X, kind: %d, ordinal: %d", f.Name, ir.TableFieldJsonKey(f), elixirQuote(viewTableTypeSpelling(f)), id, kind, ordinal)
+	if f.Type.Timestamp {
+		fmt.Fprintf(&b, ", timestamp: %q", f.Name)
+	}
 	switch {
 	case f.IsMap():
 		// SPEC-TABLES §2.8, §3: a map is kind 14 over framed table
