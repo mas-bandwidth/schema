@@ -1,7 +1,6 @@
 package javatable
 
 import (
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os/exec"
 	"path/filepath"
 	"strings"
