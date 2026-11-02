@@ -403,14 +403,14 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = 
 String? _jsonStringBlob(dynamic val, TableTextReport r,
     [String? def, Object? owner, String? field]) {
   if (val == null) {
-    if (owner != null && field != null) _stringBlobOrigins[owner]?.remove(field);
+    if (owner != null && field != null) WireState._stringBlobOrigins[owner]?.remove(field);
     return null;
   }
   if (val is String) {
     final value = _jsonText(val);
     if (owner != null && field != null) {
-      final slots = _stringBlobOrigins[owner] ??= <String, _StringBlobOrigin>{};
-      slots[field] = _StringBlobOrigin(value, Object());
+      final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+      slots[field] = (value: value, token: Object());
     }
     return value;
   }

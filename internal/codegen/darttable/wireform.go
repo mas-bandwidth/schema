@@ -608,32 +608,26 @@ final class _TableWireCountRefusal implements Exception {
   const _TableWireCountRefusal();
 }
 
-// Immutable String values can be canonicalized (notably the empty string).
-// Keep incoming blob identity on the owning slot, without retaining its owner.
-final class _StringBlobOrigin {
-  final String value;
-  final Object token;
-  _StringBlobOrigin(this.value, this.token);
-}
-final Expando<Map<String, _StringBlobOrigin>> _stringBlobOrigins =
-    Expando<Map<String, _StringBlobOrigin>>();
-
-Object _blobIdentity(Object blob, Object? owner, String? field) {
-  if (blob is String && owner != null && field != null) {
-    final slots = _stringBlobOrigins[owner];
-    final origin = slots?[field];
-    if (origin != null) {
-      if (identical(origin.value, blob)) return origin.token;
-      // A changed slot no longer names the node this read placed.
-      slots!.remove(field);
-    }
-  }
-  return blob;
-}
-
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
 final class WireState {
+  // Immutable strings may be canonicalized. Metadata belongs weakly to
+  // decoded owners; node tokens carry no payload or input-buffer references.
+  static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
+      Expando<Map<String, ({String value, Object token})>>();
+
+  static Object _blobIdentity(Object blob, Object? owner, String? field) {
+    if (blob is String && owner != null && field != null) {
+      final slots = _stringBlobOrigins[owner];
+      final origin = slots?[field];
+      if (origin != null) {
+        if (identical(origin.value, blob)) return origin.token;
+        slots!.remove(field);
+      }
+    }
+    return blob;
+  }
+
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
   final List<int> nodeTypes = <int>[];
@@ -1058,6 +1052,7 @@ final class TableWireReader {
   final List<Uint8List> nodes;
   final Set<int> knownTypes;
   final List<Object?> decoded;
+  final Map<int, Object> stringBlobTokens;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -1082,6 +1077,7 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      stringBlobTokens = <int, Object>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
@@ -1098,6 +1094,7 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -1122,6 +1119,7 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -1371,11 +1369,11 @@ final class TableWireReader {
       }
     }
     if (value == null) {
-      _stringBlobOrigins[owner]?.remove(field);
+      WireState._stringBlobOrigins[owner]?.remove(field);
       return null;
     }
-    final slots = _stringBlobOrigins[owner] ??= <String, _StringBlobOrigin>{};
-    slots[field] = _StringBlobOrigin(value, nodes[rec]);
+    final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
     return value;
   }
 
@@ -3496,5 +3494,8 @@ func seenName(f *ir.Field) string {
 // stringBlobSlot identifies a generated field or union arm's owning object.
 func stringBlobSlot(expr string) string {
 	i := lastDot(expr)
+	if i < 1 || i == len(expr)-1 {
+		panic(fmt.Sprintf("darttable: string blob requires an owning field expression, got %q", expr))
+	}
 	return fmt.Sprintf("%s, %q", expr[:i], expr[i+1:])
 }
