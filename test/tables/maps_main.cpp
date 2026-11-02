@@ -567,12 +567,19 @@ static Verdict read_row( const RowWire & w )
     v.malformed = r.malformed;
     free( region );
 
-    // EVERY LOAD PATH PRODUCES ONE REPORT (§2.8): the region load of §6.5 and
-    // LoadBuilder never disagree about a wire, which is what lets one set of
-    // counters be the expectation whichever path read it.
+    // Both paths refuse damage. Other report counters and decoded values
+    // are defined only after a successful read (SPEC-TABLES §4).
     RowBuilder into;
     TableReport t;
-    RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
+    const bool loaded = RowLoadBuilderTolerant( into, w.bytes, w.size, &t );
+    CHECK_EQ( (int) t.malformed, (int) v.malformed );
+    if ( v.malformed )
+    {
+        CHECK( !loaded );
+        CHECK_EQ( v.count, -1 ); // the region returned no usable root
+        return v;
+    }
+    CHECK( loaded );
     CHECK_EQ( t.unknown, v.unknown );
     CHECK_EQ( t.kind_mismatch, v.kind_mismatch );
     CHECK_EQ( t.clamped, v.clamped );
@@ -599,18 +606,16 @@ static void test_reader()
         spec.entries[2] = hold;
         const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
-        CHECK_EQ( v.count, 1 ); // the ascending prefix it has
+        CHECK_EQ( v.count, -1 ); // damage refuses the whole load
     }
     {
-        // CONTROL: the parent STOPS at a descending key instead of reading on.
-        // The holder carries `after` past the map, and its decoded value goes
-        // red — that is §4's framing-damage rule, at the map.
+        // A descending key is whole-load damage even when the holder has a
+        // field after the map; no decoded prefix or later value is usable.
         RowSpec spec = ascending_spec();
         spec.entries[2] = spec.entries[0]; // `aa` again, behind `bb`
         const Verdict v = read_row( build_row( spec ) );
         CHECK( v.malformed );
-        CHECK_EQ( v.count, 2 );
-        CHECK_EQ( v.past, 777 ); // the PARENT read on past the field's length
+        CHECK_EQ( v.count, -1 );
     }
     {
         // CONTROL: the duplicate rule is dropped, first wins or both kept. The
