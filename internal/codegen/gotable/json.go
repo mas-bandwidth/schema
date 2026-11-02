@@ -384,9 +384,9 @@ func tableJSONRequiredFor(info *TableTypeInfo) []string { return tableJSONRequir
 // refused as missing_required, in declaration order, exactly as the binary
 // reader refuses a record that omitted it. A required field inside an if
 // guard is demanded only while its guard holds (§2.3, §3): with the branch
-// off it is absent and no refusal is owed. The bounded seen bitmap is the
-// duplicate tracker; a table with more than 512 fields keeps its old reading
-// for the fields past the window.
+// off it is absent and no refusal is owed. The seen bitmap is the duplicate
+// tracker: backed by an inline 8-word array and widened on the heap when a
+// table declares more than 512 fields.
 func tableJSONRequireSeen(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInfo, seen []uint64) bool {
 	required := tableJSONRequiredFor(info)
 	var missing string
@@ -417,9 +417,9 @@ func tableJSONRequireSeen(in *tableJSONIn, base unsafe.Pointer, info *TableTypeI
 		b.WriteString(`// tableJSONRequireSeen closes ONE object: every field marked required
 // (docs/SPEC-TABLES.md §2.3) must have been named, and one that was not is
 // refused as missing_required, in declaration order, exactly as the binary
-// reader refuses a record that omitted it. The bounded seen bitmap is the
-// duplicate tracker; a table with more than 512 fields keeps its old reading
-// for the fields past the window.
+// reader refuses a record that omitted it. The seen bitmap is the duplicate
+// tracker: backed by an inline 8-word array and widened on the heap when a
+// table declares more than 512 fields.
 func tableJSONRequireSeen(in *tableJSONIn, info *TableTypeInfo, seen []uint64) bool {
 	required := tableJSONRequiredFor(info)
 	var missing string
