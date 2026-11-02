@@ -1659,6 +1659,42 @@ tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/t
 
 test-c: tables-c-skip-timestamp-kind-negative-control
 
+# THE 16-BYTE EXTENT ALIGNMENT OF 128-BIT SEQUENCES (docs/SPEC-TABLES.md §2.8,
+# §2.9, §6.2): Wide is 40 bytes (8 mod 16) and wides []uint128 aligns at 16
+# (ir.ListElementLayout), while C serialize_uint128_t is an 8-aligned struct of
+# two uint64_t halves. The two pinned mutants are widelist_wide reference #1
+# (seed 1, sha256 11e2e71d...) and widelist_wide widen #0 (seed 1, sha256
+# 7a71d97b...), which at 949ea720287bdd6a17200a8bc7a82cc56b73f437 answered
+# LoadMeasure = 208 (instead of 224) and LoadMeasure = -1 (instead of 224).
+.PHONY: tables-c-widelist-extent-align16
+tables-c-widelist-extent-align16: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide --retain
+
+test-c tables-c: tables-c-widelist-extent-align16
+
+.PHONY: tables-c-widelist-extent-align16-negative-control
+tables-c-widelist-extent-align16-negative-control: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf build/c-widelist-sabotage && mkdir -p build/c-widelist-sabotage
+	@cp -R build/tables-generated-c build/c-widelist-sabotage/generated
+	@sed "s|int64_t at=widelistdemo_table_align_up64((int64_t)sizeof(widelistdemo_wide_t));|int64_t at=sizeof(widelistdemo_wide_t); /* SABOTAGED: unaligned extent start */|; s|sizeof(serialize_uint128_t),16|sizeof(serialize_uint128_t),SCHEMA_TABLE_ALIGNOF(serialize_uint128_t) /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
+	@grep -q "SABOTAGED: unaligned extent start" build/c-widelist-sabotage/generated/widelist/WidesTable.h || { echo "NEGATIVE CONTROL FAILED: the widelist sabotage patched nothing"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
+		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-widelist-sabotage/driver -lm
+	@if ./build/conformance-harness wire-fuzz --driver ./build/c-widelist-sabotage/driver --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide > build/c-widelist-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: unaligned Wide extent start left the pinned replay green"; exit 1; \
+	fi
+	@grep -q "measure=208" build/c-widelist-sabotage/log && grep -q "the framing commands exactly 224" build/c-widelist-sabotage/log || { cat build/c-widelist-sabotage/log; exit 1; }
+	@echo "C widelist alignment negative control: unaligned Wide extent start reproduces LoadMeasure 208 vs 224"
+
+test-c tables-c: tables-c-widelist-extent-align16-negative-control
+
 # Maps and lists use the C++ reference's pinned file bytes and exact region
 # sizes. Both allocator-backed construction and caller-owned loads are checked
 # through lock, save, and JSON under native execution and ASan/UBSan.

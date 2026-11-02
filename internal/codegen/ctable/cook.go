@@ -348,9 +348,9 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("   file whose provenance a person doubts is schema cook-check, offline, over\n")
 	g.pf("   the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("   parameter on a load. */\n")
-	g.pf("static SCHEMA_UNUSED const %s * %s(const void * bytes,uint64_t length,TableRefuseReason * reason)\n{ return (const %s *)table_cook_open_ex(bytes,length,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s),reason); }\n", n, g.api(n, "open_ex"), n, n, n)
+	g.pf("static SCHEMA_UNUSED const %s * %s(const void * bytes,uint64_t length,TableRefuseReason * reason)\n{ return (const %s *)table_cook_open_ex(bytes,length,sizeof(%s),%d,reason); }\n", n, g.api(n, "open_ex"), n, n, ir.CookNodeAlign(g.unit, st))
 	g.pf("static SCHEMA_UNUSED const %s * %s( const void * bytes, uint64_t length )\n{\n", n, g.api(n, "open"))
-	g.pf("    return (const %s *) table_cook_open( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) SCHEMA_TABLE_ALIGNOF( %s ) );\n}\n\n", n, n, n)
+	g.pf("    return (const %s *) table_cook_open( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) %d );\n}\n\n", n, n, ir.CookNodeAlign(g.unit, st))
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

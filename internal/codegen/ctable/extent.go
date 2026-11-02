@@ -63,7 +63,7 @@ func (g *tableGen) emitExtentBodies(members []*ir.Struct) {
 			g.pf("            continue; } break;\n")
 		}
 		g.pf("        default: break;\n        }\n        if(!table_reader_skip(&r,kind)) { return 1; }\n    }\n}\n")
-		g.pf("static SCHEMA_UNUSED int64_t %s(const TableReader * r)\n{\n    int64_t at=sizeof(%s); if(!%s(*r,&at) || at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);\n}\n", g.sym(st.Name, "wire_storage"), st.Name, g.sym(st.Name, "wire_extent"))
+		g.pf("static SCHEMA_UNUSED int64_t %s(const TableReader * r)\n{\n    int64_t at=table_align_up64((int64_t)sizeof(%s)); if(!%s(*r,&at) || at>INT64_MAX-kTableAlign) { return -1; } return table_align_up64(at);\n}\n", g.sym(st.Name, "wire_storage"), st.Name, g.sym(st.Name, "wire_extent"))
 	}
 }
 
@@ -98,7 +98,7 @@ func (g *tableGen) emitExtentField(f *ir.Field, src, dst, ind string, step *int)
 		typ := g.sequenceType(f)
 		elem := sequenceElement(f)
 		g.pf("%s{ TableSequenceCursor %s=%s; int32_t %s_i; uint8_t * %s_array=NULL;\n", ind, label, g.sequenceCursor(f, "n", src), label, label)
-		g.pf("%s  if(!%s.ok || !table_extent_reserve(at,%s.count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s))) { return 0; }\n", ind, label, src, typ, typ)
+		g.pf("%s  if(!%s.ok || !table_extent_reserve(at,%s.count,sizeof(%s),%d)) { return 0; }\n", ind, label, src, typ, g.sequenceAlign(f))
 		g.pf("%s  if(target!=NULL) { %s_array=n->pack_base+*at-(int64_t)%s.count*sizeof(%s); %s.items.value=%s.count ? (int64_t)(%s_array-(uint8_t *)(void *)&%s.items) : 0; }\n", ind, label, src, typ, dst, src, label, dst)
 		g.pf("%s  for(%s_i=0;%s_i<%s.count;%s_i++) {\n", ind, label, label, src, label)
 		g.pf("%s    const %s * %s_in=(const %s *)table_sequence_next(&%s); %s * %s_out=target ? (%s *)(void *)%s_array+%s_i : NULL;\n", ind, typ, label, typ, label, typ, label, typ, label, label)
@@ -174,16 +174,14 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 		if f.IsList() || f.IsMap() {
 			typ := g.sequenceType(f)
 			g.pf("%s    int64_t floor=%d;\n", ind, sequenceFloor(f))
-			if ir.TableKindSigned(kind) || kind >= tkU8 && kind <= tkU64 || kind == tkF64 {
-				for source := 1; source <= 29; source++ {
-					if ir.TableKindWidens(source, kind) {
-						g.pf("%s    if(wire_kind==%d)floor=%d;\n", ind, source, tableKindWidth(source))
-					}
+			for source := 1; source <= 29; source++ {
+				if ir.TableKindWidens(source, kind) {
+					g.pf("%s    if(wire_kind==%d)floor=%d;\n", ind, source, tableKindWidth(source))
 				}
 			}
 			g.pf("%s    if(%s_count>INT32_MAX) { %s.report->reason=11; return 0; }\n", ind, b, b)
 			g.pf("%s    if(%s_count>(uint64_t)((%s.size-%s.offset)/floor)) { %s.report->reason=10; return 0; }\n", ind, b, b, b, b)
-			g.pf("%s    if(!table_extent_reserve(at,(int64_t)%s_count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s))) { return 0; }\n", ind, b, typ, typ)
+			g.pf("%s    if(!table_extent_reserve(at,(int64_t)%s_count,sizeof(%s),%d)) { return 0; }\n", ind, b, typ, g.sequenceAlign(f))
 		}
 		if g.fieldHasExtent(e) {
 			g.pf("%s    { uint64_t i; for(i=0;i<%s_count;i++) {\n", ind, b)
