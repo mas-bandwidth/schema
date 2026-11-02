@@ -67,6 +67,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rust-cookmap/` | Rust cook of every map and list instance | `make tables-rust-cook-map` | `make tables-rust-cook-map` |
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |
+| `rust-hostile/` | Rust hostile-corpus runner | `make schema-rust-runs-hostile-corpus` | `make schema-rust-runs-hostile-corpus` |
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |
 | `rust-soak/` | Rust tables soak, allocator call count | `make tables-rust-soak` | `make tables-rust-soak` |
 | `rust-view/` | Rust unit-view listing driver | `make tables-rust-view` | `make tables-rust-view` |

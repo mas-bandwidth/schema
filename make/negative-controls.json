@@ -1771,6 +1771,10 @@
   ],
   "excluded": [
     {
+      "target": "schema-rust-runs-hostile-corpus-negative-control",
+      "reason": "the Rust hostile-corpus runner control changes a committed wire verdict in a scratch manifest and requires both release and debug runners to fail on that case. .github/workflows/schema-rust-runs-hostile-corpus.yml runs it in its negative-control job on the nightly schedule and workflow_dispatch with the pinned serialize.rs runtime, beside the corpus gate that runs on every push and pull request. The shared control matrix need not repeat that dedicated job."
+    },
+    {
       "target": "conformance-big-endian-negative-control",
       "reason": "the Go big-endian leg's control (docs/PORTING.md M12, I7): it runs the Go conformance driver cross-built for s390x under qemu-s390x, which the shared negative-control rows do not install. ci-full.yml's big-endian job runs it by name in its own row (go-control), beside the conformance-big-endian row it controls, with the pinned emulator, exactly as the C++ and C big-endian controls run there."
     },
