@@ -124,3 +124,24 @@ func init() {
 		new: `return fmt.Sprintf("(t, b, l) => { if (%s != null) MemoryMarshal.Cast<byte, %s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d))).CopyTo(%s); } /* SABOTAGED: host order */", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)`,
 	}}
 }
+
+// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): each sabotage takes
+// the discard out of one C# load entry point, so a body damaged inside a nested
+// body hands back what the walk decoded.
+func init() {
+	// the managed (form-1) load
+	sabotages["table-cs-discard"] = []edit{{
+		old: `if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }`,
+		new: `if (report.Malformed && bytes.Length < 0) { type.Reset(value); return Finish(report, Verdict.Damaged); } // SABOTAGED: the discard is gone`,
+	}}
+	// the native region load, and the retaining load derived from it
+	sabotages["table-cs-region-discard"] = []edit{{
+		old: `if (report.Malformed) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
+		new: `if (report.Malformed && bytes.Length < 0 /* SABOTAGED: the region discard is gone */) { System.Runtime.InteropServices.NativeMemory.Clear(data, checked((nuint)dataBytes)); Finish(report, Verdict.Damaged); return IntPtr.Zero; }`,
+	}}
+	// the builder load
+	sabotages["table-cs-builder-discard"] = []edit{{
+		old: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Malformed)\n",
+		new: "        bool whole = LoadBuilderWalk(pointer, type, worker, bytes, report);\n        if (report.Malformed && bytes.Length < 0) // SABOTAGED: the builder discard is gone\n",
+	}}
+}

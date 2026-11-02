@@ -666,7 +666,14 @@ func evalCIExpr(expr string, ev ciEvent) (bool, error) {
 	if expr == "" {
 		return true, nil
 	}
+	if rest, ok := strings.CutPrefix(expr, "${{"); ok && strings.HasSuffix(rest, "}}") {
+		expr = strings.TrimSpace(strings.TrimSuffix(rest, "}}"))
+	}
 	expr = stripOuterParens(expr)
+	if expr == "!cancelled()" {
+		// A job-level cancelled() guard never decides self-hosted admission.
+		return true, nil
+	}
 	if parts := splitTopLevelOp(expr, "||"); len(parts) > 1 {
 		for _, p := range parts {
 			v, err := evalCIExpr(p, ev)
@@ -815,6 +822,13 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return "", nil
 		}
 		return ev.HeadRef, nil
+	case "needs.registry.result", "needs.cpp-writes.result", "needs.port.result":
+		// The nightly's upstream jobs are admitted only for same-repository
+		// events (their own if:), so a fork pull request skips them.
+		if ev.Name == "pull_request" && ev.HeadRepo != ev.Repo {
+			return "skipped", nil
+		}
+		return "success", nil
 	case "needs.plan.outputs.packages":
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
@@ -1096,6 +1110,11 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:plan",
 		"ci-full.yml:go-test",
 		"ci-full.yml:pins",
+		"nightly-conformance.yml:coverage",
+		"nightly-conformance.yml:cpp-reads-ports",
+		"nightly-conformance.yml:cpp-writes",
+		"nightly-conformance.yml:port",
+		"nightly-conformance.yml:registry",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",

@@ -25,7 +25,7 @@ tables-goose-block-lead: build/conformance-goose
 .PHONY: tables-goose-block-negative-control
 tables-goose-block-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseBlockNegativeControl$$' ./internal/codegen/goosetable/
 
 # THE ACCELERATORS' HARNESS CONTROLS (group goose-blockcook): one clause of
 # the runtime broken in a copy of the generated units, and the harness must
@@ -148,7 +148,7 @@ GOOSE_AGREE_DIR := build/goose-agree-control
 .PHONY: tables-goose-accessor-descriptor-agreement tables-goose-accessor-negative-control
 tables-goose-accessor-descriptor-agreement:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -timeout 600s -run '^TestGooseAccessorsAgreeWithDescriptors$$' ./internal/codegen/goosetable/
 tables-goose-accessor-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@rm -rf $(GOOSE_AGREE_DIR) && mkdir -p $(GOOSE_AGREE_DIR)
@@ -156,7 +156,7 @@ tables-goose-accessor-negative-control:
 		internal/codegen/goosetable/accel.go > $(GOOSE_AGREE_DIR)/accel.go.txt
 	@grep -q SABOTAGED $(GOOSE_AGREE_DIR)/accel.go.txt || { echo "NEGATIVE CONTROL FAILED: the accessor sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/accel.go":"%s/$(GOOSE_AGREE_DIR)/accel.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(GOOSE_AGREE_DIR)/overlay.json
-	@if go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 600s -overlay=$(GOOSE_AGREE_DIR)/overlay.json -run '^TestGooseAccessorsAgreeWithDescriptors$$' \
 			./internal/codegen/goosetable/ > $(GOOSE_AGREE_DIR)/log 2>&1; then \
 		cat $(GOOSE_AGREE_DIR)/log; echo "NEGATIVE CONTROL FAILED: a moved pointer accessor left the agreement green"; exit 1; fi
 	@grep -q 'DISAGREE ListNode.next' $(GOOSE_AGREE_DIR)/log || { \
