@@ -3169,6 +3169,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	if st.FixedDeclared {
 		fmt.Fprintf(&b, "        readFields(r, v, null, report);\n")
 		fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
+		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
+		fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
@@ -3228,6 +3230,8 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "                }\n")
 		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "        }\n")
+		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
+		fmt.Fprintf(&b, "        if (report.malformed) { return null; }\n")
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	}
@@ -3642,6 +3646,8 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "        Value v = new Value();\n")
 	fmt.Fprintf(b, "        jsonReadFields(in, v);\n")
 	fmt.Fprintf(b, "        if (in.bad) { report.malformed = true; }\n")
+	fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
+	fmt.Fprintf(b, "        if (report.malformed) { return null; }\n")
 	fmt.Fprintf(b, "        return v;\n")
 	fmt.Fprintf(b, "    }\n\n")
 

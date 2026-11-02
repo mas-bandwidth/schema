@@ -837,6 +837,10 @@ public final class BenchIntsVariable {
                 }
             }
         }
+        // DAMAGE DISCARDS THE WHOLE LOAD (§4)
+        if (report.malformed) {
+            return null;
+        }
         return v;
     }
 
@@ -971,6 +975,10 @@ public final class BenchIntsVariable {
         jsonReadFields(in, v);
         if (in.bad) {
             report.malformed = true;
+        }
+        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
+        if (report.malformed) {
+            return null;
         }
         return v;
     }

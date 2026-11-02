@@ -98,7 +98,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members)+len(c.unions))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	for _, un := range c.unions {
 		_, align, _, _ := ir.UnionLayout(u, un)
@@ -472,7 +472,7 @@ func (g *cookGen) emit() {
 	g.f("    // the greatest alignof in the region, floor eight\n")
 	g.f("    public static final long regionAlignment = %dL;\n", align)
 	g.f("    public static final long rootSize = %dL;\n", ml.Size)
-	g.f("    public static final long rootAlign = %dL;\n\n", ml.Align)
+	g.f("    public static final long rootAlign = %dL;\n\n", ir.CookNodeAlign(g.unit, g.table))
 	g.f("    public byte[] data() { return data; }\n")
 	g.f("    public int region() { return region; }\n")
 	g.f("    public long regionLength() { return regionLength; }\n\n")

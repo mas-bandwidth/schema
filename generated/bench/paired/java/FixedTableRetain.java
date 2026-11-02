@@ -20,16 +20,23 @@ public final class FixedTableRetain {
             return FixedTableVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         FixedTableVariable.Value v = new FixedTableVariable.Value();
         readFieldsRetain(r, v, null, retain, report, path, 0);
         if (report.refused) {
+            return null;
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
         return v;

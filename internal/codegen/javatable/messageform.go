@@ -2475,11 +2475,19 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
 	g.pf("                return 0;\n")
 	g.pf("            }\n")
-	g.pf("            if (!read) { return i; }\n")
+	// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): a body that
+	// does not read, or a batch whose bits do not end where the last body
+	// does, delivers zero bodies, every body read so far reset.
+	g.pf("            if (!read || report.malformed) {\n")
+	g.pf("                report.malformed = true;\n")
+	g.pf("                for (int j = 0; j <= i; j++) { reset(values[j]); }\n")
+	g.pf("                return 0;\n")
+	g.pf("            }\n")
 	g.pf("        }\n")
 	g.pf("        if (!r.align() || r.at != r.totalBits) {\n")
 	g.pf("            report.malformed = true;\n")
-	g.pf("            return count;\n")
+	g.pf("            for (int j = 0; j < count; j++) { reset(values[j]); }\n")
+	g.pf("            return 0;\n")
 	g.pf("        }\n")
 	g.pf("        return count;\n")
 	g.pf("    }\n")
