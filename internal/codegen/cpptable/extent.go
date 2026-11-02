@@ -272,8 +272,8 @@ func (g *tableGen) emitListElementExtents(f *ir.Field, element edgeExpr, ev edge
 // The optional mode selects canonical scalar array layout; the default retains
 // native pack layout. Its name uses the already reserved schema_ prefix.
 func (g *tableGen) emitExtent(st *ir.Struct) {
-	g.pf("// %sExtentAt: the node extent %s's lists and maps take, PRE-ORDER, advancing\n", st.Name, st.Name)
-	g.pf("// the default native mode advances exactly as %sExtentPack (§2.8, §2.9).\n", st.Name)
+	g.pf("// %sExtentAt: the node extent %s's lists and maps take, PRE-ORDER.\n", st.Name, st.Name)
+	g.pf("// The default native mode advances exactly as %sExtentPack (§2.8, §2.9).\n", st.Name)
 	g.pf("template <typename Ctx, bool schema_cook_extent = false>\ninline bool %sExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
 	if !g.hasExtent(st) {
 		g.pf("    (void) ctx;\n    (void) value;\n    (void) at; // no list or map below this record\n")

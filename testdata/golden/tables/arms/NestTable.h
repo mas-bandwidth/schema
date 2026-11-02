@@ -9550,16 +9550,16 @@ inline bool TwigWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// TwigExtentAt: the node extent Twig's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as TwigExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// TwigExtentAt: the node extent Twig's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as TwigExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool TwigExtentAt( const Ctx & ctx, const Twig & value, int64_t & at )
 {
     switch ( value.inner.type ) // inner: the set arm is the edge
     {
         case InnerType::Leaf:
         {
-            if ( !LeafExtentAt( ctx, value.inner.leaf, at ) ) { return false; }
+            if ( !LeafExtentAt<Ctx, schema_cook_extent>( ctx, value.inner.leaf, at ) ) { return false; }
             break;
         }
         default: break;
@@ -9569,11 +9569,11 @@ inline bool TwigExtentAt( const Ctx & ctx, const Twig & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t TwigExtent( const Ctx & ctx, const Twig & value )
 {
     int64_t at = 0;
-    if ( !TwigExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !TwigExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -9629,9 +9629,9 @@ inline bool NestWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// NestExtentAt: the node extent Nest's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as NestExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// NestExtentAt: the node extent Nest's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as NestExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool NestExtentAt( const Ctx & ctx, const Nest & value, int64_t & at )
 {
     switch ( value.outer.type ) // outer: the set arm is the edge
@@ -9642,7 +9642,7 @@ inline bool NestExtentAt( const Ctx & ctx, const Nest & value, int64_t & at )
             {
                 case InnerType::Leaf:
                 {
-                    if ( !LeafExtentAt( ctx, value.outer.inner.leaf, at ) ) { return false; }
+                    if ( !LeafExtentAt<Ctx, schema_cook_extent>( ctx, value.outer.inner.leaf, at ) ) { return false; }
                     break;
                 }
                 default: break;
@@ -9654,19 +9654,27 @@ inline bool NestExtentAt( const Ctx & ctx, const Nest & value, int64_t & at )
     {
         TableListCursor<int32_t> cursor = TableListElements( ctx, value.tail );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t NestExtent( const Ctx & ctx, const Nest & value )
 {
     int64_t at = 0;
-    if ( !NestExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !NestExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13313,7 +13321,7 @@ inline int64_t NestSaveRetain( const Nest * root, TableRetain * retain, uint8_t 
 // parameter on a load.
 inline const Twig * TwigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Twig *) TableCookOpen( bytes, length, (uint64_t) sizeof( Twig ), (uint64_t) alignof( Twig ), reason );
+    return (const Twig *) TableCookOpen( bytes, length, (uint64_t) sizeof( Twig ), (uint64_t) 8, reason );
 }
 
 // NestOpen: match the header and POINT. On a match the bytes ARE what this
@@ -13344,7 +13352,7 @@ inline const Twig * TwigOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Nest * NestOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Nest *) TableCookOpen( bytes, length, (uint64_t) sizeof( Nest ), (uint64_t) alignof( Nest ), reason );
+    return (const Nest *) TableCookOpen( bytes, length, (uint64_t) sizeof( Nest ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -13487,7 +13495,7 @@ inline bool TwigCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !TwigCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !TwigCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == TwigExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == TwigExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // NestCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13497,7 +13505,7 @@ inline bool NestCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !NestCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !NestCookExtent( ctx, region, at + 48, extent_at, at, value, order ) ) { return false; }
-    return extent_at == NestExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == NestExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // TwigCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -13515,7 +13523,7 @@ inline bool TwigCookLayout( const Ctx & ctx, const Twig & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = TwigExtent( ctx, root );
+    const int64_t root_extent = TwigExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -13670,7 +13678,7 @@ inline bool NestCookLayout( const Ctx & ctx, const Nest & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = NestExtent( ctx, root );
+    const int64_t root_extent = NestExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 48 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

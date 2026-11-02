@@ -10711,9 +10711,9 @@ inline bool PairsSlotsEntryWireExtent( const uint8_t * body, int64_t length, int
     return true;
 }
 
-// PairsSlotsEntryExtentAt: the node extent PairsSlotsEntry's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as PairsSlotsEntryExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// PairsSlotsEntryExtentAt: the node extent PairsSlotsEntry's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as PairsSlotsEntryExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool PairsSlotsEntryExtentAt( const Ctx & ctx, const PairsSlotsEntry & value, int64_t & at )
 {
     (void) ctx;
@@ -10722,7 +10722,7 @@ inline bool PairsSlotsEntryExtentAt( const Ctx & ctx, const PairsSlotsEntry & va
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t PairsSlotsEntryExtent( const Ctx & ctx, const PairsSlotsEntry & value )
 {
     (void) ctx;
@@ -10774,9 +10774,9 @@ inline bool PairsWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// PairsExtentAt: the node extent Pairs's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as PairsExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// PairsExtentAt: the node extent Pairs's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as PairsExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool PairsExtentAt( const Ctx & ctx, const Pairs & value, int64_t & at )
 {
     {
@@ -10786,7 +10786,7 @@ inline bool PairsExtentAt( const Ctx & ctx, const Pairs & value, int64_t & at )
         at += (int64_t) cursor.count * (int64_t) sizeof( PairsSlotsEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !PairsSlotsEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !PairsSlotsEntryExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -10795,11 +10795,11 @@ inline bool PairsExtentAt( const Ctx & ctx, const Pairs & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t PairsExtent( const Ctx & ctx, const Pairs & value )
 {
     int64_t at = 0;
-    if ( !PairsExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !PairsExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -12971,7 +12971,7 @@ inline int64_t PairsSaveRetain( const Pairs * root, TableRetain * retain, uint8_
 // parameter on a load.
 inline const Pairs * PairsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Pairs *) TableCookOpen( bytes, length, (uint64_t) sizeof( Pairs ), (uint64_t) alignof( Pairs ), reason );
+    return (const Pairs *) TableCookOpen( bytes, length, (uint64_t) sizeof( Pairs ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -13070,7 +13070,7 @@ inline bool PairsCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !PairsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !PairsCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == PairsExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == PairsExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // PairsCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -13088,7 +13088,7 @@ inline bool PairsCookLayout( const Ctx & ctx, const Pairs & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = PairsExtent( ctx, root );
+    const int64_t root_extent = PairsExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

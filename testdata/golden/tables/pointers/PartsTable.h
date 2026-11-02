@@ -9907,7 +9907,7 @@ inline void ColourSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Stamp * StampOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Stamp *) TableCookOpen( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) alignof( Stamp ), reason );
+    return (const Stamp *) TableCookOpen( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) 4, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

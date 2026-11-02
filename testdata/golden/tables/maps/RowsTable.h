@@ -12221,9 +12221,9 @@ inline bool RowWireExtent( const uint8_t * body, int64_t length, int64_t & at, c
     }
 }
 
-// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as RowExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as RowExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool RowExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
 {
     {
@@ -12238,11 +12238,11 @@ inline bool RowExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t RowExtent( const Ctx & ctx, const Row & value )
 {
     int64_t at = 0;
-    if ( !RowExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -12301,9 +12301,9 @@ inline bool WideRowWireExtent( const uint8_t * body, int64_t length, int64_t & a
     }
 }
 
-// WideRowExtentAt: the node extent WideRow's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as WideRowExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// WideRowExtentAt: the node extent WideRow's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as WideRowExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool WideRowExtentAt( const Ctx & ctx, const WideRow & value, int64_t & at )
 {
     {
@@ -12318,11 +12318,11 @@ inline bool WideRowExtentAt( const Ctx & ctx, const WideRow & value, int64_t & a
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t WideRowExtent( const Ctx & ctx, const WideRow & value )
 {
     int64_t at = 0;
-    if ( !WideRowExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !WideRowExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -12390,9 +12390,9 @@ inline bool EdgeRowWireExtent( const uint8_t * body, int64_t length, int64_t & a
     }
 }
 
-// EdgeRowExtentAt: the node extent EdgeRow's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as EdgeRowExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// EdgeRowExtentAt: the node extent EdgeRow's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as EdgeRowExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool EdgeRowExtentAt( const Ctx & ctx, const EdgeRow & value, int64_t & at )
 {
     {
@@ -12414,11 +12414,11 @@ inline bool EdgeRowExtentAt( const Ctx & ctx, const EdgeRow & value, int64_t & a
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t EdgeRowExtent( const Ctx & ctx, const EdgeRow & value )
 {
     int64_t at = 0;
-    if ( !EdgeRowExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !EdgeRowExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -18388,7 +18388,7 @@ inline int64_t EdgeRowSaveRetain( const EdgeRow * root, TableRetain * retain, ui
 // parameter on a load.
 inline const Row * RowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Row *) TableCookOpen( bytes, length, (uint64_t) sizeof( Row ), (uint64_t) alignof( Row ), reason );
+    return (const Row *) TableCookOpen( bytes, length, (uint64_t) sizeof( Row ), (uint64_t) 8, reason );
 }
 
 // WideRowOpen: match the header and POINT. On a match the bytes ARE what this
@@ -18419,7 +18419,7 @@ inline const Row * RowOpen( const void * bytes, uint64_t length, TableRefuseReas
 // parameter on a load.
 inline const WideRow * WideRowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const WideRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( WideRow ), (uint64_t) alignof( WideRow ), reason );
+    return (const WideRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( WideRow ), (uint64_t) 8, reason );
 }
 
 // EdgeRowOpen: match the header and POINT. On a match the bytes ARE what this
@@ -18450,7 +18450,7 @@ inline const WideRow * WideRowOpen( const void * bytes, uint64_t length, TableRe
 // parameter on a load.
 inline const EdgeRow * EdgeRowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const EdgeRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( EdgeRow ), (uint64_t) alignof( EdgeRow ), reason );
+    return (const EdgeRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( EdgeRow ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -18721,7 +18721,7 @@ inline bool RowCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_
     if ( !RowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !RowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == RowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == RowExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // WideRowEntriesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -18740,7 +18740,7 @@ inline bool WideRowCookNode( const Ctx & ctx, const TableCookRegion & region, ui
     if ( !WideRowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !WideRowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == WideRowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == WideRowExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // EdgeRowNamesEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -18768,7 +18768,7 @@ inline bool EdgeRowCookNode( const Ctx & ctx, const TableCookRegion & region, ui
     if ( !EdgeRowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !EdgeRowCookExtent( ctx, region, at + 40, extent_at, at, value, order ) ) { return false; }
-    return extent_at == EdgeRowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == EdgeRowExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // RowCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -18786,7 +18786,7 @@ inline bool RowCookLayout( const Ctx & ctx, const Row & root, const TableNumberi
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = RowExtent( ctx, root );
+    const int64_t root_extent = RowExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -18941,7 +18941,7 @@ inline bool WideRowCookLayout( const Ctx & ctx, const WideRow & root, const Tabl
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = WideRowExtent( ctx, root );
+    const int64_t root_extent = WideRowExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -19096,7 +19096,7 @@ inline bool EdgeRowCookLayout( const Ctx & ctx, const EdgeRow & root, const Tabl
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = EdgeRowExtent( ctx, root );
+    const int64_t root_extent = EdgeRowExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 40 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

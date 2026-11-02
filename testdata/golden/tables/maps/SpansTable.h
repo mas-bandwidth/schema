@@ -10741,27 +10741,35 @@ inline bool SpansTracksEntryWireExtent( const uint8_t * body, int64_t length, in
     }
 }
 
-// SpansTracksEntryExtentAt: the node extent SpansTracksEntry's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SpansTracksEntryExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SpansTracksEntryExtentAt: the node extent SpansTracksEntry's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SpansTracksEntryExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SpansTracksEntryExtentAt( const Ctx & ctx, const SpansTracksEntry & value, int64_t & at )
 {
     {
         TableListCursor<Item> cursor = TableListElements( ctx, value.value );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Item ) - 1 ) & ~( (int64_t) alignof( Item ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Item ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Item ) - 1 ) & ~( (int64_t) alignof( Item ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Item ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SpansTracksEntryExtent( const Ctx & ctx, const SpansTracksEntry & value )
 {
     int64_t at = 0;
-    if ( !SpansTracksEntryExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SpansTracksEntryExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -10819,9 +10827,9 @@ inline bool SpansWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// SpansExtentAt: the node extent Spans's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SpansExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SpansExtentAt: the node extent Spans's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SpansExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SpansExtentAt( const Ctx & ctx, const Spans & value, int64_t & at )
 {
     {
@@ -10831,7 +10839,7 @@ inline bool SpansExtentAt( const Ctx & ctx, const Spans & value, int64_t & at )
         at += (int64_t) cursor.count * (int64_t) sizeof( SpansTracksEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !SpansTracksEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !SpansTracksEntryExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -10840,11 +10848,11 @@ inline bool SpansExtentAt( const Ctx & ctx, const Spans & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SpansExtent( const Ctx & ctx, const Spans & value )
 {
     int64_t at = 0;
-    if ( !SpansExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SpansExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -12929,7 +12937,7 @@ inline int64_t SpansSaveRetain( const Spans * root, TableRetain * retain, uint8_
 // parameter on a load.
 inline const Spans * SpansOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Spans *) TableCookOpen( bytes, length, (uint64_t) sizeof( Spans ), (uint64_t) alignof( Spans ), reason );
+    return (const Spans *) TableCookOpen( bytes, length, (uint64_t) sizeof( Spans ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -13031,7 +13039,7 @@ inline bool SpansTracksEntryCookNode( const Ctx & ctx, const TableCookRegion & r
     if ( !SpansTracksEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SpansTracksEntryCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SpansTracksEntryExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SpansTracksEntryExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SpansCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13041,7 +13049,7 @@ inline bool SpansCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SpansCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SpansCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SpansExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SpansExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SpansCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -13059,7 +13067,7 @@ inline bool SpansCookLayout( const Ctx & ctx, const Spans & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SpansExtent( ctx, root );
+    const int64_t root_extent = SpansExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

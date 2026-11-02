@@ -13576,7 +13576,7 @@ inline void HeaderSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Header * HeaderOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Header *) TableCookOpen( bytes, length, (uint64_t) sizeof( Header ), (uint64_t) alignof( Header ), reason );
+    return (const Header *) TableCookOpen( bytes, length, (uint64_t) sizeof( Header ), (uint64_t) 4, reason );
 }
 
 // ChunkOpen: match the header and POINT. On a match the bytes ARE what this
@@ -13607,7 +13607,7 @@ inline const Header * HeaderOpen( const void * bytes, uint64_t length, TableRefu
 // parameter on a load.
 inline const Chunk * ChunkOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Chunk *) TableCookOpen( bytes, length, (uint64_t) sizeof( Chunk ), (uint64_t) alignof( Chunk ), reason );
+    return (const Chunk *) TableCookOpen( bytes, length, (uint64_t) sizeof( Chunk ), (uint64_t) 8, reason );
 }
 
 // FeedOpen: match the header and POINT. On a match the bytes ARE what this
@@ -13638,7 +13638,7 @@ inline const Chunk * ChunkOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Feed * FeedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Feed *) TableCookOpen( bytes, length, (uint64_t) sizeof( Feed ), (uint64_t) alignof( Feed ), reason );
+    return (const Feed *) TableCookOpen( bytes, length, (uint64_t) sizeof( Feed ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

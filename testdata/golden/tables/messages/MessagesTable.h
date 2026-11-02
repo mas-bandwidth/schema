@@ -25741,7 +25741,7 @@ inline void PingSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const User * UserOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const User *) TableCookOpen( bytes, length, (uint64_t) sizeof( User ), (uint64_t) alignof( User ), reason );
+    return (const User *) TableCookOpen( bytes, length, (uint64_t) sizeof( User ), (uint64_t) 4, reason );
 }
 
 // ScriptOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25771,7 +25771,7 @@ inline const User * UserOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Script * ScriptOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Script *) TableCookOpen( bytes, length, (uint64_t) sizeof( Script ), (uint64_t) alignof( Script ), reason );
+    return (const Script *) TableCookOpen( bytes, length, (uint64_t) sizeof( Script ), (uint64_t) 4, reason );
 }
 
 // SelectionOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25801,7 +25801,7 @@ inline const Script * ScriptOpen( const void * bytes, uint64_t length, TableRefu
 // parameter on a load.
 inline const Selection * SelectionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Selection *) TableCookOpen( bytes, length, (uint64_t) sizeof( Selection ), (uint64_t) alignof( Selection ), reason );
+    return (const Selection *) TableCookOpen( bytes, length, (uint64_t) sizeof( Selection ), (uint64_t) 4, reason );
 }
 
 // InsertTextOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25831,7 +25831,7 @@ inline const Selection * SelectionOpen( const void * bytes, uint64_t length, Tab
 // parameter on a load.
 inline const InsertText * InsertTextOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const InsertText *) TableCookOpen( bytes, length, (uint64_t) sizeof( InsertText ), (uint64_t) alignof( InsertText ), reason );
+    return (const InsertText *) TableCookOpen( bytes, length, (uint64_t) sizeof( InsertText ), (uint64_t) 4, reason );
 }
 
 // RemoveTextOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25861,7 +25861,7 @@ inline const InsertText * InsertTextOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const RemoveText * RemoveTextOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RemoveText *) TableCookOpen( bytes, length, (uint64_t) sizeof( RemoveText ), (uint64_t) alignof( RemoveText ), reason );
+    return (const RemoveText *) TableCookOpen( bytes, length, (uint64_t) sizeof( RemoveText ), (uint64_t) 4, reason );
 }
 
 // EditOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25891,7 +25891,7 @@ inline const RemoveText * RemoveTextOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const Edit * EditOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Edit *) TableCookOpen( bytes, length, (uint64_t) sizeof( Edit ), (uint64_t) alignof( Edit ), reason );
+    return (const Edit *) TableCookOpen( bytes, length, (uint64_t) sizeof( Edit ), (uint64_t) 4, reason );
 }
 
 // OpenDocumentOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25921,7 +25921,7 @@ inline const Edit * EditOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const OpenDocument * OpenDocumentOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const OpenDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( OpenDocument ), (uint64_t) alignof( OpenDocument ), reason );
+    return (const OpenDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( OpenDocument ), (uint64_t) 4, reason );
 }
 
 // SaveDocumentOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25951,7 +25951,7 @@ inline const OpenDocument * OpenDocumentOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const SaveDocument * SaveDocumentOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const SaveDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( SaveDocument ), (uint64_t) alignof( SaveDocument ), reason );
+    return (const SaveDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( SaveDocument ), (uint64_t) 4, reason );
 }
 
 // TransactionOpen: match the header and POINT. On a match the bytes ARE what this
@@ -25981,7 +25981,7 @@ inline const SaveDocument * SaveDocumentOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const Transaction * TransactionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Transaction *) TableCookOpen( bytes, length, (uint64_t) sizeof( Transaction ), (uint64_t) alignof( Transaction ), reason );
+    return (const Transaction *) TableCookOpen( bytes, length, (uint64_t) sizeof( Transaction ), (uint64_t) 4, reason );
 }
 
 // ToolMessageOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26011,7 +26011,7 @@ inline const Transaction * TransactionOpen( const void * bytes, uint64_t length,
 // parameter on a load.
 inline const ToolMessage * ToolMessageOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ToolMessage *) TableCookOpen( bytes, length, (uint64_t) sizeof( ToolMessage ), (uint64_t) alignof( ToolMessage ), reason );
+    return (const ToolMessage *) TableCookOpen( bytes, length, (uint64_t) sizeof( ToolMessage ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

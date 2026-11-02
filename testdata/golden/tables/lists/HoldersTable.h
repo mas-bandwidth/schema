@@ -13034,27 +13034,35 @@ inline bool RowWireExtent( const uint8_t * body, int64_t length, int64_t & at, c
     }
 }
 
-// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as RowExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as RowExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool RowExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
 {
     {
         TableListCursor<Sample> cursor = TableListElements( ctx, value.items );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Sample ) - 1 ) & ~( (int64_t) alignof( Sample ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Sample ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Sample ) - 1 ) & ~( (int64_t) alignof( Sample ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Sample ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t RowExtent( const Ctx & ctx, const Row & value )
 {
     int64_t at = 0;
-    if ( !RowExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13112,19 +13120,27 @@ inline bool SheetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// SheetExtentAt: the node extent Sheet's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SheetExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SheetExtentAt: the node extent Sheet's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SheetExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SheetExtentAt( const Ctx & ctx, const Sheet & value, int64_t & at )
 {
     {
         TableListCursor<Row> cursor = TableListElements( ctx, value.rows );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Row ) - 1 ) & ~( (int64_t) alignof( Row ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Row ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 24; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Row ) - 1 ) & ~( (int64_t) alignof( Row ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Row ); // native pack layout
+        }
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, element by element in index order
         {
-            if ( !RowExtentAt( ctx, cursor[i], at ) ) { return false; }
+            if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, cursor[i], at ) ) { return false; }
         }
     }
     return true;
@@ -13132,11 +13148,11 @@ inline bool SheetExtentAt( const Ctx & ctx, const Sheet & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SheetExtent( const Ctx & ctx, const Sheet & value )
 {
     int64_t at = 0;
-    if ( !SheetExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SheetExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13198,9 +13214,9 @@ inline bool SquadWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// SquadExtentAt: the node extent Squad's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SquadExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SquadExtentAt: the node extent Squad's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SquadExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SquadExtentAt( const Ctx & ctx, const Squad & value, int64_t & at )
 {
     {
@@ -13215,11 +13231,11 @@ inline bool SquadExtentAt( const Ctx & ctx, const Squad & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SquadExtent( const Ctx & ctx, const Squad & value )
 {
     int64_t at = 0;
-    if ( !SquadExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13278,19 +13294,27 @@ inline bool ArmyWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// ArmyExtentAt: the node extent Army's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as ArmyExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// ArmyExtentAt: the node extent Army's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as ArmyExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool ArmyExtentAt( const Ctx & ctx, const Army & value, int64_t & at )
 {
     {
         TableListCursor<Squad> cursor = TableListElements( ctx, value.squads );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Squad ) - 1 ) & ~( (int64_t) alignof( Squad ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Squad ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 24; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Squad ) - 1 ) & ~( (int64_t) alignof( Squad ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Squad ); // native pack layout
+        }
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, element by element in index order
         {
-            if ( !SquadExtentAt( ctx, cursor[i], at ) ) { return false; }
+            if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, cursor[i], at ) ) { return false; }
         }
     }
     return true;
@@ -13298,11 +13322,11 @@ inline bool ArmyExtentAt( const Ctx & ctx, const Army & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t ArmyExtent( const Ctx & ctx, const Army & value )
 {
     int64_t at = 0;
-    if ( !ArmyExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !ArmyExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13364,14 +13388,14 @@ inline bool DeckWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// DeckExtentAt: the node extent Deck's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as DeckExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// DeckExtentAt: the node extent Deck's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as DeckExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool DeckExtentAt( const Ctx & ctx, const Deck & value, int64_t & at )
 {
     for ( int32_t i = 0; i < value.hands_count && i < 3; i++ ) // hands
     {
-        if ( !RowExtentAt( ctx, value.hands[i], at ) ) { return false; }
+        if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, value.hands[i], at ) ) { return false; }
     }
     for ( int32_t i = value.hands_count; i < 3; i++ ) // hands: the slots the walk does not reach (§7.6)
     {
@@ -13382,11 +13406,11 @@ inline bool DeckExtentAt( const Ctx & ctx, const Deck & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t DeckExtent( const Ctx & ctx, const Deck & value )
 {
     int64_t at = 0;
-    if ( !DeckExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !DeckExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -22009,7 +22033,7 @@ inline void ItemSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Sample * SampleOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Sample *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sample ), (uint64_t) alignof( Sample ), reason );
+    return (const Sample *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sample ), (uint64_t) 4, reason );
 }
 
 // RowOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22040,7 +22064,7 @@ inline const Sample * SampleOpen( const void * bytes, uint64_t length, TableRefu
 // parameter on a load.
 inline const Row * RowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Row *) TableCookOpen( bytes, length, (uint64_t) sizeof( Row ), (uint64_t) alignof( Row ), reason );
+    return (const Row *) TableCookOpen( bytes, length, (uint64_t) sizeof( Row ), (uint64_t) 8, reason );
 }
 
 // SheetOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22071,7 +22095,7 @@ inline const Row * RowOpen( const void * bytes, uint64_t length, TableRefuseReas
 // parameter on a load.
 inline const Sheet * SheetOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Sheet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sheet ), (uint64_t) alignof( Sheet ), reason );
+    return (const Sheet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sheet ), (uint64_t) 8, reason );
 }
 
 // ItemOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22101,7 +22125,7 @@ inline const Sheet * SheetOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) alignof( Item ), reason );
+    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) 4, reason );
 }
 
 // SquadOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22132,7 +22156,7 @@ inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Squad * SquadOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Squad *) TableCookOpen( bytes, length, (uint64_t) sizeof( Squad ), (uint64_t) alignof( Squad ), reason );
+    return (const Squad *) TableCookOpen( bytes, length, (uint64_t) sizeof( Squad ), (uint64_t) 8, reason );
 }
 
 // ArmyOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22163,7 +22187,7 @@ inline const Squad * SquadOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Army * ArmyOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Army *) TableCookOpen( bytes, length, (uint64_t) sizeof( Army ), (uint64_t) alignof( Army ), reason );
+    return (const Army *) TableCookOpen( bytes, length, (uint64_t) sizeof( Army ), (uint64_t) 8, reason );
 }
 
 // DeckOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22194,7 +22218,7 @@ inline const Army * ArmyOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Deck * DeckOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Deck *) TableCookOpen( bytes, length, (uint64_t) sizeof( Deck ), (uint64_t) alignof( Deck ), reason );
+    return (const Deck *) TableCookOpen( bytes, length, (uint64_t) sizeof( Deck ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -22496,7 +22520,7 @@ inline bool RowCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_
     if ( !RowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !RowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == RowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == RowExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SheetCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -22506,7 +22530,7 @@ inline bool SheetCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SheetCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SheetCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SheetExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SheetExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ItemCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -22534,7 +22558,7 @@ inline bool SquadCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SquadCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SquadCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SquadExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SquadExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ArmyCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -22544,7 +22568,7 @@ inline bool ArmyCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !ArmyCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !ArmyCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == ArmyExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == ArmyExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // DeckCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -22554,7 +22578,7 @@ inline bool DeckCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !DeckCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !DeckCookExtent( ctx, region, at + 80, extent_at, at, value, order ) ) { return false; }
-    return extent_at == DeckExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == DeckExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SampleCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -22624,7 +22648,7 @@ inline bool RowCookLayout( const Ctx & ctx, const Row & root, const TableNumberi
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = RowExtent( ctx, root );
+    const int64_t root_extent = RowExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -22779,7 +22803,7 @@ inline bool SheetCookLayout( const Ctx & ctx, const Sheet & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SheetExtent( ctx, root );
+    const int64_t root_extent = SheetExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -22792,7 +22816,7 @@ inline bool SheetCookLayout( const Ctx & ctx, const Sheet & root, const TableNum
         {
             case 0xa013e119fec906fbull: // Row
             {
-                const int64_t extent = RowExtent( ctx, *(const Row *) numbering.entries[k].node );
+                const int64_t extent = RowExtent<Ctx, true>( ctx, *(const Row *) numbering.entries[k].node );
                 if ( extent < 0 ) { return false; }
                 size = 24 + extent;
                 node_align = 8; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)
@@ -23012,7 +23036,7 @@ inline bool SquadCookLayout( const Ctx & ctx, const Squad & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SquadExtent( ctx, root );
+    const int64_t root_extent = SquadExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -23167,7 +23191,7 @@ inline bool ArmyCookLayout( const Ctx & ctx, const Army & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = ArmyExtent( ctx, root );
+    const int64_t root_extent = ArmyExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -23322,7 +23346,7 @@ inline bool DeckCookLayout( const Ctx & ctx, const Deck & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = DeckExtent( ctx, root );
+    const int64_t root_extent = DeckExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 80 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

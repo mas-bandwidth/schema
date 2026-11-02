@@ -7602,7 +7602,7 @@ inline void PartFrameSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const PartRow * PartRowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const PartRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( PartRow ), (uint64_t) alignof( PartRow ), reason );
+    return (const PartRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( PartRow ), (uint64_t) 8, reason );
 }
 
 // PartFrameOpen: match the header and POINT. On a match the bytes ARE what this
@@ -7632,7 +7632,7 @@ inline const PartRow * PartRowOpen( const void * bytes, uint64_t length, TableRe
 // parameter on a load.
 inline const PartFrame * PartFrameOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const PartFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( PartFrame ), (uint64_t) alignof( PartFrame ), reason );
+    return (const PartFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( PartFrame ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

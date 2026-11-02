@@ -22964,7 +22964,7 @@ inline void SettingsSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Meta * MetaOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Meta *) TableCookOpen( bytes, length, (uint64_t) sizeof( Meta ), (uint64_t) alignof( Meta ), reason );
+    return (const Meta *) TableCookOpen( bytes, length, (uint64_t) sizeof( Meta ), (uint64_t) 4, reason );
 }
 
 // SettingsOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22994,7 +22994,7 @@ inline const Meta * MetaOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Settings * SettingsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Settings *) TableCookOpen( bytes, length, (uint64_t) sizeof( Settings ), (uint64_t) alignof( Settings ), reason );
+    return (const Settings *) TableCookOpen( bytes, length, (uint64_t) sizeof( Settings ), (uint64_t) 4, reason );
 }
 
 // ListNodeOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23025,7 +23025,7 @@ inline const Settings * SettingsOpen( const void * bytes, uint64_t length, Table
 // parameter on a load.
 inline const ListNode * ListNodeOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ListNode *) TableCookOpen( bytes, length, (uint64_t) sizeof( ListNode ), (uint64_t) alignof( ListNode ), reason );
+    return (const ListNode *) TableCookOpen( bytes, length, (uint64_t) sizeof( ListNode ), (uint64_t) 8, reason );
 }
 
 // TreeNodeOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23056,7 +23056,7 @@ inline const ListNode * ListNodeOpen( const void * bytes, uint64_t length, Table
 // parameter on a load.
 inline const TreeNode * TreeNodeOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const TreeNode *) TableCookOpen( bytes, length, (uint64_t) sizeof( TreeNode ), (uint64_t) alignof( TreeNode ), reason );
+    return (const TreeNode *) TableCookOpen( bytes, length, (uint64_t) sizeof( TreeNode ), (uint64_t) 8, reason );
 }
 
 // LayerOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23087,7 +23087,7 @@ inline const TreeNode * TreeNodeOpen( const void * bytes, uint64_t length, Table
 // parameter on a load.
 inline const Layer * LayerOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Layer *) TableCookOpen( bytes, length, (uint64_t) sizeof( Layer ), (uint64_t) alignof( Layer ), reason );
+    return (const Layer *) TableCookOpen( bytes, length, (uint64_t) sizeof( Layer ), (uint64_t) 8, reason );
 }
 
 // SceneOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23118,7 +23118,7 @@ inline const Layer * LayerOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Scene * SceneOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Scene *) TableCookOpen( bytes, length, (uint64_t) sizeof( Scene ), (uint64_t) alignof( Scene ), reason );
+    return (const Scene *) TableCookOpen( bytes, length, (uint64_t) sizeof( Scene ), (uint64_t) 8, reason );
 }
 
 // DepotOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23149,7 +23149,7 @@ inline const Scene * SceneOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Depot * DepotOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Depot *) TableCookOpen( bytes, length, (uint64_t) sizeof( Depot ), (uint64_t) alignof( Depot ), reason );
+    return (const Depot *) TableCookOpen( bytes, length, (uint64_t) sizeof( Depot ), (uint64_t) 8, reason );
 }
 
 // AlbumOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23180,7 +23180,7 @@ inline const Depot * DepotOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Album * AlbumOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Album *) TableCookOpen( bytes, length, (uint64_t) sizeof( Album ), (uint64_t) alignof( Album ), reason );
+    return (const Album *) TableCookOpen( bytes, length, (uint64_t) sizeof( Album ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

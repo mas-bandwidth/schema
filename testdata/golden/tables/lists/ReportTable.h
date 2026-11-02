@@ -10657,27 +10657,35 @@ inline bool BytesWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// BytesExtentAt: the node extent Bytes's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as BytesExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// BytesExtentAt: the node extent Bytes's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as BytesExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool BytesExtentAt( const Ctx & ctx, const Bytes & value, int64_t & at )
 {
     {
         TableListCursor<uint8_t> cursor = TableListElements( ctx, value.data );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( uint8_t ) - 1 ) & ~( (int64_t) alignof( uint8_t ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( uint8_t ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 0 ) & ~(int64_t) 0;
+            at += (int64_t) cursor.count * 1; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( uint8_t ) - 1 ) & ~( (int64_t) alignof( uint8_t ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( uint8_t ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t BytesExtent( const Ctx & ctx, const Bytes & value )
 {
     int64_t at = 0;
-    if ( !BytesExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !BytesExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -10735,27 +10743,35 @@ inline bool IntsWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// IntsExtentAt: the node extent Ints's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as IntsExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// IntsExtentAt: the node extent Ints's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as IntsExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool IntsExtentAt( const Ctx & ctx, const Ints & value, int64_t & at )
 {
     {
         TableListCursor<int32_t> cursor = TableListElements( ctx, value.values );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t IntsExtent( const Ctx & ctx, const Ints & value )
 {
     int64_t at = 0;
-    if ( !IntsExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !IntsExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -10813,27 +10829,35 @@ inline bool FloatsWireExtent( const uint8_t * body, int64_t length, int64_t & at
     }
 }
 
-// FloatsExtentAt: the node extent Floats's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as FloatsExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// FloatsExtentAt: the node extent Floats's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as FloatsExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool FloatsExtentAt( const Ctx & ctx, const Floats & value, int64_t & at )
 {
     {
         TableListCursor<float> cursor = TableListElements( ctx, value.values );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( float ) - 1 ) & ~( (int64_t) alignof( float ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( float ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( float ) - 1 ) & ~( (int64_t) alignof( float ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( float ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t FloatsExtent( const Ctx & ctx, const Floats & value )
 {
     int64_t at = 0;
-    if ( !FloatsExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !FloatsExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -15655,7 +15679,7 @@ inline int64_t FloatsSaveRetain( const Floats * root, TableRetain * retain, uint
 // parameter on a load.
 inline const Bytes * BytesOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Bytes *) TableCookOpen( bytes, length, (uint64_t) sizeof( Bytes ), (uint64_t) alignof( Bytes ), reason );
+    return (const Bytes *) TableCookOpen( bytes, length, (uint64_t) sizeof( Bytes ), (uint64_t) 8, reason );
 }
 
 // IntsOpen: match the header and POINT. On a match the bytes ARE what this
@@ -15686,7 +15710,7 @@ inline const Bytes * BytesOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Ints * IntsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Ints *) TableCookOpen( bytes, length, (uint64_t) sizeof( Ints ), (uint64_t) alignof( Ints ), reason );
+    return (const Ints *) TableCookOpen( bytes, length, (uint64_t) sizeof( Ints ), (uint64_t) 8, reason );
 }
 
 // FloatsOpen: match the header and POINT. On a match the bytes ARE what this
@@ -15717,7 +15741,7 @@ inline const Ints * IntsOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Floats * FloatsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Floats *) TableCookOpen( bytes, length, (uint64_t) sizeof( Floats ), (uint64_t) alignof( Floats ), reason );
+    return (const Floats *) TableCookOpen( bytes, length, (uint64_t) sizeof( Floats ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -15854,7 +15878,7 @@ inline bool BytesCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !BytesCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !BytesCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == BytesExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == BytesExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // IntsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -15864,7 +15888,7 @@ inline bool IntsCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !IntsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !IntsCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == IntsExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == IntsExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // FloatsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -15874,7 +15898,7 @@ inline bool FloatsCookNode( const Ctx & ctx, const TableCookRegion & region, uin
     if ( !FloatsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !FloatsCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == FloatsExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == FloatsExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // BytesCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -15892,7 +15916,7 @@ inline bool BytesCookLayout( const Ctx & ctx, const Bytes & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = BytesExtent( ctx, root );
+    const int64_t root_extent = BytesExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -16047,7 +16071,7 @@ inline bool IntsCookLayout( const Ctx & ctx, const Ints & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = IntsExtent( ctx, root );
+    const int64_t root_extent = IntsExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -16202,7 +16226,7 @@ inline bool FloatsCookLayout( const Ctx & ctx, const Floats & root, const TableN
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = FloatsExtent( ctx, root );
+    const int64_t root_extent = FloatsExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

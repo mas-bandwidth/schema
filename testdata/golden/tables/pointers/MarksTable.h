@@ -10884,7 +10884,7 @@ inline void TallySaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Tally * TallyOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Tally *) TableCookOpen( bytes, length, (uint64_t) sizeof( Tally ), (uint64_t) alignof( Tally ), reason );
+    return (const Tally *) TableCookOpen( bytes, length, (uint64_t) sizeof( Tally ), (uint64_t) 4, reason );
 }
 
 // MarkerOpen: match the header and POINT. On a match the bytes ARE what this
@@ -10915,7 +10915,7 @@ inline const Tally * TallyOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Marker * MarkerOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Marker *) TableCookOpen( bytes, length, (uint64_t) sizeof( Marker ), (uint64_t) alignof( Marker ), reason );
+    return (const Marker *) TableCookOpen( bytes, length, (uint64_t) sizeof( Marker ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

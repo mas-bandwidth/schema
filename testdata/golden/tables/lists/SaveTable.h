@@ -13874,9 +13874,9 @@ inline bool LogEntryWireExtent( const uint8_t * body, int64_t length, int64_t & 
     return true;
 }
 
-// LogEntryExtentAt: the node extent LogEntry's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as LogEntryExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// LogEntryExtentAt: the node extent LogEntry's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as LogEntryExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool LogEntryExtentAt( const Ctx & ctx, const LogEntry & value, int64_t & at )
 {
     (void) ctx;
@@ -13885,7 +13885,7 @@ inline bool LogEntryExtentAt( const Ctx & ctx, const LogEntry & value, int64_t &
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t LogEntryExtent( const Ctx & ctx, const LogEntry & value )
 {
     (void) ctx;
@@ -13955,39 +13955,63 @@ inline bool SaveWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// SaveExtentAt: the node extent Save's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SaveExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SaveExtentAt: the node extent Save's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SaveExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SaveExtentAt( const Ctx & ctx, const Save & value, int64_t & at )
 {
     {
         TableListCursor<Placement> cursor = TableListElements( ctx, value.placements );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Placement ) - 1 ) & ~( (int64_t) alignof( Placement ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Placement ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 12; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Placement ) - 1 ) & ~( (int64_t) alignof( Placement ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Placement ); // native pack layout
+        }
     }
     {
         TableListCursor<TableRef> cursor = TableListElements( ctx, value.log );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( TableRef ) - 1 ) & ~( (int64_t) alignof( TableRef ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( TableRef ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 8; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( TableRef ) - 1 ) & ~( (int64_t) alignof( TableRef ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( TableRef ); // native pack layout
+        }
     }
     {
         TableListCursor<int32_t> cursor = TableListElements( ctx, value.scores );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SaveExtent( const Ctx & ctx, const Save & value )
 {
     int64_t at = 0;
-    if ( !SaveExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SaveExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -14104,45 +14128,77 @@ inline bool MixedWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// MixedExtentAt: the node extent Mixed's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as MixedExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// MixedExtentAt: the node extent Mixed's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as MixedExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool MixedExtentAt( const Ctx & ctx, const Mixed & value, int64_t & at )
 {
     {
         TableListCursor<Grade> cursor = TableListElements( ctx, value.grades );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Grade ) - 1 ) & ~( (int64_t) alignof( Grade ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Grade ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 0 ) & ~(int64_t) 0;
+            at += (int64_t) cursor.count * 1; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Grade ) - 1 ) & ~( (int64_t) alignof( Grade ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Grade ); // native pack layout
+        }
     }
     {
         TableListCursor<Perm> cursor = TableListElements( ctx, value.perms );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Perm ) - 1 ) & ~( (int64_t) alignof( Perm ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Perm ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 8; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Perm ) - 1 ) & ~( (int64_t) alignof( Perm ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Perm ); // native pack layout
+        }
     }
     {
         TableListCursor<Hit> cursor = TableListElements( ctx, value.hits );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Hit ) - 1 ) & ~( (int64_t) alignof( Hit ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Hit ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 12; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Hit ) - 1 ) & ~( (int64_t) alignof( Hit ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Hit ); // native pack layout
+        }
     }
     {
         TableListCursor<int32_t> cursor = TableListElements( ctx, value.bounds );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t MixedExtent( const Ctx & ctx, const Mixed & value )
 {
     int64_t at = 0;
-    if ( !MixedExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !MixedExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -19182,7 +19238,7 @@ inline void PointSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Placement * PlacementOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Placement *) TableCookOpen( bytes, length, (uint64_t) sizeof( Placement ), (uint64_t) alignof( Placement ), reason );
+    return (const Placement *) TableCookOpen( bytes, length, (uint64_t) sizeof( Placement ), (uint64_t) 4, reason );
 }
 
 // LogEntryOpen: match the header and POINT. On a match the bytes ARE what this
@@ -19212,7 +19268,7 @@ inline const Placement * PlacementOpen( const void * bytes, uint64_t length, Tab
 // parameter on a load.
 inline const LogEntry * LogEntryOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const LogEntry *) TableCookOpen( bytes, length, (uint64_t) sizeof( LogEntry ), (uint64_t) alignof( LogEntry ), reason );
+    return (const LogEntry *) TableCookOpen( bytes, length, (uint64_t) sizeof( LogEntry ), (uint64_t) 4, reason );
 }
 
 // SaveOpen: match the header and POINT. On a match the bytes ARE what this
@@ -19243,7 +19299,7 @@ inline const LogEntry * LogEntryOpen( const void * bytes, uint64_t length, Table
 // parameter on a load.
 inline const Save * SaveOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Save *) TableCookOpen( bytes, length, (uint64_t) sizeof( Save ), (uint64_t) alignof( Save ), reason );
+    return (const Save *) TableCookOpen( bytes, length, (uint64_t) sizeof( Save ), (uint64_t) 8, reason );
 }
 
 // PointOpen: match the header and POINT. On a match the bytes ARE what this
@@ -19273,7 +19329,7 @@ inline const Save * SaveOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Point * PointOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Point *) TableCookOpen( bytes, length, (uint64_t) sizeof( Point ), (uint64_t) alignof( Point ), reason );
+    return (const Point *) TableCookOpen( bytes, length, (uint64_t) sizeof( Point ), (uint64_t) 4, reason );
 }
 
 // MixedOpen: match the header and POINT. On a match the bytes ARE what this
@@ -19304,7 +19360,7 @@ inline const Point * PointOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Mixed * MixedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Mixed *) TableCookOpen( bytes, length, (uint64_t) sizeof( Mixed ), (uint64_t) alignof( Mixed ), reason );
+    return (const Mixed *) TableCookOpen( bytes, length, (uint64_t) sizeof( Mixed ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -19590,7 +19646,7 @@ inline bool SaveCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !SaveCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SaveCookExtent( ctx, region, at + 48, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SaveExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SaveExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // PointCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -19609,7 +19665,7 @@ inline bool MixedCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !MixedCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !MixedCookExtent( ctx, region, at + 64, extent_at, at, value, order ) ) { return false; }
-    return extent_at == MixedExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == MixedExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // PlacementCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -19731,7 +19787,7 @@ inline bool SaveCookLayout( const Ctx & ctx, const Save & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SaveExtent( ctx, root );
+    const int64_t root_extent = SaveExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 48 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -19957,7 +20013,7 @@ inline bool MixedCookLayout( const Ctx & ctx, const Mixed & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = MixedExtent( ctx, root );
+    const int64_t root_extent = MixedExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 64 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
