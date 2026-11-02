@@ -10756,27 +10756,35 @@ inline bool TrailsStepsEntryWireExtent( const uint8_t * body, int64_t length, in
     }
 }
 
-// TrailsStepsEntryExtentAt: the node extent TrailsStepsEntry's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as TrailsStepsEntryExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// TrailsStepsEntryExtentAt: the node extent TrailsStepsEntry's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as TrailsStepsEntryExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool TrailsStepsEntryExtentAt( const Ctx & ctx, const TrailsStepsEntry & value, int64_t & at )
 {
     {
         TableListCursor<TableRef> cursor = TableListElements( ctx, value.value );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( TableRef ) - 1 ) & ~( (int64_t) alignof( TableRef ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( TableRef ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 8; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( TableRef ) - 1 ) & ~( (int64_t) alignof( TableRef ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( TableRef ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t TrailsStepsEntryExtent( const Ctx & ctx, const TrailsStepsEntry & value )
 {
     int64_t at = 0;
-    if ( !TrailsStepsEntryExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !TrailsStepsEntryExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -10834,9 +10842,9 @@ inline bool TrailsWireExtent( const uint8_t * body, int64_t length, int64_t & at
     }
 }
 
-// TrailsExtentAt: the node extent Trails's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as TrailsExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// TrailsExtentAt: the node extent Trails's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as TrailsExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool TrailsExtentAt( const Ctx & ctx, const Trails & value, int64_t & at )
 {
     {
@@ -10846,7 +10854,7 @@ inline bool TrailsExtentAt( const Ctx & ctx, const Trails & value, int64_t & at 
         at += (int64_t) cursor.count * (int64_t) sizeof( TrailsStepsEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !TrailsStepsEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !TrailsStepsEntryExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -10855,11 +10863,11 @@ inline bool TrailsExtentAt( const Ctx & ctx, const Trails & value, int64_t & at 
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t TrailsExtent( const Ctx & ctx, const Trails & value )
 {
     int64_t at = 0;
-    if ( !TrailsExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !TrailsExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13104,7 +13112,7 @@ inline int64_t TrailsSaveRetain( const Trails * root, TableRetain * retain, uint
 // parameter on a load.
 inline const Trails * TrailsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Trails *) TableCookOpen( bytes, length, (uint64_t) sizeof( Trails ), (uint64_t) alignof( Trails ), reason );
+    return (const Trails *) TableCookOpen( bytes, length, (uint64_t) sizeof( Trails ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -13205,7 +13213,7 @@ inline bool TrailsStepsEntryCookNode( const Ctx & ctx, const TableCookRegion & r
     if ( !TrailsStepsEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !TrailsStepsEntryCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == TrailsStepsEntryExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == TrailsStepsEntryExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // TrailsCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13215,7 +13223,7 @@ inline bool TrailsCookNode( const Ctx & ctx, const TableCookRegion & region, uin
     if ( !TrailsCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !TrailsCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == TrailsExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == TrailsExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // TrailsCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -13233,7 +13241,7 @@ inline bool TrailsCookLayout( const Ctx & ctx, const Trails & root, const TableN
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = TrailsExtent( ctx, root );
+    const int64_t root_extent = TrailsExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

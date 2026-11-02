@@ -14024,9 +14024,9 @@ inline bool ShipConfigWireExtent( const uint8_t * body, int64_t length, int64_t 
     return true;
 }
 
-// ShipConfigExtentAt: the node extent ShipConfig's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as ShipConfigExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// ShipConfigExtentAt: the node extent ShipConfig's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as ShipConfigExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool ShipConfigExtentAt( const Ctx & ctx, const ShipConfig & value, int64_t & at )
 {
     (void) ctx;
@@ -14035,7 +14035,7 @@ inline bool ShipConfigExtentAt( const Ctx & ctx, const ShipConfig & value, int64
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t ShipConfigExtent( const Ctx & ctx, const ShipConfig & value )
 {
     (void) ctx;
@@ -14071,9 +14071,9 @@ inline bool ItemWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     return true;
 }
 
-// ItemExtentAt: the node extent Item's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as ItemExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// ItemExtentAt: the node extent Item's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as ItemExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool ItemExtentAt( const Ctx & ctx, const Item & value, int64_t & at )
 {
     (void) ctx;
@@ -14082,7 +14082,7 @@ inline bool ItemExtentAt( const Ctx & ctx, const Item & value, int64_t & at )
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t ItemExtent( const Ctx & ctx, const Item & value )
 {
     (void) ctx;
@@ -14118,9 +14118,9 @@ inline bool FleetByIdEntryWireExtent( const uint8_t * body, int64_t length, int6
     return true;
 }
 
-// FleetByIdEntryExtentAt: the node extent FleetByIdEntry's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as FleetByIdEntryExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// FleetByIdEntryExtentAt: the node extent FleetByIdEntry's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as FleetByIdEntryExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool FleetByIdEntryExtentAt( const Ctx & ctx, const FleetByIdEntry & value, int64_t & at )
 {
     (void) ctx;
@@ -14129,7 +14129,7 @@ inline bool FleetByIdEntryExtentAt( const Ctx & ctx, const FleetByIdEntry & valu
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t FleetByIdEntryExtent( const Ctx & ctx, const FleetByIdEntry & value )
 {
     (void) ctx;
@@ -14181,9 +14181,9 @@ inline bool FleetLoadoutsEntryWireExtent( const uint8_t * body, int64_t length, 
     }
 }
 
-// FleetLoadoutsEntryExtentAt: the node extent FleetLoadoutsEntry's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as FleetLoadoutsEntryExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// FleetLoadoutsEntryExtentAt: the node extent FleetLoadoutsEntry's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as FleetLoadoutsEntryExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool FleetLoadoutsEntryExtentAt( const Ctx & ctx, const FleetLoadoutsEntry & value, int64_t & at )
 {
     {
@@ -14198,11 +14198,11 @@ inline bool FleetLoadoutsEntryExtentAt( const Ctx & ctx, const FleetLoadoutsEntr
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t FleetLoadoutsEntryExtent( const Ctx & ctx, const FleetLoadoutsEntry & value )
 {
     int64_t at = 0;
-    if ( !FleetLoadoutsEntryExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !FleetLoadoutsEntryExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -14288,9 +14288,9 @@ inline bool FleetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// FleetExtentAt: the node extent Fleet's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as FleetExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// FleetExtentAt: the node extent Fleet's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as FleetExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool FleetExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at )
 {
     {
@@ -14307,7 +14307,7 @@ inline bool FleetExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at )
         at += (int64_t) cursor.count * (int64_t) sizeof( FleetByIdEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !FleetByIdEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetByIdEntryExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -14318,7 +14318,7 @@ inline bool FleetExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at )
         at += (int64_t) cursor.count * (int64_t) sizeof( FleetLoadoutsEntry ); // the whole array FIRST
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, entry by entry in key order
         {
-            if ( !FleetLoadoutsEntryExtentAt( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
+            if ( !FleetLoadoutsEntryExtentAt<Ctx, schema_cook_extent>( ctx, *cursor[i], at ) ) { TableMapRelease( cursor ); return false; }
         }
         TableMapRelease( cursor );
     }
@@ -14334,11 +14334,11 @@ inline bool FleetExtentAt( const Ctx & ctx, const Fleet & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t FleetExtent( const Ctx & ctx, const Fleet & value )
 {
     int64_t at = 0;
-    if ( !FleetExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !FleetExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -18744,7 +18744,7 @@ inline void ItemSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const ShipConfig * ShipConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ShipConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipConfig ), (uint64_t) alignof( ShipConfig ), reason );
+    return (const ShipConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipConfig ), (uint64_t) 4, reason );
 }
 
 // ItemOpen: match the header and POINT. On a match the bytes ARE what this
@@ -18774,7 +18774,7 @@ inline const ShipConfig * ShipConfigOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) alignof( Item ), reason );
+    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) 4, reason );
 }
 
 // FleetOpen: match the header and POINT. On a match the bytes ARE what this
@@ -18805,7 +18805,7 @@ inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Fleet * FleetOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Fleet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Fleet ), (uint64_t) alignof( Fleet ), reason );
+    return (const Fleet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Fleet ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -19162,7 +19162,7 @@ inline bool FleetLoadoutsEntryCookNode( const Ctx & ctx, const TableCookRegion &
     if ( !FleetLoadoutsEntryCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !FleetLoadoutsEntryCookExtent( ctx, region, at + 40, extent_at, at, value, order ) ) { return false; }
-    return extent_at == FleetLoadoutsEntryExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == FleetLoadoutsEntryExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // FleetTiersEntryCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -19181,7 +19181,7 @@ inline bool FleetCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !FleetCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !FleetCookExtent( ctx, region, at + 72, extent_at, at, value, order ) ) { return false; }
-    return extent_at == FleetExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == FleetExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ShipConfigCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -19303,7 +19303,7 @@ inline bool FleetCookLayout( const Ctx & ctx, const Fleet & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = FleetExtent( ctx, root );
+    const int64_t root_extent = FleetExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 72 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

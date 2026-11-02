@@ -9820,9 +9820,9 @@ inline bool OnlyWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     return true;
 }
 
-// OnlyExtentAt: the node extent Only's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as OnlyExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// OnlyExtentAt: the node extent Only's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as OnlyExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool OnlyExtentAt( const Ctx & ctx, const Only & value, int64_t & at )
 {
     (void) ctx;
@@ -9831,7 +9831,7 @@ inline bool OnlyExtentAt( const Ctx & ctx, const Only & value, int64_t & at )
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t OnlyExtent( const Ctx & ctx, const Only & value )
 {
     (void) ctx;
@@ -9867,9 +9867,9 @@ inline bool GateWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     return true;
 }
 
-// GateExtentAt: the node extent Gate's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as GateExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// GateExtentAt: the node extent Gate's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as GateExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool GateExtentAt( const Ctx & ctx, const Gate & value, int64_t & at )
 {
     (void) ctx;
@@ -9878,7 +9878,7 @@ inline bool GateExtentAt( const Ctx & ctx, const Gate & value, int64_t & at )
     return true;
 }
 
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t GateExtent( const Ctx & ctx, const Gate & value )
 {
     (void) ctx;
@@ -12073,7 +12073,7 @@ inline void OnlySaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Only * OnlyOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Only *) TableCookOpen( bytes, length, (uint64_t) sizeof( Only ), (uint64_t) alignof( Only ), reason );
+    return (const Only *) TableCookOpen( bytes, length, (uint64_t) sizeof( Only ), (uint64_t) 4, reason );
 }
 
 // GateOpen: match the header and POINT. On a match the bytes ARE what this
@@ -12104,7 +12104,7 @@ inline const Only * OnlyOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Gate * GateOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Gate *) TableCookOpen( bytes, length, (uint64_t) sizeof( Gate ), (uint64_t) alignof( Gate ), reason );
+    return (const Gate *) TableCookOpen( bytes, length, (uint64_t) sizeof( Gate ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

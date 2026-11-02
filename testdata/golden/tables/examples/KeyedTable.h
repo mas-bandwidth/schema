@@ -17038,7 +17038,7 @@ inline void ScoreBoardSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const TeamConfig * TeamConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const TeamConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( TeamConfig ), (uint64_t) alignof( TeamConfig ), reason );
+    return (const TeamConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( TeamConfig ), (uint64_t) 4, reason );
 }
 
 // GunnerConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -17068,7 +17068,7 @@ inline const TeamConfig * TeamConfigOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const GunnerConfig * GunnerConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const GunnerConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( GunnerConfig ), (uint64_t) alignof( GunnerConfig ), reason );
+    return (const GunnerConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( GunnerConfig ), (uint64_t) 4, reason );
 }
 
 // TurretConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -17098,7 +17098,7 @@ inline const GunnerConfig * GunnerConfigOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const TurretConfig * TurretConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const TurretConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( TurretConfig ), (uint64_t) alignof( TurretConfig ), reason );
+    return (const TurretConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( TurretConfig ), (uint64_t) 4, reason );
 }
 
 // HullConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -17128,7 +17128,7 @@ inline const TurretConfig * TurretConfigOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const HullConfig * HullConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const HullConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( HullConfig ), (uint64_t) alignof( HullConfig ), reason );
+    return (const HullConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( HullConfig ), (uint64_t) 4, reason );
 }
 
 // KeyedConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -17158,7 +17158,7 @@ inline const HullConfig * HullConfigOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const KeyedConfig * KeyedConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const KeyedConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( KeyedConfig ), (uint64_t) alignof( KeyedConfig ), reason );
+    return (const KeyedConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( KeyedConfig ), (uint64_t) 4, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

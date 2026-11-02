@@ -322,7 +322,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("// over the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("// parameter on a load.\n")
 	g.pf("inline const %s * %sOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )\n{\n", n, n)
-	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) alignof( %s ), reason );\n}\n\n", n, n, n)
+	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) %d, reason );\n}\n\n", n, n, ir.CookNodeAlign(g.unit, st))
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

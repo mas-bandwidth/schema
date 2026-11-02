@@ -11999,7 +11999,7 @@ inline int64_t CatalogSaveRetain( const Catalog * root, TableRetain * retain, ui
 // parameter on a load.
 inline const Asset * AssetOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Asset *) TableCookOpen( bytes, length, (uint64_t) sizeof( Asset ), (uint64_t) alignof( Asset ), reason );
+    return (const Asset *) TableCookOpen( bytes, length, (uint64_t) sizeof( Asset ), (uint64_t) 8, reason );
 }
 
 // CatalogOpen: match the header and POINT. On a match the bytes ARE what this
@@ -12030,7 +12030,7 @@ inline const Asset * AssetOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Catalog * CatalogOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Catalog *) TableCookOpen( bytes, length, (uint64_t) sizeof( Catalog ), (uint64_t) alignof( Catalog ), reason );
+    return (const Catalog *) TableCookOpen( bytes, length, (uint64_t) sizeof( Catalog ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

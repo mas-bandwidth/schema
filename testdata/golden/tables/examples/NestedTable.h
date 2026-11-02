@@ -11052,7 +11052,7 @@ inline void ArchiveConfigSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const ArchiveConfig * ArchiveConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ArchiveConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ArchiveConfig ), (uint64_t) alignof( ArchiveConfig ), reason );
+    return (const ArchiveConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ArchiveConfig ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

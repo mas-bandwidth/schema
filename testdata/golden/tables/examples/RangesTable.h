@@ -17969,7 +17969,7 @@ inline void RangedWidthsSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const RangedSigned * RangedSignedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RangedSigned *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedSigned ), (uint64_t) alignof( RangedSigned ), reason );
+    return (const RangedSigned *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedSigned ), (uint64_t) 8, reason );
 }
 
 // RangedUnsignedOpen: match the header and POINT. On a match the bytes ARE what this
@@ -17999,7 +17999,7 @@ inline const RangedSigned * RangedSignedOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const RangedUnsigned * RangedUnsignedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RangedUnsigned *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedUnsigned ), (uint64_t) alignof( RangedUnsigned ), reason );
+    return (const RangedUnsigned *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedUnsigned ), (uint64_t) 8, reason );
 }
 
 // RangedWidthsOpen: match the header and POINT. On a match the bytes ARE what this
@@ -18029,7 +18029,7 @@ inline const RangedUnsigned * RangedUnsignedOpen( const void * bytes, uint64_t l
 // parameter on a load.
 inline const RangedWidths * RangedWidthsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RangedWidths *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedWidths ), (uint64_t) alignof( RangedWidths ), reason );
+    return (const RangedWidths *) TableCookOpen( bytes, length, (uint64_t) sizeof( RangedWidths ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

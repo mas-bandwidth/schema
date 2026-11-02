@@ -20858,7 +20858,7 @@ inline void DebuffSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const WeaponConfig * WeaponConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const WeaponConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( WeaponConfig ), (uint64_t) alignof( WeaponConfig ), reason );
+    return (const WeaponConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( WeaponConfig ), (uint64_t) 4, reason );
 }
 
 // LoadoutConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -20888,7 +20888,7 @@ inline const WeaponConfig * WeaponConfigOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const LoadoutConfig * LoadoutConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const LoadoutConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( LoadoutConfig ), (uint64_t) alignof( LoadoutConfig ), reason );
+    return (const LoadoutConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( LoadoutConfig ), (uint64_t) 8, reason );
 }
 
 // ProfileConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -20918,7 +20918,7 @@ inline const LoadoutConfig * LoadoutConfigOpen( const void * bytes, uint64_t len
 // parameter on a load.
 inline const ProfileConfig * ProfileConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ProfileConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ProfileConfig ), (uint64_t) alignof( ProfileConfig ), reason );
+    return (const ProfileConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( ProfileConfig ), (uint64_t) 8, reason );
 }
 
 // RootConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -20948,7 +20948,7 @@ inline const ProfileConfig * ProfileConfigOpen( const void * bytes, uint64_t len
 // parameter on a load.
 inline const RootConfig * RootConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RootConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( RootConfig ), (uint64_t) alignof( RootConfig ), reason );
+    return (const RootConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( RootConfig ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

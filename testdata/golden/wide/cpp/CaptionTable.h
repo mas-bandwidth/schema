@@ -8135,7 +8135,7 @@ inline void LineSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Caption * CaptionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Caption *) TableCookOpen( bytes, length, (uint64_t) sizeof( Caption ), (uint64_t) alignof( Caption ), reason );
+    return (const Caption *) TableCookOpen( bytes, length, (uint64_t) sizeof( Caption ), (uint64_t) 4, reason );
 }
 
 // StampOpen: match the header and POINT. On a match the bytes ARE what this
@@ -8165,7 +8165,7 @@ inline const Caption * CaptionOpen( const void * bytes, uint64_t length, TableRe
 // parameter on a load.
 inline const Stamp * StampOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Stamp *) TableCookOpen( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) alignof( Stamp ), reason );
+    return (const Stamp *) TableCookOpen( bytes, length, (uint64_t) sizeof( Stamp ), (uint64_t) 4, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

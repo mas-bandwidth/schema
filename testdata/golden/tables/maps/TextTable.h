@@ -11496,9 +11496,9 @@ inline bool TextWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// TextExtentAt: the node extent Text's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as TextExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// TextExtentAt: the node extent Text's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as TextExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool TextExtentAt( const Ctx & ctx, const Text & value, int64_t & at )
 {
     {
@@ -11527,11 +11527,11 @@ inline bool TextExtentAt( const Ctx & ctx, const Text & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t TextExtent( const Ctx & ctx, const Text & value )
 {
     int64_t at = 0;
-    if ( !TextExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !TextExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -14266,7 +14266,7 @@ inline int64_t TextSaveRetain( const Text * root, TableRetain * retain, uint8_t 
 // parameter on a load.
 inline const Text * TextOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Text *) TableCookOpen( bytes, length, (uint64_t) sizeof( Text ), (uint64_t) alignof( Text ), reason );
+    return (const Text *) TableCookOpen( bytes, length, (uint64_t) sizeof( Text ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -14468,7 +14468,7 @@ inline bool TextCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !TextCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !TextCookExtent( ctx, region, at + 56, extent_at, at, value, order ) ) { return false; }
-    return extent_at == TextExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == TextExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // TextCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -14486,7 +14486,7 @@ inline bool TextCookLayout( const Ctx & ctx, const Text & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = TextExtent( ctx, root );
+    const int64_t root_extent = TextExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 56 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

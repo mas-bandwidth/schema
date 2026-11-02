@@ -583,7 +583,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    region.numbering = &numbering;\n")
 	g.pf("    region.count = numbering.count + 1;\n")
 	if g.anyExtent && g.hasExtent(st) {
-		g.pf("    const int64_t root_extent = %sExtent( ctx, root );\n", n)
+		g.pf("    const int64_t root_extent = %sExtent<Ctx, true>( ctx, root );\n", n)
 		g.pf("    if ( root_extent < 0 ) { return false; }\n")
 		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", ir.CookExtentStart(g.unit, st))
 	} else {

@@ -16470,7 +16470,7 @@ inline void PackConfigSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const GunnerSettings * GunnerSettingsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const GunnerSettings *) TableCookOpen( bytes, length, (uint64_t) sizeof( GunnerSettings ), (uint64_t) alignof( GunnerSettings ), reason );
+    return (const GunnerSettings *) TableCookOpen( bytes, length, (uint64_t) sizeof( GunnerSettings ), (uint64_t) 4, reason );
 }
 
 // ShipEntryOpen: match the header and POINT. On a match the bytes ARE what this
@@ -16500,7 +16500,7 @@ inline const GunnerSettings * GunnerSettingsOpen( const void * bytes, uint64_t l
 // parameter on a load.
 inline const ShipEntry * ShipEntryOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ShipEntry *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipEntry ), (uint64_t) alignof( ShipEntry ), reason );
+    return (const ShipEntry *) TableCookOpen( bytes, length, (uint64_t) sizeof( ShipEntry ), (uint64_t) 4, reason );
 }
 
 // GlobalSettingsOpen: match the header and POINT. On a match the bytes ARE what this
@@ -16530,7 +16530,7 @@ inline const ShipEntry * ShipEntryOpen( const void * bytes, uint64_t length, Tab
 // parameter on a load.
 inline const GlobalSettings * GlobalSettingsOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const GlobalSettings *) TableCookOpen( bytes, length, (uint64_t) sizeof( GlobalSettings ), (uint64_t) alignof( GlobalSettings ), reason );
+    return (const GlobalSettings *) TableCookOpen( bytes, length, (uint64_t) sizeof( GlobalSettings ), (uint64_t) 4, reason );
 }
 
 // PackConfigOpen: match the header and POINT. On a match the bytes ARE what this
@@ -16560,7 +16560,7 @@ inline const GlobalSettings * GlobalSettingsOpen( const void * bytes, uint64_t l
 // parameter on a load.
 inline const PackConfig * PackConfigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const PackConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( PackConfig ), (uint64_t) alignof( PackConfig ), reason );
+    return (const PackConfig *) TableCookOpen( bytes, length, (uint64_t) sizeof( PackConfig ), (uint64_t) 4, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

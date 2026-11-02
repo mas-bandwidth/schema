@@ -11737,27 +11737,35 @@ inline bool UnboundedWireExtent( const uint8_t * body, int64_t length, int64_t &
     }
 }
 
-// UnboundedExtentAt: the node extent Unbounded's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as UnboundedExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// UnboundedExtentAt: the node extent Unbounded's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as UnboundedExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool UnboundedExtentAt( const Ctx & ctx, const Unbounded & value, int64_t & at )
 {
     {
         TableListCursor<Unit> cursor = TableListElements( ctx, value.items );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Unit ) - 1 ) & ~( (int64_t) alignof( Unit ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Unit ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Unit ) - 1 ) & ~( (int64_t) alignof( Unit ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Unit ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t UnboundedExtent( const Ctx & ctx, const Unbounded & value )
 {
     int64_t at = 0;
-    if ( !UnboundedExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !UnboundedExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13823,7 +13831,7 @@ inline void BoundedSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Unit * UnitOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Unit *) TableCookOpen( bytes, length, (uint64_t) sizeof( Unit ), (uint64_t) alignof( Unit ), reason );
+    return (const Unit *) TableCookOpen( bytes, length, (uint64_t) sizeof( Unit ), (uint64_t) 4, reason );
 }
 
 // BoundedOpen: match the header and POINT. On a match the bytes ARE what this
@@ -13853,7 +13861,7 @@ inline const Unit * UnitOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Bounded * BoundedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Bounded *) TableCookOpen( bytes, length, (uint64_t) sizeof( Bounded ), (uint64_t) alignof( Bounded ), reason );
+    return (const Bounded *) TableCookOpen( bytes, length, (uint64_t) sizeof( Bounded ), (uint64_t) 4, reason );
 }
 
 // UnboundedOpen: match the header and POINT. On a match the bytes ARE what this
@@ -13884,7 +13892,7 @@ inline const Bounded * BoundedOpen( const void * bytes, uint64_t length, TableRe
 // parameter on a load.
 inline const Unbounded * UnboundedOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Unbounded *) TableCookOpen( bytes, length, (uint64_t) sizeof( Unbounded ), (uint64_t) alignof( Unbounded ), reason );
+    return (const Unbounded *) TableCookOpen( bytes, length, (uint64_t) sizeof( Unbounded ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -14016,7 +14024,7 @@ inline bool UnboundedCookNode( const Ctx & ctx, const TableCookRegion & region, 
     if ( !UnboundedCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !UnboundedCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == UnboundedExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == UnboundedExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // UnitCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -14138,7 +14146,7 @@ inline bool UnboundedCookLayout( const Ctx & ctx, const Unbounded & root, const 
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = UnboundedExtent( ctx, root );
+    const int64_t root_extent = UnboundedExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

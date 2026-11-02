@@ -11309,9 +11309,9 @@ inline bool SquadWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// SquadExtentAt: the node extent Squad's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SquadExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SquadExtentAt: the node extent Squad's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SquadExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SquadExtentAt( const Ctx & ctx, const Squad & value, int64_t & at )
 {
     {
@@ -11326,11 +11326,11 @@ inline bool SquadExtentAt( const Ctx & ctx, const Squad & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SquadExtent( const Ctx & ctx, const Squad & value )
 {
     int64_t at = 0;
-    if ( !SquadExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -11412,17 +11412,17 @@ inline bool DepthWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// DepthExtentAt: the node extent Depth's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as DepthExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// DepthExtentAt: the node extent Depth's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as DepthExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool DepthExtentAt( const Ctx & ctx, const Depth & value, int64_t & at )
 {
     { // one (nested by value)
-        if ( !SquadExtentAt( ctx, value.one, at ) ) { return false; }
+        if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value.one, at ) ) { return false; }
     }
     for ( int32_t i = 0; i < value.many_count && i < 3; i++ ) // many
     {
-        if ( !SquadExtentAt( ctx, value.many[i], at ) ) { return false; }
+        if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value.many[i], at ) ) { return false; }
     }
     for ( int32_t i = value.many_count; i < 3; i++ ) // many: the slots the walk does not reach (§7.6)
     {
@@ -11430,13 +11430,13 @@ inline bool DepthExtentAt( const Ctx & ctx, const Depth & value, int64_t & at )
     }
     for ( int32_t i = 0; i < 2; i++ ) // keyed
     {
-        if ( !SquadExtentAt( ctx, value.keyed.slots[i], at ) ) { return false; }
+        if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value.keyed.slots[i], at ) ) { return false; }
     }
     switch ( value.arm.type ) // arm: the set arm is the edge
     {
         case ForceType::Squad:
         {
-            if ( !SquadExtentAt( ctx, value.arm.squad, at ) ) { return false; }
+            if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value.arm.squad, at ) ) { return false; }
             break;
         }
         default: break;
@@ -11446,11 +11446,11 @@ inline bool DepthExtentAt( const Ctx & ctx, const Depth & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t DepthExtent( const Ctx & ctx, const Depth & value )
 {
     int64_t at = 0;
-    if ( !DepthExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !DepthExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -15264,7 +15264,7 @@ inline int64_t DepthSaveRetain( const Depth * root, TableRetain * retain, uint8_
 // parameter on a load.
 inline const Squad * SquadOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Squad *) TableCookOpen( bytes, length, (uint64_t) sizeof( Squad ), (uint64_t) alignof( Squad ), reason );
+    return (const Squad *) TableCookOpen( bytes, length, (uint64_t) sizeof( Squad ), (uint64_t) 8, reason );
 }
 
 // DepthOpen: match the header and POINT. On a match the bytes ARE what this
@@ -15295,7 +15295,7 @@ inline const Squad * SquadOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Depth * DepthOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Depth *) TableCookOpen( bytes, length, (uint64_t) sizeof( Depth ), (uint64_t) alignof( Depth ), reason );
+    return (const Depth *) TableCookOpen( bytes, length, (uint64_t) sizeof( Depth ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -15459,7 +15459,7 @@ inline bool SquadCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SquadCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SquadCookExtent( ctx, region, at + 16, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SquadExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SquadExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // DepthCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -15469,7 +15469,7 @@ inline bool DepthCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !DepthCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !DepthCookExtent( ctx, region, at + 136, extent_at, at, value, order ) ) { return false; }
-    return extent_at == DepthExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == DepthExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SquadCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -15487,7 +15487,7 @@ inline bool SquadCookLayout( const Ctx & ctx, const Squad & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SquadExtent( ctx, root );
+    const int64_t root_extent = SquadExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 16 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -15642,7 +15642,7 @@ inline bool DepthCookLayout( const Ctx & ctx, const Depth & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = DepthExtent( ctx, root );
+    const int64_t root_extent = DepthExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 136 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

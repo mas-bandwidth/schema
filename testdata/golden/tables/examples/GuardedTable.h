@@ -11339,7 +11339,7 @@ inline int64_t PatrolSaveRetain( const Patrol * root, TableRetain * retain, uint
 // parameter on a load.
 inline const Patrol * PatrolOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Patrol *) TableCookOpen( bytes, length, (uint64_t) sizeof( Patrol ), (uint64_t) alignof( Patrol ), reason );
+    return (const Patrol *) TableCookOpen( bytes, length, (uint64_t) sizeof( Patrol ), (uint64_t) 4, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

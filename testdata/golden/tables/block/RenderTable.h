@@ -22678,7 +22678,7 @@ inline void RenderQuaternionSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const RenderCamera * RenderCameraOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderCamera *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) alignof( RenderCamera ), reason );
+    return (const RenderCamera *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) 8, reason );
 }
 
 // RenderShipOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22708,7 +22708,7 @@ inline const RenderCamera * RenderCameraOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const RenderShip * RenderShipOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderShip *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) alignof( RenderShip ), reason );
+    return (const RenderShip *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) 8, reason );
 }
 
 // RenderTurretOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22738,7 +22738,7 @@ inline const RenderShip * RenderShipOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const RenderTurret * RenderTurretOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderTurret *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) alignof( RenderTurret ), reason );
+    return (const RenderTurret *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) 8, reason );
 }
 
 // RenderMissileOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22768,7 +22768,7 @@ inline const RenderTurret * RenderTurretOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const RenderMissile * RenderMissileOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderMissile *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) alignof( RenderMissile ), reason );
+    return (const RenderMissile *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) 8, reason );
 }
 
 // RenderDynamicPropOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22798,7 +22798,7 @@ inline const RenderMissile * RenderMissileOpen( const void * bytes, uint64_t len
 // parameter on a load.
 inline const RenderDynamicProp * RenderDynamicPropOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderDynamicProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) alignof( RenderDynamicProp ), reason );
+    return (const RenderDynamicProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) 8, reason );
 }
 
 // RenderStaticPropOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22828,7 +22828,7 @@ inline const RenderDynamicProp * RenderDynamicPropOpen( const void * bytes, uint
 // parameter on a load.
 inline const RenderStaticProp * RenderStaticPropOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderStaticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) alignof( RenderStaticProp ), reason );
+    return (const RenderStaticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) 8, reason );
 }
 
 // RenderCosmeticPropOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22858,7 +22858,7 @@ inline const RenderStaticProp * RenderStaticPropOpen( const void * bytes, uint64
 // parameter on a load.
 inline const RenderCosmeticProp * RenderCosmeticPropOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderCosmeticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) alignof( RenderCosmeticProp ), reason );
+    return (const RenderCosmeticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) 8, reason );
 }
 
 // RenderLaserOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22888,7 +22888,7 @@ inline const RenderCosmeticProp * RenderCosmeticPropOpen( const void * bytes, ui
 // parameter on a load.
 inline const RenderLaser * RenderLaserOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderLaser *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) alignof( RenderLaser ), reason );
+    return (const RenderLaser *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) 8, reason );
 }
 
 // RenderExplosionOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22918,7 +22918,7 @@ inline const RenderLaser * RenderLaserOpen( const void * bytes, uint64_t length,
 // parameter on a load.
 inline const RenderExplosion * RenderExplosionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderExplosion *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) alignof( RenderExplosion ), reason );
+    return (const RenderExplosion *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) 8, reason );
 }
 
 // RenderFrameOpen: match the header and POINT. On a match the bytes ARE what this
@@ -22948,7 +22948,7 @@ inline const RenderExplosion * RenderExplosionOpen( const void * bytes, uint64_t
 // parameter on a load.
 inline const RenderFrame * RenderFrameOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) alignof( RenderFrame ), reason );
+    return (const RenderFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

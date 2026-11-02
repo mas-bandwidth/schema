@@ -9639,7 +9639,7 @@ inline void PaddedFrameSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const PaddedRow * PaddedRowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const PaddedRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( PaddedRow ), (uint64_t) alignof( PaddedRow ), reason );
+    return (const PaddedRow *) TableCookOpen( bytes, length, (uint64_t) sizeof( PaddedRow ), (uint64_t) 8, reason );
 }
 
 // PaddedFrameOpen: match the header and POINT. On a match the bytes ARE what this
@@ -9669,7 +9669,7 @@ inline const PaddedRow * PaddedRowOpen( const void * bytes, uint64_t length, Tab
 // parameter on a load.
 inline const PaddedFrame * PaddedFrameOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const PaddedFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( PaddedFrame ), (uint64_t) alignof( PaddedFrame ), reason );
+    return (const PaddedFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( PaddedFrame ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

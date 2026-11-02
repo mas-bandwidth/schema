@@ -10536,7 +10536,7 @@ inline void WideBlobSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const WideBlob * WideBlobOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const WideBlob *) TableCookOpen( bytes, length, (uint64_t) sizeof( WideBlob ), (uint64_t) alignof( WideBlob ), reason );
+    return (const WideBlob *) TableCookOpen( bytes, length, (uint64_t) sizeof( WideBlob ), (uint64_t) 4, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

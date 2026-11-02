@@ -10019,7 +10019,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `foreign_order` | the magic is this build's constant byte-reversed: a cook of the other byte order (§7.1, §15) |
   | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below |
   | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) |
-  | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root's own `alignof` (§7) |
+  | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root node's required alignment, including its extent (§6.2) (§7) |
   | `truncated` | a file or buffer shorter than its framing, or a fixed record whose inputs run past the bytes given (§3, §7) |
   | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
   | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
@@ -11087,8 +11087,8 @@ the wire, and keeps the flexibility that comes with it.
     POWER OF TWO, at least EIGHT (§7.1's floor) and at most SIXTY-FOUR — the
     same sixty-four a block's base takes (§19.1), and past which the derived
     data offset would no longer be the 64 every unit this language can declare
-    produces — and a multiple of the ROOT's own `alignof`, since the root sits
-    at the region's base. A zero there is a division by
+    produces — and a multiple of the ROOT node's required alignment, including its extent (§6.2), since
+    the root sits at the region's base. A zero there is a division by
     zero inside the check, which is the defect the check exists to prevent.
   - **The DATA PART MUST HOLD THE ROOT.** The two part lengths frame the FILE;
     they do not say the region is at least `sizeof( root )`. Without that
@@ -11127,7 +11127,7 @@ the wire, and keeps the flexibility that comes with it.
   | the BYTE ORDER the magic established | `not_a_cook` again, and this is the one clause with no value of its own. A header whose `byte_order` word contradicts its own magic describes no cook in EITHER order, so there is nothing a distinct value would tell a caller that this one does not (§7.1) |
   | the build version | `wrong_build_version` where the `build_version` word is not this build's (§20) |
   | every reserved word zero | `reserved_not_zero` |
-  | the `alignment` word validated | `bad_alignment` where it is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own `alignof` |
+  | the `alignment` word validated | `bad_alignment` where it is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root node's required alignment, including its extent (§6.2) |
   | the two part lengths against the caller's `length` | `truncated` |
   | the ROOT's storage inside the data part | `truncated`, the second clause on that value: the part lengths frame the file and do not say the region is at least `sizeof( root )` |
   | the base's alignment | `unaligned_base`, the pointer the caller passed not aligned for the region the header names. This is the caller's defect and not the file's, and it is the reason worth telling apart from every other |
@@ -11281,7 +11281,7 @@ the wire, and keeps the flexibility that comes with it.
   | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)` with `slot *int64`; the signature is `XAt(slot *int64, arena ...*TableArena)`, the variadic arena naming the unlocked builder's storage | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
   | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
   | the descriptors | `XTableType()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
-  | §7.1's facts | `sizeof( X )` and `alignof( X )`, which `XOpen` holds the header to; the region alignment is the header's own word | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
+  | §7.1's facts | `sizeof( X )` and the root node's required alignment, including its extent (§6.2), which `XOpen` holds the header to; the region alignment is the header's own word | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **A MAP FIELD IS READ AS ITS ENTRIES, in every column** (§2.8, §7.2): the
   slot is the delta and the count, and a cooked holder exposes the count, the
