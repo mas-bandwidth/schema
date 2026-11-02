@@ -234,3 +234,6 @@ list_damaged_child_stop listdemo Save testdata/wire/tables/fuzz-vectors/list_dam
 
 # Reserved node-table transport has exactly kind12; a different kind is damage.
 node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin
+
+# A shortened union table body must not decode its truncated float payload.
+arm_length_empty_float tabledemo RootConfig testdata/wire/tables/fuzz-vectors/arm_length_empty_float.bin
