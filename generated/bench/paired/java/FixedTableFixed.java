@@ -401,8 +401,15 @@ public final class FixedTableFixed {
         int at = head.recordsAt;
         // STEP 11: per record, THE HASH CHECK FIRST — before the prefill, so a
         // refusal has written not one destination byte.
+        final int clampedBefore = report.clamped;
+        final int widenedBefore = report.widened;
         for (int k = 0; k < n; k++) {
             if (TableFixed.get64(data, at) != fileHash) {
+                for (int j = 0; j < k; j++) {
+                    scatter(defaults, 0, values[j], new TableFixed.Report());
+                }
+                report.clamped = clampedBefore;
+                report.widened = widenedBefore;
                 report.refuse(TableFixed.Reason.noLayout);
                 return -1;
             }
@@ -414,10 +421,18 @@ public final class FixedTableFixed {
             TableFixed.run(entries, made, table, data, at + 8, bodySize, image, report);
             scatter(image, 0, values[k], report);
             if (report.refused) {
+                for (int j = 0; j <= k; j++) {
+                    scatter(defaults, 0, values[j], new TableFixed.Report());
+                }
+                report.clamped = clampedBefore;
+                report.widened = widenedBefore;
                 return -1;
             }
             // DAMAGE DISCARDS THE WHOLE LOAD (§4)
             if (report.malformed) {
+                for (int j = 0; j <= k; j++) {
+                    scatter(defaults, 0, values[j], new TableFixed.Report());
+                }
                 return -1;
             }
             at += (int) recordSize;
