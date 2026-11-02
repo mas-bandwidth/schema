@@ -548,6 +548,7 @@ func (g *wireGen) emitConstants() {
 func (g *wireGen) emitRuntime() {
 	g.pf("%s", integrityRuntime(g.unit))
 	g.pf("%s", requiredWireRuntime)
+	g.pf("%s", textListWireRuntime)
 	g.pf("%s", `// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -557,6 +558,7 @@ final class TableWireReport {
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
   bool malformed = false;
   bool integrityMismatch = false;
@@ -1911,7 +1913,10 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
+	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
 	switch {
+	case ir.TextListPlain(f):
+		g.emitSavePlainTextList(f, expr, ind, id)
 	case f.Type.Optional: // presence is the payload (§2.3, wirewide.go)
 		g.emitSaveOptional(f, expr, ind, id, ordinal)
 	case f.IsMap(): // a map rides as kind 14 over its entry bodies (§2.8)
@@ -2373,6 +2378,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
 	case f.CountedOnWire(): // []T and [..N]T ride as kind 14 (§2.9, §3)
+		if f.IsTextList() {
+			g.pf("%s\tfinal beforeTextClamp%d=r.report.clamped;\n", ind, ordinal)
+		}
 		g.pf("%s\tif (kind != %d) { r.report.kindMismatch++; if (!r.skipKind(kind)) { r.report.malformed = true; return; } break; }\n", ind, wireKindArray)
 		g.pf("%s\t{\n", ind)
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
@@ -2448,6 +2456,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\t}\n", ind)
 		g.pf("%s\t\tr.pos = end;\n", ind)
 		g.pf("%s\t}\n", ind)
+		if f.IsTextList() {
+			g.pf("%s\tif(r.report.clamped!=beforeTextClamp%d&&r.report.clampedField.isEmpty)r.report.clampedField=%q;\n", ind, ordinal, f.TextListElem().MapEntryOf)
+		}
 		g.pf("%s\tbreak;\n", ind)
 	case f.Type.Kind == ir.TWString:
 		// kind 33 (§3): an odd L is framing damage, ill-formed UTF-16 (a lone
@@ -2683,7 +2694,13 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 		g.pf("%s\t\t\tfinal elen = %s.readLeb();\n", ind, arr)
 		g.pf("%s\t\t\tif (elen == null || !%s.has(elen)) { r.report.malformed = true; break; }\n", ind, arr)
 		g.pf("%s\t\t\tif (!_lebValid(%s.data, %s.pos, elen)) { r.report.malformed = true; %s.pos += elen; break; }\n", ind, arr, arr, arr)
-		g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+		if f.IsTextList() {
+			g.pf("%s\t\t\tfinal kept=_textBoundary(%s.data,%s.pos,elen,%d);\n", ind, arr, arr, ir.TextListValue(f).Type.Size)
+			g.pf("%s\t\t\tif(kept!=elen){r.report.clamped++;if(r.report.clampedField.isEmpty)r.report.clampedField=%q;}\n", ind, f.TextListElem().MapEntryOf)
+			g.pf("%s\t\t\tfinal e=%s()..value=utf8.decode(%s.data.sublist(%s.pos,%s.pos+kept));%s.add(e);\n", ind, f.Type.Name, arr, arr, arr, dest)
+		} else {
+			g.pf("%s\t\t\t%s.add(utf8.decode(%s.data.sublist(%s.pos, %s.pos + elen)));\n", ind, dest, arr, arr, arr)
+		}
 		g.pf("%s\t\t\t%s.pos += elen;\n", ind, arr)
 	case wireKindEnum:
 		e := enumRef(f)

@@ -29,7 +29,7 @@ import (
 // needsGenericText reports whether a field's text goes through the generic
 // walk below rather than the card-class emitters in textform.go.
 func needsGenericText(f *ir.Field) bool {
-	return f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
+	return f.IsTextList() || f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
 		isWide(f) || f.Type.Optional || isFlags(f) || f.Type.Timestamp
 }
 
@@ -744,6 +744,8 @@ func mapKeyText(f *ir.Field, entry string) string {
 func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where string) {
 	e := fmt.Sprintf("e%d", d)
 	switch {
+	case f.IsTextList():
+		g.emitJsonTextList(f, expr, d, ind, where)
 	case f.Type.Optional:
 		g.emitJsonValue(nonOptional(f), expr, d, ind, where)
 	case f.IsMap():
@@ -880,6 +882,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		fbArg = ", " + fb
 	}
 	switch {
+	case f.IsTextList():
+		return g.jsonTextListRead(f, val, d, fbArg)
 	case f.Type.Optional:
 		return g.jsonReadExpr(nonOptional(f), val, d, fallback...)
 	case f.IsMap():

@@ -123,6 +123,7 @@ func (g *wireGen) emitTextForm() {
 // card's closure.
 func (g *wireGen) emitTextRuntime() {
 	g.pf("%s", timestampTextRuntime)
+	g.pf("%s", textListJSONRuntime)
 	g.pf(`// ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
 // TableTextReport is a tolerant text read's report (§16.3): the three events
@@ -132,6 +133,7 @@ final class TableTextReport {
   int unknown = 0;
   int kindMismatch = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
   int missingRequired = 0;
   String missingFields = '';
@@ -181,7 +183,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
-      b.write(String.fromCharCode(rune));
+      b.write(String.fromCharCode(rune >= 0xD800 && rune <= 0xDFFF ? 0xFFFD : rune));
     }
   }
   b.write('"');

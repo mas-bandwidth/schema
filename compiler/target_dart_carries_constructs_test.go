@@ -3,10 +3,11 @@ package compiler
 import "testing"
 
 func init() {
-	nonGoCarriers["dart"] = append(nonGoCarriers["dart"], carryOneSidedRange, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryForms, carryIntegrity)
+	nonGoCarriers["dart"] = append(nonGoCarriers["dart"], carryOneSidedRange, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryForms, carryIntegrity, carryTextList)
 }
 func TestDartCarriesRangeAndArrayRoot(t *testing.T) {
 	for _, src := range []string{
+		"package probe\n table M { value [..3]?string(8) }\n",
 		"package probe\n fixed table M | integrity = \"crc32c\" { value int32 }\n",
 		"package probe\n table M | forms = \"wire,json\" { value int32 }\n",
 		"package probe\n table M { value int32 | required }\n",
