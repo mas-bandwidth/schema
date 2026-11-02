@@ -14,7 +14,3 @@ conformance-num-float32-subnormal	dart-hostile-conformance-num-float32-subnormal
 conformance-num-float32-upper-band	dart-hostile-conformance-num-float32-upper-band	inputs/conformance-num-float32-upper-band.json	a float32 read keeps the double, so the upper band writes 3.402824e+38 where the engine rounds to 3.4028235e+38
 conformance-union-table-arm-wrong-shape	dart-hostile-conformance-union-table-arm-wrong-shape	inputs/conformance-union-table-arm-wrong-shape.json	a table arm given a scalar is selected with a default table; the engine leaves the union unset
 fuzz-text-null_scalar	dart-hostile-fuzz-text-null-scalar	inputs/fuzz-text-null_scalar.txt	a null scalar is counted as a kind mismatch and stores zero; the engine keeps the field default
-wire-count-refusal	dart-hostile-wire-count-refusal	inputs/wire-count-refusal.bin	a collection count past the int32 storage cap is answered malformed (wire_damaged) where the engine names count_refusal
-wire-form-02	dart-hostile-wire-form-02	inputs/wire-form-02.bin	the message form offered as a file is refused as unknown_form where the engine names message_form_as_file
-wire-form-ff	dart-hostile-wire-form-ff	inputs/wire-form-ff.bin	a form byte above the one the reader carries is refused as unknown_form where the engine names newer_form
-wire-non-finite-float	dart-hostile-wire-non-finite-float	inputs/wire-non-finite-float.bin	the wire reader lands a NaN float32 where the engine refuses non_finite_float; owed by the finite-tables Dart card (docs/roadmap.sexp tables-finite/dart, schema#2229)

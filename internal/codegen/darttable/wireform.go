@@ -555,6 +555,7 @@ final class TableWireReport {
   int duplicate = 0;
   bool malformed = false;
   bool refused = false;
+  bool _countRefused = false;
   int retained = 0;
   int retainLost = 0;
 
@@ -577,15 +578,22 @@ final class TableWireReport {
   // does not carry is unknown_form, framing the reader cannot follow is
   // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
   // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field rather than kept beside them, so the verdict and its reason
-  // can never disagree. A widened, clamped or unknown field is not a refusal:
-  // the read still answers ok.
+  // stored field; _countRefused records a builder storage refusal without
+  // adding a malformed event. Earlier report events remain available.
+  // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
   }
+}
+
+// A builder storage refusal is terminal, including inside a nested body.
+// Unwind to the public loader before its framing checks can add damage.
+final class _TableWireCountRefusal implements Exception {
+  const _TableWireCountRefusal();
 }
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
@@ -1240,7 +1248,10 @@ final class TableWireReader {
   // NEVER CLAMP, the entry is dropped whole and counted one clamped
   // (docs/SPEC-TABLES.md §2.8; internal/tabletext MapKeyFits). keySize is
   // the string bound, or -1 for a key that is not a bounded string.
+  int mapKeyAt = -1;
+
   int mapEntryScan(int keyId, int keyKind, List<int> keyWidens, int keySize) {
+    mapKeyAt = -1;
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
     var widened = 0;
@@ -1253,6 +1264,7 @@ final class TableWireReader {
       if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
       if (id == keyId) {
+        mapKeyAt = s.pos - 1;
         if (kind != keyKind && keyWidens.contains(kind)) {
           widened = 4;
           if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
@@ -2148,6 +2160,15 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	fn := dartName(n) + "WireLoadBody"
 	g.cur = st
 	g.emitArrayHelpers(st)
+	if st.IsMapEntry() {
+		// The key scan validates framing first. Decode only its final key
+		// before ordering admits the body, reusing the actual field rules.
+		g.pf("void %sWireLoadKey(TableWireReader r, %s v) {\n", dartName(n), n)
+		g.pf("\tfinal kind = r.readByte();\n")
+		g.pf("\tswitch (%s) {\n", dartU64Literal(ir.MapKeyWireId))
+		g.emitLoadField(st.Fields[0], "\t\t", 0)
+		g.pf("\t}\n}\n\n")
+	}
 	g.pf("void %s(TableWireReader r, %s v, bool nested) {\n", fn, n)
 	// A BY-VALUE BODY IS THE SAME STORAGE across occurrences and is RESET when
 	// its id comes round again (internal/tablewire field, Refill): the last
@@ -2345,7 +2366,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			g.pf("%s\t\tif (keep < 0 || keep > %d) { keep = %d; r.report.clamped++; }\n", ind, f.ArrayBound, f.ArrayBound)
 			loop = "keep"
 		} else {
-			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) { r.report.malformed = true; r.pos = end; break; }\n", ind)
+			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
 		}
 		// The body spans from after the header to its own end; a header that
 		// ran past that end covers no elements (arrayBody's subTo; \u00a73, \u00a74).
@@ -3008,18 +3029,22 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tif (report != null) r.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
-	g.pf("\tr.report.nonFiniteFloat = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
+	g.pf("\ttry {\n")
 	if ir.VariableTables(g.unit)[n] {
-		g.pf("\tr.scanNodeTable();\n")
+		g.pf("\t\tr.scanNodeTable();\n")
 	}
-	g.pf("\tr.pos = 1;\n")
-	g.pf("\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
+	g.pf("\t\tr.pos = 1;\n")
+	g.pf("\t\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
+	g.pf("\t} on _TableWireCountRefusal {\n")
+	g.pf("\t\tr.report.refused = true;\n\t\tr.report._countRefused = true;\n")
+	g.pf("\t\treturn %s();\n\t}\n", n)
 	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
 	// any damage the walk met (docs/SPEC-TABLES.md §3.3): nothing lands, and
 	// the caller holds the type's defaults.
