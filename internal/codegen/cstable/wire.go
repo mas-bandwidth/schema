@@ -1147,6 +1147,10 @@ public static partial class TableWire
         if (Widen(from, to)) { report.Widened++; return true; }
         report.KindMismatch++; return false;
     }
+    internal static bool CountRefused(TableReport report)
+    { return report.Refused && report.Reason == "count_over_extent_cap"; }
+    static bool CollectionCap(TableReport report)
+    { report.Refused = true; report.Reason = "count_over_extent_cap"; return false; }
     static bool Damage(TableReport report) { report.Malformed = true; return false; }
     static bool EndsEarly(Reader r)
     {
@@ -1219,6 +1223,7 @@ public static partial class TableWire
             if (framed && !r.Slice(out sub)) { return Damage(report); }
             object child = f.GetChild(value, index);
             ReadBody(ref sub, child, f.Table, report, true);
+            if (CountRefused(report)) { return false; }
             if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
             if (!framed) { r.Offset = r.Buffer.Length; }
             return true;
@@ -1250,6 +1255,7 @@ public static partial class TableWire
             if (!Compatible(armKind, expected, report)) { return true; }
             f.Arms.SetTag(union, (ulong)tag);
             if (!ReadArm(ref arm, union, info.Field, armKind, report)) { f.Arms.SetTag(union, 0); }
+            if (CountRefused(report)) { return false; }
             return true;
         }
         return ReadScalar(ref r, value, f, index, kind, report);
@@ -1325,6 +1331,7 @@ public static partial class TableWire
         if (kind == 13)
         {
             ReadBody(ref r, f.GetChild(value, 0), f.Table, report, true);
+            if (CountRefused(report)) { return false; }
             return r.Offset == r.Buffer.Length || Damage(report);
         }
         if (kind == 15) { return ReadElement(ref r, value, f, 0, kind, report, true); }
@@ -1346,6 +1353,7 @@ public static partial class TableWire
             byte elementKind = r.Byte();
             if (!r.Var(out ulong count)) { return Damage(report); }
             if (!Compatible(elementKind, f.Kind, report)) { return false; }
+            if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
             int decoded = 0;
@@ -1440,6 +1448,7 @@ public static partial class TableWire
             if (!header.Var(out ulong count)) { Damage(report); return true; }
             array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
             if (!Compatible(elementKind, f.Kind, report)) { placed = false; return true; }
+            if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             if (kind == 16)
             {
                 for (ulong i = 0; i < count; i++)
@@ -1449,6 +1458,7 @@ public static partial class TableWire
                     int slot = FindVariant(f, id, true);
                     if (slot == 0) { report.Unknown++; continue; }
                     ReadElement(ref element, value, f, slot - 1, elementKind, report, false);
+                    if (CountRefused(report)) { return false; }
                 }
             }
             else
@@ -1522,6 +1532,7 @@ public static partial class TableWire
         if (nested) { type.Reset(value); }
         for (; ; )
         {
+            if (CountRefused(report)) { return false; }
             if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
             if (reference == 0) { return true; }
             if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
@@ -1609,9 +1620,13 @@ public static partial class TableWire
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
         bool malformedBefore = report.Malformed;
         report.Malformed = false;
-        if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
+        // Managed collections grow only after each bounded element. The actual
+        // read chooses a storage-cap refusal and earns preceding events; the
+        // region extent scan can visit map values their keys would not admit.
+        if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
         bool complete = ReadBody(ref r, value, type, report, false);
         if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+        if (CountRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
         if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
         // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the

@@ -66,9 +66,9 @@ const tableVariableJsonSource = `
         if (f.BlobKind == 12)
         {
             In probe = input;
-            if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+            if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true, stored: true)) { input = probe; return false; }
             byte[] data = new byte[size];
-            if (!ScanString(text, ref input, data, true, out _)) { return false; }
+            if (!ScanString(text, ref input, data, true, out _, stored: true)) { return false; }
             f.SetChild(owner, index, new TableBlob(data)); return true;
         }
         if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }

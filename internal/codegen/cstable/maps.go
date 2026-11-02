@@ -53,6 +53,7 @@ const tableMapWireSource = `
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
         if (kind != 13) { report.KindMismatch++; return true; }
+        if (count > int.MaxValue) { return CollectionCap(report); }
         f.ResetField(value);
         int landed = 0; bool widened = false; MapKey last = default;
         TableFieldInfo keyField = f.Table.Fields[0];
@@ -70,6 +71,7 @@ const tableMapWireSource = `
             f.EnsureCount(value, slot + 1);
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             ReadBody(ref body, entry, f.Table, report, true);
+            if (CountRefused(report)) { return false; }
             if (order == 0) { report.Duplicate++; }
             else { last = KeyOf(entry, keyField); landed++; }
         }
@@ -106,13 +108,15 @@ const tableMapJsonSource = `
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
+        string mapField = input.TextField;
         for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }
             Span<byte> spelling = stackalloc byte[MaxKey];
             int beforeClamp = input.Report.Clamped;
-            if (!ScanString(text, ref input, spelling, true, out int used)) { return false; }
+            input.TextField = mapField;
+            if (!ScanString(text, ref input, spelling, true, out int used, stored: true)) { return false; }
             bool over = input.Report.Clamped != beforeClamp;
             input.Report.Clamped = beforeClamp;
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }

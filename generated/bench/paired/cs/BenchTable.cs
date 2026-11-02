@@ -1518,9 +1518,9 @@ namespace Bench
                 if (f.BlobKind == 12)
                 {
                     In probe = input;
-                    if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+                    if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true, stored: true)) { input = probe; return false; }
                     byte[] data = new byte[size];
-                    if (!ScanString(text, ref input, data, true, out _)) { return false; }
+                    if (!ScanString(text, ref input, data, true, out _, stored: true)) { return false; }
                     f.SetChild(owner, index, new TableBlob(data)); return true;
                 }
                 if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
@@ -1616,13 +1616,15 @@ namespace Bench
                 input.Pos++; f.ResetField(owner);
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
+                string mapField = input.TextField;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
                     if (c == '}') { input.Pos++; return true; }
                     Span<byte> spelling = stackalloc byte[MaxKey];
                     int beforeClamp = input.Report.Clamped;
-                    if (!ScanString(text, ref input, spelling, true, out int used)) { return false; }
+                    input.TextField = mapField;
+                    if (!ScanString(text, ref input, spelling, true, out int used, stored: true)) { return false; }
                     bool over = input.Report.Clamped != beforeClamp;
                     input.Report.Clamped = beforeClamp;
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -1673,7 +1675,8 @@ namespace Bench
                 public System.Collections.Generic.Dictionary<ulong, Label> Labels;
                 public int Pos;
                 public TableReport Report;
-                public bool Bad; // the text is not JSON: the walk stops and keeps what it placed
+                public bool Bad; // the text is not JSON: the whole read is discarded
+                internal string TextField;
             }
 
             static void Space(ReadOnlySpan<byte> text, ref In input)
@@ -1787,8 +1790,14 @@ namespace Bench
             // fatal, exactly as it is on the wire (§4). keep false scans past a
             // string without keeping it, and counts no clamp for what it dropped —
             // C++'s NULL destination.
-            static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
-            { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
+            static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool stored = false)
+            { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length, stored: stored); }
+            static bool RefuseText(ref In input, string reason)
+            {
+                input.Bad = true;
+                input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+                return false;
+            }
             // The body of a bytes field's base64 string, as the JSON layer reads it
             // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
             // below 0x20, a backslash that begins no escape, a byte that is not UTF-8
@@ -1833,7 +1842,7 @@ namespace Bench
                 body = new ReadOnlySpan<byte>(decoded, 0, used);
                 return true;
             }
-            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
+            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false, bool stored = false)
             {
                 length = 0;
                 if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1900,8 +1909,8 @@ namespace Bench
                     }
                     else
                     {
-                        // Decode a complete scalar, replacing ill-formed UTF-8 before
-                        // applying the destination bound (the text form's U+FFFD rule).
+                        // The read refuses invalid UTF-8 before any clamp. Replacement
+                        // is only the writer's rule for storage built in code (§16.3).
                         int want = c < 0x80 ? 1 : c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
                         if (want != 0 && want <= text.Length - input.Pos && TableWire.TextValid(text.Slice(input.Pos, want)))
                         {
@@ -1910,10 +1919,12 @@ namespace Bench
                         }
                         else
                         {
-                            input.Pos++;
-                            unitLength = EncodeUtf8(0xfffd, unit);
+                            return RefuseText(ref input, "string_not_utf8");
                         }
                     }
+                    // Only stored text rejects NUL; skipped values and object field
+                    // names still accept that escape. Map keys opt in before length checks.
+                    if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
                     if (measure)
                     {
                         if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
@@ -2482,14 +2493,14 @@ namespace Bench
                 if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
                 if (f.Kind == 33)
                 {
-                    if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used)) { return false; }
+                    if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
                     f.SetCount(value, used); return true;
                 }
                 if (f.Kind == 12)
                 {
                     byte[] storage = f.GetBuffer(value);
                     int length;
-                    if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length)) { return false; }
+                    if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length, stored: true)) { return false; }
                     PutCount(value, f, length);
                     return true;
                 }
@@ -2717,6 +2728,7 @@ namespace Bench
                     else
                     {
                         TableFieldInfo f = info.Fields[index];
+                        input.TextField = info.Name + "." + f.Name;
                         if (index < 512)
                         {
                             ulong bit = 1ul << (index & 63);
@@ -2773,6 +2785,7 @@ namespace Bench
                 // a caller with no report is off the read path this section prices: it
                 // gets one rather than a branch on every counter
                 input.Report = report != null ? report : new TableReport();
+                input.Report.Reason = null; input.Report.Refused = false;
                 input.Bad = false;
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
@@ -3384,6 +3397,7 @@ namespace Bench
                     if (node.Type == null || node.Value == null) { continue; }
                     Reader body = new Reader(payload.Buffer.Slice(node.Offset, node.Length), root.Vocabulary) { Graph = graph };
                     ReadBody(ref body, node.Value, node.Type, report, true);
+                    if (CountRefused(report)) { break; }
                 }
                 return graph;
             }
@@ -3592,6 +3606,7 @@ namespace Bench
                 if (!header.Var(out ulong count)) { Damage(report); return true; }
                 a.Offset = Math.Min(a.Buffer.Length, header.Offset);
                 if (kind != 13) { report.KindMismatch++; return true; }
+                if (count > int.MaxValue) { return CollectionCap(report); }
                 f.ResetField(value);
                 int landed = 0; bool widened = false; MapKey last = default;
                 TableFieldInfo keyField = f.Table.Fields[0];
@@ -3609,6 +3624,7 @@ namespace Bench
                     f.EnsureCount(value, slot + 1);
                     object entry = f.Table.Create(); f.SetChild(value, slot, entry);
                     ReadBody(ref body, entry, f.Table, report, true);
+                    if (CountRefused(report)) { return false; }
                     if (order == 0) { report.Duplicate++; }
                     else { last = KeyOf(entry, keyField); landed++; }
                 }
@@ -4734,6 +4750,10 @@ namespace Bench
                 if (Widen(from, to)) { report.Widened++; return true; }
                 report.KindMismatch++; return false;
             }
+            internal static bool CountRefused(TableReport report)
+            { return report.Refused && report.Reason == "count_over_extent_cap"; }
+            static bool CollectionCap(TableReport report)
+            { report.Refused = true; report.Reason = "count_over_extent_cap"; return false; }
             static bool Damage(TableReport report) { report.Malformed = true; return false; }
             static bool EndsEarly(Reader r)
             {
@@ -4806,6 +4826,7 @@ namespace Bench
                     if (framed && !r.Slice(out sub)) { return Damage(report); }
                     object child = f.GetChild(value, index);
                     ReadBody(ref sub, child, f.Table, report, true);
+                    if (CountRefused(report)) { return false; }
                     if (sub.Offset != sub.Buffer.Length) { f.Table.Reset(child); Damage(report); }
                     if (!framed) { r.Offset = r.Buffer.Length; }
                     return true;
@@ -4837,6 +4858,7 @@ namespace Bench
                     if (!Compatible(armKind, expected, report)) { return true; }
                     f.Arms.SetTag(union, (ulong)tag);
                     if (!ReadArm(ref arm, union, info.Field, armKind, report)) { f.Arms.SetTag(union, 0); }
+                    if (CountRefused(report)) { return false; }
                     return true;
                 }
                 return ReadScalar(ref r, value, f, index, kind, report);
@@ -4912,6 +4934,7 @@ namespace Bench
                 if (kind == 13)
                 {
                     ReadBody(ref r, f.GetChild(value, 0), f.Table, report, true);
+                    if (CountRefused(report)) { return false; }
                     return r.Offset == r.Buffer.Length || Damage(report);
                 }
                 if (kind == 15) { return ReadElement(ref r, value, f, 0, kind, report, true); }
@@ -4933,6 +4956,7 @@ namespace Bench
                     byte elementKind = r.Byte();
                     if (!r.Var(out ulong count)) { return Damage(report); }
                     if (!Compatible(elementKind, f.Kind, report)) { return false; }
+                    if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
                     if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; }
                     int decoded = 0;
@@ -5027,6 +5051,7 @@ namespace Bench
                     if (!header.Var(out ulong count)) { Damage(report); return true; }
                     array.Offset = Math.Min(array.Buffer.Length, 1 + header.Offset);
                     if (!Compatible(elementKind, f.Kind, report)) { placed = false; return true; }
+                    if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
                     if (kind == 16)
                     {
                         for (ulong i = 0; i < count; i++)
@@ -5036,6 +5061,7 @@ namespace Bench
                             int slot = FindVariant(f, id, true);
                             if (slot == 0) { report.Unknown++; continue; }
                             ReadElement(ref element, value, f, slot - 1, elementKind, report, false);
+                            if (CountRefused(report)) { return false; }
                         }
                     }
                     else
@@ -5109,6 +5135,7 @@ namespace Bench
                 if (nested) { type.Reset(value); }
                 for (; ; )
                 {
+                    if (CountRefused(report)) { return false; }
                     if (!r.Ref(out ulong reference, out ulong id)) { return Damage(report); }
                     if (reference == 0) { return true; }
                     if ((nested && id == ulong.MaxValue) || id == ulong.MaxValue - 1 || id == ulong.MaxValue - 2) { return Damage(report); }
@@ -5196,9 +5223,13 @@ namespace Bench
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 bool malformedBefore = report.Malformed;
                 report.Malformed = false;
-                if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
+                // Managed collections grow only after each bounded element. The actual
+                // read chooses a storage-cap refusal and earns preceding events; the
+                // region extent scan can visit map values their keys would not admit.
+                if (type.Variable) { r.Graph = ReadGraph(r, value, type, report); }
                 bool complete = ReadBody(ref r, value, type, report, false);
                 if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+                if (CountRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
                 // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
                 if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
                 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
