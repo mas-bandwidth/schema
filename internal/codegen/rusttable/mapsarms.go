@@ -634,8 +634,8 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    let b = &wire[*off..s];\n", in)
 		fmt.Fprintf(b, "%s    let mut tmp = %s;\n", in, defExpr)
 		fmt.Fprintf(b, "%s    if !text_valid(b) { report.malformed = true; }\n", in)
-		fmt.Fprintf(b, "%s    else if b.len() > %d {\n", in, f.Type.Size)
-		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, f.Type.Size)
+		fmt.Fprintf(b, "%s    else if b.len() > %d {\n", in, rustTextBound(f))
+		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        while cut > 0 && b[cut] & 0xC0 == 0x80 { cut -= 1; }\n", in)
 		fmt.Fprintf(b, "%s        tmp = std::str::from_utf8(&b[..cut]).unwrap().to_string();\n", in)
 		fmt.Fprintf(b, "%s        report.clamped += 1;\n", in)
@@ -850,7 +850,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 		fmt.Fprintf(b, "%slet kb = &wire[scan_off..ks];\n", i7)
 		fmt.Fprintf(b, "%sscan_off = ks;\n", i7)
 		fmt.Fprintf(b, "%sif !text_valid(kb) { break; }\n", i7)
-		fmt.Fprintf(b, "%skey_over = kb.len() > %d;\n", i7, keyField.Type.Size)
+		fmt.Fprintf(b, "%skey_over = kb.len() > %d;\n", i7, rustTextBound(keyField))
 		fmt.Fprintf(b, "%skey_val = std::str::from_utf8(kb).unwrap().to_string();\n", i7)
 		fmt.Fprintf(b, "%scontinue;\n", i7)
 	} else {
@@ -1372,7 +1372,7 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
 	fmt.Fprintf(b, "%s    let mut %s = %s::default();\n", in, ent, f.MapEntry.Name)
 	if key.Type.Kind == ir.TString {
-		fmt.Fprintf(b, "%s    if ks.len() > %d {\n", in, key.Type.Size)
+		fmt.Fprintf(b, "%s    if ks.len() > %d {\n", in, rustTextBound(key))
 		fmt.Fprintf(b, "%s        jr.clamped += 1; jr.skip_value();\n", in)
 		fmt.Fprintf(b, "%s        let c = jr.peek(); if c == b',' { jr.p += 1; continue; } else if c == b'}' { jr.p += 1; break; } jr.malformed = true; break;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)

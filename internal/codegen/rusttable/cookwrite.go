@@ -80,7 +80,7 @@ func cookWriteFieldsCarried(st *ir.Struct) bool {
 func cookWriteFieldCarried(f *ir.Field, seen map[*ir.Union]bool) bool {
 	switch {
 	case f.Type.TextUnbounded():
-		return false
+		return true
 	case f.IsMap():
 		return f.MapEntry != nil && cookWriteFieldsCarried(f.MapEntry)
 	case (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) && !f.Type.Pointer &&
@@ -386,6 +386,9 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 	pieces := ir.FieldPieces(g.unit, f, off)
 	value := pieces[0]
 	switch {
+	case f.Type.TextUnbounded():
+		fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { w.fail(); }\n", ind, x, x)
+		return
 	case f.IsMap(), f.IsList():
 		// THE SLOT IS THE CARVE'S (docs/SPEC-TABLES.md §2.8, §2.9): its
 		// sixteen bytes point into the holder's node extent, which only the
@@ -763,6 +766,9 @@ func cookWriteImports(u *ir.Unit, vc *variableClass, otherNames []string) []stri
 	for _, n := range otherNames {
 		if cw[n] {
 			out = append(out, fn(n, "cook_body"))
+			if cookHasExtent(vStruct(u, n)) {
+				out = append(out, fn(n, "cook_carve"))
+			}
 		}
 	}
 	return out

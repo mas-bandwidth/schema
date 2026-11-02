@@ -1,0 +1,4 @@
+package probe
+table Root { notes map[string]Note
+ child *Note
+}
