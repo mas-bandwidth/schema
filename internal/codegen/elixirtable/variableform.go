@@ -286,7 +286,7 @@ var armClauses = []struct {
 	{[]string{"enum"}, "  defp arm_content(%{t: :enum} = a, v, _idx_map, ids, order) do\n"},
 	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t}, nil, _idx_map, ids, order) when t in [:pointer, :blob],\n"},
 	{[]string{"pointer", "blob"}, "  defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],\n"},
-	{[]string{"pointer"}, "  defp arm_node_key(:pointer, a, v), do: {a.type_id, v}\n"},
+	{[]string{"pointer"}, "  defp arm_node_key(:pointer, a, v), do: {a.type_id, node_identity(v)}\n"},
 	{[]string{"blob"}, "  defp arm_node_key(:blob, _a, v), do: blob_site(v)\n"},
 	{[]string{"list"}, "  defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do\n"},
 	{[]string{"union"}, "  defp arm_content(%{t: :union} = a, v, idx_map, ids, order),\n"},
@@ -465,8 +465,9 @@ func withoutRetainUnions(retain string) string {
 // withRetainArmKinds is the retaining pair for a unit whose union arms take
 // only the kinds in `kinds`: Elixir's type checker reports a clause that no arm
 // of the unit can reach, so the table arm's clauses go when no arm is a table,
-// the pointer arm's when none is a pointer, and the general clause when every
-// arm is one of those two. Every clause must be found.
+// the pointer reader's when none is a pointer. The generic writer also handles
+// pointer arms, while the generic reader handles only the remaining kinds.
+// Every clause must be found.
 func withRetainArmKinds(retain string, kinds map[string]bool) string {
 	table, pointer, other := kinds["table"], kinds["pointer"], false
 	for k := range kinds {
@@ -476,7 +477,7 @@ func withRetainArmKinds(retain string, kinds map[string]bool) string {
 	}
 	heads := map[string]bool{
 		"  defp arm_content_retain(%{t: :table}":        table,
-		"  defp arm_content_retain(a,":                  other,
+		"  defp arm_content_retain(a,":                  other || pointer,
 		"  defp read_arm_payload_retain(%{t: :table}":   table,
 		"  defp read_arm_payload_retain(%{t: :pointer}": pointer,
 		"  defp read_arm_payload_retain(a,":             other,
@@ -599,7 +600,10 @@ func uncarriedAttribute(names []string) string {
 // §4 names.
 const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3) ----
 
-  def save(table, value) when is_map(value) do
+  def save(table, value) when is_map(value),
+    do: with_node_identities(fn -> save_identity(table, value) end)
+
+  defp save_identity(table, value) do
     desc = Map.fetch!(@tables, table)
 
     # the node table's records in §3.1's first-visit order, one record per
@@ -749,11 +753,67 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # a table node's identity is its type and content (docs/SPEC-TABLES.md
-  # §3.1); a blob's is its slot (blob_site/1), so equal bytes in two slots are
+  # A loaded table node keeps its directory identity (§3.1); untagged
+  # authored maps share by content. A blob's identity is its slot
+  # (blob_site/1), so equal bytes in two slots are
   # two nodes, and an empty *bytes and an empty *string are two nodes.
   defp node_content({_type_id, :blob, site, _bytes}), do: site
-  defp node_content({type_id, _kind, _ref, c}), do: {type_id, c}
+  defp node_content({type_id, _kind, _ref, c}), do: {type_id, node_identity(c)}
+
+  # Intern local shapes, replacing each child map by a small structural id.
+  # Loaded directory indices remain part of the shape: two equal records
+  # are still two nodes (§3.1). Exact comparisons distinguish edited copies
+  # sharing an index; untagged authored maps retain content-based sharing.
+  defp with_node_identities(fun) do
+    prior = Process.get(:elixir_node_identities)
+    Process.put(:elixir_node_identities, %{seen: %{}, shapes: %{}})
+
+    try do
+      fun.()
+    after
+      if prior == nil,
+        do: Process.delete(:elixir_node_identities),
+        else: Process.put(:elixir_node_identities, prior)
+    end
+  end
+
+  defp node_identity(value) when is_map(value) do
+    state = Process.get(:elixir_node_identities)
+    bucket = Map.get(value, :__wire_identity__)
+    seen = if bucket == nil, do: [], else: Map.get(state.seen, bucket, [])
+
+    case Enum.find(seen, fn {previous, _id} -> previous === value end) do
+      {_previous, id} ->
+        id
+
+      nil ->
+        shape = Map.new(value, fn {key, v} -> {key, identity_term(v)} end)
+        state = Process.get(:elixir_node_identities)
+        id = Map.get(state.shapes, shape, map_size(state.shapes))
+
+        seen =
+          if bucket == nil,
+            do: state.seen,
+            else: Map.update(state.seen, bucket, [{value, id}], fn xs -> [{value, id} | xs] end)
+
+        Process.put(:elixir_node_identities, %{
+          seen: seen,
+          shapes: Map.put(state.shapes, shape, id)
+        })
+
+        id
+    end
+  end
+
+  defp node_identity(value), do: value
+
+  defp identity_term(value) when is_map(value), do: {:map, node_identity(value)}
+  defp identity_term(value) when is_list(value), do: {:list, Enum.map(value, &identity_term/1)}
+
+  defp identity_term(value) when is_tuple(value),
+    do: {:tuple, value |> Tuple.to_list() |> Enum.map(&identity_term/1)}
+
+  defp identity_term(value), do: {:scalar, value}
 
   # SPEC-TABLES §2.8: textual string keys compare bytewise, integer keys by
   # numeric value. The entry table holds an ordinary key and value field.
@@ -921,7 +981,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
-        idx = Map.fetch!(idx_map, {f.type_id, v})
+        idx = Map.fetch!(idx_map, {f.type_id, node_identity(v)})
         {idx_map, ids, order, [acc, leb_encode(ref), <<17>>, leb_encode(idx)]}
     end
   end
@@ -1135,7 +1195,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp arm_content(%{t: t} = a, v, idx_map, ids, order) when t in [:pointer, :blob],
     do: {leb_encode(Map.fetch!(idx_map, arm_node_key(t, a, v))), ids, order}
 
-  defp arm_node_key(:pointer, a, v), do: {a.type_id, v}
+  defp arm_node_key(:pointer, a, v), do: {a.type_id, node_identity(v)}
   defp arm_node_key(:blob, _a, v), do: blob_site(v)
 
   defp arm_content(%{t: :list} = a, v, idx_map, ids, order) do
@@ -1171,7 +1231,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
-    idx = Map.fetch!(idx_map, {f.elem_type_id, e})
+    idx = Map.fetch!(idx_map, {f.elem_type_id, node_identity(e)})
     {leb_encode(idx), ids, order}
   end
 
@@ -1260,7 +1320,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:error, :malformed, reasoned(empty_report(), :malformed)}
 
           {:ok, fields, nodes} ->
-            {{value, report}, shared} = blob_namings(fn -> decode(desc, fields, nodes, ids) end)
+            {{value, report}, shared} =
+              with_node_directory(table, nodes, fn ->
+                blob_namings(fn -> decode_directory(desc, fields, nodes, ids) end)
+              end)
+
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             unknown = Enum.count(nodes, &(&1 == :unknown))
             report = %{report | unknown: report.unknown + unknown}
@@ -1595,40 +1659,145 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  # node_value resolves one node index to its value (docs/SPEC-TABLES.md §3.1):
-  # index 0 is null, 1 is the root (never a pointee), and k >= 2 is record
-  # k - 2. A blob node's value is its bytes; a table node's is the decoded body,
-  # on demand, so a pointer inside one node can name a node the table reaches
-  # later in the first-visit order. A node this reader cannot name reads null.
-  defp node_value(nodes, idx, ids) do
+  # Decode never follows a pointer. The directory gives constant-time index
+  # lookup; a stored pointer stays a private marker until all bodies are read.
+  defp with_node_directory(root, nodes, fun) do
+    prior = Process.get(:elixir_node_directory)
+    Process.put(:elixir_node_directory, {root, List.to_tuple(nodes)})
+
+    try do
+      fun.()
+    after
+      if prior == nil,
+        do: Process.delete(:elixir_node_directory),
+        else: Process.put(:elixir_node_directory, prior)
+    end
+  end
+
+  defp root_reference(f) do
+    {root, _directory} = Process.get(:elixir_node_directory)
+    if Map.get(f, :elem) == root, do: %{__wire_node__: 1}, else: nil
+  end
+
+  defp node_value(_nodes, idx, _ids) do
+    {_root, directory} = Process.get(:elixir_node_directory)
     at = idx - 2
 
-    if at < 0 or at >= length(nodes) do
+    if at < 0 or at >= tuple_size(directory) do
       :out_of_range
     else
-      case Enum.at(nodes, at) do
+      case elem(directory, at) do
         {:blob, bytes} -> {:value, bytes}
-        {:table, name, body} -> decode_node_table(nodes, name, body, ids, idx)
+        {:table, _name, _body} -> {:value, %{__wire_node__: idx}}
         _ -> :null
       end
     end
   end
 
-  defp decode_node_table(nodes, name, body, ids, idx) do
+  defp decoded_fields(name, body, ids) do
     desc = Map.fetch!(@tables, name)
 
-    # DAMAGE DISCARDS THE WHOLE LOAD (§4): a pointee record whose body cannot
-    # be framed, or that is damaged inside, refuses the load
     case entries(body, ids, desc.string_blob, :nested) do
-      {:ok, fields, []} ->
-        {value, report} = in_read_holder(idx, fn -> decode(desc, fields, nodes, ids) end)
-        if report.malformed, do: throw(:wire_damaged)
-        {:value, value}
-
-      _ ->
-        throw(:wire_damaged)
+      {:ok, fields, []} -> {desc, fields}
+      _ -> throw(:wire_damaged)
     end
   end
+
+  defp decode_directory(desc, fields, nodes, ids) do
+    {root, report} = decode(desc, fields, nodes, ids)
+
+    {records, report} =
+      nodes
+      |> Enum.with_index(2)
+      |> Enum.reduce({%{1 => root}, report}, fn
+        {{:table, name, body}, idx}, {records, report} ->
+          {node_desc, node_fields} = decoded_fields(name, body, ids)
+
+          {value, own_report} =
+            in_read_holder(idx, fn ->
+              decode(node_desc, node_fields, nodes, ids)
+            end)
+
+          {Map.put(records, idx, value), merge_report(report, own_report)}
+
+        _, state ->
+          state
+      end)
+
+    value = if report.malformed, do: %{}, else: assemble_directory(records)
+    {value, report}
+  end
+
+  # Kahn's pass starts at leaves. Each final stored pointer contributes one
+  # dependency, including false guards and records unreachable from the root.
+  # The by-value walk never follows a marker, sorts a map, or expands a DAG.
+  defp assemble_directory(records) do
+    {pending, parents, ready} =
+      Enum.reduce(records, {%{}, %{}, :queue.new()}, fn
+        {idx, value}, {pending, parents, ready} ->
+          refs = stored_references(value, [])
+
+          parents =
+            Enum.reduce(refs, parents, fn ref, parents ->
+              Map.update(parents, ref, [idx], fn xs -> [idx | xs] end)
+            end)
+
+          ready = if refs == [], do: :queue.in(idx, ready), else: ready
+          {Map.put(pending, idx, length(refs)), parents, ready}
+      end)
+
+    assembled = assemble_ready(ready, pending, parents, records, %{})
+    if map_size(assembled) != map_size(records), do: throw(:wire_damaged)
+    Map.get(assembled, 1, %{})
+  end
+
+  defp assemble_ready(ready, pending, parents, records, assembled) do
+    case :queue.out(ready) do
+      {:empty, _} ->
+        assembled
+
+      {{:value, idx}, ready} ->
+        value = resolve_stored(Map.fetch!(records, idx), assembled)
+        value = if idx == 1, do: value, else: Map.put(value, :__wire_identity__, idx)
+        assembled = Map.put(assembled, idx, value)
+
+        {pending, ready} =
+          Enum.reduce(Map.get(parents, idx, []), {pending, ready}, fn
+            parent, {pending, ready} ->
+              left = Map.fetch!(pending, parent) - 1
+              ready = if left == 0, do: :queue.in(parent, ready), else: ready
+              {Map.put(pending, parent, left), ready}
+          end)
+
+        assemble_ready(ready, pending, parents, records, assembled)
+    end
+  end
+
+  defp stored_references(%{__wire_node__: idx}, acc), do: [idx | acc]
+
+  defp stored_references(value, acc) when is_map(value),
+    do: Enum.reduce(value, acc, fn {_key, v}, acc -> stored_references(v, acc) end)
+
+  defp stored_references(value, acc) when is_list(value),
+    do: Enum.reduce(value, acc, &stored_references/2)
+
+  defp stored_references(value, acc) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.reduce(acc, &stored_references/2)
+
+  defp stored_references(_value, acc), do: acc
+
+  defp resolve_stored(%{__wire_node__: idx}, assembled), do: Map.fetch!(assembled, idx)
+
+  defp resolve_stored(value, assembled) when is_map(value),
+    do: Map.new(value, fn {key, v} -> {key, resolve_stored(v, assembled)} end)
+
+  defp resolve_stored(value, assembled) when is_list(value),
+    do: Enum.map(value, &resolve_stored(&1, assembled))
+
+  defp resolve_stored(value, assembled) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.map(&resolve_stored(&1, assembled)) |> List.to_tuple()
+
+  defp resolve_stored(value, _assembled), do: value
 
   # decode folds the field triples into a value, tolerantly (docs/SPEC-TABLES.md §4).
   # A reference that resolves ABOVE the entry count is framing damage on the
@@ -1767,14 +1936,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp read_payload(%{t: :pointer} = _f, payload, nodes, ids, report) do
+  defp read_payload(%{t: :pointer} = f, payload, nodes, ids, report) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report}
 
       {1, _} ->
-        # node index 1 is the ROOT, a table body, never a pointer's pointee
-        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        # Node index 1 resolves to the ROOT when the table type matches.
+        # All records' final stored slots are checked for resulting cycles;
+        # a different table type is a kind mismatch.
+        case root_reference(f) do
+          nil -> {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+          value -> {:cont, value, report}
+        end
 
       {idx, _} ->
         case node_value(nodes, idx, ids) do
@@ -2219,8 +2393,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {1, after_sub} ->
         # node index 1 is the ROOT, as at a pointer field
-        report = %{report | kind_mismatch: report.kind_mismatch + 1}
-        read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
+        value = root_reference(f)
+
+        report =
+          if value == nil, do: %{report | kind_mismatch: report.kind_mismatch + 1}, else: report
+
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
       {idx, after_sub} ->
         # a SLOT resolves the way a pointer field does (§3.1): an index above
@@ -2599,11 +2777,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # (§16.1); the reader places every key it can name, counts the rest and
   # clamps rather than truncating (§16.2). A node named more than once is
   # defined once under "&node" and named by "&node" alone after (§16.7).
-  # A table's sharing is content equality, the same rule save uses for one
-  # node record; a blob the tolerant read found named from two slots refuses
+  # A loaded table's sharing keeps its directory index; untagged authored
+  # maps share by content, just as save does. A blob named from two slots refuses
   # the text by name, blob_shared (§2.5, §16.7).
 
-  def to_json(table, value) when is_map(value) do
+  def to_json(table, value) when is_map(value),
+    do: with_node_identities(fn -> to_json_identity(table, value) end)
+
+  defp to_json_identity(table, value) do
     desc = Map.fetch!(@tables, table)
     value = Map.merge(defaults(desc), value)
     counts = tally_refs(desc, value, %{})
@@ -2738,7 +2919,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp tally_field(_f, _v, acc), do: acc
 
   defp tally_node(name, v, acc) do
-    key = {:table, name, v}
+    key = {:table, name, node_identity(v)}
     prev = Map.get(acc, key, 0)
     acc = Map.put(acc, key, prev + 1)
 
@@ -2805,7 +2986,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # A node named again is defined at the first write, label from 1, and every
   # later write is {"&node": N} alone (§16.7).
   defp json_node(table, value, depth) do
-    key = {:table, table, value}
+    key = {:table, table, node_identity(value)}
     n = Map.get(Process.get(:elixir_json_refs, %{}), key, 1)
 
     if n < 2 do
@@ -4440,8 +4621,14 @@ const variableRetainSource = `
           {:ok, fields, nodes} ->
             # the node directory's memo: a node a second pointer names is the
             # one value, read and retained once (§6.6, the path's first step)
-            retain = Map.put(retain, :memo, %{})
-            {value, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
+            {{value, report, retain}, shared} =
+              with_node_directory(table, nodes, fn ->
+                blob_namings(fn ->
+                  decode_directory_retain(desc, fields, nodes, ids, retain, report)
+                end)
+              end)
+
+            report = Map.put(report, :blob_shared, shared)
             report = if :malformed in nodes, do: %{report | malformed: true}, else: report
             # an unknown NODE RECORD whose type id this reader cannot name is an
             # excluded class (§6.6): one retain_lost, counted once at the record
@@ -4502,7 +4689,10 @@ const variableRetainSource = `
     :non_finite_float -> {:error, :non_finite_float, report, retain}
   end
 
-  defp save_retain_internal(table, value, retain, report) do
+  defp save_retain_internal(table, value, retain, report),
+    do: with_node_identities(fn -> save_retain_identity(table, value, retain, report) end)
+
+  defp save_retain_identity(table, value, retain, report) do
     desc = Map.fetch!(@tables, table)
 
     try do
@@ -4916,7 +5106,7 @@ const variableRetainSource = `
        ) do
     with {_len, <<17, count_rest::binary>>} <- leb(payload),
          {n, elems} <- leb(count_rest) do
-      {value, report, retain} = read_pointers_retain(elems, n, nodes, ids, [], report, retain)
+      {value, report, retain} = read_pointers_retain(f, elems, n, nodes, ids, [], report, retain)
       clamp_retain(value, f, report, retain)
     else
       {_len, _other} -> {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
@@ -4949,13 +5139,16 @@ const variableRetainSource = `
     end
   end
 
-  defp read_payload_retain(%{t: :pointer}, payload, nodes, ids, report, retain, _path) do
+  defp read_payload_retain(%{t: :pointer} = f, payload, nodes, ids, report, retain, _path) do
     case leb(payload) do
       {0, _} ->
         {:cont, nil, report, retain}
 
       {1, _} ->
-        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+        case root_reference(f) do
+          nil -> {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+          value -> {:cont, value, report, retain}
+        end
 
       {idx, _} ->
         case node_value_retain(nodes, idx, ids, report, retain) do
@@ -5277,75 +5470,67 @@ const variableRetainSource = `
   end
 
   # the elements of an array of unions, and of pointers
-  defp read_pointers_retain(_rest, 0, _nodes, _ids, acc, report, retain),
+  defp read_pointers_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain),
     do: {Enum.reverse(acc), report, retain}
 
-  defp read_pointers_retain(rest, n, nodes, ids, acc, report, retain) do
+  defp read_pointers_retain(f, rest, n, nodes, ids, acc, report, retain) do
     case leb(rest) do
       {0, after_sub} ->
-        read_pointers_retain(after_sub, n - 1, nodes, ids, [nil | acc], report, retain)
+        read_pointers_retain(f, after_sub, n - 1, nodes, ids, [nil | acc], report, retain)
 
       {idx, after_sub} ->
         {value, report, retain} =
-          case node_value_retain(nodes, idx, ids, report, retain) do
-            {{:value, v}, report, retain} when is_map(v) -> {v, report, retain}
-            {_, report, retain} -> {nil, report, retain}
+          case if(idx == 1,
+                 do: {{:value, root_reference(f)}, report, retain},
+                 else: node_value_retain(nodes, idx, ids, report, retain)
+               ) do
+            {{:value, v}, report, retain} when is_map(v) ->
+              {v, report, retain}
+
+            {:out_of_range, report, retain} ->
+              {nil, %{report | malformed: true}, retain}
+
+            {:null, report, retain} ->
+              {nil, report, retain}
+
+            {_, report, retain} ->
+              {nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
           end
 
-        read_pointers_retain(after_sub, n - 1, nodes, ids, [value | acc], report, retain)
+        read_pointers_retain(f, after_sub, n - 1, nodes, ids, [value | acc], report, retain)
 
       :error ->
         {Enum.reverse(acc), %{report | malformed: true}, retain}
     end
   end
 
-  # node_value_retain is node_value with the node's body retaining, once: the
-  # first pointer to name a node reads it under the path {:node, k} (§6.6, the
-  # path's first step) and every later one answers the same value. The value
-  # carries k, so a save finds the node's records after the caller edits it.
-  defp node_value_retain(nodes, idx, ids, report, retain) do
-    at = idx - 2
+  defp node_value_retain(nodes, idx, ids, report, retain),
+    do: {node_value(nodes, idx, ids), report, retain}
 
-    if at < 0 or at >= length(nodes) do
-      {:out_of_range, report, retain}
-    else
-      case Enum.at(nodes, at) do
-        {:blob, bytes} -> {{:value, bytes}, report, retain}
-        {:table, name, body} -> node_table_retain(nodes, name, body, ids, idx, report, retain)
-        _ -> {:null, report, retain}
-      end
-    end
-  end
+  defp decode_directory_retain(desc, fields, nodes, ids, retain, report) do
+    {root, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
 
-  defp node_table_retain(nodes, name, body, ids, idx, report, retain) do
-    case retain.memo do
-      %{^idx => :pending} ->
-        {:null, report, retain}
+    {records, report, retain} =
+      nodes
+      |> Enum.with_index(2)
+      |> Enum.reduce({%{1 => root}, report, retain}, fn
+        {{:table, name, body}, idx}, {records, report, retain} ->
+          {node_desc, node_fields} = decoded_fields(name, body, ids)
 
-      %{^idx => value} ->
-        {{:value, value}, report, retain}
+          {value, report, retain} =
+            in_read_holder(idx, fn ->
+              decode_retain(node_desc, node_fields, nodes, ids, retain, report, [{:node, idx}])
+            end)
 
-      memo ->
-        desc = Map.fetch!(@tables, name)
+          value = Map.put(value, :__retain_node__, idx)
+          {Map.put(records, idx, value), report, retain}
 
-        case entries(body, ids, desc.string_blob, :nested) do
-          {:ok, fields, []} ->
-            retain = %{retain | memo: Map.put(memo, idx, :pending)}
+        _, state ->
+          state
+      end)
 
-            {value, report, retain} =
-              in_read_holder(idx, fn ->
-                decode_retain(desc, fields, nodes, ids, retain, report, [{:node, idx}])
-              end)
-
-            value = Map.put(value, :__retain_node__, idx)
-            {{:value, value}, report, %{retain | memo: Map.put(retain.memo, idx, value)}}
-
-          _ ->
-            # a pointee record the walk cannot finish is damage, and the whole
-            # load is discarded (§4), as decode_node_table holds it
-            {:null, %{report | malformed: true}, retain}
-        end
-    end
+    value = if report.malformed, do: %{}, else: assemble_directory(records)
+    {value, report, retain}
   end
 
   defp read_elements_retain(_desc, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
