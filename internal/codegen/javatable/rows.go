@@ -318,13 +318,20 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)
 		g.f("    /** the raw SIGNED SELF-RELATIVE delta; zero is null. */\n")
 		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n\n", name, pieces[0].Offset)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		what := "string"
 		if f.Type.Kind == ir.TBytes {
 			what = "bytes"
 		}
+		if f.Type.Kind == ir.TWString {
+			what = "wstring"
+		}
 		g.f("    /** %s(%d): the buffer's own offset and the used length beside it (§7.2).\n", what, f.Type.Size)
-		g.f("     *  The used bytes are data[%sAt(at) .. +%sLength(data, at)]. */\n", name, name)
+		if f.Type.Kind == ir.TWString {
+			g.f("     *  The used length counts UTF-16 code units, two bytes each. */\n")
+		} else {
+			g.f("     *  The used bytes are data[%sAt(at) .. +%sLength(data, at)]. */\n", name, name)
+		}
 		g.f("    public static int %sAt(int at) { return at + %d; }\n", name, pieces[0].Offset)
 		g.f("    public static int %sLength(byte[] data, int at) {\n", name)
 		g.f("        int used = TableBytes.i32(data, at + %d);\n", pieces[1].Offset)
@@ -513,9 +520,9 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 			countOffset = pieces[len(pieces)-2].Offset
 		}
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		// Only an INLINE string(N)/bytes(N) carries a count companion beside its
-		// bytes; a *string/*bytes BLOB is a pointer slot (REFERENCE, §2.5, §6.3)
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+		// Only inline string(N), wstring(N), or bytes(N) carries a count companion
+		// beside its buffer; a *string/*bytes BLOB is a pointer slot (REFERENCE, §2.5, §6.3)
 		// and has no companion, so its countOffset stays -1.
 		if !f.Type.Pointer {
 			countOffset = pieces[1].Offset
@@ -531,8 +538,8 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 		bound = f.ArrayBound
 		elemSize = pieces[0].Size / bound
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		// the COUNT COMPANION of a string or a `bytes` bounds a walker just as an
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+		// the count companion of text or bytes bounds a walker just as an
 		// array's does (§7.4), and the bound is the declared length
 		bound = f.Type.Size
 		isArray = false
@@ -560,6 +567,8 @@ func cookStorageKind(f *ir.Field) string {
 		return "FLOAT"
 	case ir.TString:
 		return "STRING"
+	case ir.TWString:
+		return "WSTRING"
 	case ir.TBytes:
 		return "BYTES"
 	case ir.TBits:

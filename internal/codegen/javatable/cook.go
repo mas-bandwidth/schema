@@ -168,13 +168,6 @@ func cookableClosure(u *ir.Unit, st *ir.Struct) string {
 		if f == nil {
 			return ""
 		}
-		// A WSTRING is retired (the wstring-removed-utf8 ruling, docs/rulings.json):
-		// the Java cook form carries no wstring slot, so a closure that holds
-		// one by value gets the stub, named here, rather than a writer that
-		// refuses every value at measure.
-		if f.Type.Kind == ir.TWString && !f.Type.Pointer {
-			return owner + "." + f.Name + " is a wstring, which is retired (docs/rulings.json wstring-removed-utf8); the Java cook carries no wstring slot"
-		}
 		// a map's key and value are its entry's fields
 		if f.IsMap() {
 			for _, ef := range f.MapEntry.Fields {
@@ -256,6 +249,7 @@ public enum TableCookStorage {
     WIDE, // a 128-bit integer: sixteen bytes at sixteen, one eight-byte lane per half
     LIST, // a []T holder: sixteen bytes, a self-relative reference and an int32 count (§2.9)
     MAP, // a map holder: the same sixteen bytes over its sorted entry array (§2.8)
+    WSTRING, // char16_t[N + 1] with an int32 used length in UTF-16 code units
 }
 `
 
