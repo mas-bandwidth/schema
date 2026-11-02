@@ -561,13 +561,15 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 
 // emitWriteUfixed routes an unsigned fixed write. The C runtime's fixed
 // entries take SIGNED values and sign-extend them into the shared unsigned
-// 128-bit core, so an unsigned raw must arrive zero-extended: storage of 32
-// bits or fewer zero-extends through the fixed64 entry's int64 value, 64-bit
-// storage zero-extends into the fixed128 entry's low lane, and 128-bit
-// storage bit-casts lane for lane. The wire sees only the raw span — the
-// bounds and F — so the entry width never moves a byte (the core derives the
-// bit count from the span alone, and the signed narrow path already leans on
-// the same property).
+// 128-bit core, and validate that the whole-unit bounds fit the signed Q I.F
+// declaration: storage of 32 bits or fewer zero-extends through the fixed64
+// entry's int64 value with IntBits + 1, and 64-bit storage zero-extends into
+// the fixed128 entry's low lane with IntBits + 1. For 128-bit storage,
+// IntBits < 64 has no spare 129th sign bit, so it translates the whole-unit
+// bounds by -2^(I-1) and toggles the high lane's sign bit
+// (hi ^ 0x8000000000000000ULL), while IntBits >= 64 bit-casts lane for lane
+// with unchanged bounds. The wire sees only the raw span and offset, so the
+// entry width and sign-bit translation never move a byte.
 func (g *gen) emitWriteUfixed(f *ir.Field, expr, ind string) {
 	lo := g.renderIntSuffixed(f.IntMinExpr, f.IntMin, "LL")
 	hi := g.renderIntSuffixed(f.IntMaxExpr, f.IntMax, "LL")
