@@ -507,7 +507,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
-    if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
+    if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false;
@@ -528,6 +528,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       if (path !== null) { path.push({ o: fd.o, i: order === 0 ? ents.length - 1 : ents.length }); }
       TableVariableBodyRead(fd.c, new TableVariableReader(r.b, eat, eat + elen), table, entry, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
+      if (TableVariableCountRefused(report)) { return false; }
       entry.key = scan.key;
       if (order === 0) { ents[ents.length - 1] = entry; report.duplicate++; continue; }
       ents.push(entry);
@@ -585,6 +586,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.push({ o: fd.o, i: slot }); }
         TableVariableBodyRead(fd.e.c, er, table, inst, report, st, true, retain, path);
         if (path !== null) { path.pop(); }
+        if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.malformed = true; inst = fd.e.c.make(); }
         arr[slot] = inst;
         break;
@@ -641,6 +643,7 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
     if (path !== null) { path.push({ o: o, i: 0 }); }
     TableVariableBodyRead(arm.c, sub, table, inst, report, st, true, retain, path);
     if (path !== null) { path.pop(); }
+    if (TableVariableCountRefused(report)) { return undefined; }
     if (sub.at !== end) { report.malformed = true; } else { out = { arm: arm.name, value: inst }; }
   } else {
     out = TableVariableArmRead(arm, sub, table, report, st, retain, path, o);
@@ -811,13 +814,15 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
+  const mapField = inp.field;
   v[fd.n] = new Map();
   for (;;) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; break; }
     if (ch === "") { inp.bad = true; return false; }
+    inp.field = mapField;
     const ks = inp.str();
-    if (ks === null) { return false; }
+    if (!TableVariableStoredText(ks, inp, report)) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
     let key = ks, status = "ok";
