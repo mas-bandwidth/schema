@@ -1,0 +1,8 @@
+# carried findings: row	slug	input	one line
+# every line is a FIX-CARD the JavaScript port owes; the runner fails if one goes green (test/js-hostile/runner.mjs)
+# a row is the case name, or <case>@<tier>-<mode> for a packet case
+conformance-str-zero-byte-bounded	js-hostile-conformance-str-zero-byte-bounded	inputs/conformance-str-zero-byte-bounded.json	the text reader accepts a \u0000 escape in a bounded string field and stores the U+0000; the engine refuses text_holds_zero (docs/roadmap.sexp security/js-text-form-nul)
+conformance-str-zero-byte-bounded-nested	js-hostile-conformance-str-zero-byte-bounded-nested	inputs/conformance-str-zero-byte-bounded-nested.json	the text reader accepts a \u0000 escape in a bounded string inside a nested table list and stores the U+0000; the engine refuses text_holds_zero (docs/roadmap.sexp security/js-text-form-nul)
+conformance-str-zero-escape-map-key	js-hostile-conformance-str-zero-escape-map-key	inputs/conformance-str-zero-escape-map-key.json	the text reader accepts a \u0000 escape in a string map key and stores the U+0000; the engine refuses text_holds_zero (docs/roadmap.sexp security/js-text-form-nul)
+conformance-str-zero-escape-value	js-hostile-conformance-str-zero-escape-value	inputs/conformance-str-zero-escape-value.json	the text reader accepts a \u0000 escape in a string field and stores the U+0000; the engine refuses text_holds_zero (docs/roadmap.sexp security/js-text-form-nul)
+wire-count-refusal	js-hostile-wire-count-refusal	inputs/wire-count-refusal.bin	a collection count past the int32 storage cap is answered malformed (damaged) where the engine names count_refusal

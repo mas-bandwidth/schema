@@ -1,0 +1,10 @@
+// probe.schema — a variable root whose one collection is what the engine's
+// builder-path CountRefusal can name (internal/tablewire/decodenodes.go): a
+// count past the int32 storage cap refuses the partial value before an entry
+// is read. It exists only so the hostile corpus can carry that verdict.
+package probe
+
+table Root
+{
+    entries map[int32]int32
+}

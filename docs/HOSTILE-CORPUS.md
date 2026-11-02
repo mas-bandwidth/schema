@@ -96,7 +96,11 @@ in the release and the debug profile, each case in a child process on a
 (`test/cs-hostile/Runner.cs`; `test/cs-hostile/gen` writes the dispatch from the
 manifest, and each case runs in a pooled worker process on a 512 KiB stack
 thread, so a stack overflow or a hang fails only its own case; a variable
-root's `wire` case must agree on the managed and the native region load). Each carries the disagreements
+root's `wire` case must agree on the managed and the native region load).
+JavaScript: `make schema-js-runs-hostile-corpus` (`test/js-hostile/runner.mjs`,
+every carrier, each row on its own worker thread under the per-case time budget;
+a packet case runs both read tiers, runtime and flat, under NODE_ENV development
+and production, one row each). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
