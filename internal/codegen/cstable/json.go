@@ -205,7 +205,7 @@ public static class TableJson
         if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
         if (f.IsArray) { return 'a'; }
         if (f.Arms != null) { return 'o'; }        // union: an object with ONE key
-        if (f.Kind == 13) { return 'o'; }          // nested table or type
+        if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; } // nested table or type
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
@@ -216,7 +216,8 @@ public static class TableJson
     static char ElementShape(TableFieldInfo f)
     {
         if (f.Kind == 17) { return f.BlobKind != 0 ? 's' : 'o'; }
-        if (f.Kind == 13 || f.Kind == 15) { return 'o'; }
+        if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; }
+        if (f.Kind == 15) { return 'o'; }
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
@@ -792,6 +793,7 @@ public static class TableJson
     static bool WriteValue(ref Out o, object value, TableTypeInfo info, int depth, bool definition = false)
     {
         if (depth > MaxDepth) { return false; }
+        if (info.JsonArray) { return info.NumFields == 1 && WriteField(ref o, value, info.Fields[0], depth); }
         bool any = definition;
         bool wrote = false;
         for (int i = 0; i < info.NumFields; i++)
@@ -1854,6 +1856,15 @@ public static class TableJson
     static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
     {
         if (depth > MaxDepth) { input.Bad = true; return false; }
+        if (info.JsonArray)
+        {
+            if (info.NumFields != 1 || Peek(text, ref input) != '[')
+            {
+                input.Report.Reason ??= "json_root_not_array: " + info.Name;
+                input.Bad = true; return false;
+            }
+            return ReadField(text, ref input, value, info.Fields[0], depth);
+        }
         if (!opened) { if (Peek(text, ref input) != '{') { input.Bad = true; return false; } input.Pos++; }
         // duplicate tracking, bounded and allocation-free: a table with more
         // fields than this still reads, its repeats simply stop being counted

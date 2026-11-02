@@ -891,6 +891,7 @@ public sealed class TableTypeInfo
     public Func<object> Create;
     public int StorageSize, StorageAlign, RegionAlign;
     public bool Variable;
+    public bool JsonArray;
     internal int RootElemSlots;
     public Func<TableTypeInfo[]> PointerTypes;
     public Func<ulong, TableTypeInfo> PointerType;
