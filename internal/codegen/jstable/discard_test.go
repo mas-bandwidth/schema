@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -158,6 +159,7 @@ console.log("ok");
 // The message batch's half is TestMessageFormBatchJavaScript/damage: a damaged
 // batch delivers no body. Red if any read hands back what it decoded.
 func TestDamageDiscardsTheWholeLoadJavaScript(t *testing.T) {
+	slowtest.Gate(t, "node (whole read discard)")
 	t.Parallel()
 
 	t.Run("nested", func(t *testing.T) {
