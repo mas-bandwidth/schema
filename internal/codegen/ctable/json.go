@@ -2549,6 +2549,23 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
+static SCHEMA_UNUSED int schema_table_json_require_seen_( TableJsonIn * in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
+{
+    int32_t i;
+    for ( i = 0; i < info->num_fields && i < 512; i++ )
+    {
+        const TableFieldInfo * f = &info->fields[i];
+        if ( !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( (uint64_t) 1 << ( i & 63 ) ) ) == 0 )
+        {
+            in->report->missing_required++;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth, const char * first_key )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
@@ -2566,7 +2583,7 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
         else
         {
             c = table_json_peek(in);
-            if ( c == '}' ) { in->pos++; return 1; }
+            if ( c == '}' ) { in->pos++; return schema_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( !table_json_scan_string(in,key,kTableJsonMaxKey-1,&key_length) ) { return 0; }
             key[key_length] = 0;
@@ -2638,7 +2655,7 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
         }
         c = table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-        if ( c == '}' ) { in->pos++; return 1; }
+        if ( c == '}' ) { in->pos++; return schema_table_json_require_seen_( in, base, info, seen ); }
         in->bad = 1;
         return 0;
     }
@@ -2664,6 +2681,7 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
     TableReport ignored;
     TableJsonIn in;
     int ok;
+    int32_t missing_before;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
     in.size = bytes;
@@ -2678,6 +2696,7 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
         return 0;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    missing_before = in.report->missing_required;
     ok = table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
@@ -2686,7 +2705,7 @@ static SCHEMA_UNUSED int table_json_read( void * value, const TableTypeInfo * in
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = 1;
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; }
         return 0;
     }
     return 1;

@@ -651,7 +651,7 @@ func (g *tableGen) emitWireScalarLeafMeasure(st *ir.Struct) {
 	}
 	for _, f := range st.Fields {
 		if f.Array != ir.ArrayNone || f.IsList() || f.IsMap() || f.KeyEnum != "" ||
-			f.Type.Optional || f.Type.Pointer || enumRef(f) != nil || tableKindWidth(ir.TableWireScalarKind(f)) == 0 {
+			f.Type.Optional || f.Required || f.Type.Pointer || enumRef(f) != nil || tableKindWidth(ir.TableWireScalarKind(f)) == 0 {
 			return
 		}
 	}
@@ -730,26 +730,36 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.pf("        if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
 			condition = expr + "_count > 0"
 		case f.KeyEnum != "":
-			g.pf("        int rides = 0; int32_t i;\n        for ( i = 0; i < %s; i++ )\n        {\n", enumMaxConst(f.KeyEnum))
-			g.wireKeyedRides(f, "            ")
-			g.pf("            rides = 1; break;\n        }\n")
-			condition = "rides"
+			if f.Required {
+				condition = "1"
+			} else {
+				g.pf("        int rides = 0; int32_t i;\n        for ( i = 0; i < %s; i++ )\n        {\n", enumMaxConst(f.KeyEnum))
+				g.wireKeyedRides(f, "            ")
+				g.pf("            rides = 1; break;\n        }\n")
+				condition = "rides"
+			}
 		case f.Array == ir.ArrayFixed:
-			if kind == tkTable {
+			if kind == tkTable || f.Required {
 				condition = "1"
 			} else {
 				g.pf("        int rides = 0; int32_t i;\n        for ( i = 0; i < %d; i++ ) { if ( !( %s ) ) { rides = 1; break; } }\n", f.ArrayBound, g.wireDefaultEquals(f, expr+"[i]"))
 				condition = "rides"
 			}
 		case kind == tkTable:
-			g.pf("        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;\n        if ( !%s( &default_probe, &%s ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
-			g.pf("        table_writer_rewind(&default_probe);\n")
-			condition = "default_probe.offset > 1"
+			if f.Required {
+				condition = "1"
+			} else {
+				g.pf("        TableWriter default_probe = table_writer_probe( w ); default_probe.check_default = 1;\n        if ( !%s( &default_probe, &%s ) ) { return 0; }\n", g.api(f.Type.Name, "save_body"), expr)
+				g.pf("        table_writer_rewind(&default_probe);\n")
+				condition = "default_probe.offset > 1"
+			}
 		case kind == tkUnion:
 			condition = expr + ".type != " + enumConst(f.Type.Name+"Type", "None")
 		}
 		if f.Type.Optional {
 			condition = expr + "_present"
+		} else if f.Required {
+			condition = "1"
 		}
 		g.pf("        if ( %s )\n        {\n", condition)
 		if g.canProbe(st) {
