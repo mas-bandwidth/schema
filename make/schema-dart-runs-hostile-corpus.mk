@@ -5,8 +5,12 @@
 # The corpus is the committed portable directory
 # internal/ci/hostilecorpus/corpus: manifest.tsv plus one raw input per line,
 # with the Go engine's verdicts. This target generates the units the manifest
-# names and hands every input to the port's own reader
-# (test/dart-hostile/runner.dart). Reads files only: no network, no clock.
+# names (the table units below, and the packet units its `packet` rows name,
+# through make/hostile-packet-units.sh), writes the runner's bindings from the
+# manifest (test/dart-hostile/dispatch_gen.dart -> build/dart-hostile/dispatch.dart)
+# and hands every input to the port's own reader (test/dart-hostile/runner.dart).
+# Reads files only: no network, no clock. Each case runs in its own isolate
+# under a 5 s budget (HOSTILE_CASE_BUDGET_MS overrides).
 #
 # A disagreement the port already owes is carried, by name, in
 # test/dart-hostile/known-findings.tsv and printed as a FIX-CARD. A disagreement
@@ -17,8 +21,9 @@
 # scratch copy so every accepted text input is refused, and requires the runner
 # to go red naming an unexplained case, and no wire or announce case (message-valid
 # states its decoded defaults through the text read of `{}`, so it reddens too).
-# It runs the unplanted target first (its
-# prerequisite), so the pull-request negative-control row carries both halves.
+# Then it runs the real units with a 0 ms budget and requires a case to go red
+# over budget. It runs the unplanted target first (its prerequisite), so the
+# pull-request negative-control row carries both halves.
 
 DART_HOSTILE_CORPUS   ?= internal/ci/hostilecorpus/corpus
 DART_HOSTILE_BUILD    := build/dart-hostile
@@ -41,8 +46,17 @@ $(DART_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-dart-runs-hostile
 	done
 	@touch $@
 
+$(DART_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh make/schema-dart-runs-hostile-corpus.mk \
+		$(DART_HOSTILE_CORPUS)/manifest.tsv
+	sh make/hostile-packet-units.sh dart $(DART_HOSTILE_BUILD)/packet $(DART_HOSTILE_CORPUS)/manifest.tsv
+	@touch $@
+
+$(DART_HOSTILE_BUILD)/dispatch.dart: $(DART_HOSTILE_BUILD)/generated/.stamp $(DART_HOSTILE_BUILD)/packet/.stamp \
+		test/dart-hostile/dispatch_gen.dart $(DART_HOSTILE_CORPUS)/manifest.tsv
+	$(DART) run test/dart-hostile/dispatch_gen.dart "$(DART_HOSTILE_CORPUS)" $(DART_HOSTILE_BUILD)
+
 .PHONY: schema-dart-runs-hostile-corpus
-schema-dart-runs-hostile-corpus: $(DART_HOSTILE_BUILD)/generated/.stamp
+schema-dart-runs-hostile-corpus: $(DART_HOSTILE_BUILD)/dispatch.dart
 	$(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)"
 
 test-dart: schema-dart-runs-hostile-corpus
@@ -51,6 +65,8 @@ test-dart: schema-dart-runs-hostile-corpus
 schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpus
 	@rm -rf $(DART_HOSTILE_BUILD)/plant && mkdir -p $(DART_HOSTILE_BUILD)/plant/build/dart-hostile $(DART_HOSTILE_BUILD)/plant/test/dart-hostile
 	@cp -R $(DART_HOSTILE_BUILD)/generated $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated
+	@cp -R $(DART_HOSTILE_BUILD)/packet $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/packet
+	@cp $(DART_HOSTILE_BUILD)/dispatch.dart $(DART_HOSTILE_BUILD)/plant/build/dart-hostile/dispatch.dart
 	@cp test/dart-hostile/runner.dart $(DART_HOSTILE_BUILD)/plant/test/dart-hostile/runner.dart
 	@sed -i.orig "s|^  final root = _jsonDecodeExact(_jsonPrepare(text, r));|  final root = _jsonDecodeExact(_jsonPrepare(text, r)); throw const FormatException('PLANTED');|" \
 		$(DART_HOSTILE_BUILD)/plant/build/dart-hostile/generated/*/*Wire.dart
@@ -67,4 +83,11 @@ schema-dart-runs-hostile-corpus-negative-control: schema-dart-runs-hostile-corpu
 		echo 'NEGATIVE CONTROL FAILED: a text-reader plant turned a wire, message or announce case red'; \
 		cat $(DART_HOSTILE_BUILD)/plant/log; exit 1; fi
 	@tail -1 $(DART_HOSTILE_BUILD)/plant/log
-	@echo 'dart hostile-corpus negative control: a text reader that refuses accepted inputs reds the corpus; unplanted it is green'
+	@if HOSTILE_CASE_BUDGET_MS=0 $(DART) run test/dart-hostile/runner.dart "$(DART_HOSTILE_CORPUS)" "$(DART_HOSTILE_FINDINGS)" \
+			> $(DART_HOSTILE_BUILD)/plant/budget.log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: a 0 ms case budget left the corpus green'; \
+		cat $(DART_HOSTILE_BUILD)/plant/budget.log; exit 1; fi
+	@grep -q '^FAIL .* got=error over budget' $(DART_HOSTILE_BUILD)/plant/budget.log || \
+		{ echo 'NEGATIVE CONTROL FAILED: a 0 ms case budget went red without naming a case over budget'; \
+		  cat $(DART_HOSTILE_BUILD)/plant/budget.log; exit 1; }
+	@echo 'dart hostile-corpus negative control: a text reader that refuses accepted inputs reds the corpus, so does a 0 ms budget; unplanted it is green'

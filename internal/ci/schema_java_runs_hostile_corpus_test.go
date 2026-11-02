@@ -37,7 +37,7 @@ func TestSchemaJavaRunsHostileCorpusWiring(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the port runner is missing: %v", err)
 	}
-	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "fromJson", "loadMessages"} {
+	for _, want := range []string{"manifest.tsv", "FIX-CARD", "known-findings.tsv", "fromJson", "loadMessages", "loadRetain", "\"packet\"", "512 * 1024", "HOSTILE_CASE_BUDGET_MS"} {
 		if !strings.Contains(string(runner), want) {
 			t.Errorf("test/java-hostile/Runner.java does not carry %q", want)
 		}

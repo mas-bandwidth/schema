@@ -1128,6 +1128,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-cs-runs-hostile-corpus.yml:negative-control",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
 		"schema-dart-generated-strict-analyze-gate.yml:nightly",
+		"schema-dart-runs-hostile-corpus.yml:corpus",
+		"schema-dart-runs-hostile-corpus.yml:negative-control",
 		"schema-elixir-runs-hostile-corpus.yml:corpus",
 		"schema-elixir-runs-hostile-corpus.yml:negative-control",
 		"schema-go-generated-golangci-lint-gate.yml:gate",
