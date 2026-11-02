@@ -80,7 +80,13 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
-	fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
+	if st.Integrity != "" {
+		b.WriteString("        byte[] wire = TableVariable.integrityOpen(data, report);\n")
+		b.WriteString("        if (wire == null) { return null; }\n")
+		b.WriteString("        TableVariable.Reader r = TableVariable.open(wire, report);\n")
+	} else {
+		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
+	}
 	b.WriteString("        if (r == null) { return null; }\n")
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
 	if st.FixedDeclared {
@@ -325,6 +331,9 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("        w.put8(0);\n")
 	b.WriteString("        w.trailer();\n")
 	// a NaN or an infinity refuses the save (docs/SPEC-TABLES.md §3.3)
+	if st.Integrity != "" {
+		b.WriteString("        if (!w.overflow && !ids.nonFinite) { w.put32(TableVariable.crc32c(w.buf, w.off)); }\n")
+	}
 	b.WriteString("        return w.overflow || ids.nonFinite ? -1 : w.off;\n")
 	b.WriteString("    }\n\n")
 

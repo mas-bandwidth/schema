@@ -1807,7 +1807,11 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 
 	g.pf("    /** A FILE: the form byte, the layout, then the records to the end of it. */\n")
 	g.pf("    public static int measure(int count) {\n")
-	g.pf("        return headerBytes + count * recordBytes;\n")
+	if st.Integrity != "" {
+		g.pf("        return headerBytes + count * recordBytes + 4;\n")
+	} else {
+		g.pf("        return headerBytes + count * recordBytes;\n")
+	}
 	g.pf("    }\n\n")
 
 	g.pf("    /** THE WRITE: the header once, then per record the hash and a straight\n")
@@ -1836,6 +1840,9 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("            writeBody(buffer, at + 8, values[k]);\n")
 	g.pf("            at += recordBytes;\n")
 	g.pf("        }\n")
+	if st.Integrity != "" {
+		g.pf("        TableFixed.put32(buffer, at, TableFixed.crc32c(buffer, at));\n")
+	}
 	g.pf("        return need;\n")
 	g.pf("    }\n\n")
 
@@ -1885,6 +1892,15 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    public static int load(Value[] values, int count, byte[] data,\n")
 	g.pf("                           TableFixed.Entry[] plan, short[] remap, byte[] image,\n")
 	g.pf("                           TableFixed.Report report) {\n")
+	if st.Integrity != "" {
+		g.pf("        if (data != null && data.length >= 1 && data[0] == TableFixed.form) {\n")
+		g.pf("            if (!TableFixed.integrityHolds(data)) {\n")
+		g.pf("                report.malformed = true;\n")
+		g.pf("                return -1;\n")
+		g.pf("            }\n")
+		g.pf("            data = java.util.Arrays.copyOf(data, data.length - 4);\n")
+		g.pf("        }\n")
+	}
 	g.pf("        // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,\n")
 	g.pf("        // and 20 + L is inside the file. The first is framing damage and has no\n")
 	g.pf("        // name; the other two refuse by name.\n")

@@ -8,5 +8,6 @@ func init() {
 		carryTimestamp,
 		carryOptionalMap,
 		carryRequired,
+		carryIntegrity,
 	)
 }

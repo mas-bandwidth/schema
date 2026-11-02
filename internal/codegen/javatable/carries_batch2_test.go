@@ -288,6 +288,14 @@ func TestJavaRequiredCarry(t *testing.T) {
 
 enum Key { A, B }
 
+table Other {
+    ver uint8
+}
+
+table RequiredEmpty {
+    value Other | required
+}
+
 table KeyedReq {
     values [Key]int32 | required
 }
@@ -354,6 +362,17 @@ public final class Main {
         rep.reset();
         GuardedReqVariable.Value gj3 = GuardedReqVariable.fromJson("{\"active\":true}".getBytes(StandardCharsets.UTF_8), rep);
         check(gj3 == null && rep.refused && rep.missingRequired == 1 && "missing_required: token, count".equals(rep.reason), "JSON active without token or count refuses: " + rep.reason);
+
+        // 3. stella-507f9ad0de25: required by-value nested table at default emits 0-field nested table header
+        RequiredEmptyVariable.Value rev = new RequiredEmptyVariable.Value();
+        byte[] reWire = RequiredEmptyVariable.save(rev);
+        check(reWire != null && reWire.length == 22 && reWire[0] == 1 && reWire[1] == 1 && reWire[2] == 13 && reWire[3] == 1 && reWire[4] == 0 && reWire[5] == 0, "stella-507f9ad0de25 save");
+        rep.reset();
+        RequiredEmptyVariable.Value reLoaded = RequiredEmptyVariable.load(reWire, rep);
+        check(reLoaded != null && !rep.refused && rep.missingRequired == 0, "stella-507f9ad0de25 load");
+        rep.reset();
+        byte[] reRetWire = RequiredEmptyRetain.saveRetain(rev, new TableRetain(1 << 16, 1 << 10), rep);
+        check(Arrays.equals(reWire, reRetWire), "stella-507f9ad0de25 saveRetain");
 
         System.out.println("REQUIRED OK");
     }
