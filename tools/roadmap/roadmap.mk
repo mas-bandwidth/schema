@@ -8,7 +8,7 @@
 # registry wildcard stays live compiler backends only.
 SBCL ?= sbcl
 
-.PHONY: roadmap roadmap-check roadmap-test
+.PHONY: roadmap roadmap-check roadmap-original-nine-check roadmap-test
 roadmap:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp docs/roadmap.sexp ROADMAP.md
@@ -16,6 +16,12 @@ roadmap:
 roadmap-check:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-check REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
 	$(SBCL) --script tools/roadmap/render.lisp --check docs/roadmap.sexp ROADMAP.md
+
+# Release/conformance acceptance: the original nine must be complete in all
+# three rendered sections. Ordinary roadmap-check still permits honest TODOs.
+roadmap-original-nine-check:
+	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-original-nine-check REFUSES: sbcl is not installed"; exit 2; }
+	$(SBCL) --script tools/roadmap/render.lisp --check --require-original-nine docs/roadmap.sexp ROADMAP.md
 
 roadmap-test:
 	@command -v $(SBCL) >/dev/null 2>&1 || { echo "make roadmap-test REFUSES: sbcl is not installed (tools/roadmap/render.lisp needs it)"; exit 2; }
