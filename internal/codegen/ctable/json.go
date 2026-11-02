@@ -414,6 +414,7 @@ static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
     if ( table_json_is_enum( f ) ) { return 's'; }
     if ( table_json_is_flags( f ) ) { return 'a'; }
@@ -426,6 +427,7 @@ static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
 {
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }
     if ( table_json_is_enum( f ) ) { return 's'; }
     if ( table_json_is_flags( f ) ) { return 'a'; }
@@ -1041,6 +1043,7 @@ static SCHEMA_UNUSED int table_json_write_fields( TableJsonOut * out, const void
 static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth )
 {
     int any = 0;
+    if ( info->json_array && info->num_fields == 1 ) { return table_json_write_field( out, base, &info->fields[0], depth ); }
     if ( !table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
     if ( !any ) { table_json_raw(out,"{}",2); return 1; }
     table_json_line(out,depth); table_json_put(out,'}'); return 1;
@@ -2432,7 +2435,13 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
 
 static SCHEMA_UNUSED int table_json_read_table( TableJsonIn * in, void * base, const TableTypeInfo * info, int32_t depth )
 {
-    if ( depth > kTableJsonMaxDepth || table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( table_json_peek(in) != '[' ) { in->bad = 1; return 0; }
+        return table_json_read_field( in, base, &info->fields[0], depth );
+    }
+    if ( table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
     return table_json_read_table_keys(in,base,info,depth,NULL);
 }

@@ -554,9 +554,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	if len(st.Fields) == 0 {
 		g.emitTagsStatic(g.sym(st.Name, "tags"), st.Tags)
-		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s };\n\n",
+		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %s };\n\n",
 			g.sym(st.Name, "info"), st.Name, st.Name, g.sym(st.Name, "reset_raw"), g.modeColumn(st),
-			annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")))
+			annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")), boolC(st.JsonArray))
 		return
 	}
 	// the vocabularies first: an enum's values, a union's arms and a flags
@@ -577,9 +577,9 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		g.emitFieldDescriptor(st, f, guards[f.Name])
 	}
 	g.pf("};\n\n")
-	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s, %s };\n\n",
+	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s, %s, %s };\n\n",
 		g.sym(st.Name, "info"), st.Name, st.Name, len(st.Fields), g.sym(st.Name, "fields"), g.sym(st.Name, "reset_raw"), g.modeColumn(st),
-		annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")))
+		annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")), boolC(st.JsonArray))
 }
 
 // emitTagsStatic emits one tag list as a constant array of string literals
