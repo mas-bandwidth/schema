@@ -1226,10 +1226,10 @@ static SCHEMA_UNUSED int benchtable_table_json_scan_string_as( benchtable_table_
         if ( !benchtable_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
-        if ( out == NULL ) { placed += unit_length; }
+        if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }
         else
         {
-            if ( !clamped && placed + unit_length <= capacity )
+            if ( !clamped && placed <= capacity - unit_length )
             {
                 memcpy( out + placed, unit, (size_t) unit_length );
                 placed += unit_length;
@@ -1310,9 +1310,10 @@ static SCHEMA_UNUSED int benchtable_table_json_scan_w_string( benchtable_table_j
         }
         if ( out == NULL )
         {
+            if ( placed > INT32_MAX - units_length ) { in->bad = 1; return 0; }
             placed += units_length;
         }
-        else if ( !clamped && placed + units_length <= capacity )
+        else if ( !clamped && placed <= capacity - units_length )
         {
             for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
             placed += units_length;
