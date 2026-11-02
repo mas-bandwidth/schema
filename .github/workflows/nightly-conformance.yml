@@ -139,6 +139,12 @@ jobs:
       - name: the C++ reference writes the fixed form (form 3)
         run: make tables-fixedform-corpus
 
+      - name: the shared BOM entry oracle (once)
+        run: go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestBOMEntryCorpusOracle$'
+
+      - name: the C++ leg checks the four BOM entry cases
+        run: make conformance-bom-entry CONFORMANCE_BOM_LANG=cpp CONFORMANCE_BOM_OUT=build/nightly/reference-report/bom
+
       - name: the C++ leg validates the canonical corpus
         run: |
           mkdir -p build/nightly/reference-report
@@ -299,6 +305,12 @@ jobs:
           mkdir -p build/nightly/report
           env ${{ matrix.env }} ./build/nightly-harness run --only ${{ matrix.lang }} --claims \
             --coverage build/nightly/report/coverage-${{ matrix.lang }}.json
+
+      - name: the original-nine leg checks the four BOM entry cases
+        if: contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang)
+        run: |
+          env ${{ matrix.env }} make conformance-bom-entry CONFORMANCE_BOM_LANG=${{ matrix.lang }} \
+            CONFORMANCE_BOM_HARNESS=build/nightly-harness CONFORMANCE_BOM_OUT=build/nightly/report/bom
 
       # THE FIXED FORM (form 3) is read from the C++ reference's byte oracle,
       # build/fixedform-corpus, by each leg's own gate — the targets ci-fast.yml's

@@ -6491,6 +6491,15 @@ include make/checks/schema-shared-hostile-corpus.mk
 # (issue #599): --skip takes the same names, and the harness prints each one it
 # passes over. The reference leg cannot be skipped.
 .PHONY: conformance
+# A separate four-case whole-text entry gate, not four new global corpus rows.
+# The caller builds the selected driver first; nightly already has that build.
+CONFORMANCE_BOM_LANG ?= cpp
+CONFORMANCE_BOM_HARNESS ?= build/conformance-harness
+CONFORMANCE_BOM_OUT ?= build/conformance-bom-entry/$(CONFORMANCE_BOM_LANG)
+.PHONY: conformance-bom-entry
+conformance-bom-entry: $(CONFORMANCE_BOM_HARNESS)
+	sh test/conformance/bom-entry "$(CONFORMANCE_BOM_LANG)" "$(CONFORMANCE_BOM_HARNESS)" "$(CONFORMANCE_BOM_OUT)"
+
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
 		--results build/conformance/results.json \
