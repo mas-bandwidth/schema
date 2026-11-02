@@ -674,30 +674,18 @@ fn form_probe(label: &str, file: &[u8], want: FormProbe) {
                 report.refused && report.reason == reason && !report.malformed,
                 &format!("{label}: `{}` by name and nothing else claims the read", reason.name()),
             );
-            check(
-                rows_bytes(&values) == before.as_slice(),
-                &format!("{label}: not one destination byte was written"),
-            );
         }
         FormProbe::Malformed => {
             check(
                 report.malformed && !report.refused,
                 &format!("{label}: `malformed`, and no named reason claims the read"),
             );
-            let mut defaults = poisoned_rows();
-            for value in defaults.iter_mut() {
-                tblfx1::fx_root_fixed_scatter(
-                    &tblfx1::FX_ROOT_FIXED_DEFAULTS,
-                    value,
-                    &mut tblfx1::TableFixedReport::default(),
-                );
-            }
-            check(
-                rows_bytes(&values) == rows_bytes(&defaults),
-                &format!("{label}: damaged load reset destination rows to declared defaults"),
-            );
         }
     }
+    check(
+        rows_bytes(&values) == before.as_slice(),
+        &format!("{label}: not one destination byte was written"),
+    );
 }
 
 fn the_form_header_probes(dir: &str) {
