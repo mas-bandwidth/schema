@@ -70,7 +70,7 @@ func unboundedOracleSameJSON(t *testing.T, m *tabletext.Model, v *tabletext.Inst
 // SPEC-TABLES 2.13.1: removing a text bound moves no wire byte and never
 // clamps text for its length. These are the two minimal observed failures,
 // with their nonempty expected values/bytes preserved before changing code.
-// The shared nightly oracle runs the complete harness package once.
+// The shared nightly oracle executes this regression group once.
 func TestUnboundedTextOracleFixtures(t *testing.T) {
 	for _, name := range []string{"list", "map"} {
 		t.Run(name, func(t *testing.T) {
