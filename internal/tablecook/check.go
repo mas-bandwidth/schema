@@ -42,7 +42,8 @@ type CheckResult struct {
 // ascend, or overlaps a node with the next; a reference that leaves the region,
 // that the directory does not name, or that it names as another type; a
 // misaligned reference; a count companion outside its declared bound; or a
-// float whose bits are a NaN or an infinity (non_finite_float, §3.3).
+// float whose bits are a NaN or an infinity (non_finite_float, §3.3); or a
+// cycle anywhere in the graph (§3.1).
 func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	var res CheckResult
 	h, err := ReadHeader(file, ir.BuildVersion(m.Unit), rootAlignmentOf(m, file))
@@ -58,8 +59,9 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 	}
 	byTypeId := typeIdIndex(m)
 
-	s := &scan{m: m, h: h, ord: h.Order(), buf: h.Data(file), dir: dir}
+	s := &scan{m: m, h: h, ord: h.Order(), buf: h.Data(file), dir: dir, edges: make([][]int32, len(dir))}
 	for i, e := range dir {
+		s.cur = i
 		// a node's extent runs to the next entry's offset, or to data_length
 		// for the last (§6.3): the bound a BYTE BUFFER's length is checked
 		// against
@@ -70,6 +72,11 @@ func Check(m *tabletext.Model, file []byte) (CheckResult, error) {
 		if err := s.node(e.Offset, extent, e.TypeId, byTypeId[e.TypeId]); err != nil {
 			return res, fmt.Errorf("node %d (%s at offset %d): %w", i+1, nameOf(byTypeId, e.TypeId), e.Offset, err)
 		}
+	}
+
+	if from, to, cyclic := s.cycle(); cyclic {
+		return res, fmt.Errorf("node %d (%s) names node %d (%s), whose descent is still open: a cook is never cyclic, and a cyclic one is refused (docs/SPEC-TABLES.md §3.1)",
+			from+1, nameOf(byTypeId, dir[from].TypeId), to+1, nameOf(byTypeId, dir[to].TypeId))
 	}
 
 	res = CheckResult{
@@ -198,6 +205,50 @@ type scan struct {
 	base   int64
 	extent int64
 	arrays []arrayRange
+	// THE GRAPH'S EDGES, for the cycle check: cur is the directory position of
+	// the node under the scan, and edges[i] the table nodes node i's slots name.
+	cur   int
+	edges [][]int32
+}
+
+// cycle is the three-mark walk over the edges the scan resolved: each node is
+// entered once, a reference to an OPEN node is a cycle and is returned, and a
+// reference to a CLOSED node is a share and is not re-entered.
+func (s *scan) cycle() (from, to int, cyclic bool) {
+	const (
+		unvisited = iota
+		open
+		closed
+	)
+	mark := make([]uint8, len(s.edges))
+	type frame struct{ node, next int }
+	var stack []frame
+	for start := range s.edges {
+		if mark[start] != unvisited {
+			continue
+		}
+		mark[start] = open
+		stack = append(stack[:0], frame{node: start})
+		for len(stack) > 0 {
+			top := &stack[len(stack)-1]
+			if top.next == len(s.edges[top.node]) {
+				mark[top.node] = closed
+				stack = stack[:len(stack)-1]
+				continue
+			}
+			t := int(s.edges[top.node][top.next])
+			top.next++
+			switch mark[t] {
+			case open:
+				return top.node, t, true
+			case closed:
+				continue
+			}
+			mark[t] = open
+			stack = append(stack, frame{node: t})
+		}
+	}
+	return 0, 0, false
 }
 
 // arrayRange is one element array a list slot placed inside the node under
@@ -563,6 +614,9 @@ func (s *scan) ref(at int64, f *ir.Field) error {
 	}
 	if s.dir[slot].TypeId != want {
 		return fmt.Errorf("the reference resolves to a node the directory names as type id 0x%016x, and the declaration requires %s", s.dir[slot].TypeId, wantName)
+	}
+	if !f.Type.Blob() {
+		s.edges[s.cur] = append(s.edges[s.cur], int32(slot))
 	}
 	return nil
 }

@@ -22,6 +22,11 @@ func cppRuntimeNames() []Name {
 			"TableBlobMeasureThunk", "TableBlobSaveThunk", "TableBlobStorage", "TableBytesSlot", "TableBytesViewOf",
 			"TableStringSlot", "TableStringViewOf", "kTableBlobHeader", "kTableBlobMaxLength",
 		}},
+		{what: "the table graph cycle check and stored-slot walk (docs/SPEC-TABLES.md §3.1, §4)", names: []string{
+			"TableCycle", "TableCycleAcyclic", "TableCycleBegin", "TableCycleEdge", "TableCycleEnd",
+			"TableCycleIsVertex", "TableCycleNode", "TableCycleOrdinal", "TableCyclePush", "TableCycleRestore",
+			"TableMapVisitStored", "kTableCycleAbsent", "kTableCycleOffsetMask", "kTableCycleOrdinalShift", "kTableCycleVertex",
+		}},
 		{what: "a bound of the text form's JSON walk (§16)", names: []string{
 			"kTableJsonDecimalBand",
 		}},

@@ -292,7 +292,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		length, keep := "arm_len"+sfx, "arm_keep"+sfx
 		g.pf("%s{\n%s    uint32_t %s = uint32_t( %s.size );\n", ind, ind, length, rdr)
 		g.pf("%s    uint32_t %s = %s;\n", ind, keep, length)
-		g.pf("%s    // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts\n", ind)
+		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
 		g.pf("%s    if ( !TableUtf8Valid( %s.buffer + %s.offset, %s.size ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, rdr, rdr, tag, none)
 		g.pf("%s    if ( %s > %d ) { %s = (uint32_t) TableUtf8Clamp( %s.buffer + %s.offset, %s.size, %d ); r.report->clamped++; } // at a code point boundary\n", ind, keep, f.Type.Size, keep, rdr, rdr, rdr, f.Type.Size)
 		g.pf("%s    memcpy( %s, %s.buffer + %s.offset, %s );\n", ind, value, rdr, rdr, keep)
@@ -307,7 +307,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		units, keep := "arm_units"+sfx, "arm_keep"+sfx
 		g.pf("%s{\n%s    const int64_t %s = %s.size / 2;\n", ind, ind, units, rdr)
 		g.pf("%s    int64_t %s = %s;\n", ind, keep, units)
-		g.pf("%s    // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts\n", ind)
+		g.pf("%s    // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)\n", ind)
 		g.pf("%s    if ( !TableUtf16Valid( %s.buffer + %s.offset, %s ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, rdr, units, tag, none)
 		g.pf("%s    if ( %s > %d ) { %s = TableUtf16Clamp( %s.buffer + %s.offset, %s, %d ); r.report->clamped++; } // never splitting a pair\n", ind, keep, f.Type.Size, keep, rdr, rdr, units, f.Type.Size)
 		g.pf("%s    for ( int64_t i%s = 0; i%s < %s; i%s++ ) { %s[i%s] = (char16_t) TableUtf16Unit( %s.buffer + %s.offset, i%s ); }\n", ind, sfx, sfx, keep, sfx, value, sfx, rdr, rdr, sfx)
@@ -395,8 +395,8 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s    if ( %s != 0 ) // the zero reference is the inner union's None\n%s    {\n", ind, ref, ind)
 		// A LENGTH-SHAPED ARM'S DAMAGED PAYLOAD IS THAT ARM'S OWN FRAMING
 		// DAMAGE (§3): the inner union runs past the arm's `L`, so the arm is
-		// not decoded — THIS union reads None, malformed counts, and the
-		// enclosing body continues past the arm by `L`
+		// not decoded: malformed counts, and damage discards the whole load
+		// (§4)
 		g.pf("%s        if ( %s > (uint64_t) r.ids->count ) { %s = %s; r.report->malformed = true; break; }\n", ind, ref, tag, none)
 		g.pf("%s        const uint64_t %s = r.ids->at( %s );\n", ind, id, ref)
 		g.pf("%s        if ( !%s.has( 1 ) ) { %s = %s; r.report->malformed = true; break; }\n", ind, rdr, tag, none)

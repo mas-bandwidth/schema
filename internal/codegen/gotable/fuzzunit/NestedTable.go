@@ -577,7 +577,7 @@ func init() {
 		return ArchiveConfigSaveBodyRetain(w, (*ArchiveConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ArchiveConfigLoadBodyRetain(&r, (*ArchiveConfig)(p))
-	}, CookSize: 1488, CookAlign: 8}
+	}, CycleIndex: 1, CycleType: tableCycleType, CookSize: 1488, CookAlign: 8}
 }
 
 // ArchiveConfigTableType returns ArchiveConfig's reflection descriptor.

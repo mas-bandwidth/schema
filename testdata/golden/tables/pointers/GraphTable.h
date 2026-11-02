@@ -4857,6 +4857,9 @@ struct TableNodeMap
     // takes the SELF-RELATIVE delta so a deref is one add, and the tool's
     // builder path takes the node's ARENA OFFSET (§6.3).
     bool arena = false;
+    // During construction, keep validated TABLE indices for the cycle check.
+    // Blob references resolve normally. No root is returned in this state.
+    bool cycle_indices = false;
     // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
     // slot naming a blob marks its directory entry, and every later slot naming
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
@@ -4904,8 +4907,169 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         map.entries[index - 1].type_id = ~target;
     }
+    if ( map.cycle_indices && target != kTableBytesTypeId && target != kTableStringTypeId )
+    {
+        slot.value = (int64_t) index;
+        return;
+    }
     slot.value = map.arena ? (int64_t) entry.offset
                           : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+}
+
+// ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
+//
+// During construction table pointer slots hold validated wire indices. Kahn's
+// two passes therefore reach the directory directly: each node is entered once
+// and each slot is visited a fixed number of times, with no sorting or reverse
+// offset lookup. A final pass resolves the slots to their published offsets.
+// The directory's type_id word carries the degree and stack link; its offset
+// high bits carry the type ordinal. The caller restores both before publishing
+// a region. Region loads allocate nothing and no pointer graph is recursed.
+static const uint64_t kTableCycleAbsent = 1ull << 63;
+static const uint64_t kTableCycleVertex = 1ull << 62;
+static const int kTableCycleOrdinalShift = 48;
+static const uint64_t kTableCycleOffsetMask = ( 1ull << 48 ) - 1;
+
+struct TableCycle
+{
+    TableNodeDirEntry * entries = NULL;
+    int64_t count = 0;
+    const uint8_t * base = NULL;
+    const TableArena * arena = NULL;
+    uint32_t head = 0;
+    int64_t vertices = 0;
+    int64_t processed = 0;
+    bool releasing = false;
+    bool resolving = false;
+    bool broken = false;
+};
+
+inline bool TableCycleIsVertex( const TableCycle & c, int64_t p )
+{
+    return ( c.entries[p].offset & ( kTableCycleAbsent | kTableCycleVertex ) ) == kTableCycleVertex;
+}
+
+inline uint32_t TableCycleOrdinal( const TableCycle & c, int64_t p )
+{
+    return (uint32_t) ( ( c.entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
+}
+
+inline const void * TableCycleNode( const TableCycle & c, int64_t p )
+{
+    const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+    if ( c.arena != NULL ) { return (const void *) TableArenaAt( *c.arena, (uint32_t) offset ); }
+    return (const void *) ( c.base + offset );
+}
+
+inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( * ordinal )( uint64_t type_id ) )
+{
+    c.entries = entries;
+    c.count = count;
+    c.base = base;
+    c.arena = arena;
+    if ( count <= 0 || count >= ( 1ll << 31 ) ) { c.broken = true; return false; }
+    for ( int64_t p = 0; p < count; p++ )
+    {
+        TableNodeDirEntry & e = entries[p];
+        if ( e.offset == kTableNodeAbsent ) { e.offset = kTableCycleAbsent; continue; }
+        if ( e.offset > kTableCycleOffsetMask ) { c.broken = true; return false; }
+        const uint32_t kind = ordinal( e.type_id );
+        if ( kind == 0 ) { continue; } // a byte buffer or an already marked blob
+        e.offset |= kTableCycleVertex | ( (uint64_t) kind << kTableCycleOrdinalShift );
+        e.type_id = 0;
+        c.vertices++;
+    }
+    return true;
+}
+
+inline void TableCyclePush( TableCycle & c, int64_t p )
+{
+    c.entries[p].type_id = ( c.entries[p].type_id & 0xFFFFFFFFull ) | ( (uint64_t) c.head << 32 );
+    c.head = (uint32_t) ( p + 1 );
+}
+
+// TableCycleEdge is one stored pointer slot: pass one counts the in-degree of
+// the node it names, and pass two takes the count down and stacks the node
+// when the last slot naming it has been met.
+inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
+{
+    if ( slot.value == 0 ) { return true; }
+    const uint64_t index = (uint64_t) slot.value;
+    if ( index - 1 >= (uint64_t) c.count ) { c.broken = true; return false; }
+    const int64_t p = (int64_t) index - 1;
+    if ( !TableCycleIsVertex( c, p ) ) { c.broken = true; return false; }
+    if ( c.resolving )
+    {
+        const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+        // The visitor borrows const views, but these are this load's mutable
+        // construction slots. No caller can observe their temporary indices.
+        TableRef & output = const_cast<TableRef &>( slot );
+        output.value = c.arena != NULL ? (int64_t) offset
+                                      : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
+        return true;
+    }
+    const uint32_t degree = (uint32_t) c.entries[p].type_id;
+    if ( !c.releasing )
+    {
+        if ( degree == 0xFFFFFFFFu ) { c.broken = true; return false; }
+        c.entries[p].type_id += 1;
+        return true;
+    }
+    if ( degree == 0 ) { c.broken = true; return false; }
+    c.entries[p].type_id -= 1;
+    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free
+    return true;
+}
+
+// TableCycleAcyclic checks the graph, then resolves its slots. VISIT enumerates one node's stored
+// slots through TableCycleEdge. True is a graph with no cycle; false is a
+// cycle, or a directory this check could not carry.
+template <typename Ctx, typename Visit>
+inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
+{
+    if ( c.broken ) { return false; }
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) ) { c.broken = true; return false; }
+    }
+    c.releasing = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && (uint32_t) c.entries[p].type_id == 0 ) { TableCyclePush( c, p ); }
+    }
+    while ( c.head != 0 )
+    {
+        const int64_t p = (int64_t) c.head - 1;
+        c.head = (uint32_t) ( c.entries[p].type_id >> 32 );
+        // a node is entered ONCE: more entries than nodes is a walk gone wrong
+        if ( ++c.processed > c.vertices ) { c.broken = true; return false; }
+        if ( !visit( ctx, c, p ) ) { c.broken = true; return false; }
+    }
+    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle
+    c.resolving = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) ) { c.broken = true; return false; }
+    }
+    return !c.broken;
+}
+
+// TableCycleRestore puts back one table node's type id, the one the wire
+// carries; a byte buffer's entry was never touched.
+inline void TableCycleRestore( TableCycle & c, int64_t p, uint64_t type_id )
+{
+    if ( p >= 0 && p < c.count && TableCycleIsVertex( c, p ) ) { c.entries[p].type_id = type_id; }
+}
+
+// TableCycleEnd removes the construction tags from directory offsets.
+inline void TableCycleEnd( TableCycle & c )
+{
+    for ( int64_t p = 0; p < c.count && c.entries != NULL; p++ )
+    {
+        uint64_t & offset = c.entries[p].offset;
+        if ( ( offset & kTableCycleAbsent ) != 0 ) { offset = kTableNodeAbsent; }
+        else { offset &= kTableCycleOffsetMask; }
+    }
 }
 
 // ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
@@ -9893,22 +10057,29 @@ inline int64_t MetaFixedLoadTolerant( Meta * values, int64_t capacity, const uin
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         MetaReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { MetaReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, MetaFixedGuards );
         TableFixedClampKnownRanges( MetaFixedKnownRanges[lineage_at], MetaFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !MetaFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { MetaReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -10234,22 +10405,29 @@ inline int64_t SettingsFixedLoadTolerant( Settings * values, int64_t capacity, c
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         SettingsReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { SettingsReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SettingsFixedGuards );
         TableFixedClampKnownRanges( SettingsFixedKnownRanges[lineage_at], SettingsFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !SettingsFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { SettingsReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -10286,6 +10464,14 @@ template <typename Ctx>
 inline bool SettingsNumber( const Ctx & ctx, TableNumbering & numbering, const Settings & value )
 {
     (void) ctx; (void) numbering; (void) value; // no pointers below this node
+    return true;
+}
+
+// SettingsCycleSlots: the cycle check's edges below one Settings, guards ignored.
+template <typename Ctx>
+inline bool SettingsCycleSlots( const Ctx & ctx, TableCycle & cycle, const Settings & value )
+{
+    (void) ctx; (void) cycle; (void) value;
     return true;
 }
 
@@ -10351,6 +10537,15 @@ inline bool ListNodeNumber( const Ctx & ctx, TableNumbering & numbering, const L
             }
         }
     }
+    return true;
+}
+
+// ListNodeCycleSlots: the cycle check's edges below one ListNode, guards ignored.
+template <typename Ctx>
+inline bool ListNodeCycleSlots( const Ctx & ctx, TableCycle & cycle, const ListNode & value )
+{
+    (void) ctx; (void) cycle; (void) value;
+    if ( !TableCycleEdge( cycle, value.next ) ) { return false; } // next
     return true;
 }
 
@@ -10487,6 +10682,16 @@ inline bool TreeNodeNumber( const Ctx & ctx, TableNumbering & numbering, const T
             }
         }
     }
+    return true;
+}
+
+// TreeNodeCycleSlots: the cycle check's edges below one TreeNode, guards ignored.
+template <typename Ctx>
+inline bool TreeNodeCycleSlots( const Ctx & ctx, TableCycle & cycle, const TreeNode & value )
+{
+    (void) ctx; (void) cycle; (void) value;
+    if ( !TableCycleEdge( cycle, value.left ) ) { return false; } // left
+    if ( !TableCycleEdge( cycle, value.right ) ) { return false; } // right
     return true;
 }
 
@@ -10644,6 +10849,15 @@ inline bool LayerNumber( const Ctx & ctx, TableNumbering & numbering, const Laye
             }
         }
     }
+    return true;
+}
+
+// LayerCycleSlots: the cycle check's edges below one Layer, guards ignored.
+template <typename Ctx>
+inline bool LayerCycleSlots( const Ctx & ctx, TableCycle & cycle, const Layer & value )
+{
+    (void) ctx; (void) cycle; (void) value;
+    if ( !TableCycleEdge( cycle, value.head ) ) { return false; } // head
     return true;
 }
 
@@ -10838,6 +11052,25 @@ inline bool SceneNumber( const Ctx & ctx, TableNumbering & numbering, const Scen
     for ( int32_t i = 0; i < value.layers_count && i < 4; i++ ) // layers
     {
         if ( !LayerNumber( ctx, numbering, value.layers[i] ) ) { return false; }
+    }
+    return true;
+}
+
+// SceneCycleSlots: the cycle check's edges below one Scene, guards ignored.
+template <typename Ctx>
+inline bool SceneCycleSlots( const Ctx & ctx, TableCycle & cycle, const Scene & value )
+{
+    (void) ctx; (void) cycle; (void) value;
+    if ( !TableCycleEdge( cycle, value.head ) ) { return false; } // head
+    if ( !TableCycleEdge( cycle, value.tree ) ) { return false; } // tree
+    if ( !TableCycleEdge( cycle, value.settings ) ) { return false; } // settings
+    if ( !TableCycleEdge( cycle, value.alias ) ) { return false; } // alias
+    { // ground (nested by value)
+        if ( !LayerCycleSlots( ctx, cycle, value.ground ) ) { return false; }
+    }
+    for ( int32_t i = 0; i < value.layers_count && i < 4; i++ ) // layers
+    {
+        if ( !LayerCycleSlots( ctx, cycle, value.layers[i] ) ) { return false; }
     }
     return true;
 }
@@ -11115,6 +11348,19 @@ inline bool DepotNumber( const Ctx & ctx, TableNumbering & numbering, const Depo
     return true;
 }
 
+// DepotCycleSlots: the cycle check's edges below one Depot, guards ignored.
+template <typename Ctx>
+inline bool DepotCycleSlots( const Ctx & ctx, TableCycle & cycle, const Depot & value )
+{
+    (void) ctx; (void) cycle; (void) value;
+    for ( int32_t i = 0; i < 2; i++ ) // banks
+    {
+        if ( !LayerCycleSlots( ctx, cycle, value.banks.slots[i] ) ) { return false; }
+    }
+    if ( !TableCycleEdge( cycle, value.head ) ) { return false; } // head
+    return true;
+}
+
 // DepotPackMeasure: the packed region bytes of everything Depot POINTS AT.
 // ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
 // node two references name is measured ONCE and packed once, and a
@@ -11261,6 +11507,19 @@ inline bool AlbumNumber( const Ctx & ctx, TableNumbering & numbering, const Albu
             }
         }
     }
+    return true;
+}
+
+// AlbumCycleSlots: the cycle check's edges below one Album, guards ignored.
+template <typename Ctx>
+inline bool AlbumCycleSlots( const Ctx & ctx, TableCycle & cycle, const Album & value )
+{
+    (void) ctx; (void) cycle; (void) value;
+    { // marker (nested by value)
+        if ( !MarkerCycleSlots( ctx, cycle, value.marker ) ) { return false; }
+    }
+    if ( !TableCycleEdge( cycle, value.pin ) ) { return false; } // pin
+    if ( !TableCycleEdge( cycle, value.head ) ) { return false; } // head
     return true;
 }
 
@@ -11565,6 +11824,28 @@ inline void ListNodeNodeBody( uint64_t type_id, TableReader & r, const TableNode
     }
 }
 
+// ListNodeCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t ListNodeCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xf60ec899a5a69fa9ull: return 1; // ListNode
+        default: return 0;
+    }
+}
+
+// ListNodeCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool ListNodeCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return ListNodeCycleSlots( ctx, cycle, *(const ListNode *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -11699,11 +11980,10 @@ inline int64_t ListNodeLoadMeasure( const uint8_t * wire_file, int64_t wire_file
 }
 
 // ListNodeLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const ListNode * ListNodeLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -11757,6 +12037,7 @@ inline const ListNode * ListNodeLoadTolerant( uint8_t * region, int64_t region_b
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -11827,6 +12108,22 @@ inline const ListNode * ListNodeLoadTolerant( uint8_t * region, int64_t region_b
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &ListNodeCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &ListNodeCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xf60ec899a5a69fa9ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -11909,6 +12206,7 @@ inline bool ListNodeLoadBuilderTolerant( ListNodeBuilder & builder, const uint8_
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xf60ec899a5a69fa9ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -11955,9 +12253,23 @@ inline bool ListNodeLoadBuilderTolerant( ListNodeBuilder & builder, const uint8_
     bool ok = ListNodeLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &ListNodeCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &ListNodeCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { ListNodeReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -11986,6 +12298,8 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        ListNode * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { ListNodeReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -12202,6 +12516,28 @@ inline void TreeNodeNodeBody( uint64_t type_id, TableReader & r, const TableNode
     }
 }
 
+// TreeNodeCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t TreeNodeCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xb97e90a3784c431dull: return 1; // TreeNode
+        default: return 0;
+    }
+}
+
+// TreeNodeCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool TreeNodeCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return TreeNodeCycleSlots( ctx, cycle, *(const TreeNode *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -12336,11 +12672,10 @@ inline int64_t TreeNodeLoadMeasure( const uint8_t * wire_file, int64_t wire_file
 }
 
 // TreeNodeLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const TreeNode * TreeNodeLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -12394,6 +12729,7 @@ inline const TreeNode * TreeNodeLoadTolerant( uint8_t * region, int64_t region_b
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -12464,6 +12800,22 @@ inline const TreeNode * TreeNodeLoadTolerant( uint8_t * region, int64_t region_b
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &TreeNodeCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &TreeNodeCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xb97e90a3784c431dull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -12546,6 +12898,7 @@ inline bool TreeNodeLoadBuilderTolerant( TreeNodeBuilder & builder, const uint8_
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xb97e90a3784c431dull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -12592,9 +12945,23 @@ inline bool TreeNodeLoadBuilderTolerant( TreeNodeBuilder & builder, const uint8_
     bool ok = TreeNodeLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &TreeNodeCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &TreeNodeCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { TreeNodeReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -12623,6 +12990,8 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        TreeNode * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { TreeNodeReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -12839,6 +13208,30 @@ inline void LayerNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     }
 }
 
+// LayerCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t LayerCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x9d167ef77aed79b6ull: return 1; // Layer
+        case 0xf60ec899a5a69fa9ull: return 2; // ListNode
+        default: return 0;
+    }
+}
+
+// LayerCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool LayerCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return LayerCycleSlots( ctx, cycle, *(const Layer *) node );
+        case 2: return ListNodeCycleSlots( ctx, cycle, *(const ListNode *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -12973,11 +13366,10 @@ inline int64_t LayerLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 }
 
 // LayerLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Layer * LayerLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -13031,6 +13423,7 @@ inline const Layer * LayerLoadTolerant( uint8_t * region, int64_t region_bytes, 
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -13101,6 +13494,22 @@ inline const Layer * LayerLoadTolerant( uint8_t * region, int64_t region_bytes, 
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &LayerCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &LayerCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x9d167ef77aed79b6ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -13183,6 +13592,7 @@ inline bool LayerLoadBuilderTolerant( LayerBuilder & builder, const uint8_t * wi
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x9d167ef77aed79b6ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -13229,9 +13639,23 @@ inline bool LayerLoadBuilderTolerant( LayerBuilder & builder, const uint8_t * wi
     bool ok = LayerLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &LayerCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &LayerCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { LayerReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -13260,6 +13684,8 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire_file,
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        Layer * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { LayerReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -13484,6 +13910,34 @@ inline void SceneNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     }
 }
 
+// SceneCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t SceneCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x4a9a31623ab5f213ull: return 1; // Scene
+        case 0xf60ec899a5a69fa9ull: return 2; // ListNode
+        case 0xb97e90a3784c431dull: return 3; // TreeNode
+        case 0x9d8b8aa2b404c2c8ull: return 4; // Settings
+        default: return 0;
+    }
+}
+
+// SceneCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool SceneCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return SceneCycleSlots( ctx, cycle, *(const Scene *) node );
+        case 2: return ListNodeCycleSlots( ctx, cycle, *(const ListNode *) node );
+        case 3: return TreeNodeCycleSlots( ctx, cycle, *(const TreeNode *) node );
+        case 4: return SettingsCycleSlots( ctx, cycle, *(const Settings *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -13618,11 +14072,10 @@ inline int64_t SceneLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 }
 
 // SceneLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Scene * SceneLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -13676,6 +14129,7 @@ inline const Scene * SceneLoadTolerant( uint8_t * region, int64_t region_bytes, 
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -13746,6 +14200,22 @@ inline const Scene * SceneLoadTolerant( uint8_t * region, int64_t region_bytes, 
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &SceneCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &SceneCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x4a9a31623ab5f213ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -13828,6 +14298,7 @@ inline bool SceneLoadBuilderTolerant( SceneBuilder & builder, const uint8_t * wi
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x4a9a31623ab5f213ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -13874,9 +14345,23 @@ inline bool SceneLoadBuilderTolerant( SceneBuilder & builder, const uint8_t * wi
     bool ok = SceneLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &SceneCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &SceneCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { SceneReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -13905,6 +14390,8 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire_file,
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        Scene * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { SceneReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -14121,6 +14608,30 @@ inline void DepotNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     }
 }
 
+// DepotCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t DepotCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x327fe6dc702553fdull: return 1; // Depot
+        case 0xf60ec899a5a69fa9ull: return 2; // ListNode
+        default: return 0;
+    }
+}
+
+// DepotCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool DepotCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return DepotCycleSlots( ctx, cycle, *(const Depot *) node );
+        case 2: return ListNodeCycleSlots( ctx, cycle, *(const ListNode *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -14255,11 +14766,10 @@ inline int64_t DepotLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 }
 
 // DepotLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Depot * DepotLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -14313,6 +14823,7 @@ inline const Depot * DepotLoadTolerant( uint8_t * region, int64_t region_bytes, 
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -14383,6 +14894,22 @@ inline const Depot * DepotLoadTolerant( uint8_t * region, int64_t region_bytes, 
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &DepotCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &DepotCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x327fe6dc702553fdull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -14465,6 +14992,7 @@ inline bool DepotLoadBuilderTolerant( DepotBuilder & builder, const uint8_t * wi
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x327fe6dc702553fdull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -14511,9 +15039,23 @@ inline bool DepotLoadBuilderTolerant( DepotBuilder & builder, const uint8_t * wi
     bool ok = DepotLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &DepotCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &DepotCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { DepotReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -14542,6 +15084,8 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire_file,
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        Depot * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { DepotReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -14766,6 +15310,34 @@ inline void AlbumNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     }
 }
 
+// AlbumCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t AlbumCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd858c2cb7f1514ccull: return 1; // Album
+        case 0x69ff34904242a73dull: return 2; // Tally
+        case 0xd6458a3eef83d457ull: return 3; // Marker
+        case 0xf60ec899a5a69fa9ull: return 4; // ListNode
+        default: return 0;
+    }
+}
+
+// AlbumCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool AlbumCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return AlbumCycleSlots( ctx, cycle, *(const Album *) node );
+        case 2: return TallyCycleSlots( ctx, cycle, *(const Tally *) node );
+        case 3: return MarkerCycleSlots( ctx, cycle, *(const Marker *) node );
+        case 4: return ListNodeCycleSlots( ctx, cycle, *(const ListNode *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -14900,11 +15472,10 @@ inline int64_t AlbumLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 }
 
 // AlbumLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Album * AlbumLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -14958,6 +15529,7 @@ inline const Album * AlbumLoadTolerant( uint8_t * region, int64_t region_bytes, 
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -15028,6 +15600,22 @@ inline const Album * AlbumLoadTolerant( uint8_t * region, int64_t region_bytes, 
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &AlbumCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &AlbumCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xd858c2cb7f1514ccull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -15110,6 +15698,7 @@ inline bool AlbumLoadBuilderTolerant( AlbumBuilder & builder, const uint8_t * wi
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xd858c2cb7f1514ccull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -15156,9 +15745,23 @@ inline bool AlbumLoadBuilderTolerant( AlbumBuilder & builder, const uint8_t * wi
     bool ok = AlbumLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &AlbumCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &AlbumCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { AlbumReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -15187,6 +15790,8 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire_file,
             else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }
             else { out->refuse_reason = wire_damaged; }
         }
+        Album * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { AlbumReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -17168,11 +17773,10 @@ inline void ListNodeNodeBodyRetain( uint64_t type_id, TableReader & r, const Tab
 }
 
 // ListNodeLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -17230,6 +17834,7 @@ inline const ListNode * ListNodeLoadRetain( uint8_t * region, int64_t region_byt
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -17308,7 +17913,23 @@ inline const ListNode * ListNodeLoadRetain( uint8_t * region, int64_t region_byt
     ListNodeLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &ListNodeCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &ListNodeCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xf60ec899a5a69fa9ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -17433,11 +18054,10 @@ inline void TreeNodeNodeBodyRetain( uint64_t type_id, TableReader & r, const Tab
 }
 
 // TreeNodeLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -17495,6 +18115,7 @@ inline const TreeNode * TreeNodeLoadRetain( uint8_t * region, int64_t region_byt
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -17573,7 +18194,23 @@ inline const TreeNode * TreeNodeLoadRetain( uint8_t * region, int64_t region_byt
     TreeNodeLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &TreeNodeCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &TreeNodeCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xb97e90a3784c431dull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -17698,11 +18335,10 @@ inline void LayerNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 }
 
 // LayerLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -17760,6 +18396,7 @@ inline const Layer * LayerLoadRetain( uint8_t * region, int64_t region_bytes, co
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -17838,7 +18475,23 @@ inline const Layer * LayerLoadRetain( uint8_t * region, int64_t region_bytes, co
     LayerLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &LayerCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &LayerCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x9d167ef77aed79b6ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -17965,11 +18618,10 @@ inline void SceneNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 }
 
 // SceneLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -18027,6 +18679,7 @@ inline const Scene * SceneLoadRetain( uint8_t * region, int64_t region_bytes, co
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -18105,7 +18758,23 @@ inline const Scene * SceneLoadRetain( uint8_t * region, int64_t region_bytes, co
     SceneLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &SceneCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &SceneCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x4a9a31623ab5f213ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -18236,11 +18905,10 @@ inline void DepotNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 }
 
 // DepotLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -18298,6 +18966,7 @@ inline const Depot * DepotLoadRetain( uint8_t * region, int64_t region_bytes, co
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -18376,7 +19045,23 @@ inline const Depot * DepotLoadRetain( uint8_t * region, int64_t region_bytes, co
     DepotLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &DepotCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &DepotCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x327fe6dc702553fdull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;
@@ -18503,11 +19188,10 @@ inline void AlbumNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 }
 
 // AlbumLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -18565,6 +19249,7 @@ inline const Album * AlbumLoadRetain( uint8_t * region, int64_t region_bytes, co
     if ( data + attribution > region_bytes ) { out->malformed = true; return NULL; }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -18643,7 +19328,23 @@ inline const Album * AlbumLoadRetain( uint8_t * region, int64_t region_bytes, co
     AlbumLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and nothing
     // lands: the region holds no root (docs/SPEC-TABLES.md §3.3)
-    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; }
+    if ( TableNonFiniteRefused( out, non_finite_before ) ) { out->malformed = out->malformed || malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &AlbumCycleOrdinal ) &&
+                             TableCycleAcyclic( cycle, cycle_ctx, &AlbumCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xd858c2cb7f1514ccull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) ) { TableCycleRestore( cycle, k + 1, type_id ); k++; }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; } // damage discards the whole load (§4)
     out->malformed = malformed_before;
     return root;

@@ -971,7 +971,7 @@ var PatrolTableFields = []TableFieldInfo{
 var PatrolTableInfo TableTypeInfo
 
 func init() {
-	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
+	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CycleIndex: 12, CycleType: tableCycleType, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil

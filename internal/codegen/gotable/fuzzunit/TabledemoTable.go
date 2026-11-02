@@ -774,6 +774,8 @@ type TableTypeInfo struct {
 	Size                uint32 // unsafe.Sizeof the storage struct
 	ID                  uint64
 	Variable            bool
+	CycleIndex          uint64
+	CycleType           func(uint64) *TableTypeInfo
 	NodeType            func(uint64) *TableTypeInfo
 	SaveBody            func(*TableWriter, unsafe.Pointer) bool
 	LoadBody            func(TableReader, unsafe.Pointer) bool
@@ -2487,6 +2489,7 @@ type TableNodeMap struct {
 	Good    bool
 	Arena   bool
 	Once    bool
+	Indexed bool
 }
 
 func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableReport) {
@@ -2510,6 +2513,10 @@ func (m TableNodeMap) Resolve(slot *TableRef, index, target uint64, r *TableRepo
 		r.BlobShared++
 	} else if m.Once && (target == tableBytesTypeID || target == tableStringTypeID) {
 		m.Entries[index-1].TypeID = ^target
+	}
+	if m.Indexed && target != tableBytesTypeID && target != tableStringTypeID {
+		*slot = int64(index)
+		return
 	}
 	if m.Arena {
 		*slot = int64(entry.Offset)
@@ -2745,6 +2752,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	directory[0] = TableNodeDirEntry{0, root.ID}
 	nodes := TableNodeMap{Base: base, Entries: directory}
 	nodes.Once = true
+	nodes.Indexed = true
 	root.Reset(base)
 	s := tableNodeScanBegin(r)
 	used := tableRegionRound(int64(root.Size))
@@ -2805,7 +2813,11 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	r.Nested = false
 	root.LoadBody(r, base)
 	if tableNonFiniteRefused(report) {
+		clear(region)
 		return nil
+	}
+	if !report.Malformed && !tableCycleCheck(base, root, nil, directory, nodeType) {
+		report.Malformed = true
 	}
 	if report.Malformed {
 		clear(region)
@@ -2963,7 +2975,7 @@ func TableStringEmplace(worker *TableWorker, slot *TableRef, text []byte) []byte
 	return data
 }
 
-func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) bool {
+func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) (loaded bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -2971,7 +2983,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	pre := report.Malformed
 	report.Malformed = false
 	defer func() {
-		if report.Malformed && p != nil {
+		if !loaded && p != nil {
 			root.Reset(p)
 		}
 		report.Malformed = report.Malformed || pre
@@ -3017,6 +3029,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	directory[0] = TableNodeDirEntry{uint64(ref), root.ID}
 	nodes := TableNodeMap{Entries: directory, Arena: true}
 	nodes.Once = true
+	nodes.Indexed = true
 	scan = tableNodeScanBegin(r)
 	k := 1
 	unknown := int32(0)
@@ -3095,6 +3108,9 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	ok := root.LoadBody(r, p)
 	if tableNonFiniteRefused(report) {
 		return false
+	}
+	if ok && !worker.refused && !report.Malformed && !tableCycleCheck(p, root, worker.Arena, directory, nodeType) {
+		report.Malformed = true
 	}
 	return ok && !worker.refused && !report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4)
 }
@@ -3445,6 +3461,241 @@ func tableWireUnionExtent(r *TableReader, f *TableFieldInfo, at *int64, nodes in
 		}
 	}
 	return TableRefuseOk
+}
+func tableCycleType(index uint64) *TableTypeInfo {
+	switch index {
+	case 1:
+		return ArchiveConfigTableType()
+	case 2:
+		return AttachmentTableType()
+	case 3:
+		return BuffTableType()
+	case 4:
+		return DebuffTableType()
+	case 5:
+		return GlobalSettingsTableType()
+	case 6:
+		return GunnerConfigTableType()
+	case 7:
+		return GunnerSettingsTableType()
+	case 8:
+		return HullConfigTableType()
+	case 9:
+		return KeyedConfigTableType()
+	case 10:
+		return LoadoutConfigTableType()
+	case 11:
+		return PackConfigTableType()
+	case 12:
+		return PatrolTableType()
+	case 13:
+		return ProfileConfigTableType()
+	case 14:
+		return RangedSignedTableType()
+	case 15:
+		return RangedUnsignedTableType()
+	case 16:
+		return RangedWidthsTableType()
+	case 17:
+		return RootConfigTableType()
+	case 18:
+		return ScoreBoardTableType()
+	case 19:
+		return ShipEntryTableType()
+	case 20:
+		return TeamConfigTableType()
+	case 21:
+		return TurretConfigTableType()
+	case 22:
+		return WeaponConfigTableType()
+	case 23:
+		return WideBlobTableType()
+	}
+	return nil
+}
+func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
+			continue
+		}
+		p := unsafe.Add(base, f.Offset)
+		count := int32(1)
+		if f.IsArray {
+			count = tableRegionCount(base, f)
+			if count < 0 || count > f.ArrayBound {
+				return false
+			}
+		}
+		for j := range count {
+			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize))
+			if !tableCycleValueEdges(at, f, visit) {
+				return false
+			}
+		}
+	}
+	return true
+}
+func tableCycleValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
+	if f.Pointer {
+		return visit((*TableRef)(p), f)
+	}
+	if f.Kind == 13 && f.Table != nil {
+		return tableCycleEdges(p, f.Table(), visit)
+	}
+	if f.Kind == 15 && f.Arms != nil {
+		arms := f.Arms()
+		tag := tableJSONGetRaw(unsafe.Add(p, arms.TagOffset), arms.TagSize)
+		if tag >= uint64(len(arms.Arms)) {
+			return false
+		}
+		if tag != 0 {
+			arm := &arms.Arms[tag]
+			if arm.Void {
+				return true
+			}
+			af := &arm.Field
+			at := unsafe.Add(p, af.Offset)
+			count := int32(1)
+			if af.IsArray {
+				count = tableRegionCount(p, af)
+				if count < 0 || count > af.ArrayBound {
+					return false
+				}
+			}
+			for j := range count {
+				if !tableCycleValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func tableCycleCheck(base unsafe.Pointer, root *TableTypeInfo, a *TableArena, dir []TableNodeDirEntry, nodeType func(uint64) *TableTypeInfo) bool {
+	const mask = uint64(1)<<48 - 1
+	if uint64(len(dir)) > math.MaxUint32 {
+		return false
+	}
+	vertices := 0
+	for i := range dir {
+		e := &dir[i]
+		if e.Offset == ^uint64(0) {
+			continue
+		}
+		t := nodeType(e.TypeID)
+		if i == 0 {
+			t = root
+		}
+		if t == nil {
+			continue
+		}
+		if e.Offset > mask || t.CycleIndex == 0 || t.CycleIndex >= 65535 {
+			return false
+		}
+		e.Offset |= t.CycleIndex << 48
+		e.TypeID = 0
+		vertices++
+	}
+	each := func(i int, visit func(*TableRef, *TableFieldInfo) bool) bool {
+		e := &dir[i]
+		ordinal := e.Offset >> 48
+		if ordinal == 0 || ordinal == 65535 {
+			return true
+		}
+		t := root.CycleType(ordinal)
+		if t == nil {
+			return false
+		}
+		var p unsafe.Pointer
+		if a != nil {
+			p = a.At(int64(e.Offset & mask))
+		} else {
+			p = unsafe.Add(base, e.Offset&mask)
+		}
+		return tableCycleEdges(p, t, visit)
+	}
+	count := func(slot *TableRef, f *TableFieldInfo) bool {
+		if *slot == 0 || f.Table == nil {
+			return true
+		}
+		index := uint64(*slot)
+		if index > uint64(len(dir)) {
+			return false
+		}
+		e := &dir[index-1]
+		if e.Offset>>48 == 0 || e.Offset>>48 == 65535 || e.TypeID == math.MaxUint32 {
+			return false
+		}
+		e.TypeID++
+		return true
+	}
+	for i := range dir {
+		if !each(i, count) {
+			return false
+		}
+	}
+	head := uint32(0)
+	push := func(i int) { dir[i].TypeID = uint64(head) << 32; head = uint32(i + 1) }
+	for i := range dir {
+		ordinal := dir[i].Offset >> 48
+		if ordinal != 0 && ordinal != 65535 && dir[i].TypeID == 0 {
+			push(i)
+		}
+	}
+	release := func(slot *TableRef, f *TableFieldInfo) bool {
+		if *slot == 0 || f.Table == nil {
+			return true
+		}
+		i := int(*slot - 1)
+		if uint32(dir[i].TypeID) == 0 {
+			return false
+		}
+		dir[i].TypeID--
+		if uint32(dir[i].TypeID) == 0 {
+			push(i)
+		}
+		return true
+	}
+	visited := 0
+	for head != 0 {
+		i := int(head - 1)
+		head = uint32(dir[i].TypeID >> 32)
+		visited++
+		if !each(i, release) {
+			return false
+		}
+	}
+	if visited != vertices {
+		return false
+	}
+	resolve := func(slot *TableRef, f *TableFieldInfo) bool {
+		if *slot == 0 || f.Table == nil {
+			return true
+		}
+		off := dir[int(*slot-1)].Offset & mask
+		if a != nil {
+			*slot = int64(off)
+		} else {
+			*slot = int64(uintptr(unsafe.Add(base, off)) - uintptr(unsafe.Pointer(slot)))
+		}
+		return true
+	}
+	for i := range dir {
+		if !each(i, resolve) {
+			return false
+		}
+	}
+	for i := range dir {
+		e := &dir[i]
+		ordinal := e.Offset >> 48
+		if ordinal != 0 && ordinal != 65535 {
+			e.TypeID = root.CycleType(ordinal).ID
+			e.Offset &= mask
+		}
+	}
+	return true
 }
 
 const tableRetainPathDepth = 7
@@ -4308,6 +4559,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	directory[0] = TableNodeDirEntry{0, root.ID}
 	nodes := TableNodeMap{Base: base, Entries: directory}
 	nodes.Once = true
+	nodes.Indexed = true
 	root.Reset(base)
 	retain.reset(base, directory)
 	s := tableNodeScanBegin(r)
@@ -4372,7 +4624,12 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
 	if tableNonFiniteRefused(report) {
+		clear(region)
+		retain.reset(nil, nil)
 		return nil
+	}
+	if !report.Malformed && !tableCycleCheck(base, root, nil, directory, nodeType) {
+		report.Malformed = true
 	}
 	if report.Malformed {
 		clear(region)

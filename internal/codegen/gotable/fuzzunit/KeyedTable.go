@@ -6993,7 +6993,7 @@ func init() {
 		return TeamConfigSaveBodyRetain(w, (*TeamConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TeamConfigLoadBodyRetain(&r, (*TeamConfig)(p))
-	}, CookSize: 28, CookAlign: 4}
+	}, CycleIndex: 20, CycleType: tableCycleType, CookSize: 28, CookAlign: 4}
 }
 
 // TeamConfigTableType returns TeamConfig's reflection descriptor.
@@ -7035,7 +7035,7 @@ func init() {
 		return GunnerConfigSaveBodyRetain(w, (*GunnerConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerConfigLoadBodyRetain(&r, (*GunnerConfig)(p))
-	}, CookSize: 8, CookAlign: 4}
+	}, CycleIndex: 6, CycleType: tableCycleType, CookSize: 8, CookAlign: 4}
 }
 
 // GunnerConfigTableType returns GunnerConfig's reflection descriptor.
@@ -7089,7 +7089,7 @@ func init() {
 		return TurretConfigSaveBodyRetain(w, (*TurretConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TurretConfigLoadBodyRetain(&r, (*TurretConfig)(p))
-	}, CookSize: 20, CookAlign: 4}
+	}, CycleIndex: 21, CycleType: tableCycleType, CookSize: 20, CookAlign: 4}
 }
 
 // TurretConfigTableType returns TurretConfig's reflection descriptor.
@@ -7143,7 +7143,7 @@ func init() {
 		return HullConfigSaveBodyRetain(w, (*HullConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return HullConfigLoadBodyRetain(&r, (*HullConfig)(p))
-	}, CookSize: 68, CookAlign: 4}
+	}, CycleIndex: 8, CycleType: tableCycleType, CookSize: 68, CookAlign: 4}
 }
 
 // HullConfigTableType returns HullConfig's reflection descriptor.
@@ -7197,7 +7197,7 @@ func init() {
 		return KeyedConfigSaveBodyRetain(w, (*KeyedConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return KeyedConfigLoadBodyRetain(&r, (*KeyedConfig)(p))
-	}, CookSize: 300, CookAlign: 4}
+	}, CycleIndex: 9, CycleType: tableCycleType, CookSize: 300, CookAlign: 4}
 }
 
 // KeyedConfigTableType returns KeyedConfig's reflection descriptor.
@@ -7227,7 +7227,7 @@ func init() {
 		return ScoreBoardSaveBodyRetain(w, (*ScoreBoardRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ScoreBoardLoadBodyRetain(&r, (*ScoreBoardRow)(p))
-	}, CookSize: 12, CookAlign: 4}
+	}, CycleIndex: 18, CycleType: tableCycleType, CookSize: 12, CookAlign: 4}
 }
 
 // ScoreBoardTableType returns ScoreBoard's reflection descriptor.

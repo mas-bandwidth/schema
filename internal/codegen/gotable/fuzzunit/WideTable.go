@@ -874,7 +874,7 @@ var WideBlobTableFields = []TableFieldInfo{
 var WideBlobTableInfo TableTypeInfo
 
 func init() {
-	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CookSize: 280016, CookAlign: 4}
+	WideBlobTableInfo = TableTypeInfo{Name: "WideBlob", Size: uint32(unsafe.Sizeof(WideBlob{})), NumFields: 3, Fields: WideBlobTableFields, Reset: func(storage unsafe.Pointer) { WideBlobReset((*WideBlob)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xab6a6961d3366451, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WideBlobSaveBody(w, (*WideBlob)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WideBlobLoadBody(&r, (*WideBlob)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return WideBlobSaveBodyRetain(w, (*WideBlob)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return WideBlobLoadBodyRetain(&r, (*WideBlob)(p)) }, CycleIndex: 23, CycleType: tableCycleType, CookSize: 280016, CookAlign: 4}
 }
 
 // WideBlobTableType returns WideBlob's reflection descriptor.

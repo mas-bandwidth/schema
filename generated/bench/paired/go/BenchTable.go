@@ -333,6 +333,8 @@ type TableTypeInfo struct {
 	Size                uint32 // unsafe.Sizeof the storage struct
 	ID                  uint64
 	Variable            bool
+	CycleIndex          uint64
+	CycleType           func(uint64) *TableTypeInfo
 	NodeType            func(uint64) *TableTypeInfo
 	SaveBody            func(*TableWriter, unsafe.Pointer) bool
 	LoadBody            func(TableReader, unsafe.Pointer) bool
