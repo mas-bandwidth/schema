@@ -1,0 +1,7 @@
+package probe
+table Root {
+ names [..3]string(8)
+ maybe []?string(8)
+ loose []string(8)
+ bounded [..3]?string(8)
+}

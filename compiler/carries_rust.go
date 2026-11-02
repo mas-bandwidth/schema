@@ -16,5 +16,5 @@ package compiler
 // wire form and caller-owned output buffers. Declared forms filter public
 // roots while retaining storage and body codecs used by enabled parents.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity, carryForms)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity, carryForms, carryTextList)
 }

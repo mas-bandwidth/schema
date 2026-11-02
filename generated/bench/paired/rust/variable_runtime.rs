@@ -112,6 +112,7 @@ pub struct TableReport {
     pub kind_mismatch: u64,
     pub widened: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
@@ -1883,6 +1884,7 @@ pub struct Jr<'a> {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
@@ -1898,7 +1900,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, clamped_field: "", duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -2018,8 +2020,8 @@ impl<'a> Jr<'a> {
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
                             } else {
-                                // a lone lead surrogate rides as itself, and the
-                                // escape after it is read on its own
+                                // A lone surrogate currently normalizes to U+FFFD.
+                                // Strict refusal is deferred by SPEC-TABLES §16.3.
                                 self.p = mark;
                             }
                         }

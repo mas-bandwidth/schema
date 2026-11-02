@@ -301,6 +301,7 @@ pub struct Jr<'a> {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
@@ -316,7 +317,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, clamped_field: "", duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -436,8 +437,8 @@ impl<'a> Jr<'a> {
                             if (0xdc00..0xe000).contains(&lo) {
                                 cp = 0x10000 + ((cp - 0xd800) << 10) + (lo as u32 - 0xdc00);
                             } else {
-                                // a lone lead surrogate rides as itself, and the
-                                // escape after it is read on its own
+                                // A lone surrogate currently normalizes to U+FFFD.
+                                // Strict refusal is deferred by SPEC-TABLES §16.3.
                                 self.p = mark;
                             }
                         }
@@ -1109,6 +1110,10 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 
 // emitTextWriteOne emits the writer of ONE value of the field.
 func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	if f.IsTextList() {
+		g.emitTextWriteValue(b, ir.TextListValue(f), x+".value", d, ind)
+		return
+	}
 	if f.Type.Timestamp {
 		fmt.Fprintf(b, "%sjson_escape(&table_timestamp_text(%s), &mut w.out);\n", ind, x)
 		return
@@ -1370,7 +1375,13 @@ func (g *gen) emitTextReadField(b *strings.Builder, i int, f *ir.Field, field, i
 	fmt.Fprintf(b, "%s%q => {\n", ind, g.fieldKey(f))
 	fmt.Fprintf(b, "%s    if seen[%d] { jr.duplicate += 1; }\n", ind, i)
 	fmt.Fprintf(b, "%s    seen[%d] = true;\n", ind, i)
+	if f.IsTextList() {
+		fmt.Fprintf(b, "%s    let before_text_clamp = jr.clamped;\n", ind)
+	}
 	g.emitTextReadValue(b, f, field, ind+"    ")
+	if f.IsTextList() {
+		fmt.Fprintf(b, "%s    if jr.clamped != before_text_clamp && jr.clamped_field.is_empty() { jr.clamped_field = %q; }\n", ind, f.TextListElem().MapEntryOf)
+	}
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1450,6 +1461,10 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 
 // emitTextReadElem emits the read of one array element, pushed in place.
 func (g *gen) emitTextReadElem(b *strings.Builder, f *ir.Field, field, ind string) {
+	if f.IsTextList() {
+		g.emitTextListJSONElement(b, f, field, ind)
+		return
+	}
 	switch classOf(f) {
 	case vPointer:
 		fmt.Fprintf(b, "%slet e = %s(jr);\n", ind, fn(f.Type.Name, "json_ptr"))
@@ -1635,6 +1650,7 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    report.unknown += jr.unknown;\n")
 	fmt.Fprintf(b, "    report.kind_mismatch += jr.kind_mismatch;\n")
 	fmt.Fprintf(b, "    report.clamped += jr.clamped;\n")
+	fmt.Fprintf(b, "    if report.clamped_field.is_empty() { report.clamped_field = jr.clamped_field; }\n")
 	fmt.Fprintf(b, "    report.duplicate += jr.duplicate;\n")
 	fmt.Fprintf(b, "    report.missing_required += jr.missing_required;\n")
 	fmt.Fprintf(b, "    if jr.missing_required != 0 { report.missing_required_fields = jr.missing_required_fields; report.refused = true; }\n")

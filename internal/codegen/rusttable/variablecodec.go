@@ -712,6 +712,7 @@ func enumRef(f *ir.Field, x string) string {
 // write order (docs/SPEC-TABLES.md §3).
 func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int, x, ind string) {
 	id := ir.TableFieldWireId(f)
+	textListStorageCheck(b, f, x, ind, `ids.refused = Some(String::from("invalid_value: text list")); return;`)
 	kind := fieldWireKind(f)
 	inner := ind + "    "
 	if f.Type.Optional {
@@ -743,6 +744,10 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		ein := inner + "    "
 		switch classOf(f) {
 		case vTable:
+			if ir.TextListPlain(f) {
+				fmt.Fprintf(b, "%sleb_write(&mut body, e.value.len() as u64);\n%sbody.extend_from_slice(e.value.as_bytes());\n", ein, ein)
+				break
+			}
 			fmt.Fprintf(b, "%slet mut eb = Vec::new();\n", ein)
 			emitTableBodyInto(b, f, "e", "eb", fmt.Sprintf("path.step(%d, j as u32)", ordinal), ein)
 			fmt.Fprintf(b, "%sleb_write(&mut body, eb.len() as u64);\n", ein)
@@ -1109,7 +1114,13 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		return
 	}
 	if f.Array != ir.ArrayNone {
+		if f.IsTextList() {
+			fmt.Fprintf(b, "%slet before_text_clamp = report.clamped;\n", in)
+		}
 		g.emitArrayLoad(b, f, ordinal, field, in)
+		if f.IsTextList() {
+			fmt.Fprintf(b, "%sif report.clamped != before_text_clamp && report.clamped_field.is_empty() { report.clamped_field = %q; }\n", in, f.TextListElem().MapEntryOf)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -1251,6 +1262,8 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case isBytes:
 		fmt.Fprintf(b, "%sif *off >= sub { report.malformed = true; break; }\n", i5)
 		fmt.Fprintf(b, "%s%s.push(wire[*off]); *off += 1;\n", i5, field)
+	case ir.TextListPlain(f):
+		emitPlainTextListElement(b, f, field, i5)
 	case cls == vTable:
 		fmt.Fprintf(b, "%sif *off >= sub { report.malformed = true; break; }\n", i5)
 		fmt.Fprintf(b, "%slet Some(el) = leb_read(wire, off) else { report.malformed = true; break; };\n", i5)

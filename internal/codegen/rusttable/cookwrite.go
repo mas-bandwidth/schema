@@ -355,6 +355,7 @@ func (g *gen) emitCookUnionWriter(b *strings.Builder, un *ir.Union) {
 // internal/tablecook/region.go's field does: `x` is a place expression of the
 // field's storage type and the field begins at base + off.
 func (g *gen) emitCookField(b *strings.Builder, f *ir.Field, x, base string, off int64, ind string) {
+	textListStorageCheck(b, f, x, ind, "w.fail(); return;")
 	pieces := ir.FieldPieces(g.unit, f, off)
 	if len(pieces) == 0 {
 		return
