@@ -2400,13 +2400,14 @@ defmodule Benchtable.Table do
 
                     :error ->
                       # a kind this reader cannot skip, or a length its body
-                      # cannot hold: the field still counts — unknown when the id
-                      # is not this body's, a kind mismatch when it is — and the
-                      # walk stops (§3, §4)
+                      # cannot hold: preserve the header for unknown/kind
+                      # accounting, but no payload exists to decode. The walk
+                      # stops here and the enclosing body owns the damage (§3, §4).
                       if id == @node_id and transport == true do
                         {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                       else
-                        {:stop, Enum.reverse([{id, kind, <<>>} | acc]), nodes, byte_size(rest2)}
+                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), nodes,
+                         byte_size(rest2)}
                       end
                   end
                 end
@@ -2733,6 +2734,18 @@ defmodule Benchtable.Table do
 
           f ->
             cond do
+              payload == :unframed ->
+                # The field header was read, but its payload never framed.
+                # Count only a genuine kind mismatch; never feed fabricated
+                # empty bytes to a scalar reader. The enclosing body owns
+                # the damage and discards this incomplete field.
+                report =
+                  if kind == f.kind or widens?(kind, f),
+                    do: report,
+                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
+
+                {:halt, {value, report}}
+
               kind == f.kind and not compatible_payload?(f, payload) ->
                 {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
 
@@ -7322,7 +7335,7 @@ defmodule Benchtable.Table do
           nil ->
             # an unknown FIELD id is the retained class (§6.6): the resolved walk
             # decides, and the six excluded classes count one retain_lost.
-            if payload == <<>> do
+            if payload in [<<>>, :unframed] do
               # a field the plain read could not delimit — its slice failed — has
               # no bytes to retain: §6.6's capture never runs, one unknown counts
               # and the enclosing read's malformed does (§3, §4).
@@ -7364,6 +7377,17 @@ defmodule Benchtable.Table do
 
           f ->
             cond do
+              payload == :unframed ->
+                # Array elements keep prefix events even when framing stops.
+                # As in decode/4, an incomplete payload is never a value and
+                # cannot enter either the scalar reader or retained capture.
+                report =
+                  if kind == f.kind or widens?(kind, f),
+                    do: report,
+                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
+
+                {:halt, {value, report, retain}}
+
               kind == f.kind and not compatible_payload?(f, payload) ->
                 {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
 
