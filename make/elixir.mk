@@ -1992,17 +1992,32 @@ test-elixir: tables-elixir-view
 
 # THE FRAMING SURFACE, its Elixir leg (docs/LAYERS/1-framing.md): the Elixir
 # driver answers every framing row and passes it, none absent
-# (test/conformance/framing/gate). Its negative control takes the id table's
-# 4096-entry cap out of the emitter's open (§3, THE DISTINCTNESS CHECK; rule
-# F6), rebuilds the corpus, and requires framing RED while report stays green.
-ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|'
+# (test/conformance/framing/gate). Its negative control takes two rules out of
+# the emitter: the id table's 4096-entry cap (§3, THE DISTINCTNESS CHECK; F6)
+# and the cycle refusal (§3.1, §4; T8). It rebuilds the corpus and requires
+# framing RED on frame_entries_4097 and the three cycle rows, while report
+# stays green. A second build drops all but one dependent of each node, so
+# a shared node cannot release every parent; node_diamond_chain must go RED
+# while json-read stays green. The shared-dependency fault also affects report
+# rows with shared nodes; the independent text reader does not run that loader.
+# The diamond fixture has 2^40 paths over 82 nodes and guards against
+# expanding paths instead of preserving shared nodes. It is not a general
+# linear-time guarantee for save or JSON.
+ELIXIR_CONFORMANCE_FRAMING_SED := -e 's|    if count > 4096 or count > div(size - 9, 8) do|    if count > div(size - 9, 8) do|' \
+	-e 's|    if map_size(assembled) != map_size(records), do: throw(:wire_damaged)|    if false and map_size(assembled) != map_size(records), do: throw(:wire_damaged)|'
+ELIXIR_CONFORMANCE_FRAMING_SHARE_SED := -e 's|Enum.reduce(Map.get(parents, idx, \[\]), {pending, ready}, fn|Enum.reduce(Enum.take(Map.get(parents, idx, []), 1), {pending, ready}, fn|'
 .PHONY: conformance-elixir-framing conformance-negative-control-elixir-framing
 conformance-elixir-framing: build/conformance-harness build-conformance-elixir
+	SCHEMA_SLOW=1 $(GO) test -timeout=0 ./internal/codegen/elixirtable -run '^(TestCyclicWireIsDamageElixir|TestCycleSlotKindsElixir)$$'
 	sh test/conformance/framing/gate elixir test/conformance/elixir/driver build/conformance-elixir-framing
 conformance-negative-control-elixir-framing: build/conformance-harness
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries read as legal)
-	@grep -q "elixir / framing: frame_entries_4097:" build/elixir-conformance-negative-framing/log || \
-		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on frame_entries_4097"; exit 1; }
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SED,framing,report,an id table past 4096 entries and a cyclic wire read as legal)
+	@for c in frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid; do \
+		grep -q "elixir / framing: $$c:" build/elixir-conformance-negative-framing/log || \
+			{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on $$c"; exit 1; }; done
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing-share,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SHARE_SED,framing,json-read,a shared node failing to release every dependent)
+	@grep -q "elixir / framing: node_diamond_chain:" build/elixir-conformance-negative-framing-share/log || \
+		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on node_diamond_chain"; exit 1; }
 test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing
 
 # THE MAP AND LIST COOK (docs/PORTING.md M19, docs/SPEC-TABLES.md §2.8, §2.9,

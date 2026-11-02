@@ -561,13 +561,15 @@ func (g *gen) emitWriteFixed(f *ir.Field, expr, ind string) {
 
 // emitWriteUfixed routes an unsigned fixed write. The C runtime's fixed
 // entries take SIGNED values and sign-extend them into the shared unsigned
-// 128-bit core, so an unsigned raw must arrive zero-extended: storage of 32
-// bits or fewer zero-extends through the fixed64 entry's int64 value, 64-bit
-// storage zero-extends into the fixed128 entry's low lane, and 128-bit
-// storage bit-casts lane for lane. The wire sees only the raw span — the
-// bounds and F — so the entry width never moves a byte (the core derives the
-// bit count from the span alone, and the signed narrow path already leans on
-// the same property).
+// 128-bit core, and validate that the whole-unit bounds fit the signed Q I.F
+// declaration: storage of 32 bits or fewer zero-extends through the fixed64
+// entry's int64 value with IntBits + 1, and 64-bit storage zero-extends into
+// the fixed128 entry's low lane with IntBits + 1. For 128-bit storage,
+// IntBits < 64 has no spare 129th sign bit, so it translates the whole-unit
+// bounds by -2^(I-1) and toggles the high lane's sign bit
+// (hi ^ 0x8000000000000000ULL), while IntBits >= 64 bit-casts lane for lane
+// with unchanged bounds. The wire sees only the raw span and offset, so the
+// entry width and sign-bit translation never move a byte.
 func (g *gen) emitWriteUfixed(f *ir.Field, expr, ind string) {
 	lo := g.renderIntSuffixed(f.IntMinExpr, f.IntMin, "LL")
 	hi := g.renderIntSuffixed(f.IntMaxExpr, f.IntMax, "LL")
@@ -575,12 +577,20 @@ func (g *gen) emitWriteUfixed(f *ir.Field, expr, ind string) {
 	case f.Type.Width <= 32:
 		g.pf("%s{\n%s    serialize_int64_t fixed_value = (serialize_int64_t) %s;\n", ind, ind, expr)
 		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed64( stream, fixed_value, %d, %d, %s, %s )",
-			f.Type.IntBits, f.Type.FracBits, lo, hi))
+			f.Type.IntBits+1, f.Type.FracBits, lo, hi))
 		g.pf("%s}\n", ind)
 	case f.Type.Width == 64:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, %s );\n", ind, ind, expr)
 		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %s, %s )",
-			f.Type.IntBits, f.Type.FracBits, lo, hi))
+			f.Type.IntBits+1, f.Type.FracBits, lo, hi))
+		g.pf("%s}\n", ind)
+	case f.Type.IntBits < 64:
+		bias := new(big.Int).Lsh(big.NewInt(1), uint(f.Type.IntBits-1))
+		loBiased := intLit(new(big.Int).Sub(f.IntMin, bias), "LL")
+		hiBiased := intLit(new(big.Int).Sub(f.IntMax, bias), "LL")
+		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( %s.hi ^ 0x8000000000000000ULL, %s.lo );\n", ind, ind, expr, expr)
+		g.call(ind+"    ", fmt.Sprintf("serialize_write_fixed128( stream, fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, loBiased, hiBiased))
 		g.pf("%s}\n", ind)
 	default:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( %s.hi, %s.lo );\n", ind, ind, expr, expr)
@@ -646,13 +656,21 @@ func (g *gen) emitReadUfixed(f *ir.Field, expr, ind string) {
 	case f.Type.Width <= 32:
 		g.pf("%s{\n%s    serialize_int64_t fixed_value = 0;\n", ind, ind)
 		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed64( stream, &fixed_value, %d, %d, %s, %s )",
-			f.Type.IntBits, f.Type.FracBits, lo, hi))
+			f.Type.IntBits+1, f.Type.FracBits, lo, hi))
 		g.pf("%s    %s = (%s) fixed_value;\n%s}\n", ind, expr, g.storageType(f), ind)
 	case f.Type.Width == 64:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
 		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %s, %s )",
-			f.Type.IntBits, f.Type.FracBits, lo, hi))
+			f.Type.IntBits+1, f.Type.FracBits, lo, hi))
 		g.pf("%s    %s = fixed_value.lo;\n%s}\n", ind, expr, ind)
+	case f.Type.IntBits < 64:
+		bias := new(big.Int).Lsh(big.NewInt(1), uint(f.Type.IntBits-1))
+		loBiased := intLit(new(big.Int).Sub(f.IntMin, bias), "LL")
+		hiBiased := intLit(new(big.Int).Sub(f.IntMax, bias), "LL")
+		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
+		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %s, %s )",
+			f.Type.IntBits, f.Type.FracBits, loBiased, hiBiased))
+		g.pf("%s    %s = serialize_uint128_make( fixed_value.hi ^ 0x8000000000000000ULL, fixed_value.lo );\n%s}\n", ind, expr, ind)
 	default:
 		g.pf("%s{\n%s    serialize_int128_t fixed_value = serialize_int128_make( 0, 0 );\n", ind, ind)
 		g.call(ind+"    ", fmt.Sprintf("serialize_read_fixed128( stream, &fixed_value, %d, %d, %s, %s )",
