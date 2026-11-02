@@ -979,20 +979,20 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\t\tfinal item = val[index];\n")
 		switch listElementKind(f) {
 		case wireKindTable:
+			g.pf("\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
 			g.pf("\t\t\t\t\tif (%s) {\n", jsonTableShape(tableRef(f), "item"))
-			g.pf("\t\t\t\t\t\tfinal e = %s();\n", f.Type.Name)
 			g.pf("\t\t\t\t\t\t%sFromJsonFields(e, item, r, sh);\n", dartName(f.Type.Name))
-			g.pf("\t\t\t\t\t\tv.%s.add(e);\n", name)
 			g.pf("\t\t\t\t\t} else {\n")
 			g.pf("\t\t\t\t\t\tr.kindMismatch++;\n")
 			g.pf("\t\t\t\t\t}\n")
+			g.pf("\t\t\t\t\tv.%s.add(e);\n", name)
 		case wireKindPtr:
 			ref := tableRef(f)
 			g.pf("\t\t\t\t\tv.%s.add(_readPtr(item, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }) as %s?);\n", name, ref.Name, dartName(ref.Name), ref.Name, ref.Name)
 		default:
 			switch listElementKind(f) {
 			case wireKindBool:
-				g.pf("\t\t\t\t\tif (item is bool) { v.%s.add(item); } else { r.kindMismatch++; }\n", name)
+				g.pf("\t\t\t\t\tv.%s.add(_jsonBoolField(item, r));\n", name)
 			case wireKindF32, wireKindF64:
 				g.pf("\t\t\t\t\tv.%s.add(_jsonFloatField(item, r, %t));\n", name, listElementKind(f) == wireKindF32)
 			case wireKindEnum:
