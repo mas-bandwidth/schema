@@ -16,6 +16,9 @@ public final class MixedPickupEventRetain {
     // loss, never retained silently.
     public static MixedPickupEventVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return MixedPickupEventVariable.load(data, report);
         }

@@ -177,3 +177,110 @@ public final class Driver {
 		})
 	}
 }
+
+// A repeated key in a map entry selects its final occurrence, including a
+// later widening kind (docs/SPEC-TABLES.md §2.8). A stale mismatch mark from
+// an earlier incompatible occurrence must not empty an otherwise valid map.
+func TestJavaMapRepeatedKeyLastKindWins(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	u := unitFromDir(t, filepath.Join(repo, "tables", "maps"))
+	files, err := Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := javacodegen.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Int128.java", "UInt128.java"} {
+		if data := packet[name]; data != nil {
+			files[name] = data
+		}
+	}
+	build := t.TempDir()
+	var sources []string
+	for name, data := range files {
+		path := filepath.Join(build, name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		sources = append(sources, path)
+	}
+	fuzzWire, err := os.ReadFile(filepath.Join(repo, "testdata", "wire", "tables", "fuzz-vectors", "map_repeated_key_widen.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wp := filepath.Join(build, "map_repeated_key_widen.bin")
+	if err := os.WriteFile(wp, fuzzWire, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	driver := `import java.nio.file.Files;
+import java.nio.file.Paths;
+import mapdemo.*;
+
+public final class RepeatedKeyWidenDriver {
+    public static void main(String[] args) throws Exception {
+        byte[] wire = Files.readAllBytes(Paths.get(args[0]));
+        TableVariable.Report report = new TableVariable.Report();
+        PairsVariable.Value v = PairsVariable.load(wire, report);
+        if (v == null) throw new AssertionError("plain load refused");
+        byte[] saved = PairsVariable.save(v);
+        TableRetain retain = new TableRetain(1 << 16, 256);
+        TableVariable.Report rreport = new TableVariable.Report();
+        PairsVariable.Value rv = PairsRetain.loadRetain(wire, retain, rreport);
+        if (rv == null) throw new AssertionError("retain load refused");
+        System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("RR " + rreport.unknown + "," + rreport.kindMismatch + "," + rreport.widened + "," + rreport.clamped + "," + rreport.duplicate + "," + rreport.malformed + "," + rreport.refused);
+        System.out.println("S " + java.util.HexFormat.of().formatHex(saved));
+    }
+}
+`
+	dpath := filepath.Join(build, "RepeatedKeyWidenDriver.java")
+	if err := os.WriteFile(dpath, []byte(driver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sources = append(sources, dpath)
+	sort.Strings(sources)
+	classes := filepath.Join(build, "classes")
+	if err := os.MkdirAll(classes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	javac, javaBin := javaTools(t)
+	if out, err := exec.Command(javac, append([]string{"--release", "17", "-nowarn", "-d", classes}, sources...)...).CombinedOutput(); err != nil {
+		t.Fatalf("javac: %v\n%s", err, out)
+	}
+	out, err := exec.Command(javaBin, "-ea", "-cp", classes, "RepeatedKeyWidenDriver", wp).CombinedOutput()
+	if err != nil {
+		t.Fatalf("java: %v\n%s", err, out)
+	}
+	var rLine, rrLine, sLine string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if after, ok := strings.CutPrefix(line, "R "); ok {
+			rLine = after
+		}
+		if after, ok := strings.CutPrefix(line, "RR "); ok {
+			rrLine = after
+		}
+		if after, ok := strings.CutPrefix(line, "S "); ok {
+			sLine = after
+		}
+	}
+	model := tabletext.NewModel(u)
+	want := new(tabletext.Report)
+	value := model.New(u.Tables["Pairs"])
+	if _, err := tablewire.Decode(model, value, fuzzWire, want); err != nil {
+		t.Fatalf("oracle decode: %v", err)
+	}
+	wantLine := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%t", want.Unknown, want.KindMismatch, want.Widened, want.Clamped, want.Duplicate, want.Malformed, want.Refused)
+	if rLine != wantLine || rrLine != wantLine {
+		t.Fatalf("report mismatch: plain=%q retain=%q want=%q", rLine, rrLine, wantLine)
+	}
+	encoded, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sLine != hex.EncodeToString(encoded) {
+		t.Fatalf("saved mismatch: got=%s want=%s", sLine, hex.EncodeToString(encoded))
+	}
+}
