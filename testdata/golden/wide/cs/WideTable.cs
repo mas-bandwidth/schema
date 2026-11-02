@@ -3119,6 +3119,7 @@ namespace Wide
                 public byte BlobKind;
                 public int Offset, Length;
                 public long NativeOffset;
+                public byte Mark; // the cycle check's mark: 0 unvisited, 1 open, 2 closed
             }
             internal sealed class Graph
             {
@@ -3208,6 +3209,83 @@ namespace Wide
                 graph.Indices.Add(value, 1); graph.Open.Add(value);
                 if (!graph.Visit(value, type)) { return null; }
                 graph.Open.Clear(); return graph;
+            }
+            // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer produces
+            // one, so a load whose stored graph holds a cycle refuses the whole load. The
+            // vertices are the root and every table record this load placed; the edges
+            // are every non-null table pointer slot a node's by-value closure STORES, a
+            // slot under a false guard included. A cycle anywhere refuses, one the root
+            // never reaches included. Each node carries one of three marks in its own
+            // record and is ENTERED ONCE: a pointer to an OPEN node is a cycle, a pointer
+            // to a CLOSED node is a share and is never re-entered, so the check is linear
+            // in nodes and slots.
+            internal static bool Cyclic(Graph graph, object root, TableTypeInfo rootType)
+            {
+                int n = graph.Nodes.Count;
+                var index = new System.Collections.Generic.Dictionary<object, int>(n + 1, System.Collections.Generic.ReferenceEqualityComparer.Instance);
+                index[root] = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    Node node = graph.Nodes[i]; node.Mark = 0;
+                    if (node.BlobKind == 0 && node.Type != null && node.Value != null) { index.TryAdd(node.Value, i + 1); }
+                }
+                byte rootMark = 0;
+                var targets = new System.Collections.Generic.List<int>();
+                var stack = new System.Collections.Generic.List<(int Vertex, int[] Targets, int Next)>();
+                for (int start = 0; start <= n; start++)
+                {
+                    if (start > 0 && (graph.Nodes[start - 1].BlobKind != 0 || graph.Nodes[start - 1].Type == null || graph.Nodes[start - 1].Value == null)) { continue; }
+                    if ((start == 0 ? rootMark : graph.Nodes[start - 1].Mark) != 0) { continue; }
+                    Enter(start);
+                    while (stack.Count > 0)
+                    {
+                        var top = stack[stack.Count - 1];
+                        if (top.Next == top.Targets.Length)
+                        {
+                            if (top.Vertex == 0) { rootMark = 2; } else { graph.Nodes[top.Vertex - 1].Mark = 2; }
+                            stack.RemoveAt(stack.Count - 1); continue;
+                        }
+                        int t = top.Targets[top.Next];
+                        stack[stack.Count - 1] = (top.Vertex, top.Targets, top.Next + 1);
+                        byte mark = t == 0 ? rootMark : graph.Nodes[t - 1].Mark;
+                        if (mark == 1) { return true; } // a pointer to an OPEN node: a cycle
+                        if (mark != 0) { continue; }    // a pointer to a CLOSED node: a share
+                        Enter(t);
+                    }
+                }
+                return false;
+                void Enter(int v)
+                {
+                    if (v == 0) { rootMark = 1; } else { graph.Nodes[v - 1].Mark = 1; }
+                    targets.Clear();
+                    if (v == 0) { CycleSlots(root, rootType, index, targets); }
+                    else { CycleSlots(graph.Nodes[v - 1].Value, graph.Nodes[v - 1].Type, index, targets); }
+                    stack.Add((v, targets.ToArray(), 0));
+                }
+            }
+            static void CycleSlots(object value, TableTypeInfo type, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
+            {
+                foreach (TableFieldInfo f in type.Fields) { CycleField(value, f, index, targets); }
+            }
+            static void CycleField(object value, TableFieldInfo f, System.Collections.Generic.Dictionary<object, int> index, System.Collections.Generic.List<int> targets)
+            {
+                if (f == null) { return; }
+                int n = f.IsArray ? Math.Max(0, Count(value, f)) : 1;
+                for (int i = 0; i < n; i++)
+                {
+                    if (f.Kind == 13) { object child = f.GetChild(value, i); if (child != null) { CycleSlots(child, f.Table, index, targets); } }
+                    else if (f.Kind == 15)
+                    {
+                        object union = f.GetChild(value, i); if (union == null) { continue; }
+                        ulong tag = f.Arms.GetTag(union);
+                        if (tag != 0 && tag <= (ulong)f.EnumMax) { CycleField(union, f.Arms.Arms[(int)tag].Field, index, targets); }
+                    }
+                    else if (f.Kind == 17 && f.BlobKind == 0)
+                    {
+                        object child = f.GetChild(value, i);
+                        if (child != null && index.TryGetValue(child, out int t)) { targets.Add(t); }
+                    }
+                }
             }
             static bool CollectNodes(ref Ids ids)
             {
@@ -4039,6 +4117,8 @@ namespace Wide
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
                 if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+                bool malformedBefore = report.Malformed;
+                report.Malformed = false;
                 BitReader r = new BitReader(bytes); r.At = 16;
                 for (; count < total; count++)
                 {
@@ -4048,10 +4128,11 @@ namespace Wide
                     // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
-                    { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (!good) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
+                    { report.Malformed |= malformedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+                    if (!good || report.Malformed) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
                 }
                 if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
+                report.Malformed = malformedBefore;
                 return Finish(report, Verdict.Ok);
             }
             // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
@@ -4152,7 +4233,7 @@ namespace Wide
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
-            { return NativeExtent(type) ? Align(type.StorageSize, 8) : type.StorageSize; }
+            { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
             static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
             {
                 alignment = Math.Max(8, type.StorageAlign);
@@ -5118,6 +5199,8 @@ namespace Wide
                 if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
                 bool complete = ReadBody(ref r, value, type, report, false);
                 if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
+                // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
+                if (r.Graph != null && r.Graph.Good && !report.Malformed && Cyclic(r.Graph, value, type)) { Damage(report); type.Reset(value); return Finish(report, Verdict.Damaged); }
                 // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing the
                 // walk decoded is handed back, and the verdict is the damage.
                 if (report.Malformed) { type.Reset(value); return Finish(report, Verdict.Damaged); }

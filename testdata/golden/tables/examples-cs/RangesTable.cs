@@ -1578,7 +1578,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RangedSigned(); }
@@ -1589,7 +1590,8 @@ namespace Tabledemo
                 string run_why = RangedSignedFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RangedSignedFixedClamp(values[k], report);
@@ -2224,7 +2226,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RangedUnsigned(); }
@@ -2235,7 +2238,8 @@ namespace Tabledemo
                 string run_why = RangedUnsignedFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RangedUnsignedFixedClamp(values[k], report);
@@ -2784,7 +2788,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new RangedWidths(); }
@@ -2795,7 +2800,8 @@ namespace Tabledemo
                 string run_why = RangedWidthsFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 RangedWidthsFixedClamp(values[k], report);
