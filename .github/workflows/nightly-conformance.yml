@@ -126,6 +126,9 @@ jobs:
           cache: false
 
       - name: shared oracle regression corpus (once)
+        env:
+          SCHEMA_SLOW: "1"
+          SCHEMA_REQUIRE_CORPUS: "1"
         run: |
           set -euo pipefail
           mkdir -p build/nightly/shared-regressions

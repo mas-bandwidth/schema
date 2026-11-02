@@ -75,8 +75,8 @@ func TestMapManyKeysIsNotQuadratic(t *testing.T) {
 	const n = 1 << 17
 	var b strings.Builder
 	b.WriteString(`{"wide":{`)
-	for pass := 0; pass < 2; pass++ {
-		for i := 0; i < n; i++ {
+	for pass := range 2 {
+		for i := range n {
 			if pass+i > 0 {
 				b.WriteByte(',')
 			}
