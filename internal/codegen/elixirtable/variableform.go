@@ -2626,7 +2626,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     if byte_size(rest) >= w do
       <<raw::binary-size(^w), after_sub::binary>> = rest
-      read_list_elements(f, after_sub, n - 1, nodes, ids, [int_of(raw, w, signed) | acc], report)
+      {v, report} = clamp_list_int(int_of(raw, w, signed), f, report)
+      read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
     end
@@ -2888,6 +2889,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {hi, %{report | clamped: report.clamped + 1}}
 
   defp clamp_int(v, _f, report), do: {v, report}
+
+  defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
+    do: clamp_int(v, %{min: lo, max: hi}, report)
+
+  defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
 
   # tableUtf8Valid (docs/SPEC-TABLES.md §4): well-formed UTF-8 without NUL.
   defp utf8_valid?(raw) do
