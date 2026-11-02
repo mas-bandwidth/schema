@@ -187,6 +187,9 @@ func cookAt(base string, off int64) string {
 // <T>_cook_write per carried root. Everything is behind the `cook` feature,
 // as every other piece of the cooked form is.
 func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
+	if !anyCookForm(g.unit) {
+		return
+	}
 	cw := cookWriteSet(g.unit, g.vc)
 	any := false
 	for _, n := range names {
@@ -222,7 +225,7 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	}
 	rootsAny := false
 	for _, n := range names {
-		if st := vStruct(g.unit, n); cw[n] && g.isVariableRoot(st) {
+		if st := vStruct(g.unit, n); cw[n] && g.isVariableRoot(st) && st.CarriesForm("cook") {
 			rootsAny = true
 		}
 	}
@@ -286,7 +289,7 @@ func (g *gen) emitCookWriteFromStorage(b *strings.Builder, names []string) {
 	}
 	for _, n := range names {
 		st := vStruct(g.unit, n)
-		if cw[n] && g.isVariableRoot(st) {
+		if cw[n] && g.isVariableRoot(st) && st.CarriesForm("cook") {
 			g.emitCookRootWriter(b, st)
 		}
 	}

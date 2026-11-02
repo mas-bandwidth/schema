@@ -32,8 +32,14 @@ func generateBlocks(u *ir.Unit, blocks *ir.BlockUnit, banner string) (map[string
 
 	byFile := map[string][]*ir.BlockLayout{}
 	for _, bl := range blocks.Tables {
+		if !bl.Table.CarriesForm("block") {
+			continue
+		}
 		base := u.DeclFile[bl.Table.Name]
 		byFile[base] = append(byFile[base], bl)
+	}
+	if len(byFile) == 0 {
+		return nil, nil
 	}
 	for base, tables := range byFile {
 		sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })

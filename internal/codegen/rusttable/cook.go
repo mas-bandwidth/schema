@@ -20,6 +20,9 @@ import (
 // region is laid out from, their layout contract as const asserts, and one
 // <Name>Cook per table in the file.
 func (g *gen) cookModule() []byte {
+	if !anyCookForm(g.unit) {
+		return nil
+	}
 	roots := g.cookRoots()
 	if len(roots) == 0 {
 		return nil
@@ -44,8 +47,10 @@ func (g *gen) cookModule() []byte {
 	g.body.Reset()
 	g.emitCookDescriptors(roots)
 	for _, st := range roots {
-		g.emitCookHandle(st)
-		g.emitCookWrite(st)
+		if st.CarriesForm("cook") {
+			g.emitCookHandle(st)
+			g.emitCookWrite(st)
+		}
 	}
 	b.WriteString(g.body.String())
 	return []byte(b.String())

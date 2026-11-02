@@ -13,7 +13,8 @@ package compiler
 // text, variable/fixed/message wire and cook use the shared boundary corpus and
 // independent native Go bytes in rusttable's timestamp tests. CRC-32C integrity
 // seals each file or message batch once; native corruption tests cover every
-// wire form and caller-owned output buffers.
+// wire form and caller-owned output buffers. Declared forms filter public
+// roots while retaining storage and body codecs used by enabled parents.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryIntegrity, carryForms)
 }
