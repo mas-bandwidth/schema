@@ -2327,6 +2327,17 @@ func (in *reader) readMapValue(fv *Field, depth int) bool {
 		in.m.reset(fv)
 		return true
 	}
+	if in.valueShape() != Shape(fv.Def) {
+		in.report.KindMismatch++
+		if !in.skipValue(depth + 1) {
+			return false
+		}
+		// Null is the only absent optional map value (§16.2).
+		if fv.Def.Type.Optional {
+			fv.Present = true
+		}
+		return true
+	}
 	if !in.readField(fv, depth) {
 		return false
 	}

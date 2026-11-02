@@ -1,0 +1,12 @@
+package probe
+fixed table Node {
+    id int32
+}
+table Maps {
+    numbers map[string(8)]int32
+    texts map[string(8)]string(8)
+    nodes map[string(8)]Node
+    pointers map[string(8)]*Node
+    optionals map[string(8)]?int32
+    nested map[string(8)]map[string(8)]int32
+}

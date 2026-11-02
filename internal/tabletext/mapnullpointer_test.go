@@ -12,7 +12,7 @@ import (
 
 // TestMapNullPointerValuesRoundTrip holds the map and pointer rows of
 // docs/SPEC-TABLES.md §16.2 together: a null map value of pointer kind is a
-// null reference, while a plain value still refuses null and an optional
+// null reference, while a plain value counts a kind mismatch and an optional
 // value still reads null as absent.
 func TestMapNullPointerValuesRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -134,14 +134,19 @@ table Holder
 			m := tabletext.NewModel(u)
 			inst := m.New(m.Lookup("Holder"))
 			var report tabletext.Report
-			if m.Read(inst, []byte(tc.text), &report) {
-				t.Fatalf("non-pointer map value accepted null: %s", tc.text)
+			if !m.Read(inst, []byte(tc.text), &report) {
+				t.Fatalf("well-formed wrong-shape map value refused: %s", tc.text)
 			}
-			if report != (tabletext.Report{Malformed: true}) {
-				t.Fatalf("null changed the BASE refusal report: %+v", report)
+			if report != (tabletext.Report{KindMismatch: 1}) {
+				t.Fatalf("null must count one kind mismatch: %+v", report)
 			}
-			if len(field(t, inst, tc.field).Entries) != 0 {
-				t.Fatal("refused map value was inserted")
+			entries := field(t, inst, tc.field).Entries
+			if len(entries) != 1 {
+				t.Fatal("valid key with a default value was not retained")
+			}
+			value := entries[0].Tab.Fields[1].Cell
+			if value.I != 0 || len(value.Str) != 0 {
+				t.Fatalf("wrong-shape value was not defaulted: %+v", value)
 			}
 		})
 	}
