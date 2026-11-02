@@ -900,7 +900,7 @@ func BlockFieldOf(u *Unit, f *Field, fieldOffset int64, projection bool) BlockFi
 		return facts
 	}
 	switch {
-	case f.Type.Pointer && f.Array == ArrayNone:
+	case (f.Type.Pointer && f.Array == ArrayNone) || f.Type.TextUnbounded():
 		facts.ElemSize = pieces[0].Size
 	case f.Type.Kind == TString:
 		// char[N+1] buffer, then the int32 used length. A string is not an
