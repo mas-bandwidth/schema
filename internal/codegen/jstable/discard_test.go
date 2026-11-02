@@ -396,4 +396,105 @@ for (const row of %s) {
   }
 }
 `, js, js, js))
+
+	// List, map, and false-guard pointer-slot cycles (§2.8, §2.9, §3.1).
+	cu := loadSchemaString(t, "cycle.schema", `package cyclecheck
+table Node
+{
+    a      int32 = 0
+    on     bool
+    left   *Node
+    right  *Node
+    items  []*Node
+    lookup map[int32]*Node
+    if on
+    {
+        side *Node
+    }
+}
+`)
+	cm := tabletext.NewModel(cu)
+	makeGraph := func(kind string) ([]byte, []byte) {
+		nodes := make([]*tabletext.Instance, 4)
+		for i := range nodes {
+			nodes[i] = cm.New(cm.Lookup("Node"))
+		}
+		f0, _ := nodes[0].FieldByKey("left")
+		f0.Cell.Node = nodes[1]
+		f1, _ := nodes[1].FieldByKey("left")
+		f1.Cell.Node = nodes[2]
+		switch kind {
+		case "list":
+			f2, _ := nodes[2].FieldByKey("items")
+			f2.Elems = []tabletext.Cell{{Node: nodes[3]}}
+			f2.Count = 1
+		case "map":
+			f2, _ := nodes[2].FieldByKey("lookup")
+			ent := cm.NewMapEntry(f2.Def)
+			ent.Fields[0].Cell.I = 1
+			ent.Fields[1].Cell.Node = nodes[3]
+			f2.Entries = []tabletext.Cell{{Tab: ent}}
+		case "guard":
+			on, _ := nodes[2].FieldByKey("on")
+			on.Cell.B = true
+			f2, _ := nodes[2].FieldByKey("side")
+			f2.Cell.Node = nodes[3]
+		}
+		twin, err := tablewire.Encode(cm, nodes[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind == "guard" {
+			for i := 0; i+2 < len(twin); i++ {
+				if twin[i+1] == byte(ir.TableKindBool) && twin[i+2] == 1 {
+					try := bytes.Clone(twin)
+					try[i+2] = 0
+					inst := cm.New(cm.Lookup("Node"))
+					var rep tabletext.Report
+					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil && !rep.Malformed {
+						twin = try
+						break
+					}
+				}
+			}
+		}
+		cyc := bytes.Clone(twin)
+		if kind == "list" {
+			pat := []byte{byte(ir.TableKindPointer), 1, 4}
+			if bytes.Count(cyc, pat) != 1 {
+				t.Fatalf("list pattern count != 1")
+			}
+			cyc[bytes.Index(cyc, pat)+2] = 2
+		} else {
+			pat := []byte{byte(ir.TableKindPointer), 4, 0}
+			if bytes.Count(cyc, pat) != 1 {
+				t.Fatalf("%s pattern count != 1", kind)
+			}
+			cyc[bytes.Index(cyc, pat)+1] = 2
+		}
+		return twin, cyc
+	}
+	listTwin, listCycle := makeGraph("list")
+	mapTwin, mapCycle := makeGraph("map")
+	guardTwin, guardCycle := makeGraph("guard")
+	jsDiscardRun(t, cu, map[string][]byte{
+		"list-twin.bin": listTwin, "list-cycle.bin": listCycle,
+		"map-twin.bin": mapTwin, "map-cycle.bin": mapCycle,
+		"guard-twin.bin": guardTwin, "guard-cycle.bin": guardCycle,
+	}, `
+for (const [name, wantLoad] of [
+  ["list-twin.bin", true], ["list-cycle.bin", false],
+  ["map-twin.bin", true], ["map-cycle.bin", false],
+  ["guard-twin.bin", true], ["guard-cycle.bin", false],
+]) {
+  const wire = new Uint8Array(readFileSync(name));
+  const r = new m.TableVariableReport();
+  const v = m.NodeLoad(wire, r);
+  if (wantLoad) {
+    if (v === null || r.malformed) { fail(name + ": did not load: " + JSON.stringify(r)); }
+  } else {
+    if (v !== null || !r.malformed) { fail(name + ": a cyclic wire loaded (malformed=" + r.malformed + ")"); }
+  }
+}
+`)
 }
