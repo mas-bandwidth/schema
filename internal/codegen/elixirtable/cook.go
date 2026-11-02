@@ -305,6 +305,21 @@ const cookRuntimeSource = `  @moduledoc """
 
   def bool(region, at), do: uint(region, at, 1) != 0
 
+  # An inline unbounded string's blob belongs to the holder's node extent.
+  def inline_text(region, at) do
+    case deref(region, at) do
+      :null ->
+        ""
+
+      {:ok, blob} when blob + 8 <= byte_size(region) ->
+        used = uint(region, blob, 4)
+        if used < byte_size(region) - blob - 8, do: text(region, blob + 8, used), else: :error
+
+      _ ->
+        :error
+    end
+  end
+
   # a string's or a bytes' USED bytes, without the zero tail (§7.2)
   def text(region, at, used), do: binary_part(region, at, used)
 
@@ -519,6 +534,8 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 			record = g.cookRecordRef(f.Type.Name)
 		}
 		countOffset = fl.Offset + 8
+	case f.Type.TextUnbounded():
+		storage, elemSize = ":reference", 8
 	case f.Type.Pointer:
 		storage, elemSize = ":reference", 8
 		record = g.cookRecordRef(f.Type.Name)
@@ -546,7 +563,7 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	fmt.Fprintf(&b, "        is_array: %v,\n", isArray)
 	fmt.Fprintf(&b, "        array_bound: %s,\n", exInt(arrayBound))
 	// a holder is a span, never a reference, whatever its elements are
-	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer && !f.IsList() && !f.IsMap())
+	fmt.Fprintf(&b, "        is_pointer: %v,\n", (f.Type.Pointer || f.Type.TextUnbounded()) && !f.IsList() && !f.IsMap())
 	fmt.Fprintf(&b, "        count_offset: %s,\n", exInt(countOffset))
 	fmt.Fprintf(&b, "        present_offset: %s,\n", exInt(presentOffset))
 	fmt.Fprintf(&b, "        storage: %s,\n", storage)
@@ -603,7 +620,7 @@ func cookStorageOf(u *ir.Unit, f *ir.Field) (string, int64) {
 func cookRowMembers(f *ir.Field) []string {
 	names := []string{f.Name}
 	switch {
-	case f.Type.Pointer:
+	case f.Type.Pointer || f.Type.TextUnbounded():
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -686,6 +703,14 @@ func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 	switch {
 	case f.IsMap() || f.IsList():
 		return g.cookHolderAccessors(st, f, fl)
+	case f.Type.TextUnbounded():
+		out := []string{exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
+			fmt.Sprintf("C.inline_text(region, node + %s)", exInt(fl.Offset)))}
+		if f.Type.Optional {
+			out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s_present?(region, node)", lo, f.Name),
+				fmt.Sprintf("C.bool(region, node + %s)", exInt(pieces[len(pieces)-1].Offset))))
+		}
+		return out
 	case f.Type.Pointer:
 		return []string{"  # a REFERENCE: the eight-byte signed self-relative delta of §6.3, and\n" +
 			"  # NULL IS ZERO. :error is a delta that resolves past the region.\n" +

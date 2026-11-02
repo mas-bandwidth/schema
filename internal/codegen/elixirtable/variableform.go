@@ -2045,7 +2045,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           not utf8_valid?(raw) ->
             {:cont, "", %{report | malformed: true}}
 
-          len > f.size ->
+          not Map.get(f, :unbounded, false) and len > f.size ->
             {:cont, utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
 
           true ->
@@ -2599,7 +2599,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             not utf8_valid?(raw) ->
               {"", %{report | malformed: true}}
 
-            len > f.text_size ->
+            not Map.get(f, :text_unbounded, false) and len > f.text_size ->
               {utf8_prefix(raw, f.text_size), %{report | clamped: report.clamped + 1}}
 
             true ->
@@ -2865,6 +2865,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
         validate_text_list(f, Map.get(value, f.name, f.default))
+      end
+
+      if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
+        text = Map.get(value, f.name, f.default)
+
+        unless Map.get(f, :optional, false) and text == nil do
+          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+        end
       end
 
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
@@ -3218,8 +3226,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or byte_size(value) > f.text_size,
-          do: throw(:invalid_value)
+        if not is_binary(value) or not utf8_valid?(value) or
+             (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
+           do: throw(:invalid_value)
       end
 
       used = used + if(value == nil, do: 0, else: byte_size(value))
@@ -3558,8 +3567,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_field(%{t: :string}, v, _depth), do: ["\"", json_escape(v), "\""]
 
   defp json_field(%{t: :map} = f, values, depth) do
-    value_field = Map.fetch!(@tables, f.elem).fields |> Enum.at(1)
+    entry_desc = Map.fetch!(@tables, f.elem)
+    value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
+    Enum.each(pairs, &validate_record(entry_desc, &1))
 
     if pairs == [] do
       "{}"
@@ -3991,7 +4002,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :string} = f, raw, report) when is_binary(raw) do
     report = json_text_zero(f, raw, report)
 
-    if byte_size(raw) > f.size do
+    if not Map.get(f, :unbounded, false) and byte_size(raw) > f.size do
       {utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
     else
       {raw, report}
@@ -4357,9 +4368,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # A map key is an identity: reject, never clamp it into another key.
-  # The text key scanner's shared capacity is 255 decoded UTF-8 bytes.
+  # A bare string key has no declared byte bound; bounded keys retain their
+  # declaration's token limit.
   defp json_map_key(field, key) do
     cond do
+      field.t == :string and Map.get(field, :unbounded, false) ->
+        {:ok, key}
+
       field.t == :string ->
         if byte_size(key) > min(field.size, 255), do: {:skip, :clamped}, else: {:ok, key}
 
@@ -4543,7 +4558,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_list_elem(%{text_list: true} = f, raw, report) when is_binary(raw) do
     report = json_text_zero(f, raw, report)
 
-    if byte_size(raw) > f.text_size do
+    if not Map.get(f, :text_unbounded, false) and byte_size(raw) > f.text_size do
       {%{"value" => utf8_prefix(raw, f.text_size)}, %{report | clamped: report.clamped + 1}}
     else
       {%{"value" => raw}, report}
@@ -5268,7 +5283,43 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  defp field_extent(%{t: :string, unbounded: true}, payload, _ids, at) do
+    case leb(payload) do
+      {length, body} when byte_size(body) >= length -> text_extent(length, at)
+      _ -> {:ok, at}
+    end
+  end
+
   defp field_extent(_field, _payload, _ids, at), do: {:ok, at}
+
+  defp text_extent(0, at), do: {:ok, at}
+
+  defp text_extent(length, at) when length <= 0xFFFFFFFF,
+    do: {:ok, align_to(at, 8) + region_round(9 + length)}
+
+  defp text_extent(_length, _at), do: :error
+
+  defp text_elements_extent(_elems, 0, at), do: {:ok, at}
+
+  defp text_elements_extent(elems, count, at) do
+    case leb(elems) do
+      {length, body} when byte_size(body) >= length ->
+        case text_extent(length, at) do
+          {:ok, at} ->
+            text_elements_extent(
+              binary_part(body, length, byte_size(body) - length),
+              count - 1,
+              at
+            )
+
+          :error ->
+            :error
+        end
+
+      _ ->
+        {:ok, at}
+    end
+  end
 
   # a header whose element kind is not the declared one is a kind mismatch the
   # read answers as an empty list, so it places nothing (internal/tablewire
@@ -5287,9 +5338,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             do: align_to(at, field.elem_align) + count * field.elem_size,
             else: at
 
-        if kind == 13,
-          do: elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at),
-          else: {:ok, at}
+        cond do
+          kind == 13 ->
+            elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at)
+
+          kind == 12 and Map.get(field, :text_unbounded, false) ->
+            text_elements_extent(elems, count, at)
+
+          true ->
+            {:ok, at}
+        end
       end
     else
       _ -> {:ok, at}
@@ -5969,7 +6027,8 @@ const variableRetainSource = `
           report,
           retain,
           f.ordinal,
-          path
+          path,
+          0
         )
 
       clamp_retain(value, f, report, retain)
@@ -6435,10 +6494,22 @@ const variableRetainSource = `
     {value, report, retain}
   end
 
-  defp read_elements_retain(_desc, _rest, 0, _nodes, _ids, acc, report, retain, _ordinal, _path),
-    do: {Enum.reverse(acc), report, retain}
+  defp read_elements_retain(
+         _desc,
+         _rest,
+         0,
+         _nodes,
+         _ids,
+         acc,
+         report,
+         retain,
+         _ordinal,
+         _path,
+         _index
+       ),
+       do: {Enum.reverse(acc), report, retain}
 
-  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path) do
+  defp read_elements_retain(desc, rest, n, nodes, ids, acc, report, retain, ordinal, path, index) do
     case leb(rest) do
       {len, body} when byte_size(body) >= len ->
         sub = binary_part(body, 0, len)
@@ -6449,7 +6520,7 @@ const variableRetainSource = `
           {Enum.reverse(acc), %{report | malformed: true}, retain}
         else
           {value, report, retain} =
-            read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
+            read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index)
 
           case text_list_keep(desc, value, report) do
             {:keep, desc, report} ->
@@ -6463,11 +6534,12 @@ const variableRetainSource = `
                 report,
                 retain,
                 ordinal,
-                path
+                path,
+                index + 1
               )
 
             {:drop, report} ->
-              retain = retain_reset(retain, path, ordinal, length(acc))
+              retain = retain_reset(retain, path, ordinal, index)
               {Enum.reverse(acc), report, retain}
           end
         end
@@ -7157,7 +7229,7 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
 		if f.IsTextList() {
 			value := ir.TextListValue(f)
-			fmt.Fprintf(&b, ", text_list: true, text_optional: %v, text_size: %d, text_total: %d", ir.TextListOptional(f), value.Type.Size, f.TextTotal)
+			fmt.Fprintf(&b, ", text_list: true, text_optional: %v, text_size: %d, text_total: %d, text_unbounded: %v", ir.TextListOptional(f), value.Type.Size, f.TextTotal, ir.TextListUnbounded(f))
 			if ir.TextListPlain(f) {
 				fmt.Fprintf(&b, ", elem: %q", f.TextListElem().Name)
 			}
@@ -7241,7 +7313,7 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		b.WriteString("]")
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
-		fmt.Fprintf(&b, ", size: %d", f.Type.Size)
+		fmt.Fprintf(&b, ", size: %d, unbounded: %v", f.Type.Size, f.Type.TextUnbounded())
 	case f.Type.Kind == ir.TWString:
 		// wstring(N) is kind 33 on the variable wire: L counts UTF-16LE bytes,
 		// two per code unit (docs/SPEC-TABLES.md §3). The value is UTF-8.
@@ -7407,7 +7479,7 @@ func cardShape(f *ir.Field) string {
 // for every field that declares no bound.
 func cardBound(f *ir.Field) string {
 	switch {
-	case f.Type.Kind == ir.TString && !f.Type.Pointer:
+	case f.Type.Kind == ir.TString && !f.Type.Pointer && !f.Type.TextUnbounded():
 		return fmt.Sprintf("%d", f.Type.Size)
 	case f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
 		return "{" + f.IntMin.String() + ", " + f.IntMax.String() + "}"

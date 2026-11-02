@@ -37,7 +37,7 @@ func cookExtentWalk(u *ir.Unit, st *ir.Struct, un *ir.Union, seen map[string]boo
 		}
 	}
 	for _, f := range fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -559,6 +559,34 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
     end
   end
 
+  # Bare text occupies an eight-byte slot; its blob is part of this node's
+  # extent and has no separate directory entry (§2.13.1).
+  defp cook_walk_field(%{t: :string, unbounded: true} = f, value, rec, ctx) do
+    text = Map.get(value, f.name, f.default) || ""
+    if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid)
+    size = byte_size(text)
+    if size > 0xFFFFFFFF, do: throw(:invalid)
+
+    if size == 0 do
+      ctx
+    else
+      start = cook_align(ctx.at, 8)
+      blob = ctx.base + start
+
+      buf =
+        if ctx.buf == nil do
+          nil
+        else
+          ctx.buf
+          |> put_i64(rec + f.cook_off, blob - rec - f.cook_off, ctx.order)
+          |> put_u32(blob, size, ctx.order)
+          |> put_raw(blob + 8, text)
+        end
+
+      %{ctx | at: start + region_round(9 + size), buf: buf}
+    end
+  end
+
   # a LIST's or a MAP's sixteen-byte holder, at the field's own offset
   defp cook_walk_field(%{t: :list, array: :list} = f, value, rec, ctx),
     do: cook_walk_holder(f, cook_list(value, f), f.elem_size, f.elem_align, rec + f.cook_off, ctx)
@@ -761,6 +789,8 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   defp cook_value(%{t: :blob, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
     cook_ref(buf, base + off, id, v, index, order)
   end
+
+  defp cook_value(%{t: :string, unbounded: true}, _v, _base, _index, _order, buf), do: buf
 
   defp cook_value(%{t: :pointer, cook_type_id: id, cook_off: off}, v, base, index, order, buf) do
     cook_ref(buf, base + off, id, v, index, order)
