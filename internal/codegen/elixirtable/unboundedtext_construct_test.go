@@ -73,12 +73,8 @@ P.ok(r.clamped==0 and r.kind_mismatch==0 and not r.malformed,"unbounded wire rep
 {:ok,rv,rr,ret}=T.load_retain(name,wire,store,zero)
 {:ok,^wire,_,_}=T.save_retain(name,rv,ret,rr)
 `, row.root, hex.EncodeToString(wire), row.input, string(canonical)+"\n")
-		// Map extent closure is qualified independently; its shared worker owns
-		// the dispatch, while this test pins the unbounded key's cooked storage.
-		if row.root != "Keys" {
-			fmt.Fprintf(&p, `P.ok(T.load_measure(name,wire)==%d,"unbounded extent "<>inspect({name,T.load_measure(name,wire),%d}))
+		fmt.Fprintf(&p, `P.ok(T.load_measure(name,wire)==%d,"unbounded extent "<>inspect({name,T.load_measure(name,wire),%d}))
 `, region, region)
-		}
 		for _, big := range []bool{false, true} {
 			cooked, e := tablecook.Cook(m, v, tablecook.Options{Big: big})
 			if e != nil {
