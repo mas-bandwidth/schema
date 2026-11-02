@@ -298,7 +298,7 @@ func runCycleSlotKindsProbe(t *testing.T) {
 	set["guard-cycle.bin"] = guardCycle
 	set["slot_probe.dart"] = []byte(`import 'dart:io';
 import 'dart:typed_data';
-import 'CyclecheckWire.dart' as c;
+import '` + runtimeHome(u) + `Wire.dart' as c;
 
 void main() {
   for (final (name, wantLoad) in [
