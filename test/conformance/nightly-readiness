@@ -651,6 +651,10 @@ def main(argv=None):
     prerequisites = "bin/schema build/conformance-harness"
     if lang == "cpp":
         prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz"
+    if lang == "dart":
+        # Native cook-write tests import this corpus directly, before the
+        # later AOT driver phase. A clean bench must not depend on that race.
+        prerequisites += " build/tables-generated-dart/.stamp cards-dart-generate"
     runner.make("prerequisites", prerequisites)
     runner.run("implementation", ["./build/conformance-harness", "implementation", "--lang", lang],
                validate=lambda text: implementation_result(text, lang))

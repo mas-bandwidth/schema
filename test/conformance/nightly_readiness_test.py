@@ -232,6 +232,13 @@ class Contracts(unittest.TestCase):
                     prerequisites=next(argv for name,argv,cwd in runner.calls if name=="prerequisites")
                     self.assertIn("build/c-collections-fuzz",prerequisites)
                     self.assertIn("build/cpp-collections-fuzz",prerequisites)
+                if lang == "dart":
+                    prerequisite_index = next(i for i, call in enumerate(runner.calls) if call[0] == "prerequisites")
+                    prerequisites = runner.calls[prerequisite_index][1]
+                    self.assertIn("build/tables-generated-dart/.stamp", prerequisites)
+                    self.assertIn("cards-dart-generate", prerequisites)
+                    native_index = next(i for i, call in enumerate(runner.calls) if call[0] == "native-list-darttable")
+                    self.assertLess(prerequisite_index, native_index)
                 for name,argv,cwd in runner.calls:
                     if "test" in argv and ("go" in argv):
                         self.assertIn("-timeout=0",argv,(name,argv))
