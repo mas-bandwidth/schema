@@ -864,6 +864,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 			cell := &entry.Fields[0].Cell
 			if int(kind) != want && ir.TableKindWidens(int(kind), want) {
 				*widened = true
+				*kindBad = false // this occurrence replaces the earlier key kind
 				if !scan.scalarAt(cell, keyField, int(kind)) {
 					return key, false
 				}

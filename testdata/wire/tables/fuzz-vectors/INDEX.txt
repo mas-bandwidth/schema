@@ -226,3 +226,6 @@ retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retai
 # Replaced map entries discard their retained bodies without reporting loss.
 # The discarded body and an unreachable pointer node have different ownership.
 retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
+# Final widened key occurrence replaces an earlier incompatible key kind.
+# The neutral oracle and C++ previously retained the earlier mismatch flag.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
