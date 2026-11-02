@@ -2039,7 +2039,7 @@ defmodule Bench.Table do
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
-    {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
+    {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
       arm_content(a, if(payload == nil, do: a.default, else: payload), idx_map, ids, order)
@@ -6690,7 +6690,7 @@ defmodule Bench.Table do
   defp arm_header_retain(union, ordinal, {arm, payload}, s, path) do
     {idx_map, ids, order, retain, report} = s
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
-    {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
+    {aref, ids, order} = intern(ids, order, a.arm_id)
     arm_path = path ++ [{ordinal, a.ordinal}]
 
     {content, s} =

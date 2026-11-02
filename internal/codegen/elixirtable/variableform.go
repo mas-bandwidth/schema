@@ -395,6 +395,12 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 			runtime = strings.ReplaceAll(runtime, l.text, "")
 		}
 	}
+	// A unit whose arms are all void has no payload branch. Keep the
+	// descriptor lookup (invalid authored arm names must still fail), while
+	// removing only the alternatives no descriptor can select.
+	if len(kinds) == 1 && kinds["void"] {
+		return withOnlyVoidArms(runtime)
+	}
 	if strings.Count(runtime, armNodeCheck) != 1 {
 		panic("elixirtable: arm node check not found exactly once")
 	}
@@ -407,6 +413,40 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 	}
 	check.WriteString(" do\n")
 	return strings.Replace(runtime, armNodeCheck, check.String(), 1)
+}
+
+// withOnlyVoidArms specializes the four case expressions whose fallback
+// handles a non-void payload. Clause pruning remains checked against the
+// literal template, so a future template edit cannot silently miss a branch.
+func withOnlyVoidArms(runtime string) string {
+	replacements := [][2]string{
+		{"      a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)\n", ""},
+		{"  defp collect_union_nodes(union, {arm, payload}, acc) do\n", "  defp collect_union_nodes(union, {arm, _payload}, acc) do\n"},
+		{"      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)\n", ""},
+		{"  defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do\n", "  defp tally_field(%{t: :union, elem: union}, {arm, _payload}, acc) do\n"},
+		{"        _ -> json_field(a, if(payload == nil, do: a.default, else: payload), depth + 1)\n", ""},
+		{"  defp json_arm(union, {arm, payload}, depth) do\n", "  defp json_arm(union, {arm, _payload}, depth) do\n"},
+		{`      {:ok, a} ->
+        if input == nil and a.t != :pointer and a.t != :blob do
+          {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+        else
+          before = report.kind_mismatch
+          {v, report} = json_read_field(a, input, report)
+
+          if v == :skip or
+               (report.kind_mismatch > before and a.t not in [:table, :list, :union, :keyed]),
+             do: {nil, report},
+             else: {{name, v}, report}
+        end
+`, ""},
+	}
+	for _, pair := range replacements {
+		if strings.Count(runtime, pair[0]) != 1 {
+			panic("elixirtable: void-only arm branch not found exactly once: " + pair[0])
+		}
+		runtime = strings.Replace(runtime, pair[0], pair[1], 1)
+	}
+	return runtime
 }
 
 // unionFamilies are the runtime functions that exist only to read, write,
@@ -1246,7 +1286,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp arm_header(union, {arm, payload}, idx_map, ids, order) do
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
-    {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
+    {aref, ids, order} = intern(ids, order, a.arm_id)
 
     {content, ids, order} =
       arm_content(a, if(payload == nil, do: a.default, else: payload), idx_map, ids, order)
@@ -5554,7 +5594,7 @@ const variableRetainSource = `
   defp arm_header_retain(union, ordinal, {arm, payload}, s, path) do
     {idx_map, ids, order, retain, report} = s
     a = Map.fetch!(Map.fetch!(@unions, union).by_name, arm)
-    {aref, ids, order} = intern(ids, order, Map.get(a, :arm_id, a.id))
+    {aref, ids, order} = intern(ids, order, a.arm_id)
     arm_path = path ++ [{ordinal, a.ordinal}]
 
     {content, s} =
@@ -6823,7 +6863,7 @@ func armDescriptor(u *ir.Unit, owner string, arm ir.UnionVariant, ordinal int) s
 	if arm.Void() {
 		// ordinal is the arm's declaration position; its cooked tag is that
 		// plus one, tag 0 being None (docs/SPEC-TABLES.md §7.2)
-		return fmt.Sprintf("%%{name: %q, json: %q, id: 0x%016X, kind: 32, ordinal: %d, arm_kind: 32, t: :void, default: nil},\n", arm.Name, arm.Name, id, ordinal)
+		return fmt.Sprintf("%%{name: %q, json: %q, id: 0x%016X, arm_id: 0x%016X, kind: 32, ordinal: %d, arm_kind: 32, t: :void, default: nil},\n", arm.Name, arm.Name, id, id, ordinal)
 	}
 	f := *arm.F
 	f.Name = arm.Name

@@ -2080,3 +2080,12 @@ tables-elixir-cook-map-negative-control:
 	$(call ELIXIR_COOK_MAP_CONTROL,misaligned,ELIXIR_COOK_MAP_MISALIGNED_SED,widelist_wide: widelist_wide-be:,an extent begun at the floor of eight in a node aligned to its record,widelist_wide)
 
 test-elixir: tables-elixir-cook-map-negative-control
+
+# Void-only unions must compile without unreachable payload alternatives.
+.PHONY: tables-elixir-void-union
+tables-elixir-void-union: toolchain-elixir
+	SCHEMA_REQUIRE_CORPUS=1 ELIXIR=$(ELIXIR_BIN) ERL_BIN=$(ERL_BIN) \
+		sh test/slowgate/proof tables-elixir-void-union 'TestElixirVoidUnionNative' \
+		-count=1 -timeout=0 -run '^TestElixirVoidUnionNative$$' ./internal/codegen/elixirtable/
+
+test-elixir: tables-elixir-void-union
