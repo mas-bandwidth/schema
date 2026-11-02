@@ -196,6 +196,14 @@ class Contracts(unittest.TestCase):
                     self.assertEqual(m.main([lang]),0,output.getvalue())
                 runner=FakeRunner.instances[-1]
                 self.assertEqual({row["phase"] for row in runner.results},m.required_phases(lang))
+                for package,path in {"tabletext":"internal/tabletext", "tablewire":"internal/tablewire",
+                                     "fixedtwin":"tools/fixedtwin"}.items():
+                    calls=[argv for name,argv,cwd in runner.calls if name=="native-"+package]
+                    self.assertEqual(len(calls),1 if lang=="cpp" else 0)
+                    if calls:
+                        self.assertIn("./"+path,calls[0])
+                        self.assertNotIn("-run",calls[0])
+                        self.assertIn("native-"+package,m.required_phases("cpp"))
                 harness_calls=[argv for name,argv,cwd in runner.calls if name=="native-harness"]
                 self.assertEqual(len(harness_calls),1 if lang=="cpp" else 0)
                 if harness_calls:

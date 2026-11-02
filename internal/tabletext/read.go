@@ -8,6 +8,7 @@ package tabletext
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"math"
 	"math/big"
@@ -1620,16 +1621,21 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
 	// so a text and a wire loaded from the same data land the same instance.
 	bounded := number
-	lo, hi, implied := ImpliedRange(f)
-	if f.HasIntRange {
-		lo, hi, implied = bigToFloat(f.IntMin), bigToFloat(f.IntMax), true
+	var lo, hi jsonInteger
+	hasRange := f.HasIntRange
+	if hasRange {
+		lo, hi = integerBound(f.IntMin), integerBound(f.IntMax)
+	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		lo = jsonInteger{finite: true}
+		hi = jsonInteger{finite: true, magnitude: uint64(1)<<uint(f.Type.Width) - 1}
+		hasRange = true
 	}
-	if implied {
-		if scale := number.scale(); scale < lo {
-			bounded = integerOf(lo)
+	if hasRange {
+		if compareInteger(number, lo) < 0 {
+			bounded = lo
 			in.report.Clamped++
-		} else if scale > hi {
-			bounded = integerOf(hi)
+		} else if compareInteger(number, hi) > 0 {
+			bounded = hi
 			in.report.Clamped++
 		}
 	}
@@ -1977,30 +1983,25 @@ func interpretIntegerExact(token string) jsonInteger {
 	return out
 }
 
-// integerOf is a declared range bound as the same value. A bound is inside the
-// field's own domain by construction, so nothing here saturates.
-func integerOf(bound float64) jsonInteger {
-	out := jsonInteger{finite: true, negative: bound < 0}
-	whole := math.Abs(bound)
-	if whole >= 18446744073709551616.0 {
-		out.magnitude = math.MaxUint64
-	} else {
-		out.magnitude = uint64(whole)
-	}
-	if out.magnitude == 0 {
-		out.negative = false
-	}
-	return out
+// integerBound keeps an exact schema bound in the same sign/magnitude form
+// as the parsed token. Checked narrow-integer bounds fit in one uint64 lane;
+// converting either side to float64 would merge adjacent values above 2^53.
+func integerBound(bound *big.Int) jsonInteger {
+	return jsonInteger{finite: true, negative: bound.Sign() < 0, magnitude: bound.Uint64()}
 }
 
-// scale is the value on its OWN number line, for comparing against a declared
-// bound: correctly signed past MaxInt64, where the storage's bit pattern is not
-// a number to compare.
-func (n jsonInteger) scale() float64 {
-	if n.negative {
-		return -float64(n.magnitude)
+func compareInteger(a, b jsonInteger) int {
+	if a.negative != b.negative {
+		if a.negative {
+			return -1
+		}
+		return 1
 	}
-	return float64(n.magnitude)
+	order := cmp.Compare(a.magnitude, b.magnitude)
+	if a.negative {
+		return -order
+	}
+	return order
 }
 
 // integerInDomain is THE TARGET DOMAIN, established before the value reaches
@@ -2044,13 +2045,6 @@ func integerInDomain(n jsonInteger, signed bool, bytes int) (int64, bool) {
 		moved = true
 	}
 	return int64(magnitude), moved
-}
-
-// bigToFloat renders an IR range bound as the double the descriptors carry, so
-// the text form's clamp compares the same two numbers the generated walk does.
-func bigToFloat(v *big.Int) float64 {
-	f, _ := new(big.Float).SetInt(v).Float64()
-	return f
 }
 
 // ---- the packer's two entry points (docs/SPEC-TABLES.md §17.1) ----

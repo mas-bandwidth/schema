@@ -1,4 +1,4 @@
-package ci
+package ctable
 
 import (
 	"errors"
@@ -19,7 +19,7 @@ func TestCNegativeControlGrepDialects(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the C make controls execute on POSIX runners")
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "c.mk"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "make", "c.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +49,8 @@ func TestCNegativeControlGrepDialects(t *testing.T) {
 			if flags == "" {
 				t.Fatal("the actual make guard was not found")
 			}
-			if strings.HasPrefix(pattern, "$(") {
-				name := strings.TrimSuffix(strings.TrimPrefix(pattern, "$("), ")")
+			if name, ok := strings.CutPrefix(pattern, "$("); ok {
+				name = strings.TrimSuffix(name, ")")
 				assignment := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + ` := (.*)$`).FindStringSubmatch(recipe)
 				if len(assignment) != 2 {
 					t.Fatal("missing make variable", name)

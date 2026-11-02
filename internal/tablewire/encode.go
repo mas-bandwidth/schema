@@ -764,10 +764,15 @@ func RefuseNonFinite(m *tabletext.Model, f *ir.Field, v float64) error {
 // element kind 13, an array of the generated `{ key, value }` entry. ITS
 // ENTRIES ARE WRITTEN IN ASCENDING KEY ORDER WITH NO KEY TWICE, and that is a
 // writer's rule — byte-identical output requires it, as it requires
-// declaration order. An EMPTY map elides, the by-value rule (§3).
+// declaration order. A plain empty map elides; an optional map rides exactly
+// when present, including its zero-entry body (§2.8).
 func encodeMap(e *encoder, w *buf, fv *tabletext.Field, id uint64) error {
 	f := fv.Def
-	if len(fv.Entries) == 0 {
+	if f.Type.Optional {
+		if !fv.Present {
+			return nil
+		}
+	} else if len(fv.Entries) == 0 {
 		return nil
 	}
 	order := MapEntryOrder(f, fv)
