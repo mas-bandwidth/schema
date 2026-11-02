@@ -320,8 +320,12 @@ func TestGoSharedRuntimeCoversTheCorpora(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	witnesses, err := filepath.Glob("../../../testdata/conformance/feature-witnesses/*/*.schema")
+	if err != nil {
+		t.Fatal(err)
+	}
 	checked := 0
-	for _, path := range append(paths, more...) {
+	for _, path := range append(append(paths, more...), witnesses...) {
 		src, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -405,5 +409,41 @@ func TestGoSharedRuntimeIsTheDefault(t *testing.T) {
 	}
 	if bytes.Contains(alone[home], []byte(SharedRuntimeImport)) {
 		t.Fatalf("runtime=standalone %s imports the shared runtime", home)
+	}
+}
+
+func TestGoSharedRuntimeAllConstructs(t *testing.T) {
+	t.Parallel()
+	const schema = `package probe
+fixed table IntegrityChild | integrity = "crc32c" { n int32 = 7 }
+table ArrayOnly | json = "array" { items [..2]string(8) | total = 8 }
+table Rich | integrity = "crc32c", forms = "wire,json,cook" {
+	needed int32 | required, min = -10, max = 10
+	stamped timestamp
+	note *string
+	notes []?string
+	tags [..2]?string(8) | total = 8
+	lookup ?map[string]?int32
+	child IntegrityChild
+}
+`
+	u, err := rtProbeUnit(schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alone, err := GenerateRuntime(u, nil, RuntimeStandalone)
+	if err != nil {
+		t.Fatalf("GenerateRuntime standalone: %v", err)
+	}
+	shared, err := GenerateRuntime(u, nil, RuntimeShared)
+	if err != nil {
+		t.Fatalf("GenerateRuntime shared: %v", err)
+	}
+	home := runtimeHome(u) + "Table.go"
+	if !bytes.Contains(shared[home], []byte(SharedRuntimeImport)) {
+		t.Fatalf("shared %s does not import %s", home, SharedRuntimeImport)
+	}
+	if len(shared[home]) >= len(alone[home]) {
+		t.Fatalf("shared %s (%d bytes) is not smaller than standalone (%d bytes)", home, len(shared[home]), len(alone[home]))
 	}
 }

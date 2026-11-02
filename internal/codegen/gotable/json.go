@@ -193,8 +193,8 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 			fmt.Fprintf(&b, "\tvar read TableReport\n")
 			fmt.Fprintf(&b, "\tok := %sLoadTolerant(&v, wire, &read)\n", n)
 			fmt.Fprintf(&b, "\tif report != nil { *report = read }\n")
-			fmt.Fprintf(&b, "\tif !ok { return nil, tableRefuseError(TableRefuseWireDamaged) }\n")
 			fmt.Fprintf(&b, "\tif err := read.Err(); err != nil { return nil, err }\n")
+			fmt.Fprintf(&b, "\tif !ok { return nil, tableRefuseError(TableRefuseWireDamaged) }\n")
 			fmt.Fprintf(&b, "\treturn &v, nil\n")
 			fmt.Fprintf(&b, "}\n\n")
 		}

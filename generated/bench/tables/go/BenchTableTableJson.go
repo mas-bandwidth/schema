@@ -3091,6 +3091,9 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				if !in.skipValue(depth + 1) {
 					return false
 				}
+				if value.Optional {
+					*(*bool)(unsafe.Add(slot, value.PresentOffset)) = true
+				}
 			} else {
 				if !tableJSONReadField(in, slot, value, depth+1) {
 					return false
@@ -3626,11 +3629,11 @@ func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error)
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3744,11 +3747,11 @@ func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3862,11 +3865,11 @@ func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3980,11 +3983,11 @@ func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, er
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4098,11 +4101,11 @@ func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, 
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4216,11 +4219,11 @@ func TablePickupEventLoadText(text string, report *TableReport) (*TablePickupEve
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }

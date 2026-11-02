@@ -123,18 +123,6 @@ func tableTextExtentAdd(at *int64,n int64)TableRefuseReason{if n==0{return Table
 // tableTextExtentValue packs one unbounded slot into a region's extent.
 func tableTextExtentValue(p,q unsafe.Pointer,a *TableArena,region unsafe.Pointer,at *int64)bool{t,ok:=tableTextBytes((*TableRef)(p),a);if !ok{return false};if len(t)==0{if q!=nil{*(*TableRef)(q)=0};return true};*at=(*at+7)&^7;start:=*at;*at+=tableRegionRound(9+int64(len(t)));if q!=nil{dst:=unsafe.Add(region,start);*(*TableBlob)(dst)=TableBlob{Length:uint32(uint64(len(t)))};copy(unsafe.Slice((*byte)(unsafe.Add(dst,8)),len(t)),t);*(*TableRef)(q)=int64(uintptr(dst)-uintptr(q))};return true}
 func tableMapStoreKeyed(p unsafe.Pointer,f *TableFieldInfo,k tableMapKey,alloc func(int64)(unsafe.Pointer,TableRef))bool{if !f.Unbounded{tableMapStoreKey(p,f,k);return true};slot:=(*TableRef)(unsafe.Add(p,f.Offset));if k.blob!=0{*slot=k.blob;return true};ref,ok:=tableTextStoreWith(k.text,alloc);*slot=ref;return ok}
-
-// tableTextMalformed names the text list or map whose element or key a read
-// refused (docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
-func tableTextMalformed(r *TableReport,field string){if r!=nil&&r.Reason==""{r.Reason="malformed: "+field}}
-
-// TableMalformedField is a strict read's malformed refusal naming the text
-// list or map it refused (docs/SPEC-TABLES.md §2.13.1):
-// errors.Is(err, TableRefuseMalformed) holds.
-type TableMalformedField struct{ Field string }
-
-func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
-func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
 `
 
 // unboundedTextRuntime is the core runtime with the descriptor's Unbounded
@@ -145,7 +133,6 @@ func unboundedTextRuntime(u *ir.Unit, s string) string {
 		return s
 	}
 	s = tableSourceReplace(s, "type TableFieldInfo struct {\n", "type TableFieldInfo struct {\nUnbounded bool // unbounded text (docs/SPEC-TABLES.md §2.13.1): the slot names a blob record\n", 1)
-	s = tableSourceReplace(s, "if r.Malformed {return TableRefuseMalformed}", "if r.Malformed {const p=\"malformed: \";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseMalformed}", 1)
 	s = tableSourceReplace(s, "type tableMapKey struct { text []byte; raw uint64 }", "type tableMapKey struct { text []byte; raw uint64; blob TableRef }", 1)
 	s = tableSourceReplace(s, "return f.Kind!=12||k.raw==0&&len(k.text)<=int(f.ArrayBound)}", "return f.Kind!=12||k.raw==0&&(f.Unbounded&&uint64(len(k.text))<=0xffffffff&&tableUTF8Valid(k.text)||!f.Unbounded&&len(k.text)<=int(f.ArrayBound))}", 1)
 	s = tableSourceReplace(s, "func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo)tableMapKey {key:=tableMapKey{};if f.Kind==12 {", "func tableMapStoredKey(p unsafe.Pointer,f *TableFieldInfo,arena ...*TableArena)tableMapKey {key:=tableMapKey{};if f.Unbounded {t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,f.Offset)),tableOptionalArena(arena));if !ok{return tableMapKey{raw:1}};key.text=t;return key};if f.Kind==12 {", 1)

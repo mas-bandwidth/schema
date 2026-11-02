@@ -1524,6 +1524,19 @@ table Root { numbers []int32
 `,
 	"package probe\nfixed table W { words wstring(8) }\n",
 	"package probe\ntable W { words wstring(8)\n n float64 }\n",
+	`package probe
+fixed table IntegrityChild | integrity = "crc32c" { n int32 = 7 }
+table ArrayOnly | json = "array" { items [..2]string(8) | total = 8 }
+table Rich | integrity = "crc32c", forms = "wire,json,cook" {
+ req int32 | required, min = -10, max = 10
+ stamped timestamp
+ note *string
+ notes []?string
+ tags [..2]?string(8) | total = 8
+ lookup ?map[string]?int32
+ child IntegrityChild
+}
+`,
 }
 
 // rtDecl is one top-level declaration of a probe's home file.

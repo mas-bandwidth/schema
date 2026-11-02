@@ -3091,6 +3091,9 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				if !in.skipValue(depth + 1) {
 					return false
 				}
+				if value.Optional {
+					*(*bool)(unsafe.Add(slot, value.PresentOffset)) = true
+				}
 			} else {
 				if !tableJSONReadField(in, slot, value, depth+1) {
 					return false
@@ -3626,11 +3629,11 @@ func MixedEntityLoadText(text string, report *TableReport) (*MixedEntity, error)
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3744,11 +3747,11 @@ func MixedStatLoadText(text string, report *TableReport) (*MixedStat, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3862,11 +3865,11 @@ func MixedHitEventLoadText(text string, report *TableReport) (*MixedHitEvent, er
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -3980,11 +3983,11 @@ func MixedChatEventLoadText(text string, report *TableReport) (*MixedChatEvent, 
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4098,11 +4101,11 @@ func MixedPickupEventLoadText(text string, report *TableReport) (*MixedPickupEve
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4216,11 +4219,11 @@ func BenchMixedLoadText(text string, report *TableReport) (*BenchMixed, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }
@@ -4334,11 +4337,11 @@ func FixedTableLoadText(text string, report *TableReport) (*FixedTable, error) {
 	if report != nil {
 		*report = read
 	}
-	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
 	if err := read.Err(); err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
 	}
 	return &v, nil
 }

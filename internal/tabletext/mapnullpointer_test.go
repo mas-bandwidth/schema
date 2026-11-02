@@ -166,3 +166,29 @@ table Holder
 	})
 
 }
+
+func TestOptionalReadValueKindMismatchSetsPresentDefault(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const source = `package optmismatch
+table Root {
+	maybe ?int32
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "OptMismatch.schema"), []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, u := load(t, dir)
+	m := tabletext.NewModel(u)
+	root := m.Lookup("Root")
+
+	inst := m.New(root)
+	fv := field(t, inst, "maybe")
+	var r tabletext.Report
+	if !m.ReadValue(fv, []byte(`"bad"`), &r) {
+		t.Fatalf("ReadValue failed: %+v", r)
+	}
+	if r.Malformed || r.KindMismatch != 1 || !fv.Present || fv.Cell.I != 0 {
+		t.Fatalf("ReadValue = (%+v, %+v), want KindMismatch=1 Present=true I=0", r, fv)
+	}
+}

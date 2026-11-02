@@ -57,10 +57,18 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
 		return
 	}
+	trailer := 0
+	if st.Integrity != "" {
+		trailer = 4
+	}
 	if g.arithMeasureEligible(st) {
-		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n body := %sMeasureBody(value, &ids)\n if body < 0 || ids.Overflow { return -1 }\n return 1 + body + int64(ids.Count)*8 + 8\n}\n\n", n, g.storageName(n), n)
+		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n body := %sMeasureBody(value, &ids)\n if body < 0 || ids.Overflow { return -1 }\n return 1 + body + int64(ids.Count)*8 + %d\n}\n\n", n, g.storageName(n), n, 8+trailer)
 	} else {
-		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", n, g.storageName(n), n)
+		tail := "w.Offset"
+		if trailer > 0 {
+			tail = "w.Offset + 4"
+		}
+		g.pf("func %sMeasure(value *%s) int64 {\n var ids TableIds\n w := TableWriter{Measuring:true, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return %s\n}\n\n", n, g.storageName(n), n, tail)
 	}
 	g.pf("func %sMeasureReason(value *%s)(int64,error){size:=%sMeasure(value);if size<0{return size,TableRefuseInvalidValue};return size,nil}\n", n, g.storageName(n), n)
 }
@@ -149,6 +157,10 @@ func (g *tableGen) emitArithMeasureField(f *ir.Field, cond, ind string) {
 
 func (g *tableGen) emitTableSave(st *ir.Struct) {
 	if g.retain || st.IsMapEntry() || g.regional && ir.VariableTables(g.unit)[st.Name] {
+		return
+	}
+	if st.Integrity != "" {
+		g.pf("func %sSave(value *%s, buffer []byte) int64 {\n if len(buffer) < 4 { return -1 }\n var ids TableIds\n w := TableWriter{Buffer:buffer[:len(buffer)-4], Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return tableIntegritySeal(buffer, w.Offset)\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
 		return
 	}
 	g.pf("func %sSave(value *%s, buffer []byte) int64 {\n var ids TableIds\n w := TableWriter{Buffer:buffer, Ids:&ids}\n w.Put8(1)\n if !%sSaveBody(&w,value) { return -1 }; w.Trailer()\n if w.Overflow || ids.Overflow { return -1 }; return w.Offset\n}\n\n", st.Name, g.storageName(st.Name), st.Name)
