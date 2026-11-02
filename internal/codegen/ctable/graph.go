@@ -347,7 +347,7 @@ typedef struct TableNodeMap
     uint8_t * base;
     TableNodeDirEntry * entries;
     uint64_t count;
-    int good, arena, refused;
+    int good, arena, refused, cycle_indices;
     TableSink * sink;
     uint8_t * blob_named; /* parallel to entries; 1 = the blob node is already named */
 } TableNodeMap;
@@ -362,6 +362,11 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
     entry = &nodes->entries[index-1];
     if ( entry->offset == UINT64_MAX ) { return; }
     if ( entry->type_id != target ) { report->kind_mismatch++; return; }
+    if ( nodes->cycle_indices && target != UINT64_C(0x2f2ec0474f1c4fe4) && target != UINT64_C(0x704be0d8faaffc58) )
+    {
+        slot->value = (int64_t)index;
+        return;
+    }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -433,15 +438,14 @@ static SCHEMA_UNUSED int table_node_scan_whole( const TableNodeScan * scan )
 }
 /* ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
 
-   No writer produces a cycle, so a loaded graph that holds one is damage and
-   the whole load is refused, on every read. The check is KAHN'S ALGORITHM
-   over the node directory the load already holds, and it allocates nothing on
-   the region path: each table node's entry carries its in-degree (low 32 bits)
-   and its link in the zero-in-degree stack (high 32 bits) in its type_id word,
-   and its type ordinal and two tags in the high bits of its offset; both words
-   are restored before the load returns. Every node is entered once and every
-   stored slot is visited twice, so the check is LINEAR in nodes and slots; a
-   shared node (a DAG) is legal and is entered once.
+   During construction table pointer slots hold validated wire indices. Kahn's
+   two passes therefore reach the directory directly: each node is entered once
+   and each slot is visited a fixed number of times, with no sorting or reverse
+   offset lookup. A final pass resolves the slots to their published offsets.
+   The directory's type_id word carries the degree (low 32 bits) and stack link
+   (high 32 bits); its offset high bits carry the type ordinal. Both words are
+   restored before the load returns. Region and builder loads allocate nothing
+   here and no pointer graph is recursed.
 
    The vertices are the directory's TABLE nodes: the root and every record
    this build can name. A byte buffer reaches nothing and takes no part. The
@@ -457,20 +461,13 @@ typedef struct TableCycle
 {
     TableNodeDirEntry * entries; /* position p is node index p + 1 */
     int64_t count;
-    uint8_t * base;              /* a REGION: a slot holds a self-relative delta */
-    const TableArena * arena;    /* a BUILDER: a slot holds the arena offset */
+    uint8_t * base;              /* a REGION: a slot resolves to a self-relative delta */
+    const TableArena * arena;    /* a BUILDER: a slot resolves to the arena offset */
     TableCtx ctx;
-    uint32_t * order;            /* the builder's present positions, sorted by offset */
-    int64_t ordered;
     uint32_t head;               /* position + 1 of the stack's top, 0 when empty */
     int64_t vertices, processed;
-    int releasing, broken;
+    int releasing, resolving, broken;
 } TableCycle;
-
-static SCHEMA_UNUSED uint64_t table_cycle_key( const TableNodeDirEntry * e )
-{
-    return ( ( e->offset & kTableCycleOffsetMask ) << 1 ) | ( ( e->offset & kTableCycleAbsent ) != 0 ? 0u : 1u );
-}
 
 static SCHEMA_UNUSED int table_cycle_is_vertex( const TableCycle * c, int64_t p )
 {
@@ -489,27 +486,6 @@ static SCHEMA_UNUSED const void * table_cycle_node( const TableCycle * c, int64_
     return (const void *)( c->base + offset );
 }
 
-/* table_cycle_find is the directory position of the node at OFFSET, or -1: a
-   binary search over the ascending keys. */
-static SCHEMA_UNUSED int64_t table_cycle_find( const TableCycle * c, uint64_t offset )
-{
-    uint64_t want;
-    int64_t lo = 0, hi, end, p;
-    if ( offset > kTableCycleOffsetMask ) { return -1; }
-    want = ( offset << 1 ) | 1u;
-    hi = c->order != NULL ? c->ordered : c->count;
-    end = hi;
-    while ( lo < hi )
-    {
-        const int64_t mid = lo + ( hi - lo ) / 2;
-        p = c->order != NULL ? (int64_t)c->order[mid] : mid;
-        if ( table_cycle_key( &c->entries[p] ) < want ) { lo = mid + 1; } else { hi = mid; }
-    }
-    if ( lo >= end ) { return -1; }
-    p = c->order != NULL ? (int64_t)c->order[lo] : lo;
-    return table_cycle_key( &c->entries[p] ) == want ? p : -1;
-}
-
 static SCHEMA_UNUSED void table_cycle_push( TableCycle * c, int64_t p )
 {
     c->entries[p].type_id = ( c->entries[p].type_id & UINT64_C(0xFFFFFFFF) ) | ( (uint64_t)c->head << 32 );
@@ -517,18 +493,27 @@ static SCHEMA_UNUSED void table_cycle_push( TableCycle * c, int64_t p )
 }
 
 /* table_cycle_slot is one stored pointer slot: pass one counts the in-degree
-   of the node it names, and pass two takes the count down and stacks the node
-   when the last slot naming it has been met. */
+   of the node it names, pass two takes the count down and stacks the node when
+   the last slot naming it has been met, and the final pass resolves the
+   temporary construction index to the published offset. */
 static SCHEMA_UNUSED int table_cycle_slot( TableCycle * c, const TableRef * slot )
 {
-    uint64_t offset;
+    uint64_t index;
     uint32_t degree;
     int64_t p;
     if ( slot->value == 0 ) { return 1; }
-    offset = c->arena != NULL ? (uint64_t)slot->value
-                              : (uint64_t)( ( (const uint8_t *)(const void *)slot + slot->value ) - c->base );
-    p = table_cycle_find( c, offset );
-    if ( p < 0 || !table_cycle_is_vertex( c, p ) ) { return 1; } /* not a table node of this load */
+    index = (uint64_t)slot->value;
+    if ( index - 1 >= (uint64_t)c->count ) { c->broken = 1; return 0; }
+    p = (int64_t)index - 1;
+    if ( !table_cycle_is_vertex( c, p ) ) { c->broken = 1; return 0; }
+    if ( c->resolving )
+    {
+        const uint64_t offset = c->entries[p].offset & kTableCycleOffsetMask;
+        TableRef * output = (TableRef *)(uintptr_t)slot;
+        output->value = c->arena != NULL ? (int64_t)offset
+                                         : (int64_t)( ( c->base + offset ) - (const uint8_t *)(const void *)slot );
+        return 1;
+    }
     degree = (uint32_t)c->entries[p].type_id;
     if ( !c->releasing )
     {
@@ -562,21 +547,17 @@ static SCHEMA_UNUSED void table_cycle_restore( TableCycle * c, TableCycleIdFn id
 }
 
 /* table_cycle_begin tags the directory: ORDINAL names each table node's type
-   (0 for a byte buffer), an absent entry takes the NEXT present offset so the
-   keys ascend, and a builder sorts its present positions, since an arena's
-   offsets need not ascend in record order. Zero is a directory this check
-   cannot carry, and the caller refuses the load. */
+   (0 for a byte buffer). Zero is a directory this check cannot carry, and the
+   caller refuses the load. */
 static SCHEMA_UNUSED int table_cycle_begin( TableCycle * c, TableCycleOrdinalFn ordinal )
 {
-    int64_t p, i, n, start, end;
-    uint64_t next;
-    uint32_t * a;
+    int64_t p;
     if ( c->count <= 0 || c->count >= ( (int64_t)1 << 31 ) ) { c->broken = 1; return 0; }
     for ( p = 0; p < c->count; p++ )
     {
         TableNodeDirEntry * e = &c->entries[p];
         uint32_t kind;
-        if ( e->offset == UINT64_MAX ) { continue; }
+        if ( e->offset == UINT64_MAX ) { e->offset = kTableCycleAbsent; continue; }
         if ( e->offset > kTableCycleOffsetMask ) { c->broken = 1; return 0; }
         kind = ordinal( e->type_id );
         if ( kind == 0 ) { continue; } /* a byte buffer */
@@ -584,70 +565,18 @@ static SCHEMA_UNUSED int table_cycle_begin( TableCycle * c, TableCycleOrdinalFn 
         e->type_id = 0; /* scratch: the in-degree, low; the stack link, high */
         c->vertices++;
     }
-    next = kTableCycleOffsetMask;
-    for ( p = c->count - 1; p >= 0; p-- )
-    {
-        if ( c->entries[p].offset == UINT64_MAX ) { c->entries[p].offset = kTableCycleAbsent | next; }
-        else { next = c->entries[p].offset & kTableCycleOffsetMask; }
-    }
-    if ( c->arena == NULL )
-    {
-        /* a REGION places its nodes in record order: the keys ascend, and a
-           directory that says otherwise is refused, never searched wrong */
-        for ( p = 1; p < c->count; p++ )
-        {
-            const uint64_t ka = table_cycle_key( &c->entries[p - 1] );
-            const uint64_t kb = table_cycle_key( &c->entries[p] );
-            if ( kb < ka || ( kb == ka && ( kb & 1u ) != 0 ) ) { c->broken = 1; return 0; }
-        }
-        return 1;
-    }
-    c->order = (uint32_t *)table_allocate( c->arena->allocator, c->count * (int64_t)sizeof( uint32_t ) );
-    if ( c->order == NULL ) { c->broken = 1; return 0; }
-    for ( p = 0; p < c->count; p++ )
-    {
-        if ( ( c->entries[p].offset & kTableCycleAbsent ) == 0 ) { c->order[c->ordered++] = (uint32_t)p; }
-    }
-    /* HEAPSORT by key: no recursion and no allocation past the order itself */
-    a = c->order;
-    n = c->ordered;
-    for ( start = n / 2 - 1, end = n; ; )
-    {
-        int64_t root;
-        if ( start >= 0 ) { root = start--; }
-        else
-        {
-            uint32_t t;
-            if ( --end <= 0 ) { break; }
-            t = a[0]; a[0] = a[end]; a[end] = t;
-            root = 0;
-        }
-        for ( ;; )
-        {
-            int64_t child = 2 * root + 1;
-            uint32_t t;
-            if ( child >= end ) { break; }
-            if ( child + 1 < end && table_cycle_key( &c->entries[a[child + 1]] ) > table_cycle_key( &c->entries[a[child]] ) ) { child++; }
-            if ( table_cycle_key( &c->entries[a[root]] ) >= table_cycle_key( &c->entries[a[child]] ) ) { break; }
-            t = a[root]; a[root] = a[child]; a[child] = t;
-            root = child;
-        }
-    }
-    for ( i = 1; i < n; i++ )
-    {
-        if ( table_cycle_key( &c->entries[a[i - 1]] ) == table_cycle_key( &c->entries[a[i]] ) ) { c->broken = 1; return 0; } /* two nodes at one offset */
-    }
     return 1;
 }
 
-/* table_cycle_acyclic is the check: 1 when the stored graph has no cycle, 0
-   when it has one or the check cannot carry the directory. */
+/* table_cycle_acyclic checks the graph, then resolves its slots: 1 when the
+   stored graph has no cycle, 0 when it has one or the check cannot carry the
+   directory. */
 static SCHEMA_UNUSED int table_cycle_acyclic( TableNodeMap * nodes, const TableArena * arena,
     TableCycleOrdinalFn ordinal, TableCycleNodeFn node, TableCycleIdFn id )
 {
     TableCycle c;
     int64_t p;
-    int acyclic;
+    int acyclic = 0;
     memset( &c, 0, sizeof( c ) );
     c.entries = nodes->entries;
     c.count = (int64_t)nodes->count;
@@ -670,13 +599,19 @@ static SCHEMA_UNUSED int table_cycle_acyclic( TableNodeMap * nodes, const TableA
         {
             const int64_t at = (int64_t)c.head - 1;
             c.head = (uint32_t)( c.entries[at].type_id >> 32 );
-            c.processed++;
-            if ( !node( &c, table_cycle_ordinal_at( &c, at ), table_cycle_node( &c, at ) ) ) { c.broken = 1; }
+            if ( ++c.processed > c.vertices || !node( &c, table_cycle_ordinal_at( &c, at ), table_cycle_node( &c, at ) ) ) { c.broken = 1; }
+        }
+        if ( !c.broken && c.processed == c.vertices ) /* an unfreed node sits on a cycle */
+        {
+            c.resolving = 1;
+            for ( p = 0; p < c.count && !c.broken; p++ )
+            {
+                if ( table_cycle_is_vertex( &c, p ) && !node( &c, table_cycle_ordinal_at( &c, p ), table_cycle_node( &c, p ) ) ) { c.broken = 1; }
+            }
+            acyclic = !c.broken;
         }
     }
-    acyclic = !c.broken && c.processed == c.vertices; /* a node never freed sits on a cycle */
     table_cycle_restore( &c, id );
-    if ( c.order != NULL ) { table_release( c.arena->allocator, c.order ); }
     return acyclic;
 }
 #endif
@@ -962,7 +897,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedUnknown = "if(retention.retain)reader->report->retain_lost+=unknown;"
 	}
-	g.pf("    nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
+	g.pf("    nodes->cycle_indices=1; nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
 	for _, blob := range []struct {
 		enabled bool
