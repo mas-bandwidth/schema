@@ -2329,7 +2329,7 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\t\t\t\t\t\t\tif (r.retain!.used + rec.cost() > r.retain!.capacity) {\n")
 	g.pf("\t\t\t\t\t\t\t\tr.report.retainLost++;\n")
 	g.pf("\t\t\t\t\t\t\t} else {\n")
-	g.pf("\t\t\t\t\t\t\t\tr.retain!.records.add(rec);\n")
+	g.pf("\t\t\t\t\t\t\t\tr.retain!.add(rec);\n")
 	g.pf("\t\t\t\t\t\t\t\tr.retain!.used += rec.cost();\n")
 	g.pf("\t\t\t\t\t\t\t\tr.report.retained++;\n")
 	g.pf("\t\t\t\t\t\t\t}\n")

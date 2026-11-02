@@ -222,3 +222,7 @@ retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain
 # Retained records in nodes no longer reached by the save count retain_lost.
 # Dart saved the right bytes but omitted the unvisited retained-record count.
 retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
+
+# Replaced map entries discard their retained bodies without reporting loss.
+# The discarded body and an unreachable pointer node have different ownership.
+retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin

@@ -1113,6 +1113,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	// Commit a replacement only after its array header is readable and
 	// compatible (internal/tablewire/decode.go mapField): a skipped repeat
 	// preserves the earlier occurrence (§3, §4).
+	g.pf("%s\t\tr.retain?.forgetMap(v, %q);\n", ind, name)
 	g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, en)
 	g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
 	g.pf("%s\t\tvar lastEntry = %s();\n", ind, en)
@@ -1155,8 +1156,9 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\t\tif (order > 0) { r.report.malformed = true; break; }\n", ind)
 	g.pf("%s\t\t\t}\n", ind)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
+	g.pf("%s\t\t\tr.retain?.rememberMap(v, %q, e);\n", ind, name)
 	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
-	g.pf("%s\t\t\tif (order == 0) { r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name)
+	g.pf("%s\t\t\tif (order == 0) { r.retain?.forget(v.%s.last); r.report.duplicate++; v.%s[v.%s.length - 1] = e; continue; }\n", ind, name, name, name)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
 	g.pf("%s\t\t\tv.%s.add(e);\n", ind, name)

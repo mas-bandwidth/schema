@@ -8,6 +8,7 @@
 package darttable
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -24,7 +25,42 @@ func (g *wireGen) emitRetainRuntime() {
 	for _, id := range ir.TableWireIds(g.unit) {
 		ids = append(ids, dartU64Literal(id))
 	}
-	g.pf(dartRetainRuntime, strings.Join(ids, ", "))
+	g.pf(dartRetainRuntime, g.retainForgetCases(), strings.Join(ids, ", "))
+}
+
+// retainForgetCases walks only owned by-value storage. Pointer nodes remain
+// in the loaded region and are accounted as unreachable by the save.
+func (g *wireGen) retainForgetCases() string {
+	var b strings.Builder
+	add := func(f *ir.Field, expr string) {
+		if f.Type.Pointer || f.Type.Blob() {
+			return
+		}
+		if f.IsMap() || f.Array != ir.ArrayNone {
+			if f.IsMap() || tableRef(f) != nil || unionRef(f) != nil {
+				fmt.Fprintf(&b, "          pending.addAll(%s);\n", expr)
+			}
+		} else if tableRef(f) != nil || unionRef(f) != nil {
+			fmt.Fprintf(&b, "          pending.add(%s);\n", expr)
+		}
+	}
+	for _, st := range g.closure {
+		fmt.Fprintf(&b, "        case %s v:\n", st.Name)
+		for _, f := range st.Fields {
+			add(f, "v."+fieldMember(f))
+		}
+		b.WriteString("          break;\n")
+	}
+	for _, un := range g.closureUnions() {
+		fmt.Fprintf(&b, "        case %s v:\n", un.Name)
+		for _, arm := range un.Variants {
+			if !arm.Void() {
+				add(arm.F, "v."+armMember(arm))
+			}
+		}
+		b.WriteString("          break;\n")
+	}
+	return b.String()
 }
 
 // dartRetainRuntime is the Dart source of the retain-unknown runtime, with one
@@ -46,9 +82,52 @@ final class TableRetain {
   int idUsed = 0;
   int used = 0;
   final List<_RetainRecord> records = <_RetainRecord>[];
+  final Map<Object, List<_RetainRecord>> _byOwner = Map.identity();
+  final Map<Object, Map<String, List<Object>>> _maps = Map.identity();
   TableRetain(this.capacity, this.ids);
+
+  void add(_RetainRecord record) {
+    records.add(record);
+    (_byOwner[record.owner] ??= <_RetainRecord>[]).add(record);
+  }
+
+  void rememberMap(Object owner, String field, Object entry) {
+    final fields = _maps[owner] ??= <String, List<Object>>{};
+    (fields[field] ??= <Object>[]).add(entry);
+  }
+
+  void forgetMap(Object owner, String field) {
+    final entries = _maps[owner]?.remove(field);
+    if (entries != null) {
+      for (final entry in entries) { forget(entry); }
+    }
+  }
+
+  // A replacement supersedes its old body without moving either counter.
+  // Keep byte capacity consumed, as the append-only caller store does.
+  void forget(Object owner) {
+    final pending = <Object>[owner];
+    final seen = Set<Object>.identity();
+    while (pending.isNotEmpty) {
+      final value = pending.removeLast();
+      if (!seen.add(value)) continue;
+      final old = _byOwner.remove(value);
+      if (old != null) {
+        for (final rec in old) { rec.discarded = true; }
+      }
+      final maps = _maps.remove(value);
+      if (maps != null) {
+        for (final entries in maps.values) { pending.addAll(entries); }
+      }
+      switch (value) {
+%s        default: break;
+      }
+    }
+  }
   void reset() {
     records.clear();
+    _byOwner.clear();
+    _maps.clear();
     used = 0;
     idUsed = 0;
   }
@@ -67,6 +146,7 @@ final class _RetainRecord {
   final int kind;
   final List<int> resolved;
   bool placed = false;
+  bool discarded = false;
   _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
@@ -454,8 +534,7 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
 void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
-  for (final rec in t.records) {
-    if (!identical(rec.owner, owner)) continue;
+  for (final rec in t._byOwner[owner] ?? const <_RetainRecord>[]) {
     rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
@@ -546,7 +625,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tw.putByte(1);\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", d)
 	g.pf("\t_writeNodeTable(w);\n")
-	g.pf("\tfor (final rec in retain.records) { if (!rec.placed) report.retainLost++; }\n")
+	g.pf("\tfor (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }\n")
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
