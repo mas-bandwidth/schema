@@ -100,7 +100,14 @@ root's `wire` case must agree on the managed and the native region load).
 JavaScript: `make schema-js-runs-hostile-corpus` (`test/js-hostile/runner.mjs`,
 every carrier, each row on its own worker thread under the per-case time budget;
 a packet case runs both read tiers, runtime and flat, under NODE_ENV development
-and production, one row each). Each carries the disagreements
+and production, one row each). C and C++:
+`make schema-c-runs-hostile-corpus` and `make schema-cpp-runs-hostile-corpus`
+(the units in `test/c-hostile` and `test/cpp-hostile`, linked into one case
+binary per port under AddressSanitizer and UndefinedBehaviorSanitizer and
+driven by `tools/hostilecorpusexec`, which runs each case in its own process
+with a 512 KiB case-thread stack and the per-case budget, so a crash, a
+sanitizer report or a hang fails only that case; a retaining load of a
+fixed-storage root, which neither port has, answers `SKIP`). Each carries the disagreements
 its port still owes in a `known-findings.tsv` beside the runner and prints them
 as FIX-CARDs. A disagreement no FIX-CARD names fails the run, and so does a
 FIX-CARD whose case has gone green.
