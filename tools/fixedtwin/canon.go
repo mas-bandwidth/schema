@@ -352,7 +352,17 @@ func rewriteKindMismatchBreaks(s string) string {
 	return head + mid + tail
 }
 
+// Formatting does not add a fourth semantic exception to the twin map.
+// Keep these rewrites narrow: preserve cast types, index operands and the
+// guard-link address expression while accepting both emitted spellings.
+var reCastThenParen = regexp.MustCompile(`\((u?int(?:8|16|32|64)_t)\)\s*\(`)
+var rePlanPrevious = regexp.MustCompile(`plan\[out\s*-\s*1\]`)
+var reGuardLinkAddress = regexp.MustCompile(`(const TableFixedGuardLink REF l = )\*?\s*\(\s*const TableFixedGuardLink\s*\*\s*\)\s*\(\s*const void\s*\*\s*\)\s*\(\s*\(\s*const uint8_t\s*\*\s*\)`)
+var reInlineLocal = regexp.MustCompile(`([{};])\s*(?:const\s+)?(?:u?int(?:8|16|32|64)_t|bool|int)\s+\w+\s*;`)
+
 func normalizeSyntax(s string) string {
+	s = reCastThenParen.ReplaceAllString(s, "($1) (")
+	s = rePlanPrevious.ReplaceAllString(s, "plan[out - 1]")
 	s = strings.ReplaceAll(s, "->", ".")
 	s = strings.ReplaceAll(s, ".as.", ".")
 	s = reStarClamped.ReplaceAllString(s, "$1++")
@@ -481,6 +491,7 @@ func normalizeSyntax(s string) string {
 	s = rewriteFunc(s, "inline bool TableFixedLeafSize", func(body string) string {
 		return strings.ReplaceAll(body, "default: break;", "")
 	})
+	s = reGuardLinkAddress.ReplaceAllString(s, "${1}( const TableFixedGuardLink * ) ( const void * ) ( ( const uint8_t * )")
 	more := []token{
 		{"(uint32_t) table[0]", "table[0]"},
 		{"for ( i = guarded;", "for ( int32_t i = guarded;"},
@@ -634,6 +645,8 @@ func normalizeLocals(s string) string {
 		}
 		b.WriteString(s[i:abs])
 		body := s[abs : end+1]
+		// The same uninitialized local may share a line with the opening brace.
+		body = reInlineLocal.ReplaceAllString(body, "$1")
 		body = localType.ReplaceAllString(body, "")
 		body = localInit.ReplaceAllString(body, "$1 =")
 		b.WriteString(body)
