@@ -972,6 +972,7 @@ func (g *gen) emitTextCount(b *strings.Builder, st *ir.Struct) {
 }
 
 func (g *gen) emitFieldTextCount(b *strings.Builder, f *ir.Field, x, ind string) {
+	emitRequiredRangeCheck(b, f, x, ind, "w.refused = true;")
 	if f.Type.Optional {
 		inner := *f
 		inner.Type.Optional = false
@@ -1593,11 +1594,15 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			// a value a float32 field cannot hold is kind_mismatch, never
 			// stored as infinity (§16.2)
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_f32() {\n", in)
-			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x; } else { jr.kind_mismatch += 1; }\n", in, dst)
+			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x;\n", in, dst)
+			emitVariableFloatClamp(b, f, dst, "jr.clamped", in+"        ")
+			fmt.Fprintf(b, "%s    } else { jr.kind_mismatch += 1; }\n", in)
 			fmt.Fprintf(b, "%s}\n", in)
 		case ir.TFloat64:
 			fmt.Fprintf(b, "%sif let Some(x) = jr.read_float() {\n", in)
-			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x; } else { jr.kind_mismatch += 1; }\n", in, dst)
+			fmt.Fprintf(b, "%s    if x.is_finite() { %s = x;\n", in, dst)
+			emitVariableFloatClamp(b, f, dst, "jr.clamped", in+"        ")
+			fmt.Fprintf(b, "%s    } else { jr.kind_mismatch += 1; }\n", in)
 			fmt.Fprintf(b, "%s}\n", in)
 		default:
 			if f.Type.Kind == ir.TFixed || f.Type.Width == 128 {

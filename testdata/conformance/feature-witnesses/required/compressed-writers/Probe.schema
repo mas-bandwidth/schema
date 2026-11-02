@@ -1,0 +1,5 @@
+package probe
+ table R {
+ x float32 | min=0.25, max=1.0, resolution=0.25, required
+ ys [..2]float32 | min=-1.0, max=1.0, resolution=0.25, required
+ }

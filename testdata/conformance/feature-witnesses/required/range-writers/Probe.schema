@@ -1,0 +1,13 @@
+package probe
+ enum Choice { A, B }
+ table R {
+ ints []int32 | min=5, required
+ wide [2]uint64 | min=9007199254740993, required
+ keyed [Choice]int32 | min=5, required
+ mask bits(24) | required
+ }
+ table Guarded {
+ on bool
+ if on { n int32 | min=5, required }
+ }
+ table Holder { value *R }

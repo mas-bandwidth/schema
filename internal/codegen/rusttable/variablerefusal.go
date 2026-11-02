@@ -210,8 +210,6 @@ func variableFieldConstruct(f *ir.Field) string {
 		inner.Array = ir.ArrayNone
 		inner.ArrayBound = 0
 		return variableFieldConstruct(&inner)
-	case f.HasFloatRange:
-		return "the compressed float is outside the variable class this leg carries (§3)"
 	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
 		return "a counted array with a declared minimum [Min..N]T is outside the variable class this leg carries (§3)"
 	}

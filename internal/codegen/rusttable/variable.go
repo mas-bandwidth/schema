@@ -292,6 +292,7 @@ pub enum TableNodeRecord {
 
 #[derive(Default)]
 pub struct TableNodeGraph {
+    pub invalid_required: bool,
     pub records: Vec<TableNodeRecord>,
     tables: HashMap<usize, u64>,
     blobs: HashMap<usize, u64>,
