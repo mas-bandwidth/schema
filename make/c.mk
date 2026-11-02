@@ -268,7 +268,7 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
 			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \
 		if [ ! -s $$out ]; then \
-			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
+			if grep -Eq "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
 			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \
 		fi; \
 	done
@@ -434,13 +434,13 @@ conformance-negative-control-c: build/conformance-harness
 		echo "NEGATIVE CONTROL FAILED: a sabotaged C walker left the harness green"; \
 		cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; \
 	fi
-	@grep -q "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log || \
+	@grep -Eq "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the sabotaged surface"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
-	@grep -q "json-write    pass" $(CONFORMANCE_NEGATIVE_C)/log || \
+	@grep -Eq "json-write    pass" $(CONFORMANCE_NEGATIVE_C)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: json-write went red too, so the control does not localise the READER"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
-	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C)/log || \
+	@grep -Eq "wire          pass" $(CONFORMANCE_NEGATIVE_C)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the whole matrix went red, so it localises nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
@@ -458,7 +458,7 @@ conformance-negative-control-c-absent: build/conformance-harness build/tables-ge
 	@rm -rf $(CONFORMANCE_NEGATIVE_C_ABSENT) && mkdir -p $(CONFORMANCE_NEGATIVE_C_ABSENT)
 	@sed 's|    return spill( dir, marker, reason, strlen( reason ) );|    (void) spill; (void) dir; (void) marker; (void) reason; return 1; /* SABOTAGED: the absence is dropped */|' \
 		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c
-	@grep -q "SABOTAGED: the absence is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
+	@grep -Eq "SABOTAGED: the absence is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_CONFORMANCE_INCLUDES) $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c \
 		$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver-bin -lm
@@ -470,7 +470,7 @@ conformance-negative-control-c-absent: build/conformance-harness build/tables-ge
 		echo "NEGATIVE CONTROL FAILED: a C driver that drops its per-case absence left the harness green"; \
 		cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; \
 	fi
-	@grep -q "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
+	@grep -Eq "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the dropped absence"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_ABSENT)/log; exit 1; }
 	@grep -m1 "blob_shared: the driver wrote nothing" $(CONFORMANCE_NEGATIVE_C_ABSENT)/log
@@ -505,13 +505,13 @@ conformance-negative-control-c-framing: build/conformance-harness build/conforma
 		echo "NEGATIVE CONTROL FAILED: a C reader without the 4096-entry cap left the harness green"; \
 		cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; \
 	fi
-	@grep -q "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+	@grep -Eq "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the 4097-entry vector"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
-	@grep -q "framing       FAIL" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+	@grep -Eq "framing       FAIL" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the framing surface did not go red"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
-	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+	@grep -Eq "wire          pass" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the wire surface went red too, so the control localises nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
 	@grep -m1 "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log
@@ -533,7 +533,7 @@ conformance-negative-control-c-foreign: build/conformance-harness build/tables-g
 	@rm -rf $(CONFORMANCE_NEGATIVE_C_FOREIGN) && mkdir -p $(CONFORMANCE_NEGATIVE_C_FOREIGN)
 	@sed 's|if ( bytes < 8 ) { return; }|if ( bytes < 8 ) { return; } /* SABOTAGED */ return;|' \
 		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c
-	@grep -q SABOTAGED $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c || \
+	@grep -Eq SABOTAGED $(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c || \
 		{ echo "NEGATIVE CONTROL: the byte-swap sabotage did not apply"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_CONFORMANCE_INCLUDES) \
 		$(CONFORMANCE_NEGATIVE_C_FOREIGN)/main.c $(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) \
@@ -546,16 +546,16 @@ conformance-negative-control-c-foreign: build/conformance-harness build/tables-g
 		echo "NEGATIVE CONTROL FAILED: a driver that never swapped the magic left the harness green"; \
 		cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; \
 	fi
-	@grep -q "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+	@grep -Eq "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: cook-foreign stayed green with no swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
-	@grep -q "c / block-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+	@grep -Eq "c / block-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: block-foreign stayed green with no swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
-	@grep -q "^cook          pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+	@grep -Eq "^cook          pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: cook went red too, so the control does not localise the swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
-	@grep -q "^block         pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
+	@grep -Eq "^block         pass" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: block went red too, so the control does not localise the swap"; \
 		  cat $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log; exit 1; }
 	@grep -m1 "c / cook-foreign" $(CONFORMANCE_NEGATIVE_C_FOREIGN)/log
@@ -630,9 +630,9 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/v2 test/tables/V2.schema
 	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/p1 test/tables/P1.schema
 	$(C_BE_NC)/schema generate --lang c --out $(C_BE_NC_GEN)/p3 test/tables/P3.schema
-	@grep -q "SABOTAGED: host order" $(C_BE_NC_GEN)/examples/TablesTable.h || \
+	@grep -Eq "SABOTAGED: host order" $(C_BE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged fallback arm"; exit 1; }
-	@grep -q "memcpy( dst, w->vocabulary->ids" $(C_BE_NC_GEN)/examples/TablesTable.h || \
+	@grep -Eq "memcpy( dst, w->vocabulary->ids" $(C_BE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotage removed the little-endian memcpy arm"; exit 1; }
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -ffp-contract=off $(C_BE_NC_INCLUDES) $(C_BE_NC_SOAK_SRCS) \
@@ -648,7 +648,7 @@ tables-c-big-endian-negative-control: test/c-tables/soak_main.c
 		echo "NEGATIVE CONTROL FAILED: a host-order C trailer fallback left the s390x golden gate green"; \
 		cat $(C_BE_NC)/be.log; exit 1; \
 	fi
-	@grep -q "does not re-save to its own bytes" $(C_BE_NC)/be.log || \
+	@grep -Eq "does not re-save to its own bytes" $(C_BE_NC)/be.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the s390x soak went red, but not on a wire golden"; \
 		  cat $(C_BE_NC)/be.log; exit 1; }
 	@echo "negative control: the same C fallback turns the s390x golden gate red, on the wire goldens"
@@ -686,7 +686,7 @@ tables-c-little-endian-negative-control: test/c-tables/soak_main.c
 	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/v2 test/tables/V2.schema
 	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/p1 test/tables/P1.schema
 	$(C_LE_NC)/schema generate --lang c --out $(C_LE_NC_GEN)/p3 test/tables/P3.schema
-	@grep -q "SABOTAGED: reversed id words" $(C_LE_NC_GEN)/examples/TablesTable.h || \
+	@grep -Eq "SABOTAGED: reversed id words" $(C_LE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged memcpy arm"; exit 1; }
 	@grep -Fq "v >> ( j * 8 )" $(C_LE_NC_GEN)/examples/TablesTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotage removed the big-endian fallback arm"; exit 1; }
@@ -697,7 +697,7 @@ tables-c-little-endian-negative-control: test/c-tables/soak_main.c
 		echo "NEGATIVE CONTROL FAILED: reversed id words in the little-endian memcpy arm left the host soak green"; \
 		cat $(C_LE_NC)/host.log; exit 1; \
 	fi
-	@grep -q "does not re-save to its own bytes" $(C_LE_NC)/host.log || \
+	@grep -Eq "does not re-save to its own bytes" $(C_LE_NC)/host.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the host soak went red, but not on a wire golden"; \
 		  cat $(C_LE_NC)/host.log; exit 1; }
 	@echo "negative control: reversed id words in the C memcpy arm turn the host soak red, on the wire goldens"
@@ -729,7 +729,7 @@ tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_non
 		"$(CURDIR)" "$(CURDIR)" > build/c-keyed-sabotage/overlay.json
 	go build -overlay build/c-keyed-sabotage/overlay.json -o build/c-keyed-sabotage/schema ./cmd/schema
 	build/c-keyed-sabotage/schema generate --lang c --out build/c-keyed-sabotage/generated tables/examples
-	@grep -q "SABOTAGED" build/c-keyed-sabotage/generated/KeyedTable.h || \
+	@grep -Eq "SABOTAGED" build/c-keyed-sabotage/generated/KeyedTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -Wno-error -DNDEBUG -Ibuild/c-keyed-sabotage/generated \
 		test/c-tables/keyed_none_ndebug_main.c -o build/c-keyed-sabotage/probe -lm
@@ -737,7 +737,7 @@ tables-c-keyed-none-refusal-negative-control: bin/schema test/c-tables/keyed_non
 		echo "NEGATIVE CONTROL FAILED: the gate stayed green with the refusal deleted"; \
 		cat build/c-keyed-sabotage/log; exit 1; \
 	fi
-	@grep -q "did NOT end the program" build/c-keyed-sabotage/log || \
+	@grep -Eq "did NOT end the program" build/c-keyed-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat build/c-keyed-sabotage/log; exit 1; }
 	@echo "negative control: deleting the C accessor's abort turns the None-refusal gate RED"
@@ -765,7 +765,7 @@ tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_
 		"$(CURDIR)" "$(CURDIR)" > build/c-keyed-max-sabotage/overlay.json
 	go build -overlay build/c-keyed-max-sabotage/overlay.json -o build/c-keyed-max-sabotage/schema ./cmd/schema
 	build/c-keyed-max-sabotage/schema generate --lang c --out build/c-keyed-max-sabotage/generated tables/examples
-	@grep -q "SABOTAGED" build/c-keyed-max-sabotage/generated/KeyedTable.h || \
+	@grep -Eq "SABOTAGED" build/c-keyed-max-sabotage/generated/KeyedTable.h || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -Wno-error -DNDEBUG -Ibuild/c-keyed-max-sabotage/generated \
 		test/c-tables/keyed_max_ndebug_main.c -o build/c-keyed-max-sabotage/probe -lm
@@ -773,7 +773,7 @@ tables-c-keyed-max-refusal-negative-control: bin/schema test/c-tables/keyed_max_
 		echo "NEGATIVE CONTROL FAILED: a None-only compare left the past-Max gate GREEN"; \
 		cat build/c-keyed-max-sabotage/log; exit 1; \
 	fi
-	@grep -q "the refusal was compiled out" build/c-keyed-max-sabotage/log || \
+	@grep -Eq "the refusal was compiled out" build/c-keyed-max-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the refusal"; \
 		  cat build/c-keyed-max-sabotage/log; exit 1; }
 	@echo "negative control: the None-only compare turns the C past-Max refusal gate red"
@@ -800,7 +800,7 @@ tables-c-usage-build:
 	sed -n '/<!-- c-table-usage -->/,/<!-- \/c-table-usage -->/p' docs/USAGE.md \
 		| sed '1,2d' | sed '$$d' | sed '$$d' >> $(C_USAGE_OUT)/usage.c
 	printf '    return 0;\n}\n' >> $(C_USAGE_OUT)/usage.c
-	grep -q '_TABLE_KEYED_AT' $(C_USAGE_OUT)/usage.c || \
+	grep -Eq '_TABLE_KEYED_AT' $(C_USAGE_OUT)/usage.c || \
 		{ echo "MISSING: docs/USAGE.md carries no c-table-usage example"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -I$(C_USAGE_GEN) -I$(SERIALIZE_C) \
 		$(C_USAGE_OUT)/usage.c $(C_USAGE_GEN)/KeyedTable.c \
@@ -823,13 +823,13 @@ tables-c-usage-negative-control: docs/USAGE.md
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > $(C_USAGE_NC)/overlay.json
 	go build -overlay $(C_USAGE_NC)/overlay.json -o $(C_USAGE_NC)/schema ./cmd/schema
 	$(C_USAGE_NC)/schema generate --lang c --out $(C_USAGE_NC)/examples tables/examples > /dev/null
-	@grep -q "define SCHEMA_TABLEDEMO_TABLE_KEYED_SLOT(" $(C_USAGE_NC)/examples/KeyedTable.h || \
+	@grep -Eq "define SCHEMA_TABLEDEMO_TABLE_KEYED_SLOT(" $(C_USAGE_NC)/examples/KeyedTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter did not move the name"; exit 1; }
 	@if $(MAKE) --no-print-directory tables-c-usage-build C_USAGE_GEN=$(C_USAGE_NC)/examples C_USAGE_OUT=$(C_USAGE_NC)/out > $(C_USAGE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the documented C example compiled against an emitter that moved SCHEMA_TABLE_KEYED_AT"; \
 		cat $(C_USAGE_NC)/log; exit 1; \
 	fi
-	@grep -q "SCHEMA_TABLEDEMO_TABLE_KEYED_AT" $(C_USAGE_NC)/log || \
+	@grep -Eq "SCHEMA_TABLEDEMO_TABLE_KEYED_AT" $(C_USAGE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the build went red, but not on the documented name"; cat $(C_USAGE_NC)/log; exit 1; }
 	@echo "negative control: the emitted surface moved under docs/USAGE.md's C example and tables-c-usage went red"
 
@@ -918,7 +918,7 @@ tables-c-block-layout-model-negative-control: bin/schema
 	@if $(CC) $(TABLES_CFLAGS) -fsyntax-only -I$(C_LAYOUT_NC)/block -I$(SERIALIZE_C) $(C_LAYOUT_NC)/block/RenderBlock.c > $(C_LAYOUT_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: C accepted a moved offset from the compiler's model"; exit 1; \
 	fi
-	@grep -q "schema_table_assert_.* is negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
+	@grep -Eq "schema_table_assert_.* is negative\|static assertion failed" $(C_LAYOUT_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: C went red, but not on a layout static assert"; cat $(C_LAYOUT_NC)/log; exit 1; }
 	@grep -m1 "moved" $(C_LAYOUT_NC)/log || true
 	@echo "negative control: a moved offset in the compiler's model turns the C layout static asserts red"
@@ -941,7 +941,7 @@ tables-c-blob-span-negative-control: test/c-tables/blob_span_main.c
 		"$(CURDIR)" "$(CURDIR)" > $(C_BLOB_SPAN_NC)/overlay.json
 	go build -overlay $(C_BLOB_SPAN_NC)/overlay.json -o $(C_BLOB_SPAN_NC)/schema ./cmd/schema
 	$(C_BLOB_SPAN_NC)/schema generate --lang c --out $(C_BLOB_SPAN_NC)/blobs tables/blobs > /dev/null
-	@grep -q "SABOTAGED: no blob takes a span" $(C_BLOB_SPAN_NC)/blobs/AssetsTable.h || \
+	@grep -Eq "SABOTAGED: no blob takes a span" $(C_BLOB_SPAN_NC)/blobs/AssetsTable.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted the span branches"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -I$(C_BLOB_SPAN_NC)/blobs -I$(SERIALIZE_C) \
 		test/c-tables/blob_span_main.c $(C_BLOB_SPAN_NC)/blobs/AssetsTable.c -o $(C_BLOB_SPAN_NC)/span -lm
@@ -949,7 +949,7 @@ tables-c-blob-span-negative-control: test/c-tables/blob_span_main.c
 		echo "NEGATIVE CONTROL FAILED: a blob bump-allocated in a slab it does not fit left tables-c-blob-span GREEN"; \
 		cat $(C_BLOB_SPAN_NC)/log; exit 1; \
 	fi
-	@grep -q "blob past the slab" $(C_BLOB_SPAN_NC)/log || \
+	@grep -Eq "blob past the slab" $(C_BLOB_SPAN_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the driver went red, but not on the blob"; cat $(C_BLOB_SPAN_NC)/log; exit 1; }
 	@grep -m1 "blob past the slab" $(C_BLOB_SPAN_NC)/log
 	@echo "negative control: a C blob larger than a slab, denied its span, is overwritten by the nodes after it"
@@ -970,19 +970,19 @@ C_JSON_LABEL_RED := root_save(NULL,(const Root *)(const void *)copy.region,saved
 tables-c-json-label-negative-control:
 	@rm -rf build/c-json-label-nc && mkdir -p build/c-json-label-nc
 	@sed -e '$(C_JSON_LABEL_SED)' internal/codegen/ctable/graph_json.go > build/c-json-label-nc/emitter.go.txt
-	@grep -q 'SABOTAGED: no label' build/c-json-label-nc/emitter.go.txt || \
+	@grep -Eq 'SABOTAGED: no label' build/c-json-label-nc/emitter.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/graph_json.go":"%s/build/c-json-label-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-json-label-nc/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay build/c-json-label-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireGraphIdentity$$' > build/c-json-label-nc/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-json-label-nc/log || ! grep -q -- '--- PASS' build/c-json-label-nc/log; then \
+		if grep -Eq -- '--- SKIP' build/c-json-label-nc/log || ! grep -Eq -- '--- PASS' build/c-json-label-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity did not run (skipped), so this control is watching nothing"; \
 			cat build/c-json-label-nc/log; exit 1; \
 		fi; \
 		echo "NEGATIVE CONTROL FAILED: TestCTableWireGraphIdentity stayed green under the sabotage"; cat build/c-json-label-nc/log; exit 1; \
 	fi
-	@grep -q -- '--- FAIL: TestCTableWireGraphIdentity' build/c-json-label-nc/log && grep -qF '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log || \
+	@grep -Eq -- '--- FAIL: TestCTableWireGraphIdentity' build/c-json-label-nc/log && grep -EqF '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-json-label-nc/log; exit 1; }
 	@grep -m1 -F '$(C_JSON_LABEL_RED)' build/c-json-label-nc/log
 	@echo "negative control: a shared node written twice in the C text form turns TestCTableWireGraphIdentity red on the engine's bytes"
@@ -997,19 +997,19 @@ C_MAP_SORT_RED := !memcmp(wire,expected,sizeof(expected))
 tables-c-map-sort-negative-control:
 	@rm -rf build/c-map-sort-nc && mkdir -p build/c-map-sort-nc
 	@sed -e '$(C_MAP_SORT_SED)' internal/codegen/ctable/sequence.go > build/c-map-sort-nc/emitter.go.txt
-	@grep -q 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt || \
+	@grep -Eq 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay build/c-map-sort-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTableWireMaps$$' > build/c-map-sort-nc/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-map-sort-nc/log || ! grep -q -- '--- PASS' build/c-map-sort-nc/log; then \
+		if grep -Eq -- '--- SKIP' build/c-map-sort-nc/log || ! grep -Eq -- '--- PASS' build/c-map-sort-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps did not run (skipped), so this control is watching nothing"; \
 			cat build/c-map-sort-nc/log; exit 1; \
 		fi; \
 		echo "NEGATIVE CONTROL FAILED: TestCTableWireMaps stayed green under the sabotage"; cat build/c-map-sort-nc/log; exit 1; \
 	fi
-	@grep -q -- '--- FAIL: TestCTableWireMaps' build/c-map-sort-nc/log && grep -qF '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log || \
+	@grep -Eq -- '--- FAIL: TestCTableWireMaps' build/c-map-sort-nc/log && grep -EqF '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: it went red, but not on its own CHECK"; cat build/c-map-sort-nc/log; exit 1; }
 	@grep -m1 -F '$(C_MAP_SORT_RED)' build/c-map-sort-nc/log
 	@echo "negative control: a C map saved in insertion order turns TestCTableWireMaps red on the engine's bytes"
@@ -1038,7 +1038,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 	@sed -i.bak -e 's|if(rows>(uint64_t)bytes-offset) { return blockdemo_table_cook_refuse(reason,SCHEMA_BLOCKDEMO_TABLE_REFUSE_BAD_LAYOUT)!=NULL; }|/* SABOTAGED */|' \
 	            -e 's|if(padding>bytes-used) { return blockdemo_table_cook_refuse(reason,SCHEMA_BLOCKDEMO_TABLE_REFUSE_TRUNCATED)!=NULL; }|/* SABOTAGED */|' \
 		build/c-fuzz-sabotage/block/RenderBlock.c
-	@grep -q SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
+	@grep -Eq SABOTAGED build/c-fuzz-sabotage/block/RenderBlock.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
 	$(CC) -std=c99 -Wall -Wextra -Wno-error -O1 -ffp-contract=off $(C_SANITIZE) \
 		-Itest/conformance/c -Ibuild/c-fuzz-sabotage/block -Ibuild/tables-generated-c/pointers \
@@ -1051,7 +1051,7 @@ tables-c-fuzz-negative-control: build/tables-generated-c/.stamp build/cook-open/
 		echo "NEGATIVE CONTROL FAILED: the extent guards are gone and the fuzzer stayed green — it is not reading what it opens"; \
 		cat build/c-fuzz-sabotage/log; exit 1; \
 	fi
-	@grep -q "heap-buffer-overflow" build/c-fuzz-sabotage/log || \
+	@grep -Eq "heap-buffer-overflow" build/c-fuzz-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the fuzzer went red for some other reason"; \
 		  cat build/c-fuzz-sabotage/log; exit 1; }
 	@echo "negative control: deleting the block reader's extent guards turns the forgery fuzzer RED, as a heap over-read"
@@ -1072,7 +1072,7 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 	@rm -rf build/c-soak-sabotage && mkdir -p build/c-soak-sabotage
 	@sed 's|            codec->load( value, loaded\[i\].wire, (int64_t) loaded\[i\].bytes, \&report );|            { void * sabotage = malloc( 1 ); *(volatile char *) sabotage = 1; free( sabotage ); } /* SABOTAGED: one matched pair, invisible to a live-byte sample. The volatile store is what stops the optimiser deleting a dead allocation outright, which gcc does at -O2 — a control the compiler removed proves nothing. */\n            codec->load( value, loaded[i].wire, (int64_t) loaded[i].bytes, \&report );|' \
 		test/c-tables/soak_main.c > build/c-soak-sabotage/soak_main.c
-	@grep -q SABOTAGED build/c-soak-sabotage/soak_main.c || \
+	@grep -Eq SABOTAGED build/c-soak-sabotage/soak_main.c || \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) \
 		build/c-soak-sabotage/soak_main.c test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
@@ -1088,10 +1088,10 @@ tables-c-soak-negative-control: build/tables-generated-c/.stamp
 		echo "NEGATIVE CONTROL FAILED: a malloc/free pair per iteration left the soak green"; \
 		cat build/c-soak-sabotage/log; exit 1; \
 	fi
-	@grep -q "allocator call" build/c-soak-sabotage/log || \
+	@grep -Eq "allocator call" build/c-soak-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the soak went red, but not on the call count"; \
 		  cat build/c-soak-sabotage/log; exit 1; }
-	@grep -q "live allocation" build/c-soak-sabotage/log || \
+	@grep -Eq "live allocation" build/c-soak-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the drift half did not run"; cat build/c-soak-sabotage/log; exit 1; }
 	@grep -m1 "SOAK FAILED" build/c-soak-sabotage/log
 	@echo "negative control: a matched malloc/free pair per iteration is INVISIBLE to the drift gate and turns the CALL COUNT red"
@@ -1116,15 +1116,15 @@ tables-c-ref-ordinal-negative-control:
 		"$(CURDIR)" "$(CURDIR)" > build/c-ref-ordinal-nc/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay build/c-ref-ordinal-nc/overlay.json -count=1 ./compiler \
 			-run TestCTableRefOrdinalBytes > build/c-ref-ordinal-nc/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-ref-ordinal-nc/log || \
-				! grep -q -- '--- PASS' build/c-ref-ordinal-nc/log; then \
+		if grep -Eq -- '--- SKIP' build/c-ref-ordinal-nc/log || \
+				! grep -Eq -- '--- PASS' build/c-ref-ordinal-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: the byte pin did not run (skipped), so this control is watching nothing"; \
 			cat build/c-ref-ordinal-nc/log; exit 1; \
 		fi; \
 		echo "NEGATIVE CONTROL FAILED: the rewind leaves the ordinal slot standing and the byte pin stayed green"; \
 		cat build/c-ref-ordinal-nc/log; exit 1; \
 	fi
-	@grep -qE "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/c-ref-ordinal-nc/log || \
+	@grep -EqE "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/c-ref-ordinal-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the byte pin went red, but not on the file the save wrote"; \
 		  cat build/c-ref-ordinal-nc/log; exit 1; }
 	@grep -m1 -E "ROUND TRIP MOVED|THE SAVED BYTES MOVED" build/c-ref-ordinal-nc/log
@@ -1142,21 +1142,21 @@ tables-c-strict-load-negative-control:
 	@rm -rf build/c-strict-load-nc && mkdir -p build/c-strict-load-nc
 	@sed -e 's|    return reason != SCHEMA_TABLE_REFUSE_OK;|    return 0; /* SABOTAGED: the plain names read tolerantly */|' \
 		internal/codegen/ctable/cook.go > build/c-strict-load-nc/cook.go.txt
-	@grep -q SABOTAGED build/c-strict-load-nc/cook.go.txt || \
+	@grep -Eq SABOTAGED build/c-strict-load-nc/cook.go.txt || \
 		{ echo "NEGATIVE CONTROL: the strict-rule sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/cook.go":"%s/build/c-strict-load-nc/cook.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-strict-load-nc/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -overlay build/c-strict-load-nc/overlay.json -count=1 ./compiler \
 			-run '^TestCTablePlainLoadIsStrict$$' > build/c-strict-load-nc/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-strict-load-nc/log || \
-				! grep -q -- '--- PASS' build/c-strict-load-nc/log; then \
+		if grep -Eq -- '--- SKIP' build/c-strict-load-nc/log || \
+				! grep -Eq -- '--- PASS' build/c-strict-load-nc/log; then \
 			echo "NEGATIVE CONTROL FAILED: the strict-read test did not run (skipped), so this control is watching nothing"; \
 			cat build/c-strict-load-nc/log; exit 1; \
 		fi; \
 		echo "NEGATIVE CONTROL FAILED: the plain names read tolerantly and the strict-read test stayed green"; \
 		cat build/c-strict-load-nc/log; exit 1; \
 	fi
-	@grep -q "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log || \
+	@grep -Eq "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the strict-read test went red, but not on a plain read accepting"; \
 		  cat build/c-strict-load-nc/log; exit 1; }
 	@grep -m1 "THE PLAIN READ ACCEPTED" build/c-strict-load-nc/log
@@ -1177,14 +1177,14 @@ tables-c-finite-float:
 	@mkdir -p build/c-finite-float
 	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloats$$' > build/c-finite-float/pin.log 2>&1 || \
 		{ cat build/c-finite-float/pin.log; exit 1; }
-	@! grep -q -- '--- SKIP' build/c-finite-float/pin.log || \
+	@! grep -Eq -- '--- SKIP' build/c-finite-float/pin.log || \
 		{ echo "tables-c-finite-float: the pin was skipped, so it held nothing"; cat build/c-finite-float/pin.log; exit 1; }
 	@echo 'C finite floats: every read refuses a NaN or an infinity, every writer refuses one, -0 rides by its bits'
 tables-c-finite-float-negative-control:
 	@mkdir -p build/c-finite-float
 	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestCFiniteFloatNegativeControl$$' > build/c-finite-float/control.log 2>&1 || \
 		{ cat build/c-finite-float/control.log; exit 1; }
-	@! grep -q -- '--- SKIP' build/c-finite-float/control.log || \
+	@! grep -Eq -- '--- SKIP' build/c-finite-float/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the finite-float control was skipped, so it is watching nothing"; cat build/c-finite-float/control.log; exit 1; }
 	@echo 'negative control: each C finite check blinded reddens exactly its own rows'
 test-c: tables-c-finite-float
@@ -1297,7 +1297,7 @@ tables-c-accessor-negative-control: bin/schema test/c-tables/accessor_descriptor
 		"$(CURDIR)" "$(CURDIR)" > build/c-accessor-sabotage/overlay.json
 	go build -overlay build/c-accessor-sabotage/overlay.json -o build/c-accessor-sabotage/schema ./cmd/schema
 	build/c-accessor-sabotage/schema generate --lang c --out build/c-accessor-sabotage/block tables/block
-	@grep -q "SABOTAGED" build/c-accessor-sabotage/block/RenderBlock.c || \
+	@grep -Eq "SABOTAGED" build/c-accessor-sabotage/block/RenderBlock.c || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged accessor"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -DACCESSOR_DESCRIPTOR_BLOCK -Ibuild/c-accessor-sabotage/block \
 		test/c-tables/accessor_descriptor_main.c build/c-accessor-sabotage/block/RenderBlock.c build/c-accessor-sabotage/block/RenderTable.c \
@@ -1306,7 +1306,7 @@ tables-c-accessor-negative-control: bin/schema test/c-tables/accessor_descriptor
 		echo "NEGATIVE CONTROL FAILED: a block scalar offset four bytes off left the gate GREEN"; \
 		cat build/c-accessor-sabotage/log; exit 1; \
 	fi
-	@grep -q "the accessor's offset is not the descriptor's" build/c-accessor-sabotage/log || \
+	@grep -Eq "the accessor's offset is not the descriptor's" build/c-accessor-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the accessor/descriptor disagreement"; \
 		  cat build/c-accessor-sabotage/log; exit 1; }
 	@echo "negative control: a block descriptor offset four bytes off turns the C accessor/descriptor gate RED"
@@ -1323,7 +1323,7 @@ tables-c-slot-negative-control: bin/schema test/c-tables/accessor_descriptor_mai
 		"$(CURDIR)" "$(CURDIR)" > build/c-slot-sabotage/overlay.json
 	go build -overlay build/c-slot-sabotage/overlay.json -o build/c-slot-sabotage/schema ./cmd/schema
 	build/c-slot-sabotage/schema generate --lang c --out build/c-slot-sabotage/pointers tables/pointers
-	@grep -q "SABOTAGED" build/c-slot-sabotage/pointers/GraphTable.c || \
+	@grep -Eq "SABOTAGED" build/c-slot-sabotage/pointers/GraphTable.c || \
 		{ echo "NEGATIVE CONTROL: the sabotaged emitter emitted an unsabotaged slot"; exit 1; }
 	$(CC) $(TABLES_CFLAGS) -DACCESSOR_DESCRIPTOR_COOK -Ibuild/c-slot-sabotage/pointers \
 		test/c-tables/accessor_descriptor_main.c build/c-slot-sabotage/pointers/GraphTable.c build/c-slot-sabotage/pointers/PartsTable.c build/c-slot-sabotage/pointers/MarksTable.c \
@@ -1332,7 +1332,7 @@ tables-c-slot-negative-control: bin/schema test/c-tables/accessor_descriptor_mai
 		echo "NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the gate GREEN"; \
 		cat build/c-slot-sabotage/log; exit 1; \
 	fi
-	@grep -q "the slot accessor's offset is not the descriptor's" build/c-slot-sabotage/log || \
+	@grep -Eq "the slot accessor's offset is not the descriptor's" build/c-slot-sabotage/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on the pointer slot"; \
 		  cat build/c-slot-sabotage/log; exit 1; }
 	@echo "negative control: a pointer slot eight bytes off turns the C accessor/descriptor gate RED"
@@ -1551,12 +1551,12 @@ tables-c-format-negative-control: bin/schema tools/sabotage/c_clean.go make/chec
 	go build -overlay $(C_CLEAN_CONTROL)/overlay.json -o $(C_CLEAN_CONTROL)/schema ./cmd/schema
 	$(C_CLEAN_CONTROL)/schema generate --lang c --out $(C_CLEAN_CONTROL)/sabotaged-all examples
 	@mkdir -p $(C_CLEAN_CONTROL)/sabotaged && cp $(C_CLEAN_CONTROL)/sabotaged-all/Types.h $(C_CLEAN_CONTROL)/sabotaged/
-	@grep -q '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
+	@grep -Eq '^typedef struct [A-Za-z0-9_]* {$$' $(C_CLEAN_CONTROL)/sabotaged/Types.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter wrote no K&R brace"; exit 1; }
 	@if CLANG_FORMAT=$(CLANG_FORMAT) OUT=$(C_CLEAN_CONTROL)/red sh make/checks/c-clean-format.sh $(C_CLEAN_CONTROL)/empty.txt $(C_CLEAN_CONTROL)/sabotaged > $(C_CLEAN_CONTROL)/red.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a K&R struct brace in the emitted C left the format gate green"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; \
 	fi
-	@grep -q 'clang-format drift in .*/sabotaged/Types\.h' $(C_CLEAN_CONTROL)/red.out || \
+	@grep -Eq 'clang-format drift in .*/sabotaged/Types\.h' $(C_CLEAN_CONTROL)/red.out || \
 		{ echo "NEGATIVE CONTROL FAILED: the format gate went red, but not on Types.h"; cat $(C_CLEAN_CONTROL)/red.out; exit 1; }
 	@echo "negative control: one K&R struct brace in the emitted C turns the format gate (clang-format) RED naming the file"
 
@@ -1615,13 +1615,13 @@ tables-c-wire-fuzz-negative-control: build/conformance-harness build/tables-gene
 	@for f in build/c-wire-sabotage/generated/*/*Table.h; do \
 		sed 's/if ( i \&\& b == 0 )/if ( 0 ) \/* SABOTAGED canonical LEB128 *\//' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
 	done
-	@grep -q 'SABOTAGED canonical LEB128' build/c-wire-sabotage/generated/examples/TablesTable.h || { echo 'NEGATIVE CONTROL: canonical LEB128 sabotage did not apply'; exit 1; }
+	@grep -Eq 'SABOTAGED canonical LEB128' build/c-wire-sabotage/generated/examples/TablesTable.h || { echo 'NEGATIVE CONTROL: canonical LEB128 sabotage did not apply'; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
 		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-wire-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-wire-sabotage/driver -lm
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-wire-sabotage/driver --seed 1 --n 0 --failed build/c-wire-sabotage/failed.bin > build/c-wire-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: noncanonical LEB128 was accepted and the differential stayed green'; exit 1; \
 	fi
-	@grep -qE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
+	@grep -EqE 'the report differs|the oracle discards a damaged load' build/c-wire-sabotage/log || { cat build/c-wire-sabotage/log; exit 1; }
 	@echo 'C wire negative control: accepting noncanonical LEB128 changes the read report'
 
 test-c: tables-c-wire-fuzz-negative-control
@@ -1654,10 +1654,46 @@ tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/t
 	@if ./build/conformance-harness wire-fuzz --driver ./build/c-skip36-sabotage/driver --replay testdata/wire/tables/c_skip_timestamp_kind.bin --unit tabledemo --root RootConfig > build/c-skip36-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a C reader without the kind-36 width left the replay green'; exit 1; \
 	fi
-	@grep -q 'the report differs' build/c-skip36-sabotage/log || { cat build/c-skip36-sabotage/log; exit 1; }
+	@grep -Eq 'the report differs' build/c-skip36-sabotage/log || { cat build/c-skip36-sabotage/log; exit 1; }
 	@echo 'C skip negative control: kind 36 out of the skip table turns the pinned replay red'
 
 test-c: tables-c-skip-timestamp-kind-negative-control
+
+# THE 16-BYTE EXTENT ALIGNMENT OF 128-BIT SEQUENCES (docs/SPEC-TABLES.md §2.8,
+# §2.9, §6.2): Wide is 40 bytes (8 mod 16) and wides []uint128 aligns at 16
+# (ir.ListElementLayout), while C serialize_uint128_t is an 8-aligned struct of
+# two uint64_t halves. The two pinned mutants are widelist_wide reference #1
+# (seed 1, sha256 11e2e71d...) and widelist_wide widen #0 (seed 1, sha256
+# 7a71d97b...), which at 949ea720287bdd6a17200a8bc7a82cc56b73f437 answered
+# LoadMeasure = 208 (instead of 224) and LoadMeasure = -1 (instead of 224).
+.PHONY: tables-c-widelist-extent-align16
+tables-c-widelist-extent-align16: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide --retain
+
+test-c tables-c: tables-c-widelist-extent-align16
+
+.PHONY: tables-c-widelist-extent-align16-negative-control
+tables-c-widelist-extent-align16-negative-control: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf build/c-widelist-sabotage && mkdir -p build/c-widelist-sabotage
+	@cp -R build/tables-generated-c build/c-widelist-sabotage/generated
+	@sed "s|int64_t at=widelistdemo_table_align_up64((int64_t)sizeof(widelistdemo_wide_t));|int64_t at=sizeof(widelistdemo_wide_t); /* SABOTAGED: unaligned extent start */|; s|sizeof(serialize_uint128_t),16|sizeof(serialize_uint128_t),SCHEMA_TABLE_ALIGNOF(serialize_uint128_t) /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
+	@grep -Eq "SABOTAGED: unaligned extent start" build/c-widelist-sabotage/generated/widelist/WidesTable.h || { echo "NEGATIVE CONTROL FAILED: the widelist sabotage patched nothing"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
+		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-widelist-sabotage/driver -lm
+	@if ./build/conformance-harness wire-fuzz --driver ./build/c-widelist-sabotage/driver --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide > build/c-widelist-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: unaligned Wide extent start left the pinned replay green"; exit 1; \
+	fi
+	@grep -q "measure=208" build/c-widelist-sabotage/log && grep -q "the framing commands exactly 224" build/c-widelist-sabotage/log || { cat build/c-widelist-sabotage/log; exit 1; }
+	@echo "C widelist alignment negative control: unaligned Wide extent start reproduces LoadMeasure 208 vs 224"
+
+test-c tables-c: tables-c-widelist-extent-align16-negative-control
 
 # Maps and lists use the C++ reference's pinned file bytes and exact region
 # sizes. Both allocator-backed construction and caller-owned loads are checked
@@ -1726,15 +1762,15 @@ tables-c-message-negative-control:
 	go run ./tools/sabotage -name message-c-wrong-slot -out build/c-message-negative/message_save.gotext internal/codegen/ctable/message_save.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/message_save.go":"%s/build/c-message-negative/message_save.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-message-negative/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -count=1 -overlay=build/c-message-negative/overlay.json ./compiler -run '^TestCTableMessageSave$$' > build/c-message-negative/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-message-negative/log || \
-				! grep -q -- '--- PASS' build/c-message-negative/log; then \
+		if grep -Eq -- '--- SKIP' build/c-message-negative/log || \
+				! grep -Eq -- '--- PASS' build/c-message-negative/log; then \
 			echo 'NEGATIVE CONTROL FAILED: the wire comparison did not run (skipped), so this control is watching nothing'; \
 			cat build/c-message-negative/log; exit 1; \
 		fi; \
 		echo 'NEGATIVE CONTROL FAILED: the message slot changed without failing the wire comparison'; exit 1; \
 	fi
-	@grep -q -- '--- FAIL: TestCTableMessageSave' build/c-message-negative/log
-	@grep -q 'memcmp(output,expected,sizeof(expected))' build/c-message-negative/log
+	@grep -Eq -- '--- FAIL: TestCTableMessageSave' build/c-message-negative/log
+	@grep -Eq 'memcmp(output,expected,sizeof(expected))' build/c-message-negative/log
 	@echo 'negative control: the wrong C message slot turns the independent wire comparison red'
 
 test-c tables-c: tables-c-message-negative-control
@@ -1752,14 +1788,14 @@ tables-c-retain-negative-control:
 	go run ./tools/sabotage -name retain-c-drop-field -out build/c-retain-negative/retain.gotext internal/codegen/ctable/retain.go
 	@printf '{"Replace":{"%s/internal/codegen/ctable/retain.go":"%s/build/c-retain-negative/retain.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-retain-negative/overlay.json
 	@if SCHEMA_SLOW=1 go test -v -count=1 -overlay=build/c-retain-negative/overlay.json ./compiler -run '^TestCTableRetainFile$$' > build/c-retain-negative/log 2>&1; then \
-		if grep -q -- '--- SKIP' build/c-retain-negative/log || \
-				! grep -q -- '--- PASS' build/c-retain-negative/log; then \
+		if grep -Eq -- '--- SKIP' build/c-retain-negative/log || \
+				! grep -Eq -- '--- PASS' build/c-retain-negative/log; then \
 			echo 'NEGATIVE CONTROL FAILED: the public round-trip report did not run (skipped), so this control is watching nothing'; \
 			cat build/c-retain-negative/log; exit 1; \
 		fi; \
 		echo 'NEGATIVE CONTROL FAILED: silently dropped C retained field passed'; exit 1; fi
-	@grep -q -- '--- FAIL: TestCTableRetainFile' build/c-retain-negative/log
-	@grep -q -- 'report.retained==13' build/c-retain-negative/log
+	@grep -Eq -- '--- FAIL: TestCTableRetainFile' build/c-retain-negative/log
+	@grep -Eq -- 'report.retained==13' build/c-retain-negative/log
 	@echo 'C retention negative control: dropped field fails the public round-trip report'
 
 test-c tables-c: tables-c-retain tables-c-retain-negative-control
@@ -1917,8 +1953,8 @@ cards-c-conformance: build/conformance-harness build/cards-driver-c
 cards-c-conformance-negative-control: build/conformance-harness build/cards-driver-c
 	@if CARDS_C_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-c-conformance-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the card check stayed green with one rendered byte changed'; exit 1; fi
-	@grep -qE 'cards render .*FAIL' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-c-conformance-neg.log; exit 1; }
-	@grep -qE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-neg.log; exit 1; }
+	@grep -EqE 'cards render .*FAIL' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: render did not go red'; cat build/cards-c-conformance-neg.log; exit 1; }
+	@grep -EqE 'cards (load|save|parse|bounds|upgrade|edit|taskhash|view) pass' build/cards-c-conformance-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-neg.log; exit 1; }
 	@echo 'cards C negative control: one changed rendered byte turns exactly render red'
 
 # cards-c-conformance-upgrade-negative-control: a test-only switch drops one
@@ -1928,8 +1964,8 @@ cards-c-conformance-negative-control: build/conformance-harness build/cards-driv
 cards-c-conformance-upgrade-negative-control: build/conformance-harness build/cards-driver-c
 	@if CARDS_C_UPGRADE_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-c-conformance-upgrade-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: upgrade stayed green with one retained field dropped'; exit 1; fi
-	@grep -qE 'cards upgrade .*FAIL' build/cards-c-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-c-conformance-upgrade-neg.log; exit 1; }
-	@grep -qE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-c-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-upgrade-neg.log; exit 1; }
+	@grep -EqE 'cards upgrade .*FAIL' build/cards-c-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: upgrade did not go red'; cat build/cards-c-conformance-upgrade-neg.log; exit 1; }
+	@grep -EqE 'cards (load|save|render|parse|bounds|edit|taskhash|view) pass' build/cards-c-conformance-upgrade-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-upgrade-neg.log; exit 1; }
 	@echo 'cards C upgrade negative control: one dropped retained byte turns exactly upgrade red'
 
 # cards-c-conformance-hash-negative-control: a test-only switch changes one
@@ -1939,8 +1975,8 @@ cards-c-conformance-upgrade-negative-control: build/conformance-harness build/ca
 cards-c-conformance-hash-negative-control: build/conformance-harness build/cards-driver-c
 	@if CARDS_C_HASH_SABOTAGE=1 ./build/conformance-harness cards --corpus tables/cards/conformance --driver tables/cards/c/driver --require load,save,render,parse,bounds,upgrade,edit,taskhash,view > build/cards-c-conformance-hash-neg.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: taskhash stayed green with a changed digit'; exit 1; fi
-	@grep -qE 'cards taskhash .*FAIL' build/cards-c-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-c-conformance-hash-neg.log; exit 1; }
-	@grep -qE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-c-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-hash-neg.log; exit 1; }
+	@grep -EqE 'cards taskhash .*FAIL' build/cards-c-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: taskhash did not go red'; cat build/cards-c-conformance-hash-neg.log; exit 1; }
+	@grep -EqE 'cards (load|save|render|parse|bounds|upgrade|edit|view) pass' build/cards-c-conformance-hash-neg.log || { echo 'NEGATIVE CONTROL FAILED: the other surfaces did not stay green'; cat build/cards-c-conformance-hash-neg.log; exit 1; }
 	@echo 'cards C hash negative control: one changed task-hash digit turns exactly taskhash red'
 
 test-c: cards-c-test cards-c-conformance cards-c-conformance-negative-control cards-c-conformance-upgrade-negative-control cards-c-conformance-hash-negative-control
@@ -1977,7 +2013,7 @@ tables-c-two-units-negative-controls: build/c-two-units/main
 	@if $(CC) $(TABLES_CFLAGS_CONTROL) -Ibuild/tables-generated-c/w1 -Ibuild/c-two-units/runtime/w2 -I$(SERIALIZE_C) \
 		-c test/c-two-units/main.c -o build/c-two-units/runtime/main.o > build/c-two-units/runtime/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: two units with different SchemaRuntime.h versions built into one translation unit"; exit 1; fi
-	@grep -q 'generated against a different SchemaRuntime.h' build/c-two-units/runtime/log || { cat build/c-two-units/runtime/log; exit 1; }
+	@grep -Eq 'generated against a different SchemaRuntime.h' build/c-two-units/runtime/log || { cat build/c-two-units/runtime/log; exit 1; }
 	@echo 'negative control: a SchemaRuntime.h version mismatch stops the build by name'
 	@rm -rf build/c-two-units/qualify && mkdir -p build/c-two-units/qualify
 	@sed 's|return cqualify.Qualify(files, u.Package)|_ = cqualify.Qualify; return files, nil // SABOTAGED|' compiler/target_c.go > build/c-two-units/qualify/target_c.go.txt
@@ -1990,7 +2026,7 @@ tables-c-two-units-negative-controls: build/c-two-units/main
 	@if $(CC) $(TABLES_CFLAGS_CONTROL) -Ibuild/c-two-units/qualify/w1 -Ibuild/c-two-units/qualify/w2 -I$(SERIALIZE_C) \
 		-c test/c-two-units/main.c -o build/c-two-units/qualify/main.o > build/c-two-units/qualify/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: two unqualified units built into one translation unit"; exit 1; fi
-	@grep -q 'redefinition' build/c-two-units/qualify/log || { head -20 build/c-two-units/qualify/log; exit 1; }
+	@grep -Eq 'redefinition' build/c-two-units/qualify/log || { head -20 build/c-two-units/qualify/log; exit 1; }
 	@echo 'negative control: without the package, the same translation unit fails on redefinitions'
 
 test-c: tables-c-two-units tables-c-two-units-negative-controls
@@ -2007,14 +2043,14 @@ tables-c-discard:
 	@mkdir -p build/c-discard
 	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadC$$' > build/c-discard/pin.log 2>&1 || \
 		{ cat build/c-discard/pin.log; exit 1; }
-	@! grep -q -- '--- SKIP' build/c-discard/pin.log || \
+	@! grep -Eq -- '--- SKIP' build/c-discard/pin.log || \
 		{ echo "tables-c-discard: the pin was skipped, so it held nothing"; cat build/c-discard/pin.log; exit 1; }
 	@echo 'C discard: damage hands back no value from any C read'
 tables-c-discard-negative-control:
 	@mkdir -p build/c-discard
 	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadCNegativeControl$$' > build/c-discard/control.log 2>&1 || \
 		{ cat build/c-discard/control.log; exit 1; }
-	@! grep -q -- '--- SKIP' build/c-discard/control.log || \
+	@! grep -Eq -- '--- SKIP' build/c-discard/control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the discard control was skipped, so it is watching nothing"; cat build/c-discard/control.log; exit 1; }
 	@echo 'negative control: each C read with its discard removed hands back a value, on exactly its own rows'
 test-c: tables-c-discard
@@ -2034,7 +2070,7 @@ tables-c-cycle:
 	@mkdir -p build/c-cycle
 	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC|CycleOrdinalBoundaryC)$$' > build/c-cycle/pin.log 2>&1 || \
 		{ cat build/c-cycle/pin.log; exit 1; }
-	@! grep -q -- '--- SKIP' build/c-cycle/pin.log || \
+	@! grep -Eq -- '--- SKIP' build/c-cycle/pin.log || \
 		{ echo "tables-c-cycle: the pin was skipped, so it held nothing"; cat build/c-cycle/pin.log; exit 1; }
 	@echo 'C cycle: cyclic wire graphs are refused as damage and diamond DAGs load in linear time'
 tables-c-cycle-negative-control:
@@ -2050,7 +2086,7 @@ tables-c-cycle-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
 		cat $(C_CYCLE_NC)/log; exit 1; \
 	fi
-	@grep -q "cycle: the region load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+	@grep -Eq "cycle: the region load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(C_CYCLE_NC)/log; exit 1; }
 	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
@@ -2068,7 +2104,7 @@ tables-c-cycle-linear-negative-control:
 		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
 		cat $(C_CYCLE_LINEAR_NC)/log; exit 1; \
 	fi
-	@grep -q "diamond: the walk did not finish linear" $(C_CYCLE_LINEAR_NC)/log || \
+	@grep -Eq "diamond: the walk did not finish linear" $(C_CYCLE_LINEAR_NC)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
 		  cat $(C_CYCLE_LINEAR_NC)/log; exit 1; }
 	@grep -m1 "diamond:" $(C_CYCLE_LINEAR_NC)/log

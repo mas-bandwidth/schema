@@ -193,6 +193,14 @@ func (g *tableGen) sequenceType(f *ir.Field) string {
 	return g.cFieldType(e.Type)
 }
 
+func (g *tableGen) sequenceAlign(f *ir.Field) int64 {
+	if f.IsMap() {
+		return ir.RecordLayout(g.unit, f.MapEntry).Align
+	}
+	_, align := ir.ListElementLayout(g.unit, f)
+	return align
+}
+
 func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	typ := g.sequenceType(f)
 	name := st.Name + ir.GoExportName(f.Name)
@@ -250,7 +258,7 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	}
 	g.pf("                    if(elem_kind!=%d) { if(!(%s)) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.retainReplace(f, "                    ")
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, typ)
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, g.sequenceAlign(f))
 	g.pf("                    for(i=0;i<count;i++) {\n                        %s * element=(%s *)table_sequence_fill_next(&fill); if(element==NULL) { r->report->malformed=1; break; }\n", typ, typ)
 	g.retainIndex(f, "i", "                        ")
 	if ref, ok := e.Type.Ref.(*ir.Struct); ok && !e.Type.Pointer {

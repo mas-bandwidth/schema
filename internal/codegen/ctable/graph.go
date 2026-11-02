@@ -367,6 +367,7 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
         slot->value = (int64_t)index;
         return;
     }
+    if ( nodes->blob_named != NULL ) { nodes->blob_named[index-1] |= 2u; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -378,7 +379,8 @@ static SCHEMA_UNUSED void table_node_resolve( const TableNodeMap * nodes, TableR
    so the directory keeps its 16-byte entry and the framing numbers hold. */
 static SCHEMA_UNUSED void table_node_blob_mark( TableNodeMap * nodes, uint64_t index, TableReport * report )
 {
-    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count || !( nodes->blob_named[index-1] & 2u ) ) { return; }
+    nodes->blob_named[index-1] &= (uint8_t)~2u;
     if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
@@ -902,7 +904,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedUnknown = "if(retention.retain)reader->report->retain_lost+=unknown;"
 	}
-	g.pf("    nodes->cycle_indices=1; nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
+	g.pf("    nodes->cycle_indices=1; nodes->good=table_node_scan_whole(&scan);\n    if(nodes->good) { reader->report->unknown+=unknown; %s } else { reader->report->malformed=1; }\n    if(nodes->good) {\n        scan=table_node_scan_begin(reader); k=0;\n        while(table_node_scan_next(&scan,&id,&body)) {\n            if(directory[k+1].offset!=UINT64_MAX) {\n                void * value=nodes->arena ? table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;\n                TableRegionSink extent; TableSink carve; const TableNodeType * type=%s(id);\n                carve.worker=sink->worker; carve.region=NULL;\n                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=table_align_up64(type->size); extent.capacity=table_node_wire_storage(type,&body); carve.region=&extent; }\n                nodes->sink=&carve; body.nodes=nodes;\n                switch(id) {\n", retainedUnknown, g.sym(n, "node_lookup"))
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
 	for _, blob := range []struct {
 		enabled bool
@@ -923,7 +925,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	if g.retain {
 		retainedRoot = "retention.path=table_retain_root(root,1);"
 	}
-	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { break; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok=0; if(!nodes->refused) { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; }\n      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      if(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->malformed=1; return 0; }\n      return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
+	g.pf("                    default: break;\n                }\n                nodes->sink=NULL; if(nodes->refused) { break; }\n            }\n            k++;\n        }\n    }\n    reader->nodes=nodes; reader->nested=0;\n    { int read_ok=0; if(!nodes->refused) { TableRegionSink extent; TableSink carve; carve.worker=sink->worker; carve.region=NULL;\n      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=table_align_up64((int64_t)sizeof(*root)); extent.capacity=%s(reader); carve.region=&extent; }\n      nodes->sink=&carve; %s read_ok=%s(reader,root); nodes->sink=NULL; }\n      /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */\n      if(table_non_finite_refused(reader->report,non_finite_before)) { return 0; }\n      /* A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load is refused, on every read */\n      if(nodes->good && !nodes->refused && !table_cycle_acyclic(nodes,nodes->arena ? sink->worker->arena : NULL,%s,%s,%s)) { reader->report->malformed=1; return 0; }\n      return !nodes->refused && (!nodes->arena || read_ok); }\n}\n", g.sym(n, "wire_storage"), retainedRoot, g.api(n, "load_body"), g.sym(n, "cycle_ordinal"), g.sym(n, "cycle_node"), g.sym(n, "cycle_id"))
 	if g.retain {
 		return
 	}
