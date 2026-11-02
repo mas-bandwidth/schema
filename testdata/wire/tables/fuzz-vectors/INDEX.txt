@@ -222,3 +222,7 @@ retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain
 # Retained records in nodes no longer reached by the save count retain_lost.
 # Dart saved the right bytes but omitted the unvisited retained-record count.
 retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
+
+# Final widened key occurrence replaces an earlier incompatible key kind.
+# The neutral oracle and C++ previously retained the earlier mismatch flag.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
