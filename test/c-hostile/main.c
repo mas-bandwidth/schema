@@ -83,6 +83,7 @@ const char * hc_reason_name( int reason )
         case 4: return "second_announcement";
         case 5: return "vocabulary_too_large";
         case 6: return "batch_too_large";
+        case 11: return "count_refusal";
         case 21: return "non_finite_float";
         default: break;
     }

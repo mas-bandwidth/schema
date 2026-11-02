@@ -40,7 +40,7 @@
         HC_CPP_REASON( batch_too_large ) \
         HC_CPP_REASON( non_finite_float ) \
         HC_CPP_REASON( count_over_length ) \
-        HC_CPP_REASON( count_over_extent_cap ) \
+        if ( reason == HC_NS::count_over_extent_cap ) return "count_refusal"; \
         HC_CPP_REASON( blob_over_size_cap ) \
         HC_CPP_REASON( data_cycle ) \
         HC_CPP_REASON( invalid_value ) \

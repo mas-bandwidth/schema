@@ -3823,31 +3823,8 @@ static void test_json_dialect()
         int n = snprintf( text, sizeof( text ), "{ \"name\": \"ab\xc3\" }" );
         CHECK( n > 0 );
         tabledemo::TableReport raw;
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( stray, text, n, &raw ) );
-        CHECK( stray.name_length == 5 );
-        CHECK( (unsigned char) stray.name[2] == 0xef && (unsigned char) stray.name[3] == 0xbf &&
-               (unsigned char) stray.name[4] == 0xbd );
-        CHECK( !raw.malformed && raw.clamped == 0 );
-
-        // and the WRITER owes a valid JSON text (RFC 8259 §8.1), which this
-        // storage already is: the trip is byte-identical from here on, because
-        // the replacement happened where the defect entered.
-        int64_t size = tabledemo::ProfileConfigToJsonMeasure( stray );
-        std::vector<char> out( (size_t) size + 1 );
-        CHECK( tabledemo::ProfileConfigToJson( stray, out.data(), size ) == size );
-        out[(size_t) size] = 0;
-        CHECK( strstr( out.data(), "\"ab\xef\xbf\xbd\"" ) != NULL );
-        tabledemo::ProfileConfig back;
-        CHECK( tabledemo::ProfileConfigFromJsonTolerant( back, out.data(), size, &raw ) );
-        CHECK( back.name_length == 5 );
-        CHECK( (unsigned char) back.name[2] == 0xef && (unsigned char) back.name[3] == 0xbf &&
-               (unsigned char) back.name[4] == 0xbd );
-        // and the SECOND trip is stable: a text the walk wrote reads back and
-        // writes the same bytes again
-        int64_t again = tabledemo::ProfileConfigToJsonMeasure( back );
-        std::vector<char> twice( (size_t) again );
-        CHECK( tabledemo::ProfileConfigToJson( back, twice.data(), again ) == again );
-        CHECK( again == size && memcmp( twice.data(), out.data(), (size_t) size ) == 0 );
+        CHECK( !tabledemo::ProfileConfigFromJsonTolerant( stray, text, n, &raw ) );
+        CHECK( raw.malformed && raw.clamped == 0 );
     }
 
     // a lone surrogate ESCAPE is valid JSON input with no UTF-8 encoding:

@@ -287,7 +287,9 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 			g.wireRefusalCheck(ind + "            ")
 			g.pf("%s            if(elem.offset!=elem.size) { r->report->malformed=1; %s(&%s[i]); }\n", ind, g.api(f.Type.Name, "reset"), dst)
 		case tkUnion:
-			g.pf("%s            if ( !%s( &sub, &%s[i], 1 ) ) { %s }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst, bad)
+			g.pf("%s            if ( !%s( &sub, &%s[i], 1 ) ) {\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
+			g.wireRefusalCheck(ind + "                ")
+			g.pf("%s                %s }\n", ind, bad)
 		default:
 			g.wireScalarRead(f, dst+"[i]", "sub", "elem_kind", ind+"            ", bad)
 		}

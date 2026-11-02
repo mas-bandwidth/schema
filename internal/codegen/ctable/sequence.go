@@ -264,7 +264,9 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 		g.wireRefusalCheck("                            ")
 		g.pf("                            if(item.offset!=item.size) { r->report->malformed=1; %s(element); }\n", g.api(e.Type.Name, "reset"))
 	case tkUnion:
-		g.pf("                            if(!%s(&sub,element,1)) { %s }\n", g.unionWireName(e.Type.Ref.(*ir.Union), "load"), bad)
+		g.pf("                            if(!%s(&sub,element,1)) {\n", g.unionWireName(e.Type.Ref.(*ir.Union), "load"))
+		g.wireRefusalCheck("                                ")
+		g.pf("                                %s }\n", bad)
 	default:
 		g.wireScalarRead(e, "(*element)", "sub", "elem_kind", "                            ", bad)
 	}
