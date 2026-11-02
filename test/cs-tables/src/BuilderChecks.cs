@@ -126,9 +126,9 @@ static partial class Program
         using(var builder=new L.SaveBuilder())
         {
             var report=new L.TableReport();
-            Check(L.Schema.SaveLoadBuilder(builder,shortList,report) && report.Malformed && !report.Refused && report.Clamped==0,"builder decodes a short list prefix as damage");
+            Check(!L.Schema.SaveLoadBuilder(builder,shortList,report) && report.Malformed && !report.Refused && report.Clamped==0,"builder refuses a short list as damage");
             var list=builder.CreateWorker().List<int>(ref builder.GetRoot()->Scores,L.Schema.SaveTableType().Fields[2]);
-            Check(list.Count==1 && *list.At(0)==42,"builder retains the decoded prefix");
+            Check(list.Count==0,"builder discards the whole damaged load");
         }
         byte[] cappedList=Fixture(Join(new byte[] {1,6,5,2,14,6,4},Var((ulong)int.MaxValue+1),new byte[] {3,6,7,0}),"before","scores","after");
         using(var builder=new L.SaveBuilder())
@@ -146,7 +146,7 @@ static partial class Program
         using(var builder=new M.FleetBuilder())
         {
             var report=new M.TableReport();
-            Check(M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Malformed && !report.Refused && report.Clamped==0 && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap decodes only the available prefix");
+            Check(!M.Schema.FleetLoadBuilder(builder,shortMap,report) && report.Malformed && !report.Refused && report.Clamped==0 && builder.GetRoot()->Tiers.Count==0,"builder map at the count cap is damage and discards the whole load");
         }
         byte[] loaded=ReadGolden("list_scalars"); long size=L.Schema.SaveLoadMeasure(loaded);
         byte* source=(byte*)NativeMemory.AlignedAlloc((nuint)(size+64),64);

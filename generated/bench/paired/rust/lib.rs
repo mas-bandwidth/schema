@@ -27,6 +27,10 @@ pub use bench::MixedWeapon;
 // default-features = false and compiles no block and no cook module at
 // all; a consumer that says nothing gets everything, so the default is
 // the whole surface and the saving is opt-in.
+#[cfg(feature = "cook")]
+mod bench_cook;
+#[cfg(feature = "cook")]
+pub use bench_cook::*;
 mod bench_fixed;
 pub use bench_fixed::*;
 mod bench_message;
@@ -40,6 +44,10 @@ mod bench_variable_constants;
 pub use bench_variable_constants::*;
 mod build_version;
 pub use build_version::*;
+#[cfg(feature = "cook")]
+mod cook_runtime;
+#[cfg(feature = "cook")]
+pub use cook_runtime::*;
 mod fixed_runtime;
 pub use fixed_runtime::*;
 mod fixedtable_fixed;
@@ -60,12 +68,16 @@ pub use variable_runtime::*;
 /// The table surface (docs/SPEC-TABLES.md): every table module, and the
 /// table layer's type for a schema name the packet layer also declares.
 pub mod tables {
+    #[cfg(feature = "cook")]
+    pub use super::bench_cook::*;
     pub use super::bench_fixed::*;
     pub use super::bench_message::*;
     pub use super::bench_records::*;
     pub use super::bench_table::*;
     pub use super::bench_variable_constants::*;
     pub use super::build_version::*;
+    #[cfg(feature = "cook")]
+    pub use super::cook_runtime::*;
     pub use super::fixed_runtime::*;
     pub use super::fixedtable_fixed::*;
     pub use super::fixedtable_message::*;

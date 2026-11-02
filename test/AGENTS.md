@@ -64,6 +64,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `rust/` | Rust packet tests | `make test-rust` | `make test-rust` |
 | `rust-agree/` | Rust accessor/descriptor agreement gate | `make tables-rust-accessor-descriptor-agreement` | `make tables-rust-accessor-descriptor-agreement` |
 | `rust-alloc/` | Rust allocation gate, per read path | `make tables-rust-alloc` | `make tables-rust-alloc` |
+| `rust-cookmap/` | Rust cook of every map and list instance | `make tables-rust-cook-map` | `make tables-rust-cook-map` |
 | `rust-fixedform/` | Rust fixed-form tests | `make test-rust` | `make test-rust` |
 | `rust-fuzz/` | Rust fuzz driver | `make test-rust` | `make test-rust` |
 | `rust-ludicrous/` | Rust int128 tests | `make test-rust` | `make test-rust` |

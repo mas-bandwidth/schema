@@ -30,7 +30,7 @@ tables-goose-message-form-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not apply to messageform.go"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/goosetable/messageform.go":"%s/$(GOOSE_MESSAGE_NC)/messageform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(GOOSE_MESSAGE_NC)/overlay.json
-	@if go test -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_NC)/overlay.json \
+	@if SCHEMA_SLOW=1 go test -count=1 -v -timeout 600s -overlay $(GOOSE_MESSAGE_NC)/overlay.json \
 			-run '^TestGooseMessageFormMatchesTheGoldens$$' ./internal/codegen/goosetable/ > $(GOOSE_MESSAGE_NC)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the dropped text align left the Goose message-form gate green"; \
 		cat $(GOOSE_MESSAGE_NC)/log; exit 1; \
