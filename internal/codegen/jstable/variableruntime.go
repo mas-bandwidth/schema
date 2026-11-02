@@ -194,15 +194,15 @@ function TableVariableRetainNodePath(v) {
 // the pointer and blob edges of one node's by-value closure, in the walk's
 // order: fields in declaration order, array elements in index order, a nested
 // table or a table element descended in place
-function TableVariableEdges(c, v, out) {
-  for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out); }
+function TableVariableEdges(c, v, out, everyGuard) {
+  for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out, everyGuard); }
   return out;
 }
 
 // one field's edges, read at v[fd.n]: an absent optional has none (§2.3), a
 // map's are its entries' in key order (§2.8), a union's its set arm's (§2.6)
-function TableVariableFieldEdges(fd, v, out) {
-  if (!TableVariableGuardHolds(fd, v)) { return; }
+function TableVariableFieldEdges(fd, v, out, everyGuard) {
+  if (!everyGuard && !TableVariableGuardHolds(fd, v)) { return; }
   const val = v[fd.n];
   if (fd.opt && val === null) { return; }
   switch (fd.s) {
@@ -213,25 +213,30 @@ function TableVariableFieldEdges(fd, v, out) {
       if (val !== null) { out.push({ blob: false, c: fd.c, val }); }
       break;
     case "tab":
-      TableVariableEdges(fd.c, val, out);
+      TableVariableEdges(fd.c, val, out, everyGuard);
       break;
     case "map":
-      for (const e of TableVariableMapEntries(fd, val)) { TableVariableEdges(fd.c, e, out); }
+      if (everyGuard) {
+        const e = fd.c.make();
+        for (const [k, mv] of val) { e.key = k; e.value = mv; TableVariableEdges(fd.c, e, out, true); }
+      } else {
+        for (const e of TableVariableMapEntries(fd, val)) { TableVariableEdges(fd.c, e, out, false); }
+      }
       break;
     case "union":
-      TableVariableUnionEdges(fd.u, val, out);
+      TableVariableUnionEdges(fd.u, val, out, everyGuard);
       break;
     case "keyed":
-      if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out); } }
+      if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); } }
       break;
     case "arr": {
       const n = TableVariableCount(fd, val);
       if (fd.e.s === "ptr") {
         for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
       } else if (fd.e.s === "tab") {
-        for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out); }
+        for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); }
       } else if (fd.e.s === "union") {
-        for (let i = 0; i < n; i++) { TableVariableUnionEdges(fd.e.u, val[i], out); }
+        for (let i = 0; i < n; i++) { TableVariableUnionEdges(fd.e.u, val[i], out, everyGuard); }
       }
       break;
     }
@@ -623,7 +628,7 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
-  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [], owner: 0 };
+  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
   if (raw !== null) {
     const place = c.place;
     for (const rec of raw) {
@@ -648,25 +653,21 @@ function TableVariableLoad(c, bytes, report, retain) {
       }
       st.nodes.push({ kind: "t", codec: nc, v: nc.make(), body: rec.body });
     }
-    for (let k = 0; k < st.nodes.length; k++) {
-      const n = st.nodes[k];
+    for (const n of st.nodes) {
       if (n === null || n.kind !== "t") { continue; }
-      // the graph vertex every pointer slot this body stores starts from: the
-      // root is vertex 0 and record k is vertex k + 1 (§3.1, the cycle check)
-      st.owner = k + 1;
       // RETENTION INSIDE A NODE RECORD (§6.6): the record's path starts with
       // the node's own identity, so its unknown fields ride back into the same
       // record's tail on the save.
       TableVariableBodyRead(n.codec, new TableVariableReader(n.body, 0, n.body.length), table, n.v, report, st, true, retain, TableVariableRetainNodePath(n.v));
     }
   }
-  st.owner = 0;
   TableVariableBodyRead(c, new TableVariableReader(bytes, 1, open.end), table, v, report, st, false, retain, TableVariableRetainRootPath());
   // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
   // any damage the walk met after it (§3.3): nothing lands.
   if (report.nonFiniteFloat) {
     report.refused = 1;
     report.reason = "non_finite_float: " + report.nonFiniteFloat;
+    if (retain !== null) { retain.reset(); }
     return null;
   }
   TableVariableResolve(st, report);
@@ -688,14 +689,11 @@ function TableVariableLoad(c, bytes, report, retain) {
 // object in each, so the save numbers it once again.
 function TableVariableResolve(st, report) {
   const strings = new Map();
-  // the loaded graph's edges, one per table pointer slot that resolved to a
-  // node: from the vertex whose body stored the slot to the vertex it names
-  const from = [], to = [];
-  for (const [holder, key, index, d, owner] of st.pending) {
+  for (const [holder, key, index, d] of st.pending) {
     let value = null, str = null;
     if (st.good && index !== 0) {
       if (index === 1) {
-        if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; from.push(owner); to.push(0); } else { report.kindMismatch++; }
+        if (d.s === "ptr" && d.c === st.rootCodec) { value = st.root; } else { report.kindMismatch++; }
       } else if (index - 2 >= st.nodes.length) {
         report.malformed = true;
       } else {
@@ -707,8 +705,6 @@ function TableVariableResolve(st, report) {
             if (n.kind === "b") { value = n.blob; } else { report.kindMismatch++; }
           } else if (n.kind === "t" && n.codec === d.c) {
             value = n.v;
-            from.push(owner);
-            to.push(index - 1);
           } else {
             report.kindMismatch++;
           }
@@ -743,8 +739,30 @@ function TableVariableResolve(st, report) {
   }
   // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
   // produces one, so a loaded graph with a cycle refuses the whole load.
-  if (st.good && !report.malformed && TableVariableCyclic(st.nodes.length + 1, from, to)) {
-    report.malformed = true;
+  // The edges are collected from the final stored slots of the root and every
+  // table record (stored slots under false guards included), so an overwritten
+  // field occurrence on the wire leaves no stale edge.
+  if (st.good && !report.malformed) {
+    const nodeAt = new Map([[st.root, 0]]);
+    for (let i = 0; i < st.nodes.length; i++) {
+      const n = st.nodes[i];
+      if (n !== null && n.kind === "t") { nodeAt.set(n.v, i + 1); }
+    }
+    const from = [], to = [];
+    for (const e of TableVariableEdges(st.rootCodec, st.root, [], true)) {
+      if (!e.blob) { from.push(0); to.push(nodeAt.get(e.val)); }
+    }
+    for (let i = 0; i < st.nodes.length; i++) {
+      const n = st.nodes[i];
+      if (n !== null && n.kind === "t") {
+        for (const e of TableVariableEdges(n.codec, n.v, [], true)) {
+          if (!e.blob) { from.push(i + 1); to.push(nodeAt.get(e.val)); }
+        }
+      }
+    }
+    if (TableVariableCyclic(st.nodes.length + 1, from, to)) {
+      report.malformed = true;
+    }
   }
 }
 
@@ -782,7 +800,7 @@ function TableVariableCyclic(count, from, to) {
       }
       const t = edges[next[v]++];
       if (mark[t] === 1) { return true; }
-      if (mark[t] === 2) { continue; }
+      if (mark[t] !== 0) { continue; }
       mark[t] = 1;
       next[t] = first[t];
       stack[depth++] = t;
@@ -985,7 +1003,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       // followed (§3.1)
       const index = r.leb();
       if (r.bad) { report.malformed = true; return false; }
-      st.pending.push([v, fd.n, index, fd, st.owner]);
+      st.pending.push([v, fd.n, index, fd]);
       return true;
     }
     case "tab": {
@@ -1120,7 +1138,7 @@ function TableVariableReadElement(fd, r, table, out, report, st, retain, path, e
       const index = r.leb();
       if (r.bad) { report.malformed = true; return false; }
       out[i] = null;
-      st.pending.push([out, i, index, e, st.owner]);
+      st.pending.push([out, i, index, e]);
       return true;
     }
     case "enum": {

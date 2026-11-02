@@ -934,15 +934,15 @@ function TableVariableRetainNodePath(v) {
 // the pointer and blob edges of one node's by-value closure, in the walk's
 // order: fields in declaration order, array elements in index order, a nested
 // table or a table element descended in place
-function TableVariableEdges(c, v, out) {
-  for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out); }
+function TableVariableEdges(c, v, out, everyGuard) {
+  for (const fd of c.fields) { TableVariableFieldEdges(fd, v, out, everyGuard); }
   return out;
 }
 
 // one field's edges, read at v[fd.n]: an absent optional has none (§2.3), a
 // map's are its entries' in key order (§2.8), a union's its set arm's (§2.6)
-function TableVariableFieldEdges(fd, v, out) {
-  if (!TableVariableGuardHolds(fd, v)) { return; }
+function TableVariableFieldEdges(fd, v, out, everyGuard) {
+  if (!everyGuard && !TableVariableGuardHolds(fd, v)) { return; }
   const val = v[fd.n];
   if (fd.opt && val === null) { return; }
   switch (fd.s) {
@@ -953,25 +953,30 @@ function TableVariableFieldEdges(fd, v, out) {
       if (val !== null) { out.push({ blob: false, c: fd.c, val }); }
       break;
     case "tab":
-      TableVariableEdges(fd.c, val, out);
+      TableVariableEdges(fd.c, val, out, everyGuard);
       break;
     case "map":
-      for (const e of TableVariableMapEntries(fd, val)) { TableVariableEdges(fd.c, e, out); }
+      if (everyGuard) {
+        const e = fd.c.make();
+        for (const [k, mv] of val) { e.key = k; e.value = mv; TableVariableEdges(fd.c, e, out, true); }
+      } else {
+        for (const e of TableVariableMapEntries(fd, val)) { TableVariableEdges(fd.c, e, out, false); }
+      }
       break;
     case "union":
-      TableVariableUnionEdges(fd.u, val, out);
+      TableVariableUnionEdges(fd.u, val, out, everyGuard);
       break;
     case "keyed":
-      if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out); } }
+      if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); } }
       break;
     case "arr": {
       const n = TableVariableCount(fd, val);
       if (fd.e.s === "ptr") {
         for (let i = 0; i < n; i++) { if (val[i] !== null) { out.push({ blob: false, c: fd.e.c, val: val[i] }); } }
       } else if (fd.e.s === "tab") {
-        for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out); }
+        for (let i = 0; i < n; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); }
       } else if (fd.e.s === "union") {
-        for (let i = 0; i < n; i++) { TableVariableUnionEdges(fd.e.u, val[i], out); }
+        for (let i = 0; i < n; i++) { TableVariableUnionEdges(fd.e.u, val[i], out, everyGuard); }
       }
       break;
     }
@@ -1347,11 +1352,19 @@ function TableVariableLoad(c, bytes, report, retain) {
   if (report === undefined || report === null) { report = new TableVariableReport(); }
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
+  // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
+  // its own damage, so a report a caller hands in already marked malformed
+  // stays marked and does not refuse a clean wire.
+  const carried = report.malformed;
+  report.malformed = false;
   const open = TableVariableOpen(bytes, report);
-  // A non-variable root starts at its declared defaults and keeps them when
-  // the file framing is damaged or refused before any field decodes
-  // (docs/SPEC-TABLES.md §3, §4).
-  if (open === null) { return c.variable ? null : c.make(); }
+  // A REFUSED form byte hands a non-variable root back at its declared
+  // defaults (§3); DAMAGE hands back nothing (§4).
+  if (open === null) {
+    const damaged = report.malformed;
+    report.malformed = carried || damaged;
+    return c.variable || damaged ? null : c.make();
+  }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
@@ -1394,9 +1407,17 @@ function TableVariableLoad(c, bytes, report, retain) {
   if (report.nonFiniteFloat) {
     report.refused = 1;
     report.reason = "non_finite_float: " + report.nonFiniteFloat;
+    if (retain !== null) { retain.reset(); }
     return null;
   }
   TableVariableResolve(st, report);
+  // DAMAGE DISCARDS THE WHOLE LOAD (§4): a read that met damage anywhere hands
+  // back no root, and a retaining read keeps nothing it would save.
+  if (report.malformed) {
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
+  report.malformed = carried;
   return v;
 }
 
@@ -1456,6 +1477,76 @@ function TableVariableResolve(st, report) {
       for (const e of ents) { m.set(e.key, e.value); }
     }
   }
+  // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
+  // produces one, so a loaded graph with a cycle refuses the whole load.
+  // The edges are collected from the final stored slots of the root and every
+  // table record (stored slots under false guards included), so an overwritten
+  // field occurrence on the wire leaves no stale edge.
+  if (st.good && !report.malformed) {
+    const nodeAt = new Map([[st.root, 0]]);
+    for (let i = 0; i < st.nodes.length; i++) {
+      const n = st.nodes[i];
+      if (n !== null && n.kind === "t") { nodeAt.set(n.v, i + 1); }
+    }
+    const from = [], to = [];
+    for (const e of TableVariableEdges(st.rootCodec, st.root, [], true)) {
+      if (!e.blob) { from.push(0); to.push(nodeAt.get(e.val)); }
+    }
+    for (let i = 0; i < st.nodes.length; i++) {
+      const n = st.nodes[i];
+      if (n !== null && n.kind === "t") {
+        for (const e of TableVariableEdges(n.codec, n.v, [], true)) {
+          if (!e.blob) { from.push(i + 1); to.push(nodeAt.get(e.val)); }
+        }
+      }
+    }
+    if (TableVariableCyclic(st.nodes.length + 1, from, to)) {
+      report.malformed = true;
+    }
+  }
+}
+
+// THE CYCLE CHECK (docs/SPEC-TABLES.md §3.1): the vertices are the root (0)
+// and every record (k + 1), the edges every table pointer slot the load
+// stored, a slot under a false guard included and a cycle the root never
+// reaches included. Each vertex carries one of three marks and is ENTERED
+// ONCE: a pointer to an OPEN vertex is a cycle, a pointer to a CLOSED one a
+// legal share, never re-entered. The walk keeps its own stack, so a chain's
+// length is never a call depth, and the work is linear in vertices plus edges.
+function TableVariableCyclic(count, from, to) {
+  if (from.length === 0) { return false; }
+  // the edges grouped by the vertex they leave, counted then placed
+  const first = new Int32Array(count + 1);
+  for (let i = 0; i < from.length; i++) { first[from[i] + 1]++; }
+  for (let k = 0; k < count; k++) { first[k + 1] += first[k]; }
+  const fill = first.slice(0, count);
+  const edges = new Int32Array(from.length);
+  for (let i = 0; i < from.length; i++) { edges[fill[from[i]]++] = to[i]; }
+  const mark = new Uint8Array(count); // 0 unvisited, 1 open, 2 closed
+  const stack = new Int32Array(count);
+  const next = new Int32Array(count);
+  for (let start = 0; start < count; start++) {
+    if (mark[start] !== 0) { continue; }
+    let depth = 0;
+    stack[depth++] = start;
+    mark[start] = 1;
+    next[start] = first[start];
+    while (depth > 0) {
+      const v = stack[depth - 1];
+      if (next[v] === first[v + 1]) {
+        mark[v] = 2;
+        depth--;
+        continue;
+      }
+      const t = edges[next[v]++];
+      if (mark[t] === 1) { return true; }
+      if (mark[t] !== 0) { continue; }
+      mark[t] = 1;
+      next[t] = first[t];
+      stack[depth++] = t;
+    }
+  }
+  return false;
 }
 
 // ONE BODY (§3, §4): fields by id in any order, a field this table cannot name
@@ -2107,12 +2198,12 @@ function TableVariableElemIsDefault(e, x) {
 
 // ---- edges (the numbering, §3.1) --------------------------------------------
 
-function TableVariableUnionEdges(u, val, out) {
+function TableVariableUnionEdges(u, val, out, everyGuard) {
   if (val === null) { return; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined || arm.void) { return; }
-  if (arm.body) { TableVariableEdges(arm.c, val.value, out); return; }
-  TableVariableFieldEdges(arm.f, val, out);
+  if (arm.body) { TableVariableEdges(arm.c, val.value, out, everyGuard); return; }
+  TableVariableFieldEdges(arm.f, val, out, everyGuard);
 }
 
 // ---- the save (encode.go) ---------------------------------------------------
@@ -3073,6 +3164,8 @@ class TableVariableTextIn {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is malformed.
 function TableVariableFromJson(c, text, report) {
+  const carried = report.malformed;
+  report.malformed = false;
   const inp = new TableVariableTextIn(text);
   const v = c.make();
   const ok = TableVariableReadTable(c, inp, v, 0, new Map(), report);
@@ -3080,7 +3173,10 @@ function TableVariableFromJson(c, text, report) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }
   }
-  if (inp.bad || !ok) { report.malformed = true; }
+  // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
+  // back no value
+  if (inp.bad || !ok || report.malformed) { report.malformed = true; return null; }
+  report.malformed = carried;
   return v;
 }
 

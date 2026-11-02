@@ -360,5 +360,40 @@ for (const row of %s) {
     fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.malformed + " used=" + retain.used + ")");
   }
 }
-`, js))
+// Unreached cycle: zero the root's next pointer (byte 9: 2 -> 0) in node_cycle_mid
+// so records 2 and 3 form a cycle the root never reaches (§3.1).
+{
+  const midRow = (%s).find(x => x.case === "node_cycle_mid");
+  const unreached = new Uint8Array(readFileSync(midRow.wire));
+  unreached[9] = 0;
+  const r = new m.TableVariableReport();
+  const v = m.ListNodeLoad(unreached, r);
+  if (v !== null || !r.malformed) { fail("unreached_cycle: loaded (malformed=" + r.malformed + ")"); }
+}
+// Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
+// in the root body must load cleanly with next === null because only final stored
+// slots belong to the loaded graph (§3.1).
+{
+  const selfRow = (%s).find(x => x.case === "node_cycle_self");
+  const base = new Uint8Array(readFileSync(selfRow.wire));
+  // Insert [3, 17, 1] before [3, 17, 2] at offset 7, and change [3, 17, 2] to [3, 17, 0]
+  // while zeroing the node record's self-edge so the only self-edge was the overwritten one.
+  const over = new Uint8Array(base.length + 3);
+  over.set(base.subarray(0, 7), 0);
+  over.set([3, 17, 1, 3, 17, 0], 7);
+  over.set(base.subarray(10), 13);
+  // In the node record body (which starts after the node header), replace [3, 17, 2] with [3, 17, 0]
+  for (let i = 13; i + 2 < over.length; i++) {
+    if (over[i] === 3 && over[i + 1] === 17 && over[i + 2] === 2) {
+      over[i + 2] = 0;
+      break;
+    }
+  }
+  const r = new m.TableVariableReport();
+  const v = m.ListNodeLoad(over, r);
+  if (v === null || r.malformed || v.next !== null) {
+    fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
+  }
+}
+`, js, js, js))
 }

@@ -234,12 +234,12 @@ function TableVariableElemIsDefault(e, x) {
 
 // ---- edges (the numbering, §3.1) --------------------------------------------
 
-function TableVariableUnionEdges(u, val, out) {
+function TableVariableUnionEdges(u, val, out, everyGuard) {
   if (val === null) { return; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined || arm.void) { return; }
-  if (arm.body) { TableVariableEdges(arm.c, val.value, out); return; }
-  TableVariableFieldEdges(arm.f, val, out);
+  if (arm.body) { TableVariableEdges(arm.c, val.value, out, everyGuard); return; }
+  TableVariableFieldEdges(arm.f, val, out, everyGuard);
 }
 
 // ---- the save (encode.go) ---------------------------------------------------
@@ -665,7 +665,7 @@ function TableVariableArmRead(arm, r, table, report, st, retain, path, o) {
       const index = r.leb();
       if (r.bad || r.at !== r.end) { report.malformed = true; return null; }
       holder.value = null;
-      st.pending.push([holder, "value", index, f, st.owner]);
+      st.pending.push([holder, "value", index, f]);
       return holder;
     }
     case "str": {
