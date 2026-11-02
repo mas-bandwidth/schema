@@ -532,6 +532,11 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	}
 	kind := ir.TableWireScalarKind(f)
 	switch kind {
+	case tkString:
+		val := f.Type.Ref.(*ir.Struct).Fields[0]
+		g.pf("%sif ( (%s).value_length < 0 || (%s).value_length > %d || !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr, val.Type.Size, expr, expr)
+		g.pf("%stable_writer_leb( w, (uint64_t)(%s).value_length );\n", ind, expr)
+		g.pf("%stable_writer_raw( w, (%s).value, (%s).value_length );\n", ind, expr, expr)
 	case tkTable:
 		g.wireFrame(fmt.Sprintf("%s( w, &%s )", g.api(f.Type.Name, "save_body"), expr), ind)
 	case tkUnion:
@@ -580,6 +585,9 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	case f.Type.Kind == ir.TWString:
 		g.pf("    int32_t i; for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
+		if st.IsTextListElem() {
+			g.pf("    if ( !table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s_length ) ) { return 0; }\n", expr, expr)
+		}
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
 	case (f.Type.Kind == ir.TBytes && !f.Type.Blob()):
 		g.pf("    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s_length );\n", tkU8, expr)
@@ -608,6 +616,18 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		n := strconv.FormatInt(f.ArrayBound, 10)
 		if f.Array == ir.ArrayCounted {
 			n = expr + "_count"
+		}
+		if f.IsTextList() && f.TextTotal > 0 {
+			val := ir.TextListValue(f)
+			g.pf("    { int64_t total = 0; int32_t ti;\n")
+			g.pf("      for ( ti = 0; ti < %s; ti++ )\n      {\n", n)
+			if val.Type.Optional {
+				g.pf("          if ( !%s[ti].value_present ) { continue; }\n", expr)
+			}
+			g.pf("          if ( %s[ti].value_length < 0 || %s[ti].value_length > %d ) { return 0; }\n", expr, expr, val.Type.Size)
+			g.pf("          total += %s[ti].value_length;\n", expr)
+			g.pf("          if ( total > %d ) { return 0; }\n", f.TextTotal)
+			g.pf("      }\n    }\n")
 		}
 		g.pf("    int32_t i;\n    table_writer_put8( w, %d ); table_writer_leb( w, (uint64_t) %s );\n", kind, n)
 		g.pf("    for ( i = 0; i < %s; i++ )\n    {\n", n)

@@ -173,7 +173,7 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 	}
 	if f.Array != ir.ArrayNone || f.IsMap() {
 		e := sequenceElement(f)
-		kind := ir.TableWireScalarKind(e)
+		kind := sequenceWireKind(f)
 		done := b + "_done"
 		g.pf("%s  if(%s.size>=2) { uint64_t %s_count;\n", ind, b, b)
 		g.pf("%s    uint8_t wire_kind=table_reader_get8(&%s);\n", ind, b)
