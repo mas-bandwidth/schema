@@ -897,6 +897,9 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    make: () => new %s(),\n", st.Name)
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
+		if st.JsonArray {
+			g.pf("    jsonArray: true,\n")
+		}
 		layout := ir.RecordLayout(g.unit, st)
 		g.pf("    sz: %d, al: %d,\n", layout.Size, layout.Align)
 		// a map's generated entry (§2.8): its key's widening is the MAP's one
@@ -991,7 +994,7 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
 			flagsVariants(flagsOf(f)), intDefault(f))
 	case tableOf(f) != nil:
-		fmt.Fprintf(&b, "s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+		fmt.Fprintf(&b, "s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
 		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", f.Type.Size, jsStr(string(f.DefBytes)))
 	case f.Type.Kind == ir.TWString:
@@ -1030,13 +1033,22 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
 			flagsVariants(flagsOf(f)))
 	case tableOf(f) != nil:
-		return fmt.Sprintf("{ s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+		return fmt.Sprintf("{ s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TBool:
 		return "{ s: \"bool\", js: \"b\" }"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", g.floatProps(f))
 	}
 	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
+}
+
+// Array-root tables keep their array shape when held by value, including
+// inside another array or a generated map entry (§16.10).
+func tableJSONShape(st *ir.Struct) string {
+	if st.JsonArray {
+		return "a"
+	}
+	return "o"
 }
 
 // enumVariants renders an enum's variants as [name, wire id] pairs: identity

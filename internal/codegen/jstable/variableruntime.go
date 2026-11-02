@@ -1548,6 +1548,10 @@ function TableVariableJsonValue(c, v, depth, g, out) {
   // the write path carries the read path's cap of 128: a pointer chain nests as
   // deep as it is long (§16.7)
   if (depth > 128) { return false; }
+  if (c.jsonArray) {
+    const fd = c.fields[0];
+    return TableVariableJsonField(fd, v[fd.n], depth, g, out);
+  }
   const state = { any: false };
   if (!TableVariableJsonFields(c, v, depth, g, out, state)) { return false; }
   if (!state.any) { out.push("{}"); return true; }
@@ -1896,6 +1900,16 @@ function TableVariableFromJson(c, text, report) {
 
 function TableVariableReadTable(c, inp, v, depth, graph, report) {
   if (depth > 128) { inp.bad = true; return false; }
+  if (c.jsonArray) {
+    if (inp.shape() !== "a") {
+      if (report.reason === "") { report.reason = "json_root_not_array: " + c.name; }
+      inp.bad = true;
+      return false;
+    }
+    const fd = c.fields[0];
+    inp.field = c.name + "." + fd.n;
+    return TableVariableTextField(fd, inp, v, depth, graph, report);
+  }
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   return TableVariableReadKeys(c, inp, v, depth, null, graph, report);

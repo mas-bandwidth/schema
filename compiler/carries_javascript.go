@@ -8,5 +8,5 @@ package compiler
 // by jstable/carried_contracts_test.go, including present-empty maps and exact
 // uint64 boundaries on both variable and fixed wire forms.
 func init() {
-	registerCarries("js", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap)
+	registerCarries("js", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot)
 }
