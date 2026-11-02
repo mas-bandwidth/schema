@@ -170,12 +170,12 @@ IO.puts("ok")
 		t.Fatalf("a scalar list under a table header escaped the Elixir reader: %v\n%s", err, out)
 	}
 
-	const guard = "<<13, count_rest::binary>> when field.elem_kind == 13 ->"
+	const guard = "true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),"
 	planted := map[string][]byte{}
 	n := 0
 	for name, data := range files {
 		n += strings.Count(string(data), guard)
-		planted[name] = []byte(strings.ReplaceAll(string(data), guard, "<<13, count_rest::binary>> ->"))
+		planted[name] = []byte(strings.ReplaceAll(string(data), guard, "true <- true,"))
 	}
 	if n == 0 {
 		t.Fatal("the witness found no declared-kind guard in the generated measure")

@@ -373,7 +373,7 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # (docs/SPEC-TABLES.md §2.5, §3.1), so two slots holding equal bytes are two
   # nodes and the record writer finds each slot's own node by its mark.
   defp cook_collect(desc, value, acc) when is_map(value) do
-    validate_required(desc, value)
+    validate_record(desc, value)
 
     Enum.reduce(desc.fields, {value, acc}, fn f, {value, acc} ->
       if field_active?(f, desc, value) do

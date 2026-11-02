@@ -79,6 +79,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @build_version_id 0x%016X\n", ir.TableBuildVersionWireId)
 	fmt.Fprintf(&b, "  @message_vocab_id 0x%016X\n", ir.TableMessageVocabularyWireId)
 	fmt.Fprintf(&b, "  @string_id 0x%016X\n", ir.StringWireTypeId)
+	fmt.Fprintf(&b, "  @bytes_id 0x%016X\n", ir.BytesWireTypeId)
 	fmt.Fprintf(&b, "  @region_align %d\n", ir.TableRegionAlign(u))
 	b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
 	b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
@@ -221,7 +222,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
 		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_required(desc, value)
+    validate_record(desc, value)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
@@ -286,7 +287,7 @@ func uncarriedRootNames(u *ir.Unit) []string {
 // kind 14, so a root that reaches one answers an error instead of a wrong
 // body (§11).
 func reachesUncarried(st *ir.Struct, poison map[string]bool) bool {
-	if st.IsMapEntry() {
+	if st.IsMapEntry() && !st.IsTextListElem() {
 		return true
 	}
 	for _, f := range st.Fields {
@@ -960,7 +961,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # save_fields writes one body's fields and returns the iodata, the node
   # index map, the id map and the reversed first-use order.
   defp save_fields(desc, value, idx_map, ids, order, acc) do
-    validate_required(desc, value)
+    validate_record(desc, value)
     value = Map.merge(defaults(desc), value)
 
     Enum.reduce(desc.fields, {idx_map, ids, order, acc}, fn f, {idx_map, ids, order, acc} ->
@@ -1375,6 +1376,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_element(%{elem_kind: 17} = f, e, idx_map, ids, order) do
     idx = Map.fetch!(idx_map, {f.elem_type_id, node_identity(e)})
     {leb_encode(idx), ids, order}
+  end
+
+  defp emit_element(%{text_list: true, elem_kind: 12}, e, _idx_map, ids, order) do
+    value = Map.get(e, "value", "")
+    {[leb_encode(byte_size(value)), value], ids, order}
   end
 
   defp emit_element(%{elem_kind: 12}, e, _idx_map, ids, order) do
@@ -2040,7 +2046,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             {:cont, "", %{report | malformed: true}}
 
           len > f.size ->
-            {:cont, binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
+            {:cont, utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
 
           true ->
             {:cont, raw, report}
@@ -2582,6 +2588,31 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp read_list_elements(_f, _rest, 0, _nodes, _ids, acc, report),
     do: {Enum.reverse(acc), report}
 
+  defp read_list_elements(%{text_list: true, elem_kind: 12} = f, rest, n, nodes, ids, acc, report) do
+    case leb(rest) do
+      {len, body} when byte_size(body) >= len ->
+        raw = binary_part(body, 0, len)
+        after_sub = binary_part(body, len, byte_size(body) - len)
+
+        {value, report} =
+          cond do
+            not utf8_valid?(raw) ->
+              {"", %{report | malformed: true}}
+
+            len > f.text_size ->
+              {utf8_prefix(raw, f.text_size), %{report | clamped: report.clamped + 1}}
+
+            true ->
+              {raw, report}
+          end
+
+        read_list_elements(f, after_sub, n - 1, nodes, ids, [%{"value" => value} | acc], report)
+
+      _ ->
+        {Enum.reverse(acc), %{report | malformed: true}}
+    end
+  end
+
   defp read_list_elements(%{elem_kind: 13} = f, rest, n, nodes, ids, acc, report) do
     case leb(rest) do
       {len, body} when byte_size(body) >= len ->
@@ -2658,7 +2689,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         value =
           cond do
             not utf8_valid?(raw) -> ""
-            len > f.size -> binary_part(raw, 0, f.size)
+            len > f.size -> utf8_prefix(raw, f.size)
             true -> raw
           end
 
@@ -2824,8 +2855,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp field_active?(_f, _desc, _value), do: true
 
-  defp validate_required(desc, value) do
+  defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
+      if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
+        validate_text_list(f, Map.get(value, f.name, f.default))
+      end
+
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
@@ -3161,6 +3196,28 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   # tableUtf8Valid (docs/SPEC-TABLES.md §4): well-formed UTF-8 without NUL.
+  defp utf8_prefix(raw, bound) do
+    prefix = binary_part(raw, 0, min(byte_size(raw), bound))
+    if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
+  end
+
+  defp validate_text_list(f, elements) do
+    if not is_list(elements), do: throw(:invalid_value)
+    bound = Map.get(f, :array_bound, 0)
+    if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
+
+    Enum.each(elements, fn element ->
+      if not is_map(element), do: throw(:invalid_value)
+      default = if f.text_optional, do: nil, else: ""
+      value = Map.get(element, "value", default)
+
+      if not (f.text_optional and value == nil) do
+        if not is_binary(value) or not utf8_valid?(value) or byte_size(value) > f.text_size,
+          do: throw(:invalid_value)
+      end
+    end)
+  end
+
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
   end
@@ -3376,12 +3433,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_required(desc, value)
+    validate_record(desc, value)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_required(desc, value)
+    validate_record(desc, value)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -3575,6 +3632,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # json_list_elem writes one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7): a table or pointer element is an object, a
   # string or enum a quoted name, and a scalar its own spelling.
+  defp json_list_elem(%{text_list: true} = f, e, _depth) do
+    default = if f.text_optional, do: nil, else: ""
+
+    case Map.get(e, "value", default) do
+      nil -> "null"
+      value -> ["\"", json_escape(value), "\""]
+    end
+  end
+
   defp json_list_elem(%{elem_kind: 13} = f, e, depth),
     do: json_object(Map.fetch!(@tables, f.elem), e, depth)
 
@@ -3899,7 +3965,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     report = json_text_zero(f, raw, report)
 
     if byte_size(raw) > f.size do
-      {binary_part(raw, 0, f.size), %{report | clamped: report.clamped + 1}}
+      {utf8_prefix(raw, f.size), %{report | clamped: report.clamped + 1}}
     else
       {raw, report}
     end
@@ -4192,6 +4258,27 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
+  defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
+    bound = Map.get(f, :array_bound, 0)
+
+    {elements, _count, report} =
+      Enum.reduce_while(raw, {[], 0, report}, fn raw, {acc, count, report} ->
+        cond do
+          report.malformed ->
+            {:halt, {acc, count, report}}
+
+          bound > 0 and count >= bound ->
+            {:halt, {acc, count, %{report | clamped: report.clamped + 1}}}
+
+          true ->
+            {value, report} = json_read_list_elem(f, raw, report)
+            {:cont, {[value | acc], count + 1, report}}
+        end
+      end)
+
+    {Enum.reverse(elements), report}
+  end
+
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
@@ -4419,6 +4506,25 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # json_read_list_elem reads one unbounded array's element by its element kind
   # (docs/SPEC-TABLES.md §2.9, §16.7), folding the element's report into the list's.
   # an integer element reads -0 as the 0 it is (json_number keeps the token)
+  defp json_read_list_elem(%{text_list: true, text_optional: true}, nil, report),
+    do: {%{"value" => nil}, report}
+
+  defp json_read_list_elem(%{text_list: true} = f, raw, report) when is_binary(raw) do
+    report = json_text_zero(f, raw, report)
+
+    if byte_size(raw) > f.text_size do
+      {%{"value" => utf8_prefix(raw, f.text_size)}, %{report | clamped: report.clamped + 1}}
+    else
+      {%{"value" => raw}, report}
+    end
+  end
+
+  defp json_read_list_elem(%{text_list: true} = f, raw, report) do
+    json_skip_value(raw)
+    value = if f.text_optional, do: nil, else: ""
+    {%{"value" => value}, %{report | kind_mismatch: report.kind_mismatch + 1}}
+  end
+
   defp json_read_list_elem(%{elem_kind: kind}, {:decimal, "-0"}, report)
        when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19],
        do: {0, report}
@@ -4454,7 +4560,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     report = json_text_zero(f, e, report)
 
     if byte_size(e) > f.size do
-      {binary_part(e, 0, f.size), %{report | clamped: report.clamped + 1}}
+      {utf8_prefix(e, f.size), %{report | clamped: report.clamped + 1}}
     else
       {e, report}
     end
@@ -5074,7 +5180,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
-             {:ok, count, blobs} <- measure_nodes(body, ids) do
+             {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
           region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
         else
           _ -> -1
@@ -5094,79 +5200,68 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp extent(desc, bin, ids, at) do
     case leb(bin) do
-      :error ->
-        {:ok, at}
+      {ref, rest} when ref != 0 ->
+        with id when id != :error <- resolve(ids, ref),
+             <<kind, payload::binary>> <- rest,
+             {:ok, body, remaining} <- slice(payload, kind) do
+          field = find_field(desc, id)
 
-      {0, _rest} ->
-        {:ok, at}
-
-      {ref, rest} ->
-        case resolve(ids, ref) do
-          :error ->
-            {:ok, at}
-
-          id ->
-            case rest do
-              <<kind, rest2::binary>> ->
-                field = find_field(desc, id)
-
-                if field != nil and field.t == :list and kind == 14 do
-                  case slice(rest2, kind) do
-                    {:ok, payload, rest3} ->
-                      case leb(payload) do
-                        {_l, arr} ->
-                          case list_extent(field, arr, ids, at) do
-                            :error -> :error
-                            {:ok, at2} -> extent(desc, rest3, ids, at2)
-                          end
-
-                        :error ->
-                          {:ok, at}
-                      end
-
-                    :error ->
-                      {:ok, at}
-                  end
-                else
-                  case slice(rest2, kind) do
-                    {:ok, _payload, rest3} -> extent(desc, rest3, ids, at)
-                    :error -> {:ok, at}
-                  end
-                end
-
-              _ ->
-                {:ok, at}
+          if field != nil and field.kind == kind do
+            case field_extent(field, body, ids, at) do
+              {:ok, next} -> extent(desc, remaining, ids, next)
+              :error -> :error
             end
+          else
+            extent(desc, remaining, ids, at)
+          end
+        else
+          _ -> {:ok, at}
         end
+
+      _ ->
+        {:ok, at}
     end
   end
+
+  defp field_extent(%{t: :list} = field, payload, ids, at) do
+    case leb(payload) do
+      {_length, array} -> list_extent(field, array, ids, at)
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(%{t: :table, elem: name}, payload, ids, at) do
+    case leb(payload) do
+      {_length, body} -> extent(Map.fetch!(@tables, name), body, ids, at)
+      _ -> {:ok, at}
+    end
+  end
+
+  defp field_extent(_field, _payload, _ids, at), do: {:ok, at}
 
   # a header whose element kind is not the declared one is a kind mismatch the
   # read answers as an empty list, so it places nothing (internal/tablewire
   # extent.go): only a list DECLARED of tables descends into table elements.
   defp list_extent(field, arr, ids, at) do
-    case arr do
-      <<13, count_rest::binary>> when field.elem_kind == 13 ->
-        case leb(count_rest) do
-          :error ->
-            :error
+    with <<kind, count_rest::binary>> <- arr,
+         true <- kind == field.elem_kind or kind_widens?(kind, field.elem_kind),
+         {count, elems} <- leb(count_rest) do
+      count = min(count, Map.get(field, :array_bound, count))
 
-          {count, elems} ->
-            if count > 0x7FFFFFFF do
-              :error
-            else
-              if count > div(byte_size(elems), 2) do
-                :error
-              else
-                at = align_to(at, field.elem_align) + count * field.elem_size
-                elem_desc = Map.fetch!(@tables, field.elem)
-                elements_extent(elem_desc, elems, count, ids, at)
-              end
-            end
-        end
+      if count > 0x7FFFFFFF or count > byte_size(elems) do
+        :error
+      else
+        at =
+          if field.array == :list,
+            do: align_to(at, field.elem_align) + count * field.elem_size,
+            else: at
 
-      _ ->
-        {:ok, at}
+        if kind == 13,
+          do: elements_extent(Map.fetch!(@tables, field.elem), elems, count, ids, at),
+          else: {:ok, at}
+      end
+    else
+      _ -> {:ok, at}
     end
   end
 
@@ -5196,7 +5291,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # length header, its bytes and its terminator, rounded; a type id this build
   # cannot name commands none. A node table that cannot be read whole commands
   # nothing, exactly as a reader that cannot name it steps over it.
-  defp measure_nodes(bin, ids) do
+  defp measure_nodes(bin, ids, desc) do
     case leb(bin) do
       :error ->
         {:ok, 0, 0}
@@ -5215,12 +5310,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                 case slice(rest2, kind) do
                   {:ok, payload, rest3} ->
                     if id == @node_id and kind == 12 do
-                      case measure_node_table(payload, ids) do
+                      case measure_node_table(payload, ids, desc) do
                         {:ok, count, blobs} -> {:ok, count, blobs}
                         :error -> {:ok, 0, 0}
                       end
                     else
-                      measure_nodes(rest3, ids)
+                      measure_nodes(rest3, ids, desc)
                     end
 
                   :error ->
@@ -5234,13 +5329,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp measure_node_table(bin, ids) do
+  defp measure_node_table(bin, ids, desc) do
     case leb(bin) do
       {l, rest} when byte_size(rest) >= l ->
         content = binary_part(rest, 0, l)
 
         case leb(content) do
-          {n, cr} -> measure_records(cr, n, ids, 0, 0)
+          {n, cr} -> measure_records(cr, n, ids, desc, 0, 0)
           :error -> :error
         end
 
@@ -5249,19 +5344,45 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp measure_records(_rest, 0, _ids, count, blobs), do: {:ok, count, blobs}
+  defp measure_records(_rest, 0, _ids, _desc, count, blobs), do: {:ok, count, blobs}
 
-  defp measure_records(rest, n, ids, count, blobs) do
+  defp measure_records(rest, n, ids, desc, count, blobs) do
     with {tref, r1} <- leb(rest),
          {len, r2} <- leb(r1),
          true <- byte_size(r2) >= len do
-      blobs =
-        case resolve(ids, tref) do
-          @string_id -> blobs + region_round(8 + len + 1)
-          _ -> blobs
+      type_id = resolve(ids, tref)
+      body = binary_part(r2, 0, len)
+
+      added =
+        cond do
+          type_id == @string_id and desc.string_blob ->
+            {:ok, region_round(8 + len + 1)}
+
+          type_id == @bytes_id and desc.bytes_blob ->
+            {:ok, region_round(8 + len)}
+
+          Map.has_key?(desc.node_types, type_id) ->
+            node = Map.fetch!(@tables, Map.fetch!(desc.node_types, type_id))
+
+            case extent(node, body, ids) do
+              {:ok, at} -> {:ok, region_round(region_round(node.size) + at)}
+              :error -> :error
+            end
+
+          true ->
+            {:ok, 0}
         end
 
-      measure_records(binary_part(r2, len, byte_size(r2) - len), n - 1, ids, count + 1, blobs)
+      with {:ok, bytes} <- added do
+        measure_records(
+          binary_part(r2, len, byte_size(r2) - len),
+          n - 1,
+          ids,
+          desc,
+          count + 1,
+          blobs + bytes
+        )
+      end
     else
       _ -> :error
     end
@@ -5426,7 +5547,7 @@ const variableRetainSource = `
   # index map, the id map and its first-use order, and the two caller stores
   # with the report.
   defp save_fields_retain(desc, value, s, path, acc) do
-    validate_required(desc, value)
+    validate_record(desc, value)
     value = Map.merge(defaults(desc), value)
 
     {s, acc} =
@@ -6903,7 +7024,7 @@ func jsonArrayDescriptor(st *ir.Struct) string {
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
-	_, str := ir.PointerReachableBlobs(st)
+	byt, str := ir.PointerReachableBlobs(st)
 	integrity := ""
 	if st.Integrity != "" {
 		integrity = ", integrity: true"
@@ -6911,8 +7032,17 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, string_blob: %v, variable: %v%s%s, doc: %s, tags: %s, fields: [\n",
-		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], jsonArrayDescriptor(st), integrity, elixirQuote(st.Doc), elixirTags(st.Tags))
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, bytes_blob: %v, string_blob: %v, variable: %v%s%s, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), byt, str, ir.VariableTables(u)[st.Name], jsonArrayDescriptor(st), integrity, elixirQuote(st.Doc), elixirTags(st.Tags))
+	var nodes strings.Builder
+	nodes.WriteString("%{")
+	for _, node := range ir.PointerReachable(st) {
+		fmt.Fprintf(&nodes, "0x%016X => %q, ", ir.TableWireId(node.WireName()), node.Name)
+	}
+	nodes.WriteString("}")
+	held := b.String()
+	b.Reset()
+	b.WriteString(strings.Replace(held, "fields: [", "node_types: "+nodes.String()+", fields: [", 1))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, st.DeclaredName(), f, i, ml.FieldByName(f.Name)))
 	}
@@ -6985,6 +7115,13 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 	case f.Array != ir.ArrayNone:
 		elemKind := ir.TableWireElemKind(f)
 		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
+		if f.IsTextList() {
+			value := ir.TextListValue(f)
+			fmt.Fprintf(&b, ", text_list: true, text_optional: %v, text_size: %d", ir.TextListOptional(f), value.Type.Size)
+			if ir.TextListPlain(f) {
+				fmt.Fprintf(&b, ", elem: %q", f.TextListElem().Name)
+			}
+		}
 		if f.Type.Kind == ir.TFixed {
 			fmt.Fprintf(&b, ", elem_frac: %d", f.Type.FracBits)
 		}
@@ -7034,7 +7171,11 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 			// zero reference for None.
 			fmt.Fprintf(&b, ", elem: %q", f.Type.Name)
 		case ir.TableKindString:
-			fmt.Fprintf(&b, ", size: %d", f.Type.Size)
+			size := f.Type.Size
+			if f.IsTextList() {
+				size = ir.TextListValue(f).Type.Size
+			}
+			fmt.Fprintf(&b, ", size: %d", size)
 		}
 		elemSize, elemAlign := ir.ListElementLayout(u, f)
 		fmt.Fprintf(&b, ", elem_size: %d, elem_align: %d", elemSize, elemAlign)
