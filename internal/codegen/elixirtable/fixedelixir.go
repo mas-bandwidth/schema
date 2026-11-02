@@ -906,10 +906,13 @@ func (g *fixedGen) readElements(out *rseg, f *ir.Field, v string, live node) {
 	}
 	d := g.leafDec(f, "e")
 	if d.count == nil {
-		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, "b_"+v), body: d.wrap})
+		run := "b_" + v
 		if f.Array == ir.ArrayCounted {
-			out.stmt("l_"+v, call("Enum.take", raw("l_"+v), live))
+			// Slice before decoding: an unused float slot may contain any
+			// bits, including a NaN that the live finite reader must refuse.
+			run = fmt.Sprintf("binary_part(%s, 0, %d * %s)", run, elem, live.flat())
 		}
+		out.stmt("l_"+v, forNode{gen: fmt.Sprintf("<<%s <- %s>>", d.spec, run), body: d.wrap})
 		out.field(f.Name, raw("l_"+v))
 		return
 	}
