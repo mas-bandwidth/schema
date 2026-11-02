@@ -127,7 +127,7 @@ Registration now covers all 11 active constructs in C#, Go, Rust, Java, JavaScri
 
 Landed: required-field, forms, integrity and text-list implementation across the ports; stronger ordinary-positive-unit coverage; populated feature witnesses; pointer-target and root-closure regressions; neutral repeated-key widening and message-integrity repairs; Rust nested-reader refusal repair; JavaScript helper emission and blob accounting; Dart string identity and retained-record accounting; Elixir measurement, pointer and root-closure repairs. Shared failing inputs stay in the corpus.
 
-Remaining C/C++/Go: C unbounded text; C and Go repeated-map-key widening repairs; C++ active-construct registration and full acceptance reconciliation. The neutral and C++ repeated-key repairs have landed. C text-form/report coverage still needs completion.
+Remaining C/C++/Go: C unbounded text; Go repeated-map-key widening repair; C++ active-construct registration and full acceptance reconciliation. The neutral, C++ and C repeated-key repairs have landed (C with four-reader regression coverage and the shared failing input). C text-form/report coverage still needs completion.
 
 C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. Remaining: full-roster builder/retaining driver alignment and full nightly acceptance.
 
@@ -163,7 +163,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | the wire fuzzer gate | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| maps | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| maps | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | union arms of any field type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | string, bytes and flags defaults, and renaming a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | renaming variants, arms and type fields | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 81% | 96% | 93% | 96% | 87% | 96% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 84% | 96% | 93% | 96% | 87% | 96% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
