@@ -60,8 +60,7 @@ func TestGenerateReportRowsKeepFatalErrors(t *testing.T) {
 				t.Fatal("fatal report-generation error was swallowed")
 			}
 			if tc.count {
-				var refusal *tablewire.CountRefusal
-				if !errors.As(err, &refusal) {
+				if _, ok := errors.AsType[*tablewire.CountRefusal](err); !ok {
 					t.Fatalf("wanted storage-cap refusal, got %v", err)
 				}
 			}
