@@ -875,6 +875,7 @@ public static partial class TableWire
         if (f == null) { return true; } // selected, payload-free arm
         int count = Count(value, f);
         if (f.Counted && (count < 0 || count > f.ArrayBound)) { return false; }
+        if (f.TextTotal>0 && !TextFits(value,f)) { return false; }
         if (!f.IsArray) { return CollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < count; i++)
         {
@@ -1452,7 +1453,7 @@ public static partial class TableWire
             if (f.Dynamic && count > int.MaxValue) { return CollectionCap(report); }
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
-            int decoded = 0;
+            int decoded = 0; long textSpent = 0;
             for (int i = 0; i < keep; i++)
             {
                 if (f.Dynamic) { if (!r.Has(1)) { Damage(report); break; } f.EnsureCount(value, i + 1); }
@@ -1564,11 +1565,16 @@ public static partial class TableWire
                 int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
                 if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
                 int previous = f.Counted && f.GetCount != null ? f.GetCount(value) : 0;
-                int decoded = 0;
+                int decoded = 0; long textSpent = 0;
                 for (int i = 0; i < keep; i++)
                 {
                     if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } f.EnsureCount(value, i + 1); }
                     if (!ReadElement(ref array, value, f, i, elementKind, report, true)) { break; }
+                    if(f.TextTotal>0){
+                        object child=f.GetChild(value,i);TableFieldInfo text=f.Table.Fields[0];
+                        int length=text.Optional&&!text.GetPresent(child)?0:Count(child,text);
+                        if(!TextTotalKeep(f,length,ref textSpent,report)){ResetElement(value,f,i);break;}
+                    }
                     decoded++;
                 }
                 if (f.Counted) { ResetCountedTail(value, f, previous, decoded); }

@@ -428,7 +428,7 @@ const tableRegionSource = `
             int keep = (int)Math.Min(count, (ulong)f.ArrayBound);
             if (!f.Dynamic && count > (ulong)f.ArrayBound) { report.Clamped++; TextClamp(report,f); }
             if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return false; }
-            int decoded = 0;
+            int decoded = 0; long textSpent = 0;
             for (int i = 0; i < keep; i++)
             {
                 if (f.Dynamic) { if (!r.Has(1)) { Damage(report); break; } if (!NativeEnsure(ref state, value, f, i)) { return false; } }
@@ -520,11 +520,16 @@ const tableRegionSource = `
                 // after the array's L (the Go oracle's collectionCap)
                 if (f.Dynamic && !NativeReserve(ref state, value, f, count, report)) { return !state.Refused; }
                 int previous = f.Counted ? value.Count(f) : 0;
-                int decoded = 0;
+                int decoded = 0; long textSpent = 0;
                 for (int i = 0; i < keep; i++)
                 {
                     if (f.Dynamic) { if (!array.Has(1)) { Damage(report); break; } if (!NativeEnsure(ref state, value, f, i)) { return false; } }
                     if (!NativeReadElement(ref state, ref array, value, f, i, elementKind, report, true)) { break; }
+                    if(f.TextTotal>0){
+                        NativeValue child=value.Child(f,i);TableFieldInfo text=f.Table.Fields[0];
+                        int length=text.Optional&&!child.Present(text)?0:child.Count(text);
+                        if(!TextTotalKeep(f,length,ref textSpent,report)){NativeResetElement(value,f,i);break;}
+                    }
                     decoded++;
                 }
                 if (f.Counted) { NativeResetCountedTail(value, f, previous, decoded); }

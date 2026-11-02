@@ -69,6 +69,7 @@ const tableRegionWriteSource = `
     {
         if (f == null) { return true; } // selected, payload-free arm
         if (f.Counted && (RegionCount(value, f) < 0 || RegionCount(value, f) > f.ArrayBound)) { return false; }
+        if (f.TextTotal>0 && !TextFitsRegion(value,f)) { return false; }
         if (!f.IsArray) { return RegionCollectElement(value, f, 0, ref ids); }
         for (int i = 0; i < RegionCount(value, f); i++)
         {

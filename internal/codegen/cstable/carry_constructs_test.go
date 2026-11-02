@@ -118,6 +118,12 @@ func runCarryCS(t *testing.T, schema string, inputs []string, extra ...string) {
 		report := tabletext.Report{}
 		ok := model.Read(value, []byte(input), &report)
 		want[i] = result{OK: ok, Unknown: report.Unknown, KindMismatch: report.KindMismatch, Widened: report.Widened, Clamped: report.Clamped, Duplicate: report.Duplicate, Malformed: report.Malformed, Refused: report.Refused, Reason: report.Reason}
+		// The neutral model carries clamp diagnostics in Reason; generated
+		// C# and Go keep them in ClampedField, separately asserted by probes.
+		if strings.HasPrefix(want[i].Reason, "clamped: ") {
+			want[i].Reason = ""
+		}
+
 		if ok {
 			text, err := model.Write(value)
 			if err != nil {

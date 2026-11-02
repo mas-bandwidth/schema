@@ -859,7 +859,7 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, name)
 	}
 	if f.IsTextList() {
-		fmt.Fprintf(&b, ", TextList = true, TextField = %q", g.owner.Name+"."+f.Name)
+		fmt.Fprintf(&b, ", TextList = true, TextField = %q, TextTotal = %dL", g.owner.Name+"."+f.Name, f.TextTotal)
 	}
 	return b.String()
 }

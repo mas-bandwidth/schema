@@ -850,6 +850,7 @@ public sealed class TableFieldInfo
     public Action<object, int> EnsureCount;
     public bool Dynamic, Map, TextList;
     public string TextField;
+    public long TextTotal;
     public int StorageSize, StorageAlign;
     public ulong PointerTypeId;
     public byte BlobKind;
