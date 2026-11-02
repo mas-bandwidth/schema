@@ -1043,6 +1043,7 @@ var (
 )
 
 func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind string) {
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "return false;"))
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if f.Type.Optional {
 		owner := expr[:lastDot(expr)]

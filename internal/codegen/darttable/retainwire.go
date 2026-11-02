@@ -482,7 +482,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
@@ -497,12 +497,13 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\t\tr.scanNodeTable();\n")
 	g.pf("\t\tr.pos = 1;\n")
 	g.pf("\t\t%s(r, v, false);\n", d+"WireLoadBody")
+	g.pf("\t} on _TableMissingRequired {\n\t\tretain.reset();\n\t\treturn %s();\n", n)
 	g.pf("\t} on _TableWireCountRefusal {\n")
 	g.pf("\t\tr.report.refused = true;\n\t\tr.report._countRefused = true;\n")
 	g.pf("\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
 	// A NON-FINITE FLOAT REFUSES THE READ (docs/SPEC-TABLES.md §3.3, §6.6):
 	// nothing lands, the retained store included.
-	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) {\n")
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {\n")
 	g.pf("\t\tretain.reset();\n")
 	g.pf("\t\treturn %s();\n", n)
 	g.pf("\t}\n")

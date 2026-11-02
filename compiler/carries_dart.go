@@ -1,5 +1,5 @@
 package compiler
 
 func init() {
-	registerCarries("dart", carryOptionalVariableClosure, carryOneSidedRange, carryArrayRoot, carryTimestamp, carryOptionalMap)
+	registerCarries("dart", carryOptionalVariableClosure, carryOneSidedRange, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired)
 }

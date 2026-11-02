@@ -106,7 +106,7 @@ func (g *wireGen) emitWideClamp(f *ir.Field, value, p, ind string) {
 // header and the raw value at the kind's width.
 func (g *wireGen) emitSaveWide(f *ir.Field, expr, ind string, id uint64) {
 	kind := wideKind(f)
-	g.pf("%sif (%s != %s) {\n", ind, expr, g.wideDefault(f))
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.wideDefault(f)))
 	g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 	g.pf("%s\tw.putByte(%d);\n", ind, kind)
 	g.pf("%s\t_putWide(w, %s, %d);\n", ind, expr, ir.TableKindWidth(kind))

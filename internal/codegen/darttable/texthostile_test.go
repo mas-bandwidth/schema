@@ -227,9 +227,10 @@ func TestDartTextHostile(t *testing.T) {
 			refused: true,
 		},
 		{
-			name:    "map-quoted-int-value-refused",
-			json:    `{"entries": {"1": "5"}}`,
-			refused: true,
+			// §16.2: a non-null value of the wrong shape lands its default.
+			name:      "map-quoted-int-value-default",
+			json:      `{"entries": {"1": "5"}}`,
+			wantExtra: "map=1:1->0",
 		},
 	}
 
@@ -272,6 +273,9 @@ func TestDartTextHostile(t *testing.T) {
 		}
 		if !ok {
 			t.Fatalf("%s: Go oracle unexpectedly refused input %s", tc.name, tc.json)
+		}
+		if tc.name == "map-quoted-int-value-default" && (rep.KindMismatch != 1 || rep.Malformed) {
+			t.Fatalf("map value shape must default with one mismatch: %+v", rep)
 		}
 		wireBytes, err := tablewire.Encode(model, inst)
 		if err != nil {
@@ -324,6 +328,7 @@ String extraFor(int idx, Root v, TableTextReport r) {
       return 'hard=${v.keyed[1]}';
     case 12:
     case 26:
+    case 29:
       return 'map=${v.entries.length}:${v.entries[0].key}->${v.entries[0].value}';
     case 13:
       return 'ver=${v.version},flag=${v.flag}';

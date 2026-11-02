@@ -546,6 +546,7 @@ func (g *wireGen) emitConstants() {
 // table of the unit. It invents no contract of its own: the byte framing below
 // is §3's, read down to the card's closure.
 func (g *wireGen) emitRuntime() {
+	g.pf("%s", requiredWireRuntime)
 	g.pf("%s", `// The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -559,6 +560,8 @@ final class TableWireReport {
   bool malformed = false;
   bool refused = false;
   bool _countRefused = false;
+  int missingRequired = 0;
+  String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
@@ -586,6 +589,7 @@ final class TableWireReport {
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
@@ -1903,11 +1907,12 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
+	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
 	switch {
 	case f.Type.Optional: // presence is the payload (§2.3, wirewide.go)
 		g.emitSaveOptional(f, expr, ind, id, ordinal)
 	case f.IsMap(): // a map rides as kind 14 over its entry bodies (§2.8)
-		g.emitSaveMap(f, expr, ind, id, ordinal, false)
+		g.emitSaveMap(f, expr, ind, id, ordinal, f.Required)
 	case isUnionField(f): // a union rides as kind 15 and its arm header (§2.6, §3)
 		g.emitSaveUnionField(f, expr, ind, id)
 	case isKeyed(f): // [E]T rides as kind 16 (§2.4, §3.2)
@@ -1915,20 +1920,20 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case isFixedArray(f): // [N]T rides as kind 14, every element (§3)
 		g.emitSaveFixed(f, expr, ind, id)
 	case f.Type.Blob(): // *string/*bytes ride as a kind-17 node index (§2.5, §3.1)
-		g.pf("%sif (%s != null) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != null"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\tw.putLeb(w.state.blobIndex(_kStringBlobId, %s!));\n", ind, expr)
+			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kStringBlobId, %s!));\n", ind, expr, expr)
 		} else {
-			g.pf("%s\tw.putLeb(w.state.blobIndex(_kBytesBlobId, %s!));\n", ind, expr)
+			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kBytesBlobId, %s!));\n", ind, expr, expr)
 		}
 		g.pf("%s}\n", ind)
 	case isPointerTable(f):
-		g.pf("%sif (%s != null) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != null"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
-		g.pf("%s\tw.putLeb(w.state.indexOf(%s!));\n", ind, expr)
+		g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.indexOf(%s!));\n", ind, expr, expr)
 		g.pf("%s}\n", ind)
 	case isByValueTable(f):
 		g.emitSaveByValue(f, expr, ind, id)
@@ -1947,14 +1952,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		// WIDE TEXT TAKES NO SPECIFIED DEFAULT, so the empty value elides; L is
 		// a BYTE length, twice the code-unit count, and each UTF-16 unit rides
 		// little-endian (§3, kind 33)
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindWString)
 		g.pf("%s\tw.putLeb(%s.length * 2);\n", ind, expr)
 		g.pf("%s\tfor (final u in %s.codeUnits) { w.putU16(u); }\n", ind, expr)
 		g.pf("%s}\n", ind)
 	case f.Type.Kind == ir.TString:
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.stringDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindString)
 		g.pf("%s\tfinal b = utf8.encode(%s);\n", ind, expr)
@@ -1965,7 +1970,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		// §5: a declared bytes default is storage, not a field occurrence.
 		// Comparing with emptiness would write the default into an otherwise
 		// empty body and change the Go oracle's canonical wire.
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.stringDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.stringDefault(f)))
 		g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 		g.pf("%s\tfinal b = latin1.encode(%s);\n", ind, expr)
 		g.pf("%s\tfinal s = w.sub();\n", ind)
@@ -1980,7 +1985,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	case isWide(f): // kinds 18-29, the raw integer at its width (§3, §15)
 		g.emitSaveWide(f, expr, ind, id)
 	case f.Type.Kind == ir.TBool:
-		g.pf("%sif (%s != %v) {\n", ind, expr, f.HasDefault && f.DefBool)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, fmt.Sprintf("%s != %v", expr, f.HasDefault && f.DefBool)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindBool)
 		g.pf("%s\tw.putByte(%s ? 1 : 0);\n", ind, expr)
@@ -1999,7 +2004,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		case 4:
 			put = "putU32"
 		}
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.intDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.intDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s);\n", ind, put, expr)
@@ -2016,14 +2021,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 			bits = "_f32Write"
 			put = "putU32"
 		}
-		g.pf("%sif (%s) {\n", ind, wireFloatRides(f, expr, g.floatDefault(f)))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, wireFloatRides(f, expr, g.floatDefault(f))))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, kind)
 		g.pf("%s\tw.%s(%s(%s, '%s'));\n", ind, put, bits, expr, g.floatOwner(f))
 		g.pf("%s}\n", ind)
 	case enumRef(f) != nil:
 		e := enumRef(f)
-		g.pf("%sif (%s != %s) {\n", ind, expr, g.enumDefault(f))
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+" != "+g.enumDefault(f)))
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindEnum)
 		// The value is the variant's id reference; the zero variant (None) has
@@ -2055,7 +2060,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal b = w.sub();\n", ind)
 	g.pf("%s\t%sWireSaveBody(b, %s);\n", ind, dartName(ref.Name), expr)
-	g.pf("%s\tif (b.buf.length <= 1) {\n", ind)
+	g.pf("%s\tif (%v && b.buf.length <= 1) {\n", ind, !f.Required)
 	g.pf("%s\t\tw.state.rollback(mark);\n", ind)
 	g.pf("%s\t} else {\n", ind)
 	g.pf("%s\t\tw.putLeb(ref);\n", ind)
@@ -2070,7 +2075,7 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2090,7 +2095,7 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2116,7 +2121,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
@@ -2190,6 +2195,9 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 		g.pf("\t}\n}\n\n")
 	}
 	g.pf("void %s(TableWireReader r, %s v, bool nested) {\n", fn, n)
+	if hasRequired(st) {
+		g.pf("\tfinal requiredSeen = Uint8List(%d);\n", len(st.Fields))
+	}
 	// A BY-VALUE BODY IS THE SAME STORAGE across occurrences and is RESET when
 	// its id comes round again (internal/tablewire field, Refill): the last
 	// occurrence wins whole, so a field only the earlier one carried does not
@@ -2202,7 +2210,13 @@ func (g *wireGen) emitLoadBody(st *ir.Struct) {
 	g.pf("\twhile (true) {\n")
 	g.pf("\t\tfinal ref = r.readLeb();\n")
 	g.pf("\t\tif (ref == null) { r.report.malformed = true; return; }\n")
-	g.pf("\t\tif (ref == 0) return;\n")
+	if hasRequired(st) {
+		g.pf("\t\tif (ref == 0) {\n")
+		g.emitRequiredCheck(st, true, "\t\t\t")
+		g.pf("\t\t\treturn;\n\t\t}\n")
+	} else {
+		g.pf("\t\tif (ref == 0) return;\n")
+	}
 	g.pf("\t\tfinal id = r.refToId[ref];\n")
 	g.pf("\t\tif (id == null) { r.report.malformed = true; return; }\n")
 	g.pf("\t\tif (!r.has(1)) { r.report.malformed = true; return; }\n")
@@ -2267,6 +2281,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	id := fieldId(f)
 	g.pf("%scase %s:\n", ind, dartU64Literal(id))
+	if f.Required {
+		g.pf("%s\tif (%s) requiredSeen[%d] = 1;\n", ind, requiredKindCondition(f), ordinal)
+	}
 	if f.Type.Optional {
 		// the field rode, so the optional is PRESENT (§2.3, §4); its value
 		// reads exactly as the bare field's does, and an occurrence under a
@@ -3057,7 +3074,7 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tif (report != null) r.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body
@@ -3070,13 +3087,14 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	}
 	g.pf("\t\tr.pos = 1;\n")
 	g.pf("\t\t%s(r, v, false);\n", dartName(n)+"WireLoadBody")
+	g.pf("\t} on _TableMissingRequired {\n\t\treturn %s();\n", n)
 	g.pf("\t} on _TableWireCountRefusal {\n")
 	g.pf("\t\tr.report.refused = true;\n\t\tr.report._countRefused = true;\n")
 	g.pf("\t\treturn %s();\n\t}\n", n)
 	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
 	// any damage the walk met (docs/SPEC-TABLES.md §3.3): nothing lands, and
 	// the caller holds the type's defaults.
-	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) return %s();\n", n)
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return %s();\n", n)
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load
 	// is refused, and the caller holds the type's defaults.
 	g.pf("\t_collectNodeEdges(r);\n")

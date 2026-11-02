@@ -1028,7 +1028,7 @@ func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal 
 	if force {
 		g.pf("%s{\n", ind)
 	} else {
-		g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+		g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	}
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal sorted = %s;\n", ind, mapSorted(f, expr))
@@ -1170,10 +1170,10 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 // absence of the field is the None — and a set arm rides as the field header
 // at kind 15 followed by the arm header.
 func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.armTag != 0) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".armTag != 0"))
 	g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 	g.pf("%s\tw.putByte(%d);\n", ind, wireKindUnion)
-	g.pf("%s\t%s(w, %s);\n", ind, unionFn(unionRef(f), "SaveArm"), expr)
+	g.pf("%s\tif (%s.armTag == 0) { w.putLeb(0); } else { %s(w, %s); }\n", ind, expr, unionFn(unionRef(f), "SaveArm"), expr)
 	g.pf("%s}\n", ind)
 }
 
@@ -1181,7 +1181,7 @@ func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
 // over element kind 15 (§3): the live count, then each element's arm header,
 // a None element the single zero byte. An empty array elides (§2.9).
 func (g *wireGen) emitSaveUnionList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	g.pf("%sif (%s) {\n", ind, requiredRide(f, expr+".isNotEmpty"))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindUnion)

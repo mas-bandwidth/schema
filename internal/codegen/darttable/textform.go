@@ -123,6 +123,8 @@ final class TableTextReport {
   int kindMismatch = 0;
   int clamped = 0;
   int duplicate = 0;
+  int missingRequired = 0;
+  String missingFields = '';
   final Set<int> textLabels = <int>{};
 }
 
@@ -737,7 +739,12 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	g.pf("\t\tout.raw(label.toString());\n")
 	g.pf("\t\tcomma = true;\n")
 	g.pf("\t}\n")
+	guards := wireGuards(st)
 	for _, f := range st.Fields {
+		cond := g.guardCond(st, guards[f.Name])
+		if cond != "" {
+			g.pf("\tif (%s) {\n", cond)
+		}
 		if f.Type.Optional {
 			// an ABSENT optional is omitted from the text (§2.3, §16.2)
 			g.pf("\tif (v.%s) {\n", hasMember(f))
@@ -748,6 +755,9 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 		if f.Type.Optional {
 			g.pf("\t}\n")
 		}
+		if cond != "" {
+			g.pf("\t}\n")
+		}
 	}
 	g.pf("\tif (comma) out.line(depth);\n")
 	g.pf("\tout.raw('}');\n")
@@ -755,6 +765,7 @@ func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 }
 
 func (g *wireGen) emitTextToJsonField(st *ir.Struct, f *ir.Field) {
+	g.pf("%s", requiredRangeCheck(f, "v."+fieldMember(f), "\t", "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
 	key := ir.TableFieldJsonKey(f)
 	name := fieldMember(f)
 	g.pf("\tout.line(depth + 1);\n")
@@ -899,6 +910,7 @@ func (g *wireGen) emitTextFromJsonFields(st *ir.Struct) {
 	g.pf("\t\t\tdefault:\n\t\t\t\tr.unknown++;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
+	g.emitRequiredCheck(st, false, "\t")
 	g.pf("}\n\n")
 }
 
@@ -1077,13 +1089,15 @@ func (g *wireGen) emitTextToJson(st *ir.Struct) {
 func (g *wireGen) emitTextFromJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "FromJson"
 	g.pf("%s %s(String text, [TableTextReport? report]) {\n", st.Name, fn)
-	g.pf("\tfinal r = report ?? TableTextReport();\n")
+	g.pf("\tfinal r = report ?? TableTextReport();\n\tr.missingFields = '';\n")
 	g.pf("\tfinal v = %s();\n", st.Name)
 	// Keep source numeric tokens so float32's exact overflow boundary and
 	// wide integer values are decided before dart:convert rounds them.
 	g.pf("\tfinal root = _jsonDecodeExact(_jsonPrepare(text, r));\n")
 	if st.JsonArray {
 		g.pf("\tif (root is! List) throw const FormatException('json_root_not_array: %s');\n", st.Name)
+	} else {
+		g.pf("\tif (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: %s');\n", st.Name)
 	}
 	g.pf("\tif (%s) {\n", jsonTableShape(st, "root"))
 	g.pf("\t\t%sFromJsonFields(v, root, r, _Share());\n", dartName(st.Name))
