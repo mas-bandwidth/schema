@@ -667,17 +667,31 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("        const int64_t body = %sMeasureMessageBody( bits, values[i] );\n", n)
 	g.pf("        if ( body < 0 ) { return -1; }\n")
 	g.pf("        bits += body;\n    }\n")
-	g.pf("    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte\n}\n\n")
+	if st.Integrity != "" {
+		g.pf("    return 1 + ( bits + 7 ) / 8 + 4; // the form byte, then the stream padded to a byte, plus the integrity trailer (§2.14)\n}\n\n")
+	} else {
+		g.pf("    return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte\n}\n\n")
+	}
 
 	g.pf("inline int64_t %sSaveMessages( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )\n{\n", n, n)
 	g.pf("    if ( values == NULL || count < 1 ) { return -1; }\n")
 	g.pf("    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }\n")
 	g.pf("    TableMessageBatch batch;\n")
-	g.pf("    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }\n")
+	if st.Integrity != "" {
+		g.pf("    if ( !TableMessageBatchBegin( batch, buffer, capacity - 4, count ) ) { return -1; }\n")
+	} else {
+		g.pf("    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }\n")
+	}
 	g.pf("    for ( int64_t i = 0; i < count; i++ )\n    {\n")
 	g.pf("        if ( !%sSaveMessageBody( batch.w, values[i] ) ) { return -1; }\n", n)
 	g.pf("        batch.written++;\n    }\n")
-	g.pf("    return TableMessageBatchEnd( batch ); // == %sMeasureMessages( values, count, report )\n}\n\n", n)
+	if st.Integrity != "" {
+		g.pf("    const int64_t end = TableMessageBatchEnd( batch );\n")
+		g.pf("    if ( end < 0 ) { return -1; }\n")
+		g.pf("    return TableMessageBatchSeal( buffer, end, capacity ); // == %sMeasureMessages( values, count, report )\n}\n\n", n)
+	} else {
+		g.pf("    return TableMessageBatchEnd( batch ); // == %sMeasureMessages( values, count, report )\n}\n\n", n)
+	}
 
 	g.pf("// A form 2 wire with NO VOCABULARY for the announcement is REFUSED BY NAME:\n")
 	g.pf("// nothing is decoded, the reader says it holds no vocabulary, no counter\n")
@@ -699,7 +713,11 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    const int64_t capacity = *count;\n")
 	g.pf("    *count = 0;\n")
 	g.pf("    TableMessageBatchReader br;\n")
-	g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );\n")
+	if st.Integrity != "" {
+		g.pf("    const int64_t bodies = TableMessageBatchOpenSealed( br, vocabulary, buffer, bytes, to );\n")
+	} else {
+		g.pf("    const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );\n")
+	}
 	g.pf("    if ( bodies < 0 ) { return false; }\n")
 	g.pf("    if ( bodies > capacity ) { *count = bodies; TableMessageRefuseBatch( to ); return false; }\n")
 	g.pf("    for ( int64_t i = 0; i < bodies; i++ )\n    {\n")
