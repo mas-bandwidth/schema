@@ -121,6 +121,15 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 		report.Refused = true
 		return 0, false, &MessageRefusal{Reason: ReasonNewerForm}
 	}
+	if len(insts) > 0 {
+		var valid bool
+		data, valid = messageIntegrityBody(insts[0].Def, data)
+		if !valid {
+			report.Malformed = true
+			report.Reason = "integrity_mismatch"
+			return 0, false, nil
+		}
+	}
 	// A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 	// decoded, no counter moves and `malformed` does not fire.
 	if v == nil || !v.announced {
@@ -139,6 +148,8 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 		return count, false, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}
 	}
 	for i := range count {
+		// Omitted fields take declared defaults, including when storage is reused.
+		m.Clear(insts[i])
 		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits()}
 		if !d.body(insts[i]) {
 			return i, false, nil
