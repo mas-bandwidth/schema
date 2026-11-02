@@ -208,10 +208,16 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	if f.IsList() {
 		g.pf("    TableList %s;\n", f.Name)
+		if f.Type.Optional {
+			g.pf("    uint8_t %s_present; /* ?%s: absent until set */\n", f.Name, tableFieldTypeName(f))
+		}
 		return
 	}
 	if f.IsMap() {
 		g.pf("    TableMap %s;\n", f.Name)
+		if f.Type.Optional {
+			g.pf("    uint8_t %s_present; /* ?%s: absent until set */\n", f.Name, tableFieldTypeName(f))
+		}
 		return
 	}
 	if f.Type.Pointer {
@@ -300,6 +306,9 @@ func (g *tableGen) emitTableReset(st *ir.Struct) {
 func (g *tableGen) emitTableResetField(f *ir.Field) {
 	if f.IsList() || f.IsMap() {
 		g.pf("    memset(&value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
+		if f.Type.Optional {
+			g.pf("    value->%s_present = 0;\n", f.Name)
+		}
 		return
 	}
 	if f.Type.Pointer {

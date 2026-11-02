@@ -2394,8 +2394,11 @@ static SCHEMA_UNUSED int table_json_read_table_keys( TableJsonIn * in, void * ba
             {
                 if ( !table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
-                   occurrence is null must not leave an earlier value standing */
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                   occurrence is null must not leave an earlier value standing.
+                   A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                   ENTRY table its descriptor names (docs/SPEC-TABLES.md §2.8, §16.2). */
+                if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
