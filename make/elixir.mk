@@ -1997,7 +1997,9 @@ test-elixir: tables-elixir-view
 # and the cycle refusal (§3.1, §4; T8). It rebuilds the corpus and requires
 # framing RED on frame_entries_4097 and the three cycle rows, while report
 # stays green. A second build drops all but one dependent of each node, so
-# a shared node cannot release every parent; node_diamond_chain must go RED.
+# a shared node cannot release every parent; node_diamond_chain must go RED
+# while json-read stays green. The shared-dependency fault also affects report
+# rows with shared nodes; the independent text reader does not run that loader.
 # The diamond fixture has 2^40 paths over 82 nodes and guards against
 # expanding paths instead of preserving shared nodes. It is not a general
 # linear-time guarantee for save or JSON.
@@ -2013,7 +2015,7 @@ conformance-negative-control-elixir-framing: build/conformance-harness
 	@for c in frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid; do \
 		grep -q "elixir / framing: $$c:" build/elixir-conformance-negative-framing/log || \
 			{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on $$c"; exit 1; }; done
-	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing-share,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SHARE_SED,framing,report,a shared node failing to release every dependent)
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-framing-share,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_FRAMING_SHARE_SED,framing,json-read,a shared node failing to release every dependent)
 	@grep -q "elixir / framing: node_diamond_chain:" build/elixir-conformance-negative-framing-share/log || \
 		{ echo "NEGATIVE CONTROL FAILED: framing went red, but not on node_diamond_chain"; exit 1; }
 test-elixir: conformance-elixir-framing conformance-negative-control-elixir-framing
