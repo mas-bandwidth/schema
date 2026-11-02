@@ -192,11 +192,19 @@ func (g *NodeGraph) descend(m *tabletext.Model, inst *tabletext.Instance, open m
 // seven bytes whatever index it carries — so every body this walk reaches an
 // edge through is a body the writer writes.
 func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target Node, field string) bool) {
+	visitSlots(m, inst, false, visit)
+}
+
+// visitSlots is [visitEdges] with one switch: everyGuard visits a pointer
+// under a FALSE GUARD too. A load stores such a pointer (a guard decides what
+// a WRITE elides, never what a read places, §3), so the loaded graph's cycle
+// check (docs/SPEC-TABLES.md §3.1, §4) walks it; the writers never do.
+func visitSlots(m *tabletext.Model, inst *tabletext.Instance, everyGuard bool, visit func(target Node, field string) bool) {
 	guards := tabletext.Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
 		f := fv.Def
-		if terms, guarded := guards[f.Name]; guarded && !inst.GuardHolds(terms) {
+		if terms, guarded := guards[f.Name]; guarded && !everyGuard && !inst.GuardHolds(terms) {
 			continue
 		}
 		if f.Type.Optional && !fv.Present {
@@ -236,14 +244,14 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			// array of unions — the live elements of a counted one only (§3.1)
 			switch f.Array {
 			case ir.ArrayNone:
-				visitArmEdges(m, &fv.Cell, un, f.Name, visit)
+				visitArmEdges(m, &fv.Cell, un, f.Name, everyGuard, visit)
 			case ir.ArrayFixed:
 				for k := range fv.Elems {
-					visitArmEdges(m, &fv.Elems[k], un, f.Name, visit)
+					visitArmEdges(m, &fv.Elems[k], un, f.Name, everyGuard, visit)
 				}
 			case ir.ArrayCounted, ir.ArrayList:
 				for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
-					visitArmEdges(m, &fv.Elems[k], un, f.Name, visit)
+					visitArmEdges(m, &fv.Elems[k], un, f.Name, everyGuard, visit)
 				}
 			}
 			continue
@@ -257,7 +265,7 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			// is reached. A node reached ONLY through a map is numbered here.
 			for _, at := range MapEntryOrder(f, fv) {
 				if sub := fv.Entries[at].Tab; sub != nil {
-					visitEdges(m, sub, visit)
+					visitSlots(m, sub, everyGuard, visit)
 				}
 			}
 			continue
@@ -272,13 +280,13 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			// slot to skip (§2.4)
 			for slot := tabletext.KeyedFirstSlot(); slot < tabletext.KeyedSlotCount(f); slot++ {
 				if sub := fv.Elems[slot].Tab; sub != nil {
-					visitEdges(m, sub, visit)
+					visitSlots(m, sub, everyGuard, visit)
 				}
 			}
 		case f.Array == ir.ArrayFixed:
 			for k := range fv.Elems {
 				if sub := fv.Elems[k].Tab; sub != nil {
-					visitEdges(m, sub, visit)
+					visitSlots(m, sub, everyGuard, visit)
 				}
 			}
 		case f.CountedOnWire():
@@ -288,12 +296,12 @@ func visitEdges(m *tabletext.Model, inst *tabletext.Instance, visit func(target 
 			// the next is reached (§2.9, §3.1)
 			for k := 0; k < fv.Count && k < len(fv.Elems); k++ {
 				if sub := fv.Elems[k].Tab; sub != nil {
-					visitEdges(m, sub, visit)
+					visitSlots(m, sub, everyGuard, visit)
 				}
 			}
 		default:
 			if fv.Cell.Tab != nil {
-				visitEdges(m, fv.Cell.Tab, visit)
+				visitSlots(m, fv.Cell.Tab, everyGuard, visit)
 			}
 		}
 	}
@@ -322,14 +330,14 @@ func MapEntryOrder(f *ir.Field, fv *tabletext.Field) []int {
 // from an arm and from a field beside it is one node under one index — a byte
 // buffer arm is that node, and an arm that is another union asks the same
 // question one level in.
-func visitArmEdges(m *tabletext.Model, cell *tabletext.Cell, un *ir.Union, field string, visit func(target Node, field string) bool) {
+func visitArmEdges(m *tabletext.Model, cell *tabletext.Cell, un *ir.Union, field string, everyGuard bool, visit func(target Node, field string) bool) {
 	if cell.U == 0 || int(cell.U) > len(un.Variants) {
 		return
 	}
 	arm := un.Variants[cell.U-1]
 	if arm.Body() {
 		if cell.Tab != nil {
-			visitEdges(m, cell.Tab, visit)
+			visitSlots(m, cell.Tab, everyGuard, visit)
 		}
 		return
 	}
@@ -358,6 +366,6 @@ func visitArmEdges(m *tabletext.Model, cell *tabletext.Cell, un *ir.Union, field
 			}
 		}
 	case tabletext.UnionOf(f) != nil:
-		visitArmEdges(m, &fv.Cell, tabletext.UnionOf(f), field, visit)
+		visitArmEdges(m, &fv.Cell, tabletext.UnionOf(f), field, everyGuard, visit)
 	}
 }

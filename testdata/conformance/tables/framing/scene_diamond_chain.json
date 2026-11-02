@@ -1,0 +1,575 @@
+{
+  "name": "",
+  "version": 1,
+  "head": null,
+  "tree": {
+    "label": "",
+    "left": {
+      "label": "",
+      "left": {
+        "&node": 1,
+        "label": "",
+        "left": {
+          "&node": 2,
+          "label": "",
+          "left": {
+            "&node": 3,
+            "label": "",
+            "left": {
+              "&node": 4,
+              "label": "",
+              "left": {
+                "&node": 5,
+                "label": "",
+                "left": {
+                  "&node": 6,
+                  "label": "",
+                  "left": {
+                    "&node": 7,
+                    "label": "",
+                    "left": {
+                      "&node": 8,
+                      "label": "",
+                      "left": {
+                        "&node": 9,
+                        "label": "",
+                        "left": {
+                          "&node": 10,
+                          "label": "",
+                          "left": {
+                            "&node": 11,
+                            "label": "",
+                            "left": {
+                              "&node": 12,
+                              "label": "",
+                              "left": {
+                                "&node": 13,
+                                "label": "",
+                                "left": {
+                                  "&node": 14,
+                                  "label": "",
+                                  "left": {
+                                    "&node": 15,
+                                    "label": "",
+                                    "left": {
+                                      "&node": 16,
+                                      "label": "",
+                                      "left": {
+                                        "&node": 17,
+                                        "label": "",
+                                        "left": {
+                                          "&node": 18,
+                                          "label": "",
+                                          "left": {
+                                            "&node": 19,
+                                            "label": "",
+                                            "left": {
+                                              "&node": 20,
+                                              "label": "",
+                                              "left": {
+                                                "&node": 21,
+                                                "label": "",
+                                                "left": {
+                                                  "&node": 22,
+                                                  "label": "",
+                                                  "left": {
+                                                    "&node": 23,
+                                                    "label": "",
+                                                    "left": {
+                                                      "&node": 24,
+                                                      "label": "",
+                                                      "left": {
+                                                        "&node": 25,
+                                                        "label": "",
+                                                        "left": {
+                                                          "&node": 26,
+                                                          "label": "",
+                                                          "left": {
+                                                            "&node": 27,
+                                                            "label": "",
+                                                            "left": {
+                                                              "&node": 28,
+                                                              "label": "",
+                                                              "left": {
+                                                                "&node": 29,
+                                                                "label": "",
+                                                                "left": {
+                                                                  "&node": 30,
+                                                                  "label": "",
+                                                                  "left": {
+                                                                    "&node": 31,
+                                                                    "label": "",
+                                                                    "left": {
+                                                                      "&node": 32,
+                                                                      "label": "",
+                                                                      "left": {
+                                                                        "&node": 33,
+                                                                        "label": "",
+                                                                        "left": {
+                                                                          "&node": 34,
+                                                                          "label": "",
+                                                                          "left": {
+                                                                            "&node": 35,
+                                                                            "label": "",
+                                                                            "left": {
+                                                                              "&node": 36,
+                                                                              "label": "",
+                                                                              "left": {
+                                                                                "&node": 37,
+                                                                                "label": "",
+                                                                                "left": {
+                                                                                  "&node": 38,
+                                                                                  "label": "",
+                                                                                  "left": {
+                                                                                    "&node": 39,
+                                                                                    "label": "",
+                                                                                    "left": null,
+                                                                                    "right": null
+                                                                                  },
+                                                                                  "right": {
+                                                                                    "&node": 40,
+                                                                                    "label": "",
+                                                                                    "left": null,
+                                                                                    "right": null
+                                                                                  }
+                                                                                },
+                                                                                "right": {
+                                                                                  "&node": 41,
+                                                                                  "label": "",
+                                                                                  "left": {
+                                                                                    "&node": 39
+                                                                                  },
+                                                                                  "right": {
+                                                                                    "&node": 40
+                                                                                  }
+                                                                                }
+                                                                              },
+                                                                              "right": {
+                                                                                "&node": 42,
+                                                                                "label": "",
+                                                                                "left": {
+                                                                                  "&node": 38
+                                                                                },
+                                                                                "right": {
+                                                                                  "&node": 41
+                                                                                }
+                                                                              }
+                                                                            },
+                                                                            "right": {
+                                                                              "&node": 43,
+                                                                              "label": "",
+                                                                              "left": {
+                                                                                "&node": 37
+                                                                              },
+                                                                              "right": {
+                                                                                "&node": 42
+                                                                              }
+                                                                            }
+                                                                          },
+                                                                          "right": {
+                                                                            "&node": 44,
+                                                                            "label": "",
+                                                                            "left": {
+                                                                              "&node": 36
+                                                                            },
+                                                                            "right": {
+                                                                              "&node": 43
+                                                                            }
+                                                                          }
+                                                                        },
+                                                                        "right": {
+                                                                          "&node": 45,
+                                                                          "label": "",
+                                                                          "left": {
+                                                                            "&node": 35
+                                                                          },
+                                                                          "right": {
+                                                                            "&node": 44
+                                                                          }
+                                                                        }
+                                                                      },
+                                                                      "right": {
+                                                                        "&node": 46,
+                                                                        "label": "",
+                                                                        "left": {
+                                                                          "&node": 34
+                                                                        },
+                                                                        "right": {
+                                                                          "&node": 45
+                                                                        }
+                                                                      }
+                                                                    },
+                                                                    "right": {
+                                                                      "&node": 47,
+                                                                      "label": "",
+                                                                      "left": {
+                                                                        "&node": 33
+                                                                      },
+                                                                      "right": {
+                                                                        "&node": 46
+                                                                      }
+                                                                    }
+                                                                  },
+                                                                  "right": {
+                                                                    "&node": 48,
+                                                                    "label": "",
+                                                                    "left": {
+                                                                      "&node": 32
+                                                                    },
+                                                                    "right": {
+                                                                      "&node": 47
+                                                                    }
+                                                                  }
+                                                                },
+                                                                "right": {
+                                                                  "&node": 49,
+                                                                  "label": "",
+                                                                  "left": {
+                                                                    "&node": 31
+                                                                  },
+                                                                  "right": {
+                                                                    "&node": 48
+                                                                  }
+                                                                }
+                                                              },
+                                                              "right": {
+                                                                "&node": 50,
+                                                                "label": "",
+                                                                "left": {
+                                                                  "&node": 30
+                                                                },
+                                                                "right": {
+                                                                  "&node": 49
+                                                                }
+                                                              }
+                                                            },
+                                                            "right": {
+                                                              "&node": 51,
+                                                              "label": "",
+                                                              "left": {
+                                                                "&node": 29
+                                                              },
+                                                              "right": {
+                                                                "&node": 50
+                                                              }
+                                                            }
+                                                          },
+                                                          "right": {
+                                                            "&node": 52,
+                                                            "label": "",
+                                                            "left": {
+                                                              "&node": 28
+                                                            },
+                                                            "right": {
+                                                              "&node": 51
+                                                            }
+                                                          }
+                                                        },
+                                                        "right": {
+                                                          "&node": 53,
+                                                          "label": "",
+                                                          "left": {
+                                                            "&node": 27
+                                                          },
+                                                          "right": {
+                                                            "&node": 52
+                                                          }
+                                                        }
+                                                      },
+                                                      "right": {
+                                                        "&node": 54,
+                                                        "label": "",
+                                                        "left": {
+                                                          "&node": 26
+                                                        },
+                                                        "right": {
+                                                          "&node": 53
+                                                        }
+                                                      }
+                                                    },
+                                                    "right": {
+                                                      "&node": 55,
+                                                      "label": "",
+                                                      "left": {
+                                                        "&node": 25
+                                                      },
+                                                      "right": {
+                                                        "&node": 54
+                                                      }
+                                                    }
+                                                  },
+                                                  "right": {
+                                                    "&node": 56,
+                                                    "label": "",
+                                                    "left": {
+                                                      "&node": 24
+                                                    },
+                                                    "right": {
+                                                      "&node": 55
+                                                    }
+                                                  }
+                                                },
+                                                "right": {
+                                                  "&node": 57,
+                                                  "label": "",
+                                                  "left": {
+                                                    "&node": 23
+                                                  },
+                                                  "right": {
+                                                    "&node": 56
+                                                  }
+                                                }
+                                              },
+                                              "right": {
+                                                "&node": 58,
+                                                "label": "",
+                                                "left": {
+                                                  "&node": 22
+                                                },
+                                                "right": {
+                                                  "&node": 57
+                                                }
+                                              }
+                                            },
+                                            "right": {
+                                              "&node": 59,
+                                              "label": "",
+                                              "left": {
+                                                "&node": 21
+                                              },
+                                              "right": {
+                                                "&node": 58
+                                              }
+                                            }
+                                          },
+                                          "right": {
+                                            "&node": 60,
+                                            "label": "",
+                                            "left": {
+                                              "&node": 20
+                                            },
+                                            "right": {
+                                              "&node": 59
+                                            }
+                                          }
+                                        },
+                                        "right": {
+                                          "&node": 61,
+                                          "label": "",
+                                          "left": {
+                                            "&node": 19
+                                          },
+                                          "right": {
+                                            "&node": 60
+                                          }
+                                        }
+                                      },
+                                      "right": {
+                                        "&node": 62,
+                                        "label": "",
+                                        "left": {
+                                          "&node": 18
+                                        },
+                                        "right": {
+                                          "&node": 61
+                                        }
+                                      }
+                                    },
+                                    "right": {
+                                      "&node": 63,
+                                      "label": "",
+                                      "left": {
+                                        "&node": 17
+                                      },
+                                      "right": {
+                                        "&node": 62
+                                      }
+                                    }
+                                  },
+                                  "right": {
+                                    "&node": 64,
+                                    "label": "",
+                                    "left": {
+                                      "&node": 16
+                                    },
+                                    "right": {
+                                      "&node": 63
+                                    }
+                                  }
+                                },
+                                "right": {
+                                  "&node": 65,
+                                  "label": "",
+                                  "left": {
+                                    "&node": 15
+                                  },
+                                  "right": {
+                                    "&node": 64
+                                  }
+                                }
+                              },
+                              "right": {
+                                "&node": 66,
+                                "label": "",
+                                "left": {
+                                  "&node": 14
+                                },
+                                "right": {
+                                  "&node": 65
+                                }
+                              }
+                            },
+                            "right": {
+                              "&node": 67,
+                              "label": "",
+                              "left": {
+                                "&node": 13
+                              },
+                              "right": {
+                                "&node": 66
+                              }
+                            }
+                          },
+                          "right": {
+                            "&node": 68,
+                            "label": "",
+                            "left": {
+                              "&node": 12
+                            },
+                            "right": {
+                              "&node": 67
+                            }
+                          }
+                        },
+                        "right": {
+                          "&node": 69,
+                          "label": "",
+                          "left": {
+                            "&node": 11
+                          },
+                          "right": {
+                            "&node": 68
+                          }
+                        }
+                      },
+                      "right": {
+                        "&node": 70,
+                        "label": "",
+                        "left": {
+                          "&node": 10
+                        },
+                        "right": {
+                          "&node": 69
+                        }
+                      }
+                    },
+                    "right": {
+                      "&node": 71,
+                      "label": "",
+                      "left": {
+                        "&node": 9
+                      },
+                      "right": {
+                        "&node": 70
+                      }
+                    }
+                  },
+                  "right": {
+                    "&node": 72,
+                    "label": "",
+                    "left": {
+                      "&node": 8
+                    },
+                    "right": {
+                      "&node": 71
+                    }
+                  }
+                },
+                "right": {
+                  "&node": 73,
+                  "label": "",
+                  "left": {
+                    "&node": 7
+                  },
+                  "right": {
+                    "&node": 72
+                  }
+                }
+              },
+              "right": {
+                "&node": 74,
+                "label": "",
+                "left": {
+                  "&node": 6
+                },
+                "right": {
+                  "&node": 73
+                }
+              }
+            },
+            "right": {
+              "&node": 75,
+              "label": "",
+              "left": {
+                "&node": 5
+              },
+              "right": {
+                "&node": 74
+              }
+            }
+          },
+          "right": {
+            "&node": 76,
+            "label": "",
+            "left": {
+              "&node": 4
+            },
+            "right": {
+              "&node": 75
+            }
+          }
+        },
+        "right": {
+          "&node": 77,
+          "label": "",
+          "left": {
+            "&node": 3
+          },
+          "right": {
+            "&node": 76
+          }
+        }
+      },
+      "right": {
+        "&node": 78,
+        "label": "",
+        "left": {
+          "&node": 2
+        },
+        "right": {
+          "&node": 77
+        }
+      }
+    },
+    "right": {
+      "label": "",
+      "left": {
+        "&node": 1
+      },
+      "right": {
+        "&node": 78
+      }
+    }
+  },
+  "settings": null,
+  "alias": null,
+  "ground": {
+    "depth": 0,
+    "head": null
+  },
+  "layers": [],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}

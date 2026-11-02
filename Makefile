@@ -5679,6 +5679,105 @@ tables-cpp-region-discard-negative-control:
 	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
 
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# 2026-10-31). The C++ check is Kahn's algorithm over the load's directory
+# (TableCycleAcyclic, internal/codegen/cpptable/arena.go). The first control
+# drops its verdict in a COPY of arena.go, so a cyclic graph loads, and
+# TestPointerNamingAnOpenNodeIsRefusedCPP must go red on it.
+CPP_CYCLE_NC := build/cpp-cycle-nc
+.PHONY: tables-cpp-cycle-negative-control
+tables-cpp-cycle-negative-control:
+	@rm -rf $(CPP_CYCLE_NC) && mkdir -p $(CPP_CYCLE_NC)
+	@sed -e 's|    return !c.broken \&\& c.processed == c.vertices; // a node never freed sits on a cycle|    return true; // NEGATIVE CONTROL: the verdict is gone|' \
+		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_NC)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_NC)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_NC)/overlay.json
+	@if go test -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
+			./internal/codegen/cpptable > $(CPP_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ cycle verdict is gone and the gate stayed green"; \
+		cat $(CPP_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "cycle: the region load handed back a cyclic graph" $(CPP_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "cyclic graph" $(CPP_CYCLE_NC)/log
+	@echo "negative control: removing the C++ cycle verdict turns the cycle gate RED"
+
+# The LINEAR control: the second pass stacks a node at EVERY slot naming it
+# rather than at the last, so a shared node is entered once per path into it,
+# and the forty-diamond chain TestDiamondChainLoadsLinearCPP loads must go red.
+CPP_CYCLE_LINEAR_NC := build/cpp-cycle-linear-nc
+.PHONY: tables-cpp-cycle-linear-negative-control
+tables-cpp-cycle-linear-negative-control:
+	@rm -rf $(CPP_CYCLE_LINEAR_NC) && mkdir -p $(CPP_CYCLE_LINEAR_NC)
+	@sed -e 's|    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free|    TableCyclePush( c, p ); // NEGATIVE CONTROL: entered once per path|' \
+		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_LINEAR_NC)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_LINEAR_NC)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_LINEAR_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_LINEAR_NC)/overlay.json
+	@if go test -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
+			./internal/codegen/cpptable > $(CPP_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
+		cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(CPP_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "diamond:" $(CPP_CYCLE_LINEAR_NC)/log
+	@echo "negative control: entering a shared node once per path turns the diamond gate RED"
+
+# The engine's twin: a pointer to an OPEN node is let through in a COPY of
+# decodenodes.go, so the oracle reads node_cycle_self clean, and the framing
+# oracle check TestFramingVectorsReadThroughTheEngine must go red on that row.
+ENGINE_CYCLE_NC := build/engine-cycle-nc
+.PHONY: tables-engine-cycle-negative-control
+tables-engine-cycle-negative-control:
+	@rm -rf $(ENGINE_CYCLE_NC) && mkdir -p $(ENGINE_CYCLE_NC)
+	@sed -e 's|return true // a pointer to an OPEN node: a cycle|continue // NEGATIVE CONTROL: cycles read clean|' \
+		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
+		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "node_cycle_self" $(ENGINE_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red, but not on node_cycle_self"; \
+		  cat $(ENGINE_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "node_cycle_self" $(ENGINE_CYCLE_NC)/log
+	@echo "negative control: letting the engine read a cycle turns node_cycle_self RED"
+
+# THE CHECK IS LINEAR (docs/SPEC-TABLES.md §3.1): a COPY of decodenodes.go
+# re-enters a CLOSED node instead of taking it as a share, which is the
+# open-path-only walk, exponential on a diamond chain, and
+# TestDiamondChainLoadsLinear must miss its deadline.
+ENGINE_CYCLE_LINEAR_NC := build/engine-cycle-linear-nc
+.PHONY: tables-engine-cycle-linear-negative-control
+tables-engine-cycle-linear-negative-control:
+	@rm -rf $(ENGINE_CYCLE_LINEAR_NC) && mkdir -p $(ENGINE_CYCLE_LINEAR_NC)
+	@sed -e 's|continue // a pointer to a CLOSED node: a share, never re-entered|// NEGATIVE CONTROL: a share is re-entered|' \
+		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
+		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(ENGINE_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "did not finish linear" $(ENGINE_CYCLE_LINEAR_NC)/log
+	@echo "negative control: re-entering a shared node turns the diamond gate RED"
+
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
 # ORACLE is taught the opposite reading, a nested-union arm whose L runs past

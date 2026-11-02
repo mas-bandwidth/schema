@@ -1222,6 +1222,14 @@ framing node_table_twice                      graphdemo ListNode testdata/wire/t
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing             tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin             malformed            -
 framing nested_damage_midway                  tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin                  malformed            -
+# T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; Glenn,
+# 2026-10-31); a chain, and a diamond chain of 82 SHARED nodes and 2^40 paths
+# that a reader must load in linear time, are legal.
+framing node_cycle_self                       graphdemo ListNode testdata/wire/tables/framing/node_cycle_self.bin              malformed            -
+framing node_cycle_to_root                    graphdemo ListNode testdata/wire/tables/framing/node_cycle_to_root.bin           malformed            -
+framing node_cycle_mid                        graphdemo ListNode testdata/wire/tables/framing/node_cycle_mid.bin               malformed            -
+framing node_diamond_chain                    graphdemo Scene    testdata/wire/tables/framing/node_diamond_chain.bin           0,0,0,0,0,false,read testdata/conformance/tables/framing/scene_diamond_chain.json
+framing node_chain_two                        graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
