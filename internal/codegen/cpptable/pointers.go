@@ -1045,7 +1045,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	// covers every byte before it, as the Go oracle's tableIntegritySeal does
 	// (internal/codegen/gotable/integrity.go).
 	if st.Integrity != "" {
-		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+		g.pf("    TableWriter w( buffer, capacity < 4 ? 0 : capacity - 4 );\n")
 	} else {
 		g.pf("    TableWriter w( buffer, capacity );\n")
 	}
@@ -1112,9 +1112,9 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 		// whole-file damage named integrity_mismatch, with nothing decoded (the
 		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
 		// the read then proceeds over the file without it.
-		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
 		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return false;\n    }\n")
-		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
@@ -1709,8 +1709,8 @@ func (g *tableGen) emitVariableLoadMeasure(st *ir.Struct) {
 		// integrity_mismatch, and no region is sized from the file; then the
 		// framing is read without it (the Go oracle's tableIntegrityOpen,
 		// internal/codegen/gotable/integrity.go).
-		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) ) { if ( reason_out != NULL ) { *reason_out = integrity_mismatch; } return -1; }\n")
-		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) ) { if ( reason_out != NULL ) { *reason_out = integrity_mismatch; } return -1; }\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    // a FORM BYTE this build does not carry is refused by name (§3, §6.5);\n")
 	g.pf("    // a short or mismatched form-1 trailer is damage named integrity_mismatch;\n")
@@ -1795,9 +1795,9 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		// whole-file damage named integrity_mismatch, with nothing decoded (the
 		// Go oracle's tableIntegrityOpen, internal/codegen/gotable/integrity.go);
 		// the read then proceeds over the file without it.
-		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm && !schema_integrity_holds( wire_file, wire_file_bytes ) )\n    {\n")
 		g.pf("        out->malformed = true;\n        out->damage_reason = integrity_mismatch;\n        return NULL;\n    }\n")
-		g.pf("    if ( wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
+		g.pf("    if ( wire_file != NULL && wire_file_bytes > 0 && wire_file[0] == kTableWireForm ) { wire_file_bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( wire_file, wire_file_bytes, ids_table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")

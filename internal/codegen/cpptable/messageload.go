@@ -678,7 +678,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }\n")
 	g.pf("    TableMessageBatch batch;\n")
 	if st.Integrity != "" {
-		g.pf("    if ( !TableMessageBatchBegin( batch, buffer, capacity - 4, count ) ) { return -1; }\n")
+		g.pf("    if ( capacity < 4 || !TableMessageBatchBegin( batch, buffer, capacity - 4, count ) ) { return -1; }\n")
 	} else {
 		g.pf("    if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }\n")
 	}

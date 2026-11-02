@@ -1571,7 +1571,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	// covers every byte before it, as the Go oracle's emitIntegrityRetain and
 	// tableIntegritySeal do (internal/codegen/gotable/integrity.go).
 	if st.Integrity != "" {
-		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+		g.pf("    TableWriter w( buffer, capacity < 4 ? 0 : capacity - 4 );\n")
 	} else {
 		g.pf("    TableWriter w( buffer, capacity );\n")
 	}

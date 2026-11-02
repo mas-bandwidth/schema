@@ -1381,7 +1381,7 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	// every byte written, through the Go oracle's tableIntegritySeal
 	// (internal/codegen/gotable/integrity.go).
 	if st.Integrity != "" {
-		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+		g.pf("    TableWriter w( buffer, capacity < 4 ? 0 : capacity - 4 );\n")
 	} else {
 		g.pf("    TableWriter w( buffer, capacity );\n")
 	}
@@ -1936,12 +1936,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// whole-file DAMAGE named integrity_mismatch, with nothing decoded, as
 		// the Go oracle's tableIntegrityOpen does (internal/codegen/gotable/
 		// integrity.go). The read then proceeds over the file without it.
-		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
+		g.pf("    if ( buffer != NULL && bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
 		g.pf("        %sReset( value );\n", st.Name)
 		g.pf("        to->malformed = true;\n")
 		g.pf("        to->damage_reason = integrity_mismatch;\n")
 		g.pf("        return TableOpenDamaged;\n    }\n")
-		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
+		g.pf("    if ( buffer != NULL && bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
