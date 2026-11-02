@@ -19,7 +19,7 @@
 ;;;; not have, and it is held to the same rule.
 ;;;;
 ;;;; Usage:
-;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
+;;;;   sbcl --script tools/roadmap/render.lisp [--check] [--require-original-nine] [--evidence DIR] [roadmap.sexp] [ROADMAP.md]
 ;;;;   sbcl --script tools/roadmap/render.lisp --test
 
 (defpackage :roadmap-renderer
@@ -610,6 +610,56 @@ nodes, and closing sections each with a title and text."
           (error ":page :closing section ~s lacks :text" (getf section :title)))))
     page))
 
+;;; Explicit release acceptance; rendering/drift checks remain usable mid-work.
+
+(defparameter *original-nine-languages*
+  '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir"))
+
+(defparameter *original-nine-roadmaps*
+  '("packet-wire" "fixed-tables" "variable-tables"))
+
+(defun original-nine-problems (sexp table)
+  "Every unfinished original-nine cell and leaf, plus missing required page
+sections/columns. TABLE is the validated graph after evidence overlays."
+  (let ((page (validate-page sexp table))
+        (memo (make-hash-table :test 'equal))
+        (problems nil))
+    (dolist (id *original-nine-roadmaps*)
+      (unless (member id (getf page :roadmaps) :test #'string=)
+        (push (format nil "Missing required rendered roadmap section ~s" id) problems))
+      (let ((roadmap (find-reachable-roadmap (getf sexp :root) table id)))
+        (if (null roadmap)
+            (push (format nil "Missing required reachable roadmap ~s" id) problems)
+            (dolist (lang *original-nine-languages*)
+              (if (not (assoc lang (getf roadmap :columns) :test #'string=))
+                  (push (format nil "Missing required language ~s in roadmap ~s" lang id) problems)
+                  (dolist (row (getf roadmap :rows))
+                    (let* ((row-id (first row))
+                           (cell (find-if (lambda (c)
+                                            (and (string= row-id (first c))
+                                                 (string= lang (second c))))
+                                          (getf roadmap :cells)))
+                           (work-id (third cell))
+                           (leaves (collect-work-leaves work-id table memo nil 0))
+                           (unfinished
+                             (remove-if
+                              (lambda (leaf)
+                                (let ((task (gethash leaf table)))
+                                  (and (eq (getf task :state) :done)
+                                       (some #'non-blank-string-p (getf task :evidence)))))
+                              leaves)))
+                      (when unfinished
+                        (push (format nil "Unfinished cell ~a/~a/~a (work ~s)" id row-id lang work-id)
+                              problems)
+                        (dolist (leaf unfinished)
+                          (push (format nil "  leaf ~s: state ~s~a"
+                                        leaf (getf (gethash leaf table) :state)
+                                        (if (some #'non-blank-string-p
+                                                  (getf (gethash leaf table) :evidence))
+                                            "" ", missing evidence"))
+                                problems))))))))))
+    (nreverse problems)))
+
 (defun render-page-string (sexp table sexp-path)
   "The whole ROADMAP.md: title, generated-file notice, one section per roadmap
 in :page order (heading, prose, table between its markers), then the closing
@@ -663,28 +713,77 @@ sections."
     (multiple-value-bind (files entries) (apply-evidence-directory table evidence-dir)
       (values sexp table files entries))))
 
-(defun render-to-roadmap-file (sexp-path roadmap-path check-only &optional evidence-dir)
+(defun render-to-roadmap-file (sexp-path roadmap-path check-only
+                                &optional evidence-dir require-original-nine)
   (let ((evidence-dir (or evidence-dir (default-evidence-directory sexp-path))))
     (multiple-value-bind (sexp table files entries) (load-work-graph sexp-path evidence-dir)
-      (let ((page (render-page-string sexp table sexp-path))
-            (existing (and (probe-file roadmap-path) (read-file-to-string roadmap-path))))
+      (let* ((page (render-page-string sexp table sexp-path))
+             (existing (and (probe-file roadmap-path) (read-file-to-string roadmap-path)))
+             (problems (and require-original-nine (original-nine-problems sexp table))))
+        (when require-original-nine
+          (if problems
+              (progn
+                (format *error-output* "INCOMPLETE: original-nine roadmap acceptance failed~%")
+                (dolist (problem problems)
+                  (format *error-output* "~a~%" problem)))
+              (format t "OK: original-nine roadmap acceptance (all three sections, all required leaves done with evidence)~%")))
         (if check-only
             (if (and existing (string= existing page))
                 (progn
                   (format t "OK: ~a is up to date with ~a (~D evidence files, ~D entries)~%"
                           roadmap-path sexp-path files entries)
-                  0)
+                  (if problems 1 0))
                 (progn
                   (format *error-output* "DRIFT: ~a differs from the page rendered from ~a; run: make roadmap~%"
                           roadmap-path sexp-path)
                   1))
-            (progn
-              (write-string-to-file roadmap-path page)
-              (format t "Rendered ~a from ~a (~D evidence files, ~D entries)~%"
-                      roadmap-path sexp-path files entries)
-              0))))))
+            (if problems
+                1
+                (progn
+                  (write-string-to-file roadmap-path page)
+                  (format t "Rendered ~a from ~a (~D evidence files, ~D entries)~%"
+                          roadmap-path sexp-path files entries)
+                  0)))))))
 
 ;;; Test Suite
+
+(defun original-nine-test-graph ()
+  "A complete original-nine page with unfinished optional expansion columns."
+  (let ((sections '("packet-wire" "fixed-tables" "variable-tables"))
+        (languages '("cpp" "c" "cs" "go" "rust" "java" "js" "dart" "elixir" "lua"))
+        (nodes nil))
+    (dolist (section sections)
+      (let ((cells nil))
+        (dolist (lang languages)
+          (let ((id (format nil "~a/~a" section lang)))
+            (push (list :id id :type :task
+                        :state (if (string= lang "lua") :todo :done)
+                        :evidence (unless (string= lang "lua") '("executed fixture gate")))
+                  nodes)
+            (push (list "feature" lang id) cells)))
+        (push (list :id section :type :roadmap :title section
+                    :rows '(("feature" "Feature"))
+                    :columns (mapcar (lambda (lang) (list lang lang)) languages)
+                    :cells (nreverse cells))
+              nodes)))
+    (push (list :id "goal" :type :work-set :children sections) nodes)
+    (list :schema 1 :root "goal"
+          :page (list :title "Fixture" :roadmaps (copy-list sections))
+          :nodes (nreverse nodes))))
+
+(defun original-nine-test-problems (sexp &optional overlays)
+  (let ((table (build-and-validate-node-table (validate-root sexp) (getf sexp :root))))
+    (apply-evidence-overlay table overlays)
+    (original-nine-problems sexp table)))
+
+(defun original-nine-test-node (sexp id)
+  (find id (getf sexp :nodes) :key (lambda (node) (getf node :id)) :test #'string=))
+
+(defun original-nine-test-set (sexp id key value)
+  (setf (getf sexp :nodes)
+        (mapcar (lambda (node)
+                  (if (string= id (getf node :id)) (plist-put node key value) node))
+                (getf sexp :nodes))))
 
 (defun run-tests ()
   (format t "=== Running Roadmap Renderer Validation Test Suite ===~%")
@@ -700,6 +799,101 @@ sections."
                  (error (e)
                    (format t "FAIL: ~a (~a)~%" name e)
                    (incf fail-count)))))
+
+      (test "original nine accepts all three sections and ignores optional expansion TODOs"
+        (lambda ()
+          (when (original-nine-test-problems (original-nine-test-graph))
+            (error "Complete original nine did not pass"))))
+
+      (test "original nine names every unfinished cell and leaf"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (loop for id in '("packet-wire/cpp" "fixed-tables/c" "variable-tables/dart")
+                  for state in '(:todo :doing :unknown) do
+                    (original-nine-test-set sexp id :state state))
+            (let ((problems (original-nine-test-problems sexp)))
+              (unless (= 6 (length problems))
+                (error "Expected three cell and three leaf diagnostics: ~s" problems))
+              (dolist (id '("packet-wire/cpp" "fixed-tables/c" "variable-tables/dart"))
+                (unless (some (lambda (line) (and (search "leaf" line) (search id line))) problems)
+                  (error "Missing unfinished leaf ~a: ~s" id problems)))))))
+
+      (test "original nine descends work sets and reports shared debt for both cells"
+        (lambda ()
+          (let* ((sexp (original-nine-test-graph))
+                 (roadmap (original-nine-test-node sexp "variable-tables")))
+            (push '(:id "shared-debt" :type :task :state :todo) (getf sexp :nodes))
+            (push '(:id "nested" :type :work-set :children ("shared-debt")) (getf sexp :nodes))
+            (push '(:id "both" :type :work-set :children ("nested" "variable-tables/dart"))
+                  (getf sexp :nodes))
+            (dolist (cell (getf roadmap :cells))
+              (when (member (second cell) '("dart" "go") :test #'string=)
+                (setf (third cell) "both")))
+            (let ((problems (original-nine-test-problems sexp)))
+              (unless (and (= 4 (length problems))
+                           (= 2 (count-if (lambda (line) (search "leaf \"shared-debt\"" line)) problems))
+                           (some (lambda (line) (search "variable-tables/feature/dart" line)) problems)
+                           (some (lambda (line) (search "variable-tables/feature/go" line)) problems))
+                (error "Shared nested debt lost a cell or leaf: ~s" problems))))))
+
+      (test "original nine refuses a missing required column even when remaining matrix is complete"
+        (lambda ()
+          (let* ((sexp (original-nine-test-graph))
+                 (roadmap (original-nine-test-node sexp "fixed-tables")))
+            (setf (getf roadmap :columns)
+                  (remove "dart" (getf roadmap :columns) :key #'first :test #'string=)
+                  (getf roadmap :cells)
+                  (remove "dart" (getf roadmap :cells) :key #'second :test #'string=))
+            (unless (equal (original-nine-test-problems sexp)
+                           '("Missing required language \"dart\" in roadmap \"fixed-tables\""))
+              (error "Missing original-nine column escaped")))))
+
+      (test "original nine refuses an unrendered section that remains in the graph"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (setf (getf (getf sexp :page) :roadmaps) '("packet-wire" "fixed-tables"))
+            (unless (equal (original-nine-test-problems sexp)
+                           '("Missing required rendered roadmap section \"variable-tables\""))
+              (error "Hidden required section escaped")))))
+
+      (test "original nine refuses a removed section"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (setf (getf (getf sexp :page) :roadmaps) '("packet-wire" "fixed-tables")
+                  (getf sexp :nodes)
+                  (remove "variable-tables" (getf sexp :nodes)
+                          :key (lambda (node) (getf node :id)) :test #'string=))
+            (original-nine-test-set sexp "goal" :children '("packet-wire" "fixed-tables"))
+            (unless (= 2 (length (original-nine-test-problems sexp)))
+              (error "Missing required section escaped")))))
+
+      (test "original nine uses effective overlay state in both directions"
+        (lambda ()
+          (let ((sexp (original-nine-test-graph)))
+            (unless (= 2 (length (original-nine-test-problems
+                                 sexp '((:id "variable-tables/dart" :state :todo)))))
+              (error "Overlay regression escaped"))
+            (original-nine-test-set sexp "variable-tables/dart" :state :todo)
+            (when (original-nine-test-problems
+                   sexp '((:id "variable-tables/dart" :state :done :evidence ("executed new gate"))))
+              (error "Proven overlay completion was ignored")))))
+
+      (test "original nine fails closed on evidence and malformed graph"
+        (lambda ()
+          (dolist (fault '(:evidence :dangling :cycle :missing-cell))
+            (let* ((sexp (original-nine-test-graph))
+                   (node (original-nine-test-node sexp "variable-tables"))
+                   (caught nil))
+              (case fault
+                (:evidence
+                 (original-nine-test-set sexp "variable-tables/dart" :evidence nil))
+                (:dangling (setf (third (first (getf node :cells))) "missing"))
+                (:cycle
+                 (push '(:id "cycle" :type :work-set :children ("cycle")) (getf sexp :nodes)))
+                (:missing-cell (setf (getf node :cells) (rest (getf node :cells)))))
+              (handler-case (original-nine-test-problems sexp)
+                (error () (setf caught t)))
+              (unless caught (error "Accepted malformed original-nine input: ~s" fault))))))
 
       (test "literal EOF keyword is trailing data"
         (lambda ()
@@ -1168,6 +1362,7 @@ sections."
 (defun main (argv)
   (let ((check-only nil)
         (test-mode nil)
+        (require-original-nine nil)
         (evidence-dir nil)
         (positional nil))
     (loop while argv do
@@ -1175,6 +1370,8 @@ sections."
         (cond
           ((string= arg "--check")
            (setf check-only t))
+          ((string= arg "--require-original-nine")
+           (setf require-original-nine t))
           ((string= arg "--test")
            (setf test-mode t))
           ((string= arg "--evidence")
@@ -1200,7 +1397,8 @@ sections."
                                               (and evidence-dir
                                                    (pathname (if (char= (char evidence-dir (1- (length evidence-dir))) #\/)
                                                                  evidence-dir
-                                                                 (concatenate 'string evidence-dir "/")))))))
+                                                                 (concatenate 'string evidence-dir "/"))))
+                                              require-original-nine)))
             (sb-ext:exit :code code))
         (error (e)
           (format *error-output* "Error: ~a~%" e)

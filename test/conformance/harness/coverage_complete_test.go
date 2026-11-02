@@ -170,13 +170,15 @@ func writeCoverageFixture(t *testing.T, dir string, rows []coverageRow, fixed ma
 }
 
 func TestOriginalNineCoverageManifestReportAndRefusals(t *testing.T) {
+	fakeRoadmapChecker(t, 0)
 	t.Chdir("../../..")
 	shape := realCoverageShape(t)
 	rows, fixed := completeCoverage(shape)
 	dir := t.TempDir()
 	writeCoverageFixture(t, dir, rows, fixed)
+	writeReadinessFixture(t, dir)
 	var out bytes.Buffer
-	if err := coverageReport(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true); err != nil {
+	if err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true, func(*Manifest) []string { return nil }, testReadinessRevision); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "PASS: every original-nine") || !strings.Contains(out.String(), "+") {
@@ -187,7 +189,7 @@ func TestOriginalNineCoverageManifestReportAndRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := coverageReport(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true); err == nil {
+	if err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true, func(*Manifest) []string { return nil }, testReadinessRevision); err == nil {
 		t.Fatal("missing canonical artifact passed")
 	}
 	if !strings.Contains(out.String(), "| surface |") || !strings.Contains(out.String(), "cpp /") {
