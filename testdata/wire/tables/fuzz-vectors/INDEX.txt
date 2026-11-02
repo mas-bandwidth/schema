@@ -214,3 +214,7 @@ retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors
 # Two empty string records have distinct incoming identity despite canonical String values.
 # Dart formerly merged them and refused the valid graph as blob_shared.
 distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/distinct_empty_string_blobs.bin
+
+# An unknown enum in a counted list is an excluded retained class.
+# Dart counted unknown but omitted retain_lost for this list element.
+retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin

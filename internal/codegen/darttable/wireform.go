@@ -2773,7 +2773,7 @@ func (g *wireGen) emitLoadScalarListElem(f *ir.Field, dest, arr string, ind stri
 			vid := ir.TableWireId(e.VariantWireName(i))
 			g.pf("%s\t\t\t\tcase %s: %s.add(%s);\n", ind, dartU64Literal(vid), dest, g.enumConst(e, i+1))
 		}
-		g.pf("%s\t\t\t\tdefault: %s.add(%s); r.report.unknown++;\n", ind, dest, g.enumConst(e, 0))
+		g.pf("%s\t\t\t\tdefault: %s.add(%s); r.report.unknown++; if (r.retain != null) r.report.retainLost++;\n", ind, dest, g.enumConst(e, 0))
 		g.pf("%s\t\t\t}\n", ind)
 		g.pf("%s\t\t\t}\n", ind)
 	case wireKindBool:
