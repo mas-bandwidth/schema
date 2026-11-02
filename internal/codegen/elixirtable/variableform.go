@@ -1000,9 +1000,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :map} = f, value, idx_map, ids, order, acc) do
     # SPEC-TABLES §2.8: map storage is the same kind-14/element-13 framing
     # as a list of entry tables, with ascending key order fixed by the writer.
-    entries = map_entries(f, Map.get(value, f.name, %{}))
-    list = %{f | t: :list}
-    emit_field(list, %{f.name => entries}, idx_map, ids, order, acc)
+    case Map.get(value, f.name, f.default) do
+      nil ->
+        {idx_map, ids, order, acc}
+
+      values ->
+        entries = map_entries(f, values)
+        emit_field(%{f | t: :list}, %{f.name => entries}, idx_map, ids, order, acc)
+    end
   end
 
   defp emit_field(%{t: :pointer} = f, value, idx_map, ids, order, acc) do
@@ -5138,8 +5143,14 @@ const variableRetainSource = `
   # same framing over its entry tables, in ascending key order, so an entry's
   # slot is its index.
   defp emit_field_retain(%{t: :map} = f, value, s, path, acc) do
-    entries = map_entries(f, Map.get(value, f.name, %{}))
-    emit_field_retain(%{f | t: :list}, %{f.name => entries}, s, path, acc)
+    case Map.get(value, f.name, f.default) do
+      nil ->
+        {s, acc}
+
+      values ->
+        entries = map_entries(f, values)
+        emit_field_retain(%{f | t: :list}, %{f.name => entries}, s, path, acc)
+    end
   end
 
   defp emit_field_retain(%{t: :list, elem_kind: kind} = f, value, s, path, acc)

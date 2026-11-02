@@ -693,7 +693,15 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # a LIST's and a MAP's holder is written by the extent walk, which places
   # the array it points at (§7.6)
   defp cook_field(%{array: :list}, _value, _base, _index, _order, buf), do: buf
-  defp cook_field(%{t: :map}, _value, _base, _index, _order, buf), do: buf
+
+  defp cook_field(%{t: :map} = f, value, base, _index, _order, buf) do
+    if f.present_off >= 0 do
+      present = Map.get(value, f.name) != nil
+      put_u8(buf, base + f.present_off, if(present, do: 1, else: 0))
+    else
+      buf
+    end
+  end
 
   defp cook_field(f, value, base, index, order, buf) do
     # an absent optional reads nil (§2.3)

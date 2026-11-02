@@ -716,6 +716,11 @@ func (g *gen) cookHolderAccessors(st *ir.Struct, f *ir.Field, fl ir.FieldLayout)
 				fmt.Sprintf("C.span(region, node + %s, %s)", exInt(fl.Offset), exInt(stride))),
 		exDefDo("  ", fmt.Sprintf("def %s_node_%s_stride", lo, f.Name), exInt(stride)),
 	}
+	if f.Type.Optional {
+		pieces := ir.BlockFieldPieceOffsets(g.unit, f, fl.Offset, false)
+		out = append(out, exDefDo("  ", fmt.Sprintf("def %s_node_%s_present?(region, node)", lo, f.Name),
+			fmt.Sprintf("C.bool(region, node + %s)", exInt(pieces[len(pieces)-1].Offset))))
+	}
 	if f.IsMap() && g.cookable(f.MapEntry.Name) {
 		entry := f.MapEntry
 		home := g.unit.DeclFile[entry.Name]

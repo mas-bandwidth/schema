@@ -7,5 +7,5 @@ package compiler
 // target_elixir_carries_optional_variable_closure_test.go and by conformance
 // over tblg1 (optional_absent_no_edge, optional_present_edge).
 func init() {
-	registerCarries("elixir", carryOptionalVariableClosure, carryArrayRoot)
+	registerCarries("elixir", carryOptionalVariableClosure, carryArrayRoot, carryOptionalMap)
 }
