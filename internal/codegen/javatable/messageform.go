@@ -460,7 +460,7 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 33;
+        return kind <= 33 || kind == 36;
     }
 
     static int kindWidth(int kind) {
@@ -531,6 +531,10 @@ public final class TableVocabulary {
     static Shape shapeRead(Reader r, int kind) {
         Shape s = new Shape();
         s.kind = kind;
+        if (kind == 36) {
+            s.bits = 64;
+            return s;
+        }
         if ((kind >= 2 && kind <= 10) || (kind >= 18 && kind <= 29)) {
             if (!r.has(1)) {
                 return null;
@@ -923,7 +927,7 @@ public final class TableMessage {
         switch (s.kind) {
             case 0: case 32: return 0L;
             case 1: return 1L;
-            case 11: return 64L;
+            case 11: case 36: return 64L;
             case 30: return 16L;
         }
         if ((s.kind >= 2 && s.kind <= 10) || (s.kind >= 18 && s.kind <= 29)) {
@@ -960,7 +964,7 @@ public final class TableMessage {
                 return !r.err;
             case 1:
                 return r.skipBits(1L);
-            case 11:
+            case 11: case 36:
                 return r.skipBits(64L);
             case 30: {
                 long ref = r.get(r.vocab.refBits);

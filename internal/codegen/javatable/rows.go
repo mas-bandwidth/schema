@@ -615,8 +615,12 @@ func (g *rowGen) cookHolderInfo(fl ir.FieldLayout) string {
 		elem = g.cookFieldInfo(ir.FieldLayout{Field: variableElement(f), Offset: 0, Size: size, Align: align})
 		kind = "LIST"
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, false, 1, false, -1, -1, TableCookStorage.%s, null).extent(%d, %d, %s)",
-		f.Name, varMember(f), fl.Offset, fl.Size, pieces[0].Size, kind, size, align, elem)
+	presentOffset := int64(-1)
+	if f.Type.Optional {
+		presentOffset = pieces[len(pieces)-1].Offset
+	}
+	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, false, 1, false, -1, %d, TableCookStorage.%s, null).extent(%d, %d, %s)",
+		f.Name, varMember(f), fl.Offset, fl.Size, pieces[0].Size, presentOffset, kind, size, align, elem)
 }
 
 // emitRowHolder is a LIST's or a MAP's sixteen-byte holder (docs/SPEC-TABLES.md

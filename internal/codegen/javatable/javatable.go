@@ -94,6 +94,9 @@ func tableScalarKind(f *ir.Field) int {
 	case ir.TBool:
 		return tkBool
 	case ir.TInt:
+		if f.Type.Timestamp {
+			return ir.TableKindTimestamp
+		}
 		if f.Type.Signed {
 			switch f.Type.Width {
 			case 8:

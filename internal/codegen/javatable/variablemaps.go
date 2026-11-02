@@ -19,7 +19,7 @@ func variableStruct(st *ir.Struct) *ir.Struct {
 			continue
 		}
 		one := *f
-		one.Type = ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry}
+		one.Type = ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry, Optional: f.Type.Optional}
 		one.Array = ir.ArrayList
 		copy.Fields[i] = &one
 	}

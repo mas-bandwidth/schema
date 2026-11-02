@@ -226,7 +226,7 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		}
 	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
+	w.push(fixedLayoutEntry{id: id, kind: ir.TableFixedLeafKind(f), size: size, children: 0, note: note},
 		fixedDst{dst: at})
 }
 
