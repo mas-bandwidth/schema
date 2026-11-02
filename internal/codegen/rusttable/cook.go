@@ -1070,7 +1070,7 @@ func (g *gen) emitCookHandle(st *ir.Struct) {
 	g.pf("    // not a description of them.\n")
 	g.pf("    pub const REGION_ALIGNMENT: u64 = %d; // the greatest alignof in the region, floor eight\n", align)
 	g.pf("    pub const ROOT_SIZE: u64 = %d;\n", layout.Size)
-	g.pf("    pub const ROOT_ALIGN: u64 = %d;\n\n", layout.Align)
+	g.pf("    pub const ROOT_ALIGN: u64 = %d;\n\n", ir.CookNodeAlign(g.unit, st))
 	g.pf("    /// Open checks the header and POINTS, and that is the WHOLE check.\n")
 	g.pf("    ///\n    /// # Safety\n    /// `bytes` must point at `length` readable bytes that outlive the handle.\n")
 	g.pf("    pub unsafe fn open(bytes: *const u8, length: u64) -> Option<%sCook> {\n", st.Name)
@@ -1192,7 +1192,7 @@ func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
 		if member == nil {
 			return
 		}
-		aligns = append(aligns, ir.RecordLayout(g.unit, member).Align)
+		aligns = append(aligns, ir.CookNodeAlign(g.unit, member))
 		for _, f := range member.Fields {
 			if f.Type.Kind != ir.TNamed {
 				continue
