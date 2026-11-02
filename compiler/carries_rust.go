@@ -8,6 +8,8 @@ package compiler
 // ranges use the normalized endpoints, held across JSON, variable/fixed wire,
 // and cook by rusttable.TestRustOneSidedRangeNative. Optional maps are held by
 // the native presence, graph, ordering, text and cook probes in rusttable.
+// Array-root JSON shape is held across every by-value position by the native
+// array-root closure corpus, including named wrong-root diagnostics.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot)
 }

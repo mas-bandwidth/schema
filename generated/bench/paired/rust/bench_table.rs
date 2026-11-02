@@ -1159,8 +1159,8 @@ pub fn mixed_stat_json_write(v: &MixedStat, w: &mut Jw, depth: usize, label: u64
 #[allow(dead_code)]
 pub fn mixed_chat_event_json_read(jr: &mut Jr, v: &mut MixedChatEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_chat_event_json_fields(jr, v, None);
@@ -1271,8 +1271,8 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
 #[allow(dead_code)]
 pub fn mixed_entity_json_read(jr: &mut Jr, v: &mut MixedEntity) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_entity_json_fields(jr, v, None);
@@ -1512,8 +1512,8 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
 #[allow(dead_code)]
 pub fn mixed_hit_event_json_read(jr: &mut Jr, v: &mut MixedHitEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_hit_event_json_fields(jr, v, None);
@@ -1640,8 +1640,8 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
 #[allow(dead_code)]
 pub fn mixed_pickup_event_json_read(jr: &mut Jr, v: &mut MixedPickupEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_pickup_event_json_fields(jr, v, None);
@@ -1752,8 +1752,8 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
 #[allow(dead_code)]
 pub fn mixed_stat_json_read(jr: &mut Jr, v: &mut MixedStat) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_stat_json_fields(jr, v, None);

@@ -796,6 +796,7 @@ pub enum TableReason {
     /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
+    JsonRootNotArray,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -831,6 +832,7 @@ impl TableReason {
             TableReason::AllocationFailed => "allocation_failed",
             TableReason::WireDamaged => "wire_damaged",
             TableReason::NonFiniteFloat => "non_finite_float",
+            TableReason::JsonRootNotArray => "json_root_not_array",
         }
     }
 }
@@ -883,6 +885,8 @@ pub struct TableReport {
     /// and non_finite_float_id is the id the reader cannot name.
     pub non_finite_float: &'static str,
     pub non_finite_float_id: Option<u64>,
+    /// A named text-form diagnostic, empty after a clean read.
+    pub text_error: &'static str,
 }
 
 impl TableReport {

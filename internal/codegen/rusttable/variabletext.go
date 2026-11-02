@@ -305,6 +305,8 @@ pub struct Jr<'a> {
     pub malformed: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
     pub zero: bool,
+    pub reason: TableReason,
+    pub text_error: &'static str,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
@@ -312,7 +314,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1013,6 +1015,12 @@ func (g *gen) emitTextWrite(b *strings.Builder, st *ir.Struct) {
 	write := fn(st.Name, "json_write")
 	fmt.Fprintf(b, "#[allow(unused_variables, unused_mut, dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(v: &%s, w: &mut Jw, depth: usize, label: u64) {\n", write, st.Name)
+	if st.JsonArray {
+		fmt.Fprintf(b, "    if depth > JSON_DEPTH_CAP { w.refused = true; }\n")
+		g.emitTextWriteValue(b, st.Fields[0], "v."+ir.RustSnake(st.Fields[0].Name), "depth", "    ")
+		fmt.Fprintf(b, "}\n\n")
+		return
+	}
 	fmt.Fprintf(b, "    if depth > JSON_DEPTH_CAP { w.refused = true; }\n")
 	fmt.Fprintf(b, "    w.out.push('{');\n")
 	fmt.Fprintf(b, "    let mut sep = false;\n")
@@ -1234,11 +1242,17 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "#[allow(dead_code)]\n")
 	fmt.Fprintf(b, "pub fn %s(jr: &mut Jr, v: &mut %s) {\n", read, st.Name)
 	fmt.Fprintf(b, "    jr.space();\n")
-	fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.malformed = true; return; }\n")
 	fmt.Fprintf(b, "    if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }\n")
-	fmt.Fprintf(b, "    jr.p += 1;\n")
-	fmt.Fprintf(b, "    jr.depth += 1;\n")
-	fmt.Fprintf(b, "    let _ = %s(jr, v, None);\n", fields)
+	if st.JsonArray {
+		fmt.Fprintf(b, "    if jr.peek() != b'[' { jr.malformed = true; jr.reason = TableReason::JsonRootNotArray; jr.text_error = %q; return; }\n", "json_root_not_array: "+st.Name)
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
+		g.emitTextReadValue(b, st.Fields[0], "v."+ir.RustSnake(st.Fields[0].Name), "    ")
+	} else {
+		fmt.Fprintf(b, "    if jr.peek() != b'{' { jr.malformed = true; return; }\n")
+		fmt.Fprintf(b, "    jr.p += 1;\n")
+		fmt.Fprintf(b, "    jr.depth += 1;\n")
+		fmt.Fprintf(b, "    let _ = %s(jr, v, None);\n", fields)
+	}
 	fmt.Fprintf(b, "    jr.depth -= 1;\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1405,7 +1419,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 	case vPointer:
 		fmt.Fprintf(b, "%s%s = %s(jr);\n", in, field, fn(f.Type.Name, "json_ptr"))
 	case vTable:
-		fmt.Fprintf(b, "%sif jr.peek() == b'{' { %s = %s::default(); %s(jr, &mut %s); }\n", in, field, f.Type.Name, fn(f.Type.Name, "json_read"), field)
+		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s = %s::default(); %s(jr, &mut %s); }\n", in, tableTextOpening(f), field, f.Type.Name, fn(f.Type.Name, "json_read"), field)
 		fmt.Fprintf(b, "%selse { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 	case vMap:
 		g.emitMapTextRead(b, f, field, in)
@@ -1425,7 +1439,7 @@ func (g *gen) emitTextReadElem(b *strings.Builder, f *ir.Field, field, ind strin
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vTable:
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", ind, f.Type.Name)
-		fmt.Fprintf(b, "%sif jr.peek() == b'{' { %s(jr, &mut e); } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", ind, fn(f.Type.Name, "json_read"))
+		fmt.Fprintf(b, "%sif jr.peek() == b'%c' { %s(jr, &mut e); } else { jr.kind_mismatch += 1; jr.skip_value(); }\n", ind, tableTextOpening(f), fn(f.Type.Name, "json_read"))
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
 	case vUnion:
 		un := unionOf(f)
@@ -1596,6 +1610,7 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    report.clamped += jr.clamped;\n")
 	fmt.Fprintf(b, "    report.duplicate += jr.duplicate;\n")
 	fmt.Fprintf(b, "    report.malformed |= jr.malformed;\n")
+	fmt.Fprintf(b, "    if jr.reason != TableReason::None { report.reason = jr.reason; report.text_error = jr.text_error; }\n")
 	fmt.Fprintf(b, "    if jr.malformed { None } else { Some(v) }\n")
 	fmt.Fprintf(b, "}\n\n")
 }
@@ -1684,4 +1699,12 @@ func textStorageRange(f *ir.Field) (lo, hi *big.Int) {
 		return lo, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
 	}
 	return new(big.Int), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+}
+
+// Array-root tables keep their declared array shape in every nested position.
+func tableTextOpening(f *ir.Field) byte {
+	if st, ok := f.Type.Ref.(*ir.Struct); ok && st.JsonArray {
+		return '['
+	}
+	return '{'
 }

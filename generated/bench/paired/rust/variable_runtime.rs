@@ -47,6 +47,7 @@ pub enum TableReason {
     /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
+    JsonRootNotArray,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -82,6 +83,7 @@ impl TableReason {
             TableReason::AllocationFailed => "allocation_failed",
             TableReason::WireDamaged => "wire_damaged",
             TableReason::NonFiniteFloat => "non_finite_float",
+            TableReason::JsonRootNotArray => "json_root_not_array",
         }
     }
 }
@@ -134,6 +136,8 @@ pub struct TableReport {
     /// and non_finite_float_id is the id the reader cannot name.
     pub non_finite_float: &'static str,
     pub non_finite_float_id: Option<u64>,
+    /// A named text-form diagnostic, empty after a clean read.
+    pub text_error: &'static str,
 }
 
 impl TableReport {
@@ -1868,6 +1872,8 @@ pub struct Jr<'a> {
     pub malformed: bool,
     /// set when a string decoded the U+0000 escape; read_text refuses it (§16.3)
     pub zero: bool,
+    pub reason: TableReason,
+    pub text_error: &'static str,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
@@ -1875,7 +1881,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {

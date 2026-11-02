@@ -1286,7 +1286,7 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 				fmt.Fprintf(b, "                if !jr.malformed { *v = %s::%s(arm); }\n", un.Name, rustVariant(v.Name))
 				fmt.Fprintf(b, "            }\n")
 			case classOf(v.F) == vTable || classOf(v.F) == vMap || classOf(v.F) == vUnion:
-				fmt.Fprintf(b, "            if jr.peek() != b'{' { jr.kind_mismatch += 1; jr.skip_value(); }\n")
+				fmt.Fprintf(b, "            if jr.peek() != b'%c' { jr.kind_mismatch += 1; jr.skip_value(); }\n", tableTextOpening(v.F))
 				fmt.Fprintf(b, "            else {\n")
 				fmt.Fprintf(b, "                let mut arm = %s;\n", fieldDefault(v.F))
 				g.emitTextReadValue(b, v.F, "arm", "                ")
