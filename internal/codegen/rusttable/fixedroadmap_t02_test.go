@@ -194,9 +194,12 @@ func t02StructFields(text, name string) []string {
 	return out
 }
 
-// t02Fn is the emitted body of one `pub fn NAME(...)`, up to its column-zero
-// closing brace.
+// t02Fn extracts one public function, following a fixed loader
+// through its checked delegation to the private record implementation.
 func t02Fn(text, name string) string {
+	if strings.HasSuffix(name, "_fixed_load") {
+		return rustFixedLoadRecords(text, name)
+	}
 	at := strings.Index(text, "pub fn "+name+"(")
 	if at < 0 {
 		return ""

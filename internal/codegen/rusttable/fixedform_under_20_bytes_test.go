@@ -19,9 +19,9 @@ import (
 // REFUSAL by name, the other answer. k == 0 is guarded on this leg by the
 // SEPARATE empty guard emitted above the form-byte read (fixedform.go:1090),
 // and it owes the same five-part answer as k = 1..19; the test measures that
-// instead of trimming the loop. The destination is proved untouched by
-// poisoning every byte with 0x5A and sweeping as_bytes over the first row: a
-// byte view, because the emitter derives neither PartialEq nor Debug on a Row.
+// instead of trimming the loop. The destination is poisoned first, then every
+// caller row must hold the schema's declared defaults after malformed damage.
+// The nonzero w=77 default distinguishes a correct reset from zero-filling.
 // CONTROL 2 deletes the short-file guard (fixedform.go:1104) and, on safe
 // Rust, the reader PANICS on a slice index instead of producing a swapped
 // report.
@@ -37,7 +37,7 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
 /// fixture, then every prefix from 0 up to that bound is handed to the reader
 /// and must land every part of the malformed row: malformed true, refused
 /// false, reason UNTOUCHED (TableFixedReason::None), the call None, all four
-/// counters zero, and not one destination byte written.
+/// counters zero, and every destination row reset to its declared defaults.
 #[test]
 fn v_fixed_form_under_20_bytes() {
     let data = std::fs::read(%q).expect("the reference's new_field_append.bin");
@@ -63,9 +63,8 @@ fn v_fixed_form_under_20_bytes() {
     for k in 0..TABLE_FIXED_HEADER_BYTES + 4 {
         let short = &data[..k];
         let mut values = vec![ROWTYPE::default(); 8];
-        // THE DESTINATION IS POISONED, NOT RESET: a zero fill looks exactly
-        // like a zero default, so only the nonzero 0x5A can prove no byte was
-        // written by a read that should refuse everything.
+        // Poison every caller row so unchanged storage cannot pass the reset
+        // check. The nonzero declared default w=77 also rejects zero-filling.
         unsafe {
             core::ptr::write_bytes(
                 values.as_mut_ptr() as *mut u8,
@@ -88,9 +87,11 @@ fn v_fixed_form_under_20_bytes() {
             report.widened == 0 && report.unknown == 0 && report.kind_mismatch == 0 && report.clamped == 0,
             "a short file moves no counter: {:?}", report
         );
-        for (i, &b) in as_bytes(&values[0]).iter().enumerate() {
-            assert!(b == 0x5A, "a {k}-byte read wrote a destination byte {i} = {b:#04x}");
-        }
+        // VNEW_field_append.schema declares x/y/z=0 and w=77.
+        assert!(
+            values.iter().all(|v| v.x == 0 && v.y == 0 && v.z == 0 && v.w == 77),
+            "a {k}-byte read did not restore every declared default"
+        );
     }
 }
 `, filepath.Join(corpus, "new_field_append.bin"))
