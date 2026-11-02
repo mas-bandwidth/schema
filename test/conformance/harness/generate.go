@@ -1,7 +1,7 @@
 // `harness generate` — the generated half of the conformance data.
 //
 // Two artefacts, both from the compiler's own engine (internal/tablewire and
-// internal/tabletext, reached through the public compiler API):
+// internal/tabletext):
 //
 //   - json/<instance>.json, the docs/SPEC-TABLES.md §16 text of the instance whose
 //     wire bytes are already pinned under testdata/wire/tables. The same
@@ -30,6 +30,8 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -220,12 +222,23 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", rc.Name, err)
 		}
-		// the counters and only the counters: a report is a fact about the
-		// DECODE, and asking for a text here would refuse the variable class
-		// for a file this step throws away
-		report, err := u.c.ReadReport(unit, rc.Root, wire)
-		if err != nil {
+		// A report describes the decode even when damage discards the whole
+		// instance. Read the engine's verdict directly: ReadReport also
+		// returns an unpacking diagnostic when no value can be produced.
+		root := unit.Tables[rc.Root]
+		if root == nil {
+			return fmt.Errorf("%s: root %q is not a table", rc.Name, rc.Root)
+		}
+		model := tabletext.NewModel(unit)
+		var report tabletext.Report
+		ok, err := tablewire.Decode(model, model.New(root), wire, &report)
+		// Named form refusals are report verdicts. Resource refusals and
+		// other engine errors must still stop generation.
+		if err != nil && !tablewire.Refused(err) {
 			return fmt.Errorf("%s: read: %w", rc.Name, err)
+		}
+		if !ok && err == nil && !report.Malformed {
+			return fmt.Errorf("%s: decoder stopped without a verdict", rc.Name)
 		}
 		counts := Counts{
 			Unknown:      report.Unknown,
