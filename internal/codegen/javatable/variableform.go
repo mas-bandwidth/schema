@@ -71,6 +71,7 @@ public final class TableVariable {
         public boolean malformed;
         public int widened;
         public int duplicate;
+        public int blobShared;
         public int missingRequired;
         public boolean refused;
         public String reason;
@@ -92,6 +93,7 @@ public final class TableVariable {
             malformed = false;
             widened = 0;
             duplicate = 0;
+            blobShared = 0;
             missingRequired = 0;
             refused = false;
             reason = null;
@@ -715,6 +717,9 @@ public final class TableVariable {
     // bytes no field claims — is malformed for the whole wire, and open says
     // so before any value is read.
     public static Reader open(byte[] data, Report report) {
+        if (report == null) {
+            report = new Report();
+        }
         int base = trailerBase(data, report);
         if (base < 0) {
             return null;
@@ -1099,6 +1104,7 @@ public final class TableVariable {
         public Object table;
         public boolean textMalformed;
         public boolean named;
+        public boolean judged;
 
         public NodeRecord(long typeId, byte[] body) {
             this.typeId = typeId;
@@ -1476,6 +1482,14 @@ public final class TableVariable {
         NodeRecord rec = recs[(int) (index - 2)];
         if (rec.typeId != 0 && rec.typeId != target) {
             report.kindMismatch++;
+            return;
+        }
+        if (rec.typeId != 0 && (target == STRING_ID || target == BYTES_ID)) {
+            if (rec.judged) {
+                report.blobShared++;
+            } else {
+                rec.judged = true;
+            }
         }
     }
 
@@ -3590,6 +3604,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 
 	// load
 	fmt.Fprintf(&b, "    public static Value load(byte[] data, TableVariable.Report report) {\n")
+	fmt.Fprintf(&b, "        if (report == null) { report = new TableVariable.Report(); }\n")
 	if st.Integrity != "" {
 		fmt.Fprintf(&b, "        byte[] wire = TableVariable.integrityOpen(data, report);\n")
 		fmt.Fprintf(&b, "        if (wire == null) { return null; }\n")

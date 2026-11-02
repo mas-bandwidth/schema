@@ -18,6 +18,9 @@ public final class BenchMixedRetain {
     // loss, never retained silently.
     public static BenchMixedVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return BenchMixedVariable.load(data, report);
         }
