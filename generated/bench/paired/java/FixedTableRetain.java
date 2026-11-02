@@ -30,6 +30,9 @@ public final class FixedTableRetain {
         FixedTableVariable.Value v = new FixedTableVariable.Value();
         readFieldsRetain(r, v, null, retain, report, path, 0);
         if (report.refused) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
         // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)

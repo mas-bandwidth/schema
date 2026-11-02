@@ -85,7 +85,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	fmt.Fprintf(&b, "        %sVariable.Value v = new %sVariable.Value();\n", st.Name, st.Name)
 	if st.FixedDeclared {
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, null, retain, report, path, 0);\n")
-		b.WriteString("        if (report.refused) { return null; }\n")
+		b.WriteString("        if (report.refused) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)\n")
 		b.WriteString("        if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        return v;\n")
@@ -111,7 +111,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("                decodeNodeBodyRetain(new TableVariable.Reader(rec.body, r.ids, report), rec.table, rec.typeId, retain, report, np);\n")
 		b.WriteString("            }\n        }\n")
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
-		b.WriteString("        if (report.refused) { return null; }\n")
+		b.WriteString("        if (report.refused) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		// THE SAME FRAMING WALK the plain load runs after its read: a load refuses
 		// exactly where loadMeasure answers -1 (docs/SPEC-TABLES.md §6.5), so a
 		// container whose count its framing cannot cover is refused whole here
@@ -120,14 +120,18 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
 		b.WriteString("            report.refused = true;\n")
 		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		b.WriteString("            retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
 		b.WriteString("            return null;\n")
 		b.WriteString("        }\n")
+		b.WriteString("        nt.from = 1;\n")
 		fmt.Fprintf(&b, "        %sVariable.resolveNodes(v, nt, report);\n", st.Name)
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
-		fmt.Fprintf(&b, "            for (TableVariable.NodeRecord rec : nt.recs) { if (rec.table != null) %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); }\n", st.Name, st.Name)
+		fmt.Fprintf(&b, "            for (int i = 0; i < nt.recs.length; i++) { TableVariable.NodeRecord rec = nt.recs[i]; if (rec.table != null) { nt.from = i + 2; %sVariable.resolveNodePointers(rec.table, rec.typeId, nt, v, %sVariable.TYPE_ID, report); } }\n", st.Name, st.Name)
 		b.WriteString("        }\n")
 		b.WriteString("        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)\n")
 		b.WriteString("        if (report.malformed) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
+		b.WriteString("        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)\n")
+		b.WriteString("        if (TableVariable.cyclic(nt)) { report.malformed = true; retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	}
