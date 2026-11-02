@@ -410,7 +410,13 @@ local carve_field, carve_element, carve_extent
 
 carve_extent = function(T, desc, v, recordBase, extentBase, cursor, w)
   for _, f in ipairs(desc.fields) do
-    if not f.optional or (v ~= nil and v[f.name .. "_present"] == true) then
+    if f.optional and (v == nil or v[f.name .. "_present"] ~= true) then
+      local x = v and v[f.name]
+      if f.shape == "map" and type(x) == "table" and next(x) ~= nil then
+        cursor.reason = "invalid_value: " .. desc.name .. "." .. f.name .. " is absent but holds map entries"
+        return false
+      end
+    else
       local x = field_value(T, f, v)
       if not carve_field(T, f, x, recordBase, extentBase, cursor, w) then return false end
     end
@@ -571,7 +577,7 @@ local function layout(T, name, v)
       if record_has_extent(T, e.codec) then
         record = e.codec.cook_record
         local cursor = { at = 0, index = index, maps = maps }
-        if not carve_extent(T, e.codec, e.v, 0, 0, cursor, nil) then return nil end
+        if not carve_extent(T, e.codec, e.v, 0, 0, cursor, nil) then return nil, cursor.reason end
         extent = cursor.at
       end
       e.record = record
@@ -608,8 +614,8 @@ function C.CookMeasure(T, name, v)
   -- (§3.3), named
   local nonfinite = D.refuse_non_finite(T, name, v)
   if nonfinite ~= nil then return -1, nonfinite end
-  local l = layout(T, name, v)
-  if l == nil then return -1 end
+  local l, reason = layout(T, name, v)
+  if l == nil then return -1, reason end
   return l.total
 end
 
@@ -619,8 +625,8 @@ end
 local function cook(T, name, v, capacity, order)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
-  local l = layout(T, name, v)
-  if l == nil then return nil, D.refuse_non_finite(T, name, v) end
+  local l, reason = layout(T, name, v)
+  if l == nil then return nil, reason or D.refuse_non_finite(T, name, v) end
   if capacity ~= nil and capacity < l.total then return nil end
   local w = W()
   for _, e in ipairs(l.entries) do
