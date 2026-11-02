@@ -234,3 +234,8 @@ list_damaged_child_stop listdemo Save testdata/wire/tables/fuzz-vectors/list_dam
 
 # Reserved node-table transport has exactly kind12; a different kind is damage.
 node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin
+
+# Length bounds are checked before cursor addition; huge signed lengths cannot wrap.
+wire_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/wire_length_overflow.bin
+node_table_length_overflow graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_length_overflow.bin
+node_table_negative_length graphdemo Scene testdata/wire/tables/fuzz-vectors/node_table_negative_length.bin
