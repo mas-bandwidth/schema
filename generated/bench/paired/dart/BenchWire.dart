@@ -37,7 +37,7 @@ bool _requiredCollectionKind(TableWireReader r, int expected) {
 
 int tableTextByteLength(String value) => utf8.encode(value).length;
 bool tableTextValueValid(String value,int bound) =>
-    _wideValid(value.codeUnits) && (bound < 0 || utf8.encode(value).length <= bound);
+    _wideValid(value.codeUnits) && (utf8.encode(value).length <= (bound < 0 ? 0xffffffff : bound));
 // The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -408,7 +408,7 @@ final class _ExtentScan {
         if (!union(r, f.uni)) return false;
         continue;
       }
-      if (kind != 13 && kind != 14 && kind != 16) {
+      if (kind != 13 && kind != 14 && kind != 16 && !(kind == 12 && f.mode == 3)) {
         if (!r.skipKind(kind)) return true;
         continue;
       }
@@ -419,9 +419,12 @@ final class _ExtentScan {
     }
   }
 
+  bool text(int n){if(n==0)return true;if(n>0xffffffff)return false;at=(at+7)&-8;at+=_round(9+n);return true;}
+
   // field is extentScan.field over the payload [start, end).
   bool field(TableWireReader p, _MF f, int start, int end) {
     if (f.mode == 0) return true;
+    if (f.mode == 3) return text(end-start);
     final r = TableWireReader.sub(p, start, end);
     if (f.mode == 2) return record(r, f.child);
     if (!r.has(2)) return true;
@@ -435,7 +438,7 @@ final class _ExtentScan {
       at = (at + f.align - 1) & -f.align;
       at += count * f.size;
     }
-    if (kind != 13 && kind != 15) return true;
+    if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
     // a count above 2^63 reads negative here; Go's loop runs on to the end of
     // the body, as this one does
     for (var i = 0; (count < 0 || i < count) && r.has(1); i++) {
@@ -446,7 +449,8 @@ final class _ExtentScan {
       }
       final b = _body(r);
       if (b == null) return true;
-      if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
+      if(f.mode==4){if(!text(b.$2-b.$1))return false;}
+      else if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
     }
     return true;
   }
@@ -499,7 +503,7 @@ bool _lebValid(Uint8List d, int off, int len) {
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
-  if (len <= bound) return len;
+  if (bound < 0 || len <= bound) return len;
   var cut = bound;
   while (cut > 0 && (d[off + cut] & 0xC0) == 0x80) {
     cut--;
@@ -4688,7 +4692,10 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  return s;
+  // Lone or inverted JSON surrogate escapes normalize until the deferred
+  // string_lone_surrogate card lands (SPEC §16.3).
+  if (_wideValid(s.codeUnits)) return s;
+  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
@@ -4699,7 +4706,8 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
     r.kindMismatch++;
     return def;
   }
-  if (utf8.encode(_jsonText(val)).length <= bound) return val;
+  val = _jsonText(val);
+  if (utf8.encode(val).length <= bound || bound < 0) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -5530,7 +5538,8 @@ String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def 
     r.kindMismatch++;
     return def;
   }
-  if (_jsonText(val).length <= bound) return val;
+  val = _jsonText(val);
+  if (val.length <= bound) return val;
   var keep = bound;
   if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
     keep--;
@@ -5616,8 +5625,9 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
 }
 
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
-  final len = utf8.encode(_jsonText(k)).length;
-  if (len > bound || len > 255) {
+  k = _jsonText(k);
+  final len = utf8.encode(k).length;
+  if (bound >= 0 && (len > bound || len > 255)) {
     r.clamped++;
     return null;
   }
@@ -6631,13 +6641,13 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         for (var index = 0; index < val.length; index++) {
           if (v.entities.length >= 8) { r.clamped += val.length - index; break; }
           final item = val[index];
+          final e = MixedEntity();
           if (_jsonEntries(item) != null) {
-            final e = MixedEntity();
             mixedEntityFromJsonFields(e, item, r, sh);
-            v.entities.add(e);
           } else {
             r.kindMismatch++;
           }
+          v.entities.add(e);
         }
         break;
       case "stats":
@@ -6647,13 +6657,13 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
         for (var index = 0; index < val.length; index++) {
           if (v.stats.length >= 80) { r.clamped += val.length - index; break; }
           final item = val[index];
+          final e = MixedStat();
           if (_jsonEntries(item) != null) {
-            final e = MixedStat();
             mixedStatFromJsonFields(e, item, r, sh);
-            v.stats.add(e);
           } else {
             r.kindMismatch++;
           }
+          v.stats.add(e);
         }
         break;
       case "game_event":
