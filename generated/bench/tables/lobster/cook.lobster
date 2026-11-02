@@ -601,6 +601,7 @@ def cw_record(c:CookWrite, base:int, rec:Record, t:CookTable) -> void:
 // ---- the extent carver (docs/SPEC-TABLES.md §2.9, §7.2; extent.go) ----
 
 class CookCarve:
+    invalid_value:bool = false
     write:bool
     o:CookOut? = nil
     big:bool = false
@@ -628,6 +629,9 @@ def cc_record(c:CookCarve, recordAt:int, rec:Record, t:CookTable) -> void:
 def cc_field(c:CookCarve, at:int, sl:Slot, cf:CookField) -> void:
     let fd = sl.fd
     if fd.present != "" and not sl.present:
+        // Absent map storage must be empty even though wire and JSON omit it.
+        if fd.s == "map" and length(sl.entries) != 0:
+            c.invalid_value = true
         return
     if fd.s == "map":
         cc_map(c, at, sl, fd)
@@ -736,7 +740,7 @@ def cc_map(c:CookCarve, at:int, sl:Slot, fd:FieldDescriptor) -> void:
 def cc_extent(rec:Record, t:CookTable, write:bool, o:CookOut?, big:bool, g:CookGraph?, record_at:int, extent_at:int) -> int:
     let c = CookCarve { write: write, o: o, big: big, g: g, extent_at: extent_at }
     cc_record(c, record_at, rec, t)
-    return c.at
+    return if c.invalid_value: -1 else: c.at
 
 // ---- measure, write (docs/SPEC-TABLES.md §7.6) ----
 
@@ -767,6 +771,8 @@ def cg_place(g:CookGraph) -> int, int:
             n.record = t.record
             if t.extent:
                 n.extent = cc_extent(rec, t, false, nil, false, nil, 0, 0)
+                if n.extent < 0:
+                    return -1, align
             else:
                 n.extent = 0
             off += n.record + n.extent
