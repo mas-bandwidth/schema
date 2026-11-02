@@ -209,7 +209,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		g.pf("%s %s=lo!=0; }\n", ind, dst)
 		return
 	}
-	signed := ir.TableKindSigned(kind)
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	typ := "uint64_t"
 	if signed {
 		typ = "int64_t"

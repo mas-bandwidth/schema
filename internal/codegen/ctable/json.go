@@ -418,6 +418,7 @@ static SCHEMA_UNUSED char table_json_shape( const TableFieldInfo * f )
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
     if ( table_json_is_enum( f ) ) { return 's'; }
     if ( table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -431,6 +432,7 @@ static SCHEMA_UNUSED char table_json_element_shape( const TableFieldInfo * f )
     if ( f->kind == 13 ) { return 'o'; }
     if ( table_json_is_enum( f ) ) { return 's'; }
     if ( table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -805,6 +807,57 @@ static SCHEMA_UNUSED int table_json_write_float( TableJsonOut * out, double valu
     return 1;
 }
 
+static SCHEMA_UNUSED void schema_table_json_civil_from_days_( int64_t z, int * year, int * month, int * day )
+{
+    int64_t era, doe, yoe, y, doy, mp, d, m;
+    z += 719468;
+    era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    doe = z - era * 146097;
+    yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    y = yoe + era * 400;
+    doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    mp = ( 5 * doy + 2 ) / 153;
+    d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+static SCHEMA_UNUSED int schema_table_json_write_timestamp_( TableJsonOut * out, const void * storage )
+{
+    int64_t nanos = 0, seconds, fraction, days, second_of_day;
+    int year = 0, month = 0, day = 0, hour, minute, second, length;
+    char text[48];
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    seconds = nanos / 1000000000;
+    fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    days = seconds / 86400;
+    second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    schema_table_json_civil_from_days_( days, &year, &month, &day );
+    hour = (int) ( second_of_day / 3600 );
+    minute = (int) ( ( second_of_day / 60 ) % 60 );
+    second = (int) ( second_of_day % 60 );
+    length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
+    table_json_put( out, '"' );
+    table_json_raw( out, text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        int placed = 9;
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        while ( placed > 1 && digits[placed - 1] == '0' ) { placed--; }
+        table_json_put( out, '.' );
+        table_json_raw( out, digits, placed );
+    }
+    table_json_put( out, 'Z' );
+    table_json_put( out, '"' );
+    return 1;
+}
+
 static SCHEMA_UNUSED int table_json_write_value( TableJsonOut * out, const void * base, const TableTypeInfo * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
@@ -925,6 +978,8 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
             memcpy( &v, storage, sizeof( v ) );
             return table_json_write_float( out, v, 0 );
         }
+        case 36:
+            return schema_table_json_write_timestamp_( out, storage );
         case 2: case 3: case 4: case 5:
             table_json_write_signed( out, table_json_get_signed( storage, f->elem_size ) );
             return 1;
@@ -1875,6 +1930,157 @@ static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,co
 static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
 #endif
 #endif
+static SCHEMA_UNUSED int schema_table_json_timestamp_digit_( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+static SCHEMA_UNUSED int schema_table_json_timestamp_leap_( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+static SCHEMA_UNUSED int schema_table_json_timestamp_month_days_( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return schema_table_json_timestamp_leap_( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+static SCHEMA_UNUSED int64_t schema_table_json_timestamp_days_( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    int64_t era, year_of_era, month_of_year, day_of_year, day_of_era;
+    if ( m <= 2 ) { y--; }
+    era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    year_of_era = y - era * 400;
+    month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+static SCHEMA_UNUSED int schema_table_json_timestamp_parse_( TableJsonIn * in, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0, digits = 0, offset_sign = 0, offset_hour = 0, offset_minute = 0, phase = 0;
+    int64_t fraction = 0, offset, seconds;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    uint64_t total;
+    if ( table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    in->pos++;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        char c;
+        if ( !table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return 0; }
+        c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = schema_table_json_timestamp_digit_( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return 0; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return 0; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return 0; } }
+            else
+            {
+                if ( digit < 0 ) { return 0; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = schema_table_json_timestamp_digit_( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return 0; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = schema_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = schema_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return 0; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = schema_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = schema_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return 0;
+    }
+    if ( phase != 10 ) { return 0; }
+    if ( month < 1 || month > 12 ) { return 0; }
+    if ( day < 1 || day > schema_table_json_timestamp_month_days_( year, month ) ) { return 0; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return 0; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return 0; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    seconds = schema_table_json_timestamp_days_( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    if ( seconds < min_second || seconds > max_second ) { return 0; }
+    if ( seconds == min_second && fraction < min_nanos ) { return 0; }
+    if ( seconds == max_second && fraction > max_nanos ) { return 0; }
+    total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return 1;
+}
+
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
     char token[kTableJsonMaxNumber];
@@ -2015,6 +2221,13 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         if ( c == 't' ) { if ( !table_json_literal( in, "true" ) ) { return 0; } table_json_set_raw( storage, f->elem_size, 1 ); return 1; }
         if ( !table_json_literal( in, "false" ) ) { return 0; }
         table_json_set_raw( storage, f->elem_size, 0 );
+        return 1;
+    }
+    if ( f->kind == 36 )
+    {
+        int64_t nanos = 0;
+        if ( !schema_table_json_timestamp_parse_( in, &nanos ) ) { in->bad = 1; return 0; }
+        table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
         return 1;
     }
     if ( !table_json_scan_number( in, token, kTableJsonMaxNumber, &length, &integral ) )

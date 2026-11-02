@@ -189,7 +189,7 @@ static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,
  }return r->offset==end;
 }
 static SCHEMA_UNUSED int table_retain_width(uint8_t kind)
-{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
+{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:case 36:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
 static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn * s,uint8_t kind,int32_t depth)
 {
  TableReader * r=&s->input;uint64_t length;int width=table_retain_width(kind);
