@@ -37,6 +37,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `elixir-warning-control/` | Elixir warning-control tests | `make test-elixir` | `make test-elixir` |
 | `generated-tree/` | committed generated/ verify | `test/generated-tree/verify` | `make generated-current` |
 | `go/` | Go packet tests | `make test-go` | `make test-go` |
+| `go-hostile/` | generated Go hostile-corpus runner | `make schema-go-runs-hostile-corpus` | `make schema-go-runs-hostile-corpus` |
 | `go-ludicrous/` | Go int128 tests | `make test-go` | `make test-go` |
 | `go-tables/` | Go table tests | `make test-go` | `make test-go` |
 | `goose/` | Goose packet tests | `make test-goose` | `make test-goose` |

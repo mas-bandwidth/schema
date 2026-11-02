@@ -969,6 +969,14 @@
       ]
     },
     {
+      "name": "go-hostile",
+      "when": "pull-request",
+      "why": "The generated Go reader gate runs every row of the fixed shared corpus once, then plants a different wire-valid verdict in a private manifest and requires exactly that case to fail. Its own Go-only job covers generation and native compilation without repeating other language legs.",
+      "targets": [
+        "schema-go-runs-hostile-corpus-negative-control"
+      ]
+    },
+    {
       "name": "js-hostile",
       "when": "pull-request",
       "node": "26",

@@ -230,6 +230,7 @@ var catalog = []Entry{
 	e("test/java-tables", "Java table tests", "make test-java", "make test-java"),
 	e("test/java-view", "Java unit-view listing", "make tables-java-view", "make tables-java-view"),
 	e("test/js", "JS packet tests", "make test-js", "make test-js"),
+	e("test/go-hostile", "generated Go hostile-corpus runner", "make schema-go-runs-hostile-corpus", "make schema-go-runs-hostile-corpus"),
 	e("test/js-hostile", "JS hostile-corpus runner", "make schema-js-runs-hostile-corpus", "make schema-js-runs-hostile-corpus"),
 	e("test/js-ludicrous", "JS int128 tests", "make test-js", "make test-js"),
 	e("test/js-tables", "JS table tests", "make test-js", "make test-js"),

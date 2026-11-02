@@ -1,8 +1,7 @@
-// Command hostilecorpus is the generator, drift check and worked-example Go
-// port runner for the shared hostile-input corpus.
+// Command hostilecorpus is the generator, drift check and engine replay for the shared hostile-input corpus.
 //
 //	go run ./tools/hostilecorpus verify    # drift gate: committed manifest == engine
-//	go run ./tools/hostilecorpus run       # Go port runner: report every verdict
+//	go run ./tools/hostilecorpus run       # engine replay: report every verdict
 //	go run ./tools/hostilecorpus generate  # rebuild the manifest from the engine
 //
 // Every per-port card (schema-<port>-runs-hostile-corpus) reads the same
@@ -74,12 +73,12 @@ func run(command, root, dir string) error {
 			for _, d := range hostilecorpus.Diff(manifest, want) {
 				fmt.Fprintln(os.Stderr, d)
 			}
-			return fmt.Errorf("the Go port disagrees with the committed manifest")
+			return fmt.Errorf("the Go engine disagrees with the committed manifest")
 		}
 		for _, c := range cases {
 			fmt.Printf("PASS %s\t%s\t%s\t%s\n", c.Name, c.Verdict, c.Reason, c.Digest)
 		}
-		fmt.Printf("%d cases: the Go port agrees with the committed manifest\n", len(cases))
+		fmt.Printf("%d cases: the Go engine agrees with the committed manifest\n", len(cases))
 		return nil
 	default:
 		return fmt.Errorf("unknown command %q (want verify, run or generate)", command)

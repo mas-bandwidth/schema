@@ -19,7 +19,9 @@ internal/ci/hostilecorpus/corpus.go
 internal/ci/schema_shared_hostile_corpus_test.go
     the drift, reason-coverage, source, generator and negative-control tests.
 tools/hostilecorpus/main.go
-    the Go port runner and the worked example every per-port card follows.
+    the Go engine replay and the worked example every per-port card follows.
+test/go-hostile/
+    a separate native runner calling the generated Go public readers.
 make/checks/schema-shared-hostile-corpus.mk
     the gate and generator targets (included explicitly with the other
     make/checks gates).
@@ -75,7 +77,7 @@ engine names `count_refusal`.
 make schema-shared-hostile-corpus                 # fast gate (push/PR)
 make schema-shared-hostile-corpus-negative-control # planted controls (nightly)
 make schema-shared-hostile-corpus-generate        # regenerate after an engine change
-go run ./tools/hostilecorpus run                  # the Go port runner: every verdict
+go run ./tools/hostilecorpus run                  # the Go engine replay: every verdict
 ```
 
 `tools/hostilecorpus run` is the worked example: it loads the manifest, decodes
@@ -83,6 +85,14 @@ every raw input, asks the Go engine for the verdict, prints one `PASS` line per
 case and fails if any verdict differs from the committed manifest. A per-port
 card (`schema-<port>-runs-hostile-corpus`) follows the same shape with that
 port's decoder and the same manifest.
+
+The generated Go gate is `make schema-go-runs-hostile-corpus`, included in
+`test-go` and therefore in the full nightly build. It generates each distinct
+unit once and reads each manifest row once through generated tolerant text,
+file, message and announcement APIs. Variable wire reads use the generated
+region measure and load pair; text reads use generated builders. It compares
+named refusals and canonical JSON digests without calling the reference
+engine, and its negative control changes only a scratch manifest verdict.
 
 The ports with runners include Java: `make schema-java-runs-hostile-corpus`
 (`test/java-hostile/Runner.java`, the units the manifest names compiled with
