@@ -103,6 +103,18 @@ function TableVariableWidens(kind, declared) {
   return false;
 }
 
+function TableVariableUnboundedTextValid(value) {
+  if (typeof value !== "string") { return false; }
+  const bytes = TableVariableUtf8Encode(value), decoded = TableVariableUtf8Decode(bytes);
+  return bytes.length <= 0xffffffff && decoded.ok && decoded.s === value;
+}
+function TableVariableTextExtent(r, at) {
+  const size = r.leb();
+  if (r.bad || size > r.end - r.at) { r.at = r.end; return at; }
+  r.at += size;
+  if (size > 0xffffffff) { return -1; }
+  return size === 0 ? at : TableVariableRound(at, 8) + TableVariableRound(9 + size, 8);
+}
 function TableVariableSameBytes(a, b) {
   if (a.length !== b.length) { return false; }
   for (let i = 0; i < a.length; i++) { if (a[i] !== b[i]) { return false; } }
@@ -367,6 +379,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       }
       return true;
     case "str":
+      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       if (val !== fd.def) {
         const b = TableVariableUtf8Encode(val);
         TableVariableHeader(w, ids, fd, 12);
@@ -1027,7 +1040,7 @@ function TableVariableReadField(fd, r, table, v, report, st, retain, path) {
       const dec = TableVariableUtf8Decode(bytes);
       // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its default
       if (!dec.ok) { report.malformed = true; v[fd.n] = fd.def; return true; }
-      if (bytes.length > fd.bound) {
+      if (fd.bound >= 0 && bytes.length > fd.bound) {
         // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3)
         report.clamped++;
         let cut = fd.bound;
@@ -1276,6 +1289,11 @@ function TableVariableExtent(c, r, ids, at) {
       at = rr;
       continue;
     }
+    if (fd.ub) {
+      at = TableVariableTextExtent(r, at);
+      if (at < 0) { return -1; }
+      continue;
+    }
     switch (fd.s) {
       case "tab": case "arr": case "bytes": case "map": case "keyed": {
         const rr = TableVariableContainerExtent(fd, r, ids, at);
@@ -1356,7 +1374,12 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
     at = TableVariableRound(at, fd.eal);
     at += n * fd.esz;
   }
-  if (fd.plain) { return at; } // kind 12 payloads are text, not record bodies
+  if (fd.plain) {
+    if (fd.e.c.fields[0].ub) {
+      for (let i = 0; i < n && sub.at < sub.end; i++) { at = TableVariableTextExtent(sub, at); if (at < 0) { return -1; } }
+    }
+    return at;
+  } // kind 12 payloads are text, not record bodies
   return TableVariableElementsExtent(fd.e, sub, ids, at, n);
 }
 
@@ -1671,7 +1694,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       if (typeof val === "object" && (g.blobs.get(val) || 0) > 1) { return false; }
       out.push(fd.s === "sblob" ? TableVariableJsonString(String(val)) : TableVariableBase64Text(val));
       return true;
-    case "str": out.push(TableVariableJsonString(val)); return true;
+    case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
     // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
     // tabletext writeWString), an unpaired surrogate written as U+FFFD
     case "wstr": out.push(TableVariableJsonString(val)); return true;
@@ -2143,7 +2166,7 @@ function TableVariableTextField(fd, inp, v, depth, graph, report) {
       const s = inp.str();
       if (!TableVariableStoredText(s, inp, report)) { return false; }
       const b = TableVariableUtf8Encode(s);
-      if (b.length > fd.bound) {
+      if (fd.bound >= 0 && b.length > fd.bound) {
         // A CLAMP IS A PREFIX, cut between code points (§16.2)
         let cut = fd.bound;
         while (cut > 0 && (b[cut] & 0xc0) === 0x80) { cut--; }

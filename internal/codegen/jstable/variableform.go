@@ -982,9 +982,13 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.IsMap():
 		// kind 14 over element kind 13, an array of the generated entry (§2.8)
 		key := ir.MapKeyField(f)
+		keyBound := key.Type.Size
+		if key.Type.TextUnbounded() {
+			keyBound = -1
+		}
 		ml := ir.RecordLayout(g.unit, f.MapEntry)
 		fmt.Fprintf(&b, "s: \"map\", js: \"o\", t: %s, ks: %v, kb: %d, esz: %d, eal: %d }",
-			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, key.Type.Size, ml.Size, ml.Align)
+			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, keyBound, ml.Size, ml.Align)
 	case f.KeyEnum != "":
 		// kind 16: (key reference, L, element) per present slot (§2.4, §3.2)
 		fmt.Fprintf(&b, "s: \"keyed\", js: \"o\", ek: %d, slots: %s, e: %s }",
@@ -1012,7 +1016,12 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case tableOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", f.Type.Size, jsStr(string(f.DefBytes)))
+		bound := f.Type.Size
+		if f.Type.TextUnbounded() {
+			bound = -1
+			b.WriteString("ub: true, ")
+		}
+		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", bound, jsStr(string(f.DefBytes)))
 	case f.Type.Kind == ir.TWString:
 		// kind 33 (docs/SPEC-TABLES.md §3; SPEC.md §4.12): the bound is N CODE
 		// UNITS, and the empty text is the default an absent field reads

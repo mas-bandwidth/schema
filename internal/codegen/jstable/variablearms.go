@@ -273,6 +273,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       TableVariableHeader(w, ids, fd, fd.k);
       return TableVariableWriteFloat(w, fd.f32, val);
     case "str": {
+      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
@@ -539,7 +540,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       if (scan.widened && !widened) { widened = true; report.widened++; }
       if (scan.kindBad) { report.kindMismatch++; ents.length = 0; break; }
       if (!scan.ok) { report.malformed = true; break; }
-      if (fd.ks && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.clamped++; continue; }
+      if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.clamped++; continue; }
       let order = -1;
       if (landed) { order = TableVariableKeyOrder(fd, last, scan.key); }
       if (order > 0) { report.malformed = true; break; }
@@ -752,6 +753,7 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   const ind = "\n" + "  ".repeat(depth + 1);
   out.push("{");
   for (let i = 0; i < ents.length; i++) {
+    if (fd.ks && fd.kb < 0 && !TableVariableUnboundedTextValid(ents[i].key)) { return false; }
     if (i > 0) { out.push(","); }
     out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
@@ -854,7 +856,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     if (status === "mismatch") {
       report.kindMismatch++;
       if (!inp.skip(depth, graph)) { return false; }
-    } else if (fd.ks && TableVariableUtf8Encode(key).length > fd.kb) {
+    } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
       // KEYS NEVER CLAMP: the entry drops whole (§2.8)
       report.clamped++;
       if (!inp.skip(depth, graph)) { return false; }

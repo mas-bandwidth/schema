@@ -389,6 +389,9 @@ func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) stri
 		return fmt.Sprintf("{k:\"arr\",n:%s,at:%d,countAt:%d,countFrom:%q,bound:%d,stride:%d,elem:%s}",
 			qn, pieces[0].Offset, countAt, countFrom, f.ArrayBound, stride, elem)
 	}
+	if f.Type.TextUnbounded() {
+		return fmt.Sprintf("{k:\"textref\",n:%s,at:%d}", qn, pieces[0].Offset)
+	}
 	if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 		k := "str"
 		if f.Type.Kind == ir.TBytes {
@@ -656,7 +659,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
     if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
     // a LIST's or a MAP's holder is written by the extent's carve, which
     // places the array it points at (§2.8, §2.9)
-    if (fd.k === "list" || fd.k === "map") { return true; }
+    if (fd.k === "list" || fd.k === "map" || fd.k === "textref") { return true; }
     if (fd.k === "wstr") { return writeWide(view, base, fd, parent, le); }
     if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
     if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
@@ -863,6 +866,20 @@ const cookEngineVariable = `  function alignUp(n, a) {
   }
   function carveValue(view, at, base, cur, fd, v, le, ctx) {
     switch (fd.k) {
+      case "textref": {
+        if (!TableVariableUnboundedTextValid(v)) { return false; }
+        const bytes = TableVariableUtf8Encode(v);
+        if (bytes.length === 0) { return true; }
+        cur.at = alignUp(cur.at, 8);
+        const blob = base + cur.at;
+        cur.at += alignUp(9 + bytes.length, 8);
+        if (view !== null) {
+          view.setBigInt64(at, BigInt(blob - at), le);
+          view.setUint32(blob, bytes.length, le);
+          new Uint8Array(view.buffer, view.byteOffset + blob + 8, bytes.length).set(bytes);
+        }
+        return true;
+      }
       case "list": case "map":
         return carveHolder(view, at, base, cur, fd, v, le, ctx);
       case "rec":
@@ -1068,7 +1085,7 @@ func cookStructExtent(st *ir.Struct, seenS map[*ir.Struct]bool, seenU map[*ir.Un
 }
 
 func cookFieldExtent(f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
-	if f.IsMap() || f.IsList() {
+	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return true
 	}
 	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
