@@ -3472,26 +3472,21 @@ defmodule Bench.Table do
         read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
 
       {vref, after_sub} ->
-        value =
-          case resolve(ids, vref) do
-            :error ->
-              nil
+        case resolve(ids, vref) do
+          :error ->
+            # A reference outside the id table is framing damage (§3, §4),
+            # not None or an id this enum does not declare.
+            {Enum.reverse(acc), %{report | malformed: true}}
 
-            variant_id ->
+          variant_id ->
+            {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> name
-                :error -> :unknown
+                {:ok, name} -> {name, report}
+                :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
-          end
 
-        # an element naming a variant this reader cannot name reads None and
-        # counts unknown (docs/SPEC-TABLES.md §4)
-        {value, report} =
-          if value == :unknown,
-            do: {nil, %{report | unknown: report.unknown + 1}},
-            else: {value, report}
-
-        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+        end
 
       :error ->
         {Enum.reverse(acc), %{report | malformed: true}}
