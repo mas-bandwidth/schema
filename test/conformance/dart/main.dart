@@ -68,6 +68,24 @@ import '../../../build/tables-generated-dart/m2/M2Cook.dart' as m2cook;
 import '../../../build/tables-generated-dart/stream/StreamCook.dart' as streamcook;
 import '../../../build/tables-generated-dart/messages/MessagesCook.dart' as messagescook;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalarsCook.dart' as scalarscook;
+import '../../../build/tables-generated-dart/lists/SaveCook.dart' as lsavecook;
+import '../../../build/tables-generated-dart/lists/SharedCook.dart' as lsharedcook;
+import '../../../build/tables-generated-dart/lists/HoldersCook.dart' as lholderscook;
+import '../../../build/tables-generated-dart/lists/MigrateCook.dart' as lmigratecook;
+import '../../../build/tables-generated-dart/maps/CellsCook.dart' as mcellscook;
+import '../../../build/tables-generated-dart/maps/ChunksCook.dart' as mchunkscook;
+import '../../../build/tables-generated-dart/maps/CrewsCook.dart' as mcrewscook;
+import '../../../build/tables-generated-dart/maps/DepthCook.dart' as mdepthcook;
+import '../../../build/tables-generated-dart/maps/DocsCook.dart' as mdocscook;
+import '../../../build/tables-generated-dart/maps/FleetCook.dart' as mfleetcook;
+import '../../../build/tables-generated-dart/maps/PairsCook.dart' as mpairscook;
+import '../../../build/tables-generated-dart/maps/RunsCook.dart' as mrunscook;
+import '../../../build/tables-generated-dart/maps/SlotsCook.dart' as mslotscook;
+import '../../../build/tables-generated-dart/maps/SpansCook.dart' as mspanscook;
+import '../../../build/tables-generated-dart/maps/TextCook.dart' as mtextcook;
+import '../../../build/tables-generated-dart/maps/TrailsCook.dart' as mtrailscook;
+import '../../../build/tables-generated-dart/widelist/WidelistdemoWire.dart' as widelist;
+import '../../../build/tables-generated-dart/widelist/WidesCook.dart' as widelistcook;
 import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
@@ -1440,6 +1458,158 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
       return (
         streamcook.FeedCook.cookMeasure(value),
         (out, order) => streamcook.FeedCook.cook(value, out, order),
+      );
+    case 'listdemo Save':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.saveWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lsavecook.SaveCook.cookMeasure(value),
+        (out, order) => lsavecook.SaveCook.cook(value, out, order),
+      );
+    case 'listdemo Mixed':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.mixedWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lsavecook.MixedCook.cookMeasure(value),
+        (out, order) => lsavecook.MixedCook.cook(value, out, order),
+      );
+    case 'listdemo Album':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.albumWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lsharedcook.AlbumCook.cookMeasure(value),
+        (out, order) => lsharedcook.AlbumCook.cook(value, out, order),
+      );
+    case 'listdemo Sheet':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.sheetWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lholderscook.SheetCook.cookMeasure(value),
+        (out, order) => lholderscook.SheetCook.cook(value, out, order),
+      );
+    case 'listdemo Army':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.armyWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lholderscook.ArmyCook.cookMeasure(value),
+        (out, order) => lholderscook.ArmyCook.cook(value, out, order),
+      );
+    case 'listdemo Unbounded':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.unboundedWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lmigratecook.UnboundedCook.cookMeasure(value),
+        (out, order) => lmigratecook.UnboundedCook.cook(value, out, order),
+      );
+    case 'mapdemo Cells':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.cellsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mcellscook.CellsCook.cookMeasure(value),
+        (out, order) => mcellscook.CellsCook.cook(value, out, order),
+      );
+    case 'mapdemo Chunks':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.chunksWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mchunkscook.ChunksCook.cookMeasure(value),
+        (out, order) => mchunkscook.ChunksCook.cook(value, out, order),
+      );
+    case 'mapdemo Crews':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.crewsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mcrewscook.CrewsCook.cookMeasure(value),
+        (out, order) => mcrewscook.CrewsCook.cook(value, out, order),
+      );
+    case 'mapdemo Depth':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.depthWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mdepthcook.DepthCook.cookMeasure(value),
+        (out, order) => mdepthcook.DepthCook.cook(value, out, order),
+      );
+    case 'mapdemo Docs':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.docsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mdocscook.DocsCook.cookMeasure(value),
+        (out, order) => mdocscook.DocsCook.cook(value, out, order),
+      );
+    case 'mapdemo Fleet':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.fleetWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mfleetcook.FleetCook.cookMeasure(value),
+        (out, order) => mfleetcook.FleetCook.cook(value, out, order),
+      );
+    case 'mapdemo Pairs':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.pairsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mpairscook.PairsCook.cookMeasure(value),
+        (out, order) => mpairscook.PairsCook.cook(value, out, order),
+      );
+    case 'mapdemo Runs':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.runsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mrunscook.RunsCook.cookMeasure(value),
+        (out, order) => mrunscook.RunsCook.cook(value, out, order),
+      );
+    case 'mapdemo Slots':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.slotsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mslotscook.SlotsCook.cookMeasure(value),
+        (out, order) => mslotscook.SlotsCook.cook(value, out, order),
+      );
+    case 'mapdemo Spans':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.spansWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mspanscook.SpansCook.cookMeasure(value),
+        (out, order) => mspanscook.SpansCook.cook(value, out, order),
+      );
+    case 'mapdemo Text':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.textWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mtextcook.TextCook.cookMeasure(value),
+        (out, order) => mtextcook.TextCook.cook(value, out, order),
+      );
+    case 'mapdemo Trails':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.trailsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mtrailscook.TrailsCook.cookMeasure(value),
+        (out, order) => mtrailscook.TrailsCook.cook(value, out, order),
+      );
+    case 'widelist Wide':
+      final r = widelist.TableWireReport();
+      final value = widelist.wideWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        widelistcook.WideCook.cookMeasure(value),
+        (out, order) => widelistcook.WideCook.cook(value, out, order),
       );
   }
   return null;
