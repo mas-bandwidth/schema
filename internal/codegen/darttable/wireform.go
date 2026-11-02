@@ -608,6 +608,29 @@ final class _TableWireCountRefusal implements Exception {
   const _TableWireCountRefusal();
 }
 
+// Immutable String values can be canonicalized (notably the empty string).
+// Keep incoming blob identity on the owning slot, without retaining its owner.
+final class _StringBlobOrigin {
+  final String value;
+  final Object token;
+  _StringBlobOrigin(this.value, this.token);
+}
+final Expando<Map<String, _StringBlobOrigin>> _stringBlobOrigins =
+    Expando<Map<String, _StringBlobOrigin>>();
+
+Object _blobIdentity(Object blob, Object? owner, String? field) {
+  if (blob is String && owner != null && field != null) {
+    final slots = _stringBlobOrigins[owner];
+    final origin = slots?[field];
+    if (origin != null) {
+      if (identical(origin.value, blob)) return origin.token;
+      // A changed slot no longer names the node this read placed.
+      slots!.remove(field);
+    }
+  }
+  return blob;
+}
+
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
 final class WireState {
@@ -669,15 +692,17 @@ final class WireState {
 
   // noteBlob numbers one *bytes/*string blob node (§3.1): record k = node
   // index k + 1, keyed by the blob's IDENTITY — the String or byte list the
-  // field holds — never by its content and never per slot (§2.5, §3.1). A
+  // field holds, or a decoded String slot's incoming node token (§2.5, §3.1). A
   // blob reached twice is one record, because two fields that loaded the same
   // node hold the same object; two distinct blobs carrying equal bytes are two
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
-  // ids — the node-table write does, in record order (§3). On the web a
-  // String is a value, so two equal strings there are one blob.
-  int noteBlob(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  // ids — the node-table write does, in record order (§3). Authored String
+  // fields without input metadata retain Dart's object identity semantics;
+  // canonical authored strings cannot express distinct node ownership.
+  int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
+    final identity = _blobIdentity(blob, owner, field);
+    final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
         throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
@@ -688,14 +713,14 @@ final class WireState {
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
     final idx = nodes.length + 1;
-    _blobIndex[blob] = idx;
+    _blobIndex[identity] = idx;
     return idx;
   }
 
   int nodeIndexForBlob(int typeId, Object blob) => noteBlob(typeId, blob);
 
-  int blobIndex(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  int blobIndex(int typeId, Object blob, [Object? owner, String? field]) {
+    final found = _blobIndex[_blobIdentity(blob, owner, field)];
     if (found == null) {
       throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
     }
@@ -1333,17 +1358,25 @@ final class TableWireReader {
   // A blob record resolves to ONE object however many slots name it (§3.1):
   // the first resolve stores it in decoded, so a save numbers it once again
   // by identity and two distinct records of equal bytes stay two.
-  String? resolveString(int idx) {
+  String? resolveString(int idx, Object owner, String field) {
     final rec = idx - 2;
-    if (rec >= 0 && rec < decoded.length) {
-      final have = decoded[rec];
-      if (have is String) return have;
+    String? value;
+    if (rec >= 0 && rec < decoded.length && decoded[rec] is String) {
+      value = decoded[rec] as String;
+    } else {
+      final b = resolveBlob(idx, _kStringBlobId, stringBlob);
+      if (b != null) {
+        value = utf8.decode(b);
+        decoded[rec] = value;
+      }
     }
-    final b = resolveBlob(idx, _kStringBlobId, stringBlob);
-    if (b == null) return null;
-    final s = utf8.decode(b);
-    decoded[rec] = s;
-    return s;
+    if (value == null) {
+      _stringBlobOrigins[owner]?.remove(field);
+      return null;
+    }
+    final slots = _stringBlobOrigins[owner] ??= <String, _StringBlobOrigin>{};
+    slots[field] = _StringBlobOrigin(value, nodes[rec]);
+    return value;
   }
 
   Uint8List? resolveBytes(int idx) {
@@ -1944,7 +1977,7 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\tw.putLeb(w.refFor(%s));\n", ind, dartU64Literal(id))
 		g.pf("%s\tw.putByte(%d);\n", ind, wireKindPtr)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kStringBlobId, %s!));\n", ind, expr, expr)
+			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kStringBlobId, %s!, %s));\n", ind, expr, expr, stringBlobSlot(expr))
 		} else {
 			g.pf("%s\tw.putLeb(%s == null ? 0 : w.state.blobIndex(_kBytesBlobId, %s!));\n", ind, expr, expr)
 		}
@@ -2360,7 +2393,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal idx = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (idx == null) { r.report.malformed = true; return; }\n", ind)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\t\tv.%s = r.resolveString(idx);\n", ind, name)
+			g.pf("%s\t\tv.%s = r.resolveString(idx, v, %q);\n", ind, name, name)
 		} else {
 			g.pf("%s\t\tv.%s = r.resolveBytes(idx);\n", ind, name)
 		}
@@ -2928,7 +2961,7 @@ func (g *wireGen) emitNumberField(f *ir.Field, ind string) {
 	case f.Type.Blob() && f.Array == ir.ArrayNone:
 		g.pf("%sif (%s != null) {\n", ind, expr)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s\ts.noteBlob(_kStringBlobId, %s!);\n", ind, expr)
+			g.pf("%s\ts.noteBlob(_kStringBlobId, %s!, %s);\n", ind, expr, stringBlobSlot(expr))
 		} else {
 			g.pf("%s\ts.noteBlob(_kBytesBlobId, %s!);\n", ind, expr)
 		}
@@ -3458,4 +3491,10 @@ func nonOptionalOf(f *ir.Field) *ir.Field {
 func seenName(f *ir.Field) string {
 	m := fieldMember(f)
 	return "seen" + strings.ToUpper(m[:1]) + m[1:]
+}
+
+// stringBlobSlot identifies a generated field or union arm's owning object.
+func stringBlobSlot(expr string) string {
+	i := lastDot(expr)
+	return fmt.Sprintf("%s, %q", expr[:i], expr[i+1:])
 }

@@ -951,9 +951,7 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
-			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
-			g.pf("\t\t\t\telse if (val is String) { v.%s = _jsonText(val); }\n", name)
-			g.pf("\t\t\t\telse { r.kindMismatch++; }\n")
+			g.pf("\t\t\t\tv.%s = _jsonStringBlob(val, r, v.%s, v, %q);\n", name, name, name)
 		} else {
 			g.pf("\t\t\t\tif (val == null) { v.%s = null; }\n", name)
 			g.pf("\t\t\t\telse { v.%s = _jsonBytesBlob(val, r, v.%s); }\n", name, name)
@@ -1090,6 +1088,11 @@ func (g *wireGen) emitTextCountField(f *ir.Field, ind string) {
 func (g *wireGen) emitTextToJson(st *ir.Struct) {
 	fn := dartName(st.Name) + "ToJson"
 	g.pf("String %s(%s v) {\n", fn, st.Name)
+	if bytesBlob, stringBlob := ir.PointerReachableBlobs(st); bytesBlob || stringBlob {
+		// §2.5: text must refuse shared blobs before expanding their contents.
+		g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
+		g.pf("\tstate.indexRoot(v);\n\t%sNumber(state, v, <Object>{v});\n", dartName(st.Name))
+	}
 	g.pf("\tfinal sh = _Share();\n")
 	g.pf("\t%sCount(sh, v);\n", dartName(st.Name))
 	g.pf("\tfinal out = _JOut();\n")

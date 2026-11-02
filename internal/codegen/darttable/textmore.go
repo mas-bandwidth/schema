@@ -400,9 +400,20 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = 
   return def;
 }
 
-String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
-  if (val == null) return null;
-  if (val is String) return _jsonText(val);
+String? _jsonStringBlob(dynamic val, TableTextReport r,
+    [String? def, Object? owner, String? field]) {
+  if (val == null) {
+    if (owner != null && field != null) _stringBlobOrigins[owner]?.remove(field);
+    return null;
+  }
+  if (val is String) {
+    final value = _jsonText(val);
+    if (owner != null && field != null) {
+      final slots = _stringBlobOrigins[owner] ??= <String, _StringBlobOrigin>{};
+      slots[field] = _StringBlobOrigin(value, Object());
+    }
+    return value;
+  }
   r.kindMismatch++;
   return def;
 }
@@ -931,6 +942,9 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1), fbArg)
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
+			if len(fallback) != 0 && strings.Contains(fallback[0], ".") {
+				return fmt.Sprintf("_jsonStringBlob(%s, r%s, %s)", val, fbArg, stringBlobSlot(fallback[0]))
+			}
 			return fmt.Sprintf("_jsonStringBlob(%s, r%s)", val, fbArg)
 		}
 		return fmt.Sprintf("_jsonBytesBlob(%s, r%s)", val, fbArg)

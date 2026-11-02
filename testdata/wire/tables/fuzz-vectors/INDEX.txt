@@ -210,3 +210,7 @@ retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_
 # Retaining readers must recognize every reachable byte-blob type like plain readers.
 # Dart omitted bytesBlob initialization and dropped valid nodes as unknown.
 retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_byte_blob_reachability.bin
+
+# Two empty string records have distinct incoming identity despite canonical String values.
+# Dart formerly merged them and refused the valid graph as blob_shared.
+distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/distinct_empty_string_blobs.bin

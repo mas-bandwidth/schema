@@ -287,7 +287,7 @@ func (g *wireGen) emitPutPayload(f *ir.Field, expr, p, ind string) {
 		val := expr + "!"
 		if f.Type.Kind == ir.TString {
 			blob = "_kStringBlobId"
-			val = expr + "!"
+			val = expr + "!, " + stringBlobSlot(expr)
 		}
 		g.pf("%s%s.putLeb(%s == null ? 0 : %s.state.blobIndex(%s, %s));\n", ind, p, expr, p, blob, val)
 	case isPointerTable(f):
@@ -496,7 +496,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal idx = %s.readLeb();\n", ind, p)
 		g.pf("%sif (idx == null || %s.pos != %s.limit) %s\n", ind, p, p, bad)
 		if f.Type.Kind == ir.TString {
-			g.pf("%s%s = %s.resolveString(idx);\n", ind, dest, p)
+			g.pf("%s%s = %s.resolveString(idx, %s);\n", ind, dest, p, stringBlobSlot(dest))
 		} else {
 			g.pf("%s%s = %s.resolveBytes(idx);\n", ind, dest, p)
 		}
@@ -847,7 +847,7 @@ func (g *wireGen) emitUnionNumber(un *ir.Union) {
 		case f.Type.Blob():
 			g.pf("\t\tcase %d:\n", i+1)
 			if f.Type.Kind == ir.TString {
-				g.pf("\t\t\tif (%s != null) s.noteBlob(_kStringBlobId, %s!);\n", expr, expr)
+				g.pf("\t\t\tif (%s != null) s.noteBlob(_kStringBlobId, %s!, %s);\n", expr, expr, stringBlobSlot(expr))
 			} else {
 				g.pf("\t\t\tif (%s != null) s.noteBlob(_kBytesBlobId, %s!);\n", expr, expr)
 			}
