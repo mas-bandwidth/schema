@@ -1,0 +1,445 @@
+package main
+
+import (
+	"bytes"
+	"encoding/hex"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
+	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+type implementationUnits map[string]*ir.Unit
+
+func (u implementationUnits) get(key string) (*ir.Unit, error) {
+	if unit := u[key]; unit != nil {
+		return unit, nil
+	}
+	return nil, errors.New("missing unit")
+}
+
+type implementationGeneratorFunc func(*ir.Unit, string, compiler.Options) (map[string][]byte, error)
+
+func (f implementationGeneratorFunc) Generate(u *ir.Unit, lang string, opts compiler.Options) (map[string][]byte, error) {
+	return f(u, lang, opts)
+}
+
+func implementationUnit(t *testing.T, source string) *ir.Unit {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "Probe.schema")
+	if err := os.WriteFile(p, []byte("package probe\n"+source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{p})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}
+
+func implementationFixture(t *testing.T) *ir.Unit {
+	return implementationUnit(t, "table Used\n{\n value int32\n}\ntable Feature\n{\n at timestamp\n}\ntable Parent\n{\n child *Feature\n next *Parent\n}\n")
+}
+
+func implementationInput(t *testing.T, u *ir.Unit, root, text string) Instance {
+	t.Helper()
+	model := tabletext.NewModel(u)
+	value := model.New(u.Tables[root])
+	var report tabletext.Report
+	if !model.Read(value, []byte(text), &report) || !report.Silent() || report.Refused || report.NonFiniteFloat != "" {
+		t.Fatalf("fixture JSON failed: %+v", report)
+	}
+	return implementationValueInput(t, model, value)
+}
+
+func implementationValueInput(t *testing.T, model *tabletext.Model, value *tabletext.Instance) Instance {
+	t.Helper()
+	wire, err := encodeImplementationWitness(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := model.Write(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	inst := Instance{Name: "witness", Unit: "unit", Root: value.Def.Name, Wire: filepath.Join(dir, "wire"), JSON: filepath.Join(dir, "text")}
+	for name, data := range map[string][]byte{inst.Wire: wire, inst.JSON: text} {
+		if err := os.WriteFile(name, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return inst
+}
+
+func implementationGenerated(*ir.Unit, string, compiler.Options) (map[string][]byte, error) {
+	return map[string][]byte{"unit.go": []byte("package unit")}, nil
+}
+
+func implementationProbe(t *testing.T, u *ir.Unit, inst Instance, feature string) ([]string, int) {
+	t.Helper()
+	return implementationAudit(&Manifest{Instances: []Instance{inst}}, []string{"go"}, []string{feature},
+		func(string) ([]string, bool) { return []string{feature}, true },
+		implementationUnits{"unit": u}, implementationGeneratorFunc(implementationGenerated))
+}
+
+func TestImplementationCannotOmitUnclaimedFeatures(t *testing.T) {
+	u := implementationFixture(t)
+	full := func(string) ([]string, bool) { return []string{"timestamp"}, true }
+	generated := implementationGeneratorFunc(implementationGenerated)
+	for _, tc := range []struct {
+		name, root, text, refusal, want string
+		registration                    func(string) ([]string, bool)
+		gen                             implementationGenerator
+	}{
+		{"complete witness", "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}", "", "", full, generated},
+		{"active pointer with recursive declaration", "Parent", "{\"child\":{\"at\":\"1970-01-01T00:00:01Z\"}}", "", "", full, generated},
+		{"nil pointer cannot activate declaration", "Parent", "{}", "", "no oracle-qualified active instance", full, generated},
+		{"default timestamp cannot qualify", "Feature", "{}", "", "no oracle-qualified active instance", full, generated},
+		{"unused feature in same unit", "Used", "{\"value\":1}", "", "no oracle-qualified active instance", full, generated},
+		{"required feature not claimed", "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}", "", "not implemented", func(string) ([]string, bool) { return nil, true }, generated},
+		{"target missing", "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}", "", "registration is missing", func(string) ([]string, bool) { return nil, false }, generated},
+		{"refusal is not positive", "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}", "unsupported", "no oracle-qualified active instance", full, generated},
+		{"registration cannot mask emitter refusal", "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}", "", "cannot generate", full, implementationGeneratorFunc(func(*ir.Unit, string, compiler.Options) (map[string][]byte, error) {
+			return nil, errors.New("unsupported")
+		})},
+		{"empty generator", "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}", "", "generated no files", full, implementationGeneratorFunc(func(*ir.Unit, string, compiler.Options) (map[string][]byte, error) { return nil, nil })},
+		{"missing root", "Missing", "{}", "", "no table root", full, generated},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := tc.root
+			if u.Tables[root] == nil {
+				root = "Used"
+			}
+			inst := implementationInput(t, u, root, tc.text)
+			inst.Root, inst.GoWireRefusal = tc.root, tc.refusal
+			m := &Manifest{Instances: []Instance{inst}}
+			p, witnesses := implementationAudit(m, []string{"go"}, []string{"timestamp"}, tc.registration, implementationUnits{"unit": u}, tc.gen)
+			text := strings.Join(p, "\n")
+			if tc.want == "" && (len(p) != 0 || witnesses != 1) {
+				t.Fatalf("positive witnesses=%d: %s", witnesses, text)
+			}
+			if tc.want != "" && !strings.Contains(text, tc.want) {
+				t.Fatalf("want %q in %s", tc.want, text)
+			}
+		})
+	}
+	if len(u.Tables) != 3 || len(u.Files) != 1 || len(u.Files[0].Tables) != 3 {
+		t.Fatal("root witness check mutated compiler IR")
+	}
+	if p := implementationProblems(&Manifest{}, []string{"go"}, nil, full, implementationUnits{}, generated); len(p) == 0 {
+		t.Fatal("empty feature universe passed")
+	}
+	if p := implementationProblems(&Manifest{}, []string{"go"}, []string{"timestamp"}, full, implementationUnits{}, generated); len(p) == 0 {
+		t.Fatal("empty corpus passed")
+	}
+}
+
+func TestImplementationRequiresActualFeatureValues(t *testing.T) {
+	// These are real input files built by the existing neutral engines, not
+	// stand-in manifest flags. Each dormant form must fail despite the same
+	// reachable declaration and the same claimed generator registration.
+	for _, tc := range []struct{ feature, schema, active, dormant string }{
+		{"required", "table Root\n{\n name string(32) | required\n}\n", "{\"name\":\"live\"}", "{}"},
+		{"one-sided-range", "table Root\n{\n n int64 | min = 0\n}\n", "{\"n\":1}", "{}"},
+		{"text-list", "table Root\n{\n names [..4]string(8)\n}\n", "{\"names\":[\"live\"]}", "{\"names\":[]}"},
+		{"text-list-total", "table Root\n{\n names [..4]string(8) | total = 12\n}\n", "{\"names\":[\"live\"]}", "{\"names\":[\"\"]}"},
+		{"array-root", "table Root | json = \"array\"\n{\n names [..4]string(8)\n}\n", "[\"live\"]", "[]"},
+		{"optional-map", "table Root\n{\n names ?map[string(8)]int32\n}\n", "{\"names\":{\"live\":1}}", "{\"names\":{}}"},
+		{"optional-variable-closure", "table Leaf\n{\n n int32\n}\ntable Inner\n{\n child *Leaf\n}\ntable Root\n{\n inner ?Inner\n}\n", "{\"inner\":{\"child\":{\"n\":1}}}", "{\"inner\":{}}"},
+	} {
+		t.Run(tc.feature+"/"+tc.schema, func(t *testing.T) {
+			u := implementationUnit(t, tc.schema)
+			if !slices.Contains(compiler.UnitConstructs(u), tc.feature) {
+				t.Fatalf("fixture does not declare %s", tc.feature)
+			}
+			for _, row := range []struct {
+				text string
+				pass bool
+			}{{tc.active, true}, {tc.dormant, false}} {
+				inst := implementationInput(t, u, "Root", row.text)
+				problems, count := implementationProbe(t, u, inst, tc.feature)
+				if row.pass && (len(problems) != 0 || count != 1) {
+					t.Fatalf("active input failed: %v (count %d)", problems, count)
+				}
+				if !row.pass && (len(problems) == 0 || count != 0) {
+					t.Fatalf("dormant input passed: %v (count %d)", problems, count)
+				}
+			}
+		})
+	}
+}
+
+func TestImplementationRefusesClampedOracleResult(t *testing.T) {
+	u := implementationUnit(t, "table Root\n{\n name string(2) | required\n}\n")
+	inst := implementationInput(t, u, "Root", "{\"name\":\"ok\"}")
+	if err := os.WriteFile(inst.JSON, []byte("{\"name\":\"overlong\"}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	problems, count := implementationProbe(t, u, inst, "required")
+	got := strings.Join(problems, "\n")
+	if count != 0 || !strings.Contains(got, "positive JSON does not decode cleanly") || !strings.Contains(got, "Clamped:1") {
+		t.Fatalf("clamped oracle response qualified: %s / %d", got, count)
+	}
+}
+
+func TestImplementationOnlyVisitsSelectedValues(t *testing.T) {
+	u := implementationUnit(t, "table Feature\n{\n at timestamp\n}\nunion Choice\n{\n feature Feature\n other int32\n}\ntable Root\n{\n choice Choice\n}\n")
+	for _, row := range []struct {
+		text string
+		pass bool
+	}{
+		{"{\"choice\":{\"feature\":{\"at\":\"1970-01-01T00:00:01Z\"}}}", true},
+		{"{\"choice\":{\"other\":1}}", false},
+		{"{}", false},
+	} {
+		p, n := implementationProbe(t, u, implementationInput(t, u, "Root", row.text), "timestamp")
+		if row.pass && (len(p) != 0 || n != 1) {
+			t.Fatalf("selected feature failed: %v", p)
+		}
+		if !row.pass && (len(p) == 0 || n != 0) {
+			t.Fatalf("unselected feature qualified: %v", p)
+		}
+	}
+	u = implementationUnit(t, "table Root\n{\n active bool\n if active\n {\n  at timestamp\n }\n}\n")
+	for _, active := range []bool{false, true} {
+		model := tabletext.NewModel(u)
+		value := model.New(u.Tables["Root"])
+		value.Fields[0].Cell.B = active
+		value.Fields[1].Cell.I, value.Fields[1].Cell.U = 1, 1
+		p, n := implementationProbe(t, u, implementationValueInput(t, model, value), "timestamp")
+		if active && (len(p) != 0 || n != 1) {
+			t.Fatalf("active guard failed: %v", p)
+		}
+		if !active && (len(p) == 0 || n != 0) {
+			t.Fatalf("guarded-out feature qualified: %v", p)
+		}
+	}
+}
+
+func TestImplementationIgnoresUnusedArrayCapacity(t *testing.T) {
+	u := implementationUnit(t, "table Feature\n{\n at timestamp\n}\ntable Root\n{\n rows [..2]Feature\n}\n")
+	model := tabletext.NewModel(u)
+	root := model.New(u.Tables["Root"])
+	f := &root.Fields[0]
+	// The capacity contains a feature, but Count=0 means no such value is on
+	// the wire. Merely traversing all allocated Elems would create coverage.
+	f.Elems[0].Tab.Fields[0].Cell.I = 1
+	f.Elems[0].Tab.Fields[0].Cell.U = 1
+	for _, count := range []int{0, 1} {
+		f.Count = count
+		problems, witnesses := implementationProbe(t, u, implementationValueInput(t, model, root), "timestamp")
+		if count == 0 && (len(problems) == 0 || witnesses != 0) {
+			t.Fatalf("unused capacity qualified: %v", problems)
+		}
+		if count == 1 && (len(problems) != 0 || witnesses != 1) {
+			t.Fatalf("live array value failed: %v", problems)
+		}
+	}
+}
+
+func TestImplementationInputMustBeOracleQualified(t *testing.T) {
+	u := implementationFixture(t)
+	for _, kind := range []string{"missing-wire", "damaged-wire", "extra-wire", "missing-json", "mismatched-json", "damaged-json", "no-text"} {
+		t.Run(kind, func(t *testing.T) {
+			inst := implementationInput(t, u, "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}")
+			var err error
+			switch kind {
+			case "missing-wire":
+				err = os.Remove(inst.Wire)
+			case "damaged-wire":
+				err = os.WriteFile(inst.Wire, []byte{255}, 0600)
+			case "extra-wire":
+				wire, readErr := os.ReadFile(inst.Wire)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				err = os.WriteFile(inst.Wire, append(wire, 0), 0600)
+			case "missing-json":
+				err = os.Remove(inst.JSON)
+			case "mismatched-json":
+				err = os.WriteFile(inst.JSON, []byte("{}"), 0600)
+			case "damaged-json":
+				err = os.WriteFile(inst.JSON, []byte("{"), 0600)
+			case "no-text":
+				inst.NoText = true
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			problems, _ := implementationProbe(t, u, inst, "timestamp")
+			if len(problems) == 0 {
+				t.Fatalf("%s qualified", kind)
+			}
+		})
+	}
+}
+
+func TestImplementationRootProperties(t *testing.T) {
+	u := implementationUnit(t, "table Root | forms = \"wire,json\"\n{\n n int32\n}\n")
+	if p, n := implementationProbe(t, u, implementationInput(t, u, "Root", "{\"n\":1}"), "forms"); len(p) != 0 || n != 1 {
+		t.Fatalf("actual permitted root entry failed: %v", p)
+	}
+	u = implementationUnit(t, "table Child | integrity = \"crc32c\"\n{\n n int32\n}\ntable Root\n{\n child Child\n}\n")
+	inst := implementationInput(t, u, "Root", "{\"child\":{\"n\":1}}")
+	if p, n := implementationProbe(t, u, inst, "integrity"); len(p) == 0 || n != 0 {
+		t.Fatalf("nested annotation credited root integrity: %v / %d", p, n)
+	}
+}
+
+func TestImplementationIntegrityCRC32C(t *testing.T) {
+	u := implementationUnit(t, "table Root | integrity = \"crc32c\"\n{\n n int32\n}\n")
+	inst := implementationInput(t, u, "Root", "{\"n\":1}")
+	sealed, err := os.ReadFile(inst.Wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, n := implementationProbe(t, u, inst, "integrity"); len(p) != 0 || n != 1 {
+		t.Fatalf("actual sealed positive input failed: %v / %d", p, n)
+	}
+	// Each changed byte is real input damage. A checksum check that accepts
+	// every trailer (or one which never runs) fails these controls.
+	for i := range sealed {
+		damaged := append([]byte(nil), sealed...)
+		damaged[i] ^= 1
+		if err := os.WriteFile(inst.Wire, damaged, 0600); err != nil {
+			t.Fatal(err)
+		}
+		p, n := implementationProbe(t, u, inst, "integrity")
+		if len(p) == 0 || n != 0 {
+			t.Fatalf("byte %d damage qualified: %v", i, p)
+		}
+		if i > 0 && !strings.Contains(strings.Join(p, "\n"), "integrity_mismatch") {
+			t.Fatalf("byte %d decoded before checksum: %v", i, p)
+		}
+	}
+	for _, short := range [][]byte{nil, {1}, {1, 0, 0, 0}, sealed[:len(sealed)-4]} {
+		if err := os.WriteFile(inst.Wire, short, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if p, n := implementationProbe(t, u, inst, "integrity"); len(p) == 0 || n != 0 {
+			t.Fatalf("unsealed/short input qualified: %v", p)
+		}
+	}
+	// An unsupported form is refused by the neutral form check, before a
+	// checksum comparison. A malformed form-1 body with a bad CRC is instead
+	// rejected by the wrapper before any body/id-table decode.
+	for _, row := range []struct {
+		wire         []byte
+		want, absent string
+	}{
+		{[]byte{2}, "Refused:true", "integrity_mismatch"},
+		{[]byte{1, 255, 0, 0, 0, 0}, "integrity_mismatch", "positive wire does not decode cleanly"},
+	} {
+		if err := os.WriteFile(inst.Wire, row.wire, 0600); err != nil {
+			t.Fatal(err)
+		}
+		p, _ := implementationProbe(t, u, inst, "integrity")
+		got := strings.Join(p, "\n")
+		if !strings.Contains(got, row.want) || strings.Contains(got, row.absent) {
+			t.Fatalf("wrong failure order: %s", got)
+		}
+	}
+	if err := os.WriteFile(inst.Wire, sealed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inst.JSON, []byte("{\"n\":2}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if p, n := implementationProbe(t, u, inst, "integrity"); n != 0 || !strings.Contains(strings.Join(p, "\n"), "positive JSON does not reproduce") {
+		t.Fatalf("different JSON value qualified sealed wire: %v", p)
+	}
+	u.Tables["Root"].Integrity = "future-unknown"
+	if p, n := implementationProbe(t, u, inst, "integrity"); n != 0 || !strings.Contains(strings.Join(p, "\n"), "no qualified witness oracle") {
+		t.Fatalf("unknown integrity kind qualified: %v", p)
+	}
+}
+
+// This golden is independently pinned by the generated-Go native integrity
+// test (internal/codegen/gotable/integrity_test.go), not constructed by the
+// wrapper under test. The 53-byte plain file plus little-endian 0x1d23b551
+// locks the polynomial, covered extent, initial/final XOR and byte order.
+func TestImplementationIntegrityMatchesGeneratedGoGolden(t *testing.T) {
+	u := implementationUnit(t, "table Ledger | integrity = \"crc32c\"\n{\n n int64 | min = 0, max = 9007199254740993\n label string(16)\n count uint16\n}\n")
+	const plainHex = "010105e803000000000000020c026f6b030707000071f801864ce363af3d62cb8fecfcf73974a279448ee2e5b10300000000000000"
+	want, err := hex.DecodeString(plainHex + "51b5231d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst := implementationInput(t, u, "Ledger", "{\"n\":1000,\"label\":\"ok\",\"count\":7}")
+	actual, err := os.ReadFile(inst.Wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(actual, want) {
+		t.Fatalf("wrapper changed independent generated-Go golden: %x", actual)
+	}
+	if p, n := implementationProbe(t, u, inst, "integrity"); len(p) != 0 || n != 1 {
+		t.Fatalf("golden refused: %v", p)
+	}
+	model, value, _, err := decodeImplementationWitness(u, inst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := tablewire.Encode(model, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _ := hex.DecodeString(plainHex)
+	if !bytes.Equal(body, plain) {
+		t.Fatalf("canonical decoded body changed: %x", body)
+	}
+}
+
+func TestImplementationDecodesEachInputOnceAcrossLanguages(t *testing.T) {
+	u := implementationFixture(t)
+	inst := implementationInput(t, u, "Feature", "{\"at\":\"1970-01-01T00:00:01Z\"}")
+	seen := map[string]int{}
+	gen := implementationGeneratorFunc(func(_ *ir.Unit, lang string, _ compiler.Options) (map[string][]byte, error) {
+		seen[lang]++
+		// Decoding is completed before generation. Removing the files here
+		// would break a second oracle read for the next target.
+		if lang == "a" {
+			if err := os.Remove(inst.Wire); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Remove(inst.JSON); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return implementationGenerated(nil, lang, nil)
+	})
+	p, count := implementationAudit(&Manifest{Instances: []Instance{inst}}, []string{"a", "b"}, []string{"timestamp"},
+		func(string) ([]string, bool) { return []string{"timestamp"}, true }, implementationUnits{"unit": u}, gen)
+	if len(p) != 0 || count != 1 || seen["a"] != 1 || seen["b"] != 1 {
+		t.Fatalf("per-input oracle contract failed: %v / %d / %v", p, count, seen)
+	}
+}
+
+func TestOriginalImplementationUsesAllRequiredConstructs(t *testing.T) {
+	t.Chdir("../../..")
+	m, err := ReadManifest(defaultManifest, defaultJSONDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	problems := strings.Join(originalImplementationProblems(m), "\n")
+	for _, lang := range originalNine {
+		have, _ := compiler.Carried(lang)
+		for _, feature := range compiler.CarryConstructs() {
+			if !slices.Contains(have, feature) && !strings.Contains(problems, lang+": required Schema construct "+feature+" is not implemented") {
+				t.Fatalf("unclaimed %s/%s disappeared from acceptance", lang, feature)
+			}
+		}
+	}
+	var out strings.Builder
+	if err := implementationReport(&out, m, "go"); err == nil || strings.Contains(out.String(), "IMPLEMENTATION_PREREQUISITES_PASS") {
+		t.Fatalf("incomplete real corpus produced success: err=%v, output=%s", err, out.String())
+	}
+}

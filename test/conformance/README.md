@@ -381,9 +381,49 @@ case count. The reference rows are checked independently against that shape,
 so a missing reference row cannot shrink the denominator. Answered cases and
 the manifest's named required refusals count as complete; missing, failed or
 uncarried cases do not. Each of the eight ports must also record a passing
-fixed-form gate. The six expansion languages remain visible but are not part
-of this completion obligation. The table is printed and uploaded even when
-the gate fails; ordinary `coverage` remains an informational report.
+fixed-form gate. These corpus results are necessary, but they cannot by
+themselves certify a full implementation.
+
+`coverage --require-original-nine` is the unified full-implementation gate. It
+also requires all of the following, independently of what a port chooses to
+claim:
+
+- Every required construct in `compiler.CarryConstructs()` must be supported
+  by every original-nine backend. Missing features remain failures even when
+  the current corpus contains no example of them.
+- Required features must have executable corpus witnesses and successful
+  code generation. Declaring an unrelated feature in an unused table does
+  not cover it. The `implementation --lang <lang>` command checks these
+  prerequisites; it is not a substitute for native execution.
+- Every original-nine language, including C++, must pass
+  `test/conformance/nightly-readiness`. This runs the mandatory native,
+  packet, fixed-form, strict fuzz and retention acceptance gates. Unsupported
+  valid roots/forms, omitted comparisons, live skipped obligations and failed
+  controls cannot count as completion. Named retired tests are reported
+  explicitly; their replacement obligations still have to pass.
+- Each language must supply exactly one passing `readiness-<lang>.txt` and
+  an adjacent `readiness-<lang>.revision` matching the current Git checkout.
+  Missing, failed, duplicate or stale receipts fail. Nightly writes these
+  only from the actual acceptance command and uploads the complete logs.
+- The roadmap renderer must validate the current graph and evidence overlays,
+  find all three sections and all nine columns complete, and confirm that
+  `ROADMAP.md` matches the data. A manually completed task cannot override a
+  failed implementation or runtime check. SBCL and a Git checkout are required;
+  absence of either fails closed.
+
+Full implementation is the prerequisite for success. Neither a smaller
+passing corpus nor a green roadmap can substitute for it. The six expansion
+languages remain visible but are not part of this completion obligation. The
+table and all failure diagnostics are printed and uploaded even when the gate
+fails; ordinary `coverage` remains an informational report.
+Every confirmed defect found by these gates must leave a permanent regression.
+Keep the original trigger and seed, minimize it, and commit the expected decoded
+values, canonical bytes or refusal report. Language-neutral cases belong in the
+shared corpus; language-specific API behavior also needs a native regression.
+Record that the broken implementation fails and the repair passes, and wire the
+case into nightly acceptance. An uncommitted workbench reproducer does not close
+the defect, and re-pinning incorrect bytes is not a repair.
+
 The `harness cross-read` command remains available for individual diagnostics,
 but is not repeated per language in the nightly.
 
