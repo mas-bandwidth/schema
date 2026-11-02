@@ -631,6 +631,7 @@ const tableRegionSource = `
     {
         dataBytes = attributionBytes = 0;
         long total = LoadMeasure(type, bytes, out reason); if (total < 0) { return -1; }
+        if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
         int idsCount = (int)Read64(bytes, bytes.Length - 8), end = bytes.Length - 8 - idsCount * 8;
         Reader root = new Reader(bytes.Slice(1, end - 1), bytes.Slice(end, idsCount * 8));
         if (!NodeFrames(root, out _, out int nodes)) { nodes = 0; }
@@ -655,6 +656,7 @@ const tableRegionSource = `
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (total < 0)
         {
+            if (reason == "integrity_mismatch") { IntegrityDamage(report); return IntPtr.Zero; }
             if (reason != null) { report.Refused = true; report.Reason = reason == "unknown_form" ? (bytes[0] == 2 ? "message_form_as_file" : "newer_form") : reason; Finish(report, Verdict.Refused); }
             else { Damage(report); Finish(report, Verdict.Damaged); }
             return IntPtr.Zero;
@@ -663,6 +665,7 @@ const tableRegionSource = `
         if (region == IntPtr.Zero || attribution == IntPtr.Zero || capacity < dataBytes || attributionCapacity < attributionBytes || ((ulong)region % (ulong)type.RegionAlign) != 0 || ((ulong)attribution & 7) != 0) { return IntPtr.Zero; }
         ulong dataAddress = (ulong)region, attrAddress = (ulong)attribution;
         if (dataAddress <= attrAddress ? attrAddress - dataAddress < (ulong)dataBytes : dataAddress - attrAddress < (ulong)attributionBytes) { return IntPtr.Zero; }
+        if (type.Integrity) { bytes = bytes.Slice(0, bytes.Length - 4); }
         ulong idsCount = Read64(bytes, bytes.Length - 8);
         int end = bytes.Length - 8 - (int)idsCount * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idsCount * 8);

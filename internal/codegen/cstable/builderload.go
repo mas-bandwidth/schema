@@ -33,6 +33,7 @@ const tableBuilderLoadSource = `
         if (bytes.Length == 0) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         if (bytes[0] != 1)
         { report.Refused = true; report.Reason = bytes[0] == 2 ? "message_form_as_file" : "newer_form"; Finish(report, Verdict.Refused); return false; }
+        if (type.Integrity && !IntegrityRead(ref bytes)) { IntegrityDamage(report); return false; }
         if (bytes.Length < 9) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         ulong idCount = Read64(bytes, bytes.Length - 8);
         if (idCount > (ulong)(bytes.Length - 9) / 8) { Damage(report); Finish(report, Verdict.Damaged); return false; }

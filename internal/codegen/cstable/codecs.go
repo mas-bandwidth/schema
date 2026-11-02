@@ -627,6 +627,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, ir.CookNodeAlign(g.unit, st), align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("    info.Integrity = %t;\n", st.Integrity == "crc32c")
 	if st.JsonArray {
 		g.pf("    info.JsonArray = true;\n")
 	}

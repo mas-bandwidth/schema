@@ -224,12 +224,14 @@ const tableRegionWriteSource = `
             long n = 1 + RegionBodySize(value, type, ref ids) + 8L * ids.Count + 8;
             long nodes = RegionNodesSize(ref ids);
             if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
+            if (type.Integrity) { n += 4; }
             if (measure) { return n; }
             if (n > buffer.Length) { return -1; }
             Writer w = new Writer(buffer);
             w.Byte(1); RegionWriteBody(ref w, value, type, ref ids, true);
             for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
             w.Fixed((ulong)ids.Count, 8);
+            if (type.Integrity) { w.Fixed(IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
             return w.Offset;
         }
         finally { ids.Graph.Dispose(); }

@@ -72,6 +72,7 @@ const tableRetainSaveSource = `
                 }
                 n += 8L * ids.Count + 8;
                 if (ids.Overflow) { return -1; }
+                if (type.Integrity) { n += 4; }
                 if (measure) { return n; }
                 if (n > buffer.Length) { return -1; }
                 long at = 0;
@@ -79,6 +80,7 @@ const tableRetainSaveSource = `
                 Writer w = new Writer(buffer); w.Byte(1); RetainWriteBody(ref w, value, type, ref ids, true); ids.Write(ref w);
                 at = 0;
                 for (int i = 0; i < retain->Count; i++) { if (retain->Bytes[at + 25] == 0) { report.RetainLost++; } at += Retain32(retain->Bytes + at); }
+                if (type.Integrity) { w.Fixed(IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
                 return w.Offset;
             }
         }

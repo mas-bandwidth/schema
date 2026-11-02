@@ -350,11 +350,13 @@ const tableMessageSource = `
         }
         BitWriter probe = new BitWriter(Span<byte>.Empty, true);
         MessageBatch(ref probe, values, type);
-        long size = (probe.At + 7) / 8;
+        long size = (probe.At + 7) / 8 + (type.Integrity ? 4 : 0);
         if (measure) { return size; }
         if (size > bytes.Length) { return -1; }
         bytes.Slice(0, (int)size).Clear(); BitWriter writer = new BitWriter(bytes, false);
-        MessageBatch(ref writer, values, type); return size;
+        MessageBatch(ref writer, values, type);
+        if (type.Integrity) { BinaryPrimitives.WriteUInt32LittleEndian(bytes.Slice((int)size - 4), IntegrityCrc(bytes.Slice(0, (int)size - 4))); }
+        return size;
     }
     static void MessageBatch(ref BitWriter w, object[] values, TableTypeInfo type)
     {

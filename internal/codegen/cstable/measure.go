@@ -111,6 +111,7 @@ const tableLoadMeasureSource = `
         reason = null;
         if (bytes.Length < 1) { return -1; }
         if (bytes[0] != 1) { reason = "unknown_form"; return -1; }
+        if (type.Integrity && !IntegrityRead(ref bytes)) { reason = "integrity_mismatch"; return -1; }
         if (bytes.Length < 9) { return -1; }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }

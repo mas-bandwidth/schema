@@ -313,6 +313,7 @@ func (g *tableGen) emitSaveTyped(st *ir.Struct) {
 	g.pf("    int cachedElemSlots = !measure ? type.RootElemSlots : 0;\n")
 	g.pf("    Span<long> rootElemSizes = stackalloc long[cachedElemSlots];\n")
 	g.pf("    long n = 1 + %sBodySizeTyped(value, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;\n", name)
+	g.pf("    if (type.Integrity) { n += 4; }\n")
 	g.pf("    if (measure) { return n; }\n")
 	g.pf("    if (n > buffer.Length) { return -1; }\n")
 	g.pf("    scoped TableWire.Writer w = new TableWire.Writer(buffer);\n")
@@ -320,6 +321,7 @@ func (g *tableGen) emitSaveTyped(st *ir.Struct) {
 	g.pf("    %sWriteBodyTyped(ref w, value, ref ids, rootPayloadSizes, rootElemSizes);\n", name)
 	g.pf("    for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }\n")
 	g.pf("    w.Fixed((ulong)ids.Count, 8);\n")
+	g.pf("    if (type.Integrity) { w.Fixed(TableWire.IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }\n")
 	g.pf("    return w.Offset;\n}\n\n")
 }
 
@@ -1097,6 +1099,38 @@ public static partial class TableWire
         }
         WritePayload(ref w, value, f, ref ids, elemCache);
     }
+    static readonly uint[] IntegrityTable = MakeIntegrityTable();
+    static uint[] MakeIntegrityTable()
+    {
+        uint[] table = new uint[256];
+        for (uint i = 0; i < 256; i++)
+        {
+            uint crc = i;
+            for (int bit = 0; bit < 8; bit++) { crc = (crc >> 1) ^ ((crc & 1) != 0 ? 0x82f63b78u : 0u); }
+            table[i] = crc;
+        }
+        return table;
+    }
+    public static uint IntegrityCrc(ReadOnlySpan<byte> bytes)
+    {
+        uint crc = 0xffffffffu;
+        foreach (byte value in bytes) { crc = (crc >> 8) ^ IntegrityTable[(crc ^ value) & 255]; }
+        return crc ^ 0xffffffffu;
+    }
+    public static bool IntegrityRead(ref ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 5) { return false; }
+        int end = bytes.Length - 4;
+        uint stored = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(end));
+        if (stored != IntegrityCrc(bytes.Slice(0, end))) { return false; }
+        bytes = bytes.Slice(0, end);
+        return true;
+    }
+    public static Verdict IntegrityDamage(TableReport report)
+    {
+        Damage(report); report.Refused = false; report.Reason = "integrity_mismatch";
+        return Finish(report, Verdict.Damaged);
+    }
     public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
     {
         // Preserve first-use vocabulary order; the index only accelerates
@@ -1131,12 +1165,14 @@ public static partial class TableWire
         long n = 1 + BodySize(value, type, ref ids, rootPayloadSizes, rootElemSizes) + 8L * ids.Count + 8;
         long nodes = NodesSize(ref ids);
         if (nodes != 0) { n += VarSize(ids.Reference(ulong.MaxValue)) + 1 + VarSize((ulong)nodes) + nodes; }
+        if (type.Integrity) { n += 4; }
         if (measure) { return n; }
         if (n > buffer.Length) { return -1; }
         scoped Writer w = new Writer(buffer);
         w.Byte(1); WriteBody(ref w, value, type, ref ids, true, rootPayloadSizes, rootElemSizes);
         for (int i = 0; i < ids.Count; i++) { w.Fixed(ids.Values[i], 8); }
         w.Fixed((ulong)ids.Count, 8);
+        if (type.Integrity) { w.Fixed(IntegrityCrc(buffer.Slice(0, (int)w.Offset)), 4); }
         return w.Offset;
     }
 
@@ -1664,6 +1700,7 @@ public static partial class TableWire
             report.Reason = bytes[0] == 2 ? "message_form_as_file" : "newer_form";
             return Finish(report, Verdict.Refused);
         }
+        if (type.Integrity && !IntegrityRead(ref bytes)) { return IntegrityDamage(report); }
         if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
