@@ -1,29 +1,18 @@
 name: Nightly conformance
 
-# THE CROSS-LANGUAGE NIGHTLY (test/conformance/README.md, "The nightly";
-# design approved by Glenn, 2026-10-25). Every night, both directions, every
-# port the registry discovers:
+# THE CROSS-LANGUAGE NIGHTLY (test/conformance/README.md, "The nightly").
+# Validate one canonical corpus with C++, then have every registered language
+# read that corpus and require each writer's output to be byte-identical.
+# Equality is transitive: rereading identical output once per writer adds no
+# evidence. Work is O(n) in languages, never an all-pairs matrix (Glenn,
+# 2026-11-01).
 #
-#   1. every port reads every value the C++ reference writes, on every surface
-#      and form the harness covers, and its bytes equal C++'s canonical write;
-#   2. the C++ reference reads what every port writes, accepts it, and re-saves
-#      it byte-identical;
-#   3. a case a port CLAIMS — its unit uses a construct the port's target
-#      registers as carried (compiler/carries_<target>.go) — and answers ABSENT
-#      fails the night;
-#   4. a case a port does not carry yet does not fail the night, and the
-#      coverage table every run publishes in its summary is how the gap stays
-#      seen (Glenn, 2026-10-25: "that's fine").
-#
-# THE JOBS. `registry` reads the ports out of test/conformance/<lang>/ci.json
-# (`harness matrix --ports`), so a port joins by registering its driver and
-# nothing here moves. `cpp-writes` builds the reference, has it write the whole
-# corpus, publishes it as the `cpp-corpus` artifact and fails if it is not the
-# committed one. `port (<lang>)` runs one port over that corpus with the claim
-# check on, runs its fixed-form gate against the C++ byte oracle, and
-# publishes everything it wrote as `port-<lang>-writes`. `cpp-reads-ports`
-# hands every port's writes back to the reference (`harness cross-read`).
-# `coverage` turns every row into the table.
+# `registry` discovers ports from test/conformance/<lang>/ci.json. `cpp-writes`
+# builds, writes and validates the canonical corpus and verifies the committed
+# pins. `port (<lang>)` reads it, checks canonical output and claimed coverage,
+# and runs its fixed-form gate. `coverage` records C++ and every port's results.
+# Claimed absence fails; unimplemented coverage stays visible and does not
+# count as completed coverage. Per-language writes remain available as artifacts.
 #
 # THE FLEET'S RUNNERS, never hosted (standing rule, 2026-10-21), and never the
 # host named space, which is the game server and in no runner pool: every job
@@ -149,8 +138,18 @@ jobs:
       - name: the C++ reference writes the fixed form (form 3)
         run: make tables-fixedform-corpus
 
-      - name: the C++ leg over every surface of its own corpus
-        run: ./build/conformance-harness run --only cpp
+      - name: the C++ leg validates the canonical corpus
+        run: |
+          mkdir -p build/nightly/reference-report
+          ./build/conformance-harness run --only cpp \
+            --coverage build/nightly/reference-report/coverage-cpp.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: reference-report
+          path: build/nightly/reference-report
+          if-no-files-found: error
 
       - name: pack the C++ corpus
         if: always()
@@ -343,70 +342,8 @@ jobs:
           path: build/nightly/port-writes
           if-no-files-found: warn
 
-  cpp-reads-ports:
-    needs: [cpp-writes, port]
-    if: ${{ !cancelled() && needs.cpp-writes.result != 'skipped' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
-    steps:
-      - name: never the host named space
-        run: |
-          if [ "$(hostname -s)" = space ]; then
-            echo "::error::space is the game server and never runs CI"; exit 1
-          fi
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check out the C++ serialize runtime (pinned release)
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: cpp-corpus
-          path: build/nightly/cpp-corpus
-      - name: read the C++ corpus
-        run: cp -R build/nightly/cpp-corpus/testdata/. testdata/
-      - name: build the C++ reference and the nightly harness
-        run: |
-          make -j"$(nproc)" build/conformance-cpp build/schema_test_cook
-          go build -tags "$HARNESS_TAGS" -o build/nightly-harness ./test/conformance/harness
-      # every port-<lang>-writes artifact, each in its own directory
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: port-*-writes
-          path: build/nightly/ports
-      - name: the C++ reference reads what every port wrote
-        run: |
-          set -uo pipefail
-          mkdir -p build/nightly/crossread-report
-          status=0
-          found=0
-          for dir in build/nightly/ports/port-*-writes; do
-            [ -d "$dir" ] || continue
-            found=1
-            lang=${dir##*/port-}
-            lang=${lang%-writes}
-            ./build/nightly-harness cross-read --lang "$lang" --writes "$dir" \
-              --work "build/nightly/crossread-work" \
-              --coverage "build/nightly/crossread-report/crossread-$lang.json" || status=1
-          done
-          if [ "$found" = 0 ]; then echo "::error::no port wrote anything to re-read"; exit 1; fi
-          exit $status
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: crossread-report
-          path: build/nightly/crossread-report
-          if-no-files-found: warn
-
   coverage:
-    needs: [port, cpp-reads-ports]
+    needs: [cpp-writes, port]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 10
@@ -428,8 +365,8 @@ jobs:
           path: build/nightly/rows
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: crossread-report
-          path: build/nightly/rows/crossread-report
+          name: reference-report
+          path: build/nightly/rows/reference-report
         continue-on-error: true
       - name: the coverage table
         run: |
