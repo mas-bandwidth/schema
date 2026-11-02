@@ -3201,6 +3201,7 @@ static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_no
         slot->value = (int64_t)index;
         return;
     }
+    if ( nodes->blob_named != NULL ) { nodes->blob_named[index-1] |= 2u; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -3212,7 +3213,8 @@ static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_no
    so the directory keeps its 16-byte entry and the framing numbers hold. */
 static SCHEMA_UNUSED void graphdemo_table_node_blob_mark( graphdemo_table_node_map_t * nodes, uint64_t index, graphdemo_table_report_t * report )
 {
-    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count || !( nodes->blob_named[index-1] & 2u ) ) { return; }
+    nodes->blob_named[index-1] &= (uint8_t)~2u;
     if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
@@ -6071,7 +6073,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tally_wire_extent_(graphdemo_table_rea
 }
 static SCHEMA_UNUSED int64_t schema_graphdemo_tally_wire_storage_(const graphdemo_table_reader_t * r)
 {
-    int64_t at=sizeof(graphdemo_tally_t); if(!schema_graphdemo_tally_wire_extent_(*r,&at) || at>INT64_MAX-GRAPHDEMO_K_TABLE_ALIGN) { return -1; } return graphdemo_table_align_up64(at);
+    int64_t at=graphdemo_table_align_up64((int64_t)sizeof(graphdemo_tally_t)); if(!schema_graphdemo_tally_wire_extent_(*r,&at) || at>INT64_MAX-GRAPHDEMO_K_TABLE_ALIGN) { return -1; } return graphdemo_table_align_up64(at);
 }
 static SCHEMA_UNUSED int schema_graphdemo_marker_extent_(graphdemo_table_numbering_t * n,const void * storage,uint8_t * target,int64_t * at)
 {
@@ -6095,7 +6097,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_wire_extent_(graphdemo_table_re
 }
 static SCHEMA_UNUSED int64_t schema_graphdemo_marker_wire_storage_(const graphdemo_table_reader_t * r)
 {
-    int64_t at=sizeof(graphdemo_marker_t); if(!schema_graphdemo_marker_wire_extent_(*r,&at) || at>INT64_MAX-GRAPHDEMO_K_TABLE_ALIGN) { return -1; } return graphdemo_table_align_up64(at);
+    int64_t at=graphdemo_table_align_up64((int64_t)sizeof(graphdemo_marker_t)); if(!schema_graphdemo_marker_wire_extent_(*r,&at) || at>INT64_MAX-GRAPHDEMO_K_TABLE_ALIGN) { return -1; } return graphdemo_table_align_up64(at);
 }
 static SCHEMA_UNUSED int schema_graphdemo_tally_node_save_( graphdemo_table_writer_t * w, const void * storage )
 { return graphdemo_tally_save_body(w,(const graphdemo_tally_t *)storage); }
@@ -6308,7 +6310,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(graphdemo_table_rea
                 void * value=nodes->arena ? graphdemo_table_arena_at(sink->worker->arena,(uint32_t)directory[k+1].offset) : nodes->base+directory[k+1].offset;
                 graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; const graphdemo_table_node_type_t * type=schema_graphdemo_marker_node_lookup_(id);
                 carve.worker=sink->worker; carve.region=NULL;
-                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=type->size; extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
+                if(!nodes->arena) { extent.base=(uint8_t *)value; extent.used=graphdemo_table_align_up64(type->size); extent.capacity=graphdemo_table_node_wire_storage(type,&body); carve.region=&extent; }
                 nodes->sink=&carve; body.nodes=nodes;
                 switch(id) {
                     case UINT64_C(0x69ff34904242a73d): graphdemo_tally_load_body(&body,(graphdemo_tally_t *)value); break;
@@ -6321,7 +6323,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_(graphdemo_table_rea
     }
     reader->nodes=nodes; reader->nested=0;
     { int read_ok=0; if(!nodes->refused) { graphdemo_table_region_sink_t extent; graphdemo_table_sink_t carve; carve.worker=sink->worker; carve.region=NULL;
-      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=sizeof(*root); extent.capacity=schema_graphdemo_marker_wire_storage_(reader); carve.region=&extent; }
+      if(!nodes->arena) { extent.base=(uint8_t *)(void *)root; extent.used=graphdemo_table_align_up64((int64_t)sizeof(*root)); extent.capacity=schema_graphdemo_marker_wire_storage_(reader); carve.region=&extent; }
       nodes->sink=&carve;  read_ok=graphdemo_marker_load_body(reader,root); nodes->sink=NULL; }
       /* a NaN or an infinity anywhere in the graph refuses the read, the tolerant one too (§3.3) */
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
@@ -6358,7 +6360,7 @@ static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_load_tolerant(u
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_marker_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
     if(!schema_graphdemo_marker_load_graph_(&reader,(graphdemo_marker_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { report->malformed=report->malformed||malformed_before; memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
-    report->malformed=malformed_before; graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_marker_t *)(const void *)region;
+    report->malformed=report->malformed||malformed_before; graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_marker_t *)(const void *)region;
 }
 /* marker_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_marker_load_builder_tolerant(graphdemo_marker_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
@@ -6376,7 +6378,7 @@ static SCHEMA_UNUSED int graphdemo_marker_load_builder_tolerant(graphdemo_marker
     sink.region=NULL; sink.worker=&builder->main;
     ok=schema_graphdemo_marker_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_marker_reset(root); return 0; } /* damage discards the whole load (§4) */
-    report->malformed=malformed_before; return 1;
+    report->malformed=report->malformed||malformed_before; return 1;
 }
 /* The PLAIN marker_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -6467,7 +6469,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_retain_(graphdemo_ta
                 carve.worker=sink->worker;
                 carve.region=NULL;
                 if(!nodes->arena) { extent.base=(uint8_t *)value;
-                extent.used=type->size;
+                extent.used=graphdemo_table_align_up64(type->size);
                 extent.capacity=graphdemo_table_node_wire_storage(type,&body);
                 carve.region=&extent;
                 }
@@ -6494,7 +6496,7 @@ static SCHEMA_UNUSED int schema_graphdemo_marker_load_graph_retain_(graphdemo_ta
     carve.worker=sink->worker;
     carve.region=NULL;
       if(!nodes->arena) { extent.base=(uint8_t *)(void *)root;
-      extent.used=sizeof(*root);
+      extent.used=graphdemo_table_align_up64((int64_t)sizeof(*root));
       extent.capacity=schema_graphdemo_marker_wire_storage_(reader);
       carve.region=&extent;
       }
@@ -6608,7 +6610,7 @@ static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_load_retain(uin
  graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
  } /* damage discards the whole load, the retention store too (§4) */
- report->malformed=malformed_before;
+ report->malformed=report->malformed||malformed_before;
  return (const graphdemo_marker_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_marker_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
@@ -6665,10 +6667,10 @@ static SCHEMA_UNUSED int64_t graphdemo_marker_save_retain(const graphdemo_marker
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const graphdemo_tally_t * graphdemo_tally_open_ex(const void * bytes,uint64_t length,graphdemo_table_refuse_reason_t * reason)
-{ return (const graphdemo_tally_t *)graphdemo_table_cook_open_ex(bytes,length,sizeof(graphdemo_tally_t),SCHEMA_TABLE_ALIGNOF(graphdemo_tally_t),reason); }
+{ return (const graphdemo_tally_t *)graphdemo_table_cook_open_ex(bytes,length,sizeof(graphdemo_tally_t),4,reason); }
 static SCHEMA_UNUSED const graphdemo_tally_t * graphdemo_tally_open( const void * bytes, uint64_t length )
 {
-    return (const graphdemo_tally_t *) graphdemo_table_cook_open( bytes, length, (uint64_t) sizeof( graphdemo_tally_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( graphdemo_tally_t ) );
+    return (const graphdemo_tally_t *) graphdemo_table_cook_open( bytes, length, (uint64_t) sizeof( graphdemo_tally_t ), (uint64_t) 4 );
 }
 
 /* marker_open: match the header and POINT. On a match the bytes ARE what this
@@ -6692,10 +6694,10 @@ static SCHEMA_UNUSED const graphdemo_tally_t * graphdemo_tally_open( const void 
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_open_ex(const void * bytes,uint64_t length,graphdemo_table_refuse_reason_t * reason)
-{ return (const graphdemo_marker_t *)graphdemo_table_cook_open_ex(bytes,length,sizeof(graphdemo_marker_t),SCHEMA_TABLE_ALIGNOF(graphdemo_marker_t),reason); }
+{ return (const graphdemo_marker_t *)graphdemo_table_cook_open_ex(bytes,length,sizeof(graphdemo_marker_t),8,reason); }
 static SCHEMA_UNUSED const graphdemo_marker_t * graphdemo_marker_open( const void * bytes, uint64_t length )
 {
-    return (const graphdemo_marker_t *) graphdemo_table_cook_open( bytes, length, (uint64_t) sizeof( graphdemo_marker_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( graphdemo_marker_t ) );
+    return (const graphdemo_marker_t *) graphdemo_table_cook_open( bytes, length, (uint64_t) sizeof( graphdemo_marker_t ), (uint64_t) 8 );
 }
 
 static SCHEMA_UNUSED int schema_graphdemo_tally_cook_body_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)

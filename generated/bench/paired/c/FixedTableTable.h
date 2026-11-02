@@ -4069,10 +4069,10 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_fixed_load( bench_fixed_table_t *
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const bench_fixed_table_t * bench_fixed_table_open_ex(const void * bytes,uint64_t length,bench_table_refuse_reason_t * reason)
-{ return (const bench_fixed_table_t *)bench_table_cook_open_ex(bytes,length,sizeof(bench_fixed_table_t),SCHEMA_TABLE_ALIGNOF(bench_fixed_table_t),reason); }
+{ return (const bench_fixed_table_t *)bench_table_cook_open_ex(bytes,length,sizeof(bench_fixed_table_t),16,reason); }
 static SCHEMA_UNUSED const bench_fixed_table_t * bench_fixed_table_open( const void * bytes, uint64_t length )
 {
-    return (const bench_fixed_table_t *) bench_table_cook_open( bytes, length, (uint64_t) sizeof( bench_fixed_table_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( bench_fixed_table_t ) );
+    return (const bench_fixed_table_t *) bench_table_cook_open( bytes, length, (uint64_t) sizeof( bench_fixed_table_t ), (uint64_t) 16 );
 }
 
 static SCHEMA_UNUSED int schema_bench_fixed_table_cook_body_(struct bench_table_numbering_t * n,uint8_t * at,const void * storage,int order)

@@ -3201,6 +3201,7 @@ static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_no
         slot->value = (int64_t)index;
         return;
     }
+    if ( nodes->blob_named != NULL ) { nodes->blob_named[index-1] |= 2u; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -3212,7 +3213,8 @@ static SCHEMA_UNUSED void graphdemo_table_node_resolve( const graphdemo_table_no
    so the directory keeps its 16-byte entry and the framing numbers hold. */
 static SCHEMA_UNUSED void graphdemo_table_node_blob_mark( graphdemo_table_node_map_t * nodes, uint64_t index, graphdemo_table_report_t * report )
 {
-    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count || !( nodes->blob_named[index-1] & 2u ) ) { return; }
+    nodes->blob_named[index-1] &= (uint8_t)~2u;
     if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
@@ -6216,10 +6218,10 @@ static SCHEMA_UNUSED int graphdemo_colour_load_body_retain( graphdemo_table_read
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const graphdemo_stamp_t * graphdemo_stamp_open_ex(const void * bytes,uint64_t length,graphdemo_table_refuse_reason_t * reason)
-{ return (const graphdemo_stamp_t *)graphdemo_table_cook_open_ex(bytes,length,sizeof(graphdemo_stamp_t),SCHEMA_TABLE_ALIGNOF(graphdemo_stamp_t),reason); }
+{ return (const graphdemo_stamp_t *)graphdemo_table_cook_open_ex(bytes,length,sizeof(graphdemo_stamp_t),4,reason); }
 static SCHEMA_UNUSED const graphdemo_stamp_t * graphdemo_stamp_open( const void * bytes, uint64_t length )
 {
-    return (const graphdemo_stamp_t *) graphdemo_table_cook_open( bytes, length, (uint64_t) sizeof( graphdemo_stamp_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( graphdemo_stamp_t ) );
+    return (const graphdemo_stamp_t *) graphdemo_table_cook_open( bytes, length, (uint64_t) sizeof( graphdemo_stamp_t ), (uint64_t) 4 );
 }
 
 static SCHEMA_UNUSED int schema_graphdemo_stamp_cook_body_(struct graphdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)

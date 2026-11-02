@@ -10567,10 +10567,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const benchtable_table_entity_t * benchtable_table_entity_open_ex(const void * bytes,uint64_t length,benchtable_table_refuse_reason_t * reason)
-{ return (const benchtable_table_entity_t *)benchtable_table_cook_open_ex(bytes,length,sizeof(benchtable_table_entity_t),SCHEMA_TABLE_ALIGNOF(benchtable_table_entity_t),reason); }
+{ return (const benchtable_table_entity_t *)benchtable_table_cook_open_ex(bytes,length,sizeof(benchtable_table_entity_t),8,reason); }
 static SCHEMA_UNUSED const benchtable_table_entity_t * benchtable_table_entity_open( const void * bytes, uint64_t length )
 {
-    return (const benchtable_table_entity_t *) benchtable_table_cook_open( bytes, length, (uint64_t) sizeof( benchtable_table_entity_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( benchtable_table_entity_t ) );
+    return (const benchtable_table_entity_t *) benchtable_table_cook_open( bytes, length, (uint64_t) sizeof( benchtable_table_entity_t ), (uint64_t) 8 );
 }
 
 /* table_stat_open: match the header and POINT. On a match the bytes ARE what this
@@ -10593,10 +10593,10 @@ static SCHEMA_UNUSED const benchtable_table_entity_t * benchtable_table_entity_o
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const benchtable_table_stat_t * benchtable_table_stat_open_ex(const void * bytes,uint64_t length,benchtable_table_refuse_reason_t * reason)
-{ return (const benchtable_table_stat_t *)benchtable_table_cook_open_ex(bytes,length,sizeof(benchtable_table_stat_t),SCHEMA_TABLE_ALIGNOF(benchtable_table_stat_t),reason); }
+{ return (const benchtable_table_stat_t *)benchtable_table_cook_open_ex(bytes,length,sizeof(benchtable_table_stat_t),4,reason); }
 static SCHEMA_UNUSED const benchtable_table_stat_t * benchtable_table_stat_open( const void * bytes, uint64_t length )
 {
-    return (const benchtable_table_stat_t *) benchtable_table_cook_open( bytes, length, (uint64_t) sizeof( benchtable_table_stat_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( benchtable_table_stat_t ) );
+    return (const benchtable_table_stat_t *) benchtable_table_cook_open( bytes, length, (uint64_t) sizeof( benchtable_table_stat_t ), (uint64_t) 4 );
 }
 
 /* table_mixed_open: match the header and POINT. On a match the bytes ARE what this
@@ -10619,10 +10619,10 @@ static SCHEMA_UNUSED const benchtable_table_stat_t * benchtable_table_stat_open(
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const benchtable_table_mixed_t * benchtable_table_mixed_open_ex(const void * bytes,uint64_t length,benchtable_table_refuse_reason_t * reason)
-{ return (const benchtable_table_mixed_t *)benchtable_table_cook_open_ex(bytes,length,sizeof(benchtable_table_mixed_t),SCHEMA_TABLE_ALIGNOF(benchtable_table_mixed_t),reason); }
+{ return (const benchtable_table_mixed_t *)benchtable_table_cook_open_ex(bytes,length,sizeof(benchtable_table_mixed_t),8,reason); }
 static SCHEMA_UNUSED const benchtable_table_mixed_t * benchtable_table_mixed_open( const void * bytes, uint64_t length )
 {
-    return (const benchtable_table_mixed_t *) benchtable_table_cook_open( bytes, length, (uint64_t) sizeof( benchtable_table_mixed_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( benchtable_table_mixed_t ) );
+    return (const benchtable_table_mixed_t *) benchtable_table_cook_open( bytes, length, (uint64_t) sizeof( benchtable_table_mixed_t ), (uint64_t) 8 );
 }
 
 static SCHEMA_UNUSED int schema_benchtable_table_entity_cook_body_(struct benchtable_table_numbering_t * n,uint8_t * at,const void * storage,int order)

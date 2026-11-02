@@ -3201,6 +3201,7 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
         slot->value = (int64_t)index;
         return;
     }
+    if ( nodes->blob_named != NULL ) { nodes->blob_named[index-1] |= 2u; }
     slot->value = nodes->arena ? (int64_t)entry->offset
         : (int64_t)((nodes->base + entry->offset) - (uint8_t *)(void *)slot);
 }
@@ -3212,7 +3213,8 @@ static SCHEMA_UNUSED void tabledemo_table_node_resolve( const tabledemo_table_no
    so the directory keeps its 16-byte entry and the framing numbers hold. */
 static SCHEMA_UNUSED void tabledemo_table_node_blob_mark( tabledemo_table_node_map_t * nodes, uint64_t index, tabledemo_table_report_t * report )
 {
-    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count ) { return; }
+    if ( index == 0 || nodes == NULL || !nodes->good || nodes->blob_named == NULL || index > nodes->count || !( nodes->blob_named[index-1] & 2u ) ) { return; }
+    nodes->blob_named[index-1] &= (uint8_t)~2u;
     if ( nodes->blob_named[index-1] ) { report->blob_shared++; } else { nodes->blob_named[index-1] = 1; }
 }
 
@@ -5800,10 +5802,10 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_body_retain( tabledemo_table_r
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const tabledemo_wide_blob_t * tabledemo_wide_blob_open_ex(const void * bytes,uint64_t length,tabledemo_table_refuse_reason_t * reason)
-{ return (const tabledemo_wide_blob_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_wide_blob_t),SCHEMA_TABLE_ALIGNOF(tabledemo_wide_blob_t),reason); }
+{ return (const tabledemo_wide_blob_t *)tabledemo_table_cook_open_ex(bytes,length,sizeof(tabledemo_wide_blob_t),4,reason); }
 static SCHEMA_UNUSED const tabledemo_wide_blob_t * tabledemo_wide_blob_open( const void * bytes, uint64_t length )
 {
-    return (const tabledemo_wide_blob_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_wide_blob_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( tabledemo_wide_blob_t ) );
+    return (const tabledemo_wide_blob_t *) tabledemo_table_cook_open( bytes, length, (uint64_t) sizeof( tabledemo_wide_blob_t ), (uint64_t) 4 );
 }
 
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_cook_body_(struct tabledemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)

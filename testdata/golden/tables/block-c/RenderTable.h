@@ -16046,10 +16046,10 @@ static SCHEMA_UNUSED int64_t blockdemo_render_explosion_fixed_load( blockdemo_re
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_camera_t * blockdemo_render_camera_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_camera_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_camera_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_camera_t),reason); }
+{ return (const blockdemo_render_camera_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_camera_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_camera_t * blockdemo_render_camera_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_camera_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_camera_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_camera_t ) );
+    return (const blockdemo_render_camera_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_camera_t ), (uint64_t) 8 );
 }
 
 /* render_ship_open: match the header and POINT. On a match the bytes ARE what this
@@ -16072,10 +16072,10 @@ static SCHEMA_UNUSED const blockdemo_render_camera_t * blockdemo_render_camera_o
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_ship_t * blockdemo_render_ship_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_ship_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_ship_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_ship_t),reason); }
+{ return (const blockdemo_render_ship_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_ship_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_ship_t * blockdemo_render_ship_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_ship_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_ship_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_ship_t ) );
+    return (const blockdemo_render_ship_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_ship_t ), (uint64_t) 8 );
 }
 
 /* render_turret_open: match the header and POINT. On a match the bytes ARE what this
@@ -16098,10 +16098,10 @@ static SCHEMA_UNUSED const blockdemo_render_ship_t * blockdemo_render_ship_open(
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_turret_t * blockdemo_render_turret_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_turret_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_turret_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_turret_t),reason); }
+{ return (const blockdemo_render_turret_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_turret_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_turret_t * blockdemo_render_turret_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_turret_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_turret_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_turret_t ) );
+    return (const blockdemo_render_turret_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_turret_t ), (uint64_t) 8 );
 }
 
 /* render_missile_open: match the header and POINT. On a match the bytes ARE what this
@@ -16124,10 +16124,10 @@ static SCHEMA_UNUSED const blockdemo_render_turret_t * blockdemo_render_turret_o
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_missile_t * blockdemo_render_missile_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_missile_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_missile_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_missile_t),reason); }
+{ return (const blockdemo_render_missile_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_missile_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_missile_t * blockdemo_render_missile_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_missile_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_missile_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_missile_t ) );
+    return (const blockdemo_render_missile_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_missile_t ), (uint64_t) 8 );
 }
 
 /* render_dynamic_prop_open: match the header and POINT. On a match the bytes ARE what this
@@ -16150,10 +16150,10 @@ static SCHEMA_UNUSED const blockdemo_render_missile_t * blockdemo_render_missile
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_dynamic_prop_t * blockdemo_render_dynamic_prop_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_dynamic_prop_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_dynamic_prop_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_dynamic_prop_t),reason); }
+{ return (const blockdemo_render_dynamic_prop_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_dynamic_prop_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_dynamic_prop_t * blockdemo_render_dynamic_prop_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_dynamic_prop_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_dynamic_prop_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_dynamic_prop_t ) );
+    return (const blockdemo_render_dynamic_prop_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_dynamic_prop_t ), (uint64_t) 8 );
 }
 
 /* render_static_prop_open: match the header and POINT. On a match the bytes ARE what this
@@ -16176,10 +16176,10 @@ static SCHEMA_UNUSED const blockdemo_render_dynamic_prop_t * blockdemo_render_dy
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_static_prop_t * blockdemo_render_static_prop_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_static_prop_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_static_prop_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_static_prop_t),reason); }
+{ return (const blockdemo_render_static_prop_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_static_prop_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_static_prop_t * blockdemo_render_static_prop_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_static_prop_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_static_prop_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_static_prop_t ) );
+    return (const blockdemo_render_static_prop_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_static_prop_t ), (uint64_t) 8 );
 }
 
 /* render_cosmetic_prop_open: match the header and POINT. On a match the bytes ARE what this
@@ -16202,10 +16202,10 @@ static SCHEMA_UNUSED const blockdemo_render_static_prop_t * blockdemo_render_sta
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_cosmetic_prop_t * blockdemo_render_cosmetic_prop_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_cosmetic_prop_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_cosmetic_prop_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_cosmetic_prop_t),reason); }
+{ return (const blockdemo_render_cosmetic_prop_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_cosmetic_prop_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_cosmetic_prop_t * blockdemo_render_cosmetic_prop_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_cosmetic_prop_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_cosmetic_prop_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_cosmetic_prop_t ) );
+    return (const blockdemo_render_cosmetic_prop_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_cosmetic_prop_t ), (uint64_t) 8 );
 }
 
 /* render_laser_open: match the header and POINT. On a match the bytes ARE what this
@@ -16228,10 +16228,10 @@ static SCHEMA_UNUSED const blockdemo_render_cosmetic_prop_t * blockdemo_render_c
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_laser_t * blockdemo_render_laser_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_laser_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_laser_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_laser_t),reason); }
+{ return (const blockdemo_render_laser_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_laser_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_laser_t * blockdemo_render_laser_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_laser_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_laser_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_laser_t ) );
+    return (const blockdemo_render_laser_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_laser_t ), (uint64_t) 8 );
 }
 
 /* render_explosion_open: match the header and POINT. On a match the bytes ARE what this
@@ -16254,10 +16254,10 @@ static SCHEMA_UNUSED const blockdemo_render_laser_t * blockdemo_render_laser_ope
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_explosion_t * blockdemo_render_explosion_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_explosion_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_explosion_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_explosion_t),reason); }
+{ return (const blockdemo_render_explosion_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_explosion_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_explosion_t * blockdemo_render_explosion_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_explosion_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_explosion_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_explosion_t ) );
+    return (const blockdemo_render_explosion_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_explosion_t ), (uint64_t) 8 );
 }
 
 /* render_frame_open: match the header and POINT. On a match the bytes ARE what this
@@ -16280,10 +16280,10 @@ static SCHEMA_UNUSED const blockdemo_render_explosion_t * blockdemo_render_explo
    the ATTRIBUTION part beside the data — a person's decision, never a
    parameter on a load. */
 static SCHEMA_UNUSED const blockdemo_render_frame_t * blockdemo_render_frame_open_ex(const void * bytes,uint64_t length,blockdemo_table_refuse_reason_t * reason)
-{ return (const blockdemo_render_frame_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_frame_t),SCHEMA_TABLE_ALIGNOF(blockdemo_render_frame_t),reason); }
+{ return (const blockdemo_render_frame_t *)blockdemo_table_cook_open_ex(bytes,length,sizeof(blockdemo_render_frame_t),8,reason); }
 static SCHEMA_UNUSED const blockdemo_render_frame_t * blockdemo_render_frame_open( const void * bytes, uint64_t length )
 {
-    return (const blockdemo_render_frame_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_frame_t ), (uint64_t) SCHEMA_TABLE_ALIGNOF( blockdemo_render_frame_t ) );
+    return (const blockdemo_render_frame_t *) blockdemo_table_cook_open( bytes, length, (uint64_t) sizeof( blockdemo_render_frame_t ), (uint64_t) 8 );
 }
 
 static SCHEMA_UNUSED int schema_blockdemo_render_camera_cook_body_(struct blockdemo_table_numbering_t * n,uint8_t * at,const void * storage,int order)
