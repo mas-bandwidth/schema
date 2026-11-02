@@ -5589,7 +5589,7 @@ static SCHEMA_UNUSED int schema_tabledemo_patrol_load_graph_(tabledemo_table_rea
       if(tabledemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* patrol_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* patrol_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report)
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t reader; tabledemo_table_node_map_t nodes; tabledemo_table_node_dir_entry_t * directory; tabledemo_table_region_sink_t place; tabledemo_table_sink_t sink; int64_t data,records,total;
@@ -5601,7 +5601,7 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_tolerant(u
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x1c182e1c2529027b);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_tabledemo_patrol_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_tabledemo_patrol_load_graph_(&reader,(tabledemo_patrol_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_TABLEDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_tabledemo_patrol_load_graph_(&reader,(tabledemo_patrol_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     tabledemo_table_release(tabledemo_table_default_allocator(),nodes.blob_named); return (const tabledemo_patrol_t *)(const void *)region;
 }
 /* patrol_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -5618,7 +5618,9 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder_tolerant(tabledemo_patrol
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x1c182e1c2529027b);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); tabledemo_table_release(builder->arena.allocator,directory); tabledemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); tabledemo_table_release(builder->arena.allocator,directory); tabledemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { tabledemo_patrol_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN patrol_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, tabledemo_table_report_t * report )
@@ -5780,9 +5782,11 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain(uin
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=tabledemo_table_retain_root(region,1);
- if(!schema_tabledemo_patrol_load_graph_retain_(&reader,(tabledemo_patrol_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_TABLEDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_tabledemo_patrol_load_graph_retain_(&reader,(tabledemo_patrol_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ tabledemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const tabledemo_patrol_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const tabledemo_patrol_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_tabledemo_patrol_retain_save_node_(tabledemo_table_writer_t * w,const void * value,uint64_t id,tabledemo_table_retain_walk_t retention)
 {
@@ -5899,7 +5903,15 @@ static SCHEMA_UNUSED const tabledemo_table_type_info_t * tabledemo_patrol_table_
 
 int schema_tabledemo_patrol_from_json_( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report );
 int64_t schema_tabledemo_patrol_to_json_( const tabledemo_patrol_t * value, char * buffer, int64_t capacity, tabledemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int tabledemo_patrol_from_json_tolerant( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report ) { return schema_tabledemo_patrol_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int tabledemo_patrol_from_json_tolerant( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report )
+{
+    tabledemo_table_report_t ignored;
+    tabledemo_patrol_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_tabledemo_patrol_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = tabledemo_patrol_builder_root( builder ); if ( root != NULL ) { tabledemo_patrol_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN patrol_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int tabledemo_patrol_from_json( tabledemo_patrol_builder_t * builder, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
@@ -5907,7 +5919,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_from_json( tabledemo_patrol_builder_t 
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_tabledemo_patrol_from_json_( builder, text, bytes, report );
+    decoded = tabledemo_patrol_from_json_tolerant( builder, text, bytes, report );
     return !tabledemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t tabledemo_patrol_to_json_measure( const tabledemo_patrol_t * value ) { return schema_tabledemo_patrol_to_json_(value,NULL,0,tabledemo_table_default_allocator()); }
