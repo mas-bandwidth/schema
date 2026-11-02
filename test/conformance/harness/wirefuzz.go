@@ -840,10 +840,13 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 			return nil, nil, nil, 0, err
 		}
 		for _, v := range vecs {
+			before := len(seeds)
 			if err := addFormSeed(v.name, v.unit, v.root, v.file, v.message); err != nil {
 				return nil, nil, nil, 0, err
 			}
-			seeds[len(seeds)-1].vector = true
+			if len(seeds) > before {
+				seeds[len(seeds)-1].vector = true
+			}
 		}
 	}
 	if len(seeds) == 0 {
