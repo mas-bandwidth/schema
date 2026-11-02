@@ -1,0 +1,446 @@
+name: Nightly conformance
+
+# THE CROSS-LANGUAGE NIGHTLY (test/conformance/README.md, "The nightly";
+# design approved by Glenn, 2026-10-25). Every night, both directions, every
+# port the registry discovers:
+#
+#   1. every port reads every value the C++ reference writes, on every surface
+#      and form the harness covers, and its bytes equal C++'s canonical write;
+#   2. the C++ reference reads what every port writes, accepts it, and re-saves
+#      it byte-identical;
+#   3. a case a port CLAIMS — its unit uses a construct the port's target
+#      registers as carried (compiler/carries_<target>.go) — and answers ABSENT
+#      fails the night;
+#   4. a case a port does not carry yet does not fail the night, and the
+#      coverage table every run publishes in its summary is how the gap stays
+#      seen (Glenn, 2026-10-25: "that's fine").
+#
+# THE JOBS. `registry` reads the ports out of test/conformance/<lang>/ci.json
+# (`harness matrix --ports`), so a port joins by registering its driver and
+# nothing here moves. `cpp-writes` builds the reference, has it write the whole
+# corpus, publishes it as the `cpp-corpus` artifact and fails if it is not the
+# committed one. `port (<lang>)` runs one port over that corpus with the claim
+# check on, runs its fixed-form gate against the C++ byte oracle, and
+# publishes everything it wrote as `port-<lang>-writes`. `cpp-reads-ports`
+# hands every port's writes back to the reference (`harness cross-read`).
+# `coverage` turns every row into the table.
+#
+# THE FLEET'S RUNNERS, never hosted (standing rule, 2026-10-21), and never the
+# host named space, which is the game server and in no runner pool: every job
+# refuses it by name before it does anything else. The toolchains are the
+# runners' own (ci-fast.yml's header states the arrangement); every setup-*
+# step below runs only on a hosted fallback, exactly as in ci-fast.yml.
+#
+# THE SLOT, 05:41 UTC: clear of ci-full.yml (07:10), certify.yml (09:17) and the
+# 03:00-04:17 cluster of the per-language nightlies. A schedule fires from the
+# default branch (main) only; `gh workflow run nightly-conformance.yml --ref
+# <branch>` runs it on any branch once this file is on main (GitHub refuses a
+# dispatch of a workflow the default branch does not have).
+#
+# A PULL REQUEST THAT CHANGES THIS FILE RUNS IT, and no other does: an edit to
+# the nightly is proved by the nightly before it lands, including the first one
+# (dispatch cannot reach a file main does not have yet). Only this
+# repository's own pull requests: a fork's never reaches the fleet, by the
+# guard every job carries (ci-fast.yml, "ONLY THE TABLE PUSHES").
+
+on:
+  schedule:
+    - cron: '41 5 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/nightly-conformance.yml
+
+concurrency:
+  group: nightly-conformance-${{ github.ref }}
+  cancel-in-progress: false
+
+# The sibling pins ci-full.yml, ci-fast.yml and certify.yml carry; the four
+# files move together.
+env:
+  SERIALIZE_TAG: v2.1.0
+  SERIALIZE_C_TAG: v2.0.2
+  SERIALIZE_GO_TAG: v2.0.1
+  SERIALIZE_RS_TAG: v3.1.0
+  SERIALIZE_CS_TAG: v2.0.1
+  SERIALIZE_JS_TAG: v2.0.1
+  # The harness is built with every leg's tag, because a target behind a tag
+  # registers what it carries only in a binary built with it, and the claim
+  # check refuses a leg it has no registration for rather than enforcing
+  # nothing (test/conformance/harness/claims.go).
+  HARNESS_TAGS: schema_leg_luau,schema_leg_lobster,schema_leg_goose,schema_leg_lua,schema_leg_squirrel
+
+jobs:
+  registry:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 5
+    outputs:
+      ports: ${{ steps.discover.outputs.ports }}
+    steps:
+      - name: never the host named space
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - id: discover
+        name: the registry's ports, as a matrix
+        run: |
+          ports=$(go run ./test/conformance/harness matrix --ports)
+          echo "$ports"
+          echo "ports=$ports" >> "$GITHUB_OUTPUT"
+
+  cpp-writes:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 30
+    steps:
+      - name: never the host named space
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ runtime the reference links, and the Go and C# ones the
+      # corpus targets' prerequisites check for (as ci-full.yml's `pins`)
+      - name: Check out the C++, C# and Go serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.cs serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: build the C++ reference's writers
+        run: |
+          make -j"$(nproc)" build/conformance-harness build/conformance-cpp build/schema_test_cook \
+            build/schema_test build/schema_test_tables build/schema_test_block build/schema_test_maps \
+            build/schema_test_lists build/schema_test_arms build/schema_test_wide_table build/schema_test_retain
+
+      # THE WRITERS update-goldens runs (Makefile, update-goldens), each the
+      # C++ reference writing its forms: the type wire, the fixed and variable
+      # table wires, the message form, the block images, retained saves; then
+      # the pins it writes for the cook and the block battery, and the text
+      # and reports the engine derives from those wires.
+      - name: the C++ reference writes the corpus
+        run: |
+          set -euo pipefail
+          for writer in schema_test schema_test_tables schema_test_block schema_test_maps \
+                        schema_test_lists schema_test_arms schema_test_wide_table schema_test_retain; do
+            SCHEMA_UPDATE_WIRE_GOLDENS=1 "./build/$writer"
+          done
+          ./build/conformance-harness pin
+          ./build/conformance-harness generate
+
+      - name: the C++ reference writes the fixed form (form 3)
+        run: make tables-fixedform-corpus
+
+      - name: the C++ leg over every surface of its own corpus
+        run: ./build/conformance-harness run --only cpp
+
+      - name: pack the C++ corpus
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf build/nightly/cpp-corpus
+          mkdir -p build/nightly/cpp-corpus/testdata build/nightly/cpp-corpus/build
+          cp -R testdata/wire testdata/conformance build/nightly/cpp-corpus/testdata/
+          if [ -d build/fixedform-corpus ]; then cp -R build/fixedform-corpus build/nightly/cpp-corpus/build/; fi
+          if [ -d build/conformance/out/cpp ]; then cp -R build/conformance/out/cpp build/nightly/cpp-corpus/cpp-answers; fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: cpp-corpus
+          path: build/nightly/cpp-corpus
+          if-no-files-found: error
+
+      - name: tonight's C++ corpus is the committed one
+        run: |
+          git diff --exit-code -- testdata/ || {
+            echo "::error::the C++ reference wrote bytes under testdata/ that are not the committed ones. Run 'make conformance-pin update-goldens' and read the diff."
+            exit 1
+          }
+          untracked=$(git status --porcelain testdata/)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "::error::the C++ reference wrote files under testdata/ that are not committed."
+            exit 1
+          fi
+
+  port:
+    needs: [registry, cpp-writes]
+    # a port runs against whatever the reference wrote tonight, even when that
+    # is not the committed corpus: the two failures say different things
+    if: ${{ !cancelled() && needs.registry.result == 'success' }}
+    name: port (${{ matrix.lang }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.registry.outputs.ports) }}
+    steps:
+      - name: never the host named space
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # the C++ runtime for the fixed-form oracle every leg's gate rebuilds,
+      # and the leg's own runtime where its row names one (as ci-full.yml's
+      # `conformance` and ci-fast.yml's `leg-gate`)
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          runtime="${{ matrix.runtime }}"
+          if [ -n "$runtime" ] && [ "$runtime" != serialize ] && [ "$runtime" != serialize.go ]; then
+            tag=$(printenv "${{ matrix.runtime_tag }}")
+            rm -rf "$runtime"
+            git clone --quiet --depth 1 --branch "$tag" "https://github.com/mas-bandwidth/$runtime.git" "$runtime"
+          fi
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      # the toolchain steps ci-full.yml's `conformance` keys on the row, run
+      # only on a hosted fallback: a fleet runner carries them (ci-fast.yml)
+      - name: read the .NET SDK pin
+        if: matrix.dotnet != ''
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: matrix.dotnet != '' && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: matrix.node != '' && runner.environment == 'github-hosted'
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        if: matrix.rust != '' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: matrix.dart != '' && runner.environment == 'github-hosted'
+        with:
+          sdk: ${{ matrix.dart }}
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        if: matrix.java != '' && runner.environment == 'github-hosted'
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java }}
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.otp != '' && runner.environment == 'github-hosted'
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      # THE PINNED DIST TOOLCHAINS, each installed by its make/<lang>.mk at
+      # the sha256 it names, at the version the row carries
+      - name: install the Luau pin
+        if: matrix.luau != ''
+        run: make dist-luau LUAU_VERSION=${{ matrix.luau }}
+      - name: install the Goose pin
+        if: matrix.goose != ''
+        run: make dist-goose GOOSE_VERSION=${{ matrix.goose }}
+      # The Lobster release binary links libOpenGL and libGLX, which the fleet
+      # hosts carry and the hosted ubuntu image does not.
+      - name: install the Lobster pin
+        if: matrix.lobster != ''
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster LOBSTER_VERSION=${{ matrix.lobster }}
+
+      # THE CORPUS THE REFERENCE WROTE TONIGHT, laid over the checkout: the
+      # leg reads those bytes, not yesterday's
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cpp-corpus
+          path: build/nightly/cpp-corpus
+      - name: read the C++ corpus
+        run: cp -R build/nightly/cpp-corpus/testdata/. testdata/
+
+      - name: build the ${{ matrix.lang }} driver and the nightly harness
+        run: |
+          set -euo pipefail
+          extra=
+          # the row's RUSTUP_BIN names the hosted image's cargo; a fleet
+          # runner's is on PATH (ci-fast.yml's leg-gate does the same)
+          if [ "${{ matrix.lang }}" = rust ]; then extra="RUSTUP_BIN=$(dirname "$(command -v cargo)")"; fi
+          # shellcheck disable=SC2086
+          make ${{ matrix.targets }} ${{ matrix.env }} $extra
+          go build -tags "$HARNESS_TAGS" -o build/nightly-harness ./test/conformance/harness
+
+      - name: the ${{ matrix.lang }} leg reads the C++ corpus (claims enforced)
+        run: |
+          mkdir -p build/nightly/report
+          env ${{ matrix.env }} ./build/nightly-harness run --only ${{ matrix.lang }} --claims \
+            --coverage build/nightly/report/coverage-${{ matrix.lang }}.json
+
+      # THE FIXED FORM (form 3) is read from the C++ reference's byte oracle,
+      # build/fixedform-corpus, by each leg's own gate — the targets ci-fast.yml's
+      # leg-gate runs. The gate rebuilds the oracle from this commit's C++
+      # reference (its make prerequisites always do); the oracle cpp-writes
+      # published is the same bytes, kept in cpp-corpus for reading. A leg with
+      # no gate yet is `none` in the coverage table.
+      - name: the ${{ matrix.lang }} leg reads the C++ fixed form
+        if: ${{ !cancelled() }}
+        run: |
+          set -uo pipefail
+          mkdir -p build/nightly/report
+          record=build/nightly/report/fixedform-${{ matrix.lang }}.txt
+          case "${{ matrix.lang }}" in
+            go)     gate="make tables-go-fixed-form" ;;
+            c)      gate="make tables-c-fixedform" ;;
+            rust)   gate="make tables-rust-fixedform RUSTUP_BIN=$(dirname "$(command -v cargo)")" ;;
+            js)     gate="make tables-js-fixed-form NODE=node" ;;
+            cs)     gate="make tables-cs-leg-debug" ;;
+            java)   gate="make tables-java-fixedform JAVA=java JAVAC=javac" ;;
+            dart)   gate="make tables-dart-fixed-form DART=dart" ;;
+            elixir) gate="make tables-elixir-fixed-form ELIXIR_BIN=$(command -v elixir) ERL_BIN=$(dirname "$(command -v erl)")" ;;
+            *)      echo none > "$record"; echo "no fixed-form gate is registered for ${{ matrix.lang }}"; exit 0 ;;
+          esac
+          if $gate; then echo pass > "$record"; else echo fail > "$record"; exit 1; fi
+
+      - name: pack what the ${{ matrix.lang }} leg wrote
+        if: always()
+        run: |
+          set -euo pipefail
+          rm -rf build/nightly/port-writes
+          mkdir -p build/nightly/port-writes/nightly-report
+          if [ -d build/conformance/out/${{ matrix.lang }} ]; then
+            cp -R build/conformance/out/${{ matrix.lang }}/. build/nightly/port-writes/
+          fi
+          if [ -d build/nightly/report ]; then cp -R build/nightly/report/. build/nightly/port-writes/nightly-report/; fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: port-${{ matrix.lang }}-writes
+          path: build/nightly/port-writes
+          if-no-files-found: warn
+
+  cpp-reads-ports:
+    needs: [cpp-writes, port]
+    if: ${{ !cancelled() && needs.cpp-writes.result != 'skipped' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 30
+    steps:
+      - name: never the host named space
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out the C++ serialize runtime (pinned release)
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cpp-corpus
+          path: build/nightly/cpp-corpus
+      - name: read the C++ corpus
+        run: cp -R build/nightly/cpp-corpus/testdata/. testdata/
+      - name: build the C++ reference and the nightly harness
+        run: |
+          make -j"$(nproc)" build/conformance-cpp build/schema_test_cook
+          go build -tags "$HARNESS_TAGS" -o build/nightly-harness ./test/conformance/harness
+      # every port-<lang>-writes artifact, each in its own directory
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: port-*-writes
+          path: build/nightly/ports
+      - name: the C++ reference reads what every port wrote
+        run: |
+          set -uo pipefail
+          mkdir -p build/nightly/crossread-report
+          status=0
+          found=0
+          for dir in build/nightly/ports/port-*-writes; do
+            [ -d "$dir" ] || continue
+            found=1
+            lang=${dir##*/port-}
+            lang=${lang%-writes}
+            ./build/nightly-harness cross-read --lang "$lang" --writes "$dir" \
+              --work "build/nightly/crossread-work" \
+              --coverage "build/nightly/crossread-report/crossread-$lang.json" || status=1
+          done
+          if [ "$found" = 0 ]; then echo "::error::no port wrote anything to re-read"; exit 1; fi
+          exit $status
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: crossread-report
+          path: build/nightly/crossread-report
+          if-no-files-found: warn
+
+  coverage:
+    needs: [port, cpp-reads-ports]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 10
+    steps:
+      - name: never the host named space
+        run: |
+          if [ "$(hostname -s)" = space ]; then
+            echo "::error::space is the game server and never runs CI"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: port-*-writes
+          path: build/nightly/rows
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: crossread-report
+          path: build/nightly/rows/crossread-report
+        continue-on-error: true
+      - name: the coverage table
+        run: |
+          set -euo pipefail
+          mkdir -p build/nightly/coverage build/nightly/rows
+          go run ./test/conformance/harness coverage --in build/nightly/rows > build/nightly/coverage/coverage.md
+          cat build/nightly/coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
+          cat build/nightly/coverage/coverage.md
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: build/nightly/coverage
+          if-no-files-found: error
