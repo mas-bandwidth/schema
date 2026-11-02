@@ -223,4 +223,60 @@ defmodule Benchtable.CookRuntime do
   defp inside(region, target) do
     if target < 0 or target >= byte_size(region), do: :error, else: {:ok, target}
   end
+
+  @doc """
+  A LIST's or a MAP's SPAN (docs/SPEC-TABLES.md §2.8, §2.9): the sixteen-byte
+  holder at at, the self-relative delta to the element array and the int32
+  count beside it, resolved IN PLACE to {:ok, start, count}: where the array
+  lies in the region and how many elements of stride bytes it holds. Nothing
+  is copied. An empty holder is {:ok, nil, 0}; a negative count, or an array
+  that runs past the region, is :error.
+  """
+  def span(region, at, stride) do
+    count = i32(region, at + 8)
+
+    cond do
+      count < 0 ->
+        :error
+
+      count == 0 ->
+        {:ok, nil, 0}
+
+      true ->
+        case deref(region, at) do
+          {:ok, start} when start + count * stride <= byte_size(region) -> {:ok, start, count}
+          _ -> :error
+        end
+    end
+  end
+
+  @doc """
+  FIND in a cooked map (docs/SPEC-TABLES.md §2.8, docs/PORTING.md M19): the
+  holder at at resolved to its span, then a binary search IN PLACE over the
+  entries, which lie ascending by key, reading each probed entry's key with
+  key_at: floor(log2 n) + 1 key compares and no copy. Integers compare by
+  value and string keys by their bytes, unsigned, a prefix first, which is the
+  BEAM's own term order on both. {:ok, entry} is the entry's offset in the
+  region; :error a key the map does not hold, or a holder span/3 refuses.
+  """
+  def find(region, at, stride, key_at, key) do
+    case span(region, at, stride) do
+      {:ok, start, count} -> search(region, start, stride, key_at, key, 0, count)
+      :error -> :error
+    end
+  end
+
+  defp search(_region, _start, _stride, _key_at, _key, low, high) when low >= high, do: :error
+
+  defp search(region, start, stride, key_at, key, low, high) do
+    mid = div(low + high, 2)
+    entry = start + mid * stride
+    k = key_at.(region, entry)
+
+    cond do
+      k == key -> {:ok, entry}
+      k < key -> search(region, start, stride, key_at, key, mid + 1, high)
+      true -> search(region, start, stride, key_at, key, low, mid)
+    end
+  end
 end

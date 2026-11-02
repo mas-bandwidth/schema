@@ -168,16 +168,11 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString("  def descriptors, do: @tables\n\n")
 	uncarried := uncarriedRootNames(u)
 	b.WriteString(uncarriedAttribute(uncarried))
-	cookUncarried := cookUncarriedRootNames(u)
-	b.WriteString(cookUncarriedAttribute(cookUncarried))
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
 	if len(uncarried) == 0 {
 		runtime = withoutUncarriedClauses(runtime)
-	}
-	if len(cookUncarried) == 0 {
-		cook = withoutCookUncarriedGuard(cook)
 	}
 	if !anyExtent {
 		cook = withoutExtentWalks(cook)
@@ -186,7 +181,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		runtime = withArmKinds(runtime, armKinds)
 	} else {
 		runtime = withoutUnions(runtime)
-		cook = cookWithoutUnions(cook)
+		cook = cookWithoutUnions(cook, anyExtent)
 		retain = withoutRetainUnions(retain)
 	}
 	if len(unionNames) > 0 {
@@ -566,15 +561,6 @@ func withoutUncarriedClauses(runtime string) string {
 	return replaceOnce(runtime, uncarriedClauses[0], "")
 }
 
-// cookUncarriedGuard is the cook plan's refusal of a root the cook writer does
-// not lay out. A unit whose @cook_uncarried is empty would read `table in []`,
-// a guard that never succeeds, so the plan keeps only its value check.
-const cookUncarriedGuard = "      if table in @cook_uncarried or not is_map(value) do\n"
-
-func withoutCookUncarriedGuard(cook string) string {
-	return replaceOnce(cook, cookUncarriedGuard, "      if not is_map(value) do\n")
-}
-
 // replaceOnce replaces the one occurrence of old, and panics when old is not
 // found exactly once, so a template edit that moves it fails the emitter's
 // tests rather than silently shipping the text.
@@ -583,80 +569,6 @@ func replaceOnce(src, old, new string) string {
 		panic("elixirtable: emitted text not found exactly once: " + old)
 	}
 	return strings.Replace(src, old, new, 1)
-}
-
-// cookUncarriedRootNames names every table in the closure the cook writer
-// does not lay out: one that reaches a map (docs/SPEC-TABLES.md §2.8, §7.2).
-// `schema cook` refuses every map-bearing unit by name (§7.2), so no tool cook
-// holds this writer's entry arrays to the byte; a union, an enum-keyed array
-// and every other shape is written. A holder follows a poisoned table by
-// value, by pointer, as an array element or as a union arm's payload.
-func cookUncarriedRootNames(u *ir.Unit) []string {
-	closure := ir.TableClosure(u)
-	poison := map[string]bool{}
-	reaches := func(f *ir.Field) bool {
-		if f == nil {
-			return false
-		}
-		if f.IsMap() {
-			return true
-		}
-		if st, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed {
-			return poison[st.Name]
-		}
-		return false
-	}
-	changed := true
-	for changed {
-		changed = false
-		for name := range closure {
-			st := u.Tables[name]
-			if poison[name] || st == nil {
-				continue
-			}
-			hit := st.IsMapEntry()
-			for _, f := range st.Fields {
-				if hit {
-					break
-				}
-				hit = reaches(f)
-				if un := unionRef(f); un != nil {
-					for _, arm := range un.Variants {
-						hit = hit || reaches(arm.F)
-					}
-				}
-			}
-			if hit {
-				poison[name] = true
-				changed = true
-			}
-		}
-	}
-	names := make([]string, 0, len(poison))
-	for name := range poison {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// cookUncarriedAttribute is the list cook_carried?/1 reads: the roots whose
-// cook the writer refuses as invalid_value and the conformance driver answers
-// absent (docs/SPEC-TABLES.md §7.2, §7.6).
-func cookUncarriedAttribute(names []string) string {
-	var b strings.Builder
-	b.WriteString("  # roots that reach a map (docs/SPEC-TABLES.md §2.8, §7.2). `schema cook`\n")
-	b.WriteString("  # refuses a map-bearing unit by name, so the cook writer does not lay out\n")
-	b.WriteString("  # entry arrays no tool cook holds it to; cook_carried?/1 answers false.\n")
-	var list strings.Builder
-	list.WriteString("[")
-	for _, name := range names {
-		fmt.Fprintf(&list, "%q, ", name)
-	}
-	list.WriteString("]")
-	b.WriteString(exAttribute("cook_uncarried", list.String()) + "\n")
-	b.WriteString("  def cook_carried?(table), do: table not in @cook_uncarried\n\n")
-	return b.String()
 }
 
 // uncarriedAttribute is the module attribute the public clauses guard on, and
@@ -4548,13 +4460,15 @@ const variableRetainSource = `
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
             # and nothing retained, only the report
             if report.malformed do
-              {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+              {:error, :malformed, reasoned(report, :malformed),
+               %{retain | records: [], used: 0, ids: []}}
             else
               {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
             end
 
           _ ->
-            {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+            {:error, :malformed, reasoned(report, :malformed),
+             %{retain | records: [], used: 0, ids: []}}
         end
     end
   catch
@@ -4563,8 +4477,10 @@ const variableRetainSource = `
     {:non_finite_float, name} ->
       {:error, :non_finite_float, reasoned(report, {:non_finite_float, name}),
        %{retain | records: [], used: 0, ids: []}}
+
     :wire_damaged ->
-      {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+      {:error, :malformed, reasoned(report, :malformed),
+       %{retain | records: [], used: 0, ids: []}}
   end
 
   def measure_retain(table, value, retain) when is_map(value) do
@@ -5156,10 +5072,8 @@ const variableRetainSource = `
   end
 
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
-    case read_payload(f, payload, nodes, ids, report) do
-      {:cont, v, report} -> {:cont, v, report, retain}
-      {:halt, v, report} -> {:halt, v, report, retain}
-    end
+    {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
+    {:cont, v, report, retain}
   end
 
   # a bounded array keeps its first bound elements and counts one clamped
@@ -5215,14 +5129,18 @@ const variableRetainSource = `
                     framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
                     arm_path = path ++ [{ordinal, a.ordinal}]
 
-                    read_arm_payload_retain(
-                      a,
-                      name,
-                      inner,
-                      framed,
-                      {nodes, ids, report, retain},
-                      arm_path
-                    )
+                    if arm_framing_damaged?(a, inner) do
+                      {:cont, nil, %{report | malformed: true}, retain}
+                    else
+                      read_arm_payload_retain(
+                        a,
+                        name,
+                        inner,
+                        framed,
+                        {nodes, ids, report, retain},
+                        arm_path
+                      )
+                    end
 
                   {l, content} when byte_size(content) >= l ->
                     {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
@@ -6044,8 +5962,8 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, has_extent: %v, string_blob: %v, variable: %v, doc: %s, tags: %s, fields: [\n",
-		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, string_blob: %v, variable: %v, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, st.DeclaredName(), f, i, ml.FieldByName(f.Name)))
 	}

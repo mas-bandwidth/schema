@@ -317,6 +317,62 @@ const cookRuntimeSource = `  @moduledoc """
   defp inside(region, target) do
     if target < 0 or target >= byte_size(region), do: :error, else: {:ok, target}
   end
+
+  @doc """
+  A LIST's or a MAP's SPAN (docs/SPEC-TABLES.md §2.8, §2.9): the sixteen-byte
+  holder at at, the self-relative delta to the element array and the int32
+  count beside it, resolved IN PLACE to {:ok, start, count}: where the array
+  lies in the region and how many elements of stride bytes it holds. Nothing
+  is copied. An empty holder is {:ok, nil, 0}; a negative count, or an array
+  that runs past the region, is :error.
+  """
+  def span(region, at, stride) do
+    count = i32(region, at + 8)
+
+    cond do
+      count < 0 ->
+        :error
+
+      count == 0 ->
+        {:ok, nil, 0}
+
+      true ->
+        case deref(region, at) do
+          {:ok, start} when start + count * stride <= byte_size(region) -> {:ok, start, count}
+          _ -> :error
+        end
+    end
+  end
+
+  @doc """
+  FIND in a cooked map (docs/SPEC-TABLES.md §2.8, docs/PORTING.md M19): the
+  holder at at resolved to its span, then a binary search IN PLACE over the
+  entries, which lie ascending by key, reading each probed entry's key with
+  key_at: floor(log2 n) + 1 key compares and no copy. Integers compare by
+  value and string keys by their bytes, unsigned, a prefix first, which is the
+  BEAM's own term order on both. {:ok, entry} is the entry's offset in the
+  region; :error a key the map does not hold, or a holder span/3 refuses.
+  """
+  def find(region, at, stride, key_at, key) do
+    case span(region, at, stride) do
+      {:ok, start, count} -> search(region, start, stride, key_at, key, 0, count)
+      :error -> :error
+    end
+  end
+
+  defp search(_region, _start, _stride, _key_at, _key, low, high) when low >= high, do: :error
+
+  defp search(region, start, stride, key_at, key, low, high) do
+    mid = div(low + high, 2)
+    entry = start + mid * stride
+    k = key_at.(region, entry)
+
+    cond do
+      k == key -> {:ok, entry}
+      k < key -> search(region, start, stride, key_at, key, mid + 1, high)
+      true -> search(region, start, stride, key_at, key, low, mid)
+    end
+  end
 `
 
 // cookRoots is every closure member declared in this file that a cooked region
@@ -427,6 +483,21 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	isArray := false
 	arrayBound := int64(0)
 	switch {
+	case f.IsMap():
+		// a MAP's sixteen-byte holder (§2.8): its count companion at eight,
+		// and its entries, each a record of the generated entry table
+		storage, elemSize = ":map", ir.RecordLayout(g.unit, f.MapEntry).Size
+		record = g.cookRecordRef(f.MapEntry.Name)
+		countOffset = fl.Offset + 8
+	case f.IsList():
+		// a LIST's sixteen-byte holder (§2.9): its count companion at eight,
+		// and its elements at their own size
+		storage = ":list"
+		elemSize, _ = ir.ListElementLayout(g.unit, f)
+		if isStruct(f) && !f.Type.Pointer {
+			record = g.cookRecordRef(f.Type.Name)
+		}
+		countOffset = fl.Offset + 8
 	case f.Type.Pointer:
 		storage, elemSize = ":reference", 8
 		record = g.cookRecordRef(f.Type.Name)
@@ -453,7 +524,8 @@ func (g *gen) cookFieldRow(fl ir.FieldLayout) string {
 	fmt.Fprintf(&b, "        elem_size: %s,\n", exInt(elemSize))
 	fmt.Fprintf(&b, "        is_array: %v,\n", isArray)
 	fmt.Fprintf(&b, "        array_bound: %s,\n", exInt(arrayBound))
-	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer)
+	// a holder is a span, never a reference, whatever its elements are
+	fmt.Fprintf(&b, "        is_pointer: %v,\n", f.Type.Pointer && !f.IsList() && !f.IsMap())
 	fmt.Fprintf(&b, "        count_offset: %s,\n", exInt(countOffset))
 	fmt.Fprintf(&b, "        present_offset: %s,\n", exInt(presentOffset))
 	fmt.Fprintf(&b, "        storage: %s,\n", storage)
@@ -511,7 +583,7 @@ func cookRowMembers(f *ir.Field) []string {
 	names := []string{f.Name}
 	switch {
 	case f.Type.Pointer:
-	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
+	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
 		names = append(names, f.Name+"_count")
@@ -583,6 +655,8 @@ func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 	lo := ir.RustSnake(st.Name)
 	pieces := ir.BlockFieldPieceOffsets(g.unit, f, fl.Offset, false)
 	switch {
+	case f.IsMap() || f.IsList():
+		return g.cookHolderAccessors(st, f, fl)
 	case f.Type.Pointer:
 		return []string{"  # a REFERENCE: the eight-byte signed self-relative delta of §6.3, and\n" +
 			"  # NULL IS ZERO. :error is a delta that resolves past the region.\n" +
@@ -617,6 +691,51 @@ func (g *gen) cookAccessors(st *ir.Struct, fl ir.FieldLayout) []string {
 	}
 }
 
+// cookHolderAccessors renders a LIST's or a MAP's accessors (docs/SPEC-TABLES.md
+// §2.8, §2.9, docs/PORTING.md M19): the holder's span, resolved in place to
+// where the element array lies and how many it holds, the stride an element
+// takes, and for a map FIND, the binary search over its ascending entries
+// where they lie. Each element is read with its own record's accessors (a
+// map's entry with the entry table's) at start + i * stride.
+func (g *gen) cookHolderAccessors(st *ir.Struct, f *ir.Field, fl ir.FieldLayout) []string {
+	lo := ir.RustSnake(st.Name)
+	var stride int64
+	if f.IsMap() {
+		stride = ir.RecordLayout(g.unit, f.MapEntry).Size
+	} else {
+		stride, _ = ir.ListElementLayout(g.unit, f)
+	}
+	what := "LIST"
+	if f.IsMap() {
+		what = "MAP"
+	}
+	out := []string{
+		fmt.Sprintf("  # a %s's holder, in place: {:ok, start, count} over elements of\n", what) +
+			fmt.Sprintf("  # %s_node_%s_stride() bytes from start, {:ok, nil, 0} when empty\n", lo, f.Name) +
+			exDefDo("  ", fmt.Sprintf("def %s_node_%s(region, node)", lo, f.Name),
+				fmt.Sprintf("C.span(region, node + %s, %s)", exInt(fl.Offset), exInt(stride))),
+		exDefDo("  ", fmt.Sprintf("def %s_node_%s_stride", lo, f.Name), exInt(stride)),
+	}
+	if f.IsMap() && g.cookable(f.MapEntry.Name) {
+		entry := f.MapEntry
+		home := g.unit.DeclFile[entry.Name]
+		if home == "" {
+			home = g.file.Base
+		}
+		keyAt := fmt.Sprintf("&%s_node_%s/2", ir.RustSnake(entry.Name), ir.MapKeyField(f).Name)
+		if home != g.file.Base {
+			keyAt = fmt.Sprintf("&%s.%sCook.%s_node_%s/2", g.ns, moduleBase(home), ir.RustSnake(entry.Name), ir.MapKeyField(f).Name)
+		}
+		out = append(out, "  # FIND: the entry whose key is key, {:ok, entry} or :error, by a binary\n"+
+			"  # search over the entries where they lie (CookRuntime.find/5)\n"+
+			fmt.Sprintf("  def %s_node_%s_find(region, node, key) do\n", lo, f.Name)+
+			fmt.Sprintf("    key_at = %s\n", keyAt)+
+			fmt.Sprintf("    C.find(region, node + %s, %s, key_at, key)\n", exInt(fl.Offset), exInt(stride))+
+			"  end\n")
+	}
+	return out
+}
+
 // regionParam names the region argument, underscored where a nested record's
 // accessor answers with an OFFSET and never reads a byte itself.
 func regionParam(f *ir.Field) string {
@@ -648,7 +767,8 @@ func (g *gen) cookReadAt(f *ir.Field, at string, size int64) string {
 }
 
 // cookRegionAligns is every alignment a region rooted at this record can hold:
-// the root's own and every record reachable from it.
+// the root's node's own and every node reachable from it, a map's entries
+// included.
 func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
 	seen := map[string]bool{}
 	var aligns []int64
@@ -665,8 +785,13 @@ func (g *gen) cookRegionAligns(st *ir.Struct) []int64 {
 		if rec == nil {
 			return
 		}
-		aligns = append(aligns, ir.RecordLayout(g.unit, rec).Align)
+		// a node with an extent aligns to every array that extent can hold
+		// too (ir.CookNodeAlign, docs/SPEC-TABLES.md §2.8)
+		aligns = append(aligns, cookNodeAlign(g.unit, rec))
 		for _, f := range rec.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+			}
 			if f.Type.Kind != ir.TNamed {
 				continue
 			}

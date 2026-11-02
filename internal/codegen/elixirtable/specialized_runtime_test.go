@@ -11,9 +11,8 @@ import (
 // data can never reach as a warning, which the strict compile
 // (make/elixir-strict.sh, tables-elixir-fixed-form) refuses. A unit whose
 // @uncarried is empty is emitted without the uncarried refusals (each guard
-// would read `table in []`), a unit whose @cook_uncarried is empty without the
-// cook plan's map guard, and a unit with no extent anywhere is emitted
-// without the nested-record extent walks (each would branch on a literal
+// would read `table in []`), and a unit with no extent anywhere is emitted
+// without the cook writer's extent walk (each step would branch on a literal
 // false has_extent). A unit with no union carries no union runtime and no
 // @unions (every Map.fetch! on an empty one always raises) and no cook union
 // writer, and a unit with
@@ -38,9 +37,14 @@ table Outer
 		t.Fatal(err)
 	}
 	src := string(plain[VariableTableModule+".ex"])
-	for _, gone := range append([]string{"when table in @uncarried", "table in @uncarried or", "table in @cook_uncarried or"}, extentWalkClauses...) {
+	for _, gone := range []string{"when table in @uncarried", "table in @uncarried or", "@cook_uncarried", cookExtentDef, cookCarveDef} {
 		if strings.Contains(src, gone) {
 			t.Errorf("a unit with no uncarried root and no extent still emits %q", gone)
+		}
+	}
+	for _, name := range extentWalkFamilies {
+		if strings.Contains(src, "defp "+name+"(") {
+			t.Errorf("a unit with no extent still emits the walk %s", name)
 		}
 	}
 	for _, gone := range append(append([]string{"@unions", "defp arm_header(", "defp json_read_arm(", "elem_kind: 15}", "defp cook_union("}, unionClauses...), cookUnionClauses...) {
@@ -49,11 +53,11 @@ table Outer
 		}
 	}
 	if !strings.Contains(src, "      if not is_map(value) do\n") {
-		t.Error("the cook plan lost its value check with the uncarried guard")
+		t.Error("the cook plan lost its value check")
 	}
-	for _, kept := range []string{"  defp cook_extent_field(_, _, at), do: at\n", "  defp cook_carve_after(_, _, _, _, cursor, _, _, buf), do: {cursor, buf}\n"} {
+	for _, kept := range []string{"  defp cook_extent(_desc, _value), do: 0\n", "  defp cook_carve(_desc, _value, _node_off, _index, _order, buf), do: buf\n"} {
 		if !strings.Contains(src, kept) {
-			t.Errorf("the fallback clause %q is gone", kept)
+			t.Errorf("the no-extent entry %q is gone", kept)
 		}
 	}
 
@@ -74,8 +78,8 @@ table Outer
 		t.Fatal(err)
 	}
 	src = string(full[VariableTableModule+".ex"])
-	for _, kept := range append([]string{"def load_measure(table, _data) when table in @uncarried", cookUncarriedGuard}, extentWalkClauses...) {
-		if !strings.Contains(src, kept) {
+	for _, kept := range []string{"def load_measure(table, _data) when table in @uncarried", cookExtentDef, cookCarveDef, "cook_walk_record", "cook_walk_holder", "cook_put_member"} {
+		if !strings.Contains(src, kept) && !strings.Contains(src, "defp "+kept+"(") {
 			t.Errorf("a unit with an uncarried root and an extent lost %q", kept)
 		}
 	}
