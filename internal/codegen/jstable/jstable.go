@@ -243,7 +243,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	wide := ir.TableWideFields(u)
 	out := map[string][]byte{}
 	if len(wide) == 0 {
-		blocks := ir.Blocks(u)
+		blocks := filterBlocks(ir.Blocks(u))
 		var err error
 		out, err = generateBlockFiles(u, blocks)
 		if err != nil {

@@ -29,7 +29,7 @@ func (g *fixedModule) emitFixedCookWrite() {
 }
 
 func (g *fixedModule) emitFixedCookExports(st *ir.Struct) {
-	if cookFixedBlocked(g.unit, st) {
+	if !st.CarriesForm("cook") || cookFixedBlocked(g.unit, st) {
 		return
 	}
 	if !g.home {
@@ -55,7 +55,7 @@ func (g *variableGen) emitVariableCookWrite(roots []*ir.Struct) {
 	}
 	g.pf("%s", cookWriteOpen(g.unit, layouts, true))
 	for _, st := range roots {
-		if cookVariableBlocked(g.unit, st) {
+		if !st.CarriesForm("cook") || cookVariableBlocked(g.unit, st) {
 			continue
 		}
 		g.pf("export function %sCookMeasure(value) {\n", st.Name)
@@ -75,13 +75,26 @@ func cookWriteOpen(u *ir.Unit, layouts []*ir.Struct, variable bool) string {
 	b.WriteString("// Cook write (docs/SPEC-TABLES.md §7.6). The header words are §19.1's.\n")
 	b.WriteString("export const TableCookWrite = (() => {\n")
 	fmt.Fprintf(&b, "  const build = %s;\n", jsId(ir.BuildVersion(u)))
+	var omitted []string
+	for _, st := range layouts {
+		if !st.CarriesForm("cook") {
+			omitted = append(omitted, fmt.Sprintf("%q", st.Name))
+		}
+	}
+	if len(omitted) > 0 {
+		fmt.Fprintf(&b, "  const omitted = new Set([%s]);\n", strings.Join(omitted, ","))
+	}
 	b.WriteString("  const layouts = {\n")
 	for _, st := range layouts {
 		b.WriteString(cookStructLiteral(u, st, variable))
 		b.WriteString(",\n")
 	}
 	b.WriteString("  };\n")
-	b.WriteString(cookEngineJS(variable))
+	engine := cookEngineJS(variable)
+	if len(omitted) == 0 {
+		engine = strings.ReplaceAll(engine, " || omitted.has(name)", "")
+	}
+	b.WriteString(engine)
 	b.WriteString("})();\n\n")
 	return b.String()
 }
@@ -97,6 +110,9 @@ func cookLayouts(u *ir.Unit, variable bool) []*ir.Struct {
 			roots = fixedRoots(u, f.Tables)
 		}
 		for _, st := range roots {
+			if !st.CarriesForm("cook") {
+				continue
+			}
 			if variable {
 				if !variableCarried(u, st.Name) || cookVariableBlocked(u, st) {
 					continue
@@ -793,11 +809,11 @@ const cookEngineTail = ``
 
 const cookEngineFixed = `  function fixedMeasure(name) {
     const layout = layouts[name];
-    return layout === undefined ? -1 : layout.measure;
+    return layout === undefined || omitted.has(name) ? -1 : layout.measure;
   }
   function fixedFrom(name, value, buffer, order) {
     const layout = layouts[name];
-    if (layout === undefined || value === null || typeof value !== "object") { return false; }
+    if (layout === undefined || omitted.has(name) || value === null || typeof value !== "object") { return false; }
     if (order !== 1 && order !== 2) { return false; }
     if (!(buffer instanceof Uint8Array) || buffer.byteLength < layout.measure) { return false; }
     const le = order === 1;
@@ -933,7 +949,7 @@ const cookEngineVariable = `  function alignUp(n, a) {
     if (value === null || typeof value !== "object") { return { reason: "invalid_value" }; }
     const codec = TableVariableCodecs[name];
     const layout = layouts[name];
-    if (codec === undefined || layout === undefined) { return { reason: "invalid_value" }; }
+    if (codec === undefined || layout === undefined || omitted.has(name)) { return { reason: "invalid_value" }; }
     const nodes = TableVariableNumber(codec, value, false);
     if (nodes === null) { return { reason: "data_cycle" }; }
     const entries = [{ typeId: layout.typeId, v: value, blob: false, layout, offset: 0 }];

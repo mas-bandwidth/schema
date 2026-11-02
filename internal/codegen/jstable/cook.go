@@ -58,7 +58,7 @@ const cookMaxAlign = int64(64)
 // why, never a silent absence.
 func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	if len(u.Tables) == 0 {
+	if len(u.Tables) == 0 || !formAllowed(u, "cook") {
 		return out, nil
 	}
 	ck := cookUnitOf(u)
@@ -127,6 +127,9 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	sort.Strings(names)
 	for _, name := range names {
 		st := u.Tables[name]
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if why := cookableClosure(u, st); why != "" {
 			c.skipped[name] = why
 			continue
