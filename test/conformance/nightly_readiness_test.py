@@ -309,7 +309,7 @@ class Contracts(unittest.TestCase):
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),49)
+        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),50)
         for lang, entries in m.RETIRED_NATIVE.items():
             for marker, required in entries.items():
                 with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):
