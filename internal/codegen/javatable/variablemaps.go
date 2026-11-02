@@ -82,7 +82,7 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		// the exact-kind read only, never in a widened branch.
 		kr = strings.Replace(kr,
 			"                } else { r.skip(kind); report.kindMismatch++; }",
-			"                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
+			"                    report.kindMismatch = 0;\n                } else { r.skip(kind); report.kindMismatch = 1; }", 1)
 		kr = strings.Replace(kr,
 			"                else { r.skip(kind); report.kindMismatch++; }",
 			"                else { r.skip(kind); report.kindMismatch = 1; }", 1)

@@ -16,6 +16,9 @@ public final class BenchPacketRetain {
     // loss, never retained silently.
     public static BenchPacketVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return BenchPacketVariable.load(data, report);
         }

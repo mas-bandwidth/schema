@@ -77,6 +77,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    // the caller's retain storage, and an excluded class is reported as\n")
 	b.WriteString("    // loss, never retained silently.\n")
 	fmt.Fprintf(&b, "    public static %sVariable.Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {\n", st.Name)
+	b.WriteString("        if (report == null) { report = new TableVariable.Report(); }\n")
 	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")

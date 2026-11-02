@@ -67,6 +67,9 @@ public final class MixedEntityRetain {
     // loss, never retained silently.
     public static MixedEntityVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return MixedEntityVariable.load(data, report);
         }
