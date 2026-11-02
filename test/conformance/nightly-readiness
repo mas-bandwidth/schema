@@ -299,7 +299,7 @@ def fuzz_result(text, arm, seed, lang="", builder=False):
         errors.append("wire roster or finite-value exemption was reported")
     if arm != "retain" and not builder and "seeds outside the arm" in text:
         errors.append("plain wire-fuzz unexpectedly excluded seeds")
-    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
+    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in ("dart", "js") else "") + (" retain" if arm == "retain" else "")
     pattern = (r"^" + re.escape(prefix) + r": seed (\d+), (\d+) seeds over (\d+) roots"
                r"(?:, \d+ seeds outside the arm)?, (\d+) enumerated \+ (\d+) random = "
                r"(\d+) mutants, 0 divergences, [0-9.]+ s, [0-9.]+ mutants/s$")
@@ -560,9 +560,9 @@ def run_fuzz(runner, lang):
                     "--driver", driver_command(runner.root, lang),
                     "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
                     "--failed", str(runner.out / (name + ".bin"))]
-            # Dart uses mutable variable-file loads, with the full fixed/message
+            # Dart and JavaScript use mutable variable-file loads, with the full fixed/message
             # roster still exercising its existing form-specific readers.
-            if lang == "dart":
+            if lang in ("dart", "js"):
                 args.append("--mixed-builder")
             if arm == "retain":
                 args.append("--retain")
