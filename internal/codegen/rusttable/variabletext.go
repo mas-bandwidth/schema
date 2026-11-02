@@ -1067,6 +1067,14 @@ func (g *gen) fieldKey(f *ir.Field) string {
 // emitTextWriteValue emits the value writer for one field (or, for an array,
 // the array), the value's closing brace or bracket at depth `d`.
 func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind string) {
+	if f.Type.Optional {
+		inner := *f
+		inner.Type.Optional = false
+		fmt.Fprintf(b, "%sif let Some(value) = &%s {\n", ind, x)
+		g.emitTextWriteValue(b, &inner, "(*value)", d, ind+"    ")
+		fmt.Fprintf(b, "%s} else { w.out.push_str(\"null\"); }\n", ind)
+		return
+	}
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
 		g.emitKeyedTextWrite(b, f, x, d, ind)
 		return
