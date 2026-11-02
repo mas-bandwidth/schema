@@ -220,7 +220,9 @@ func run(port, binary, corpus, findingsPath, only string, jobs int, budget time.
 			} else {
 				pass++
 			}
-		case has && !strings.HasPrefix(got.detail, "unbound"):
+		// A finding carries a reader verdict disagreement, never an
+		// execution failure (crash, sanitizer, timeout, or broken runner).
+		case has && (got.kind == "accept" || got.kind == "refuse"):
 			fmt.Printf("FIX-CARD: %s: %s %s (got %s, want %s)\n", f.slug, f.input, f.line, got, want)
 			carried++
 		default:
