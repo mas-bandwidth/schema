@@ -1739,3 +1739,14 @@ tables-js-cycle-negative-control:
 	$(call js_jstable_control,js-cycle-dropped,internal/codegen/jstable/variableruntime.go,^TestCyclicWireIsDamageJavaScript$$,./internal/codegen/jstable/,a cyclic wire loaded)
 
 test-js: tables-js-cycle tables-js-cycle-negative-control
+
+# The conformance adapter preserves the JSON byte boundary before generated JS
+# reads strings. Replacement decoding must not hide an invalid UTF-8 input.
+.PHONY: conformance-js-text-boundary conformance-negative-control-js-text-boundary
+conformance-js-text-boundary: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control-text-boundary positive
+
+conformance-negative-control-js-text-boundary: conformance-js-text-boundary
+	sh test/conformance/js/negative-control-text-boundary replacement
+
+test-js: conformance-js-text-boundary

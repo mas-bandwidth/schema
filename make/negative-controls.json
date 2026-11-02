@@ -897,6 +897,7 @@
         "cards-js-conformance-negative-control",
         "cards-js-conformance-upgrade-negative-control",
         "conformance-negative-control-js-walk",
+        "conformance-negative-control-js-text-boundary",
         "packet-arm-defaults-js-flat-negative-control",
         "packet-arm-defaults-js-runtime-negative-control",
         "packet-defaults-js-negative-control",

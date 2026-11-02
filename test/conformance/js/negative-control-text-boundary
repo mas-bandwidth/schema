@@ -1,0 +1,62 @@
+#!/bin/sh
+# Prove byte decoding cannot replace invalid UTF-8 before FromJson sees it.
+# Only the adapter is changed; generated readers and all input pins stay intact.
+set -eu
+mode=${1:-positive}
+case "$mode" in positive|replacement) ;; *) echo "unknown mode: $mode" >&2; exit 2 ;; esac
+root=$(pwd)
+out=build/js-text-boundary/$mode
+source=test/conformance/js/main.mjs
+rm -rf "$out"
+mkdir -p "$out"
+main="$root/$source"
+if [ "$mode" = replacement ]; then
+    anchor='const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });'
+    matches=$(grep -Fxc "$anchor" "$source" || true)
+    [ "$matches" = 1 ] || { echo "negative control anchor matched $matches times, want 1" >&2; exit 1; }
+    sed 's/fatal: true, ignoreBOM: true/fatal: false, ignoreBOM: true/' "$source" > "$out/main.mjs"
+    if cmp -s "$source" "$out/main.mjs"; then echo 'negative control changed nothing' >&2; exit 1; fi
+    main="$root/$out/main.mjs"
+fi
+cat > "$out/driver" <<WRAP
+#!/bin/sh
+if [ "\$2" = list ]; then printf '%s\n' json-read json-write json-hostile; exit 0; fi
+exec "\${NODE:-node}" "$main" "\$@"
+WRAP
+chmod +x "$out/driver"
+printf 'js %s/%s/driver\n' "$root" "$out" > "$out/drivers"
+rc=0
+build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
+if [ "$mode" = positive ]; then
+    rows=$(grep -c '^json-hostile ' testdata/conformance/tables/MANIFEST.txt)
+    if [ "$rc" -ne 0 ] || ! grep -Eq "^json-hostile +pass $rows/$rows *\$" "$out/log"; then
+        cat "$out/log"; echo 'JavaScript text boundary gate failed' >&2; exit 1
+    fi
+    grep -E '^json-(read|write|hostile) ' "$out/log"
+    # A valid UTF-8 BOM is preserved exactly as Buffer.toString("utf8") did.
+    # Stripping it must change this tiny private fixture's actual reader result.
+    mkdir -p "$out/bom/input" "$out/bom/strict" "$out/bom/buffer" "$out/bom/stripped"
+    printf '\357\273\277{}\n' > "$out/bom/input/RootConfig.json"
+    printf 'json-hostile bom tabledemo RootConfig %s/bom/input refused\n' "$out" > "$out/bom/manifest"
+    "${NODE:-node}" "$source" "$out/bom/manifest" json-hostile "$out/bom/strict"
+    sed 's/return jsonUTF8.decode(bytes);/return bytes.toString("utf8");/' "$source" > "$out/bom/buffer-main.mjs"
+    if cmp -s "$source" "$out/bom/buffer-main.mjs"; then echo "BOM control did not restore the Buffer decoder" >&2; exit 1; fi
+    sed 's/ignoreBOM: true/ignoreBOM: false/' "$source" > "$out/bom/stripped-main.mjs"
+    "${NODE:-node}" "$out/bom/buffer-main.mjs" "$out/bom/manifest" json-hostile "$out/bom/buffer"
+    "${NODE:-node}" "$out/bom/stripped-main.mjs" "$out/bom/manifest" json-hostile "$out/bom/stripped"
+    cmp "$out/bom/strict/bom" "$out/bom/buffer/bom"
+    grep -qx 'refused' "$out/bom/strict/bom"
+    grep -qx '0,0,0,0,0,false,read' "$out/bom/stripped/bom"
+    echo 'JavaScript UTF-8 BOM: strict decoding matches the former Buffer boundary; stripping the BOM changes the reader result'
+    echo 'JavaScript strict UTF-8 boundary: all text claims pass'
+    exit 0
+fi
+[ "$rc" -ne 0 ] || { cat "$out/log"; echo 'negative control left replacement decoding green' >&2; exit 1; }
+grep -q 'js / json-hostile: str-illformed-at-bound:' "$out/log" || { cat "$out/log"; echo 'negative control missed the invalid UTF-8 row' >&2; exit 1; }
+if grep '^  js / ' "$out/log" | grep -v 'js / json-hostile: str-illformed-at-bound:'; then
+    cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
+fi
+grep -Eq '^json-read +pass ' "$out/log"
+grep -Eq '^json-write +pass ' "$out/log"
+grep 'js / json-hostile: str-illformed-at-bound:' "$out/log"
+echo 'JavaScript text boundary negative control: replacement decoding fails only the invalid UTF-8 row; text read/write remain green'
