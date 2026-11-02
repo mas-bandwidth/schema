@@ -188,7 +188,12 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	g.pf("   anywhere in the wire, which discards the whole load (§4). */\n")
 	g.pf("static SCHEMA_UNUSED int %s( %s * value, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_tolerant"), st.Name)
 	g.pf("    TableReport ignored; TableReader r; int32_t non_finite_before; int whole;\n    memset( &ignored, 0, sizeof( ignored ) );\n    if ( report == NULL ) { report = &ignored; }\n")
-	g.pf("    %s( value );\n    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n", g.api(st.Name, "reset"))
+	g.pf("    %s( value );\n", g.api(st.Name, "reset"))
+	if st.Integrity != "" {
+		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 && !schema_table_integrity_holds_( buffer, bytes ) ) { report->malformed = 1; report->damage_reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; return 0; }\n")
+		g.pf("    if ( bytes > 0 && buffer != NULL && buffer[0] == 1 ) { bytes -= 4; }\n")
+	}
+	g.pf("    if ( !table_wire_open( &r, buffer, bytes, report ) ) { return 0; }\n")
 	g.pf("    non_finite_before = report->non_finite_floats;\n")
 	g.pf("    whole = %s( &r, value );\n", g.api(st.Name, "load_body"))
 	// A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks

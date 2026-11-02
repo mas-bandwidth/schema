@@ -787,12 +787,23 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 		verb, args, buffer, cap := "save", ", uint8_t * buffer, int64_t capacity", "buffer", "capacity"
 		if measure {
 			verb, args, buffer, cap = "measure", "", "NULL", "INT64_MAX"
+		} else if st.Integrity != "" {
+			cap = "capacity - 4"
 		}
 		g.pf("static SCHEMA_UNUSED int64_t %s( const %s * value%s )\n{\n", g.api(st.Name, verb), st.Name, args)
 		if !measure {
-			g.pf("    if ( buffer == NULL || capacity < 0 ) { return -1; }\n")
+			if st.Integrity != "" {
+				g.pf("    if ( buffer == NULL || capacity < 4 ) { return -1; }\n")
+			} else {
+				g.pf("    if ( buffer == NULL || capacity < 0 ) { return -1; }\n")
+			}
 		}
 		g.pf("    TableWriteIds vocabulary; TableWriter w = table_writer_make( %s, %s, &vocabulary );\n    table_writer_put8( &w, 1 );\n", buffer, cap)
-		g.pf("    if ( !%s( &w, value ) ) { return -1; }\n    table_writer_finish( &w );\n    return w.overflow ? -1 : w.offset;\n}\n\n", g.api(st.Name, "save_body"))
+		g.pf("    if ( !%s( &w, value ) ) { return -1; }\n    table_writer_finish( &w );\n", g.api(st.Name, "save_body"))
+		if st.Integrity != "" {
+			g.pf("    return w.overflow ? -1 : schema_table_integrity_seal_( %s, w.offset );\n}\n\n", buffer)
+		} else {
+			g.pf("    return w.overflow ? -1 : w.offset;\n}\n\n")
+		}
 	}
 }

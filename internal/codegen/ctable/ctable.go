@@ -408,6 +408,7 @@ typedef struct TableReport
        unknown, widened and retained alone leave it OK. The tolerant reads
        never write it. */
     int refuse_reason;
+    int damage_reason;
     /* THE NON-FINITE FLOATS THIS READ MET (docs/SPEC-TABLES.md §3.3): a NaN or
        an infinity is refused on its raw bits by every read, the tolerant one
        included, so a read that moves this answers refused, reason
@@ -596,6 +597,45 @@ static SCHEMA_UNUSED int table_non_finite_refused( TableReport * report, int32_t
     report->refused = 1;
     report->reason = SCHEMA_TABLE_NON_FINITE_FLOAT;
     return 1;
+}
+static SCHEMA_UNUSED uint32_t schema_table_crc32c_( const uint8_t * data, int64_t bytes )
+{
+    uint32_t crc = 0xffffffffu;
+    int64_t i;
+    int k;
+    for ( i = 0; i < bytes; ++i )
+    {
+        crc ^= (uint32_t) data[i];
+        for ( k = 0; k < 8; ++k )
+        {
+            const uint32_t mask = (uint32_t) ( -(int32_t) ( crc & 1u ) );
+            crc = ( crc >> 1 ) ^ ( 0x82f63b78u & mask );
+        }
+    }
+    return crc ^ 0xffffffffu;
+}
+static SCHEMA_UNUSED int schema_table_integrity_holds_( const uint8_t * data, int64_t bytes )
+{
+    int64_t n;
+    uint32_t got;
+    if ( data == NULL || bytes < 5 ) { return 0; }
+    n = bytes - 4;
+    got = (uint32_t) data[n] | ( (uint32_t) data[n + 1] << 8 ) | ( (uint32_t) data[n + 2] << 16 ) | ( (uint32_t) data[n + 3] << 24 );
+    return got == schema_table_crc32c_( data, n );
+}
+static SCHEMA_UNUSED int64_t schema_table_integrity_seal_( uint8_t * buffer, int64_t n )
+{
+    uint32_t crc;
+    if ( n < 0 ) { return -1; }
+    if ( buffer != NULL )
+    {
+        crc = schema_table_crc32c_( buffer, n );
+        buffer[n] = (uint8_t) crc;
+        buffer[n + 1] = (uint8_t) ( crc >> 8 );
+        buffer[n + 2] = (uint8_t) ( crc >> 16 );
+        buffer[n + 3] = (uint8_t) ( crc >> 24 );
+    }
+    return n + 4;
 }
 
 #endif /* ` + guard + ` */

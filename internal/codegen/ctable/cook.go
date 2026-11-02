@@ -126,6 +126,7 @@ static SCHEMA_UNUSED int table_report_strict_refuses( TableReport * report, int 
     if ( report->refused && report->reason == SCHEMA_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT; }
     else if ( report->refused && report->reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; }
+    else if ( report->damage_reason == SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLE_REFUSE_BLOB_SHARED; }
     else if ( report->clamped > 0 ) { reason = SCHEMA_TABLE_REFUSE_CLAMPED; }
