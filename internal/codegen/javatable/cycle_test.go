@@ -20,10 +20,12 @@ const javaCycleSchema = `package cyclecheck
 
 table Node
 {
-    a     int32 = 0
-    on    bool
-    left  *Node
-    right *Node
+    a      int32 = 0
+    on     bool
+    left   *Node
+    right  *Node
+    items  []*Node
+    lookup map[int32]*Node
     if on
     {
         side *Node
@@ -35,15 +37,17 @@ const javaCycleWriterSchema = `package cyclecheck
 
 table Node
 {
-    a     int32 = 0
-    on    bool
-    left  *Node
-    right *Node
+    a      int32 = 0
+    on     bool
+    left   *Node
+    right  *Node
+    items  []*Node
+    lookup map[int32]*Node
     if on
     {
         side *Node
     }
-    extra int32 = 0
+    extra  int32 = 0
 }
 `
 
@@ -84,7 +88,20 @@ func javaCycleEncode(t *testing.T, m *tabletext.Model, count int, on []int, extr
 		if !ok {
 			t.Fatalf("Node has no field %s", l.field)
 		}
-		f.Cell.Node = nodes[l.to]
+		switch l.field {
+		case "items":
+			f.Elems = append(f.Elems, tabletext.Cell{Node: nodes[l.to]})
+			f.Count = len(f.Elems)
+		case "lookup":
+			entry := m.NewMapEntry(f.Def)
+			kf, _ := entry.FieldByKey("key")
+			kf.Cell.I = int64(len(f.Entries) + 1)
+			vf, _ := entry.FieldByKey("value")
+			vf.Cell.Node = nodes[l.to]
+			f.Entries = append(f.Entries, tabletext.Cell{Tab: entry})
+		default:
+			f.Cell.Node = nodes[l.to]
+		}
 	}
 	wire, err := tablewire.Encode(m, nodes[0])
 	if err != nil {
@@ -183,6 +200,24 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 	guardCycle := append([]byte(nil), guardTwin...)
 	javaCyclePatch(t, guardCycle, 3, 2)
 
+	// List pointer-slot cycle: root(1).left -> A(2), A.left -> B(3), B.items[0] -> L(4);
+	// patching B.items[0] (4) back to A (2) creates a cycle directly through []*Node.
+	listLinks := []javaCycleLink{{0, "left", 1}, {1, "left", 2}, {2, "items", 3}}
+	listTwin := javaCycleEncode(t, mw, 4, nil, 77, listLinks)
+	listCycle := javaCycleEncode(t, mw, 4, nil, 77, listLinks)
+	listPat := []byte{byte(ir.TableKindPointer), 1, 4}
+	if n := bytes.Count(listCycle, listPat); n != 1 {
+		t.Fatalf("list pointer pattern matched %d times, want 1", n)
+	}
+	listCycle[bytes.Index(listCycle, listPat)+2] = 2
+
+	// Map pointer-slot cycle: root(1).left -> A(2), A.left -> B(3), B.lookup[1] -> L(4);
+	// patching B.lookup[1] (4) back to A (2) creates a cycle directly through map[int32]*Node.
+	mapLinks := []javaCycleLink{{0, "left", 1}, {1, "left", 2}, {2, "lookup", 3}}
+	mapTwin := javaCycleEncode(t, mw, 4, nil, 77, mapLinks)
+	mapCycle := javaCycleEncode(t, mw, 4, nil, 77, mapLinks)
+	javaCyclePatch(t, mapCycle, 4, 2)
+
 	overwritten := javaCycleOverwritten(t, m)
 
 	const levels = 40
@@ -211,6 +246,10 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 		{"unreached", unreached, false},
 		{"guard_twin", guardTwin, true},
 		{"guard_cycle", guardCycle, false},
+		{"list_twin", listTwin, true},
+		{"list_cycle", listCycle, false},
+		{"map_twin", mapTwin, true},
+		{"map_cycle", mapCycle, false},
 		{"overwritten", overwritten, true},
 		{"diamond", diamond, true},
 	}
@@ -226,6 +265,8 @@ func TestJavaCyclicWireIsDamage(t *testing.T) {
 	}{
 		{"intact", "", "", "", ""},
 		{"no_cycle_check", "NodeVariable.java", "if (TableVariable.cyclic(nt))", "if (false && TableVariable.cyclic(nt))", "FAILED: mid (load)"},
+		{"no_list_cycle", "NodeVariable.java", "for (Long idx : v.itemsIdx) {", "for (Long idx : java.util.Collections.<Long>emptyList()) {", "FAILED: list_cycle (load)"},
+		{"no_map_cycle", "NodeVariable.java", "for (NodeLookupEntryVariable.Value elem : v.lookup) {", "for (NodeLookupEntryVariable.Value elem : java.util.Collections.<NodeLookupEntryVariable.Value>emptyList()) {", "FAILED: map_cycle (load)"},
 		{"no_retain_clear", "NodeRetain.java", "if (TableVariable.cyclic(nt)) {", "if (TableVariable.cyclic(nt)) { if (true) { report.malformed = true; return null; }", "FAILED: mid (retain not cleared)"},
 		{"closed_as_open", "TableVariable.java", "if (state[t] == 1) {", "if (state[t] != 0) {", "FAILED: diamond (load)"},
 	}
