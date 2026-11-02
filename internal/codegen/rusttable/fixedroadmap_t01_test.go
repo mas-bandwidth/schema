@@ -241,7 +241,8 @@ fn v_t01_r9() {
 /// R13 (§5.3, §5.8 row 9): "REFUSE is total: refused+reason and malformed are
 /// never both set, every counter stays zero, and not one destination byte is
 /// written". Every refusal the load answers before a record lands is held to it
-/// across ITS OWN name, and every malformed answer is held to the other side.
+/// across ITS OWN name. Malformed input instead discards all caller records
+/// to their declared defaults.
 #[test]
 fn v_t01_r13() {
     let own = t01_records(3);
@@ -280,7 +281,11 @@ fn v_t01_r13() {
         assert!(report.malformed, "{label}: malformed is set: {:?}", report);
         assert!(!report.refused && report.reason == TableFixedReason::None, "{label}: never both set: {:?}", report);
         assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
-        assert!(t01_untouched(&values), "{label}: a destination byte was written");
+        // VNEW_field_append.schema declares x/y/z=0 and w=77.
+        assert!(
+            values.iter().all(|v| v.x == 0 && v.y == 0 && v.z == 0 && v.w == 77),
+            "{label}: malformed input did not restore every declared default"
+        );
     }
 }
 `, filepath.Join(corpus, "new_field_append.bin"))
@@ -341,14 +346,13 @@ func t01IdentityShape(t *testing.T) {
 		seen := false
 		for name, data := range tables {
 			text := string(data)
-			from := strings.Index(text, "_fixed_load(")
-			if from < 0 {
+			if rustFn(text, "lineage_fixed_load") == "" {
 				continue
 			}
 			seen = true
-			load := text[from:]
-			if end := strings.Index(load, "\n}\n"); end > 0 {
-				load = load[:end]
+			load := rustFixedLoadRecords(text, "lineage_fixed_load")
+			if load == "" {
+				t.Fatalf("%s %s: the public load does not delegate to its record implementation", label, name)
 			}
 			if strings.Contains(load, "table_fixed_hash(") {
 				t.Errorf("%s %s: the load recomputes a hash; the identity lane is an index comparison (§5.3 step 8)", label, name)

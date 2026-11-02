@@ -72,9 +72,12 @@ func t04Fixed(t *testing.T, tables map[string][]byte) string {
 	return ""
 }
 
-// t04Fn is the emitted body of one `pub fn NAME(...)`, up to its column-zero
-// closing brace.
+// t04Fn extracts one public function, following a fixed loader
+// through its checked delegation to the private record implementation.
 func t04Fn(text, name string) string {
+	if strings.HasSuffix(name, "_fixed_load") {
+		return rustFixedLoadRecords(text, name)
+	}
 	at := strings.Index(text, "pub fn "+name+"(")
 	if at < 0 {
 		return ""

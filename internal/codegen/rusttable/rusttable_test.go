@@ -608,7 +608,24 @@ func TestFixedFormCarriesWideText(t *testing.T) {
 // matching close brace, so a pin can name the load loop without matching the
 // rest of the module.
 func rustFn(body, name string) string {
-	sig := "pub fn " + name + "("
+	return rustFnDecl(body, "pub fn "+name+"(")
+}
+
+func rustPrivateFn(body, name string) string {
+	return rustFnDecl(body, "\nfn "+name+"(")
+}
+
+// rustFixedLoadRecords follows the public entry point's real delegation.
+// A disconnected private body must not satisfy the implementation checks.
+func rustFixedLoadRecords(body, name string) string {
+	entry := rustFn(body, name)
+	if !strings.Contains(entry, name+"_records(values, data, plan, remap, report)") {
+		return ""
+	}
+	return rustPrivateFn(body, name+"_records")
+}
+
+func rustFnDecl(body, sig string) string {
 	i := strings.Index(body, sig)
 	if i < 0 {
 		return ""
@@ -636,9 +653,13 @@ func rustFn(body, name string) string {
 func TestFixedFormLoadPrefillsThePlanHoles(t *testing.T) {
 	out := generate(t, valueOnly)
 	body := string(out["probe_fixed.rs"])
-	load := rustFn(body, "config_fixed_load")
+	entry := rustFn(body, "config_fixed_load")
+	if !strings.Contains(entry, "config_fixed_load_records(values, data, plan, remap, report)") {
+		t.Fatal("config_fixed_load does not delegate to its record loader")
+	}
+	load := rustPrivateFn(body, "config_fixed_load_records")
 	if load == "" {
-		t.Fatal("config_fixed_load was not emitted")
+		t.Fatal("config_fixed_load_records was not emitted")
 	}
 	if !strings.Contains(load, "table_fixed_holes") {
 		t.Error("the load does not compute the plan's unwritten ranges")
@@ -790,9 +811,13 @@ fixed table Fx1
 	if strings.Contains(scatter, `b"fx"`) {
 		t.Error("dest-row writes the named default; the hole is Default, not scatter")
 	}
-	load := rustFn(fixed, "fx1_fixed_load")
+	entry := rustFn(fixed, "fx1_fixed_load")
+	if !strings.Contains(entry, "fx1_fixed_load_records(values, data, plan, remap, report)") {
+		t.Fatal("fx1_fixed_load does not delegate to its record loader")
+	}
+	load := rustPrivateFn(fixed, "fx1_fixed_load_records")
 	if load == "" {
-		t.Fatal("fx1_fixed_load was not emitted")
+		t.Fatal("fx1_fixed_load_records was not emitted")
 	}
 	i := strings.Index(load, "for k in 0..n")
 	if i < 0 {
