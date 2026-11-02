@@ -85,6 +85,9 @@ func (m *Model) countInstance(g *graphOut, inst *Instance, open map[*Instance]bo
 		if fv.Def.Type.Optional && !fv.Present {
 			continue
 		}
+		if err := ValidateRequiredValue(fv); err != nil {
+			return err
+		}
 		if err := m.countField(g, fv, open); err != nil {
 			return err
 		}
@@ -852,6 +855,9 @@ func expDigits(exp int) string {
 // The tree shape is the FIXED class's (§17.2): a variable root is one text, so
 // no field written here holds a pointer, and the first pass finds nothing.
 func (m *Model) WriteValue(fv *Field) ([]byte, error) {
+	if err := ValidateRequiredValue(fv); err != nil {
+		return nil, err
+	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
 	if err := m.countField(w.graph, fv, map[*Instance]bool{}); err != nil {
 		return nil, err
