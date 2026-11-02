@@ -8525,7 +8525,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
     const TableRetainPath & path, bool field, uint32_t ordinal )
 {
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    if ( path.node != 0 ? TableRetainRecordNode( record ) != path.node : TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
     if ( field )
     {

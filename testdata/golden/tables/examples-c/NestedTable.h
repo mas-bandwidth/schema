@@ -2412,6 +2412,7 @@ static SCHEMA_UNUSED int tabledemo_table_report_strict_refuses( tabledemo_table_
 {
     tabledemo_table_refuse_reason_t reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OK;
     if ( report->refused && report->reason == SCHEMA_TABLEDEMO_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused && report->reason == SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( !decoded || report->malformed ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
     else if ( report->blob_shared > 0 ) { reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_BLOB_SHARED; }
@@ -4369,7 +4370,7 @@ static SCHEMA_UNUSED int tabledemo_table_retain_under(const tabledemo_table_reta
  uint32_t depth=tabledemo_table_retain_u32(record+8);
  int32_t i;
  const uint8_t * steps=record+SCHEMA_TABLEDEMO_TABLE_RETAIN_HEADER;
- if(path->depth<0||path->depth>SCHEMA_TABLEDEMO_TABLE_RETAIN_DEPTH_MAX||tabledemo_table_retain_at(retain,record)!=path->at)return 0;
+ if(path->depth<0||path->depth>SCHEMA_TABLEDEMO_TABLE_RETAIN_DEPTH_MAX||(path->node?tabledemo_table_retain_u32(record+4)!=path->node:tabledemo_table_retain_at(retain,record)!=path->at))return 0;
  if(depth<(uint32_t)path->depth||(field&&depth==(uint32_t)path->depth))return 0;
  for(i=0;i<path->depth;i++)if(tabledemo_table_retain_u32(steps+8*i)!=path->steps[i].ordinal||tabledemo_table_retain_u32(steps+8*i+4)!=path->steps[i].index)return 0;
  return !field||tabledemo_table_retain_u32(steps+8*path->depth)==ordinal;
