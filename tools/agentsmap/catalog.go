@@ -246,6 +246,7 @@ var catalog = []Entry{
 	e("test/rust-cookmap", "Rust cook of every map and list instance", "make tables-rust-cook-map", "make tables-rust-cook-map"),
 	e("test/rust-fixedform", "Rust fixed-form tests", "make test-rust", "make test-rust"),
 	e("test/rust-fuzz", "Rust fuzz driver", "make test-rust", "make test-rust"),
+	e("test/rust-hostile", "Rust hostile-corpus runner", "make schema-rust-runs-hostile-corpus", "make schema-rust-runs-hostile-corpus"),
 	e("test/rust-ludicrous", "Rust int128 tests", "make test-rust", "make test-rust"),
 	e("test/rust-soak", "Rust tables soak, allocator call count", "make tables-rust-soak", "make tables-rust-soak"),
 	e("test/rust-view", "Rust unit-view listing driver", "make tables-rust-view", "make tables-rust-view"),
