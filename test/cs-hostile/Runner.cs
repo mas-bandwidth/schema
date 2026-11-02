@@ -60,7 +60,10 @@ static class H
         {
             if (string.IsNullOrEmpty(reason)) { return Refuse("damaged"); }
             int detail = reason.IndexOf(": ", StringComparison.Ordinal);
-            return Refuse(detail > 0 ? reason.Substring(0, detail) : reason);
+            string name = detail > 0 ? reason.Substring(0, detail) : reason;
+            // The public region/managed reason is the storage cap; the shared
+            // engine corpus calls the same refusal count_refusal.
+            return Refuse(name == "count_over_extent_cap" ? "count_refusal" : name);
         }
         if (!ok || malformed) { return Refuse("damaged"); }
         return null;

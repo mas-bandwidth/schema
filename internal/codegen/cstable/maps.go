@@ -106,13 +106,15 @@ const tableMapJsonSource = `
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
+        string mapField = input.TextField;
         for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }
             Span<byte> spelling = stackalloc byte[MaxKey];
             int beforeClamp = input.Report.Clamped;
-            if (!ScanString(text, ref input, spelling, true, out int used)) { return false; }
+            input.TextField = mapField;
+            if (!ScanString(text, ref input, spelling, true, out int used, stored: true)) { return false; }
             bool over = input.Report.Clamped != beforeClamp;
             input.Report.Clamped = beforeClamp;
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }

@@ -1596,9 +1596,9 @@ namespace Benchtable
                 if (f.BlobKind == 12)
                 {
                     In probe = input;
-                    if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true)) { input = probe; return false; }
+                    if (!ScanText(text, ref probe, Span<byte>.Empty, Span<char>.Empty, false, false, out int size, true, stored: true)) { input = probe; return false; }
                     byte[] data = new byte[size];
-                    if (!ScanString(text, ref input, data, true, out _)) { return false; }
+                    if (!ScanString(text, ref input, data, true, out _, stored: true)) { return false; }
                     f.SetChild(owner, index, new TableBlob(data)); return true;
                 }
                 if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
@@ -1694,13 +1694,15 @@ namespace Benchtable
                 input.Pos++; f.ResetField(owner);
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
+                string mapField = input.TextField;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
                     if (c == '}') { input.Pos++; return true; }
                     Span<byte> spelling = stackalloc byte[MaxKey];
                     int beforeClamp = input.Report.Clamped;
-                    if (!ScanString(text, ref input, spelling, true, out int used)) { return false; }
+                    input.TextField = mapField;
+                    if (!ScanString(text, ref input, spelling, true, out int used, stored: true)) { return false; }
                     bool over = input.Report.Clamped != beforeClamp;
                     input.Report.Clamped = beforeClamp;
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -1751,7 +1753,8 @@ namespace Benchtable
                 public System.Collections.Generic.Dictionary<ulong, Label> Labels;
                 public int Pos;
                 public TableReport Report;
-                public bool Bad; // the text is not JSON: the walk stops and keeps what it placed
+                public bool Bad; // the text is not JSON: the whole read is discarded
+                internal string TextField;
             }
 
             static void Space(ReadOnlySpan<byte> text, ref In input)
@@ -1865,8 +1868,14 @@ namespace Benchtable
             // fatal, exactly as it is on the wire (§4). keep false scans past a
             // string without keeping it, and counts no clamp for what it dropped —
             // C++'s NULL destination.
-            static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
-            { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
+            static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool stored = false)
+            { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length, stored: stored); }
+            static bool RefuseText(ref In input, string reason)
+            {
+                input.Bad = true;
+                input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+                return false;
+            }
             // The body of a bytes field's base64 string, as the JSON layer reads it
             // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
             // below 0x20, a backslash that begins no escape, a byte that is not UTF-8
@@ -1911,7 +1920,7 @@ namespace Benchtable
                 body = new ReadOnlySpan<byte>(decoded, 0, used);
                 return true;
             }
-            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
+            static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false, bool stored = false)
             {
                 length = 0;
                 if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1978,8 +1987,8 @@ namespace Benchtable
                     }
                     else
                     {
-                        // Decode a complete scalar, replacing ill-formed UTF-8 before
-                        // applying the destination bound (the text form's U+FFFD rule).
+                        // The read refuses invalid UTF-8 before any clamp. Replacement
+                        // is only the writer's rule for storage built in code (§16.3).
                         int want = c < 0x80 ? 1 : c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
                         if (want != 0 && want <= text.Length - input.Pos && TableWire.TextValid(text.Slice(input.Pos, want)))
                         {
@@ -1988,10 +1997,12 @@ namespace Benchtable
                         }
                         else
                         {
-                            input.Pos++;
-                            unitLength = EncodeUtf8(0xfffd, unit);
+                            return RefuseText(ref input, "string_not_utf8");
                         }
                     }
+                    // Only stored text rejects NUL; skipped values and object field
+                    // names still accept that escape. Map keys opt in before length checks.
+                    if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
                     if (measure)
                     {
                         if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
@@ -2560,14 +2571,14 @@ namespace Benchtable
                 if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
                 if (f.Kind == 33)
                 {
-                    if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used)) { return false; }
+                    if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
                     f.SetCount(value, used); return true;
                 }
                 if (f.Kind == 12)
                 {
                     byte[] storage = f.GetBuffer(value);
                     int length;
-                    if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length)) { return false; }
+                    if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length, stored: true)) { return false; }
                     PutCount(value, f, length);
                     return true;
                 }
@@ -2795,6 +2806,7 @@ namespace Benchtable
                     else
                     {
                         TableFieldInfo f = info.Fields[index];
+                        input.TextField = info.Name + "." + f.Name;
                         if (index < 512)
                         {
                             ulong bit = 1ul << (index & 63);
@@ -2851,6 +2863,7 @@ namespace Benchtable
                 // a caller with no report is off the read path this section prices: it
                 // gets one rather than a branch on every counter
                 input.Report = report != null ? report : new TableReport();
+                input.Report.Reason = null; input.Report.Refused = false;
                 input.Bad = false;
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
@@ -5274,7 +5287,22 @@ namespace Benchtable
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 bool malformedBefore = report.Malformed;
                 report.Malformed = false;
-                if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
+                if (type.Variable)
+                {
+                    if (LoadMeasure(type, bytes, out string reason) < 0)
+                    {
+                        // The int32 storage cap refuses before allocation; it is not
+                        // damaged framing (SPEC-TABLES §2.9). Keep the public measure name.
+                        if (reason == "count_over_extent_cap")
+                        {
+                            report.Refused = true; report.Reason = reason;
+                            report.Malformed = malformedBefore;
+                            return Finish(report, Verdict.Refused);
+                        }
+                        Damage(report); return Finish(report, Verdict.Damaged);
+                    }
+                    r.Graph = ReadGraph(r, value, type, report);
+                }
                 bool complete = ReadBody(ref r, value, type, report, false);
                 if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
                 // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)

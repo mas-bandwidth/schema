@@ -1609,7 +1609,22 @@ public static partial class TableWire
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
         bool malformedBefore = report.Malformed;
         report.Malformed = false;
-        if (type.Variable) { if (LoadMeasure(type, bytes, out _) < 0) { Damage(report); return Finish(report, Verdict.Damaged); } r.Graph = ReadGraph(r, value, type, report); }
+        if (type.Variable)
+        {
+            if (LoadMeasure(type, bytes, out string reason) < 0)
+            {
+                // The int32 storage cap refuses before allocation; it is not
+                // damaged framing (SPEC-TABLES §2.9). Keep the public measure name.
+                if (reason == "count_over_extent_cap")
+                {
+                    report.Refused = true; report.Reason = reason;
+                    report.Malformed = malformedBefore;
+                    return Finish(report, Verdict.Refused);
+                }
+                Damage(report); return Finish(report, Verdict.Damaged);
+            }
+            r.Graph = ReadGraph(r, value, type, report);
+        }
         bool complete = ReadBody(ref r, value, type, report, false);
         if (NonFiniteRefused(report)) { report.Malformed |= malformedBefore; type.Reset(value); return Finish(report, Verdict.Refused); }
         // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
