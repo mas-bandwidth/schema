@@ -1236,7 +1236,8 @@ namespace Wide
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new Caption(); }
@@ -1247,7 +1248,8 @@ namespace Wide
                 string run_why = CaptionFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 CaptionFixedClamp(values[k], report);
@@ -1771,7 +1773,8 @@ namespace Wide
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new Stamp(); }
@@ -1782,7 +1785,8 @@ namespace Wide
                 string run_why = StampFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 StampFixedClamp(values[k], report);

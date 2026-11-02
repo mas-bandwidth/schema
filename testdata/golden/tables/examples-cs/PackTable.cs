@@ -1542,7 +1542,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new GunnerSettings(); }
@@ -1553,14 +1554,15 @@ namespace Tabledemo
                 string run_why = GunnerSettingsFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = GunnerSettingsFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 GunnerSettingsFixedClamp(values[k], report);
@@ -2143,7 +2145,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new ShipEntry(); }
@@ -2154,14 +2157,15 @@ namespace Tabledemo
                 string run_why = ShipEntryFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = ShipEntryFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 ShipEntryFixedClamp(values[k], report);
@@ -2712,7 +2716,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new GlobalSettings(); }
@@ -2723,14 +2728,15 @@ namespace Tabledemo
                 string run_why = GlobalSettingsFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = GlobalSettingsFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 GlobalSettingsFixedClamp(values[k], report);
@@ -3685,7 +3691,8 @@ namespace Tabledemo
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 if (values[k] == null) { values[k] = new PackConfig(); }
@@ -3696,14 +3703,15 @@ namespace Tabledemo
                 string run_why = PackConfigFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    if (report != null) { report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
+                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = PackConfigFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
                     for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
-                    if (report != null) { report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
+                    if (report != null) { report.Clamped = 0; report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 PackConfigFixedClamp(values[k], report);
