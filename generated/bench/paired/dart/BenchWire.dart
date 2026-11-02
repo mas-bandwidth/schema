@@ -34,6 +34,10 @@ bool _requiredCollectionKind(TableWireReader r, int expected) {
  final kind=peek.readByte();
  return kind==expected||_kindWidens(kind,expected);
 }
+
+int tableTextByteLength(String value) => utf8.encode(value).length;
+bool tableTextValueValid(String value,int bound) =>
+    _wideValid(value.codeUnits) && (bound < 0 || utf8.encode(value).length <= bound);
 // The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -43,6 +47,7 @@ final class TableWireReport {
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
   bool malformed = false;
   bool integrityMismatch = false;
@@ -4584,6 +4589,21 @@ String _timestampText(int nanos){
   while(digits.endsWith('0')){digits=digits.substring(0,digits.length-1);}
   return '$text.${digits}Z';
 }
+
+List<T> _jsonTextList<T>(dynamic val,TableTextReport r,int bound,String field,T Function(dynamic) read,int total,int Function(T) length,[List<T>? fallback]) {
+ if(val is! List){r.kindMismatch++;return fallback??<T>[];}
+ final before=r.clamped;
+ final out=<T>[];
+ var spent=0;
+ for(var i=0;i<val.length;i++){
+  if(bound>=0&&i>=bound){r.clamped+=val.length-i;break;}
+  final e=read(val[i]);
+  if(total>0){spent+=length(e);if(spent>total){r.clamped++;break;}}
+  out.add(e);
+ }
+ if(r.clamped!=before&&r.clampedField.isEmpty)r.clampedField=field;
+ return out;
+}
 // ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
 // TableTextReport is a tolerant text read's report (§16.3): the three events
@@ -4593,6 +4613,7 @@ final class TableTextReport {
   int unknown = 0;
   int kindMismatch = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
   int missingRequired = 0;
   String missingFields = '';
@@ -4642,7 +4663,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
-      b.write(String.fromCharCode(rune));
+      b.write(String.fromCharCode(rune >= 0xD800 && rune <= 0xDFFF ? 0xFFFD : rune));
     }
   }
   b.write('"');
