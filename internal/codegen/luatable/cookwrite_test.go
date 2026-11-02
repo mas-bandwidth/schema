@@ -25,8 +25,7 @@ import (
 // length. The wide kinds (fixed(W, F), int128, §3, §15) ride as their raw
 // integer at the declared width, and a bits(N) slot as its uint32 or uint64,
 // which only the big-endian file tells apart from the low byte alone. The
-// tool refuses a map-bearing unit by name (§2.8), so those rows have no tool
-// oracle and are skipped.
+// same corpus includes maps and nested list/map extents (§2.8, §2.9).
 //
 // REVERSED WITNESSES: a writer that ignores the order writes the little-endian
 // file for order 2; one that writes a bits(N) slot at its wire width, or a
@@ -61,8 +60,7 @@ func TestLuaCookWrite(t *testing.T) {
 			}
 			little, err := tablecook.Cook(m, inst, tablecook.Options{})
 			if err != nil {
-				// the tool refuses to write this cook (a map-bearing unit,
-				// docs/SPEC-TABLES.md §2.8); there is no oracle file.
+				// A value the tool refuses (for example a shared blob) has no oracle.
 				t.Skipf("the tool writes no cook for %s: %v", r.caseName, err)
 			}
 			big, err := tablecook.Cook(m, inst, tablecook.Options{Big: true})

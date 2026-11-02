@@ -9,10 +9,8 @@
 -- names), and the attribution part of §7.6. Every byte no field covers is
 -- zero. CookMeasure(T, name, value) answers that file's exact length.
 --
--- Cook refuses (nil) on the same inputs the tool does: a data cycle, a map (the
--- tool's cook surface refuses a map-bearing unit by name, §2.8), a pointer the
--- numbering does not carry, and storage a counted array's live count does not
--- reach that would need an extent (§7.6).
+-- Cook refuses (nil) on a data cycle or a pointer the numbering does not
+-- carry. Maps are carved in canonical key order in their holder's extent.
 local D = require("descriptor")
 local C = {}
 
@@ -105,7 +103,7 @@ local function number_nodes(T, desc, root)
   for _, n in ipairs(nodes.list) do
     entries[#entries + 1] = n
   end
-  return entries, nodes.index
+  return entries, nodes.index, nodes.entries
 end
 
 -- THE DEFAULT OF ONE ARRAY SLOT (§2.9, tabletext.elementZero): zero for a
@@ -176,15 +174,13 @@ write_record = function(T, desc, v, base, w, index)
   for _, f in ipairs(desc.fields) do
     local at = base + f.at
     local s = f.shape
-    if s == "map" then
-      return nil
-    elseif not (s == "array" and f.list) then
-      -- The extent writer places unbounded arrays, not the record writer.
+    if f.optional then
+      local present = v ~= nil and v[f.name .. "_present"] == true
+      put_uint(w, base + present_offset(T, f), present and 1 or 0, 1)
+    end
+    if s ~= "map" and not (s == "array" and f.list) then
+      -- The extent walk places maps and unbounded arrays.
       local x = field_value(T, f, v)
-      if f.optional then
-        local present = v ~= nil and v[f.name .. "_present"] == true
-        put_uint(w, base + present_offset(T, f), present and 1 or 0, 1)
-      end
       if not write_field_value(T, f, x, at, w, index) then return nil end
     end
   end
@@ -196,7 +192,7 @@ end
 write_field_value = function(T, f, x, at, w, index)
   local s = f.shape
   if s == "map" then
-    return nil
+    return true -- its slot and entries belong to the extent walk
   elseif s == "pointer" then
     return write_ref(T, f, x, at, w, index)
   elseif s == "string_blob" or s == "bytes_blob" then
@@ -381,7 +377,7 @@ present_offset = function(T, f)
 end
 
 -- THE EXTENT PREDICATES (§2.9, tablecook.recordHasExtent): a record whose
--- by-value closure holds a list (or a map, which the cook refuses).
+-- by-value closure holds a list or map.
 local record_has_extent, union_has_extent, field_has_extent
 record_has_extent = function(T, desc)
   if desc == nil then return false end
@@ -399,6 +395,7 @@ union_has_extent = function(T, un)
 end
 field_has_extent = function(T, f)
   if f.shape == "map" or (f.shape == "array" and f.list) then return true end
+  if f.shape == "array" then return field_has_extent(T, f.elem) end
   if f.shape == "pointer" or f.shape == "string_blob" or f.shape == "bytes_blob" then return false end
   if f.shape == "table" then return record_has_extent(T, T.Tables[f.target]) end
   if f.shape == "union" then return union_has_extent(T, T.Unions[f.target]) end
@@ -413,8 +410,10 @@ local carve_field, carve_element, carve_extent
 
 carve_extent = function(T, desc, v, recordBase, extentBase, cursor, w)
   for _, f in ipairs(desc.fields) do
-    local x = field_value(T, f, v)
-    if not carve_field(T, f, x, recordBase, extentBase, cursor, w) then return false end
+    if not f.optional or (v ~= nil and v[f.name .. "_present"] == true) then
+      local x = field_value(T, f, v)
+      if not carve_field(T, f, x, recordBase, extentBase, cursor, w) then return false end
+    end
   end
   return true
 end
@@ -422,7 +421,24 @@ end
 carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
   local at = recordBase + (f.at or 0)
   local s = f.shape
-  if s == "map" then return false end
+  if s == "map" then
+    local desc = T.Tables[f.entry]
+    if desc == nil then return false end
+    local entries = D.map_entries(cursor.maps, f, x)
+    local n, size = #entries, desc.size
+    cursor.at = align_up(cursor.at, desc.align)
+    local start = cursor.at
+    cursor.at = start + n * size
+    local array = extentBase + start
+    put_uint(w, at, n > 0 and array - at or 0, 8)
+    put_uint(w, at + 8, n, 4)
+    for i, entry in ipairs(entries) do
+      local entryAt = array + (i - 1) * size
+      if w ~= nil and not write_record(T, desc, entry, entryAt, w, cursor.index) then return false end
+      if not carve_extent(T, desc, entry, entryAt, extentBase, cursor, w) then return false end
+    end
+    return true
+  end
   if s == "array" and f.list then
     x = x or {}
     local n = #x
@@ -532,7 +548,7 @@ end
 local function layout(T, name, v)
   local desc = T.Tables[name]
   if desc == nil then return nil end
-  local entries = number_nodes(T, desc, v)
+  local entries, _, maps = number_nodes(T, desc, v)
   if entries == nil then return nil end
   local index = {}
   for i, e in ipairs(entries) do
@@ -546,15 +562,15 @@ local function layout(T, name, v)
   for _, e in ipairs(entries) do
     if e.codec ~= nil then
       local size = e.codec.size
-      local nodeAlign = e.codec.align
+      local nodeAlign = e.codec.cook_align
       align = max(align, nodeAlign)
       offset = align_up(offset, nodeAlign)
       e.offset = offset
       local record = size
       local extent = 0
       if record_has_extent(T, e.codec) then
-        record = align_up(size, 8)
-        local cursor = { at = 0, index = index }
+        record = e.codec.cook_record
+        local cursor = { at = 0, index = index, maps = maps }
         if not carve_extent(T, e.codec, e.v, 0, 0, cursor, nil) then return nil end
         extent = cursor.at
       end
@@ -576,6 +592,7 @@ local function layout(T, name, v)
     desc = desc,
     entries = entries,
     index = index,
+    maps = maps,
     align = align,
     data = offset,
     total = HEADER_BYTES + offset + #entries * 16,
@@ -611,7 +628,7 @@ local function cook(T, name, v, capacity, order)
       local base = HEADER_BYTES + e.offset
       if not write_record(T, e.codec, e.v, base, w, l.index) then return nil, D.refuse_non_finite(T, name, v) end
       if e.extent > 0 then
-        local cursor = { at = 0, index = l.index }
+        local cursor = { at = 0, index = l.index, maps = l.maps }
         if not carve_extent(T, e.codec, e.v, base, base + e.record, cursor, w) then
           return nil, D.refuse_non_finite(T, name, v)
         end
