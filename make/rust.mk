@@ -1660,26 +1660,26 @@ define RUST_FRAMING_DRIVER
 	@sed -e 's|^tblr1 = { path = "../../../build/tables-generated-rust/tblr1" }|tblr1 = { path = "../tblr1" }|' \
 		-e 's|^graphdemo = { path = "../../../build/tables-generated-rust/graphdemo" }|graphdemo = { path = "../graphdemo" }|' \
 		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
-	@[ "$$$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(1)/driver/Cargo.toml)" = 2 ] || \
+	@[ "$$(grep -c '"\.\./tblr1"\|"\.\./graphdemo"' $(1)/driver/Cargo.toml)" = 2 ] || \
 		{ echo "NEGATIVE CONTROL: the crate paths did not move"; exit 1; }
-	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
 endef
 conformance-negative-control-rust-framing: build/conformance-harness build/tables-generated-rust/.stamp
-	@rm -rf $(RUST_FRAMING_CONTROL) && mkdir -p $(RUST_FRAMING_CONTROL)/rules $(RUST_FRAMING_CONTROL)/share
-	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/rules/
-	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/share/
-	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL)/rules,tblr1,if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; },if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; })
-	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL)/rules,graphdemo,if report.cycle_on_save { report.malformed = true; return None; },if false \&\& report.cycle_on_save { report.malformed = true; return None; })
-	@grep -rl 'TableNodeSlot::Built(_, n) => return Some(n.clone()),' $(RUST_FRAMING_CONTROL)/share/graphdemo | \
+	@rm -rf $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share && mkdir -p $(RUST_FRAMING_CONTROL) $(RUST_FRAMING_CONTROL)-share
+	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)/
+	@cp -R build/tables-generated-rust/tblr1 build/tables-generated-rust/graphdemo $(RUST_FRAMING_CONTROL)-share/
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),tblr1,if count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; },if false \&\& count > ID_TABLE_PROBE_BOUND as u64 { report.malformed = true; return None; })
+	$(call RUST_FRAMING_SABOTAGE,$(RUST_FRAMING_CONTROL),graphdemo,if report.cycle_on_save { report.malformed = true; return None; },if false \&\& report.cycle_on_save { report.malformed = true; return None; })
+	@grep -rl 'TableNodeSlot::Built(_, n) => return Some(n.clone()),' $(RUST_FRAMING_CONTROL)-share/graphdemo | \
 		xargs sed -i.orig 's|TableNodeSlot::Built(_, n) => return Some(n.clone()),|TableNodeSlot::Built(_, _) => { report.cycle_on_save = true; return None; } /* SABOTAGED */|'
-	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)/share/graphdemo || { echo "NEGATIVE CONTROL: the share sabotage did not apply"; exit 1; }
-	@find $(RUST_FRAMING_CONTROL)/share -name '*.orig' -delete
-	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL)/rules)
-	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL)/share)
-	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/rules/target/debug/conformance-rust \
-		$(RUST_FRAMING_CONTROL)/rules/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
-	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/share/target/debug/conformance-rust \
-		$(RUST_FRAMING_CONTROL)/share/run node_diamond_chain
+	@grep -rq SABOTAGED $(RUST_FRAMING_CONTROL)-share/graphdemo || { echo "NEGATIVE CONTROL: the share sabotage did not apply"; exit 1; }
+	@find $(RUST_FRAMING_CONTROL)-share -name '*.orig' -delete
+	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL))
+	$(call RUST_FRAMING_DRIVER,$(RUST_FRAMING_CONTROL)-share)
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+	sh test/conformance/framing/gate rust $(CURDIR)/$(RUST_FRAMING_CONTROL)-share/target/debug/conformance-rust \
+		$(RUST_FRAMING_CONTROL)-share/run node_diamond_chain
 test-rust: conformance-rust-framing conformance-negative-control-rust-framing
 
 # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4) in the Rust leg:

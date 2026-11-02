@@ -1073,7 +1073,7 @@ func emitPointerResolve(b *strings.Builder, f *ir.Field, dst, ind string) {
 	}
 	tid := ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName())
 	fmt.Fprintf(b, "%s%s = match nodes.node_slot(index, 0x%016x, report) {\n", ind, dst, tid)
-	fmt.Fprintf(b, "%s    Some(k) => variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()),\n", ind, f.Type.Name)
+	fmt.Fprintf(b, "%s    Some(v) => nodes.stub_slot(v).and_then(|n| n.downcast::<%s>().ok()),\n", ind, f.Type.Name)
 	fmt.Fprintf(b, "%s    None => None,\n", ind)
 	fmt.Fprintf(b, "%s};\n", ind)
 }
@@ -1363,22 +1363,25 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	fmt.Fprintf(b, "    out.push(0); // the record body's zero reference\n")
 	fmt.Fprintf(b, "}\n\n")
 
-	fmt.Fprintf(b, "/// Decode record k of the numbering into its table, ONCE (docs/SPEC-TABLES.md\n")
-	fmt.Fprintf(b, "/// §3.1): every later slot naming it shares the one node. A record that names\n")
-	fmt.Fprintf(b, "/// itself while its own body decodes names an OPEN node, a cycle no writer\n")
-	fmt.Fprintf(b, "/// produces: the load marks it and refuses whole (§3.1, §4). On a\n")
-	fmt.Fprintf(b, "/// retaining load an unknown field inside a node body counts retain_lost: the\n")
-	fmt.Fprintf(b, "/// store carries no path into a node (§6.6).\n")
-	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]\n")
-	fmt.Fprintf(b, "fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) -> Option<Rc<dyn Any>> {\n")
-	fmt.Fprintf(b, "    match &nodes.slots[k] {\n")
-	fmt.Fprintf(b, "        TableNodeSlot::Built(_, n) => return Some(n.clone()),\n")
-	fmt.Fprintf(b, "        TableNodeSlot::Table(_) => {}\n")
-	fmt.Fprintf(b, "        TableNodeSlot::Building => { report.cycle_on_save = true; return None; }\n")
-	fmt.Fprintf(b, "        _ => return None,\n")
+	for _, n := range names {
+		g.emitVariableEdgesAndLink(b, vStruct(g.unit, n))
+	}
+	for _, un := range g.collectVariableUnions(names) {
+		g.emitUnionEdgesAndLink(b, un)
+	}
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, clippy::match_single_binding)]\n")
+	fmt.Fprintf(b, "fn variable_node_stub_alloc(type_id: u64) -> Option<Rc<dyn Any>> {\n")
+	fmt.Fprintf(b, "    match type_id {\n")
+	for _, st := range targets {
+		fmt.Fprintf(b, "        0x%016x => Some(Rc::new(%s::default())),\n", ir.TableWireId(st.WireName()), st.Name)
+	}
+	fmt.Fprintf(b, "        _ => None,\n")
 	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]\n")
+	fmt.Fprintf(b, "fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {\n")
 	fmt.Fprintf(b, "    let (type_id, start, end) = nodes.recs[k];\n")
-	fmt.Fprintf(b, "    nodes.slots[k] = TableNodeSlot::Building;\n")
 	fmt.Fprintf(b, "    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };\n")
 	fmt.Fprintf(b, "    let retaining = nodes.retaining;\n")
 	fmt.Fprintf(b, "    let node: Option<Rc<dyn Any>> = match type_id {\n")
@@ -1392,10 +1395,214 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 	}
 	fmt.Fprintf(b, "        _ => None,\n")
 	fmt.Fprintf(b, "    };\n")
-	fmt.Fprintf(b, "    nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };\n")
 	fmt.Fprintf(b, "    if let Some(n) = &node { retain_bind_node(&mut sink, n); }\n")
+	fmt.Fprintf(b, "    nodes.decoded[k] = node;\n")
 	fmt.Fprintf(b, "    nodes.retained.extend_from_slice(&sink.bytes);\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]\n")
+	fmt.Fprintf(b, "fn variable_node_edges(type_id: u64, node: &Rc<dyn Any>, nodes: &TableNodeReader, out: &mut Vec<usize>) {\n")
+	fmt.Fprintf(b, "    match type_id {\n")
+	for _, st := range targets {
+		fmt.Fprintf(b, "        0x%016x => {\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "            if let Some(v) = node.downcast_ref::<%s>() {\n", st.Name)
+		fmt.Fprintf(b, "                v.__table_edges(nodes, out);\n")
+		fmt.Fprintf(b, "            }\n")
+		fmt.Fprintf(b, "        }\n")
+	}
+	fmt.Fprintf(b, "        _ => {}\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]\n")
+	fmt.Fprintf(b, "fn variable_node_link_record(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {\n")
+	fmt.Fprintf(b, "    let Some(raw) = nodes.decoded[k].take() else { return; };\n")
+	fmt.Fprintf(b, "    let type_id = nodes.recs[k].0;\n")
+	fmt.Fprintf(b, "    match type_id {\n")
+	for _, st := range targets {
+		fmt.Fprintf(b, "        0x%016x => {\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "            if let Ok(mut v) = raw.downcast::<%s>() {\n", st.Name)
+		fmt.Fprintf(b, "                if let Some(inner) = Rc::get_mut(&mut v) {\n")
+		fmt.Fprintf(b, "                    inner.__table_link(wire, ids, nodes, report);\n")
+		fmt.Fprintf(b, "                }\n")
+		fmt.Fprintf(b, "                nodes.decoded[k] = Some(v);\n")
+		fmt.Fprintf(b, "            }\n")
+		fmt.Fprintf(b, "        }\n")
+	}
+	fmt.Fprintf(b, "        _ => {}\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "}\n\n")
+
+	fmt.Fprintf(b, "/// Finalize record k of the numbering into its shared Rc (docs/SPEC-TABLES.md\n")
+	fmt.Fprintf(b, "/// §3.1): every later slot naming it shares the one node.\n")
+	fmt.Fprintf(b, "#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]\n")
+	fmt.Fprintf(b, "fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) -> Option<Rc<dyn Any>> {\n")
+	fmt.Fprintf(b, "    match &nodes.slots[k] {\n")
+	fmt.Fprintf(b, "        TableNodeSlot::Built(_, n) => return Some(n.clone()),\n")
+	fmt.Fprintf(b, "        TableNodeSlot::Table(_) => {}\n")
+	fmt.Fprintf(b, "        TableNodeSlot::Building => { report.cycle_on_save = true; return None; }\n")
+	fmt.Fprintf(b, "        _ => return None,\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    let (type_id, _, _) = nodes.recs[k];\n")
+	fmt.Fprintf(b, "    let node = nodes.decoded[k].take();\n")
+	fmt.Fprintf(b, "    nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };\n")
 	fmt.Fprintf(b, "    node\n")
+	fmt.Fprintf(b, "}\n\n")
+}
+
+func (g *gen) emitVariableEdgesAndLink(b *strings.Builder, st *ir.Struct) {
+	fmt.Fprintf(b, "#[doc(hidden)]\n")
+	fmt.Fprintf(b, "impl %s {\n", st.Name)
+	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables)]\n")
+	fmt.Fprintf(b, "    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {\n")
+	for _, f := range st.Fields {
+		g.emitFieldEdges(b, f)
+	}
+	fmt.Fprintf(b, "    }\n\n")
+	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]\n")
+	fmt.Fprintf(b, "    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {\n")
+	for _, f := range st.Fields {
+		g.emitFieldLink(b, f)
+	}
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "}\n\n")
+}
+
+func (g *gen) emitFieldEdges(b *strings.Builder, f *ir.Field) {
+	x := "self." + ir.RustSnake(f.Name)
+	if f.Type.Optional {
+		switch classOf(f) {
+		case vPointer:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "        if let Some(arr) = &%s { for n in arr.iter().flatten() { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); } }\n", x)
+			} else {
+				fmt.Fprintf(b, "        if let Some(n) = &%s { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); }\n", x)
+			}
+		case vTable, vUnion:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "        if let Some(arr) = &%s { for e in arr.iter() { e.__table_edges(nodes, out); } }\n", x)
+			} else {
+				fmt.Fprintf(b, "        if let Some(inner) = &%s { inner.__table_edges(nodes, out); }\n", x)
+			}
+		}
+		return
+	}
+	switch classOf(f) {
+	case vPointer:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "        for n in %s.iter().flatten() { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); }\n", x)
+		} else {
+			fmt.Fprintf(b, "        if let Some(n) = &%s { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); }\n", x)
+		}
+	case vTable, vUnion:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "        for e in %s.iter() { e.__table_edges(nodes, out); }\n", x)
+		} else {
+			fmt.Fprintf(b, "        %s.__table_edges(nodes, out);\n", x)
+		}
+	case vMap:
+		fmt.Fprintf(b, "        for e in %s.iter() { e.__table_edges(nodes, out); }\n", x)
+	}
+}
+
+func (g *gen) emitFieldLink(b *strings.Builder, f *ir.Field) {
+	x := "self." + ir.RustSnake(f.Name)
+	if f.Type.Optional {
+		switch classOf(f) {
+		case vPointer:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "        if let Some(arr) = &mut %s { for slot in arr.iter_mut() { if let Some(k) = slot.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { *slot = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { *slot = None; } } }\n", x, f.Type.Name)
+			} else {
+				fmt.Fprintf(b, "        if let Some(k) = %s.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { %s = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { %s = None; }\n", x, x, f.Type.Name, x)
+			}
+		case vTable, vUnion:
+			if f.Array != ir.ArrayNone {
+				fmt.Fprintf(b, "        if let Some(arr) = &mut %s { for e in arr.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", x)
+			} else {
+				fmt.Fprintf(b, "        if let Some(inner) = &mut %s { inner.__table_link(wire, ids, nodes, report); }\n", x)
+			}
+		}
+		return
+	}
+	switch classOf(f) {
+	case vPointer:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "        for slot in %s.iter_mut() { if let Some(k) = slot.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { *slot = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { *slot = None; } }\n", x, f.Type.Name)
+		} else {
+			fmt.Fprintf(b, "        if let Some(k) = %s.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { %s = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { %s = None; }\n", x, x, f.Type.Name, x)
+		}
+	case vTable, vUnion:
+		if f.KeyEnum != "" || f.Array != ir.ArrayNone {
+			fmt.Fprintf(b, "        for e in %s.iter_mut() { e.__table_link(wire, ids, nodes, report); }\n", x)
+		} else {
+			fmt.Fprintf(b, "        %s.__table_link(wire, ids, nodes, report);\n", x)
+		}
+	case vMap:
+		fmt.Fprintf(b, "        for e in %s.iter_mut() { e.__table_link(wire, ids, nodes, report); }\n", x)
+	}
+}
+
+func (g *gen) emitUnionEdgesAndLink(b *strings.Builder, un *ir.Union) {
+	fmt.Fprintf(b, "#[doc(hidden)]\n")
+	fmt.Fprintf(b, "impl %s {\n", un.Name)
+	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]\n")
+	fmt.Fprintf(b, "    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {\n")
+	fmt.Fprintf(b, "        match self {\n")
+	for _, v := range un.Variants {
+		if v.Void() || v.F == nil {
+			continue
+		}
+		arm := rustVariant(v.Name)
+		if v.F.KeyEnum != "" || v.F.Array != ir.ArrayNone {
+			switch classOf(v.F) {
+			case vPointer:
+				fmt.Fprintf(b, "            %s::%s(es) => { for n in es.iter().flatten() { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); } }\n", un.Name, arm)
+			case vTable, vUnion:
+				fmt.Fprintf(b, "            %s::%s(es) => { for e in es.iter() { e.__table_edges(nodes, out); } }\n", un.Name, arm)
+			}
+			continue
+		}
+		switch classOf(v.F) {
+		case vPointer:
+			fmt.Fprintf(b, "            %s::%s(n) => { if let Some(n) = n { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); } }\n", un.Name, arm)
+		case vTable, vUnion:
+			fmt.Fprintf(b, "            %s::%s(e) => { e.__table_edges(nodes, out); }\n", un.Name, arm)
+		case vMap:
+			fmt.Fprintf(b, "            %s::%s(es) => { for e in es.iter() { e.__table_edges(nodes, out); } }\n", un.Name, arm)
+		}
+	}
+	fmt.Fprintf(b, "            _ => {}\n")
+	fmt.Fprintf(b, "        }\n")
+	fmt.Fprintf(b, "    }\n\n")
+	fmt.Fprintf(b, "    #[allow(dead_code, unused_variables, clippy::too_many_arguments, clippy::match_single_binding, clippy::single_match)]\n")
+	fmt.Fprintf(b, "    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {\n")
+	fmt.Fprintf(b, "        match self {\n")
+	for _, v := range un.Variants {
+		if v.Void() || v.F == nil {
+			continue
+		}
+		arm := rustVariant(v.Name)
+		if v.F.KeyEnum != "" || v.F.Array != ir.ArrayNone {
+			switch classOf(v.F) {
+			case vPointer:
+				fmt.Fprintf(b, "            %s::%s(es) => { for slot in es.iter_mut() { if let Some(k) = slot.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { *slot = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { *slot = None; } } }\n", un.Name, arm, v.F.Type.Name)
+			case vTable, vUnion:
+				fmt.Fprintf(b, "            %s::%s(es) => { for e in es.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", un.Name, arm)
+			}
+			continue
+		}
+		switch classOf(v.F) {
+		case vPointer:
+			fmt.Fprintf(b, "            %s::%s(slot) => { if let Some(k) = slot.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { *slot = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { *slot = None; } }\n", un.Name, arm, v.F.Type.Name)
+		case vTable, vUnion:
+			fmt.Fprintf(b, "            %s::%s(e) => { e.__table_link(wire, ids, nodes, report); }\n", un.Name, arm)
+		case vMap:
+			fmt.Fprintf(b, "            %s::%s(es) => { for e in es.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", un.Name, arm)
+		}
+	}
+	fmt.Fprintf(b, "            _ => {}\n")
+	fmt.Fprintf(b, "        }\n")
+	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "}\n\n")
 }
 
@@ -1638,15 +1845,16 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	// gathered whole first, then the body read decodes and resolves.
 	if st.FixedDeclared {
 		fmt.Fprintf(b, "    // A fixed-class root does not own the node table: §4 reads it as an unknown field.\n")
-		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true };\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
 		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
 		fmt.Fprintf(b, "        Some(nodes) => nodes,\n")
-		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true },\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new() },\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "        None => return None,\n")
 		fmt.Fprintf(b, "    };\n")
 	}
+	fmt.Fprintf(b, "    nodes.init_stubs(Rc::new(%s::default()), variable_node_stub_alloc);\n", st.Name)
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
 	fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
@@ -1654,12 +1862,27 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // every placeable record is decoded whether or not a slot names it, so\n")
 	fmt.Fprintf(b, "    // what its body reports is counted as the oracle counts it (§3.1, §4)\n")
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
-	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { let _ = variable_node_build(wire, ids, &mut nodes, k, report); }\n")
+	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { variable_node_decode(wire, ids, &mut nodes, k, report); }\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); nodes.slots.len() + 1];\n")
+	fmt.Fprintf(b, "    v.__table_edges(&nodes, &mut edges[0]);\n")
+	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
+	fmt.Fprintf(b, "        if let Some(node) = &nodes.decoded[k] { variable_node_edges(nodes.recs[k].0, node, &nodes, &mut edges[k + 1]); }\n")
+	fmt.Fprintf(b, "    }\n")
+	fmt.Fprintf(b, "    let post_order = nodes.check_cycles(&edges, report);\n")
+	fmt.Fprintf(b, "    if !report.cycle_on_save {\n")
+	fmt.Fprintf(b, "        for &u in &post_order {\n")
+	fmt.Fprintf(b, "            if u == 0 { v.__table_link(wire, ids, &mut nodes, report); }\n")
+	fmt.Fprintf(b, "            else { variable_node_link_record(wire, ids, &mut nodes, u - 1, report); }\n")
+	fmt.Fprintf(b, "        }\n")
+	fmt.Fprintf(b, "        for k in 0..nodes.slots.len() {\n")
+	fmt.Fprintf(b, "            if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { let _ = variable_node_build(wire, ids, &mut nodes, k, report); }\n")
+	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): a slot met a node\n")
-	fmt.Fprintf(b, "    // whose descent was still open (Building, or the root while its body\n")
-	fmt.Fprintf(b, "    // decoded), anywhere in the graph, the unreached records included. Each\n")
-	fmt.Fprintf(b, "    // record is built once, so the walk is linear; the whole load is refused.\n")
+	fmt.Fprintf(b, "    // whose descent was still open, anywhere in the loaded graph's final stored\n")
+	fmt.Fprintf(b, "    // pointer slots, the unreached records included. Each vertex is entered\n")
+	fmt.Fprintf(b, "    // once, so the walk is linear; the whole load is refused.\n")
 	fmt.Fprintf(b, "    if report.cycle_on_save { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks\n")
 	fmt.Fprintf(b, "    // any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing\n")

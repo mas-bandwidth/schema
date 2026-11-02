@@ -358,28 +358,8 @@ pub fn fixed_table_fixed_load(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
-    let malformed_before = report.malformed;
-    report.malformed = false;
-    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
-    let damaged = report.malformed;
-    report.malformed |= malformed_before;
-    if damaged {
-        for value in values.iter_mut() {
-            fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
-        }
-        return None;
-    }
-    read
-}
-
-fn fixed_table_fixed_load_records(
-    values: &mut [FixedTableRow],
-    data: &[u8],
-    plan: &mut [TableFixedEntry],
-    remap: &mut [u16],
-    report: &mut TableFixedReport,
-) -> Option<usize> {
     if data.is_empty() {
+        for value in values.iter_mut() { fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default()); }
         report.malformed = true;
         return None;
     }
@@ -463,7 +443,7 @@ fn fixed_table_fixed_load_records(
     let _ = remap;
     if record_bytes <= 8 || !rest.len().is_multiple_of(record_bytes) {
         report.malformed = true;
-        return None;
+        if record_bytes <= 8 { for value in values.iter_mut() { fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default()); } return None; }
     }
     let n = rest.len() / record_bytes;
     if n > values.len() {
@@ -522,15 +502,18 @@ fn fixed_table_fixed_load_records(
             // having no `L` to continue past. REFUSE is total, so the refusal
             // is taken before any counter is added.
             if damaged != 0 {
-                for value in values.iter_mut().take(k + 1) {
-                    fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
-                }
+                for value in values.iter_mut().take(k + 1) { fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default()); }
                 report.clamped = clamped_before;
                 report.widened = widened_before;
                 return report.refuse(TableFixedReason::TextIllFormed);
-            }
+        }
             report.clamped += clamped as u32;
         }
+    }
+    let damaged = report.malformed;
+    if damaged {
+        for value in values.iter_mut() { fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default()); }
+        return None;
     }
     // THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, and only on a read
     // that RETURNS (§5.9 #6): `unknown` and `kind_mismatch` are the PLAN'S own
