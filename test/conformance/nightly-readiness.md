@@ -116,7 +116,11 @@ constructs and/or active corpus witnesses. A successful registry declaration
 alone cannot satisfy the remaining native, all-roots and control phases.
 
 The C++ readiness leg also runs the complete shared `internal/tabletext`,
-`internal/tablewire`, `tools/fixedtwin`, and `internal/ci` packages once, recording
+`internal/tablewire`, and `tools/fixedtwin` packages once, recording
 their discovered inventories and JSON pass events. New oracle and control
 regressions therefore enter nightly automatically without repeating the reference
 work for each language.
+
+The C negative-control grep regression belongs to the C native package and runs
+with that language. The original-nine gate does not require expansion-language
+CI corpora through the repository-wide `internal/ci` package.

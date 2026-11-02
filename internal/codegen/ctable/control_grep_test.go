@@ -1,4 +1,4 @@
-package ci
+package ctable
 
 import (
 	"errors"
@@ -19,7 +19,7 @@ func TestCNegativeControlGrepDialects(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the C make controls execute on POSIX runners")
 	}
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), "make", "c.mk"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "make", "c.mk"))
 	if err != nil {
 		t.Fatal(err)
 	}

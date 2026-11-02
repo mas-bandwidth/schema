@@ -146,7 +146,7 @@ def tool(name, fallback):
 
 
 # Shared semantic oracles and CI controls run once, independently of writer count.
-SHARED_PACKAGES = ("compiler", "harness", "tabletext", "tablewire", "fixedtwin", "ci")
+SHARED_PACKAGES = ("compiler", "harness", "tabletext", "tablewire", "fixedtwin")
 
 
 def required_phases(lang):
@@ -183,8 +183,7 @@ def required_phases(lang):
 def package_path(package):
     return {"compiler": "compiler", "lockfile": "internal/lockfile",
             "harness": "test/conformance/harness", "tabletext": "internal/tabletext",
-            "tablewire": "internal/tablewire", "fixedtwin": "tools/fixedtwin",
-            "ci": "internal/ci"}.get(
+            "tablewire": "internal/tablewire", "fixedtwin": "tools/fixedtwin"}.get(
         package, "internal/codegen/" + package)
 
 
