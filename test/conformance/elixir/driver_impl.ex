@@ -761,8 +761,8 @@ defmodule Driver do
             {:error, _refusal, %{reason: "unknown_form"}} ->
               write(outdir, name, "0,0,0,0,0,false,refused\n")
 
-            {:error, _refusal, %{reason: "wire_damaged"}} ->
-              write(outdir, name, "0,0,0,0,0,true,read\n")
+            {:error, _refusal, %{reason: "wire_damaged"} = report} ->
+              write(outdir, name, report_counters(report) <> ",read\n")
 
             _ ->
               write_absent(outdir, name)
@@ -850,8 +850,9 @@ defmodule Driver do
       {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"
 
-      {:error, _refusal, %{reason: "wire_damaged"}} ->
-        "0,0,0,0,0,true,read\n"
+      {:error, _refusal, %{reason: "wire_damaged"} = report} ->
+        # a damaged load returns no value, and its report stands
+        report_counters(report) <> ",read\n"
 
       _ ->
         :absent
@@ -1463,12 +1464,24 @@ defmodule WireFuzz do
   end
 
   # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
+  # the report a LoadMeasure refusal answers: the load's own refusal, which
+  # names a newer form or says malformed
+  defp measure_refusal(mod, root, wire) do
+    case mod.load(root, wire) do
+      {:error, :newer_form, report} -> Map.put(report, :refused, true)
+      {:error, _reason, report} -> %{report | malformed: true}
+      _ -> %{malformed: true}
+    end
+  end
+
   defp answer_plain(mod, r, wire) do
     measure = mod.load_measure(r.root, wire)
 
     if measure < 0 do
-      # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+      # LoadMeasure refused the framing: no root and nothing saved, and the
+      # refusal is DAMAGE, which discards the whole load (Glenn, 2026-10-31):
+      # the report says malformed, or names the form a newer writer used
+      stdout_write(header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>)
     else
       case mod.load(r.root, wire) do
         {:ok, value, report} ->
@@ -1486,8 +1499,17 @@ defmodule WireFuzz do
           # §3.3), and the refusal is the answer the oracle compares
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
-        _ ->
-          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+        {:error, :newer_form, report} ->
+          # A FORM THIS READER DOES NOT KNOW IS REFUSED BY NAME (docs/SPEC-TABLES.md
+          # §3): nothing is decoded, the verdict is the answer, and the
+          # defaults the load stands on are not compared
+          stdout_write(header(1, Map.put(report, :refused, true), measure) <> <<-1::little-signed-64>>)
+
+        {:error, _reason, report} ->
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # damage discards the whole load): its report, malformed among it,
+          # is the answer the oracle compares
+          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1505,7 +1527,7 @@ defmodule WireFuzz do
 
     if measure < 0 do
       # LoadMeasure refused the framing: no root, an empty report, nothing saved
-      stdout_write(header(0, %{}, measure) <> <<-1::little-signed-64>>)
+      stdout_write(header(0, measure_refusal(mod, r.root, wire), measure) <> <<-1::little-signed-64>>)
     else
       case mod.load_retain(r.root, wire, retain, report) do
         {:ok, value, report, retain} ->
@@ -1521,8 +1543,11 @@ defmodule WireFuzz do
         {:error, :non_finite_float, _report, _retain} ->
           stdout_write(header(0, %{refused: true}, measure) <> <<-1::little-signed-64>>)
 
-        _ ->
-          stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
+        {:error, _reason, report, _retain} ->
+          # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
+          # damage discards the whole load): its report, malformed among it,
+          # is the answer the oracle compares
+          stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
       end
     end
   end
@@ -1583,6 +1608,10 @@ defmodule WireFuzz do
 
   # the raw stdin/stdout devices: the wire-fuzz driver runs WITHOUT -noinput,
   # so the standard_io device is live and reads/writes bytes directly.
+  # a zero-length read is the empty binary: :file.read/2 of 0 bytes does not
+  # answer one, so an empty mutant (a truncation to nothing) would stall the leg
+  defp stdin_read(0), do: <<>>
+
   defp stdin_read(n) do
     case :file.read(:standard_io, n) do
       {:ok, data} -> data

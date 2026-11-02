@@ -17,10 +17,9 @@ import (
 //   - a1_arm_moved_width: an int32 arm read by an int64 arm is WIDENED, the
 //     payload decoded at its own width and the value the writer's own;
 //   - a2_arm_length_off_width: an arm whose kind agrees but whose L is not its
-//     kind's width is that arm's own framing damage, malformed, the union None
-//     and the parent reading on past L;
+//     kind's width is framing damage, and damage discards the whole load (§4);
 //   - parts_index_out_of_range: a slot naming a node index past the node table
-//     is malformed and THAT slot reads null, the array kept at its count.
+//     is framing damage, and the whole load is discarded.
 //
 // Each has a REVERSED WITNESS: the emitted runtime with the old behaviour
 // planted back (a retyped arm always a kind mismatch, no length check at an
@@ -57,10 +56,9 @@ Probe.check(v["value"] == {"a", 7}, "the widened arm lands the writer's value: #
 Probe.check(Probe.counters(r) == {0, 0, 1, 0, false}, "one widened, nothing else: #{inspect(r)}")
 Probe.check(v["id"] == 11 and v["tail"] == 22, "the siblings read: #{inspect(v)}")
 
-{:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a2_arm_length_off_width") + `))
-Probe.check(v["value"] == nil, "a damaged arm reads None: #{inspect(v)}")
-Probe.check(Probe.counters(r) == {0, 0, 0, 0, true}, "the arm's L off its width is malformed: #{inspect(r)}")
-Probe.check(v["tail"] == 22, "the parent reads on past L: #{inspect(v)}")
+{tag, reason, r} = Tbla2.Table.load("Root", File.read!(` + wire("a2_arm_length_off_width") + `))
+Probe.check({tag, reason} == {:error, :malformed}, "a damaged arm discards the whole load: #{inspect({tag, reason})}")
+Probe.check(r.malformed, "the arm's L off its width is malformed: #{inspect(r)}")
 
 {:ok, v, r} = Tbla2.Table.load("Root", File.read!(` + wire("a1_arm_one_width") + `))
 Probe.check(v["value"] == nil and Probe.counters(r) == {0, 1, 0, 0, false},
@@ -81,11 +79,9 @@ defmodule Probe do
   end
 end
 
-{:ok, v, r} = Streamdemo.Table.load("Feed", File.read!(` + wire("parts_index_out_of_range") + `))
+{tag, reason, r} = Streamdemo.Table.load("Feed", File.read!(` + wire("parts_index_out_of_range") + `))
+Probe.check({tag, reason} == {:error, :malformed}, "a slot past the node table discards the whole load: #{inspect({tag, reason})}")
 Probe.check(r.malformed == true, "a slot past the node table is malformed: #{inspect(r)}")
-Probe.check(r.kind_mismatch == 0 and r.unknown == 0, "and no other event: #{inspect(r)}")
-Probe.check(length(v["parts"]) == 2 and Enum.all?(v["parts"], &is_nil/1),
-  "the slot reads null and the array keeps its count: #{inspect(v)}")
 IO.puts("ok")
 `
 
