@@ -1,0 +1,134 @@
+// The generated-Go corpus runner calls dispatch.go's generated public readers.
+// Manifest expectations are compared only after the reader returns a verdict.
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"crypto/sha256"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
+)
+
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Fprintln(os.Stderr, "usage: go-hostile <corpus-dir>")
+		os.Exit(2)
+	}
+	if err := run(os.Args[1]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run(dir string) error {
+	file, err := os.Open(filepath.Join(dir, "manifest.tsv"))
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	scan := bufio.NewScanner(file)
+	scan.Buffer(make([]byte, 4096), 4*1024*1024)
+	total, passed, failed := 0, 0, 0
+	seen := map[string]bool{}
+	for scan.Scan() {
+		line := scan.Text()
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		row := strings.Split(line, "\t")
+		if len(row) != 9 {
+			return fmt.Errorf("manifest row has %d columns, want9", len(row))
+		}
+		if seen[row[0]] {
+			return fmt.Errorf("duplicate case %s", row[0])
+		}
+		seen[row[0]] = true
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(row[4])))
+		if err != nil {
+			return err
+		}
+		total++
+		got := dispatch(row[1], row[2], row[3], data)
+		var want string
+		switch row[6] {
+		case "accept":
+			want = "accept " + row[8]
+		case "refuse":
+			want = "refuse " + row[7]
+		default:
+			return fmt.Errorf("invalid expected verdict %q", row[6])
+		}
+		if got == want {
+			passed++
+			fmt.Printf("PASS %s\n", row[0])
+		} else {
+			failed++
+			fmt.Printf("FAIL %s carrier=%s got=%s want=%s\n", row[0], row[1], got, want)
+		}
+	}
+	if err := scan.Err(); err != nil {
+		return err
+	}
+	fmt.Printf("generated go: %d cases: %d pass, %d unexplained, 0 skipped\n", total, passed, failed)
+	if total == 0 || failed != 0 {
+		return fmt.Errorf("generated Go corpus disagrees: %d failures across %d cases", failed, total)
+	}
+	return nil
+}
+
+func reasonName(s string) string {
+	if i := strings.Index(s, ": "); i >= 0 {
+		s = s[:i]
+	}
+	if s == "count_over_extent_cap" {
+		return "count_refusal"
+	}
+	return s
+}
+
+func wireRefusal(ok bool, r *goruntime.TableReport) string {
+	if r.NonFiniteFloat != "" {
+		return "refuse non_finite_float"
+	}
+	if r.Verdict == goruntime.TableOpenRefused {
+		if r.Reason == "" {
+			return "error: unnamed public refusal"
+		}
+		return "refuse " + reasonName(r.Reason)
+	}
+	if !ok || r.Malformed {
+		return "refuse damaged"
+	}
+	return ""
+}
+
+// The region API requires its generated measure before allocation. A named
+// storage refusal comes from that public API; structural failures stay damage.
+func measureRefusal(err error) string {
+	if err == goruntime.TableRefuseCountOverExtentCap {
+		return "refuse count_refusal"
+	}
+	if err == goruntime.TableRefuseNonFiniteFloat {
+		return "refuse non_finite_float"
+	}
+	return "refuse damaged"
+}
+
+func jsonDigest(measure func() int64, write func([]byte) int64) string {
+	n := measure()
+	if n < 0 {
+		return "error: generated JSON measure refused"
+	}
+	out := make([]byte, n)
+	if written := write(out); written != n {
+		return fmt.Sprintf("error: generated JSON wrote %d of %d bytes", written, n)
+	}
+	// The corpus hashes canonical content without the writer's final newline.
+	sum := sha256.Sum256(bytes.TrimRight(out, "\n"))
+	return fmt.Sprintf("accept %x", sum)
+}
