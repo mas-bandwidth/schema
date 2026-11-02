@@ -4460,13 +4460,15 @@ const variableRetainSource = `
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
             # and nothing retained, only the report
             if report.malformed do
-              {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+              {:error, :malformed, reasoned(report, :malformed),
+               %{retain | records: [], used: 0, ids: []}}
             else
               {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
             end
 
           _ ->
-            {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+            {:error, :malformed, reasoned(report, :malformed),
+             %{retain | records: [], used: 0, ids: []}}
         end
     end
   catch

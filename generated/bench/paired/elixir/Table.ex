@@ -5750,7 +5750,9 @@ defmodule Bench.Table do
   # two-byte scalar in the cook's byte order, then the int32 used length in
   # code units
   defp cook_units(buf, at, len_at, v, bound, order) do
-    if not is_binary(v), do: throw(:invalid)
+    if not is_binary(v) or not String.valid?(v) or :binary.match(v, <<0>>) != :nomatch,
+      do: throw(:invalid)
+
     units = for <<u::little-unsigned-16 <- utf16(v)>>, do: u
     if length(units) > bound, do: throw(:invalid)
 
@@ -5856,13 +5858,15 @@ defmodule Bench.Table do
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
             # and nothing retained, only the report
             if report.malformed do
-              {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+              {:error, :malformed, reasoned(report, :malformed),
+               %{retain | records: [], used: 0, ids: []}}
             else
               {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
             end
 
           _ ->
-            {:error, :malformed, reasoned(report, :malformed), %{retain | records: [], used: 0, ids: []}}
+            {:error, :malformed, reasoned(report, :malformed),
+             %{retain | records: [], used: 0, ids: []}}
         end
     end
   catch

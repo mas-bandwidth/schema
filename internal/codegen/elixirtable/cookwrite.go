@@ -941,7 +941,9 @@ const cookWriteSource = `  # ---- cook write (docs/SPEC-TABLES.md §7.6) ----
   # two-byte scalar in the cook's byte order, then the int32 used length in
   # code units
   defp cook_units(buf, at, len_at, v, bound, order) do
-    if not is_binary(v), do: throw(:invalid)
+    if not is_binary(v) or not String.valid?(v) or :binary.match(v, <<0>>) != :nomatch,
+      do: throw(:invalid)
+
     units = for <<u::little-unsigned-16 <- utf16(v)>>, do: u
     if length(units) > bound, do: throw(:invalid)
 
