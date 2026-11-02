@@ -13,6 +13,9 @@ func TestDeclaredFormsRefusedByOtherTargets(t *testing.T) {
 	u := unitFromSource(t, "package probe\ntable Zeta | forms = \"wire\"\n{\n    x int32\n}\ntable Alpha | forms = \"wire\"\n{\n    x int32\n}\n")
 	c := New()
 	for _, lang := range []string{"c", "cpp", "cs", "dart", "elixir", "java", "javascript", "rust"} {
+		if carries(lang, carryForms) {
+			continue
+		}
 		_, err := c.Generate(u, lang, nil)
 		if err == nil {
 			t.Errorf("target %s accepted a forms declaration", lang)
