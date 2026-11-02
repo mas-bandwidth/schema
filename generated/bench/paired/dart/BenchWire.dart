@@ -36,6 +36,7 @@ final class TableWireReport {
   int duplicate = 0;
   bool malformed = false;
   bool refused = false;
+  bool _countRefused = false;
   int retained = 0;
   int retainLost = 0;
 
@@ -58,15 +59,22 @@ final class TableWireReport {
   // does not carry is unknown_form, framing the reader cannot follow is
   // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
   // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field rather than kept beside them, so the verdict and its reason
-  // can never disagree. A widened, clamped or unknown field is not a refusal:
-  // the read still answers ok.
+  // stored field; _countRefused records a builder storage refusal without
+  // adding a malformed event. Earlier report events remain available.
+  // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
   }
+}
+
+// A builder storage refusal is terminal, including inside a nested body.
+// Unwind to the public loader before its framing checks can add damage.
+final class _TableWireCountRefusal implements Exception {
+  const _TableWireCountRefusal();
 }
 
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
@@ -721,7 +729,10 @@ final class TableWireReader {
   // NEVER CLAMP, the entry is dropped whole and counted one clamped
   // (docs/SPEC-TABLES.md §2.8; internal/tabletext MapKeyFits). keySize is
   // the string bound, or -1 for a key that is not a bounded string.
+  int mapKeyAt = -1;
+
   int mapEntryScan(int keyId, int keyKind, List<int> keyWidens, int keySize) {
+    mapKeyAt = -1;
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
     var widened = 0;
@@ -734,6 +745,7 @@ final class TableWireReader {
       if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
       if (id == keyId) {
+        mapKeyAt = s.pos - 1;
         if (kind != keyKind && keyWidens.contains(kind)) {
           widened = 4;
           if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
@@ -4239,11 +4251,18 @@ FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
   r.rootType = _kTypeFixedTable;
   if (report != null) r.report = report;
   r.report.nonFiniteFloat = '';
+  r.report._countRefused = false;
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.pos = 1;
-  fixedTableWireLoadBody(r, v, false);
+  try {
+    r.pos = 1;
+    fixedTableWireLoadBody(r, v, false);
+  } on _TableWireCountRefusal {
+    r.report.refused = true;
+    r.report._countRefused = true;
+    return FixedTable();
+  }
   if (r.report.nonFiniteFloat.isNotEmpty) return FixedTable();
   _collectNodeEdges(r);
   if (r.cyclic()) {
@@ -4425,6 +4444,7 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   final r = TableWireReader(data, data.length);
   r.report = report;
   r.report.nonFiniteFloat = '';
+  r.report._countRefused = false;
   r.stringBlob = false;
   r.retain = retain;
   r.path = [1];
@@ -4433,9 +4453,16 @@ FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWir
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.scanNodeTable();
-  r.pos = 1;
-  fixedTableWireLoadBody(r, v, false);
+  try {
+    r.scanNodeTable();
+    r.pos = 1;
+    fixedTableWireLoadBody(r, v, false);
+  } on _TableWireCountRefusal {
+    r.report.refused = true;
+    r.report._countRefused = true;
+    retain.reset();
+    return FixedTable();
+  }
   if (r.report.nonFiniteFloat.isNotEmpty) {
     retain.reset();
     return FixedTable();
