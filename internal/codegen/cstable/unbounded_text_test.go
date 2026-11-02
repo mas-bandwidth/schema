@@ -63,6 +63,13 @@ const unboundedTextNativeProbe = `unsafe {
  try{
   var report=new TableReport();IntPtr ptr=Schema.TableWire.LoadRegion(type,(IntPtr)memory,size,wire,report);
   if(ptr==IntPtr.Zero||report.Malformed)throw new Exception("unbounded native load");
+  var copied=Schema.RootLoadBuilder(ptr);
+  long copySize=Schema.RootMeasure(copied);
+  if(copySize!=wire.Length)throw new Exception("unbounded authoring conversion measure: "+copySize+" expected "+wire.Length);
+  byte[] copyWire=new byte[copySize];
+  if(Schema.RootSave(copied,copyWire)!=wire.Length||!copyWire.AsSpan().SequenceEqual(wire))throw new Exception("unbounded immutable authoring conversion");
+  copied.Names[0].Value[0]^=1; // the authoring value owns its text allocation
+
   Span<ulong> ids=stackalloc ulong[4096];Span<int> slots=stackalloc int[4096];
   byte[] saved=new byte[Schema.TableWire.SaveRegion(ptr,type,Span<byte>.Empty,ids,true)];
   if(Schema.TableWire.SaveRegion(ptr,type,saved,ids,false)!=wire.Length||!saved.AsSpan().SequenceEqual(wire))throw new Exception("unbounded native roundtrip");
@@ -74,6 +81,13 @@ const unboundedTextNativeProbe = `unsafe {
  byte[] managedCook=new byte[Schema.RootCookMeasure(original)];if(!Schema.RootCook(original,managedCook))throw new Exception("unbounded managed cook");
  using(var builder=new RootBuilder()){
   if(!builder.Load(wire,new TableReport()))throw new Exception("unbounded builder load");
+  var copied=(Root)Schema.TableWire.CopyRegion(type,(IntPtr)builder.GetRoot(),true);
+  long copySize=Schema.RootMeasure(copied);
+  if(copySize!=wire.Length)throw new Exception("unbounded authoring conversion measure: "+copySize+" expected "+wire.Length);
+  byte[] copyWire=new byte[copySize];
+  if(Schema.RootSave(copied,copyWire)!=wire.Length||!copyWire.AsSpan().SequenceEqual(wire))throw new Exception("unbounded mutable authoring conversion");
+  copied.Names[0].Value[0]^=1; // subsequent native save must still match the source
+
   byte[] built=new byte[builder.Measure()];if(builder.Save(built)!=wire.Length||!built.AsSpan().SequenceEqual(wire))throw new Exception("unbounded builder save");
   byte[] cooked=new byte[builder.CookMeasure()];if(!builder.Cook(cooked)||!cooked.AsSpan().SequenceEqual(managedCook))throw new Exception("unbounded independent cooks");
   fixed(byte* p=cooked){if(!RootCook.Open(out var opened,(IntPtr)p,cooked.Length)||!Schema.RootNamesTextAt((RootRow*)(p+64),0,out bool present).SequenceEqual(text)||!present)throw new Exception("unbounded cook open");}
