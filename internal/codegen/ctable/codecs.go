@@ -106,7 +106,7 @@ func tableStorageRange(signed bool, bits int) (*big.Int, *big.Int) {
 // (-Wtautological-type-limit-compare), neither catching the other's
 // (issue #342, `make tables-clamp-limits`).
 func tableClampEnds(f *ir.Field, widthBytes int) (low, high bool) {
-	signed := ir.TableKindSigned(ir.TableScalarKind(f))
+	signed := ir.TableKindSigned(ir.TableScalarKind(f)) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	lo, hi := tableStorageRange(signed, widthBytes*8)
 	rlo, rhi, ok := ir.TableRawRange(f)
 	if !ok {
@@ -146,7 +146,7 @@ func (g *tableGen) fieldDefaultExpr(f *ir.Field) string {
 		return "0.0"
 	case ir.TInt, ir.TBits, ir.TFixed:
 		if f.HasDefault && f.DefInt != nil {
-			signed := ir.TableKindSigned(ir.TableScalarKind(f))
+			signed := ir.TableKindSigned(ir.TableScalarKind(f)) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 			width := 4
 			if f.Type.Width > 32 {
 				width = 8
@@ -488,7 +488,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 		g.pf("%s    else { %s = table_bits_to_double( decoded_bits ); }\n%s}\n", ind, lvalue, ind)
 	default:
 		width = int(g.intBytes(g.ownerName(), f.Name, int64(width)))
-		signed := ir.TableKindSigned(ir.TableScalarKind(f))
+		signed := ir.TableKindSigned(ir.TableScalarKind(f)) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 		storage := fmt.Sprintf("uint%d_t", width*8)
 		if signed {
 			storage = fmt.Sprintf("int%d_t", width*8)
