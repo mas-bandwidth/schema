@@ -1746,10 +1746,10 @@ public static class TableJson
             char shape = ElementShape(f);
             // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
             // duplicate key like any other, last-wins and counted (§16.2).
-            // Tracked the way a table's own field keys are — a bounded,
-            // allocation-free bitmask; a vocabulary wider than this still
-            // reads, its repeats simply stop being counted.
-            Span<ulong> seen = stackalloc ulong[8];
+            // The schema fixes the vocabulary size. Small schemas use the
+            // stack; larger ones still count every duplicate exactly.
+            int words = (f.ArrayBound + 63) / 64;
+            Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
             seen.Clear();
             Span<byte> key = stackalloc byte[MaxKey];
             for (; ; )
@@ -1770,7 +1770,7 @@ public static class TableJson
                     if (!KeyedSlotValid(f, v)) { continue; }
                     if (Same(key.Slice(0, keyLength), f.KeyName(KeyedSlotKey(v)))) { slot = v; break; }
                 }
-                if (slot >= 0 && slot < 512)
+                if (slot >= 0)
                 {
                     ulong bit = 1ul << (slot & 63);
                     if ((seen[slot >> 6] & bit) != 0) { input.Report.Duplicate++; }

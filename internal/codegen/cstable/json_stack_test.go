@@ -44,3 +44,14 @@ table Root {
 		`{"items":{` + mapped.String() + "}}",
 	})
 }
+
+func TestJsonKeyedBeyond512CSharp(t *testing.T) {
+	slowtest.Gate(t, "the .NET SDK")
+	var schema strings.Builder
+	schema.WriteString("package probe\nenum Keys {\n")
+	for i := range 513 {
+		fmt.Fprintf(&schema, " K%d,\n", i)
+	}
+	schema.WriteString("}\ntable Root { values [Keys]int32 }\n")
+	runCarryCS(t, schema.String(), []string{`{"values":{"K512":1,"K512":2}}`})
+}
