@@ -307,6 +307,8 @@ pub struct Jr<'a> {
     pub zero: bool,
     pub reason: TableReason,
     pub text_error: &'static str,
+    pub missing_required: u64,
+    pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
 }
 
@@ -314,7 +316,7 @@ pub struct Jr<'a> {
 impl<'a> Jr<'a> {
     pub fn new(b: &'a [u8]) -> Jr<'a> {
         let p = if b.starts_with(b"\xef\xbb\xbf") { 3 } else { 0 };
-        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", labels: HashMap::new() }
+        Jr { b, p, depth: 0, unknown: 0, kind_mismatch: 0, clamped: 0, duplicate: 0, malformed: false, zero: false, reason: TableReason::None, text_error: "", missing_required: 0, missing_required_fields: String::new(), labels: HashMap::new() }
     }
     pub fn space(&mut self) {
         while self.p < self.b.len() {
@@ -1241,6 +1243,7 @@ func textIntRange(f *ir.Field) (lo, hi string) {
 // <name>_json_fields, which reads its keys and is what a pointer's object
 // continues with after its `&node` label (§16.7).
 func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
+	emitRequiredNames(b, st)
 	read := fn(st.Name, "json_read")
 	fields := fn(st.Name, "json_fields")
 	fmt.Fprintf(b, "#[allow(dead_code)]\n")
@@ -1272,7 +1275,10 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "            Some(k) => k,\n")
 	fmt.Fprintf(b, "            None => {\n")
 	fmt.Fprintf(b, "                jr.space();\n")
-	fmt.Fprintf(b, "                if jr.peek() == b'}' { jr.p += 1; return n; }\n")
+	fmt.Fprintf(b, "                if jr.peek() == b'}' {\n")
+	emitRequiredJSONEnd(b, st, "                    ")
+	fmt.Fprintf(b, "                    jr.p += 1; return n;\n")
+	fmt.Fprintf(b, "                }\n")
 	fmt.Fprintf(b, "                let Some(k) = jr.read_string() else { jr.malformed = true; return n; };\n")
 	fmt.Fprintf(b, "                jr.space();\n")
 	fmt.Fprintf(b, "                if jr.peek() != b':' { jr.malformed = true; return n; }\n")
@@ -1293,11 +1299,14 @@ func (g *gen) emitTextRead(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                jr.skip_value();\n")
 	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "        }\n")
-	fmt.Fprintf(b, "        if jr.malformed { return n; }\n")
+	fmt.Fprintf(b, "        if jr.malformed || jr.missing_required != 0 { return n; }\n")
 	fmt.Fprintf(b, "        jr.space();\n")
 	fmt.Fprintf(b, "        let c = jr.peek();\n")
 	fmt.Fprintf(b, "        if c == b',' { jr.p += 1; continue; }\n")
-	fmt.Fprintf(b, "        if c == b'}' { jr.p += 1; return n; }\n")
+	fmt.Fprintf(b, "        if c == b'}' {\n")
+	emitRequiredJSONEnd(b, st, "            ")
+	fmt.Fprintf(b, "            jr.p += 1; return n;\n")
+	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        jr.malformed = true;\n")
 	fmt.Fprintf(b, "        return n;\n")
 	fmt.Fprintf(b, "    }\n")
@@ -1315,7 +1324,11 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        b'{' => {\n")
 	fmt.Fprintf(b, "            if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
-	fmt.Fprintf(b, "            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(%s::default())); }\n", st.Name)
+	fmt.Fprintf(b, "            if jr.peek() == b'}' {\n")
+	fmt.Fprintf(b, "                let mut v = %s::default();\n", st.Name)
+	fmt.Fprintf(b, "                let _ = %s(jr, &mut v, None);\n", fn(st.Name, "json_fields"))
+	fmt.Fprintf(b, "                return Some(Rc::new(v));\n")
+	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "            let Some(key) = jr.read_string() else { jr.malformed = true; return None; };\n")
 	fmt.Fprintf(b, "            if jr.peek() != b':' { jr.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "            jr.p += 1;\n")
@@ -1407,7 +1420,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		} else {
 			g.emitTextReadElem(b, f, field, elem)
 		}
-		fmt.Fprintf(b, "%s        if jr.malformed { break; }\n", in)
+		fmt.Fprintf(b, "%s        if jr.malformed || jr.missing_required != 0 { break; }\n", in)
 		fmt.Fprintf(b, "%s        let c = jr.peek();\n", in)
 		fmt.Fprintf(b, "%s        if c == b',' { jr.p += 1; continue; }\n", in)
 		fmt.Fprintf(b, "%s        if c == b']' { jr.p += 1; break; }\n", in)
@@ -1611,18 +1624,23 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// hold ill-formed: bytes that are not well-formed UTF-8 refuse the read\n")
 	fmt.Fprintf(b, "/// (string_not_utf8, docs/SPEC-TABLES.md §16.3) rather than reading as U+FFFD.\n")
 	fmt.Fprintf(b, "pub fn %s(text: &[u8], report: &mut TableReport) -> Option<%s> {\n", readBytes, st.Name)
+	fmt.Fprintf(b, "    report.refused = false; report.reason = TableReason::None; report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    %s(&mut jr, &mut v);\n", fn(st.Name, "json_read"))
-	fmt.Fprintf(b, "    jr.space();\n")
-	fmt.Fprintf(b, "    if jr.p != jr.b.len() { jr.malformed = true; }\n")
+	fmt.Fprintf(b, "    if jr.missing_required == 0 {\n")
+	fmt.Fprintf(b, "        jr.space();\n")
+	fmt.Fprintf(b, "        if jr.p != jr.b.len() { jr.malformed = true; }\n")
+	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    report.unknown += jr.unknown;\n")
 	fmt.Fprintf(b, "    report.kind_mismatch += jr.kind_mismatch;\n")
 	fmt.Fprintf(b, "    report.clamped += jr.clamped;\n")
 	fmt.Fprintf(b, "    report.duplicate += jr.duplicate;\n")
+	fmt.Fprintf(b, "    report.missing_required += jr.missing_required;\n")
+	fmt.Fprintf(b, "    if jr.missing_required != 0 { report.missing_required_fields = jr.missing_required_fields; report.refused = true; }\n")
 	fmt.Fprintf(b, "    report.malformed |= jr.malformed;\n")
 	fmt.Fprintf(b, "    if jr.reason != TableReason::None { report.reason = jr.reason; report.text_error = jr.text_error; }\n")
-	fmt.Fprintf(b, "    if jr.malformed { None } else { Some(v) }\n")
+	fmt.Fprintf(b, "    if jr.malformed || jr.missing_required != 0 { None } else { Some(v) }\n")
 	fmt.Fprintf(b, "}\n\n")
 }
 

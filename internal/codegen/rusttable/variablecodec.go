@@ -1822,7 +1822,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "        // (docs/SPEC-TABLES.md §3.3), as in the oracle, whose walk runs ahead\n")
 		fmt.Fprintf(b, "        // of any region measure. The scratch report uses the caller's retention\n")
 		fmt.Fprintf(b, "        // budget to preserve refusal counters, then discards every retained byte.\n")
-		fmt.Fprintf(b, "        let mut scratch = *report;\n")
+		fmt.Fprintf(b, "        let mut scratch = report.clone();\n")
 		fmt.Fprintf(b, "        scratch.refused = false; scratch.reason = TableReason::None;\n")
 		fmt.Fprintf(b, "        let _ = %s_load_walk(wire, end, ids, retain.as_deref_mut(), &mut scratch, true);\n", fnName)
 		fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); }\n")

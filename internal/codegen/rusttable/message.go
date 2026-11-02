@@ -799,6 +799,7 @@ pub enum TableReason {
     JsonRootNotArray,
     TimestampNotRfc3339,
     IntegrityMismatch,
+    MissingRequired,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -837,6 +838,7 @@ impl TableReason {
             TableReason::JsonRootNotArray => "json_root_not_array",
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
             TableReason::IntegrityMismatch => "integrity_mismatch",
+            TableReason::MissingRequired => "missing_required",
         }
     }
 }
@@ -853,7 +855,7 @@ impl TableReason {
 /// §4's events: the form byte this reader does not carry (§3), or one of the
 /// message form's refusals BY NAME, whose reason the message form records
 /// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
     pub kind_mismatch: u64,
@@ -891,9 +893,18 @@ pub struct TableReport {
     pub non_finite_float_id: Option<u64>,
     /// A named text-form diagnostic, empty after a clean read.
     pub text_error: &'static str,
+    /// Bodies refused because an active required field was absent (§4).
+    pub missing_required: u64,
+    /// The current refusal's names, in field declaration order.
+    pub missing_required_fields: String,
 }
 
 impl TableReport {
+    pub fn missing_required_reason(&self) -> Option<String> {
+        if self.missing_required_fields.is_empty() { None }
+        else { Some(format!("missing_required: {}", self.missing_required_fields)) }
+    }
+
     pub fn refuse(&mut self, reason: TableReason) -> bool {
         self.malformed = false;
         self.refused = true;

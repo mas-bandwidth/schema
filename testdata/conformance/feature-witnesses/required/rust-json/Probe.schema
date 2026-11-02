@@ -1,0 +1,15 @@
+package probe
+table RequiredValue { a int32 | required
+ b int32 | required }
+table Inner { id int32 | required }
+table Outer { inner Inner }
+table Sequence { children []Inner }
+table Mapping { items map[uint8]Inner }
+table Graph { child *Inner }
+table Guarded {
+ outer bool
+ if outer {
+  inner bool
+  if inner { req int32 | required }
+ }
+}

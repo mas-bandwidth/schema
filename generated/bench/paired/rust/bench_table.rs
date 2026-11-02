@@ -1179,7 +1179,9 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1215,11 +1217,13 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1232,7 +1236,11 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedChatEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedChatEvent::default();
+                let _ = mixed_chat_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1291,7 +1299,9 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1456,11 +1466,13 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1473,7 +1485,11 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedEntity::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedEntity::default();
+                let _ = mixed_entity_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1532,7 +1548,9 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1584,11 +1602,13 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1601,7 +1621,11 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedHitEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedHitEvent::default();
+                let _ = mixed_hit_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1660,7 +1684,9 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1696,11 +1722,13 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1713,7 +1741,11 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedPickupEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedPickupEvent::default();
+                let _ = mixed_pickup_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1772,7 +1804,9 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1808,11 +1842,13 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1825,7 +1861,11 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedStat::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedStat::default();
+                let _ = mixed_stat_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
