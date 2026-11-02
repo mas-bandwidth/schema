@@ -5124,10 +5124,8 @@ const variableRetainSource = `
   end
 
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
-    case read_payload(f, payload, nodes, ids, report) do
-      {:cont, v, report} -> {:cont, v, report, retain}
-      {:halt, v, report} -> {:halt, v, report, retain}
-    end
+    {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
+    {:cont, v, report, retain}
   end
 
   # a bounded array keeps its first bound elements and counts one clamped
