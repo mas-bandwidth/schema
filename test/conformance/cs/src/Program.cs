@@ -218,8 +218,20 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
     }
+    static Report Copy(Featurewitnesses.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
+    }
     static readonly List<Codec> codecs = new List<Codec>
     {
+        Row<Featurewitnesses.Root, Featurewitnesses.TableReport>("featurewitnesses", "Root", () => new Featurewitnesses.TableReport(), Copy,
+            Featurewitnesses.Schema.RootLoad, Featurewitnesses.Schema.RootMeasure, Featurewitnesses.Schema.RootSave,
+            Featurewitnesses.Schema.RootFromJson, Featurewitnesses.Schema.RootToJsonMeasure, Featurewitnesses.Schema.RootToJson, Featurewitnesses.Schema.RootLoadMeasure),
+
+        Row<Featurewitnesses.ArrayRoot, Featurewitnesses.TableReport>("featurewitnesses", "ArrayRoot", () => new Featurewitnesses.TableReport(), Copy,
+            Featurewitnesses.Schema.ArrayRootLoad, Featurewitnesses.Schema.ArrayRootMeasure, Featurewitnesses.Schema.ArrayRootSave,
+            Featurewitnesses.Schema.ArrayRootFromJson, Featurewitnesses.Schema.ArrayRootToJsonMeasure, Featurewitnesses.Schema.ArrayRootToJson, Featurewitnesses.Schema.ArrayRootLoadMeasure),
+
         // THE CARDS UNIT (tables/cards, docs/SPEC-TABLES.md §2): the sprint's own
         // variable-table record, compiled from build/tables-generated-cs/cards so
         // cards-cs-wire-fuzz and cards-cs-retain-fuzz hold the C# Card codec to
