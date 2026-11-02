@@ -247,7 +247,11 @@ func (g *fixedGen) fixedElemDefaultTerm(f *ir.Field) string {
 		return fixedBinaryLiteral(f.DefBytes, 0)
 	case ir.TFloat32, ir.TFloat64:
 		if f.HasDefault {
-			return fixedFloatLiteral(f.DefFloat)
+			value := f.DefFloat
+			if f.Type.Kind == ir.TFloat32 {
+				value = float64(float32(value))
+			}
+			return fixedFloatLiteral(value)
 		}
 		return "0.0"
 	}

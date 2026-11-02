@@ -106,6 +106,7 @@ end
 reason = fn
   :malformed -> "damaged"
   :shared -> "damaged"
+  :count_over_extent_cap -> "count_refusal"
   r -> to_string(r)
 end
 
@@ -228,7 +229,9 @@ run = fn carrier, schema, table, payload ->
           after_accept.({:accept, digest.(mod, table, value)}, fn -> exercise.(mod, table, value, payload) end)
 
         {:error, r, _report} ->
-          {:refuse, reason.(r)}
+          canonical = if r == :newer_form and match?(<<2, _::binary>>, payload),
+            do: "message_form_as_file", else: reason.(r)
+          {:refuse, canonical}
       end
 
     "wire_retain" ->
@@ -374,7 +377,9 @@ end
             {p, c, bad, [name | stale]}
         end
 
-      Map.has_key?(findings, name) ->
+      Map.has_key?(findings, name) and
+          (match?({:accept, value} when is_binary(value), got) or
+           match?({:refuse, value} when is_binary(value), got)) ->
         {slug, card_input, text} = Map.fetch!(findings, name)
         IO.puts("FIX-CARD: #{slug}: #{card_input} #{text}")
         {p, c + 1, bad, stale}
