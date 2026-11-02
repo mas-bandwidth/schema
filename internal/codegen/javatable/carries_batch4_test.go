@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -620,4 +621,131 @@ public final class Main {
 	if !strings.Contains(out, "NESTED_GUARD_REQ_OK") {
 		t.Fatalf("unexpected output: %s", out)
 	}
+}
+
+func TestJavaPopulatedFeatureWitnesses(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
+
+	const schema = `package featurewitnesses
+
+table Leaf { value int32 }
+table Part { child *Leaf }
+
+table Root | forms="wire,json,cook", integrity="crc32c" {
+    revision int32 | required
+    at timestamp
+    lower int32 = 5 | min=5
+    tags ?map[string(8)]int32
+    optional ?Part
+    labels [..4]string(8) | total=8
+    optional_labels []?string(8)
+    words []string
+    by_name map[string]int32
+}
+
+table ArrayRoot | json="array" {
+    values []int32
+}
+`
+	const rootJSON = "{\n  \"revision\": 7,\n  \"at\": \"2026-11-02T12:34:56.123456789Z\",\n  \"lower\": 9,\n  \"tags\": {\n    \"a\": 3,\n    \"z\": 11\n  },\n  \"optional\": {\n    \"child\": {\n      \"value\": 17\n    }\n  },\n  \"labels\": [\n    \"é\",\n    \"schema\"\n  ],\n  \"optional_labels\": [\n    null,\n    \"\",\n    \"active\"\n  ],\n  \"words\": [\n    \"unbounded text is populated\"\n  ],\n  \"by_name\": {\n    \"a key longer than eight bytes\": 23\n  }\n}\n"
+	const rootHex = "010104070000000224152d7260853ae418030409000000040e1a0d020b050c0161060403000000000b050c017a06040b00000000070d0408110200090e0c0c0202c3a906736368656d610a0e140d03010004060c00000a060c06616374697665000b0e1e0c011b756e626f756e646564207465787420697320706f70756c617465640c0e2a0d0127050c1d61206b6579206c6f6e676572207468616e206569676874206279746573060417000000000d0c0a010e07060411000000000058868e6cc4dba4d668a945b5074e9c08da3b912eb7099e8c80856f07ef3b1cd9ec105b36194ac93dea0ce83094fde47c39d505b3c67695629d480025763424628a0a9856f813c54be17728730a6983348a9123735e24754f2a1eaf98c4318ee8ffffffffffffffffb5d173bbb485c0a50e00000000000000ab108e4d"
+	const arrayRootJSON = "[\n  3,\n  17,\n  -5\n]\n"
+	const arrayRootHex = "01010e0e04030300000011000000fbffffff00fb674d1acf7b27210100000000000000"
+
+	driver := fmt.Sprintf(`import java.nio.charset.StandardCharsets;
+import featurewitnesses.*;
+
+public final class Main {
+    private static void check(boolean ok, String msg) {
+        if (!ok) throw new RuntimeException("FAIL: " + msg);
+    }
+    private static String toHex(byte[] b) {
+        if (b == null) return "null";
+        StringBuilder sb = new StringBuilder(b.length * 2);
+        for (byte x : b) sb.append(String.format("%%02x", x & 0xff));
+        return sb.toString();
+    }
+    private static byte[] fromHex(String s) {
+        byte[] out = new byte[s.length() / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) Integer.parseInt(s.substring(i * 2, i * 2 + 2), 16);
+        }
+        return out;
+    }
+
+    public static void main(String[] args) {
+        // Root
+        String rootInput = %q;
+        byte[] rootExpected = fromHex(%q);
+        TableVariable.Report r = new TableVariable.Report();
+        RootVariable.Value v = RootVariable.fromJson(rootInput.getBytes(StandardCharsets.UTF_8), r);
+        check(v != null && !r.malformed && !r.refused, "Root fromJson");
+        byte[] saved = RootVariable.save(v);
+        check(toHex(saved).equals(toHex(rootExpected)), "Root save: got=" + toHex(saved) + " want=" + toHex(rootExpected));
+        String js = new String(RootVariable.toJson(v), StandardCharsets.UTF_8);
+        check(js.equals(rootInput), "Root toJson: got=" + js);
+
+        TableRetain store = new TableRetain(65536, 8192);
+        TableVariable.Report rr = new TableVariable.Report();
+        RootVariable.Value back = RootRetain.loadRetain(rootExpected, store, rr);
+        check(back != null && !rr.malformed && !rr.refused, "Root loadRetain");
+        TableVariable.Report sr = new TableVariable.Report();
+        byte[] savedRetain = RootRetain.saveRetain(back, store, sr);
+        check(toHex(savedRetain).equals(toHex(rootExpected)), "Root saveRetain");
+
+        long cookSize = RootCook.cookMeasure(v);
+        check(cookSize > 24, "Root cookMeasure: got=" + cookSize);
+        TableVariable.Measure mr = new TableVariable.Measure();
+        long measured = RootVariable.loadMeasure(rootExpected, mr);
+        check(measured == cookSize - 64, "Root loadMeasure: got=" + measured + " want=" + (cookSize - 64));
+
+        byte[] cookLE = new byte[(int) cookSize];
+        check(RootCook.cookFrom(v, cookLE, TableCookWrite.LITTLE), "Root cookFrom LE");
+        RootCook rc = RootCook.open(cookLE);
+        check(rc != null, "RootCook.open: " + RootCook.openReason(cookLE, 0, cookLE.length));
+        int rootAt = rc.root();
+        check(RootRow.revision(cookLE, rootAt) == 7, "RootCook revision");
+        check(RootRow.wordsCount(cookLE, rootAt) == 1, "RootCook wordsCount");
+        int wordsArr = rc.at(RootRow.wordsSlot(rootAt), RootRow.wordsCount(cookLE, rootAt) * RootRow.wordsStride);
+        String w0 = new String(cookLE, RootWordsTextRow.valueAt(cookLE, wordsArr), RootWordsTextRow.valueLength(cookLE, wordsArr), StandardCharsets.UTF_8);
+        check("unbounded text is populated".equals(w0), "RootCook words[0]: " + w0);
+        int byNameCount = RootRow.byNameCount(cookLE, rootAt); int byNameArr = rc.at(RootRow.byNameSlot(rootAt), byNameCount * RootRow.byNameStride); check(RootRow.byNameFind(cookLE, byNameArr, byNameCount, "a key longer than eight bytes".getBytes(StandardCharsets.UTF_8)) >= 0, "RootCook byNameFind");
+
+        byte[] cookBE = new byte[(int) cookSize];
+        check(RootCook.cookFrom(v, cookBE, TableCookWrite.BIG), "Root cookFrom BE");
+
+        // ArrayRoot
+        String arrayInput = %q;
+        byte[] arrayExpected = fromHex(%q);
+        TableVariable.Report ar = new TableVariable.Report();
+        ArrayRootVariable.Value av = ArrayRootVariable.fromJson(arrayInput.getBytes(StandardCharsets.UTF_8), ar);
+        check(av != null && !ar.malformed && !ar.refused, "ArrayRoot fromJson");
+        byte[] asaved = ArrayRootVariable.save(av);
+        check(toHex(asaved).equals(toHex(arrayExpected)), "ArrayRoot save");
+        String ajs = new String(ArrayRootVariable.toJson(av), StandardCharsets.UTF_8);
+        check(ajs.equals(arrayInput), "ArrayRoot toJson");
+
+        TableRetain astore = new TableRetain(65536, 8192);
+        TableVariable.Report arr = new TableVariable.Report();
+        ArrayRootVariable.Value aback = ArrayRootRetain.loadRetain(arrayExpected, astore, arr);
+        check(aback != null && !arr.malformed && !arr.refused, "ArrayRoot loadRetain");
+        TableVariable.Report asr = new TableVariable.Report();
+        byte[] asavedRetain = ArrayRootRetain.saveRetain(aback, astore, asr);
+        check(toHex(asavedRetain).equals(toHex(arrayExpected)), "ArrayRoot saveRetain");
+
+        long acookSize = ArrayRootCook.cookMeasure(av);
+        TableVariable.Measure amr = new TableVariable.Measure();
+        long ameasured = ArrayRootVariable.loadMeasure(arrayExpected, amr);
+        check(ameasured == acookSize - 64, "ArrayRoot loadMeasure: got=" + ameasured + " want=" + (acookSize - 64));
+
+        byte[] acookLE = new byte[(int) acookSize];
+        check(ArrayRootCook.cookFrom(av, acookLE, TableCookWrite.LITTLE), "ArrayRoot cookFrom LE");
+        ArrayRootCook arc = ArrayRootCook.open(acookLE);
+        check(arc != null, "ArrayRootCook.open");
+    }
+}
+`, rootJSON, rootHex, arrayRootJSON, arrayRootHex)
+
+	compileAndRunJavaProbe(t, schema, "featurewitnesses", driver)
 }

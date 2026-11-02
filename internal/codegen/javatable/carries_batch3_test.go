@@ -179,6 +179,11 @@ public final class Main {
             }
         }
 
+        check(TableMessage.integritySeal(null, 0) == -1, "integritySeal null");
+        check(TableMessage.integritySeal(new byte[3], 0) == -1, "integritySeal cap < 4");
+        check(TableMessage.integritySeal(new byte[10], Integer.MAX_VALUE) == -1, "integritySeal Integer.MAX_VALUE overflow");
+        check(TableMessage.integritySeal(new byte[10], 7) == -1, "integritySeal n > cap - 4");
+
         System.out.println("INTEGRITY OK");
     }
 }
