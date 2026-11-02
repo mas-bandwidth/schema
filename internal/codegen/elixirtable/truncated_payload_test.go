@@ -27,7 +27,10 @@ func TestTruncatedFieldPayloadElixir(t *testing.T) {
  wide uint128
  clock timestamp
  }
- table Root { child Child }`)
+ table Root {
+ child Child
+ children []Child
+ }`)
 	m := tabletext.NewModel(u)
 	var probe strings.Builder
 	probe.WriteString("alias Truncated.Table,as: T\n")
@@ -35,28 +38,36 @@ func TestTruncatedFieldPayloadElixir(t *testing.T) {
 		name  string
 		kind  byte
 		width int
-	}{{"flag", 1, 1}, {"small", 10, 4}, {"large", 11, 8}, {"number", 4, 4}, {"wide", 19, 16}, {"clock", 36, 8}, {"large", 10, 4}}
+	}{{"flag", 1, 1}, {"small", 10, 4}, {"large", 11, 8}, {"number", 4, 4}, {"wide", 19, 16}, {"clock", 36, 8}, {"large", 10, 4}, {"unknown", 10, 4}, {"flag", 10, 4}}
 	for _, row := range rows {
-		for n := 0; n < row.width; n++ {
-			inner := append([]byte{2, row.kind}, make([]byte, n)...)
-			wire := binary.AppendUvarint([]byte{1, 1, 13}, uint64(len(inner)))
-			wire = append(wire, inner...)
-			wire = append(wire, 0)
-			wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId("child"))
-			wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(row.name))
-			wire = binary.LittleEndian.AppendUint64(wire, 2)
-			var report tabletext.Report
-			ok, e := tablewire.Decode(m, m.New(u.Tables["Root"]), wire, &report)
-			if ok || e != nil || !report.Malformed {
-				t.Fatalf("%s/%d oracle: %v %+v %v", row.name, n, ok, report, e)
-			}
-			fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+		for _, array := range []bool{false, true} {
+			for n := 0; n < row.width; n++ {
+				inner := append([]byte{2, row.kind}, make([]byte, n)...)
+				field, kind, payload := "child", byte(13), inner
+				if array {
+					field, kind = "children", 14
+					payload = binary.AppendUvarint([]byte{13, 1}, uint64(len(inner)))
+					payload = append(payload, inner...)
+				}
+				wire := binary.AppendUvarint([]byte{1, 1, kind}, uint64(len(payload)))
+				wire = append(wire, payload...)
+				wire = append(wire, 0)
+				wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(field))
+				wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(row.name))
+				wire = binary.LittleEndian.AppendUint64(wire, 2)
+				var report tabletext.Report
+				ok, e := tablewire.Decode(m, m.New(u.Tables["Root"]), wire, &report)
+				if ok || e != nil || !report.Malformed {
+					t.Fatalf("%s/%d oracle: %v %+v %v", row.name, n, ok, report, e)
+				}
+				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
 for result<-[T.load("Root",wire),T.load_retain("Root",wire,store,zero)] do
  unless elem(result,0)==:error and elem(result,1)==:malformed and elem(result,2).malformed,do: raise(%q<>inspect(result))
 end
-`, hex.EncodeToString(wire), fmt.Sprintf("truncated %s/kind%d/%d ", row.name, row.kind, n))
+`, hex.EncodeToString(wire), fmt.Sprintf("truncated %s/%s/kind%d/%d ", field, row.name, row.kind, n))
+			}
 		}
 	}
 	probe.WriteString("IO.puts(\"TRUNCATED_FIELDS_OK\")\n")
