@@ -425,6 +425,19 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	if kind == tkBool || enumRef(f) != nil {
 		return b.String()
 	}
+	if f.HasIntRange {
+		signed := f.Type.Kind == ir.TInt && f.Type.Signed
+		typ, value := "ulong", "raw"
+		if signed {
+			typ, value = "long", "unchecked((long)raw)"
+		}
+		// JSON parsing lands in the full 64-bit domain first. Do not narrow
+		// to field storage or round either bound through double before clamping.
+		fmt.Fprintf(&b, ", ClampJsonInteger = delegate (ulong raw, TableReport r) { %s v = %s; if (v < %s) { r.Clamped++; v = %s; } else if (v > %s) { r.Clamped++; v = %s; } return unchecked((ulong)v); }", typ, value, csIntLit(f.IntMin, signed, 8), csIntLit(f.IntMin, signed, 8), csIntLit(f.IntMax, signed, 8), csIntLit(f.IntMax, signed, 8))
+	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		high := (uint64(1) << f.Type.Width) - 1
+		fmt.Fprintf(&b, ", ClampJsonInteger = delegate (ulong raw, TableReport r) { if (raw > %dul) { r.Clamped++; return %dul; } return raw; }", high, high)
+	}
 	if f.Required && f.HasIntRange && tableKindWidth(kind) <= 8 {
 		typ := csFieldType(f.Type)
 		value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")

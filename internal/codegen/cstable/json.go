@@ -1582,15 +1582,10 @@ public static class TableJson
             }
         }
         if (saturated) { input.Report.Clamped++; }
-        // an unsigned magnitude past long.MaxValue rides as a negative long —
-        // that is the storage's own image of it and not a negative number, so
-        // the range sees the magnitude the same scale the reference's does
-        double valueScale = isSigned ? (double)value2 : (double)(ulong)value2;
-        if (f.HasRange)
-        {
-            if (valueScale < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
-            else if (valueScale > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
-        }
+        // Exact typed bounds preserve integers above 2^53 and unsigned values
+        // above Int64.MaxValue. The field's storage-width clamp follows this.
+        if (f.ClampJsonInteger != null)
+        { value2 = unchecked((long)f.ClampJsonInteger(unchecked((ulong)value2), input.Report)); }
         // the field's own storage width is the last bound: a value past it
         // clamps rather than wrapping, which is what the wire does too
         if (f.ElemWidth < 8)

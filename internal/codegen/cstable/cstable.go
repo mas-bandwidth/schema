@@ -787,6 +787,7 @@ public sealed class TableFieldInfo
     public int[] NativeGuardOffsets;
     public bool[] NativeGuardValues;
     public Func<ulong, TableReport, ulong> ClampRaw;
+    public Func<ulong, TableReport, ulong> ClampJsonInteger;
     public Func<ulong, bool> RequiredValidRaw;
     public UInt128 DefaultWide;
     public int FracBits;
