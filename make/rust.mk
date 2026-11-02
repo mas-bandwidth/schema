@@ -1666,13 +1666,15 @@ test-rust: conformance-rust-framing conformance-negative-control-rust-framing
 # TestDamageDiscardsTheWholeLoadRust reads damaged input through every public
 # load entry point (the variable wire's tolerant and retaining loads of a fixed
 # and a variable root, the fixed form, the message batch, the text read) and
-# requires no usable value. The two controls remove the discard from a COPY of
+# requires no usable value. The fixed-load transaction probe also distinguishes
+# fresh damage from accumulated report history and named preflight refusals.
+# The two controls remove the discard from a COPY of
 # the emitter, reached through a Go build overlay, and the gate must go red on
 # exactly that entry point. Nothing tracked is written to.
 RUST_DISCARD_NC := build/rust-discard-nc
 .PHONY: tables-rust-discard tables-rust-discard-negative-control tables-rust-fixed-discard-negative-control
 tables-rust-discard:
-	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestDamageDiscardsTheWholeLoadRust$$' -v
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout=0 -run '^(TestDamageDiscardsTheWholeLoadRust|TestFixedLoadDamageDefaultsAndReportReuseRust)$$' -v
 
 tables-rust-discard-negative-control:
 	@rm -rf $(RUST_DISCARD_NC)/variable && mkdir -p $(RUST_DISCARD_NC)/variable
