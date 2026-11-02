@@ -6,6 +6,13 @@ package main
 // the named gate runs is wrong, never the gate itself; make/js.mk builds the
 // compiler or the jstable tests against the copy through a Go overlay.
 func init() {
+	// §3.1: the cycle check never finds an OPEN vertex, so a pointer back
+	// into the walk's own descent reads as a share and a cyclic wire loads.
+	sabotages["js-cycle-dropped"] = []edit{{
+		old: "if (mark[t] === 1) { return true; }",
+		new: "if (false) { return true; } // SABOTAGED: a cycle reads as a share",
+	}}
+
 	// §4 DAMAGE DISCARDS THE WHOLE LOAD: the variable form's load hands back
 	// the root it decoded around the damage, and a retaining load keeps its
 	// store, while the report still says malformed.
