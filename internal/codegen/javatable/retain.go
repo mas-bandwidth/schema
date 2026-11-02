@@ -440,7 +440,7 @@ func writeFieldSaveRetain(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.F
 	case f.Type.Kind == ir.TWString:
 		fmt.Fprintf(b, "        if (v.%s.length != 0) { w.putLeb(w.ref(%s)); w.put8(33); w.putLeb(v.%s.length * 2L); for (char c : v.%s) { w.put8(c); w.put8(c >>> 8); } }\n", m, fieldRef, m, m)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(nodes.index(v.%s)); }\n", m, fieldRef, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(%s)); w.put8(17); w.putLeb(v.%sIdx); }\n", m, fieldRef, m)
 	case f.Type.Kind == ir.TNamed:
 		if elem, ok := f.Type.Ref.(*ir.Struct); ok && f.Array != ir.ArrayNone {
 			// EVERY ARRAY OF TABLES — unbounded, counted or fixed — is kind 14

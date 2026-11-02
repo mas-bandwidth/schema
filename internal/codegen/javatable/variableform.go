@@ -1031,6 +1031,7 @@ public final class TableVariable {
         public byte[] bytes;
         public Object table;
         public boolean textMalformed;
+        public boolean named;
 
         public NodeRecord(long typeId, byte[] body) {
             this.typeId = typeId;
@@ -1425,6 +1426,23 @@ public final class TableVariable {
     // mismatch; an index past the records is malformed; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
+    // isSharedBlob marks a blob record named by a pointer slot and answers true
+    // when an earlier slot in the same load already named it (§2.5, §3.1).
+    public static boolean isSharedBlob(NodeRecord[] recs, long index, long expectedTypeId) {
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            return false;
+        }
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId != expectedTypeId) {
+            return false;
+        }
+        if (rec.named) {
+            return true;
+        }
+        rec.named = true;
+        return false;
+    }
+
     public static String resolveString(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
@@ -1793,6 +1811,22 @@ public final class TableVariable {
                 nodeCount++;
             }
             return true;
+        }
+
+        public long recordBlob(Object target, long typeId) {
+            if (target == null) return 0;
+            if (nodeCount == nodeValue.length) {
+                int cap = nodeCount * 2;
+                nodeValue = java.util.Arrays.copyOf(nodeValue, cap);
+                nodeType = java.util.Arrays.copyOf(nodeType, cap);
+                nodeBlob = java.util.Arrays.copyOf(nodeBlob, cap);
+            }
+            long idx = (long) (nodeCount + 2);
+            nodeValue[nodeCount] = target;
+            nodeType[nodeCount] = typeId;
+            nodeBlob[nodeCount] = true;
+            nodeCount++;
+            return idx;
         }
 
         public int nodeCount() {
@@ -4934,7 +4968,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	case isScalarArray(f):
 		writeArrayFieldSave(b, u, st, f)
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(graph.index(v.%s)); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(v.%sIdx); }\n", m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
 		fmt.Fprintf(b, "        if (v.%s != null) { w.putLeb(w.ref(F_%s)); w.put8(17); w.putLeb(graph.index(v.%s)); }\n", m, m, m)
 	case f.Type.Pointer && isStruct(f):
@@ -5019,9 +5053,9 @@ func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
 	}
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.STRING_ID, true)) return false; }\n", m, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { if (v.%sIdx < 0) return false; v.%sIdx = g.recordBlob(v.%s, TableVariable.STRING_ID); }\n", m, m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%s != null) { if (!g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", m, m)
+		fmt.Fprintf(b, "        if (v.%s != null) { if (v.%sIdx < 0 || !g.recordPointer(v.%s, TableVariable.BYTES_ID, true)) return false; }\n", m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        for (int i = 0, n = v.%s.size(); i < n; i++) {\n", m)
@@ -5099,9 +5133,9 @@ func writeVariableResolveField(b *strings.Builder, f *ir.Field) {
 	}
 	switch {
 	case f.Type.Kind == ir.TString && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, TableVariable.QUIET); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { boolean shared = TableVariable.isSharedBlob(nt.recs, v.%sIdx, TableVariable.STRING_ID); v.%s = TableVariable.resolveString(nt.recs, v.%sIdx, TableVariable.QUIET); v.%sIdx = shared ? -1L : 0L; }\n", m, m, m, m, m)
 	case f.Type.Kind == ir.TBytes && f.Type.Blob():
-		fmt.Fprintf(b, "        if (v.%sIdx != 0) { v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, TableVariable.QUIET); }\n", m, m, m)
+		fmt.Fprintf(b, "        if (v.%sIdx != 0) { boolean shared = TableVariable.isSharedBlob(nt.recs, v.%sIdx, TableVariable.BYTES_ID); v.%s = TableVariable.resolveBytes(nt.recs, v.%sIdx, TableVariable.QUIET); v.%sIdx = shared ? -1L : 0L; }\n", m, m, m, m, m)
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "        if (!v.%sIdx.isEmpty()) {\n", m)

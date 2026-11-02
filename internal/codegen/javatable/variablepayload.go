@@ -33,6 +33,10 @@ func writeVariablePayload(b *strings.Builder, u *ir.Unit, owner string, f *ir.Fi
 		return
 	}
 	if f.Type.Pointer {
+		if f.Type.Kind == ir.TString && f.Type.Blob() && strings.HasPrefix(expr, "v.") {
+			fmt.Fprintf(b, "        %s.putLeb(%s == null ? 0L : %sIdx);\n", w, expr, expr)
+			return
+		}
 		fmt.Fprintf(b, "        %s.putLeb(graph.index(%s));\n", w, expr)
 		return
 	}
