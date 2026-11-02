@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // A COOKED MAP HAS FIND (docs/PORTING.md M19; docs/SPEC-TABLES.md §2.8): a binary
@@ -67,6 +69,7 @@ func runCookFind(t *testing.T, plant bool) (string, bool) {
 }
 
 func TestJavaCookMapFind(t *testing.T) {
+	slowtest.Gate(t, "the Java toolchain (javac and java)")
 	t.Parallel()
 	if out, ok := runCookFind(t, false); !ok || !strings.Contains(out, "find ok") {
 		t.Fatalf("Find over the cooked map_full:\n%s", out)
@@ -74,6 +77,7 @@ func TestJavaCookMapFind(t *testing.T) {
 }
 
 func TestJavaCookMapFindNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the Java toolchain (javac and java)")
 	t.Parallel()
 	if out, ok := runCookFind(t, true); ok {
 		t.Fatalf("a Find with its order reversed left the probe green:\n%s", out)
