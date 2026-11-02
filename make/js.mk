@@ -793,7 +793,7 @@ tables-js-message-form-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/js-message-form-sabotage/messagebatch.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-message-form-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
 			-count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestMessageFormBatchJavaScript$$' \
 			> build/js-message-form-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the batch writer padded wrongly and the gate stayed green"; \
@@ -827,7 +827,7 @@ tables-js-fixed-roadmap-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both layout compares"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-roadmap-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-roadmap-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$' \
 			> build/js-roadmap-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the second layout read as the held one and the gate stayed green"; \
@@ -854,7 +854,7 @@ tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-versioning-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-versioning-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-versioning-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-versioning-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
 			> build/js-versioning-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a file outside the lineage refused under the wrong name and the gate stayed green"; \
@@ -957,7 +957,7 @@ tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both halves of the lane"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
 			> build/js-armtext-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the versioning gate green"; \
@@ -1507,7 +1507,7 @@ define js_jstable_control
 	@rm -rf build/$@ && mkdir -p build/$@
 	@go run ./tools/sabotage -name $(1) -out build/$@/source.gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
 			> build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left $(3) green"; cat build/$@/log; exit 1; \
 	fi
@@ -1668,7 +1668,7 @@ test-js: conformance-negative-control-js-absent
 # TestMessageFormBatchJavaScript/damage, where a damaged batch delivers no body.
 .PHONY: tables-js-discard
 tables-js-discard:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
 	@echo 'tables JS discard: damaged input hands back no value on every load (§4)'
 
 test-js: tables-js-discard
@@ -1693,7 +1693,7 @@ test-js: tables-js-discard-negative-control tables-js-batch-discard-negative-con
 # copy reached by a Go overlay, and requires the gate red on a cyclic wire.
 .PHONY: tables-js-cycle tables-js-cycle-negative-control
 tables-js-cycle:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
 	@echo 'tables JS cycle: a cyclic wire is damage, a shared node is not (§3.1)'
 
 tables-js-cycle-negative-control:
