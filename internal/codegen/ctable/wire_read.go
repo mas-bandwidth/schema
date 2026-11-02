@@ -2,6 +2,7 @@ package ctable
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -119,6 +120,24 @@ func (g *tableGen) wireRefusalCheck(ind string) {
 	}
 }
 
+func unitHasRequired(u *ir.Unit) bool {
+	if u == nil {
+		return false
+	}
+	for name := range ir.TableClosure(u) {
+		st := u.Tables[name]
+		if st == nil {
+			continue
+		}
+		for _, f := range st.Fields {
+			if f.Required {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (g *tableGen) emitWireRead(st *ir.Struct) {
 	g.pf("static SCHEMA_UNUSED int %s( TableReader * r, %s * value )\n{\n", g.api(st.Name, "load_body"), st.Name)
 	g.wireRefusalCheck("    ")
@@ -126,9 +145,40 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 	if g.retain {
 		g.pf("    TableRetainWalk body_keep=retention;table_retain_discard(retention,0,0);\n")
 	}
+	guards := tableGuardExprs(st)
+	var req []*ir.Field
+	var reqGuard []string
+	reqIdx := map[*ir.Field]int{}
+	for _, f := range st.Fields {
+		if f.Required {
+			reqIdx[f] = len(req)
+			req = append(req, f)
+			reqGuard = append(reqGuard, guards[f.Name])
+			g.pf("    int req_seen_%d = 0;\n", reqIdx[f])
+		}
+	}
+	hasReq := unitHasRequired(g.unit)
+	if hasReq {
+		g.pf("    int32_t missing_before = r->report->missing_required;\n")
+	}
 	g.pf("    for ( ;; )\n    {\n        uint64_t ref, id; uint8_t kind;\n")
 	g.pf("        if ( !table_reader_leb( r, &ref ) ) { r->report->malformed = 1; return 0; }\n")
-	g.pf("        if ( ref == 0 ) { return 1; }\n")
+	switch {
+	case len(req) > 0:
+		parts := make([]string, len(req))
+		for i := range req {
+			if reqGuard[i] != "" {
+				parts[i] = fmt.Sprintf("(!req_seen_%d && (%s))", i, reqGuard[i])
+			} else {
+				parts[i] = fmt.Sprintf("!req_seen_%d", i)
+			}
+		}
+		g.pf("        if ( ref == 0 ) { if ( %s ) { r->report->missing_required++; return 0; } return r->report->missing_required == missing_before; }\n", strings.Join(parts, " || "))
+	case hasReq:
+		g.pf("        if ( ref == 0 ) { return r->report->missing_required == missing_before; }\n")
+	default:
+		g.pf("        if ( ref == 0 ) { return 1; }\n")
+	}
 	g.pf("        if ( ref > r->id_count || !table_reader_has( r, 1 ) ) { r->report->malformed = 1; return 0; }\n")
 	g.pf("        id = table_reader_id_at( r, ref ); kind = table_reader_get8( r );\n")
 	g.pf("        if ( (id == 0xffffffffffffffffull && r->nested) || id == 0xfffffffffffffffeull || id == 0xfffffffffffffffdull ) { r->report->malformed = 1; return 0; }\n")
@@ -158,6 +208,9 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 			if f.Type.Optional {
 				g.pf("                        value->%s_present = 1;\n", f.Name)
 			}
+			if idx, ok := reqIdx[f]; ok {
+				g.pf("                        req_seen_%d = 1;\n", idx)
+			}
 			g.pf("                        break;\n                    }\n")
 		}
 		g.pf("                    r->report->kind_mismatch++;\n                    if ( !table_reader_skip( r, kind ) ) { r->report->malformed = 1; return 0; }\n                    break;\n                }\n")
@@ -165,6 +218,9 @@ func (g *tableGen) emitWireRead(st *ir.Struct) {
 		g.wireReadFieldAt(f, kind, "value->"+f.Name)
 		if f.Type.Optional {
 			g.pf("                value->%s_present = 1;\n", f.Name)
+		}
+		if idx, ok := reqIdx[f]; ok {
+			g.pf("                req_seen_%d = 1;\n", idx)
 		}
 		g.pf("                break;\n            }\n")
 	}
