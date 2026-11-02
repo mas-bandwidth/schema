@@ -202,12 +202,18 @@ struct UnitViewInfo
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const ViewType * types;
-    int32_t num_tables;     const ViewType * tables;
-    int32_t num_enums;      const ViewVocabulary * enums;
-    int32_t num_flags;      const ViewVocabulary * flags;
-    int32_t num_unions;     const ViewVocabulary * unions;
-    int32_t num_constants;  const ViewConstant * constants;
+    int32_t num_types;
+    const ViewType * types;
+    int32_t num_tables;
+    const ViewType * tables;
+    int32_t num_enums;
+    const ViewVocabulary * enums;
+    int32_t num_flags;
+    const ViewVocabulary * flags;
+    int32_t num_unions;
+    const ViewVocabulary * unions;
+    int32_t num_constants;
+    const ViewConstant * constants;
 };
 
 `

@@ -5662,7 +5662,7 @@ CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
 .PHONY: tables-cpp-region-discard-negative-control
 tables-cpp-region-discard-negative-control:
 	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
-	@sed -e 's|if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; }|if ( false ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the region discard is gone|' \
+	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->malformed )|if ( false )|; }' \
 		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
@@ -5809,7 +5809,7 @@ TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-retain-refusa
 .PHONY: tables-cpp-retain-refusal-negative-control
 tables-cpp-retain-refusal-negative-control:
 	@rm -rf $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)
-	@sed -e 's|malformed_before; memset( region, 0, (size_t) region_bytes ); TableRetainReset( retain, nodes, region ); return NULL; }|malformed_before; memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the store reset is gone|' \
+	@sed -e '/if ( TableNonFiniteRefused/ s|        TableRetainReset( retain, nodes, region );\\n||' \
 		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true

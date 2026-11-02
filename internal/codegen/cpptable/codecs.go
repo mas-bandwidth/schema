@@ -216,7 +216,7 @@ func (g *tableGen) emitTableStruct(st *ir.Struct) {
 	g.pf("%s", ir.DocComment(st.Doc, "", "//"))
 	g.pf("// table %s — TABLE-wire storage: relocatable, bounded, defaults in the\n", st.Name)
 	g.pf("// member initializers (docs/SPEC-TABLES.md)\n")
-	g.pf("struct %s {\n", st.Name)
+	g.pf("struct %s\n{\n", st.Name)
 	prevGuard := ""
 	for _, f := range st.Fields {
 		if f.Guard != prevGuard {
@@ -839,7 +839,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 		g.pf("template <typename Ctx>\ninline int64_t %s( const Ctx & ctx, const TableNumbering & numbering, %s & ids, const %s & value%s )\n{\n",
 			g.verb(st.Name, "MeasureBody"), g.idsType(), st.Name, g.retainParams())
 		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx; (void) numbering;\n")
+			g.pf("    (void) ctx;\n    (void) numbering;\n")
 		}
 	} else {
 		g.pf("inline int64_t %s( %s & ids, const %s & value%s )\n{\n",
@@ -1310,7 +1310,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		g.pf("template <typename Ctx>\ninline bool %s( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, %s & ids, const %s & value%s )\n{\n",
 			g.verb(st.Name, "SaveBodyFields"), g.idsType(), st.Name, g.retainParams())
 		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx; (void) numbering;\n")
+			g.pf("    (void) ctx;\n    (void) numbering;\n")
 		}
 	} else {
 		g.pf("%s bool %s( TableWriter & w, %s & ids, const %s & value%s )\n{\n",
@@ -1404,7 +1404,7 @@ func (g *tableGen) emitArrayBodyWrite(f *ir.Field, elemKind int, n, access, ind,
 	was := g.elemIndex
 	g.elemIndex = i
 	defer func() { g.elemIndex = was }()
-	g.pf("%sw.put8( %d ); w.putleb( (uint64_t) ( %s ) );\n", ind, elemKind, n)
+	g.pf("%[1]sw.put8( %[2]d );\n%[1]sw.putleb( (uint64_t) ( %[3]s ) );\n", ind, elemKind, n)
 	g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 	g.emitTableWriteElement(f, elemKind, fmt.Sprintf(access, i), ind+"    ", sfx)
 	g.pf("%s}\n", ind)
@@ -1453,7 +1453,7 @@ func (g *tableGen) emitArrayField(f *ir.Field, id uint64, elemKind int, n, acces
 	restore := g.openElemCache(f, elemKind, f.ArrayBound, ind, "")
 	defer restore()
 	g.emitArrayBodyMeasure(f, elemKind, "body_"+f.Name, n, access, ind, "return false;", "")
-	g.pf("%sw.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s ); // %s\n", ind, f.Name, tkArray, f.Name, f.Name)
+	g.pf("%[1]sw.header( ref_%[2]s, %[3]d );\n%[1]sw.putleb( (uint64_t) body_%[4]s ); // %[5]s\n", ind, f.Name, tkArray, f.Name, f.Name)
 	g.emitArrayBodyWrite(f, elemKind, n, access, ind, "")
 }
 
@@ -1678,7 +1678,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 		g.pf("        if ( body_%s > 1 ) // all-default nested elides\n        {\n", f.Name)
-		g.pf("            w.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
+		g.pf("            w.header( ref_%s, %d );\n            w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkTable, f.Name, f.Name)
 		g.pf("            if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
 		g.pf("        }\n")
 		g.pf("        else { ids.truncate( mark_%s ); }\n", f.Name)
@@ -1777,7 +1777,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 			// the two lanes of the raw value, low half first — the type
 			// wire's own order (docs/SPEC-TABLES.md §3); the unsigned
 			// conversion is bit-preserving for the signed kinds
-			g.pf("%s{ serialize::uint128_t raw_v%s = serialize::uint128_t( %s ); w.put128( uint64_t( raw_v%s ), uint64_t( raw_v%s >> 64 ) ); }\n", ind, sfx, expr, sfx, sfx)
+			g.pf("%[1]s{\n%[1]s    serialize::uint128_t raw_v%[2]s = serialize::uint128_t( %[3]s );\n%[1]s    w.put128( uint64_t( raw_v%[4]s ), uint64_t( raw_v%[5]s >> 64 ) );\n%[1]s}\n", ind, sfx, expr, sfx, sfx)
 			return
 		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
@@ -1814,11 +1814,11 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	}
 	g.pf("    for ( ;; )\n    {\n")
 	g.pf("        uint64_t field_ref = 0;\n")
-	g.pf("        if ( !r.getleb( field_ref ) ) { r.report->malformed = true; return false; }\n")
+	g.pf("        if ( !r.getleb( field_ref ) )\n        {\n            r.report->malformed = true;\n            return false;\n        }\n")
 	g.pf("        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE\n")
-	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count ) { r.report->malformed = true; return false; } // a reference ABOVE the entry count\n")
+	g.pf("        if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )\n        {\n            r.report->malformed = true;\n            return false;\n        } // a reference ABOVE the entry count\n")
 	g.pf("        const uint64_t field_id = r.ids->at( field_ref );\n")
-	g.pf("        if ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n")
+	g.pf("        if ( !r.has( 1 ) )\n        {\n            r.report->malformed = true;\n            return false;\n        }\n")
 	g.pf("        uint8_t kind = r.get8();\n")
 	g.pf("        if ( ( field_id == kTableNodeTableFieldId && r.nested ) || field_id == kTableBuildVersionFieldId || field_id == kTableMessageVocabularyFieldId )\n        {\n")
 	g.pf("            // A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS,\n")
@@ -1870,7 +1870,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				g.pf("                    if ( TableKindWidens( kind, %d ) )\n                    {\n", wireKind)
 				g.pf("                        // WIDENED (§4): a kind that grew since the writer decodes\n")
 				g.pf("                        // exactly at its own width, the value lands, one widened counts\n")
-				g.emitWidenedScalar(f, wireKind, "kind", "value."+f.Name, "                        ", "r", "r.report->malformed = true; return false;")
+				g.emitWidenedScalar(f, wireKind, "kind", "value."+f.Name, "                        ", "r", "r.report->malformed = true;", "return false;")
 				if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 					g.pf("                        r.report->widened++;\n")
 				} // a generated entry key was counted once by the map key scan
@@ -1882,7 +1882,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("                    // AT A POSITION THE READER DOES NAME, a field under\n")
 			g.pf("                    // kind 31 or kind 32 takes this same rule and no other (§3)\n")
 			g.pf("                    r.report->kind_mismatch++;\n")
-			g.pf("                    if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
+			g.pf("                    if ( !r.skip( kind ) )\n                    {\n                        r.report->malformed = true;\n                        return false;\n                    }\n")
 			g.pf("                    break;\n                }\n")
 			g.emitTableReadField(f, kind)
 			if f.Type.Optional {
@@ -1901,7 +1901,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			// would mean "a build without kind 17", which is the difference §4
 			// exists to report and not one this reader has.
 			g.pf("            case 0x%016xull:\n            {\n", ir.TableNodeWireId)
-			g.pf("                if ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n")
+			g.pf("                if ( !r.skip( kind ) )\n                {\n                    r.report->malformed = true;\n                    return false;\n                }\n")
 			g.pf("                break;\n            }\n")
 		}
 		g.pf("            default:\n            {\n")
@@ -2007,7 +2007,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }\n")
 	g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
 	g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
-	g.pf("            else { out->refuse_reason = wire_damaged; }\n")
+	g.pf("            else\n            {\n                out->refuse_reason = wire_damaged;\n            }\n")
 	g.pf("        }\n")
 	g.pf("        %sReset( value );\n", st.Name)
 	g.pf("        return false;\n    }\n")
@@ -2025,7 +2025,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 // off.
 func (g *tableGen) emitUnknownArm(ind string) {
 	if !g.retain {
-		g.pf("%sif ( !r.skip( kind ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%[1]sif ( !r.skip( kind ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		return
 	}
 	// A RESERVED ID NEVER REACHES HERE, and it is excluded by construction
@@ -2034,7 +2034,7 @@ func (g *tableGen) emitUnknownArm(ind string) {
 	// any body but the one whose transport it is, and consumes it in that one.
 	// A fixed-class root, the one shape with no case of its own, gets no
 	// retention at all.
-	g.pf("%sif ( !TableRetainCapture( retain, r, path, field_id, kind ) ) { r.report->malformed = true; return false; }\n", ind)
+	g.pf("%[1]sif ( !TableRetainCapture( retain, r, path, field_id, kind ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 }
 
 // emitNodeIndexLoad reads one NODE INDEX and resolves it through the
@@ -2042,7 +2042,7 @@ func (g *tableGen) emitUnknownArm(ind string) {
 // position's extra check: a reference-shaped arm's `L` must be the byte count
 // of the reference it frames, and anything else is that arm's own framing
 // damage (§3).
-func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr, onBad, sfx string, exact bool) {
+func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr string, onBad []string, sfx string, exact bool) {
 	target := fmt.Sprintf("0x%016xull", ir.TableWireId(ir.PointeeWireName(f)))
 	comment := "*" + f.Type.Name
 	if f.Type.Blob() {
@@ -2051,9 +2051,9 @@ func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr, onBad, sfx stri
 	}
 	index := "node_index" + sfx
 	g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, index)
-	g.pf("%s    if ( !%s.getleb( %s ) ) { %s }\n", ind, rdr, index, onBad)
+	g.emitIfActions(ind+"    ", fmt.Sprintf("!%s.getleb( %s )", rdr, index), onBad...)
 	if exact {
-		g.pf("%s    if ( %s.offset != %s.size ) { %s }\n", ind, rdr, rdr, onBad)
+		g.emitIfActions(ind+"    ", fmt.Sprintf("%s.offset != %s.size", rdr, rdr), onBad...)
 	}
 	g.pf("%s    TableNodeResolve( nodes, %s, %s, %s, r.report ); // %s\n%s}\n", ind, dst, index, target, comment, ind)
 }
@@ -2113,7 +2113,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		// keeps the prefill's default (docs/SPEC-TABLES.md §3.2)
 		g.noteRef(f.KeyEnum)
 		g.pf("%suint64_t body_len = 0;\n", ind)
-		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 		g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 		g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
@@ -2124,7 +2124,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			// the mismatch branch and with a loop of its own, so the matching
 			// loop below decodes at the declared width and nothing else
 			g.pf("%s    if ( elem_kind != %d )\n%s    {\n", ind, ir.TableWireElemKind(f), ind)
-			g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
+			g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, ir.TableWireElemKind(f))
 			g.pf("%s        r.report->widened++; // ONE count for the field, every slot at the wire kind's width\n", ind)
 			g.emitKeyedTriples(f, kind, ind+"    ", true)
 			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
@@ -2140,7 +2140,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// A POINTER FIELD'S PAYLOAD IS A NUMBER (docs/SPEC-TABLES.md §3.1): it is\n", ind)
 		g.pf("%s// bounds-checked and resolved through the numbering, never FOLLOWED, so\n", ind)
 		g.pf("%s// there is no traversal here and therefore no traversal bound.\n", ind)
-		g.emitNodeIndexLoad(f, "value."+f.Name, ind, "r", "r.report->malformed = true; return false;", "", false)
+		g.emitNodeIndexLoad(f, "value."+f.Name, ind, "r", []string{"r.report->malformed = true;", "return false;"}, "", false)
 	case f.Type.Kind == ir.TString:
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
@@ -2179,7 +2179,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		}
 		counted := f.Type.Kind == ir.TBytes || f.Array == ir.ArrayCounted
 		g.pf("%suint64_t body_len = 0;\n", ind)
-		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 		g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER — the element kind byte and the\n", ind)
 		g.pf("%s// count, so fewer than two bytes — is INERT (§4): the field keeps the\n", ind)
@@ -2200,7 +2200,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			// §4), inside the mismatch branch: ONE count for the field,
 			// every element decoded at the wire kind's width
 			g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, ir.TableWireElemKind(f), ind)
-			g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, ir.TableWireElemKind(f))
+			g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, ir.TableWireElemKind(f))
 			g.emitRetainReplaced(f, ind+"        ")
 			g.pf("%s        uint64_t widened_keep = count;\n", ind)
 			g.pf("%s        if ( widened_keep > %d ) { widened_keep = %d; r.report->clamped++; }\n", ind, bound, bound)
@@ -2254,7 +2254,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sif ( !r.has( 1 ) ) { r.report->malformed = true; return false; }\n", ind)
 		g.pf("%sconst uint8_t arm_kind = r.get8();\n", ind)
 		g.pf("%suint64_t body_len = 0;\n", ind)
-		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
 		g.pf("%s    switch ( arm_id ) // the arm's NAME hash (docs/SPEC-TABLES.md §5)\n%s    {\n", ind, ind)
 		wasField := g.unionField
@@ -2288,7 +2288,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%sr.offset += (int64_t) body_len;\n", ind)
 	case kind == tkTable:
 		g.pf("%suint64_t body_len = 0;\n", ind)
-		g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 		g.pf("%s{\n%s    TableReader sub( r.buffer + r.offset, (int64_t) body_len, r.report, r.ids );\n", ind, ind)
 		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "sub", "value."+f.Name))
 		g.emitLoadRefusal(f.Type.Name, ind+"    ")
@@ -2304,7 +2304,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.emitEnumRefLoad(f, "value."+f.Name, ind, "r", "r.report->malformed = true; return false;")
 	default:
 		g.emitTableReadScalarFrom(f, kind, "value."+f.Name, ind,
-			"r", "r.report->malformed = true; return false;")
+			"r", "r.report->malformed = true;", "return false;")
 	}
 }
 
@@ -2365,7 +2365,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 	case tkNodeIndex:
 		// one slot of an array of pointers: a node index, bounds-checked and
 		// resolved through the numbering, never followed (§3.1)
-		g.emitNodeIndexLoad(f, dst, ind, rdr, "r.report->malformed = true; break;", sfx, false)
+		g.emitNodeIndexLoad(f, dst, ind, rdr, []string{"r.report->malformed = true;", "break;"}, sfx, false)
 	case tkTable:
 		g.pf("%suint64_t elem_len%s = 0;\n", ind, sfx)
 		g.pf("%sif ( !%s.getleb( elem_len%s ) || !%s.room( elem_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
@@ -2381,7 +2381,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, dst, ind,
-			rdr, "r.report->malformed = true; break;")
+			rdr, "r.report->malformed = true;", "break;")
 	}
 }
 
@@ -2390,9 +2390,9 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 // them. onTrunc is the truncation action: a scalar FIELD stops the decode
 // and an array ELEMENT breaks, both flagging damage, which discards the whole
 // load (docs/SPEC-TABLES.md §4).
-func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, rdr, onTrunc string) {
+func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, rdr string, onTrunc ...string) {
 	width := tableKindWidth(kind)
-	g.pf("%sif ( !%s.has( %d ) ) { %s }\n", ind, rdr, width, onTrunc)
+	g.emitIfActions(ind, fmt.Sprintf("!%s.has( %d )", rdr, width), onTrunc...)
 	switch kind {
 	case tkBool:
 		// A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on
@@ -2440,10 +2440,10 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 			if signed {
 				storage = "serialize::int128_t"
 			}
-			g.pf("%suint64_t lo_v = 0, hi_v = 0; %s.get128( lo_v, hi_v );\n", ind, rdr)
+			g.pf("%[1]suint64_t lo_v = 0, hi_v = 0;\n%[1]s%[2]s.get128( lo_v, hi_v );\n", ind, rdr)
 			g.pf("%s%s decoded_v = %s( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );\n", ind, storage, storage)
 		} else {
-			g.pf("%s%s decoded_v = %s( %s.%s( ) );\n", ind, storage, storage, rdr, tableGet(width))
+			g.pf("%[1]s%[2]s decoded_v = %[3]s( %[4]s.%[5]s() );\n", ind, storage, storage, rdr, tableGet(width))
 		}
 		// the declared range on the RAW scale — a fixed field's whole-unit
 		// bounds shifted by F — clamps and counts as every bounded scalar

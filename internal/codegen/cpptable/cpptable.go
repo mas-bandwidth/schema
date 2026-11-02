@@ -312,6 +312,20 @@ func (g *tableGen) pf(format string, args ...any) {
 	g.body.WriteString(s)
 }
 
+// emitIfActions lays out an already-separated sequence of C++ statements.
+// The caller owns the statements; this only supplies the block and indentation.
+func (g *tableGen) emitIfActions(ind, condition string, actions ...string) {
+	if len(actions) == 1 {
+		g.pf("%sif ( %s ) { %s }\n", ind, condition, actions[0])
+		return
+	}
+	g.pf("%sif ( %s )\n%s{\n", ind, condition, ind)
+	for _, action := range actions {
+		g.pf("%s    %s\n", ind, action)
+	}
+	g.pf("%s}\n", ind)
+}
+
 func (g *tableGen) noteRef(name string) {
 	if base, ok := g.unit.DeclFile[name]; ok && base != g.file.Base {
 		g.includes[base] = true
@@ -718,7 +732,7 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // is NOT INSERTED: a key past the bound, or an arena that could not carve\n" +
 			"    // another segment. A LIST ignores the key and APPENDS, NULL at the arena\n" +
 			"    // or the int32 cap. NULL on every field that is neither.\n" +
-			"    void * ( * place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+			"    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
 	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
@@ -732,8 +746,8 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // node it names, or NULL; `emplace` allocates one in a BUILDER's\n" +
 			"    // arena and points the slot at it. NULL on every field that is not\n" +
 			"    // a pointer, and emitted only in a unit that declares one.\n" +
-			"    const void * (*resolve)( const void * slot );\n" +
-			"    void * (*emplace)( TableWorker & worker, void * slot );"
+			"    const void * ( *resolve )( const void * slot );\n" +
+			"    void * ( *emplace )( TableWorker & worker, void * slot );"
 		pointerTypeMember = "\n    // the DERIVED mode (docs/SPEC-TABLES.md): false = fixed-size, a plain\n" +
 			"    // relocatable struct; true = variable-length, built through a Builder\n" +
 			"    // and read through a region root. Nobody declares it; the compiler\n" +
@@ -753,13 +767,12 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 #if defined( _MSC_VER )
 #define ` + forceInline + ` __forceinline
 #elif defined( __GNUC__ ) || defined( __clang__ )
-#define ` + forceInline + ` inline __attribute__(( always_inline ))
+#define ` + forceInline + ` inline __attribute__( ( always_inline ) )
 #else
 #define ` + forceInline + ` inline
 #endif
 
 namespace ` + pkg + ` {
-
 ` + refuseReason + `
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -773,8 +786,8 @@ namespace ` + pkg + ` {
 // reason text rather than in the enum. They sit in a private high range so a
 // value Go appends later can never collide with them, which the enum's
 // int32_t underlying type keeps inside its own range.
-constexpr TableRefuseReason no_vocabulary        = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
-constexpr TableRefuseReason second_announcement  = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
+constexpr TableRefuseReason no_vocabulary = (TableRefuseReason) 0x20000000; // no table for this connection: the message arrived before the announcement, or after a refused one
+constexpr TableRefuseReason second_announcement = (TableRefuseReason) 0x20000001; // a second announcement on a connection: it sets nothing, amends nothing, and the connection closes
 constexpr TableRefuseReason vocabulary_too_large = (TableRefuseReason) 0x20000002; // an announcement above the receiver's declared bound, refused before an entry is touched
 
 // THE MESSAGE PATH SPEAKS THE ONE VOCABULARY (§6.5): TableMessageReason is a
@@ -986,27 +999,27 @@ inline const char TableDocNone[1] = "";
     // the vocabulary's names, indexed the same way enum_max bounds: an enum's
     // value -> name, a union's tag -> arm name, a FLAGS field's bit index ->
     // variant name. NULL for every other kind.
-    const char * (*enum_name)( uint64_t value );
+    const char * ( *enum_name )( uint64_t value );
     // the TABLE-WIRE id of one variant (docs/SPEC-TABLES.md §5): for an enum, the
     // hash of the variant's name; for a union, the hash of the arm's name.
     // 0 is the reserved id — an enum's None, a union's empty. NULL for every
     // other kind — a FLAGS field's variants have no per-variant wire id (§4),
     // so a NULL here beside a non-NULL enum_name is what says "flags".
     // Walk [0, enum_max] to enumerate a vocabulary and its ids.
-    uint64_t (*variant_id)( uint64_t value );
+    uint64_t ( *variant_id )( uint64_t value );
     // an ENUM-KEYED array (docs/SPEC-TABLES.md §2.4): the array has one slot per
     // variant of key_type_name, indexed by the variant's value, and its slots
     // ride under variant ids rather than positions. key_name and key_id are
     // the key's vocabulary — walk [0, array_bound) to print slots by name.
     // NULL on every other field.
     const char * key_type_name;
-    const char * (*key_name)( uint64_t value );
-    uint64_t (*key_id)( uint64_t value );
+    const char * ( *key_name )( uint64_t value );
+    uint64_t ( *key_id )( uint64_t value );
     // union fields: the tag and its arms, behind a function so the whole
     // descriptor stays CONSTANT-INITIALISED (a captureless lambda converts to
     // a function pointer at compile time; the arms themselves are a static
     // inside it). NULL for every other kind.
-    const TableUnionInfo * (*arms)();` + placeMember + `
+    const TableUnionInfo * ( *arms )();` + placeMember + `
     const char * guard;     // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
     // what a PERSON wrote about the field (docs/SPEC-TABLES.md §8.1): the ///
     // block above it, verbatim (SPEC §4.1). It is TableDocNone when there is
@@ -1038,7 +1051,7 @@ struct TableTypeInfo
     // absent field takes, and it holds no type to spell — this is the one
     // thing the descriptors could not express without it. Placement-new
     // value-init, exactly what the wire's read path does, and no temporary.
-    void (*reset)( void * storage );` + pointerTypeMember + `
+    void ( *reset )( void * storage );` + pointerTypeMember + `
     // the declaration's own doc and tags, on the same terms as a field's
     // (docs/SPEC-TABLES.md §8.1)
     const char * doc;
@@ -1064,13 +1077,25 @@ struct TableWriter
 
     ` + forceInline + ` void raw( const void * data, int64_t bytes )
     {
-        if ( offset + bytes > capacity ) { overflow = true; return; }
+        if ( offset + bytes > capacity )
+        {
+            overflow = true;
+            return;
+        }
         memcpy( buffer + offset, data, (size_t) bytes );
         offset += bytes;
     }
-    ` + forceInline + ` void put8( uint8_t v )   { raw( &v, 1 ); }
-    ` + forceInline + ` void put16( uint16_t v ) { uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) }; raw( b, 2 ); }
-    ` + forceInline + ` void put32( uint32_t v ) { uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) }; raw( b, 4 ); }
+    ` + forceInline + ` void put8( uint8_t v ) { raw( &v, 1 ); }
+    ` + forceInline + ` void put16( uint16_t v )
+    {
+        uint8_t b[2] = { uint8_t( v ), uint8_t( v >> 8 ) };
+        raw( b, 2 );
+    }
+    ` + forceInline + ` void put32( uint32_t v )
+    {
+        uint8_t b[4] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ) };
+        raw( b, 4 );
+    }
     // THE SAME EIGHT BYTES two put32 wrote, assembled once and handed to raw
     // once: little-endian, lowest byte first. One capacity test rather than
     // two, and NOT ONE FEWER — raw still asks before it copies, so an
@@ -1078,7 +1103,7 @@ struct TableWriter
     ` + forceInline + ` void put64( uint64_t v )
     {
         uint8_t b[8] = { uint8_t( v ), uint8_t( v >> 8 ), uint8_t( v >> 16 ), uint8_t( v >> 24 ),
-                         uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
+            uint8_t( v >> 32 ), uint8_t( v >> 40 ), uint8_t( v >> 48 ), uint8_t( v >> 56 ) };
         raw( b, 8 );
     }
     // A 128-BIT VALUE IS TWO LANES, THE LOW HALF FIRST (docs/SPEC-TABLES.md §3):
@@ -1091,9 +1116,9 @@ struct TableWriter
     ` + forceInline + ` void put128( uint64_t lo, uint64_t hi )
     {
         uint8_t b[16] = { uint8_t( lo ), uint8_t( lo >> 8 ), uint8_t( lo >> 16 ), uint8_t( lo >> 24 ),
-                          uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
-                          uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
-                          uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
+            uint8_t( lo >> 32 ), uint8_t( lo >> 40 ), uint8_t( lo >> 48 ), uint8_t( lo >> 56 ),
+            uint8_t( hi ), uint8_t( hi >> 8 ), uint8_t( hi >> 16 ), uint8_t( hi >> 24 ),
+            uint8_t( hi >> 32 ), uint8_t( hi >> 40 ), uint8_t( hi >> 48 ), uint8_t( hi >> 56 ) };
         raw( b, 16 );
     }
     // EVERY LENGTH, COUNT, INDEX AND ID REFERENCE IS ONE CANONICAL UNSIGNED
@@ -1113,7 +1138,11 @@ struct TableWriter
     {
         uint8_t b[10];
         int64_t n = 0;
-        while ( v >= 0x80 ) { b[n++] = uint8_t( v ) | 0x80; v >>= 7; }
+        while ( v >= 0x80 )
+        {
+            b[n++] = uint8_t( v ) | 0x80;
+            v >>= 7;
+        }
         b[n++] = uint8_t( v );
         raw( b, n );
     }
@@ -1149,7 +1178,11 @@ struct TableWriter
 inline int64_t TableLebBytes( uint64_t v )
 {
     int64_t n = 1;
-    while ( v >= 0x80 ) { v >>= 7; n++; }
+    while ( v >= 0x80 )
+    {
+        v >>= 7;
+        n++;
+    }
     return n;
 }
 
@@ -1170,9 +1203,9 @@ struct TableIds
     static const int32_t kCapacity = ` + idCapacity + `;
     static const int32_t kBuckets = ` + idBuckets + `;
 
-    uint64_t ids[ kCapacity ];
-    int32_t chain[ kCapacity ];
-    int32_t head[ kBuckets ];
+    uint64_t ids[kCapacity];
+    int32_t chain[kCapacity];
+    int32_t head[kBuckets];
     // THE ORDINAL SLOT CACHE (§3). Every id a generated field header names is
     // a COMPILE-TIME CONSTANT of the unit, so it has an ORDINAL: its index in
     // the unit's id vocabulary, the same ascending set kCapacity counts. slot
@@ -1181,15 +1214,20 @@ struct TableIds
     // taken under, -1 for an entry a RUNTIME id took, which has no ordinal.
     // The pair is what lets truncate undo the cache in O(popped) rather than
     // walking the whole vocabulary.
-    int32_t slot[ kCapacity ];
-    ` + ordinalType + ` ordinal_of[ kCapacity ];
+    int32_t slot[kCapacity];
+    ` + ordinalType + ` ordinal_of[kCapacity];
     int32_t count;
     bool overflow;
 
     TableIds() : count( 0 ), overflow( false )
     {
         for ( int32_t i = 0; i < kBuckets; i++ ) { head[i] = -1; }
-        for ( int32_t i = 0; i < kCapacity; i++ ) { slot[i] = -1; ids[i] = 0; chain[i] = -1; }
+        for ( int32_t i = 0; i < kCapacity; i++ )
+        {
+            slot[i] = -1;
+            ids[i] = 0;
+            chain[i] = -1;
+        }
     }
 
     static ` + forceInline + ` uint32_t bucket_of( uint64_t id )
@@ -1207,8 +1245,16 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity ) { overflow = true; return 1; }
-        ids[count] = id; chain[count] = head[b]; ordinal_of[count] = -1; head[b] = count; count++;
+        if ( count >= kCapacity )
+        {
+            overflow = true;
+            return 1;
+        }
+        ids[count] = id;
+        chain[count] = head[b];
+        ordinal_of[count] = -1;
+        head[b] = count;
+        count++;
         return uint64_t( count );
     }
 
@@ -1227,7 +1273,7 @@ struct TableIds
         // answered 1, which is not this id's reference (§3).
         if ( overflow ) { return r; }
         slot[ordinal] = int32_t( r ) - 1;
-        ordinal_of[ int32_t( r ) - 1 ] = ` + ordinalType + `( ordinal );
+        ordinal_of[int32_t( r ) - 1] = ` + ordinalType + `( ordinal );
         return r;
     }
 
@@ -1240,7 +1286,7 @@ struct TableIds
         while ( count > mark )
         {
             count--;
-            head[ bucket_of( ids[count] ) ] = chain[count];
+            head[bucket_of( ids[count] )] = chain[count];
             const int32_t o = ordinal_of[count];
             if ( o >= 0 ) { slot[o] = -1; }
         }
@@ -1272,7 +1318,7 @@ inline void TableIdsWrite( TableWriter & w, const TableIds & ids )
 #if defined( __BYTE_ORDER__ ) && defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
     if ( count > 0 )
     {
-        memcpy( dst, ids.ids, (size_t)( count * 8 ) );
+        memcpy( dst, ids.ids, (size_t) ( count * 8 ) );
     }
     const uint64_t n = uint64_t( count );
     memcpy( dst + count * 8, &n, 8 );
@@ -1335,11 +1381,30 @@ struct TableReader
     // it to int64 first turns 0xFFFFFFFFFFFFFFFF into -1, and a negative
     // length looks like room.
     ` + forceInline + ` bool room( uint64_t bytes ) const { return bytes <= (uint64_t) ( size - offset ); }
-    ` + forceInline + ` uint8_t get8()   { return buffer[offset++]; }
-    ` + forceInline + ` uint16_t get16() { uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset+1] ) << 8; offset += 2; return v; }
-    ` + forceInline + ` uint32_t get32() { uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset+1] ) << 8 | uint32_t( buffer[offset+2] ) << 16 | uint32_t( buffer[offset+3] ) << 24; offset += 4; return v; }
-    ` + forceInline + ` uint64_t get64() { uint64_t lo = get32(); uint64_t hi = get32(); return lo | ( hi << 32 ); }
-    ` + forceInline + ` void get128( uint64_t & lo, uint64_t & hi ) { lo = get64(); hi = get64(); }
+    ` + forceInline + ` uint8_t get8() { return buffer[offset++]; }
+    ` + forceInline + ` uint16_t get16()
+    {
+        uint16_t v = uint16_t( buffer[offset] ) | uint16_t( buffer[offset + 1] ) << 8;
+        offset += 2;
+        return v;
+    }
+    ` + forceInline + ` uint32_t get32()
+    {
+        uint32_t v = uint32_t( buffer[offset] ) | uint32_t( buffer[offset + 1] ) << 8 | uint32_t( buffer[offset + 2] ) << 16 | uint32_t( buffer[offset + 3] ) << 24;
+        offset += 4;
+        return v;
+    }
+    ` + forceInline + ` uint64_t get64()
+    {
+        uint64_t lo = get32();
+        uint64_t hi = get32();
+        return lo | ( hi << 32 );
+    }
+    ` + forceInline + ` void get128( uint64_t & lo, uint64_t & hi )
+    {
+        lo = get64();
+        hi = get64();
+    }
 
     // ONE CANONICAL UNSIGNED LEB128 (docs/SPEC-TABLES.md §3), and a
     // non-minimal spelling is MALFORMED: 0x80 0x00 and 0x00 both spell zero,
@@ -1372,13 +1437,25 @@ struct TableReader
         uint32_t shift = 0;
         for ( int32_t i = 0; i < 10; i++ )
         {
-            if ( !has( 1 ) ) { offset = at; return false; }
+            if ( !has( 1 ) )
+            {
+                offset = at;
+                return false;
+            }
             const uint8_t b = get8();
-            if ( i == 9 && b > 1 ) { offset = at; return false; }
+            if ( i == 9 && b > 1 )
+            {
+                offset = at;
+                return false;
+            }
             value |= uint64_t( b & 0x7F ) << shift;
             if ( ( b & 0x80 ) == 0 )
             {
-                if ( i > 0 && b == 0 ) { offset = at; return false; } // a redundant continuation
+                if ( i > 0 && b == 0 )
+                {
+                    offset = at;
+                    return false;
+                } // a redundant continuation
                 return true;
             }
             shift += 7;
@@ -1408,21 +1485,47 @@ struct TableReader
         {
             // the fixed-width kinds, each by its width: 18-29 are the 128-bit integers and
             // the fixed-point family at every storage width (docs/SPEC-TABLES.md §3)
-            case 1: case 2: case 6: case 20: case 25: return has( 1 ) ? ( offset += 1, true ) : false;
-            case 3: case 7: case 21: case 26:         return has( 2 ) ? ( offset += 2, true ) : false;
-            case 4: case 8: case 10: case 22: case 27: return has( 4 ) ? ( offset += 4, true ) : false;
+            case 1:
+            case 2:
+            case 6:
+            case 20:
+            case 25: return has( 1 ) ? ( offset += 1, true ) : false;
+            case 3:
+            case 7:
+            case 21:
+            case 26: return has( 2 ) ? ( offset += 2, true ) : false;
+            case 4:
+            case 8:
+            case 10:
+            case 22:
+            case 27: return has( 4 ) ? ( offset += 4, true ) : false;
             // 36 is the TIMESTAMP: its payload is the i64's eight bytes even
             // though its kind is its own (docs/SPEC-TABLES.md §2.11, §3), so
             // an unnamed or kind-mismatched timestamp skips cleanly, exactly
             // as internal/tablewire/timestamp_skip_test.go pins for Go.
-            case 5: case 9: case 11: case 23: case 28: case 36: return has( 8 ) ? ( offset += 8, true ) : false;
-            case 18: case 19: case 24: case 29: return has( 16 ) ? ( offset += 16, true ) : false;
-            case 17: case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
+            case 5:
+            case 9:
+            case 11:
+            case 23:
+            case 28:
+            case 36: return has( 8 ) ? ( offset += 8, true ) : false;
+            case 18:
+            case 19:
+            case 24:
+            case 29: return has( 16 ) ? ( offset += 16, true ) : false;
+            case 17:
+            case 30: // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and stop
             {
                 uint64_t ignored = 0;
                 return getleb( ignored );
             }
-            case 12: case 13: case 14: case 16: case 31: case 32: case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
+            case 12:
+            case 13:
+            case 14:
+            case 16:
+            case 31:
+            case 32:
+            case 33: // 31 is the ESCAPE, 32 the payload-free kind, 33 wide text
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1494,7 +1597,13 @@ static const int32_t kTableProbeShift = 51;   // 64 - 13, and 2^13 is kTableProb
 //   TableOpenBodyStopped  the form and the table were good and the ROOT BODY
 //                     could not be walked to its own terminator. What it
 //                     decoded before that is kept, as everywhere on this wire.
-enum TableOpenVerdict { TableOpenOk, TableOpenRefused, TableOpenDamaged, TableOpenBodyStopped };
+enum TableOpenVerdict
+{
+    TableOpenOk,
+    TableOpenRefused,
+    TableOpenDamaged,
+    TableOpenBodyStopped
+};
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
@@ -1543,8 +1652,8 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
     // is touched at all.
     if ( table.count > 1 )
     {
-        uint64_t seen[ kTableProbeSlots ];
-        uint64_t used[ kTableProbeSlots / 64 ];
+        uint64_t seen[kTableProbeSlots];
+        uint64_t used[kTableProbeSlots / 64];
         for ( int32_t w = 0; w < kTableProbeSlots / 64; w++ ) { used[w] = 0; }
         for ( int64_t i = 0; i < table.count; i++ )
         {
@@ -1553,9 +1662,9 @@ inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableI
             for ( ;; )
             {
                 const uint64_t bit = 1ull << ( s & 63 );
-                if ( ( used[ s >> 6 ] & bit ) == 0 )
+                if ( ( used[s >> 6] & bit ) == 0 )
                 {
-                    used[ s >> 6 ] |= bit;
+                    used[s >> 6] |= bit;
                     seen[s] = id;
                     break;
                 }
@@ -1588,10 +1697,30 @@ inline bool TableBodyEndsEarly( const uint8_t * body, int64_t bytes, const Table
     }
 }
 
-` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits ) { float f; memcpy( &f, &bits, 4 ); return f; }
-inline uint32_t table_float_to_bits( float f ) { uint32_t b; memcpy( &b, &f, 4 ); return b; }
-inline double table_bits_to_double( uint64_t bits ) { double d; memcpy( &d, &bits, 8 ); return d; }
-inline uint64_t table_double_to_bits( double d ) { uint64_t b; memcpy( &b, &d, 8 ); return b; }
+` + messageForm + `` + keyedStorage + `inline float table_bits_to_float( uint32_t bits )
+{
+    float f;
+    memcpy( &f, &bits, 4 );
+    return f;
+}
+inline uint32_t table_float_to_bits( float f )
+{
+    uint32_t b;
+    memcpy( &b, &f, 4 );
+    return b;
+}
+inline double table_bits_to_double( uint64_t bits )
+{
+    double d;
+    memcpy( &d, &bits, 8 );
+    return d;
+}
+inline uint64_t table_double_to_bits( double d )
+{
+    uint64_t b;
+    memcpy( &b, &d, 8 );
+    return b;
+}
 // the WRITER's half of the finite rule (§3.3): a NaN or an infinity is refused,
 // never written, and measure answers -1 for it as save answers false
 inline bool TableFloatFinite( float f ) { return TableBitsFinite32( table_float_to_bits( f ) ); }

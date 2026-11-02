@@ -29,7 +29,7 @@ func TestFixedCountOpReachCoversItsHeader(t *testing.T) {
 	}
 	// The kind-14 compile step refuses a counted local against an endpoint array too
 	// small to carry the four-byte count, before the head subtraction underflows.
-	if !strings.Contains(tableFixedRuntime, "if ( d.counted && te.size < 4u ) { c.hostile = true; break; }") {
+	if !strings.Contains(tableFixedRuntime, "if ( d.counted && te.size < 4u )\n            {\n                c.hostile = true;\n                break;\n            }") {
 		t.Error("kind-14 does not refuse a counted local field against an endpoint array smaller than the count")
 	}
 	// The refusal must run before the head subtraction, not after: once
