@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +19,7 @@ import (
 // subset or the narrower fixed-form gates. The producing workflow owns the
 // actual acceptance commands; this gate refuses missing or failed receipts.
 // Expansion languages do not acquire an original-nine obligation here.
-func readinessProblems(dir string) []string {
+func readinessProblems(dir, revision string) []string {
 	seen := map[string]string{}
 	var problems []string
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -47,6 +48,22 @@ func readinessProblems(dir string) []string {
 			problems = append(problems, path+": "+err.Error())
 		} else if text := string(data); text != "pass" && text != "pass\n" && text != "pass\r\n" {
 			problems = append(problems, fmt.Sprintf("%s: runtime acceptance requires pass, got %q", lang, text))
+		}
+		revisionPath := strings.TrimSuffix(path, ".txt") + ".revision"
+		info, err := os.Lstat(revisionPath)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: missing readiness revision: %v", lang, err))
+		} else if !info.Mode().IsRegular() {
+			problems = append(problems, revisionPath+": readiness revision must be a regular file")
+		} else {
+			data, err := os.ReadFile(revisionPath)
+			if err != nil {
+				problems = append(problems, revisionPath+": "+err.Error())
+			} else if got := strings.TrimSuffix(strings.TrimSuffix(string(data), "\n"), "\r"); !validReadinessRevision(got) {
+				problems = append(problems, fmt.Sprintf("%s: invalid readiness revision %q", lang, got))
+			} else if got != revision {
+				problems = append(problems, fmt.Sprintf("%s: readiness revision %s does not match checkout HEAD %s", lang, got, revision))
+			}
 		}
 		return nil
 	})
@@ -87,8 +104,18 @@ func checkOriginalNineRoadmap(w io.Writer) error {
 	return nil
 }
 
-func originalReadinessProblems(w io.Writer, in string) []string {
-	problems := readinessProblems(in)
+// Revision resolution is injected only by internal report tests. The public
+// command always uses checkoutReadinessRevision and resolves it once.
+func originalReadinessProblems(w io.Writer, in string, currentRevision func() (string, error)) []string {
+	revision, err := currentRevision()
+	var problems []string
+	if err != nil {
+		fmt.Fprintln(w, "Expected acceptance revision: unavailable.")
+		problems = append(problems, "readiness provenance: "+err.Error())
+	} else {
+		fmt.Fprintf(w, "Expected acceptance revision (current checkout HEAD): %s\n", revision)
+	}
+	problems = append(problems, readinessProblems(in, revision)...)
 	if len(problems) == 0 {
 		fmt.Fprintln(w, "Original-nine runtime acceptance: PASS (nine current-run receipts).")
 	} else {
@@ -101,4 +128,35 @@ func originalReadinessProblems(w io.Writer, in string) []string {
 		fmt.Fprintln(w, "Original-nine roadmap: PASS (graph, evidence and rendered-page freshness).")
 	}
 	return problems
+}
+
+// A receipt is tied to an exact Git object name, never a branch or abbreviation.
+func validReadinessRevision(revision string) bool {
+	if len(revision) != 40 && len(revision) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(revision)
+	return err == nil && revision == strings.ToLower(revision)
+}
+
+func checkoutReadinessRevision() (string, error) {
+	root, err := docgate.FindRoot(".")
+	if err != nil {
+		return "", err
+	}
+	// Do not accidentally use an enclosing repository when checking an archive.
+	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
+		return "", fmt.Errorf("current checkout needs Git metadata at %s: %w", root, err)
+	}
+	cmd := exec.Command("git", "rev-parse", "--verify", "HEAD")
+	cmd.Dir = root
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("resolve current checkout HEAD: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	revision := strings.TrimSpace(string(output))
+	if !validReadinessRevision(revision) {
+		return "", fmt.Errorf("invalid current checkout HEAD %q", revision)
+	}
+	return revision, nil
 }
