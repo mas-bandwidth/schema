@@ -1013,7 +1013,7 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(&b, "s: \"float\", js: \"n\", %s, def: %s }", g.floatProps(f), floatDefault(f))
 	default:
-		fmt.Fprintf(&b, "s: \"int\", js: \"n\", %s, def: %s }", intProps(f), intDefault(f))
+		fmt.Fprintf(&b, "s: \"int\", js: %q, %s, def: %s }", integerJSONShape(f), intProps(f), intDefault(f))
 	}
 	return b.String()
 }
@@ -1039,7 +1039,14 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", g.floatProps(f))
 	}
-	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
+	return fmt.Sprintf("{ s: \"int\", js: %q, %s }", integerJSONShape(f), intProps(f))
+}
+
+func integerJSONShape(f *ir.Field) string {
+	if f.Type.Timestamp {
+		return "s"
+	}
+	return "n"
 }
 
 // Array-root tables keep their array shape when held by value, including
@@ -1103,7 +1110,11 @@ func intProps(f *ir.Field) string {
 		dlo = big.NewInt(0)
 		dhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(storage*8)), big.NewInt(1))
 	}
-	return fmt.Sprintf("k: %d, big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, frac: %d, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
+	stamp := ""
+	if f.Type.Timestamp {
+		stamp = "ts: " + jsStr(f.Name) + ", "
+	}
+	return stamp + fmt.Sprintf("k: %d, big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, frac: %d, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
 		kind, isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, f.Type.FracBits, tlo, thi, dlo.String(), dhi.String())
 }
 
