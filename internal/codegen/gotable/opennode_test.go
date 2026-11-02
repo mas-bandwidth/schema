@@ -85,6 +85,7 @@ func TestGoCycleWalkCoversStoredGraph(t *testing.T) {
 	const src = `package graphcheck
 table Graph {
  a int32
+ x float32
  on bool
  next *Graph
  also *Graph
@@ -201,6 +202,12 @@ table Graph {
 		return b
 	}
 	vectors = append(vectors, vector{"chain", graph(2048, false), true}, vector{"diamond", graph(82, true), true})
+	finite := encode(`{"a":9,"next":{"x":2.5}}`)
+	pattern := []byte{0, 0, 0x20, 0x40}
+	if bytes.Count(finite, pattern) != 1 {
+		t.Fatal("float pattern not unique")
+	}
+	finite = bytes.Replace(finite, pattern, []byte{0, 0, 0x80, 0x7f}, 1)
 	var cases bytes.Buffer
 	for _, v := range vectors {
 		fmt.Fprintf(&cases, "{name:%q,wire:%#v,good:%v},\n", v.name, v.wire, v.good)
@@ -232,6 +239,19 @@ func TestStoredGraph(t *testing.T){
   b.Shutdown()
  }
 }
-`, cases.String())
+
+func TestRefusedGraphDoesNotExposeIndices(t *testing.T){
+ wire:=%#v;size:=GraphLoadMeasure(wire);if size<0{t.Fatal("measure")}
+ region:=aligned(int(size));var r TableReport
+ if GraphLoadTolerant(region,wire,&r)!=nil||r.NonFiniteFloat==""{t.Fatalf("non-finite region: %%+v",r)}
+ if !bytes.Equal(region,make([]byte,len(region))){t.Fatal("non-finite region kept indices")}
+ retain:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,1024)}
+ r=TableReport{};if GraphLoadRetain(region,wire,&retain,&r)!=nil||r.NonFiniteFloat==""||retain.Used!=0||retain.Count!=0{t.Fatalf("non-finite retain: %%+v",r)}
+ var b GraphBuilder;if !b.Init(){t.Fatal("init")};defer b.Shutdown()
+ b.GetRoot().A=99;r=TableReport{}
+ if GraphLoadBuilderTolerant(&b,wire,&r)||r.NonFiniteFloat==""{t.Fatalf("non-finite builder: %%+v",r)}
+ if b.GetRoot().Next!=0||b.GetRoot().A!=0{t.Fatal("non-finite builder kept indices")}
+}
+`, cases.String(), finite)
 	runGenerated(t, src, test)
 }

@@ -166,17 +166,17 @@ func (g *tableGen) emitRegionRuntime(blocks *ir.BlockUnit) {
 	g.pf("};return nil}\n")
 	cycle := tableCycleSource
 	edges := tableSourceFunction(tableRegionSource, "func tableRegionEdges(") + tableSourceFunction(tableRegionSource, "func tableRegionValueEdges(")
-	edges = strings.ReplaceAll(edges, "tableRegionEdges", "tableCycleEdges")
-	edges = strings.ReplaceAll(edges, "tableRegionValueEdges", "tableCycleValueEdges")
-	edges = strings.ReplaceAll(edges, "!tableJSONGuardHolds(base,info,f.Guard) || ", "")
+	edges = tableSourceReplace(edges, "tableRegionEdges", "tableCycleEdges", 2)
+	edges = tableSourceReplace(edges, "tableRegionValueEdges", "tableCycleValueEdges", 3)
+	edges = tableSourceReplace(edges, "!tableJSONGuardHolds(base,info,f.Guard) || ", "", 1)
 	if unitHasContainers(g.unit) {
-		edges = strings.ReplaceAll(edges, "info *TableTypeInfo,visit", "info *TableTypeInfo,a *TableArena,visit")
-		edges = strings.ReplaceAll(edges, "f *TableFieldInfo,visit", "f *TableFieldInfo,a *TableArena,visit")
-		edges = strings.ReplaceAll(edges, "p,f.Table(),visit", "p,f.Table(),a,visit")
-		edges = strings.ReplaceAll(edges, "at,f,visit", "at,f,a,visit")
-		edges = strings.ReplaceAll(edges, "af,visit", "af,a,visit")
-		edges = strings.ReplaceAll(edges, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", "p:=unsafe.Add(base,f.Offset);if f.List||f.Map{h:=(*tableContainer)(p);if h.Count<0{return false};cursor:=tableContainerCursorBegin(h,int64(f.ElemSize),a);for range h.Count{elem:=cursor.Next();if elem==nil||!tableCycleValueEdges(elem,f,a,visit){return false}};continue};count:=int32(1);")
-		cycle = strings.ReplaceAll(cycle, "tableCycleEdges(p,t,visit)", "tableCycleEdges(p,t,a,visit)")
+		edges = tableSourceReplace(edges, "info *TableTypeInfo,visit", "info *TableTypeInfo,a *TableArena,visit", 1)
+		edges = tableSourceReplace(edges, "f *TableFieldInfo,visit", "f *TableFieldInfo,a *TableArena,visit", 1)
+		edges = tableSourceReplace(edges, "p,f.Table(),visit", "p,f.Table(),a,visit", 1)
+		edges = tableSourceReplace(edges, "at,f,visit", "at,f,a,visit", 1)
+		edges = tableSourceReplace(edges, "af,visit", "af,a,visit", 1)
+		edges = tableSourceReplace(edges, "p:=unsafe.Add(base,f.Offset);count:=int32(1);", "p:=unsafe.Add(base,f.Offset);if f.List||f.Map{h:=(*tableContainer)(p);if h.Count<0{return false};cursor:=tableContainerCursorBegin(h,int64(f.ElemSize),a);for range h.Count{elem:=cursor.Next();if elem==nil||!tableCycleValueEdges(elem,f,a,visit){return false}};continue};count:=int32(1);", 1)
+		cycle = tableSourceReplace(cycle, "tableCycleEdges(p,t,visit)", "tableCycleEdges(p,t,a,visit)", 1)
 	}
 	g.pf("%s%s", edges, cycle)
 }
@@ -383,7 +383,7 @@ func tableRegionLoad(region,wire []byte,root *TableTypeInfo,nodeType func(uint64
  for {id,body,ok:=s.next();if !ok{break};size:=tableNodeStorage(id,body,nodeType,blobs);directory[k].TypeID=id;if id==tableStringTypeID && blobs&2!=0 && !tableUTF8Valid(body.Buffer){directory[k].Offset=^uint64(0);report.Malformed=true} else if size<=0 {directory[k].Offset=^uint64(0);unknown++} else {directory[k].Offset=uint64(used);p:=unsafe.Add(base,used);if t:=nodeType(id);t!=nil{t.Reset(p)}else{*(*TableBlob)(p)=TableBlob{Length:uint32(uint64(len(body.Buffer)))}};used+=size};k++ }
  nodes.Good=s.whole();if nodes.Good {report.Unknown+=unknown}else {report.Malformed=true}
  if nodes.Good {s=tableNodeScanBegin(r);k=1;for {id,body,ok:=s.next();if !ok{break};if directory[k].Offset!=^uint64(0){p:=unsafe.Add(base,directory[k].Offset);if t:=nodeType(id);t!=nil{body.Nodes=nodes;t.LoadBody(body,p)}else{copy(unsafe.Slice((*byte)(unsafe.Add(p,8)),len(body.Buffer)),body.Buffer)}};k++} }
- r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base);if tableNonFiniteRefused(report){return nil}
+ r.Nodes=nodes;r.Nested=false;root.LoadBody(r,base);if tableNonFiniteRefused(report){clear(region);return nil}
  if !report.Malformed&&!tableCycleCheck(base,root,nil,directory,nodeType){report.Malformed=true}
  if report.Malformed{clear(region);return nil};return base // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4)
 }
@@ -435,8 +435,8 @@ func TableStringEmplace(worker *TableWorker,slot *TableRef,text []byte) []byte {
 // body, preserving forward references and sharing. Temporary metadata uses
 // the builder's allocator and never becomes part of the packed region.
 const tableBuilderLoadSource = `
-func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) bool {
- if report==nil {var ignored TableReport;report=&ignored};pre:=report.Malformed;report.Malformed=false;defer func(){if report.Malformed&&p!=nil{root.Reset(p)};report.Malformed=report.Malformed||pre}();r,verdict:=tableOpenFramed(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged {report.Malformed=true}else{report.Reason="newer_form";if len(wire)>0{if wire[0]==2{report.Reason="message_form_as_file"}else if wire[0]==0{report.Reason="previous_form"}}};return false};if p==nil||worker==nil||worker.Arena==nil||worker.Arena.Locked {report.Malformed=true;return false};worker.refused=false // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
+func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) (loaded bool) {
+ if report==nil {var ignored TableReport;report=&ignored};pre:=report.Malformed;report.Malformed=false;defer func(){if !loaded&&p!=nil{root.Reset(p)};report.Malformed=report.Malformed||pre}();r,verdict:=tableOpenFramed(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged {report.Malformed=true}else{report.Reason="newer_form";if len(wire)>0{if wire[0]==2{report.Reason="message_form_as_file"}else if wire[0]==0{report.Reason="previous_form"}}};return false};if p==nil||worker==nil||worker.Arena==nil||worker.Arena.Locked {report.Malformed=true;return false};worker.refused=false // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
  scan:=tableNodeScanBegin(r);for {_,_,ok:=scan.next();if !ok{break}};count:=int64(scan.records+1);memory:=worker.Arena.Allocator.alloc(count*16);if memory==nil {report.Malformed=true;return false};defer worker.Arena.Allocator.free(memory);clear(memory);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])),int(count));directory[0]=TableNodeDirEntry{uint64(ref),root.ID};nodes:=TableNodeMap{Entries:directory,Arena:true};nodes.Once=true;nodes.Indexed=true
  scan=tableNodeScanBegin(r);k:=1;unknown:=int32(0)
  for {id,body,ok:=scan.next();if !ok{break};directory[k]=TableNodeDirEntry{^uint64(0),id};t:=nodeType(id);isblob:=id==tableBytesTypeID&&blobs&1!=0||id==tableStringTypeID&&blobs&2!=0

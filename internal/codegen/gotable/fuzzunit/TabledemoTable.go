@@ -2813,6 +2813,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	r.Nested = false
 	root.LoadBody(r, base)
 	if tableNonFiniteRefused(report) {
+		clear(region)
 		return nil
 	}
 	if !report.Malformed && !tableCycleCheck(base, root, nil, directory, nodeType) {
@@ -2974,7 +2975,7 @@ func TableStringEmplace(worker *TableWorker, slot *TableRef, text []byte) []byte
 	return data
 }
 
-func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) bool {
+func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire []byte, root *TableTypeInfo, nodeType func(uint64) *TableTypeInfo, blobs int, report *TableReport) (loaded bool) {
 	if report == nil {
 		var ignored TableReport
 		report = &ignored
@@ -2982,7 +2983,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	pre := report.Malformed
 	report.Malformed = false
 	defer func() {
-		if report.Malformed && p != nil {
+		if !loaded && p != nil {
 			root.Reset(p)
 		}
 		report.Malformed = report.Malformed || pre
@@ -4623,6 +4624,8 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
 	if tableNonFiniteRefused(report) {
+		clear(region)
+		retain.reset(nil, nil)
 		return nil
 	}
 	if !report.Malformed && !tableCycleCheck(base, root, nil, directory, nodeType) {
