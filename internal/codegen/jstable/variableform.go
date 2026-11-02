@@ -742,35 +742,26 @@ type guardStep struct {
 	Want bool
 }
 
+// Guard is a diagnostic spelling of the full conjunction. Walk the branch
+// tree instead of treating that spelling as a field name (SPEC-TABLES §2.3).
 func structGuards(st *ir.Struct) map[string][]guardStep {
 	out := map[string][]guardStep{}
-	for _, f := range st.Fields {
-		if f.Guard == "" {
-			continue
-		}
-		var chain []guardStep
-		cur := f.Guard
-		for cur != "" {
-			want := true
-			if strings.HasPrefix(cur, "!") {
-				want = false
-				cur = cur[1:]
-			}
-			chain = append([]guardStep{{Name: cur, Want: want}}, chain...)
-			var gf *ir.Field
-			for _, cand := range st.Fields {
-				if cand.Name == cur {
-					gf = cand
-					break
+	var walk func([]ir.Item, []guardStep)
+	walk = func(items []ir.Item, terms []guardStep) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(terms) > 0 {
+					out[item.F.Name] = append([]guardStep(nil), terms...)
 				}
+			case *ir.Branch:
+				positive := !item.Neg
+				walk(item.Then, append(terms[:len(terms):len(terms)], guardStep{item.Cond, positive}))
+				walk(item.Else, append(terms[:len(terms):len(terms)], guardStep{item.Cond, !positive}))
 			}
-			if gf == nil {
-				break
-			}
-			cur = gf.Guard
 		}
-		out[f.Name] = chain
 	}
+	walk(st.Items, nil)
 	return out
 }
 
