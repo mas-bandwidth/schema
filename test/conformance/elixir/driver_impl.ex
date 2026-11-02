@@ -1343,8 +1343,8 @@ defmodule WireFuzz do
        else: nil
   end
 
-  # carried?/1 is the variable form's own answer (docs/SPEC-TABLES.md §2.6,
-  # §2.8, §11): a root that reaches a map or a union is uncarried. Roster 0
+  # carried?/1 is the generated variable form's own availability answer.
+  # The combined implementation carries every declared file root. Roster 0
   # means the harness never sends it a mutant. An error return while the root
   # is marked available would be scored against the oracle. A form-2 entry is
   # the fixed table's announced wire (§3.3) and is carried whenever its
