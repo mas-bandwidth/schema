@@ -992,9 +992,19 @@ func (g *gen) emitVariableLoadBody(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    if end > wire.len() { report.malformed = true; return false; }\n")
 	fmt.Fprintf(b, "    // LEBs in this body cannot borrow a byte from the enclosing body.\n")
 	fmt.Fprintf(b, "    let leb_read = |bytes: &[u8], at: &mut usize| leb_read(&bytes[..end], at);\n")
+	if hasRequired(st) {
+		fmt.Fprintf(b, "    let mut seen = [false; %d];\n", len(st.Fields))
+	}
 	fmt.Fprintf(b, "    while *off < end {\n")
 	fmt.Fprintf(b, "        let Some(r) = leb_read(wire, off) else { report.malformed = true; return false; };\n")
-	fmt.Fprintf(b, "        if r == 0 { return true; }\n")
+	if hasRequired(st) {
+		fmt.Fprintf(b, "        if r == 0 {\n")
+		fmt.Fprintf(b, "            let missing = %s(v, &seen);\n", fn(st.Name, "required_missing"))
+		fmt.Fprintf(b, "            if !missing.is_empty() { report.missing_required += 1; report.missing_required_fields = missing; report.refused = true; report.reason = TableReason::MissingRequired; return false; }\n")
+		fmt.Fprintf(b, "            return true;\n        }\n")
+	} else {
+		fmt.Fprintf(b, "        if r == 0 { return true; }\n")
+	}
 	fmt.Fprintf(b, "        let Some(id) = ref_id(ids, r) else { report.malformed = true; return false; };\n")
 	fmt.Fprintf(b, "        if *off >= end { report.malformed = true; return false; }\n")
 	fmt.Fprintf(b, "        let kind = wire[*off]; *off += 1;\n")
@@ -1103,13 +1113,18 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	kind := fieldWireKind(f)
 	fmt.Fprintf(b, "%s0x%016x => {\n", ind, id)
 	in := ind + "    "
+	if f.Required {
+		fmt.Fprintf(b, "%slet mut field_skipped = false;\n", in)
+	}
 	if f.Type.Optional {
 		g.emitOptionalLoadField(b, f, ordinal, field, in)
+		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
 	if f.KeyEnum != "" {
 		g.emitKeyedLoad(b, f, ordinal, field, in)
+		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -1121,6 +1136,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		if f.IsTextList() {
 			fmt.Fprintf(b, "%sif report.clamped != before_text_clamp && report.clamped_field.is_empty() { report.clamped_field = %q; }\n", in, f.TextListElem().MapEntryOf)
 		}
+		emitRequiredWireSeen(b, f, ordinal, in)
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -1129,7 +1145,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		// A pointer field's payload is a NUMBER: bounds-checked and resolved,
 		// never followed (§3.1). Any other kind is a kind mismatch, skipped by
 		// its own kind's rule, the pointer null.
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(index) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end { report.malformed = true; return false; }\n", in)
@@ -1139,7 +1155,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		// THE BODY IS RESET, not merged, on every occurrence; a body whose
 		// terminator is not the last byte of its L is framing damage, the field
 		// reads its declared defaults and the parent reads on past L (§3, §4)
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -1148,12 +1164,12 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    %s = %s::default();\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    let mut o = *off;\n", in)
 		fmt.Fprintf(b, "%s    let _ = %s(wire, &mut o, sub, ids, &mut %s, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), field, ordinal)
-		fmt.Fprintf(b, "%s    if nodes.count_refused { return false; }\n", in)
+		fmt.Fprintf(b, "%s    if nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
 		fmt.Fprintf(b, "%s    if o != sub { report.malformed = true; %s = %s::default(); }\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vString:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -1176,7 +1192,7 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 	case vBytes:
 		g.emitArrayLoad(b, f, ordinal, field, in)
 	case vEnum:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		emitEnumDecode(b, f, field, "end", "return false;", in+"    ")
 		fmt.Fprintf(b, "%s}\n", in)
@@ -1193,8 +1209,9 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 			fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
 		}
 		emitScalarConvert(b, f, g.floatOwner(f), field, "kind", in+"    ")
-		fmt.Fprintf(b, "%s} else { %s }\n", in, kindSkip)
+		fmt.Fprintf(b, "%s} else { %s }\n", in, requiredKindSkip(f))
 	}
+	emitRequiredWireSeen(b, f, ordinal, in)
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
@@ -1211,7 +1228,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if isBytes {
 		ek = ir.TableKindU8
 	}
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	i1 := in + "    "
 	fmt.Fprintf(b, "%slet Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", i1)
@@ -1230,9 +1247,9 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	cls := classOf(f)
 	widens := cls == vScalar
 	if widens {
-		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.kind_mismatch += 1; }\n", i3, ek, ek)
+		fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.kind_mismatch += 1; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	} else {
-		fmt.Fprintf(b, "%sif ek != %d { report.kind_mismatch += 1; }\n", i3, ek)
+		fmt.Fprintf(b, "%sif ek != %d { %sreport.kind_mismatch += 1; }\n", i3, ek, requiredCollectionSkip(f))
 	}
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -1275,7 +1292,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, j as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
 		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%s*off = eend;\n", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
@@ -1295,7 +1312,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		// each element is its own body occurrence (§6.6)
 		g.withArmIndex("j as u32", func() { g.emitUnionDecode(b, f, "e", "sub", ordinal, i5+"    ", true) })
 		fmt.Fprintf(b, "%s    true\n%s})();\n", i5, i5)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
 		if f.Array == ir.ArrayFixed {
 			// The oracle resets a fixed union slot as soon as its arm id is
 			// entered. A damaged arm therefore replaces that slot with None,
@@ -1427,7 +1444,7 @@ func (g *gen) emitVariableDispatch(b *strings.Builder, names []string) {
 		fmt.Fprintf(b, "            let mut v = %s::default();\n", st.Name)
 		fmt.Fprintf(b, "            let mut off = start;\n")
 		fmt.Fprintf(b, "            let _ = %s(wire, &mut off, end, ids, &mut v, nodes, report, TableRetainPath::default().step(u32::MAX, k as u32), if retaining { Some(&mut sink) } else { None }, true);\n", fn(st.Name, "load_body"))
-		fmt.Fprintf(b, "            if nodes.count_refused { return; }\n")
+		fmt.Fprintf(b, "            if nodes.count_refused || !report.missing_required_fields.is_empty() { return; }\n")
 		fmt.Fprintf(b, "            Some(Rc::new(v))\n")
 		fmt.Fprintf(b, "        }\n")
 	}
@@ -1797,6 +1814,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// no heap allocation for the id table (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_load_inner(wire: &[u8], retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
 	fmt.Fprintf(b, "    // this read's own non-finite float (docs/SPEC-TABLES.md §3.3)\n")
+	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
 	fmt.Fprintf(b, "    report.non_finite_float = \"\";\n")
 	fmt.Fprintf(b, "    report.non_finite_float_id = None;\n")
 	fmt.Fprintf(b, "    if wire.is_empty() { report.malformed = true; return None; }\n")
@@ -1924,12 +1942,12 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    // its refusal and diagnostic prefix follow the oracle order (§3.1, §4).\n")
 	fmt.Fprintf(b, "    for k in 0..nodes.slots.len() {\n")
 	fmt.Fprintf(b, "        if matches!(nodes.slots[k], TableNodeSlot::Table(_)) { variable_node_decode(wire, ids, &mut nodes, k, report); }\n")
-	fmt.Fprintf(b, "        if nodes.count_refused { return None; }\n")
+	fmt.Fprintf(b, "        if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
 	fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
-	fmt.Fprintf(b, "    if nodes.count_refused { return None; }\n")
+	fmt.Fprintf(b, "    if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
 	fmt.Fprintf(b, "    nodes.root_open = false;\n")
 	fmt.Fprintf(b, "    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); nodes.slots.len() + 1];\n")
 	fmt.Fprintf(b, "    v.__table_edges(&nodes, &mut edges[0]);\n")
@@ -2197,7 +2215,7 @@ func (g *gen) emitWideSaveField(b *strings.Builder, f *ir.Field, x, ind string) 
 // units keeps the longest prefix that does not split a pair and counts one
 // clamp.
 func emitWideLoadField(b *strings.Builder, f *ir.Field, field, in string) {
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindWstring, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindWstring, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 	fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)

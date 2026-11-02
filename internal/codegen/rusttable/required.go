@@ -45,3 +45,25 @@ func emitRequiredJSONEnd(b *strings.Builder, st *ir.Struct, ind string) {
 	fmt.Fprintf(b, "%slet missing = %s(v, &seen);\n", ind, fn(st.Name, "required_missing"))
 	fmt.Fprintf(b, "%sif !missing.is_empty() { jr.missing_required += 1; jr.missing_required_fields = missing; jr.reason = TableReason::MissingRequired; }\n", ind)
 }
+
+// A wire occurrence counts only if its field and collection header are
+// compatible. A skipped repeat leaves any previous compatible occurrence seen.
+func requiredKindSkip(f *ir.Field) string {
+	if f.Required {
+		return "field_skipped = true; " + kindSkip
+	}
+	return kindSkip
+}
+
+func requiredCollectionSkip(f *ir.Field) string {
+	if f.Required {
+		return "field_skipped = true; "
+	}
+	return ""
+}
+
+func emitRequiredWireSeen(b *strings.Builder, f *ir.Field, ordinal int, ind string) {
+	if f.Required {
+		fmt.Fprintf(b, "%sif !field_skipped { seen[%d] = true; }\n", ind, ordinal)
+	}
+}

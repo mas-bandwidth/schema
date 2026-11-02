@@ -583,7 +583,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 	defExpr := fieldDefault(&inner)
 	kind := fieldWireKind(f)
 	if f.Array != ir.ArrayNone {
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		i1 := in + "    "
 		fmt.Fprintf(b, "%slet Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", i1)
@@ -604,7 +604,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 	}
 	switch classOf(&inner) {
 	case vTable:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -613,20 +613,20 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    let mut tmp = %s::default();\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%s    let mut o = *off;\n", in)
 		fmt.Fprintf(b, "%s    let _ = %s(wire, &mut o, sub, ids, &mut tmp, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), ordinal)
-		fmt.Fprintf(b, "%s    if nodes.count_refused { return false; }\n", in)
+		fmt.Fprintf(b, "%s    if nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
 		fmt.Fprintf(b, "%s    if o != sub { report.malformed = true; tmp = %s::default(); }\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vUnion:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindUnion, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindUnion, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let mut tmp = %s::None;\n", in, unionOf(f).Name)
 		g.emitUnionDecode(b, &inner, "tmp", "end", ordinal, in+"    ", true)
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vString:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -645,7 +645,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    *off = s;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vBytes:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    let Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", in)
 		fmt.Fprintf(b, "%s    if *off > end || l > (end - *off) as u64 { report.malformed = true; return false; }\n", in)
@@ -673,13 +673,13 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vEnum:
-		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		emitEnumDecode(b, &inner, "let tmp", "end", "return false;", in+"    ")
 		fmt.Fprintf(b, "%s    %s = Some(tmp);\n", in, field)
 		fmt.Fprintf(b, "%s}\n", in)
 	default:
-		fmt.Fprintf(b, "%sif kind != %d && !table_kind_widens(kind, %d) { %s }\n", in, kind, kind, kindSkip)
+		fmt.Fprintf(b, "%sif kind != %d && !table_kind_widens(kind, %d) { %s }\n", in, kind, kind, requiredKindSkip(f))
 		fmt.Fprintf(b, "%selse {\n", in)
 		fmt.Fprintf(b, "%s    if kind != %d { report.widened += 1; }\n", in, kind)
 		fmt.Fprintf(b, "%s    let Some(raw) = %s(wire, off, end, kind) else { report.malformed = true; return false; };\n", in, scalarReadFn(f))
@@ -692,7 +692,7 @@ func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int
 // emitKeyedLoad reads an enum-keyed array (docs/SPEC-TABLES.md §2.4, §3.2, §4).
 func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field, in string) {
 	ek := elemWireKind(f)
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindKeyed, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindKeyed, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	i1 := in + "    "
 	fmt.Fprintf(b, "%slet Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", i1)
@@ -708,7 +708,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	fmt.Fprintf(b, "%s    None => { report.malformed = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { report.kind_mismatch += 1; }\n", i3, ek, ek)
+	fmt.Fprintf(b, "%sif ek != %d && !table_kind_widens(ek, %d) { %sreport.kind_mismatch += 1; }\n", i3, ek, ek, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif ek != %d { report.widened += 1; }\n", i4, ek)
@@ -741,7 +741,7 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
 		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%s%s[slot] = e;\n", i5, field)
 	case vPointer:
@@ -789,7 +789,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	key := ir.RustSnake(ir.MapKeyFieldName)
 	keyField := ir.MapKeyField(f)
 	keyKind := fieldWireKind(keyField)
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindArray, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	i1 := in + "    "
 	fmt.Fprintf(b, "%slet Some(l) = leb_read(wire, off) else { report.malformed = true; return false; };\n", i1)
@@ -805,7 +805,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%s    None => { report.malformed = true; }\n", i2)
 	fmt.Fprintf(b, "%s    Some(count) => {\n", i2)
 	i3 := i2 + "        "
-	fmt.Fprintf(b, "%sif ek != %d { report.kind_mismatch += 1; }\n", i3, ir.TableKindTable)
+	fmt.Fprintf(b, "%sif ek != %d { %sreport.kind_mismatch += 1; }\n", i3, ir.TableKindTable, requiredCollectionSkip(f))
 	fmt.Fprintf(b, "%selse if count > 0x7fffffff { return nodes.refuse_count(report); }\n", i3)
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
@@ -882,7 +882,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%sif !leb_skip(wire, &mut scan_off, eend, kkind) { break; }\n", i6)
 	fmt.Fprintf(b, "%s}\n", i5) // loop
 	fmt.Fprintf(b, "%sif entry_widened && !widened { widened = true; report.widened += 1; }\n", i5)
-	fmt.Fprintf(b, "%sif kind_bad { report.kind_mismatch += 1; %s.clear(); break; }\n", i5, field)
+	fmt.Fprintf(b, "%sif kind_bad { %sreport.kind_mismatch += 1; %s.clear(); break; }\n", i5, requiredCollectionSkip(f), field)
 	fmt.Fprintf(b, "%sif !scan_ok { report.malformed = true; break; }\n", i5)
 	fmt.Fprintf(b, "%sif key_over { report.clamped += 1; *off = eend; continue; }\n", i5)
 	fmt.Fprintf(b, "%slet mut order = std::cmp::Ordering::Less;\n", i5)
@@ -895,7 +895,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%slet slot_idx = if order == std::cmp::Ordering::Equal { %s.len() - 1 } else { %s.len() };\n", i5, field, field)
 	fmt.Fprintf(b, "%sif order == std::cmp::Ordering::Equal && let Some(ret) = retain.as_deref_mut() { retain_discard_body(ret, path.step(%d, slot_idx as u32)); }\n", i5, ordinal)
 	fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, slot_idx as u32), retain.as_deref_mut(), true);\n", i5, fn(f.MapEntry.Name, "load_body"), ordinal)
-	fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", i5)
+	fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
 	fmt.Fprintf(b, "%s*off = eend;\n", i5)
 	fmt.Fprintf(b, "%se.%s = key_val;\n", i5, key)
 	fmt.Fprintf(b, "%sif order == std::cmp::Ordering::Equal {\n", i5)
@@ -916,7 +916,7 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 
 // emitUnionLoad reads an arm header into the union enum (docs/SPEC-TABLES.md §2.6, §3).
 func (g *gen) emitUnionLoad(b *strings.Builder, f *ir.Field, ordinal int, field, in string) {
-	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindUnion, kindSkip)
+	fmt.Fprintf(b, "%sif kind != %d { %s }\n", in, ir.TableKindUnion, requiredKindSkip(f))
 	fmt.Fprintf(b, "%selse {\n", in)
 	fmt.Fprintf(b, "%s    if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", in, ordinal)
 	g.emitUnionDecode(b, f, field, "end", ordinal, in+"    ", true)
@@ -981,7 +981,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%slet mut body_val = %s::default();\n", in, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", in)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, %s, ids, &mut body_val, nodes, report, %s, retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), aend, g.armPath(ordinal))
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", in)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
 		fmt.Fprintf(b, "%sif o != %s { report.malformed = true; %s = %s::None; }\n", in, aend, field, un.Name)
 		fmt.Fprintf(b, "%selse { %s = %s::%s(body_val); }\n", in, field, un.Name, rustVariant(v.Name))
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
@@ -997,7 +997,7 @@ func (g *gen) emitArmDecode(b *strings.Builder, un *ir.Union, v ir.UnionVariant,
 		fmt.Fprintf(b, "%slet inner_ok = (|| -> bool {\n", in)
 		g.emitUnionDecode(b, f, "inner", aend, ordinal, in+"    ", true)
 		fmt.Fprintf(b, "%s    true\n%s})();\n", in, in)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", in)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
 		fmt.Fprintf(b, "%sif inner_ok { %s = %s::%s(inner); } else { %s = %s::None; }\n", in, field, un.Name, rustVariant(v.Name), field, un.Name)
 	case f.Array == ir.ArrayNone && classOf(f) == vEnum:
 		emitEnumDecode(b, f, "let slot", aend, "return false;", in)
@@ -1114,7 +1114,7 @@ func (g *gen) emitElementReadWithKind(b *strings.Builder, f *ir.Field, field, bo
 		fmt.Fprintf(b, "%slet mut e = %s::default();\n", ind, f.Type.Name)
 		fmt.Fprintf(b, "%slet mut o = *off;\n", ind)
 		fmt.Fprintf(b, "%slet _ = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, j as u32), retain.as_deref_mut(), true);\n", ind, fn(f.Type.Name, "load_body"), ordinal)
-		fmt.Fprintf(b, "%sif nodes.count_refused { return false; }\n", ind)
+		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", ind)
 		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", ind, f.Type.Name)
 		fmt.Fprintf(b, "%s*off = eend;\n", ind)
 		fmt.Fprintf(b, "%s%s.push(e);\n", ind, field)
