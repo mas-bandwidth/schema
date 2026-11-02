@@ -198,7 +198,7 @@ func variableFieldConstruct(f *ir.Field) string {
 		// wstring(N) rides as a field, an arm and a map value (§2.6, §2.8, §3);
 		// as an element, an optional or a keyed slot it is not carried yet
 		return "wstring(N) as an array element, an optional or an enum-keyed slot is outside the variable class this leg carries (§3)"
-	case f.Type.Optional && (f.Type.Pointer || f.KeyEnum != "" || f.IsMap()):
+	case f.Type.Optional && (f.Type.Pointer || f.KeyEnum != ""):
 		return "optional ?T of this shape is outside the variable class this leg carries (§2.3)"
 	case f.KeyEnum != "":
 		if f.KeyEnumRef == nil || f.Type.Pointer || f.Type.Optional || (classOf(f) != vScalar && classOf(f) != vEnum && classOf(f) != vTable) {

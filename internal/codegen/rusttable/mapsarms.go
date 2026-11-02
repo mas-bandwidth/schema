@@ -92,7 +92,24 @@ func structHoldsUnion(st *ir.Struct) bool {
 }
 
 func (g *gen) emitMapNumber(b *strings.Builder, f *ir.Field, x string) {
-	fmt.Fprintf(b, "    for e in %s.iter() { %s(e, g); }\n", x, fn(f.MapEntry.Name, "number"))
+	g.emitMapNumberInd(b, f, x, "    ")
+}
+
+// Node indices follow the canonical key walk, just as the entry writer does.
+// Sorting indices leaves caller storage intact and keeps shared-node numbering
+// independent of the order of the caller's Vec.
+func (g *gen) emitMapNumberInd(b *strings.Builder, f *ir.Field, x, ind string) {
+	bytes, str := ir.PointerReachableBlobs(f.MapEntry)
+	if !bytes && !str && len(ir.PointerReachable(f.MapEntry)) == 0 {
+		return // no graph edges: no runtime walk or sorting allocation
+	}
+	key := ir.RustSnake(ir.MapKeyFieldName)
+	fmt.Fprintf(b, "%s{\n", ind)
+	fmt.Fprintf(b, "%s    let entries = &%s;\n", ind, x)
+	fmt.Fprintf(b, "%s    let mut order: Vec<usize> = (0..entries.len()).collect();\n", ind)
+	fmt.Fprintf(b, "%s    order.sort_by(|&a, &b| %s);\n", ind, mapKeyOrd(f, "entries[a]."+key, "entries[b]."+key))
+	fmt.Fprintf(b, "%s    for k in order { %s(&entries[k], g); }\n", ind, fn(f.MapEntry.Name, "number"))
+	fmt.Fprintf(b, "%s}\n", ind)
 }
 
 func (g *gen) emitUnionNumber(b *strings.Builder, f *ir.Field, x string) {
@@ -141,7 +158,9 @@ func (g *gen) emitUnionNumberInd(b *strings.Builder, f *ir.Field, x, ind string)
 		case vTable:
 			fmt.Fprintf(b, "%s%s::%s(e) => { %s(e, g); }\n", in, un.Name, arm, fn(v.F.Type.Name, "number"))
 		case vMap:
-			fmt.Fprintf(b, "%s%s::%s(e) => { for ent in e.iter() { %s(ent, g); } }\n", in, un.Name, arm, fn(v.F.MapEntry.Name, "number"))
+			fmt.Fprintf(b, "%s%s::%s(e) => {\n", in, un.Name, arm)
+			g.emitMapNumberInd(b, v.F, "e", in+"    ")
+			fmt.Fprintf(b, "%s}\n", in)
 		case vUnion:
 			fmt.Fprintf(b, "%s%s::%s(e) => {\n", in, un.Name, arm)
 			g.emitUnionNumberInd(b, v.F, "(*e)", in+"    ")
@@ -173,6 +192,8 @@ func (g *gen) emitOptionalSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		return
 	}
 	switch classOf(f) {
+	case vMap:
+		g.emitMapSave(b, f, ordinal, "opt", inner)
 	case vTable:
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
@@ -348,7 +369,11 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 func (g *gen) emitMapSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind string) {
 	id := ir.TableFieldWireId(f)
 	inner := ind + "    "
-	fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%s{\n", ind)
+	} else {
+		fmt.Fprintf(b, "%sif !%s.is_empty() {\n", ind, x)
+	}
 	fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 	fmt.Fprintf(b, "%slet mut order: Vec<usize> = (0..%s.len()).collect();\n", inner, x)
 	fmt.Fprintf(b, "%sorder.sort_by(|&a, &b| %s);\n", inner, mapKeyOrd(f, x+"[a]."+ir.RustSnake(ir.MapKeyFieldName), x+"[b]."+ir.RustSnake(ir.MapKeyFieldName)))
@@ -549,6 +574,10 @@ func (g *gen) emitUnionElement(b *strings.Builder, f *ir.Field, x, dst string, o
 
 // emitOptionalLoadField decodes an optional field into Some(...) (docs/SPEC-TABLES.md §2.3, §4).
 func (g *gen) emitOptionalLoadField(b *strings.Builder, f *ir.Field, ordinal int, field, in string) {
+	if f.IsMap() {
+		g.emitMapLoad(b, f, ordinal, field, in)
+		return
+	}
 	inner := *f
 	inner.Type.Optional = false
 	defExpr := fieldDefault(&inner)
@@ -781,6 +810,11 @@ func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, i
 	fmt.Fprintf(b, "%selse {\n", i3)
 	i4 := i3 + "    "
 	fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
+	if f.Type.Optional {
+		fmt.Fprintf(b, "%s%s = Some(Vec::new());\n", i4, field)
+		fmt.Fprintf(b, "%slet entries = %s.as_mut().unwrap();\n", i4, field)
+		field = "entries"
+	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
 	fmt.Fprintf(b, "%slet mut landed = false;\n", i4)
 	fmt.Fprintf(b, "%slet mut widened = false;\n", i4)

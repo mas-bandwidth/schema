@@ -132,6 +132,15 @@ func (g *gen) emitCarveField(b *strings.Builder, f *ir.Field, x, base string, of
 	slot := cookAt(base, pieces[0].Offset)
 	switch {
 	case f.IsMap():
+		if f.Type.Optional {
+			fmt.Fprintf(b, "%sif let Some(xs) = %s {\n", ind, cookRef(x))
+			g.emitCarveMap(b, f, "(*xs)", slot, ind+"    ")
+			fmt.Fprintf(b, "%s} else {\n", ind)
+			layout := ir.RecordLayout(g.unit, f.MapEntry)
+			fmt.Fprintf(b, "%s    let _ = c.place(0, %d, %d); // an absent map still aligns its empty array\n", ind, layout.Size, layout.Align)
+			fmt.Fprintf(b, "%s}\n", ind)
+			return
+		}
 		g.emitCarveMap(b, f, x, slot, ind)
 		return
 	case f.IsList():

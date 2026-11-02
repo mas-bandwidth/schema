@@ -275,7 +275,11 @@ func elemRust(f *ir.Field) string {
 // a Vec of its element (a bounded [..N]T holds at most N, §2.9).
 func variableFieldType(f *ir.Field) string {
 	if f.IsMap() {
-		return "Vec<" + f.MapEntry.Name + ">"
+		t := "Vec<" + f.MapEntry.Name + ">"
+		if f.Type.Optional {
+			return "Option<" + t + ">"
+		}
+		return t
 	}
 	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
 		t := "Vec<" + elemRust(f) + ">"
@@ -543,6 +547,10 @@ func (g *gen) emitFieldNumber(b *strings.Builder, f *ir.Field) {
 	x := "v." + ir.RustSnake(f.Name)
 	if f.Type.Optional {
 		switch classOf(f) {
+		case vMap:
+			fmt.Fprintf(b, "    if let Some(entries) = &%s {\n", x)
+			g.emitMapNumber(b, f, "entries")
+			fmt.Fprintf(b, "    }\n")
 		case vPointer:
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "    if let Some(arr) = &%s { for n in arr.iter().flatten() { if g.visit_table(0x%016x, n.clone()) { %s(n, g); } } }\n", x, ir.TableWireId(f.Type.Ref.(*ir.Struct).WireName()), fn(f.Type.Name, "number"))
@@ -1482,6 +1490,8 @@ func (g *gen) emitFieldEdges(b *strings.Builder, f *ir.Field) {
 			} else {
 				fmt.Fprintf(b, "        if let Some(n) = &%s { nodes.push_edge(Rc::as_ptr(n) as *const () as usize, out); }\n", x)
 			}
+		case vMap:
+			fmt.Fprintf(b, "        if let Some(es) = &%s { for e in es.iter() { e.__table_edges(nodes, out); } }\n", x)
 		case vTable, vUnion:
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "        if let Some(arr) = &%s { for e in arr.iter() { e.__table_edges(nodes, out); } }\n", x)
@@ -1519,6 +1529,8 @@ func (g *gen) emitFieldLink(b *strings.Builder, f *ir.Field) {
 			} else {
 				fmt.Fprintf(b, "        if let Some(k) = %s.as_ref().and_then(|n| nodes.stub_record(Rc::as_ptr(n) as *const () as usize)) { %s = variable_node_build(wire, ids, nodes, k, report).and_then(|n| n.downcast::<%s>().ok()); } else { %s = None; }\n", x, x, f.Type.Name, x)
 			}
+		case vMap:
+			fmt.Fprintf(b, "        if let Some(es) = &mut %s { for e in es.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", x)
 		case vTable, vUnion:
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(b, "        if let Some(arr) = &mut %s { for e in arr.iter_mut() { e.__table_link(wire, ids, nodes, report); } }\n", x)

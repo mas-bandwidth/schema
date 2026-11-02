@@ -1349,7 +1349,13 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		inner.Type.Optional = false
 		fmt.Fprintf(b, "%sif jr.peek() == b'n' { jr.read_null(); %s = None; }\n", in, field)
 		fmt.Fprintf(b, "%selse {\n", in)
-		fmt.Fprintf(b, "%s    let mut tmp = %s;\n", in, fieldDefault(&inner))
+		if f.IsMap() {
+			// A wrong-kind repeat keeps the preceding map. Move its storage
+			// into the temporary; a valid object clears it before replacing it.
+			fmt.Fprintf(b, "%s    let mut tmp: %s = %s.take().unwrap_or_default();\n", in, variableFieldType(&inner), field)
+		} else {
+			fmt.Fprintf(b, "%s    let mut tmp: %s = %s;\n", in, variableFieldType(&inner), fieldDefault(&inner))
+		}
 		g.emitTextReadValue(b, &inner, "tmp", in+"    ")
 		fmt.Fprintf(b, "%s    if !jr.malformed { %s = Some(tmp); }\n", in, field)
 		fmt.Fprintf(b, "%s}\n", in)

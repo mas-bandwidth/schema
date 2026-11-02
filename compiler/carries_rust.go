@@ -6,7 +6,8 @@ package compiler
 // descends only through Some; held by
 // target_rust_carries_optional_variable_closure_test.go. One-sided integer
 // ranges use the normalized endpoints, held across JSON, variable/fixed wire,
-// and cook by rusttable.TestRustOneSidedRangeNative.
+// and cook by rusttable.TestRustOneSidedRangeNative. Optional maps are held by
+// the native presence, graph, ordering, text and cook probes in rusttable.
 func init() {
-	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange)
+	registerCarries("rust", carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap)
 }
