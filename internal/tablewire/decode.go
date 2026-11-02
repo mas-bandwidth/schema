@@ -60,6 +60,11 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	report.Malformed = false
 	ok, err := decodeWalk(m, inst, data, report, rt, region)
 	if refusal := refusedNonFinite(report); refusal != nil {
+		// Refusal publishes no value or retained prefix, just as damage does.
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
 		report.Malformed = report.Malformed || priorMalformed
 		return false, refusal
 	}
