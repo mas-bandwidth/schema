@@ -560,6 +560,7 @@ final class TableWireReport {
   int clamped = 0;
   String clampedField = '';
   int duplicate = 0;
+  int blobShared = 0;
   bool malformed = false;
   bool integrityMismatch = false;
   bool refused = false;
@@ -1067,6 +1068,7 @@ final class TableWireReader {
   final Set<int> knownTypes;
   final List<Object?> decoded;
   final Map<int, Object> stringBlobTokens;
+  final Set<int> namedBlobs;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -1092,6 +1094,7 @@ final class TableWireReader {
       knownTypes = <int>{},
       decoded = <Object?>[],
       stringBlobTokens = <int, Object>{},
+      namedBlobs = <int>{},
       edges = <int>[],
       nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
@@ -1109,6 +1112,7 @@ final class TableWireReader {
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
       stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -1134,6 +1138,7 @@ final class TableWireReader {
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
       stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -1386,6 +1391,7 @@ final class TableWireReader {
       WireState._stringBlobOrigins[owner]?.remove(field);
       return null;
     }
+    if (!namedBlobs.add(idx)) report.blobShared++;
     final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
     slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
     return value;
@@ -1395,10 +1401,16 @@ final class TableWireReader {
     final rec = idx - 2;
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
-      if (have is Uint8List) return have;
+      if (have is Uint8List) {
+        if (!namedBlobs.add(idx)) report.blobShared++;
+        return have;
+      }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
-    if (b != null) decoded[rec] = b;
+    if (b != null) {
+      decoded[rec] = b;
+      if (!namedBlobs.add(idx)) report.blobShared++;
+    }
     return b;
   }
 
