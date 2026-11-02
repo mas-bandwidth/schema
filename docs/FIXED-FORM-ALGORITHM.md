@@ -822,7 +822,16 @@ by the kind's signedness" has written a DIFFERENT RULE that agrees by accident, 
 a signed kind admits two widths. Take it as stated: **ladder widen, sign by the WRITER's kind; same-kind widen
 and enum widen, ZERO.** Both count `widened`, once per entry per record — **per ENTRY, so a folded element run
 counts ONCE and an unfolded one once per element — and because a fold across a widen is forbidden, the number a
-fixture asserts on a widened run is the EXACT `min(their_n, my_n)`** (§5.9 #33).
+fixture asserts on a full widened run is the EXACT `min(their_n, my_n)`** (§5.9 #33); a counted run executes only its live entries.
+
+**COMPILED ENTRIES AND LIVE EXECUTION ARE DISTINCT.** The `min(their_n, my_n)`
+above is the number of element entries emitted from the two schema bounds. For
+an array with a count, execution visits only entries inside the record's live
+count (held to the admitted bounds). Entries past that count describe slack:
+they validate nothing, refuse nothing, and move no counter, as SPEC-TABLES
+§3.4 requires. In particular, a widened counted array reports one `widened`
+per live element, not per reserved slot. The four-element case in §5.9 #33
+sends all four elements and still requires exactly four widenings.
 
 **THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
 
@@ -1043,7 +1052,7 @@ when every value lands.
 |---|---|---|
 | `MATCH`, at COMPILE | `unknown` | once per writer field no reader field names, **once per peer and never per record** |
 | `EMIT`, at COMPILE | `kind_mismatch` | once per pair whose kinds moved off every ladder |
-| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per ENTRY**: a folded element run is ONE and an unfolded one is `min(their_n, my_n)`, and a widened run is never folded, so a fixture asserts that EXACT count (§5.9 #33) |
+| `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per EXECUTED ENTRY**: a folded element run is ONE and a full unfolded run is `min(their_n, my_n)`. A counted run executes only its live elements; a widened run is never folded, so the full-count fixture asserts that EXACT count (§5.9 #33) |
 | `count`, `text` | — | a value past the plan's bound refuses `count_over_bound` / `length_over_bound` instead of clamping (§4.5), so no counter moves |
 | the bounds pass | `clamped` | once per field: a ranged scalar off its end, a `bits(N)` past `2^N - 1`, a union tag past the arm count, an enum ordinal past the top variant, **and a FORGED ordinal remapped to `None`** — one past the WRITER's own variant count, which the `ordinal` op lands as `0` and this pass counts, **on the COMPILED plan exactly as on the identity one** (§4.6, the bill's rule; the reference counts on neither compiled path — §5.8 row 12) |
 | `copy`, `const`, `present`, `ordinal` | none | the op lands its value and moves nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans, and a port that counts in the op as well counts twice |
@@ -1599,6 +1608,14 @@ leg's fixture share** (the C# leg's fixture asserts `4`). The C++ reference's `r
 (`test/tables/versioning_numbers.cpp:345`, "a widened element counts (§5.2)") is the REFERENCE FIXTURE'S LOOSER
 assertion, written before the fold's incompatibility was named, and a leg that copies it cannot tell a run that
 widened element by element from the folded read this ruling exists to catch.
+
+For counted arrays, this assertion counts **executed live entries**. A record
+with count zero executes zero widenings; count one executes one; the example
+above has count four and executes four. Plan compilation still emits the
+bound-many entries because the per-record count is not known at compile time.
+This ruling forbids folding away a widening; it does not override §3.4's slack
+rule or require reading bytes past the live count. The native regression is
+`TestFixedCountedArrayLiveExtent` in `internal/codegen/elixirtable`.
 
 **34. THE STATIC-DATA STRUCT'S NAME IS THE CONTRACT; ITS MEMBER COUNT CAN BE THE LANGUAGE'S.** The name on this
 page is **`TableFixedKnownLayout`** with #19's members in #19's order. Two divergences are now admitted, both
