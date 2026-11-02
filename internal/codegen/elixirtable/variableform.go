@@ -173,12 +173,17 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	}
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
-	anyArrayRoot := false
-	for _, st := range u.Tables {
+	anyArrayRoot, anyObjectRoot := false, false
+	for _, name := range names {
+		st := closureStruct(u, name)
 		anyArrayRoot = anyArrayRoot || st.JsonArray
+		anyObjectRoot = anyObjectRoot || !st.JsonArray
 	}
 	if !anyArrayRoot {
 		runtime = withoutArrayRoots(runtime)
+	} else if !anyObjectRoot {
+		// A closure containing only array roots cannot use object-root clauses.
+		runtime = strings.ReplaceAll(runtime, "  defp json_root_pairs(_desc, {:obj, pairs}), do: {:ok, pairs}\n  defp json_root_pairs(_desc, _raw), do: :error\n", "")
 	}
 	if len(uncarried) == 0 {
 		runtime = withoutUncarriedClauses(runtime)
@@ -214,8 +219,10 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 // clauses when none can be called, rather than suppressing unreachable warnings.
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
-		`  defp json_object(%{json_array: true, fields: [field]}, value, depth, _label),
-    do: json_field(field, Map.get(value, field.name, field.default), depth)
+		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
+    validate_required(desc, value)
+    json_field(field, Map.get(value, field.name, field.default), depth)
+  end
 
 `,
 		`  defp json_root_pairs(%{json_array: true, fields: [field]}, raw) when is_list(raw),
@@ -424,7 +431,7 @@ var unionClauses = []string{
 	"  defp json_read_list_elem(%{elem_kind: 15}",
 }
 
-const unionNodeBranch = "        :union ->\n          collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
+const unionNodeBranch = "          :union ->\n            collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
 
 // withoutUnions is the runtime for a unit with no union: unionFamilies and
 // unionClauses go, each with the comment directly above it, and so does the
@@ -669,6 +676,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       :blob_shared -> {:error, :blob_shared}
       # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
       :non_finite_float -> {:error, :non_finite_float}
+      :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
     end
@@ -720,53 +728,57 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # pointee.
   defp collect_nodes(desc, value, acc) do
     Enum.reduce(desc.fields, acc, fn f, acc ->
-      case f.t do
-        :blob ->
-          case Map.get(value, f.name) do
-            nil -> acc
-            v -> [{f.type_id, :blob, blob_site(v), v} | acc]
-          end
-
-        :pointer ->
-          case Map.get(value, f.name) do
-            nil ->
-              acc
-
-            v ->
-              push_node(acc, {f.type_id, :table, f.elem, v})
-          end
-
-        :table ->
-          # an absent optional (nil) owns no edge (§2.3), and a by-value
-          # table left nil holds its defaults, which name no node
-          case Map.get(value, f.name) do
-            nil -> acc
-            v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
-          end
-
-        :list ->
-          collect_list_nodes(f, Map.get(value, f.name) || [], acc)
-
-        :map ->
-          Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), acc, fn entry, acc ->
-            collect_nodes(Map.fetch!(@tables, f.elem), entry, acc)
-          end)
-
-        :union ->
-          collect_union_nodes(f.elem, Map.get(value, f.name), acc)
-
-        :keyed ->
-          slots = Map.get(value, f.name) || %{}
-
-          Enum.reduce(f.key_names, acc, fn name, acc ->
-            case Map.get(slots, name) do
+      if field_active?(f, desc, value) do
+        case f.t do
+          :blob ->
+            case Map.get(value, f.name) do
               nil -> acc
-              v -> collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc)
+              v -> [{f.type_id, :blob, blob_site(v), v} | acc]
             end
-          end)
 
-        _ ->
-          acc
+          :pointer ->
+            case Map.get(value, f.name) do
+              nil ->
+                acc
+
+              v ->
+                push_node(acc, {f.type_id, :table, f.elem, v})
+            end
+
+          :table ->
+            # an absent optional (nil) owns no edge (§2.3), and a by-value
+            # table left nil holds its defaults, which name no node
+            case Map.get(value, f.name) do
+              nil -> acc
+              v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)
+            end
+
+          :list ->
+            collect_list_nodes(f, Map.get(value, f.name) || [], acc)
+
+          :map ->
+            Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), acc, fn entry, acc ->
+              collect_nodes(Map.fetch!(@tables, f.elem), entry, acc)
+            end)
+
+          :union ->
+            collect_union_nodes(f.elem, Map.get(value, f.name), acc)
+
+          :keyed ->
+            slots = Map.get(value, f.name) || %{}
+
+            Enum.reduce(f.key_names, acc, fn name, acc ->
+              case Map.get(slots, name) do
+                nil -> acc
+                v -> collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc)
+              end
+            end)
+
+          _ ->
+            acc
+        end
+      else
+        acc
       end
     end)
   end
@@ -907,15 +919,25 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # save_fields writes one body's fields and returns the iodata, the node
   # index map, the id map and the reversed first-use order.
   defp save_fields(desc, value, idx_map, ids, order, acc) do
+    validate_required(desc, value)
+    value = Map.merge(defaults(desc), value)
+
     Enum.reduce(desc.fields, {idx_map, ids, order, acc}, fn f, {idx_map, ids, order, acc} ->
-      emit_field(f, value, idx_map, ids, order, acc)
+      if field_active?(f, desc, value),
+        do: emit_field(f, value, idx_map, ids, order, acc),
+        else: {idx_map, ids, order, acc}
     end)
   end
 
   defp emit_field(%{t: :blob} = f, value, idx_map, ids, order, acc) do
     case Map.get(value, f.name) do
       nil ->
-        {idx_map, ids, order, acc}
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, <<0>>]}
+        else
+          {idx_map, ids, order, acc}
+        end
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
@@ -950,7 +972,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :union} = f, value, idx_map, ids, order, acc) do
     case Map.get(value, f.name) do
       nil ->
-        {idx_map, ids, order, acc}
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, <<0>>]}
+        else
+          {idx_map, ids, order, acc}
+        end
 
       sel ->
         {ref, ids, order} = intern(ids, order, f.id)
@@ -983,7 +1010,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       end)
 
-    if n == 0 do
+    if n == 0 and not Map.get(f, :required, false) do
       {idx_map, ids, order, acc}
     else
       inner = [<<f.elem_kind>>, leb_encode(n), pairs]
@@ -998,7 +1025,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :wstring} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == nil or (v == "" and not Map.get(f, :optional, false)) do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
@@ -1023,7 +1050,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :pointer} = f, value, idx_map, ids, order, acc) do
     case Map.get(value, f.name) do
       nil ->
-        {idx_map, ids, order, acc}
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {idx_map, ids, order, [acc, leb_encode(ref), <<f.kind>>, <<0>>]}
+        else
+          {idx_map, ids, order, acc}
+        end
 
       v ->
         {ref, ids, order} = intern(ids, order, f.id)
@@ -1042,7 +1074,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         elem_desc = Map.fetch!(@tables, f.elem)
         {_idx, ids2, order2, body} = save_fields(elem_desc, v, idx_map, ids1, order1, [])
 
-        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) do
+        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) and
+             not Map.get(f, :required, false) do
           # an all-default nested table rides nothing (§3): the field and its
           # speculative ids roll back, exactly as the reference's truncate does.
           # An optional stays (§2.3): presence is the field itself, so an empty
@@ -1060,7 +1093,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp emit_field(%{t: :bytes} = f, value, idx_map, ids, order, acc) do
     v = Map.get(value, f.name, f.default)
 
-    if v == f.default do
+    if not emit_scalar?(f, v) do
       {idx_map, ids, order, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
@@ -1142,6 +1175,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # An optional enum has two zero states: absent nil and present reserved None.
   defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
 
+  defp emit_scalar?(%{required: true}, _v), do: true
   defp emit_scalar?(%{optional: true}, v), do: v != nil
   defp emit_scalar?(f, v), do: not same_field?(f, v, f.default)
 
@@ -1164,7 +1198,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # declared default, and a counted or unbounded array elides when empty.
   defp list_elides?(f, elements) do
     cond do
-      Map.get(f, :optional, false) ->
+      Map.get(f, :optional, false) or Map.get(f, :required, false) ->
         false
 
       Map.has_key?(f, :fixed_array) and f.elem_kind == 13 ->
@@ -1396,14 +1430,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
             # that met damage anywhere returns no value, only its report
-            if Map.get(report, :malformed) do
-              {:error, :malformed, reasoned(report, :malformed)}
-            else
-              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
+            cond do
+              Map.get(report, :missing_required, 0) > 0 ->
+                {:error, :missing_required, report}
+
+              Map.get(report, :malformed) ->
+                {:error, :malformed, reasoned(report, :malformed)}
+
+              true ->
+                {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
             end
         end
     end
   catch
+    {:missing_required, report} ->
+      {:error, :missing_required, report}
+
     {:count_over_extent_cap, report} ->
       {:error, :count_over_extent_cap, reasoned(report, :count_over_extent_cap)}
 
@@ -1894,32 +1936,39 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
   defp decode(desc, fields, nodes, ids) do
-    Enum.reduce_while(fields, {Map.new(), empty_report()}, fn {id, kind, payload},
-                                                              {value, report} ->
-      case find_field(desc, id) do
-        nil ->
-          {:cont, {value, %{report | unknown: report.unknown + 1}}}
+    {value, report} =
+      Enum.reduce_while(fields, {Map.new(), empty_report()}, fn {id, kind, payload},
+                                                                {value, report} ->
+        case find_field(desc, id) do
+          nil ->
+            {:cont, {value, %{report | unknown: report.unknown + 1}}}
 
-        f ->
-          cond do
-            kind == f.kind ->
-              case read_payload(f, payload, nodes, ids, report) do
-                {:cont, :inert, report} -> {:cont, {inert_field(f, value), report}}
-                {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
-                {:halt, v, report} -> {:halt, {Map.put(value, f.name, v), report}}
-              end
+          f ->
+            cond do
+              kind == f.kind and not compatible_payload?(f, payload) ->
+                {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
 
-            widens?(kind, f) ->
-              # WIDENED (§4): a kind that grew since the writer decodes exactly
-              # at its own width, the value lands, and one widened event counts
-              {v, report} = read_widened(f, kind, payload, report)
-              {:cont, {Map.put(value, f.name, v), report}}
+              kind == f.kind ->
+                case read_payload(f, payload, nodes, ids, report) do
+                  {:cont, :inert, report} -> {:cont, {inert_required_field(f, value), report}}
+                  {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
+                  {:halt, v, report} -> {:halt, {Map.put(value, f.name, v), report}}
+                end
 
-            true ->
-              {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
-          end
-      end
-    end)
+              widens?(kind, f) ->
+                # WIDENED (§4): a kind that grew since the writer decodes exactly
+                # at its own width, the value lands, and one widened event counts
+                {v, report} = read_widened(f, kind, payload, report)
+                {:cont, {Map.put(value, f.name, v), report}}
+
+              true ->
+                {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+            end
+        end
+      end)
+
+    report = require_seen(desc, value, Map.keys(value), report)
+    {value, report}
   end
 
   # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
@@ -2106,7 +2155,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp read_payload(%{t: :float} = f, payload, _nodes, _ids, report) do
-    {:cont, float_of(payload, f.width, f.non_finite), report}
+    {v, report} = clamp_int(float_of(payload, f.width, f.non_finite), f, report)
+    {:cont, v, report}
   end
 
   defp read_payload(%{t: :map} = f, payload, nodes, ids, report) do
@@ -2422,6 +2472,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   catch
     {:count_over_extent_cap, child} ->
       throw({:count_over_extent_cap, merge_report(report, child)})
+
+    {:missing_required, child} ->
+      throw({:missing_required, merge_report(report, child)})
   end
 
   # a count past a bounded array's declared bound reads the first bound
@@ -2444,7 +2497,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # reads at the wire kind's own width and lands, one widened event counts, and an
   # out-of-range value clamps as always.
   defp read_widened(%{t: :float} = f, kind, payload, report) do
-    {float_of(payload, kind_width(kind), f.non_finite), %{report | widened: report.widened + 1}}
+    {v, report} = clamp_int(float_of(payload, kind_width(kind), f.non_finite), f, report)
+    {v, %{report | widened: report.widened + 1}}
   end
 
   defp read_widened(f, kind, payload, report) do
@@ -2622,7 +2676,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     if byte_size(rest) >= w do
       <<raw::binary-size(^w), after_sub::binary>> = rest
-      v = float_of(raw, w, f.non_finite)
+      {v, report} = clamp_list_int(float_of(raw, w, f.non_finite), f, report)
       read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
     else
       {Enum.reverse(acc), %{report | malformed: true}}
@@ -2695,6 +2749,107 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # Required presence closes each body, using final branch values (§2.3).
+  # JSON supplies named keys; wire supplies only compatible fields.
+  defp require_seen(desc, value, seen, report) do
+    missing =
+      Enum.filter(desc.fields, fn f ->
+        Map.get(f, :required, false) and field_active?(f, desc, value) and f.name not in seen
+      end)
+
+    if missing == [] do
+      report
+    else
+      report =
+        report
+        |> Map.update(:missing_required, 1, &(&1 + 1))
+        |> Map.put(:reason, "missing_required: " <> Enum.map_join(missing, ", ", & &1.name))
+
+      throw({:missing_required, report})
+    end
+  end
+
+  defp field_active?(%{guard: guard}, desc, value) do
+    Enum.all?(String.split(guard, " && "), fn term ->
+      {name, want} =
+        if String.starts_with?(term, "!"),
+          do: {String.trim_leading(term, "!"), false},
+          else: {term, true}
+
+      parent = Enum.find(desc.fields, &(&1.name == name))
+      parent != nil and Map.get(value, name, parent.default) == want
+    end)
+  end
+
+  defp field_active?(_f, _desc, _value), do: true
+
+  defp validate_required(desc, value) do
+    Enum.each(desc.fields, fn f ->
+      if Map.get(f, :required, false) and field_active?(f, desc, value) do
+        required_value(f, Map.get(value, f.name, f.default))
+      end
+    end)
+  end
+
+  defp required_value(%{t: :list} = f, values) do
+    Enum.each(pad_fixed(f, values), fn v ->
+      if Map.has_key?(f, :elem_min) and (v < f.elem_min or v > f.elem_max),
+        do: throw(:invalid_value)
+
+      if f.elem_kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+        bits = Map.get(f, :elem_bits, kind_width(f.elem_kind) * 8)
+        signed = f.elem_kind in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24]
+        required_integer(v, bits, signed)
+      end
+    end)
+  end
+
+  defp required_value(%{t: :keyed} = f, slots) do
+    Enum.each(f.key_names, fn name ->
+      required_value(f.item, Map.get(slots, name, f.item.default))
+    end)
+  end
+
+  defp required_value(%{min: lo, max: hi}, v) when v < lo or v > hi,
+    do: throw(:invalid_value)
+
+  defp required_value(%{t: :int} = f, v),
+    do: required_integer(v, Map.get(f, :bits, f.width * 8), f.signed)
+
+  defp required_value(_f, _v), do: :ok
+
+  defp required_integer(v, bits, signed) do
+    {lo, hi} =
+      if signed, do: {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}, else: {0, (1 <<< bits) - 1}
+
+    if not is_integer(v) or v < lo or v > hi, do: throw(:invalid_value)
+  end
+
+  defp compatible_payload?(%{t: t, elem_kind: expected}, payload)
+       when t in [:list, :map, :keyed] do
+    case leb(payload) do
+      {_len, <<actual, _count, _::binary>>} ->
+        actual == expected or (t == :list and kind_widens?(actual, expected))
+
+      _ ->
+        true
+    end
+  end
+
+  defp compatible_payload?(%{t: :bytes}, payload) do
+    case leb(payload) do
+      {_len, <<actual, _count, _::binary>>} -> actual == 6
+      _ -> true
+    end
+  end
+
+  defp compatible_payload?(_f, _payload), do: true
+
+  defp inert_required_field(%{required: true} = f, value),
+    do: Map.put_new(value, f.name, f.default)
+
+  defp inert_required_field(f, value), do: inert_field(f, value)
+
   defp malformed_report,
     do: %{
       unknown: 0,
@@ -2704,7 +2859,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       malformed: true,
       retained: 0,
       retain_lost: 0,
-      reason: ""
+      reason: "",
+      missing_required: 0
     }
 
   # ---- the shared primitives ----
@@ -2718,7 +2874,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       malformed: false,
       retained: 0,
       retain_lost: 0,
-      reason: ""
+      reason: "",
+      missing_required: 0
     }
 
   # defaults is a field's declared default: what an absent field reads (§4). The
@@ -3012,6 +3169,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       catch
         :non_finite_float -> {:error, :non_finite_float}
+        :invalid_value -> {:error, :invalid_value}
       after
         Process.delete(:elixir_json_refs)
         Process.delete(:elixir_json_labels)
@@ -3034,6 +3192,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Process.put(:elixir_json_open, %{})
     Process.put(:elixir_json_bad, false)
     Process.put(:elixir_json_variable, desc.variable)
+    outer_table = Process.get(:elixir_json_table)
 
     try do
       with {:ok, raw, rest} <- json_value(text, 0),
@@ -3043,10 +3202,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         else
           {value, report} = json_fields(desc, pairs)
 
-          if Process.get(:elixir_json_bad) or report.malformed do
-            {:error, :malformed, %{report | malformed: true}}
-          else
-            {:ok, Map.merge(defaults(desc), value), report}
+          cond do
+            Map.get(report, :missing_required, 0) > 0 ->
+              {:error, :missing_required, report}
+
+            Process.get(:elixir_json_bad) or report.malformed ->
+              {:error, :malformed, %{report | malformed: true}}
+
+            true ->
+              {:ok, Map.merge(defaults(desc), value), report}
           end
         end
       else
@@ -3057,7 +3221,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         _ ->
           {:error, :malformed, empty_report()}
       end
+    catch
+      {:missing_required, report} -> {:error, :missing_required, report}
     after
+      if outer_table == nil,
+        do: Process.delete(:elixir_json_table),
+        else: Process.put(:elixir_json_table, outer_table)
+
       Process.delete(:elixir_json_defs)
       Process.delete(:elixir_json_open)
       Process.delete(:elixir_json_bad)
@@ -3079,7 +3249,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # counted again through its parent.
   defp tally_refs(desc, value, acc) do
     Enum.reduce(desc.fields, acc, fn f, acc ->
-      tally_field(f, Map.get(value, f.name), acc)
+      if field_active?(f, desc, value),
+        do: tally_field(f, Map.get(value, f.name), acc),
+        else: acc
     end)
   end
 
@@ -3162,16 +3334,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     "null"
   end
 
-  defp json_object(%{json_array: true, fields: [field]}, value, depth, _label),
-    do: json_field(field, Map.get(value, field.name, field.default), depth)
+  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
+    validate_required(desc, value)
+    json_field(field, Map.get(value, field.name, field.default), depth)
+  end
 
   defp json_object(desc, value, depth, label) do
+    validate_required(desc, value)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
     present =
       Enum.reject(desc.fields, fn f ->
-        Map.get(f, :optional, false) and Map.get(value, f.name) == nil
+        not field_active?(f, desc, value) or
+          (Map.get(f, :optional, false) and Map.get(value, f.name) == nil)
       end)
 
     entries =
@@ -3577,10 +3753,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_fields(desc, pairs) when is_list(pairs) do
     outer = Process.put(:elixir_json_table, desc.name)
 
-    {value, _seen, report} =
+    {value, seen, report} =
       Enum.reduce(pairs, {%{}, MapSet.new(), empty_report()}, fn {k, raw},
                                                                  {value, seen, report} ->
-        if report.malformed or Process.get(:elixir_json_bad, false) do
+        if report.malformed or Map.get(report, :missing_required, 0) > 0 or
+             Process.get(:elixir_json_bad, false) do
           {value, seen, report}
         else
           if String.starts_with?(k, "&") do
@@ -3627,7 +3804,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       do: Process.delete(:elixir_json_table),
       else: Process.put(:elixir_json_table, outer)
 
-    {value, report}
+    {value, require_seen(desc, value, seen, report)}
   end
 
   # json_skip_value walks a value the reader drops (an unknown key, a kind
@@ -3886,7 +4063,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     case json_root_pairs(desc, raw) do
       {:ok, pairs} ->
-        {v, elem_report} = json_fields(desc, pairs)
+        {v, elem_report} = carry_count_report(report, fn -> json_fields(desc, pairs) end)
         {v, merge_report(report, elem_report)}
 
       _ ->
@@ -4279,10 +4456,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_read_list_elem(%{elem_kind: kind}, e, report)
+  defp json_read_list_elem(%{elem_kind: kind} = f, e, report)
        when kind in [10, 11] and is_number(e) do
     case json_float_in_width(e, kind_width(kind)) do
-      {:ok, v} -> {v, report}
+      {:ok, v} -> clamp_list_int(v, f, report)
       :error -> {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
@@ -4374,7 +4551,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {nil, %{report | malformed: true}}
     else
       Process.put(:elixir_json_open, Map.put(open, label, true))
-      {v, elem_report} = json_fields(Map.fetch!(@tables, table), rest_pairs)
+
+      {v, elem_report} =
+        carry_count_report(report, fn -> json_fields(Map.fetch!(@tables, table), rest_pairs) end)
+
       Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
 
       Process.put(
@@ -4387,7 +4567,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_node(table, pairs, report) when is_list(pairs) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, table), pairs)
+    {v, elem_report} =
+      carry_count_report(report, fn -> json_fields(Map.fetch!(@tables, table), pairs) end)
+
     {v, merge_report(report, elem_report)}
   end
 
@@ -4406,7 +4588,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       malformed: a.malformed or b.malformed,
       retained: a.retained + b.retained,
       retain_lost: a.retain_lost + b.retain_lost,
-      reason: merge_reason(a, b)
+      reason: merge_reason(a, b),
+      missing_required: Map.get(a, :missing_required, 0) + Map.get(b, :missing_required, 0)
     }
 
     case Map.get(a, :duplicate, 0) + Map.get(b, :duplicate, 0) do
@@ -5063,6 +5246,8 @@ const variableRetainSource = `
 
   def load_retain(table, data, retain, report) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
+    missing_before = Map.get(report, :missing_required, 0)
+    report = report |> Map.put(:missing_required, 0) |> Map.put(:reason, "")
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
     # into it resets both stores, keeping only the caller's capacities.
     retain = %{retain | records: [], used: 0, ids: []}
@@ -5083,18 +5268,27 @@ const variableRetainSource = `
                 end)
               end)
 
-            report = Map.put(report, :blob_shared, shared)
+            report =
+              report
+              |> Map.put(:blob_shared, shared)
+              |> Map.update(:missing_required, missing_before, &(&1 + missing_before))
+
             # the records were kept newest first; they are saved in the order
             # retained
             retain = %{Map.delete(retain, :memo) | records: Enum.reverse(retain.records)}
 
             # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): no value
             # and nothing retained, only the report
-            if report.malformed do
-              {:error, :malformed, reasoned(report, :malformed),
-               %{retain | records: [], used: 0, ids: []}}
-            else
-              {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
+            cond do
+              Map.get(report, :missing_required, 0) > missing_before ->
+                {:error, :missing_required, report, %{retain | records: [], used: 0, ids: []}}
+
+              report.malformed ->
+                {:error, :malformed, reasoned(report, :malformed),
+                 %{retain | records: [], used: 0, ids: []}}
+
+              true ->
+                {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok), retain}
             end
 
           _ ->
@@ -5103,6 +5297,16 @@ const variableRetainSource = `
         end
     end
   catch
+    {:missing_required, refused_report} ->
+      refused_report =
+        Map.update!(
+          refused_report,
+          :missing_required,
+          &(&1 + Map.get(report, :missing_required, 0))
+        )
+
+      {:error, :missing_required, refused_report, %{retain | records: [], used: 0, ids: []}}
+
     {:count_over_extent_cap, refused_report} ->
       {:error, :count_over_extent_cap, reasoned(refused_report, :count_over_extent_cap),
        %{retain | records: [], used: 0, ids: []}}
@@ -5125,6 +5329,7 @@ const variableRetainSource = `
     end
   catch
     :non_finite_float -> -1
+    :invalid_value -> -1
   end
 
   def save_retain(table, value, retain, report) when is_map(value) do
@@ -5135,6 +5340,7 @@ const variableRetainSource = `
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float, report, retain}
+    :invalid_value -> {:error, :invalid_value, report, retain}
   end
 
   defp save_retain_internal(table, value, retain, report),
@@ -5179,9 +5385,14 @@ const variableRetainSource = `
   # index map, the id map and its first-use order, and the two caller stores
   # with the report.
   defp save_fields_retain(desc, value, s, path, acc) do
+    validate_required(desc, value)
+    value = Map.merge(defaults(desc), value)
+
     {s, acc} =
       Enum.reduce(desc.fields, {s, acc}, fn f, {s, acc} ->
-        emit_field_retain(f, value, s, path, acc)
+        if field_active?(f, desc, value),
+          do: emit_field_retain(f, value, s, path, acc),
+          else: {s, acc}
       end)
 
     emit_retain_tail(s, path, acc)
@@ -5208,7 +5419,8 @@ const variableRetainSource = `
             []
           )
 
-        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) do
+        if IO.iodata_length(body) == 0 and not Map.get(f, :optional, false) and
+             not Map.get(f, :required, false) do
           {{idx_map, ids, order, retain2, report2}, acc}
         else
           framed = [body, <<0>>]
@@ -5282,7 +5494,7 @@ const variableRetainSource = `
         end
       end)
 
-    if n == 0 do
+    if n == 0 and not Map.get(f, :required, false) do
       {{idx_map, ids, order, retain2, report2}, acc}
     else
       inner = [<<f.elem_kind>>, leb_encode(n), pairs]
@@ -5297,7 +5509,12 @@ const variableRetainSource = `
 
     case Map.get(value, f.name) do
       nil ->
-        {s, acc}
+        if Map.get(f, :required, false) do
+          {ref, ids, order} = intern(ids, order, f.id)
+          {{idx_map, ids, order, retain, report}, [acc, leb_encode(ref), <<15, 0>>]}
+        else
+          {s, acc}
+        end
 
       sel ->
         {ref, ids, order} = intern(ids, order, f.id)
@@ -5443,65 +5660,82 @@ const variableRetainSource = `
   # ---- the retaining read: decode with a caller-owned store (§6.6) ----
 
   defp decode_retain(desc, fields, nodes, ids, retain, report, path) do
-    Enum.reduce_while(fields, {Map.new(), report, retain}, fn {id, kind, payload},
-                                                              {value, report, retain} ->
-      case find_field(desc, id) do
-        nil ->
-          # an unknown FIELD id is the retained class (§6.6): the resolved walk
-          # decides, and the six excluded classes count one retain_lost.
-          if payload == <<>> do
-            # a field the plain read could not delimit — its slice failed — has
-            # no bytes to retain: §6.6's capture never runs, one unknown counts
-            # and the enclosing read's malformed does (§3, §4).
-            {:cont, {value, %{report | unknown: report.unknown + 1}, retain}}
-          else
-            # A RETAINED FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
-            # §3.3, §6.6): a kind-10 or kind-11 entry whose raw bits are a NaN
-            # or an infinity refuses the read, named <owner>.0x<id>.
-            if kind in [10, 11] do
-              _ = float_of(payload, kind_width(kind), retained_float_name(desc, id))
-            end
+    {value, report, retain} =
+      Enum.reduce_while(fields, {Map.new(), report, retain}, fn {id, kind, payload},
+                                                                {value, report, retain} ->
+        case find_field(desc, id) do
+          nil ->
+            # an unknown FIELD id is the retained class (§6.6): the resolved walk
+            # decides, and the six excluded classes count one retain_lost.
+            if payload == <<>> do
+              # a field the plain read could not delimit — its slice failed — has
+              # no bytes to retain: §6.6's capture never runs, one unknown counts
+              # and the enclosing read's malformed does (§3, §4).
+              {:cont, {value, %{report | unknown: report.unknown + 1}, retain}}
+            else
+              # A RETAINED FLOAT IS TESTED LIKE A KNOWN ONE (docs/SPEC-TABLES.md
+              # §3.3, §6.6): a kind-10 or kind-11 entry whose raw bits are a NaN
+              # or an infinity refuses the read, named <owner>.0x<id>.
+              if kind in [10, 11] do
+                _ = float_of(payload, kind_width(kind), retained_float_name(desc, id))
+              end
 
-            case retain_capture(ids, kind, payload) do
-              {:ok, resolved} ->
-                if retain_room(retain, path, resolved) do
-                  retain = retain_put(retain, path, id, kind, resolved)
+              case retain_capture(ids, kind, payload) do
+                {:ok, resolved} ->
+                  if retain_room(retain, path, resolved) do
+                    retain = retain_put(retain, path, id, kind, resolved)
 
-                  {:cont,
-                   {value, %{report | unknown: report.unknown + 1, retained: report.retained + 1},
-                    retain}}
-                else
+                    {:cont,
+                     {value,
+                      %{report | unknown: report.unknown + 1, retained: report.retained + 1},
+                      retain}}
+                  else
+                    {:cont,
+                     {value,
+                      %{
+                        report
+                        | unknown: report.unknown + 1,
+                          retain_lost: report.retain_lost + 1
+                      }, retain}}
+                  end
+
+                :error ->
                   {:cont,
                    {value,
                     %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
                     retain}}
+              end
+            end
+
+          f ->
+            cond do
+              kind == f.kind and not compatible_payload?(f, payload) ->
+                {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
+
+              kind == f.kind ->
+                case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
+                  {:cont, :inert, report, retain} ->
+                    {:cont, {inert_required_field(f, value), report, retain}}
+
+                  {:cont, v, report, retain} ->
+                    {:cont, {Map.put(value, f.name, v), report, retain}}
+
+                  {:halt, v, report, retain} ->
+                    {:halt, {Map.put(value, f.name, v), report, retain}}
                 end
 
-              :error ->
-                {:cont,
-                 {value,
-                  %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
-                  retain}}
+              widens?(kind, f) ->
+                {v, report} = read_widened(f, kind, payload, report)
+                {:cont, {Map.put(value, f.name, v), report, retain}}
+
+              true ->
+                {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
             end
-          end
+        end
+      end)
 
-        f ->
-          cond do
-            kind == f.kind ->
-              case read_payload_retain(f, payload, nodes, ids, report, retain, path) do
-                {:cont, v, report, retain} -> {:cont, {Map.put(value, f.name, v), report, retain}}
-                {:halt, v, report, retain} -> {:halt, {Map.put(value, f.name, v), report, retain}}
-              end
-
-            widens?(kind, f) ->
-              {v, report} = read_widened(f, kind, payload, report)
-              {:cont, {Map.put(value, f.name, v), report, retain}}
-
-            true ->
-              {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
-          end
-      end
-    end)
+    report = require_seen(desc, value, Map.keys(value), report)
+    {value, report, retain}
   end
 
   # a retained unknown float's name: the body's table and the id it cannot
@@ -6657,6 +6891,12 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 	if f.Type.Timestamp {
 		fmt.Fprintf(&b, ", timestamp: %q", f.Name)
 	}
+	if f.Required {
+		b.WriteString(", required: true")
+	}
+	if f.Guard != "" {
+		fmt.Fprintf(&b, ", guard: %q", f.Guard)
+	}
 	switch {
 	case f.IsMap():
 		// SPEC-TABLES §2.8, §3: a map is kind 14 over framed table
@@ -6703,11 +6943,17 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		if f.Type.Kind == ir.TFixed {
 			fmt.Fprintf(&b, ", elem_frac: %d", f.Type.FracBits)
 		}
+		if f.Type.Kind == ir.TBits {
+			fmt.Fprintf(&b, ", elem_bits: %d", f.Type.Width)
+		}
 		if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed {
 			// §16.2: the declared range holds every element
 			if lo, hi, ok := ir.TableRawRange(f); ok {
 				fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", lo.String(), hi.String())
 			}
+		}
+		if f.HasFloatRange {
+			fmt.Fprintf(&b, ", elem_min: %s, elem_max: %s", fixedFloatLiteral(f.FMin), fixedFloatLiteral(f.FMax))
 		}
 		if fl := flagsRef(f); fl != nil {
 			// an array of flags: each element's text is its set names

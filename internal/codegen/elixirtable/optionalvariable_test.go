@@ -77,7 +77,7 @@ Probe.check(Probe.hex(again) == %q, %q <> " reloaded: " <> Probe.hex(again))
 	}
 
 	// the reversed witness
-	const fixed = "          case Map.get(value, f.name) do\n            nil -> acc\n            v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)\n          end\n"
+	const fixed = "            case Map.get(value, f.name) do\n              nil -> acc\n              v -> collect_nodes(Map.fetch!(@tables, f.elem), v, acc)\n            end\n"
 	const old = "          collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc)\n"
 	planted := map[string][]byte{}
 	n := 0
