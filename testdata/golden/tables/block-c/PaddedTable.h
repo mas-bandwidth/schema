@@ -3753,9 +3753,10 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_body( blockdemo_table_reader_
     }
 }
 
-/* padded_row_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* padded_row_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int blockdemo_padded_row_load_tolerant( blockdemo_padded_row_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -3766,7 +3767,8 @@ static SCHEMA_UNUSED int blockdemo_padded_row_load_tolerant( blockdemo_padded_ro
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_padded_row_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_padded_row_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { blockdemo_padded_row_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN padded_row_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -4488,9 +4490,10 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_body( blockdemo_table_reade
     }
 }
 
-/* padded_frame_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* padded_frame_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int blockdemo_padded_frame_load_tolerant( blockdemo_padded_frame_t * value, const uint8_t * buffer, int64_t bytes, blockdemo_table_report_t * report )
 {
     blockdemo_table_report_t ignored; blockdemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -4501,7 +4504,8 @@ static SCHEMA_UNUSED int blockdemo_padded_frame_load_tolerant( blockdemo_padded_
     non_finite_before = report->non_finite_floats;
     whole = blockdemo_padded_frame_load_body( &r, value );
     if ( blockdemo_table_non_finite_refused( report, non_finite_before ) ) { blockdemo_padded_frame_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { blockdemo_padded_frame_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN padded_frame_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -6419,7 +6423,11 @@ int schema_blockdemo_padded_row_from_json_( blockdemo_padded_row_t * value, cons
 int64_t schema_blockdemo_padded_row_to_json_( const blockdemo_padded_row_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int blockdemo_padded_row_from_json_tolerant( blockdemo_padded_row_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return schema_blockdemo_padded_row_from_json_( value, text, bytes, report );
+    blockdemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_blockdemo_padded_row_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { blockdemo_padded_row_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN padded_row_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_padded_row_from_json( blockdemo_padded_row_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
@@ -6449,7 +6457,11 @@ int schema_blockdemo_padded_frame_from_json_( blockdemo_padded_frame_t * value, 
 int64_t schema_blockdemo_padded_frame_to_json_( const blockdemo_padded_frame_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int blockdemo_padded_frame_from_json_tolerant( blockdemo_padded_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
 {
-    return schema_blockdemo_padded_frame_from_json_( value, text, bytes, report );
+    blockdemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_blockdemo_padded_frame_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { blockdemo_padded_frame_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN padded_frame_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int blockdemo_padded_frame_from_json( blockdemo_padded_frame_t * value, const char * text, int64_t bytes, blockdemo_table_report_t * report )
