@@ -2193,6 +2193,11 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 	in.pos++
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
+	// THE DUPLICATE TEST IS A HASH LOOKUP, never a scan of the entries placed
+	// so far: a scan is quadratic in the entry count, so a large map in text
+	// would cost the reader seconds (security/text-form-map-duplicates-quadratic).
+	// mapKeyIdentity is the equality MapKeyOrder reports as 0.
+	seen := map[mapKeyIdentity]int{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -2256,17 +2261,12 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		case !in.readMapValue(&entry.Fields[1], depth):
 			return false
 		default:
-			at := -1
-			for i := range fv.Entries {
-				if MapKeyOrder(f, MapKeyOf(f, fv.Entries[i].Tab), MapKeyOf(f, entry)) == 0 {
-					at = i
-					break
-				}
-			}
-			if at >= 0 {
+			id := identityOf(f, MapKeyOf(f, entry))
+			if at, ok := seen[id]; ok {
 				in.report.Duplicate++
 				fv.Entries[at] = Cell{Tab: entry}
 			} else {
+				seen[id] = len(fv.Entries)
 				fv.Entries = append(fv.Entries, Cell{Tab: entry})
 			}
 		}

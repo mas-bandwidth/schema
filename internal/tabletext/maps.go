@@ -34,6 +34,26 @@ func MapKeyOf(f *ir.Field, entry *Instance) MapKey {
 	return MapKey{U: cell.U, I: cell.I}
 }
 
+// mapKeyIdentity is a map key as a comparable value: two keys have the same
+// identity exactly when MapKeyOrder orders them equal (the bytes for a string
+// key, the signed value for a signed integer key, the unsigned value
+// otherwise).
+type mapKeyIdentity struct {
+	str string
+	n   uint64
+}
+
+func identityOf(f *ir.Field, k MapKey) mapKeyIdentity {
+	if MapKeyIsString(f) {
+		return mapKeyIdentity{str: string(k.Str)}
+	}
+	key := ir.MapKeyField(f)
+	if key.Type.Kind == ir.TInt && key.Type.Signed {
+		return mapKeyIdentity{n: uint64(k.I)}
+	}
+	return mapKeyIdentity{n: k.U}
+}
+
 // MapKeyOrder is the comparison the sort and the reader's ascending check both
 // use: byte-wise over the common prefix and then by length for a string key,
 // and the numeric order for an integer one — signed where the declaration is.
