@@ -116,7 +116,7 @@ constructs and/or active corpus witnesses. A successful registry declaration
 alone cannot satisfy the remaining native, all-roots and control phases.
 
 The C++ readiness leg also runs the complete shared `internal/tabletext`,
-`internal/tablewire`, and `tools/fixedtwin` packages once, recording
+`internal/tablewire`, `internal/tablepack`, and `tools/fixedtwin` packages once, recording
 their discovered inventories and JSON pass events. New oracle and control
 regressions therefore enter nightly automatically without repeating the reference
 work for each language.
