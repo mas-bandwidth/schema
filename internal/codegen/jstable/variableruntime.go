@@ -117,6 +117,7 @@ function TableVariableLink(codecs, unions) {
     const c = codecs[name];
     c.byId = new Map();
     c.byKey = new Map();
+    c.required = c.fields.filter(fd => fd.req);
     for (const fd of c.fields) {
       c.byId.set(fd.id, fd);
       c.byKey.set(fd.key, fd);
@@ -341,6 +342,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
     if (val === null) { return true; }
     return TableVariableWritePresent(fd, w, ids, nodes, v, retain, path);
   }
+  if (fd.req) { return TableVariableWritePresent(fd, w, ids, nodes, v, retain, path); }
   switch (fd.s) {
     case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
     case "keyed": return TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path);
@@ -614,6 +616,7 @@ function TableVariableCountRefused(report) {
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
+  const missingBefore = report.missingRequired;
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
   if (TableVariableCountRefused(report)) { report.refused = 0; report.reason = null; }
@@ -633,7 +636,7 @@ function TableVariableLoad(c, bytes, report, retain) {
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
-  const st = { good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
+  const st = { missingBefore, good: raw !== null, nodes: [], root: v, rootCodec: c, pending: [], maps: [] };
   if (raw !== null) {
     const place = c.place;
     for (const rec of raw) {
@@ -679,6 +682,11 @@ function TableVariableLoad(c, bytes, report, retain) {
   // A storage cap refuses the whole read without adding a damage event.
   if (TableVariableCountRefused(report)) {
     report.malformed = carried || report.malformed;
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
+  if (report.missingRequired !== missingBefore) {
+    report.malformed = carried;
     if (retain !== null) { retain.reset(); }
     return null;
   }
@@ -826,15 +834,17 @@ function TableVariableCyclic(count, from, to) {
 // in, §6.6), a kind that widens decoded at its own width and counted widened,
 // any other kind a kind mismatch skipped whole. Damage stops the body.
 function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path) {
+  const seen = c.required.length === 0 ? null : new Set();
+  const missingBefore = report.missingRequired;
   // A BODY READ REPLACES WHAT AN EARLIER PASS RETAINED HERE (§6.6): the
   // reference's LoadBodyRetain opens with TableRetain.discard(Path,false,0),
   // which is what keeps a duplicate map entry from leaving two records.
   if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, false, 0); }
   for (;;) {
-    if (TableVariableCountRefused(report)) { return false; }
+    if (TableVariableCountRefused(report) || report.missingRequired !== missingBefore || report.missingRequired !== st.missingBefore) { return false; }
     const ref = r.leb();
     if (r.bad) { report.malformed = true; return false; }
-    if (ref === 0) { return true; }
+    if (ref === 0) { return TableVariableRequireSeen(c, v, seen, report); }
     if (ref > table.length) { report.malformed = true; return false; }
     if (r.at >= r.end) { report.malformed = true; return false; }
     const kind = r.u8();
@@ -875,6 +885,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
         const x = TableVariableScalar(r, fd, kind, report);
         if (x === undefined) { return false; }
         v[fd.n] = x;
+        if (fd.req) { seen.add(fd); }
         // a map entry's KEY widening is the map's one count (mapField)
         if (!(c.entry && fd.n === "key")) { report.widened++; }
         continue;
@@ -886,9 +897,33 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
       continue;
     }
     if (!TableVariableReadField(fd, r, table, v, report, st, retain, path)) { return false; }
+    if (fd.req) { seen.add(fd); }
     // the field rode, so an optional is PRESENT; a None it holds is "None" (§2.3)
     if (fd.opt && fd.s === "enum" && v[fd.n] === null) { v[fd.n] = "None"; }
   }
+}
+
+// Required scalars can intentionally have no valid storage-zero default.
+// Refuse a writer until the caller supplies a value in the declared range.
+function TableVariableRequiredValue(d, value) {
+  if (!d.req || (d.s !== "int" && d.s !== "float")) { return true; }
+  return d.lo === null || (value >= d.lo && value <= d.hi);
+}
+
+// Presence is checked per body, after guards have their final values. A wire
+// kind mismatch does not satisfy a required field; JSON key presence does.
+function TableVariableRequireSeen(c, v, seen, report) {
+  let missing = "";
+  for (const fd of c.required) {
+    if (TableVariableGuardHolds(fd, v) && !seen.has(fd)) {
+      if (missing !== "") { missing += ", "; }
+      missing += fd.n;
+    }
+  }
+  if (missing === "") { return true; }
+  report.missingRequired++;
+  report.reason = "missing_required: " + missing;
+  return false;
 }
 
 // a scalar decoded at the WIRE kind (the declared kind or one it widens),
@@ -1645,6 +1680,7 @@ function TableVariableFormatFixed(val, frac) {
 }
 
 function TableVariableJsonScalar(d, val, depth, g, out) {
+  if (!TableVariableRequiredValue(d, val)) { return false; }
   switch (d.s) {
     case "ptr": return TableVariableJsonPointer(d.c, val, depth, g, out);
     case "tab": return TableVariableJsonValue(d.c, val, depth, g, out);
@@ -1922,6 +1958,7 @@ class TableVariableTextIn {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is malformed.
 function TableVariableFromJson(c, text, report) {
+  const missingBefore = report.missingRequired;
   report.reason = ""; report.refused = 0;
   const carried = report.malformed;
   report.malformed = false;
@@ -1936,6 +1973,7 @@ function TableVariableFromJson(c, text, report) {
   }
   // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
   // back no value
+  if (report.missingRequired !== missingBefore) { report.malformed = carried; return null; }
   if (inp.bad || !ok || report.malformed) { report.malformed = true; return null; }
   report.malformed = carried;
   return v;
@@ -1970,7 +2008,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
       firstKey = null;
     } else {
       const ch = inp.peek();
-      if (ch === "}") { inp.p++; return true; }
+      if (ch === "}") { inp.p++; return TableVariableRequireSeen(c, v, seen, report); }
       if (ch === "") { inp.bad = true; return false; }
       key = inp.str();
       if (key === null) { return false; }
@@ -2009,7 +2047,7 @@ function TableVariableReadKeys(c, inp, v, depth, firstKey, graph, report) {
     }
     const ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "}") { inp.p++; return true; }
+    if (ch === "}") { inp.p++; return TableVariableRequireSeen(c, v, seen, report); }
     inp.bad = true;
     return false;
   }
@@ -2165,7 +2203,7 @@ function TableVariableTextPointer(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
   inp.p++;
   let ch = inp.peek();
-  if (ch === "}") { inp.p++; holder[key] = d.c.make(); return true; }
+  if (ch === "}") { inp.p++; holder[key] = d.c.make(); return TableVariableRequireSeen(d.c, holder[key], new Set(), report); }
   if (ch === "") { inp.bad = true; return false; }
   const k = inp.str();
   if (k === null) { return false; }

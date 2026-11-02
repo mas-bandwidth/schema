@@ -245,6 +245,7 @@ export class TableVariableReport {
     this.clamped = 0;
     this.widened = 0;
     this.duplicate = 0;
+    this.missingRequired = 0;
     this.retained = 0;
     this.retainLost = 0;
     // the first float a read found to be a NaN or an infinity, <Table>.<field>
@@ -946,6 +947,9 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guar
 	// (eslint no-dupe-keys), so only the other shapes name the field kind here.
 	if !strings.HasPrefix(tail, intShapePrefix) {
 		fmt.Fprintf(&b, "k: %d, ", ir.TableWireFieldKind(f))
+	}
+	if f.Required {
+		b.WriteString("req: true, ")
 	}
 	if f.Type.Optional {
 		b.WriteString("opt: true, ")

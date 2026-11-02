@@ -248,7 +248,23 @@ function TableVariableUnionEdges(u, val, out, everyGuard) {
 // and an all-default table included
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
+  if (!TableVariableRequiredValue(fd, val)) { return false; }
   switch (fd.s) {
+    case "keyed": return TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path);
+    case "union":
+      TableVariableHeader(w, ids, fd, 15);
+      if (val === null) { w.u8(0); return true; }
+      return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
+    case "ptr":
+      TableVariableHeader(w, ids, fd, 17); w.leb(val === null ? 0 : nodes.index.get(val)); return true;
+    case "sblob": case "bblob": {
+      const index = val === null ? 0 : (fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val));
+      TableVariableHeader(w, ids, fd, 17); w.leb(index); return true;
+    }
+    case "wstr":
+      if (val.length > fd.bound) { return false; }
+      TableVariableHeader(w, ids, fd, 33); w.leb(val.length * 2);
+      return TableVariableWideWrite(w, val, fd.bound);
     case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
@@ -312,7 +328,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 // order, each entry ALWAYS riding (identity is the key); only a non-optional
 // empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
-  if (val.size === 0 && !fd.opt) { return true; }
+  if (val.size === 0 && !fd.opt && !fd.req) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
   w.u8(14);
@@ -363,7 +379,7 @@ function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
     body.raw(eb.b);
     pairs++;
   }
-  if (pairs === 0) { ids.rollback(mark); return true; }
+  if (pairs === 0 && !fd.req) { ids.rollback(mark); return true; }
   w.leb(ref);
   w.u8(16);
   const inner = new TableVariableWriter();
