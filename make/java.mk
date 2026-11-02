@@ -1711,27 +1711,27 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 # retention arm's pair. The harness owns the mutants and the oracle
 # (internal/tablewire, the compiler's own engine).
 #
-# The gate runs every ENUMERATED pass and every pinned vector over BOTH
-# arms: the plain pair, and the retaining pair (--retain, §6.6), whose own
-# pinned vectors it also replays. The seeded RANDOM pass stays at N = 0: at
-# the shared SEED the plain arm's first finding is DAMAGED input (stream_arm_first
-# random #22918, both reports malformed), parked under the discard-on-damage
-# ruling, and it stops the pass before it reaches the mutants behind it.
-JAVA_WIRE_FUZZ_N ?= 0
+# The gate runs every ENUMERATED pass, the seeded RANDOM pass at N (default
+# 2000 from Makefile), and every pinned vector over BOTH arms: the plain pair,
+# and the retaining pair (--retain, §6.6), whose own pinned vectors it also
+# replays.
+JAVA_WIRE_FUZZ_N ?= $(N)
 JAVA_WIRE_FUZZ_DRIVER = $(JAVA) -cp $(CURDIR)/build/conformance-java TablesWireFuzz
-JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells
+JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_record_unknown:graphdemo:Scene retain_node_flags:tblw1:Fleet retain_count_over_length_refused:listdemo:Mixed retain_scalar_array_default:mapdemo:Cells retain_map_emptied_unplaced:listdemo:Army pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells ../widelist_wide:widelist:Wide
 # THE PLAIN ARM'S JAVA-ONLY VECTORS: a keyed header and a map header whose foreign
 # element kind carries a count spelled past the field's L (docs/SPEC-TABLES.md §2.9, §3.2):
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
-JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells
+# KeyedConfig and ArchiveConfig are fixed tables (!r.variable), which wirefuzz.go excludes from --retain --replay;
+# ArchiveConfigRetain on bits_width_clamp_archive_r83429.bin is covered in TestBitsFieldAndArrayWidthClampJava.
+JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells bits_width_clamp_archive_r83429:tabledemo:ArchiveConfig ../widelist_wide:widelist:Wide
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java
 	@mkdir -p build/wire-fuzz
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
+	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java.bin
-	./build/conformance-harness wire-fuzz --finite-owed tables-finite/java --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
+	./build/conformance-harness wire-fuzz --driver "$(JAVA_WIRE_FUZZ_DRIVER)" --retain \
 		--seed $(SEED) --n $(JAVA_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-java-retain.bin
 	@set -e; for v in $(JAVA_PLAIN_VECTORS); do \
 		name=$${v%%:*}; rest=$${v#*:}; unit=$${rest%%:*}; root=$${rest#*:}; \
@@ -1751,7 +1751,7 @@ test-java: tables-java-wire-fuzz
 # with the same leg. The ENUMERATED canonical pass plants exactly those
 # spellings, so the differential must go red on the read report, and the
 # unplanted gate above must be green.
-JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide stream lists rt1 \
+JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide widelist stream lists rt1 \
 	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9
 JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
 tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
@@ -1764,7 +1764,7 @@ tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 		{ echo 'NEGATIVE CONTROL: the Java canonical LEB128 sabotage did not apply'; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_WIRE_FUZZ_SABOTAGE)/classes \
 		$(JAVA_WIRE_FUZZ_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
-	@if ./build/conformance-harness wire-fuzz --finite-owed tables-finite/java \
+	@if ./build/conformance-harness wire-fuzz \
 			--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_WIRE_FUZZ_SABOTAGE)/classes TablesWireFuzz" --seed 1 --n 0 \
 			--failed $(JAVA_WIRE_FUZZ_SABOTAGE)/failed.bin > $(JAVA_WIRE_FUZZ_SABOTAGE)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java reader that accepts noncanonical LEB128 left the differential green'; exit 1; \

@@ -55,7 +55,6 @@ WFR_DRIVER_goose =
 
 WFR_DEPS_java    = build-conformance-java
 WFR_DRIVER_java  = $(JAVA_WIRE_FUZZ_DRIVER)
-WFR_FLAGS_java   = --finite-owed tables-finite/java
 
 WFR_DEPS_js      = build/tables-generated-js/.stamp cards-js-generate
 WFR_DRIVER_js    = test/conformance/js/driver wire-fuzz

@@ -281,6 +281,10 @@ public final class MixedHitEventRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.targetId & 0xffffffffL) > 4095L) {
+                        v.targetId = (int) 4095L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;

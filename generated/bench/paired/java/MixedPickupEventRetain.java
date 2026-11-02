@@ -281,6 +281,10 @@ public final class MixedPickupEventRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.itemId & 0xffffffffL) > 1023L) {
+                        v.itemId = (int) 1023L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;

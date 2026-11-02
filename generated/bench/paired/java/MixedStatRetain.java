@@ -273,6 +273,10 @@ public final class MixedStatRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.statId & 0xffffffffL) > 255L) {
+                        v.statId = (int) 255L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;

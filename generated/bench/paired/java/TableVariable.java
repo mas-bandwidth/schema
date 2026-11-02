@@ -1012,6 +1012,7 @@ public final class TableVariable {
         public byte[] bytes;
         public Object table;
         public boolean textMalformed;
+        public boolean named;
 
         public NodeRecord(long typeId, byte[] body) {
             this.typeId = typeId;
@@ -1407,6 +1408,23 @@ public final class TableVariable {
     // mismatch; an index past the records is malformed; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
+    // isSharedBlob marks a blob record named by a pointer slot and answers true
+    // when an earlier slot in the same load already named it (§2.5, §3.1).
+    public static boolean isSharedBlob(NodeRecord[] recs, long index, long expectedTypeId) {
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            return false;
+        }
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId != expectedTypeId) {
+            return false;
+        }
+        if (rec.named) {
+            return true;
+        }
+        rec.named = true;
+        return false;
+    }
+
     public static String resolveString(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
@@ -1776,6 +1794,22 @@ public final class TableVariable {
                 nodeCount++;
             }
             return true;
+        }
+
+        public long recordBlob(Object target, long typeId) {
+            if (target == null) return 0;
+            if (nodeCount == nodeValue.length) {
+                int cap = nodeCount * 2;
+                nodeValue = java.util.Arrays.copyOf(nodeValue, cap);
+                nodeType = java.util.Arrays.copyOf(nodeType, cap);
+                nodeBlob = java.util.Arrays.copyOf(nodeBlob, cap);
+            }
+            long idx = (long) (nodeCount + 2);
+            nodeValue[nodeCount] = target;
+            nodeType[nodeCount] = typeId;
+            nodeBlob[nodeCount] = true;
+            nodeCount++;
+            return idx;
         }
 
         public int nodeCount() {

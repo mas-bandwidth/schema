@@ -273,6 +273,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b7 & 0xffffffffL) > 127L) {
+                        v.b7 = (int) 127L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -294,6 +298,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b13 & 0xffffffffL) > 8191L) {
+                        v.b13 = (int) 8191L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -325,6 +333,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b23 & 0xffffffffL) > 8388607L) {
+                        v.b23 = (int) 8388607L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -338,6 +350,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b3 & 0xffffffffL) > 7L) {
+                        v.b3 = (int) 7L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -369,6 +385,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b32 & 0xffffffffL) > 4294967295L) {
+                        v.b32 = (int) 4294967295L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -390,6 +410,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b11 & 0xffffffffL) > 2047L) {
+                        v.b11 = (int) 2047L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -420,6 +444,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b19 & 0xffffffffL) > 524287L) {
+                        v.b19 = (int) 524287L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -458,6 +486,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && Long.compareUnsigned(v.b48, 0xffffffffffffL) > 0) {
+                        v.b48 = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

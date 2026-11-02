@@ -332,6 +332,10 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.entityId & 0xffffffffL) > 4095L) {
+                        v.entityId = (int) 4095L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -468,6 +472,10 @@ public final class MixedEntityRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.yaw & 0xffffffffL) > 511L) {
+                        v.yaw = (int) 511L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -489,6 +497,10 @@ public final class MixedEntityRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.pitch & 0xffffffffL) > 511L) {
+                        v.pitch = (int) 511L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

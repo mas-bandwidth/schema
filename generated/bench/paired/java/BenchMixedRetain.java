@@ -283,6 +283,10 @@ public final class BenchMixedRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.sequence & 0xffffffffL) > 65535L) {
+                        v.sequence = (int) 65535L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -350,6 +354,10 @@ public final class BenchMixedRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.ackBits & 0xffffffffL) > 4294967295L) {
+                        v.ackBits = (int) 4294967295L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -551,6 +559,10 @@ public final class BenchMixedRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && Long.compareUnsigned(v.frameTick, 0xffffffffffffL) > 0) {
+                        v.frameTick = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -937,6 +949,10 @@ public final class BenchMixedRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.crcHint & 0xffffffffL) > 16777215L) {
+                        v.crcHint = (int) 16777215L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
