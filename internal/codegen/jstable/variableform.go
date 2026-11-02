@@ -135,6 +135,9 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("// default, and a kind mismatch is reported (§4).\n")
 	g.pf("\n")
 	g.emitRuntime()
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		g.pf("%s", jsIntegrityRuntime)
+	}
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
 	g.pf("%s", jsVariableArmsRuntime)
@@ -898,6 +901,9 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    make: () => new %s(),\n", st.Name)
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
+		if st.Integrity != "" {
+			g.pf("    integrity: { sum: TableIntegritySum, holds: TableIntegrityHolds },\n")
+		}
 		if st.JsonArray {
 			g.pf("    jsonArray: true,\n")
 		}
@@ -1177,6 +1183,9 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 		refused = fmt.Sprintf("%d", rootSize+16)
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	if st.Integrity != "" {
+		g.pf("  if (bytes.length > 0 && bytes[0] === 1) { if (!TableIntegrityHolds(bytes, 1)) { return -1; } bytes = bytes.subarray(0, bytes.length - 4); }\n")
+	}
 	g.pf("  if (bytes.length < 9) { return %s; }\n", refused)
 	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")

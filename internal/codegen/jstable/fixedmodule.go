@@ -116,6 +116,9 @@ func (g *fixedModule) needHome(symbols ...string) { g.need(g.homeBase+"Table", s
 func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
+		if len(ir.TableIntegrityTables(g.unit)) > 0 {
+			g.pf("%s", jsIntegrityRuntime)
+		}
 		// THE MESSAGE FORM IS FIXED TABLES ONLY (§3.3), so its announcement
 		// surface lands in the home beside the fixed runtime and only for a
 		// unit with a fixed table root. A unit of variable tables emits none
@@ -196,6 +199,9 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 
 // emitRoot is one table's whole fixed-form surface.
 func (g *fixedModule) emitRoot(st *ir.Struct) {
+	if st.Integrity != "" {
+		g.needHome("TableIntegrityHolds", "TableIntegritySeal")
+	}
 	w := fixedWalkRoot(st)
 	layout := fixedLayoutBytes(w.entries)
 	hash := ir.TableFixedLayoutHash(layout, st)
@@ -335,7 +341,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// A file ALWAYS carries the layout: a file is read by somebody who was not\n")
 	g.pf("// there when it was written.\n")
 	g.pf("export function %sFixedMeasure(count) {\n", st.Name)
-	g.pf("  return TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + %sFixedLayoutBytes + count * %sFixedRecordBytes;\n}\n\n", st.Name, st.Name)
+	extra := ""
+	if st.Integrity != "" {
+		extra = " + 4"
+	}
+	g.pf("  return TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + %sFixedLayoutBytes + count * %sFixedRecordBytes%s;\n}\n\n", st.Name, st.Name, extra)
 
 	// ---- the write ----
 	g.pf("// THE WRITE IS A TEMPLATE: the hash and zeros laid down first — which is\n")
@@ -365,7 +375,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    bytes.fill(0, at + 8, at + %sFixedRecordBytes); // the template's zeros\n", st.Name)
 	g.pf("    %sFixedWriteBody(view, at + 8, values[k]);\n", st.Name)
 	g.pf("    at += %sFixedRecordBytes;\n", st.Name)
-	g.pf("  }\n  return need;\n}\n\n")
+	g.pf("  }\n")
+	if st.Integrity != "" {
+		g.pf("  return TableIntegritySeal(bytes, need - 4);\n}\n\n")
+	} else {
+		g.pf("  return need;\n}\n\n")
+	}
 
 	// ---- the read ----
 	g.pf("// THE READ: a prefill and ONE loop over ONE plan — the identity plan when\n")
@@ -390,6 +405,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("                   : bytes[0] === TableFixedMessageForm ? TableFixedRefusal.MessageFormAsFile\n")
 	g.pf("                   : TableFixedRefusal.NewerForm;\n")
 	g.pf("    return -1;\n  }\n")
+	if st.Integrity != "" {
+		g.pf("  if (!Number.isSafeInteger(byteLength) || byteLength > bytes.length || !TableIntegrityHolds(bytes.subarray(0, byteLength), 1)) { report.malformed = true; report.refused = TableFixedRefusal.IntegrityMismatch; return -1; }\n")
+		g.pf("  byteLength -= 4;\n")
+	}
 	g.pf("  if (byteLength < TableFixedHeaderBytes + TableFixedLayoutHeaderBytes) { report.malformed = true; return -1; }\n")
 	g.pf("  // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
 	g.pf("  for (let i = 1; i < TableFixedHashAt; i++) { if (bytes[i] !== 0) { report.malformed = true; return -1; } }\n")

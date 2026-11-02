@@ -557,6 +557,7 @@ function TableVariableSaveWalk(c, v, retain, why) {
   w.u8(0);
   for (const id of ids.list) { w.u64(id); }
   w.u64(BigInt(ids.list.length));
+  if (c.integrity) { w.u32(c.integrity.sum(w.b, w.len)); }
   return w.toArray();
 }
 
@@ -616,6 +617,14 @@ function TableVariableCountRefused(report) {
 function TableVariableLoad(c, bytes, report, retain) {
   // a caller that passed no report still gets the refusal: the read keeps one
   if (report === undefined || report === null) { report = new TableVariableReport(); }
+  if (c.integrity && bytes.length > 0 && bytes[0] === 1) {
+    if (!c.integrity.holds(bytes, 1)) {
+      report.malformed = true; report.reason = "integrity_mismatch";
+      if (retain !== null) { retain.reset(); }
+      return null;
+    }
+    bytes = bytes.subarray(0, bytes.length - 4);
+  }
   const missingBefore = report.missingRequired;
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
