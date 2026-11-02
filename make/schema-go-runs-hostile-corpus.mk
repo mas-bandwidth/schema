@@ -6,7 +6,7 @@ GO_HOSTILE_BUILD := build/go-hostile
 
 .PHONY: schema-go-hostile-generate schema-go-runs-hostile-corpus
 schema-go-hostile-generate: bin/schema tables-go-sibling-runtime
-	go run ./test/go-hostile/gen -schema ./bin/schema -corpus "$(GO_HOSTILE_CORPUS)" -out $(GO_HOSTILE_BUILD) -serialize "$(SERIALIZE_GO)"
+	go run ./test/go-hostile/gen -schema=./bin/schema -corpus "$(GO_HOSTILE_CORPUS)" -out $(GO_HOSTILE_BUILD) -serialize "$(SERIALIZE_GO)"
 
 schema-go-runs-hostile-corpus: schema-go-hostile-generate
 	cd $(GO_HOSTILE_BUILD) && go build -mod=mod -o runner .
