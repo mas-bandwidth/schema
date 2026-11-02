@@ -231,3 +231,6 @@ retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_
 map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
 # A malformed child stops its collection before a later non-finite float.
 list_damaged_child_stop listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_stop.bin
+
+# Reserved node-table transport has exactly kind12; a different kind is damage.
+node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin

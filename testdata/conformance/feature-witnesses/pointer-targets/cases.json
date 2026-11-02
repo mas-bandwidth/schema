@@ -1,0 +1,207 @@
+[
+  {
+    "name": "matched targets",
+    "writer": "Old",
+    "reader": "Old",
+    "input": {
+      "left": {
+        "value": 11
+      },
+      "right": {
+        "value": 22
+      },
+      "payload": "eHl6",
+      "text": "hello"
+    },
+    "expected": {
+      "left": {
+        "value": 11
+      },
+      "right": {
+        "value": 22
+      },
+      "payload": "eHl6",
+      "text": "hello"
+    },
+    "kind_mismatch": 0,
+    "unknown": 0
+  },
+  {
+    "name": "four recognized wrong targets",
+    "writer": "Old",
+    "reader": "New",
+    "input": {
+      "left": {
+        "value": 11
+      },
+      "right": {
+        "value": 22
+      },
+      "payload": "eHl6",
+      "text": "hello"
+    },
+    "expected": {
+      "left": null,
+      "right": null,
+      "payload": null,
+      "text": null
+    },
+    "kind_mismatch": 4,
+    "unknown": 0
+  },
+  {
+    "name": "wrong bytes remain bytes even with invalid UTF8",
+    "writer": "Old",
+    "reader": "New",
+    "input": {
+      "payload": "/w==",
+      "text": "hello"
+    },
+    "expected": {
+      "left": null,
+      "right": null,
+      "payload": null,
+      "text": null
+    },
+    "kind_mismatch": 2,
+    "unknown": 0
+  },
+  {
+    "name": "distinct empty blob types",
+    "writer": "Old",
+    "reader": "New",
+    "input": {
+      "payload": "",
+      "text": ""
+    },
+    "expected": {
+      "left": null,
+      "right": null,
+      "payload": null,
+      "text": null
+    },
+    "kind_mismatch": 2,
+    "unknown": 0
+  },
+  {
+    "name": "null names no target",
+    "writer": "Old",
+    "reader": "New",
+    "input": {
+      "payload": null,
+      "text": null
+    },
+    "expected": {
+      "left": null,
+      "right": null,
+      "payload": null,
+      "text": null
+    },
+    "kind_mismatch": 0,
+    "unknown": 0
+  },
+  {
+    "name": "matched pointer arrays",
+    "writer": "ArrayOld",
+    "reader": "ArrayOld",
+    "input": {
+      "targets": [
+        {
+          "value": 7
+        },
+        null
+      ],
+      "bounded": [
+        {
+          "value": 8
+        }
+      ]
+    },
+    "expected": {
+      "targets": [
+        {
+          "value": 7
+        },
+        null
+      ],
+      "bounded": [
+        {
+          "value": 8
+        }
+      ]
+    },
+    "kind_mismatch": 0,
+    "unknown": 0
+  },
+  {
+    "name": "wrong pointer arrays retain count",
+    "writer": "ArrayOld",
+    "reader": "ArrayNew",
+    "input": {
+      "targets": [
+        {
+          "value": 7
+        },
+        null
+      ],
+      "bounded": [
+        {
+          "value": 8
+        }
+      ]
+    },
+    "expected": {
+      "targets": [
+        null,
+        null
+      ],
+      "bounded": [
+        null
+      ],
+      "known": null
+    },
+    "kind_mismatch": 2,
+    "unknown": 0
+  },
+  {
+    "name": "table outside root closure",
+    "writer": "Old",
+    "reader": "OnlyB",
+    "input": {
+      "left": {
+        "value": 11
+      }
+    },
+    "expected": {
+      "left": null
+    },
+    "kind_mismatch": 0,
+    "unknown": 1
+  },
+  {
+    "name": "bytes outside root closure",
+    "writer": "Old",
+    "reader": "OnlyString",
+    "input": {
+      "payload": "eHl6"
+    },
+    "expected": {
+      "payload": null
+    },
+    "kind_mismatch": 0,
+    "unknown": 1
+  },
+  {
+    "name": "string outside root closure",
+    "writer": "Old",
+    "reader": "OnlyBytes",
+    "input": {
+      "text": "hello"
+    },
+    "expected": {
+      "text": null
+    },
+    "kind_mismatch": 0,
+    "unknown": 1
+  }
+]
