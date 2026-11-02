@@ -886,7 +886,7 @@ tables-java-fixed-t18: tables-fixedform-corpus
 # oracle can never pass silently.
 .PHONY: tables-java-package
 tables-java-package: tables-fixedform-corpus
-	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
 		go test ./internal/codegen/javatable/ -count=1 -timeout 900s
 	@echo 'tables Java package: the whole javatable package passes with the fixed-form corpus built first'
 
