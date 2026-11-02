@@ -218,7 +218,7 @@ const tableRegionSource = `
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != field.Id) { if (!body.Skip(kind)) { return false; } continue; }
-            if (kind != field.Kind && Widen(kind, field.Kind)) { widened = true; }
+            if (kind != field.Kind && Widen(kind, field.Kind)) { mismatch = false; widened = true; }
             else
             {
                 mismatch = kind != field.Kind;
