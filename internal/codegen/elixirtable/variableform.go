@@ -171,6 +171,13 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @cook_build_version 0x%016X\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "  @cook_magic 0x%016X\n\n", uint64(0x4B4F4F434D484353))
 	runtime, cook, retain := variableRuntimeSource, cookWriteSource, variableRetainSource
+	anyArrayRoot := false
+	for _, st := range u.Tables {
+		anyArrayRoot = anyArrayRoot || st.JsonArray
+	}
+	if !anyArrayRoot {
+		runtime = withoutArrayRoots(runtime)
+	}
 	if len(uncarried) == 0 {
 		runtime = withoutUncarriedClauses(runtime)
 	}
@@ -195,6 +202,37 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	b.WriteString(retain)
 	b.WriteString("end\n")
 	return map[string][]byte{VariableTableModule + ".ex": []byte(b.String())}
+}
+
+// The BEAM compiler infers the closed descriptor types. Omit array-root
+// clauses when none can be called, rather than suppressing unreachable warnings.
+func withoutArrayRoots(source string) string {
+	for _, block := range []string{
+		`  defp json_object(%{json_array: true, fields: [field]}, value, depth, _label),
+    do: json_field(field, Map.get(value, field.name, field.default), depth)
+
+`,
+		`  defp json_root_pairs(%{json_array: true, fields: [field]}, raw) when is_list(raw),
+    do: {:ok, [{field.json, raw}]}
+
+  defp json_root_pairs(%{json_array: true}, _raw), do: {:error, :root_shape}
+`,
+		`        {:error, :root_shape} ->
+          report = Map.put(empty_report(), :reason, "json_root_not_array: " <> table)
+          {:error, :json_root_not_array, %{report | malformed: true}}
+
+`,
+		`      f.t == :table and Map.get(Map.fetch!(@tables, f.elem), :json_array, false) ->
+        case json_read_field(f, raw, report) do
+          {:skip, report} -> {json_present_default(f), report}
+          pair -> pair
+        end
+
+`,
+	} {
+		source = strings.ReplaceAll(source, block, "")
+	}
+	return source
 }
 
 // uncarriedRootNames names every table in the closure that reaches a map, a
@@ -2927,19 +2965,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Process.put(:elixir_json_variable, desc.variable)
 
     try do
-      case json_value(text, 0) do
-        {:ok, {:obj, pairs}, rest} ->
-          if json_skip(rest) != <<>> or Process.get(:elixir_json_bad) do
-            {:error, :malformed, empty_report()}
-          else
-            {value, report} = json_fields(desc, pairs)
+      with {:ok, raw, rest} <- json_value(text, 0),
+           {:ok, pairs} <- json_root_pairs(desc, raw) do
+        if json_skip(rest) != <<>> or Process.get(:elixir_json_bad) do
+          {:error, :malformed, empty_report()}
+        else
+          {value, report} = json_fields(desc, pairs)
 
-            if Process.get(:elixir_json_bad) or report.malformed do
-              {:error, :malformed, %{report | malformed: true}}
-            else
-              {:ok, Map.merge(defaults(desc), value), report}
-            end
+          if Process.get(:elixir_json_bad) or report.malformed do
+            {:error, :malformed, %{report | malformed: true}}
+          else
+            {:ok, Map.merge(defaults(desc), value), report}
           end
+        end
+      else
+        {:error, :root_shape} ->
+          report = Map.put(empty_report(), :reason, "json_root_not_array: " <> table)
+          {:error, :json_root_not_array, %{report | malformed: true}}
 
         _ ->
           {:error, :malformed, empty_report()}
@@ -2951,6 +2993,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       Process.delete(:elixir_json_variable)
     end
   end
+
+  # The root requires the declared shape. Nested mismatches use the normal
+  # skipped kind-mismatch field result instead of a whole-document refusal.
+  defp json_root_pairs(%{json_array: true, fields: [field]}, raw) when is_list(raw),
+    do: {:ok, [{field.json, raw}]}
+
+  defp json_root_pairs(%{json_array: true}, _raw), do: {:error, :root_shape}
+  defp json_root_pairs(_desc, {:obj, pairs}), do: {:ok, pairs}
+  defp json_root_pairs(_desc, _raw), do: :error
 
   # tally_refs counts pointer slots and blob slots. A node named twice is one
   # label (§16.7). Descent is once per content, so a shared child is not
@@ -3039,6 +3090,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Process.put(:elixir_json_refuse, true)
     "null"
   end
+
+  defp json_object(%{json_array: true, fields: [field]}, value, depth, _label),
+    do: json_field(field, Map.get(value, field.name, field.default), depth)
 
   defp json_object(desc, value, depth, label) do
     value = Map.merge(defaults(desc), value)
@@ -3752,9 +3806,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
 
-  defp json_read_field(%{t: :table} = f, {:obj, pairs}, report) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), pairs)
-    {v, merge_report(report, elem_report)}
+  defp json_read_field(%{t: :table} = f, raw, report) do
+    desc = Map.fetch!(@tables, f.elem)
+
+    case json_root_pairs(desc, raw) do
+      {:ok, pairs} ->
+        {v, elem_report} = json_fields(desc, pairs)
+        {v, merge_report(report, elem_report)}
+
+      _ ->
+        json_skip_value(raw)
+        {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
+    end
   end
 
   # A map reads entries in input order, so node labels keep their document
@@ -3797,11 +3860,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_read_field(%{t: :map}, raw, report) do
-    json_skip_value(raw)
-    {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
-  end
-
-  defp json_read_field(%{t: :table}, raw, report) do
     json_skip_value(raw)
     {:skip, %{report | kind_mismatch: report.kind_mismatch + 1}}
   end
@@ -3889,6 +3947,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     cond do
       raw == nil and (Map.get(f, :optional, false) or f.t in [:pointer, :blob]) ->
         {nil, report}
+
+      f.t == :table and Map.get(Map.fetch!(@tables, f.elem), :json_array, false) ->
+        case json_read_field(f, raw, report) do
+          {:skip, report} -> {json_present_default(f), report}
+          pair -> pair
+        end
 
       shape ->
         case json_read_field(f, raw, report) do
@@ -4105,10 +4169,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_list_elem(f, {:decimal, _} = e, report) when not is_map_key(f, :elem_frac),
     do: json_read_list_elem(f, json_decimal_float(e), report)
 
-  defp json_read_list_elem(%{elem_kind: 13} = f, {:obj, pairs}, report) do
-    {v, elem_report} = json_fields(Map.fetch!(@tables, f.elem), pairs)
-    {v, merge_report(report, elem_report)}
-  end
+  defp json_read_list_elem(%{elem_kind: 13} = f, raw, report),
+    do: json_read_field(%{t: :table, elem: f.elem}, raw, report)
 
   defp json_read_list_elem(%{elem_kind: 17} = _f, nil, report), do: {nil, report}
 
@@ -6493,6 +6555,13 @@ func closureStruct(u *ir.Unit, name string) *ir.Struct {
 // variant names, a list's element table, a *string/*bytes blob's type id, a
 // pointer's target. The descriptor covers the closure, fixed tables included,
 // because a pointer can name one.
+func jsonArrayDescriptor(st *ir.Struct) string {
+	if st.JsonArray {
+		return ", json_array: true"
+	}
+	return ""
+}
+
 func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	var b strings.Builder
 	ml := ir.RecordLayout(u, st)
@@ -6500,8 +6569,8 @@ func tableDescriptor(u *ir.Unit, st *ir.Struct) string {
 	// variable is this table's own class (docs/SPEC-TABLES.md §3.1). A variable
 	// root carries the node-table id as transport. A fixed root cannot name
 	// that id, so a body that brings one counts it unknown, once (§4).
-	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, string_blob: %v, variable: %v, doc: %s, tags: %s, fields: [\n",
-		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], elixirQuote(st.Doc), elixirTags(st.Tags))
+	fmt.Fprintf(&b, "    %q => %%{name: %q, size: %d, align: %d, type_id: 0x%016X, record: %d, node_align: %d, has_extent: %v, string_blob: %v, variable: %v%s, doc: %s, tags: %s, fields: [\n",
+		st.Name, st.Name, ml.Size, ml.Align, ir.TableTypeId(st.WireName()), cookRecordBytes(u, st), cookNodeAlign(u, st), cookHasExtent(u, st), str, ir.VariableTables(u)[st.Name], jsonArrayDescriptor(st), elixirQuote(st.Doc), elixirTags(st.Tags))
 	for i, f := range st.Fields {
 		b.WriteString("      " + fieldDescriptor(u, st.DeclaredName(), f, i, ml.FieldByName(f.Name)))
 	}
