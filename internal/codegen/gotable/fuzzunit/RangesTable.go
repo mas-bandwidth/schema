@@ -1068,9 +1068,10 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // RangedSignedLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RangedSignedLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. RangedSignedLoad is the strict read; call this one by name.
 func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -1105,9 +1106,11 @@ func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !RangedSignedLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			RangedSignedReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -1124,6 +1127,10 @@ func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableRep
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			RangedSignedReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -1134,6 +1141,12 @@ func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableRep
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		RangedSignedReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -1141,7 +1154,7 @@ func RangedSignedLoadTolerant(value *RangedSigned, data []byte, report *TableRep
 // whatever RangedSignedReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RangedSignedLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. RangedSignedLoadTolerant also reads past an evolution event.
 func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -3228,9 +3241,10 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // RangedUnsignedLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RangedUnsignedLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. RangedUnsignedLoad is the strict read; call this one by name.
 func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -3265,9 +3279,11 @@ func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *Tabl
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !RangedUnsignedLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			RangedUnsignedReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -3284,6 +3300,10 @@ func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *Tabl
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			RangedUnsignedReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -3294,6 +3314,12 @@ func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *Tabl
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		RangedUnsignedReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -3301,7 +3327,7 @@ func RangedUnsignedLoadTolerant(value *RangedUnsigned, data []byte, report *Tabl
 // whatever RangedUnsignedReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RangedUnsignedLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. RangedUnsignedLoadTolerant also reads past an evolution event.
 func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -4731,9 +4757,10 @@ func RangedWidthsLoadBody(r *TableReader, value *RangedWidths) bool {
 // point and reads form 1, whether or not the table was DECLARED fixed
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 // RangedWidthsLoadTolerant is the TOLERANT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every
-// wire the framing walk accepts and keeps the recovered value, with the report's
-// counters counted onto the one passed. It refuses only framing damage and a form
-// it does not carry. RangedWidthsLoad is the strict read; call this one by name.
+// wire the framing walk accepts, with the report's counters counted onto the one
+// passed. Damage anywhere, a nested body included, refuses the WHOLE load: it
+// answers false with the value at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4), as does
+// a form it does not carry. RangedWidthsLoad is the strict read; call this one by name.
 func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -4768,9 +4795,11 @@ func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableRep
 	// counts no unknown, no kind mismatch and no clamp — as when the framing
 	// walk refused before the reader had seen one byte.
 	before := *report
+	report.Malformed = false
 	if !RangedWidthsLoadBody(&r, value) || report.NonFiniteFloat != "" {
 		if tableNonFiniteRefused(report) {
 			RangedWidthsReset(value)
+			report.Malformed = report.Malformed || before.Malformed
 			return false
 		}
 		// The reading walk stops on rules the framing walk has no opinion about
@@ -4787,6 +4816,10 @@ func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableRep
 			report.Verdict = TableOpenDamaged
 			return false
 		}
+		if report.Malformed {
+			RangedWidthsReset(value)
+		}
+		report.Malformed = report.Malformed || before.Malformed
 		report.Verdict = TableOpenBodyStopped
 		return false
 	}
@@ -4797,6 +4830,12 @@ func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableRep
 		report.Verdict = TableOpenDamaged
 		return false
 	}
+	if report.Malformed {
+		RangedWidthsReset(value)
+		report.Verdict = TableOpenDamaged
+		return false
+	}
+	report.Malformed = before.Malformed
 	return true
 }
 
@@ -4804,7 +4843,7 @@ func RangedWidthsLoadTolerant(value *RangedWidths, data []byte, report *TableRep
 // whatever RangedWidthsReadStrict refuses (malformed, clamped, kind_mismatch, unknown form,
 // wire damage, build version, missing_required), resets value to its defaults and
 // answers false. A supplied report receives THIS read's report, and on a refusal
-// report.Err() is the typed reason. RangedWidthsLoadTolerant keeps a recovered value.
+// report.Err() is the typed reason. RangedWidthsLoadTolerant also reads past an evolution event.
 func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
