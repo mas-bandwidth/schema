@@ -2,9 +2,7 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"os"
 	"slices"
@@ -122,13 +120,12 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	if !root.CarriesForm("wire") {
 		return nil, nil, false, fmt.Errorf("positive wire uses a form excluded by its root")
 	}
-	body, err := implementationWireBody(root, wire)
-	if err != nil {
-		return nil, nil, false, err
+	if root.Integrity != "" && root.Integrity != "crc32c" {
+		return nil, nil, false, fmt.Errorf("integrity %q has no qualified witness oracle", root.Integrity)
 	}
 	value := model.New(root)
 	var report tabletext.Report
-	ok, err := tablewire.Decode(model, value, body, &report)
+	ok, err := tablewire.Decode(model, value, wire, &report)
 	if err != nil || !ok || !report.Silent() || report.Refused || report.NonFiniteFloat != "" {
 		return nil, nil, false, fmt.Errorf("positive wire does not decode cleanly: ok=%t report=%+v error=%v", ok, report, err)
 	}
@@ -158,43 +155,10 @@ func decodeImplementationWitness(u *ir.Unit, inst Instance) (*tabletext.Model, *
 	return model, value, true, nil
 }
 
-// The neutral tablewire codec has no root-integrity wrapper. Apply the
-// existing file contract here (SPEC-TABLES section 2.14), without changing
-// its body decoder: form first, then CRC before any body/id-table decode.
-// A nested declaration never seals the containing file.
-var implementationCRC32C = crc32.MakeTable(crc32.Castagnoli)
-
-func implementationWireBody(root *ir.Struct, wire []byte) ([]byte, error) {
-	switch root.Integrity {
-	case "":
-		return wire, nil
-	case "crc32c":
-		if len(wire) == 0 || wire[0] != 1 {
-			return wire, nil // neutral decoder reports framing/form refusal
-		}
-		n := len(wire) - 4
-		if n < 1 || binary.LittleEndian.Uint32(wire[n:]) != crc32.Checksum(wire[:n], implementationCRC32C) {
-			return nil, fmt.Errorf("positive wire integrity_mismatch")
-		}
-		return wire[:n], nil
-	default:
-		return nil, fmt.Errorf("integrity %q has no qualified witness oracle", root.Integrity)
-	}
-}
-
+// Integrity is handled by the same neutral file codec used by pack/unpack.
+// There is deliberately no second wrapper which could append or strip twice.
 func encodeImplementationWitness(model *tabletext.Model, value *tabletext.Instance) ([]byte, error) {
-	wire, err := tablewire.Encode(model, value)
-	if err != nil {
-		return nil, err
-	}
-	switch value.Def.Integrity {
-	case "":
-		return wire, nil
-	case "crc32c":
-		return binary.LittleEndian.AppendUint32(wire, crc32.Checksum(wire, implementationCRC32C)), nil
-	default:
-		return nil, fmt.Errorf("integrity %q has no qualified witness oracle", value.Def.Integrity)
-	}
+	return tablewire.Encode(model, value)
 }
 
 // Walk actual stored values, not every possible declaration edge. Nil pointers,
@@ -202,12 +166,24 @@ func encodeImplementationWitness(model *tabletext.Model, value *tabletext.Instan
 // unused counted-array capacity do not manufacture coverage.
 func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Instance, jsonVerified bool) map[string]bool {
 	active := map[string]bool{}
+	populated := false
 	seen := map[*tabletext.Instance]bool{}
 	hasNode := map[*tabletext.Instance]bool{}
 	var walkInstance func(*tabletext.Instance) bool
 	var walkField func(*tabletext.Field) bool
 	var walkCell func(*tabletext.Cell, *ir.Field) bool
 	walkCell = func(cell *tabletext.Cell, f *ir.Field) bool {
+		def := tabletext.Cell{}
+		if f.Array == ir.ArrayNone {
+			def = model.FieldDefaultCell(f)
+		}
+		if cell.I != def.I || cell.U != def.U || cell.B != def.B || cell.F != def.F || !bytes.Equal(cell.Str, def.Str) || !slices.Equal(cell.Units, def.Units) {
+			populated = true
+		}
+		if cell.Wide != nil && (def.Wide == nil || cell.Wide.Cmp(def.Wide) != 0) || cell.Wide == nil && def.Wide != nil && def.Wide.Sign() != 0 {
+			populated = true
+		}
+
 		// Array elements have zero defaults; a scalar uses its declaration's
 		// default. Nondefault content must survive the actual wire decode.
 		if f.Type.Kind == ir.TInt && !f.Type.Pointer {
@@ -234,6 +210,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 			if cell.Node == nil {
 				return false
 			}
+			populated = true
 			walkInstance(cell.Node)
 			return true
 		}
@@ -255,6 +232,9 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 		}
 		node := false
 		if f.IsMap() {
+			if len(fv.Entries) > 0 {
+				populated = true
+			}
 			if f.Type.Optional && len(fv.Entries) > 0 {
 				active["optional-map"] = true
 			}
@@ -274,6 +254,9 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 			if f.KeyEnum != "" {
 				start = tabletext.KeyedFirstSlot()
 				count = tabletext.KeyedSlotCount(f)
+			}
+			if count > start {
+				populated = true
 			}
 			for i := start; i < count && i < len(fv.Elems); i++ {
 				cell := &fv.Elems[i]
@@ -332,7 +315,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 	walkInstance(root)
 	// Forms and the JSON root mode are root-entry properties. A nested
 	// declaration cannot exercise a root's alternate entry shape.
-	if root.Def.DeclaredForms() && root.Def.CarriesForm("wire") {
+	if populated && root.Def.DeclaredForms() && root.Def.CarriesForm("wire") {
 		active["forms"] = true
 	}
 	if root.Def.JsonArray && jsonVerified {
@@ -350,7 +333,7 @@ func activeImplementationConstructs(model *tabletext.Model, root *tabletext.Inst
 	// This is reached only after the root's checksum was checked and the
 	// canonical body was resealed byte-identically. Nested annotations alone
 	// cannot exercise a file-level integrity declaration.
-	if root.Def.Integrity == "crc32c" {
+	if populated && root.Def.Integrity == "crc32c" {
 		active["integrity"] = true
 	}
 	return active

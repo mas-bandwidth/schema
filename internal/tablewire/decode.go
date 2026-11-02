@@ -113,6 +113,13 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 		}
 		return false, &FormRefusal{Form: data[0]}
 	}
+	var valid bool
+	data, valid = fileIntegrityBody(inst.Def, data)
+	if !valid {
+		report.Malformed = true
+		report.Reason = "integrity_mismatch"
+		return false, nil
+	}
 	body, ids, ok := trailer(data)
 	if !ok {
 		// the one malformed case that stops the FILE rather than a nesting

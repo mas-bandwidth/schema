@@ -11,6 +11,14 @@ import (
 // array extent declared on the wire. Generated runtimes never call this
 // independent compiler-side oracle.
 func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, whole, refused bool) {
+	if len(data) == 0 || data[0] != ir.TableWireForm {
+		return 0, false, false
+	}
+	var valid bool
+	data, valid = fileIntegrityBody(root, data)
+	if !valid {
+		return 0, false, false
+	}
 	body, ids, ok := trailer(data)
 	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
 		return 0, false, false

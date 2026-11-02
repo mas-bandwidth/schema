@@ -49,6 +49,13 @@
 # Wire files are REFERENCED where they already live rather than copied: the
 # table-wire goldens are the same files test/tables/main.cpp pins.
 
+# Required-construct witnesses are populated and pinned by the generated Go
+# runtime. They are ordinary instances, so every native language driver must
+# read and write the same canonical bytes; no feature-only side pass can win.
+unit featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+instance feature_full featurewitnesses Root testdata/conformance/feature-witnesses/full/Root.bin
+instance feature_array_root featurewitnesses ArrayRoot testdata/conformance/feature-witnesses/full/ArrayRoot.bin
+
 unit tabledemo tables/examples
 unit tblv1     test/tables/V1.schema
 unit tblv2     test/tables/V2.schema

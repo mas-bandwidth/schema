@@ -652,6 +652,8 @@ async function surfaceMessage(lines, outDir) {
 // instance and report pairs less a named uncarried set (empty today), and
 // TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
+  ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
+  ["featurewitnesses", "ArrayRoot", "features/FeaturewitnessesVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -837,6 +839,7 @@ async function codecOf(unit, root, path) {
 // answer `<case>.absent`, which the matrix counts as the row of work that is
 // left, never as a pass.
 const textUnits = {
+  featurewitnesses: "features/FeaturewitnessesVariable.js",
   tabledemo: "examples/TabledemoVariable.js",
   graphdemo: "pointers/GraphdemoVariable.js",
   blobdemo: "blobs/BlobdemoVariable.js",
