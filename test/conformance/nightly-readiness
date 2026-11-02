@@ -149,7 +149,7 @@ def required_phases(lang):
     """Independent completion contract: omitting a runner call cannot turn green."""
     required = {"prerequisites", "implementation", "external-table-gates",
                 "wire-driver-build", "wire-retain-controls", "packet-build", "packet-features"}
-    for package in ("lockfile", *PACKAGES[lang], *(("compiler",) if lang == "cpp" else ())):
+    for package in ("lockfile", *PACKAGES[lang], *(("compiler", "harness") if lang == "cpp" else ())):
         required |= {"native-list-" + package, "native-" + package}
     if lang == "cpp":
         required.add("readiness-contracts")
@@ -177,7 +177,8 @@ def required_phases(lang):
 
 
 def package_path(package):
-    return {"compiler": "compiler", "lockfile": "internal/lockfile"}.get(
+    return {"compiler": "compiler", "lockfile": "internal/lockfile",
+            "harness": "test/conformance/harness"}.get(
         package, "internal/codegen/" + package)
 
 
@@ -389,7 +390,7 @@ class Runner:
 def run_native(runner, lang):
     packages = ["lockfile", *PACKAGES[lang]]
     if lang == "cpp":
-        packages.append("compiler")  # Shared compiler tests once, not per writer.
+        packages.extend(("compiler", "harness"))  # Shared regressions once, not per writer.
     for package in packages:
         path = "./" + package_path(package)
         listed_text, status = runner.run("native-list-" + package,

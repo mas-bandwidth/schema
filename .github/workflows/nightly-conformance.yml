@@ -139,9 +139,8 @@ jobs:
       - name: the C++ reference writes the fixed form (form 3)
         run: make tables-fixedform-corpus tables-fixedform-bench-corpus
 
-      - name: the shared BOM entry oracle (once)
-        run: go test -timeout=0 -count=1 ./test/conformance/harness -run '^TestBOMEntryCorpusOracle$'
-
+      # The C++ readiness run executes the full shared harness once, including
+      # the BOM oracle and every permanent corpus/gate regression.
       - name: the C++ leg checks the four BOM entry cases
         run: make conformance-bom-entry CONFORMANCE_BOM_LANG=cpp CONFORMANCE_BOM_OUT=build/nightly/reference-report/bom
 

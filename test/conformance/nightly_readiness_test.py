@@ -196,6 +196,12 @@ class Contracts(unittest.TestCase):
                     self.assertEqual(m.main([lang]),0,output.getvalue())
                 runner=FakeRunner.instances[-1]
                 self.assertEqual({row["phase"] for row in runner.results},m.required_phases(lang))
+                harness_calls=[argv for name,argv,cwd in runner.calls if name=="native-harness"]
+                self.assertEqual(len(harness_calls),1 if lang=="cpp" else 0)
+                if harness_calls:
+                    self.assertIn("./test/conformance/harness",harness_calls[0])
+                    self.assertNotIn("-run",harness_calls[0])
+                    self.assertIn("native-harness",m.required_phases("cpp"))
                 for name,argv,cwd in runner.calls:
                     if "test" in argv and ("go" in argv):
                         self.assertIn("-timeout=0",argv,(name,argv))
