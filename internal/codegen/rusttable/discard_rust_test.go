@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -33,6 +34,7 @@ fixed table Root
     a     int32 = 0
     inner Inner
     b     int32 = 0
+    f     float32 = 0
 }
 
 table Graph
@@ -40,6 +42,7 @@ table Graph
     a     int32 = 0
     inner Inner
     b     int32 = 0
+    f     float32 = 0
     next  *Graph
 }
 `
@@ -83,6 +86,7 @@ func rustDiscardWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 // answers None. Red if any read hands back what it decoded.
 func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
 	t.Parallel()
+	slowtest.Gate(t, "rustc (it builds and runs the generated Rust)")
 	if _, err := exec.LookPath("rustc"); err != nil {
 		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
 			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and rustc is not on PATH: %v", err)
@@ -127,12 +131,35 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
         }
     }
 
+    // late NaN after a retained unknown field: both stores must be cleared on refusal
+    let mut nan_wire: Vec<u8> = vec![
+        1,
+        1, 4, 42, 0, 0, 0,
+        2, 10, 0x00, 0x00, 0xc0, 0x7f,
+        0,
+    ];
+    nan_wire.extend_from_slice(&0x1122334455667788u64.to_le_bytes());
+    nan_wire.extend_from_slice(&KNOWN_IDS[3].to_le_bytes());
+    nan_wire.extend_from_slice(&2u64.to_le_bytes());
+    for name in ["root", "graph"] {
+        let mut store = TableRetain { bytes: Vec::with_capacity(1 << 12), ids: Vec::new() };
+        let mut r = TableReport::default();
+        let got = if name == "root" { root_load_retain(&nan_wire, &mut store, &mut r).is_some() } else { graph_load_retain(&nan_wire, &mut store, &mut r).is_some() };
+        if got { bad.push(format!("{name} retain late-NaN: load_retain handed back a value")); }
+        if !r.refused || r.non_finite_float.is_empty() {
+            bad.push(format!("{name} retain late-NaN: expected non_finite_float refusal on f, got refused={} non_finite={}", r.refused, r.non_finite_float));
+        }
+        if !store.bytes.is_empty() || !store.ids.is_empty() {
+            bad.push(format!("{name} retain late-NaN: the store kept {} bytes and {} ids", store.bytes.len(), store.ids.len()));
+        }
+    }
+
     // the fixed form: two whole records and a cut-short third
-    let rows = [RootRow { a: 5, inner: InnerRow { ok: true, n: 3 }, b: 9 }, RootRow { a: 6, inner: InnerRow { ok: true, n: 4 }, b: 10 }];
+    let rows = [RootRow { a: 5, inner: InnerRow { ok: true, n: 3 }, b: 9, f: 0.0 }, RootRow { a: 6, inner: InnerRow { ok: true, n: 4 }, b: 10, f: 0.0 }];
     let mut file = vec![0u8; root_fixed_measure(2)];
     if root_fixed_save(&rows, &mut file).is_none() { bad.push("fixed: the save refused".to_string()); }
     file.extend_from_slice(&[1, 2, 3]);
-    let mut values = vec![RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77 }; 4];
+    let mut values = vec![RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77, f: 0.0 }; 4];
     let mut plan = [TableFixedEntry::default(); 64];
     let mut remap = [0u16; 64];
     let mut r = TableFixedReport::default();
@@ -145,7 +172,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     if root_fixed_save(&rows, &mut mid_refuse).is_none() { bad.push("fixed mid-refuse: the save refused".to_string()); }
     let record1_at = TABLE_FIXED_HEADER_BYTES + 4 + ROOT_FIXED_BLOCK.len() + ROOT_FIXED_RECORD_BYTES;
     mid_refuse[record1_at] ^= 0xff;
-    let mut values = vec![RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77 }; 2];
+    let mut values = vec![RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77, f: 0.0 }; 2];
     let mut r = TableFixedReport::default();
     if root_fixed_load(&mut values, &mid_refuse, &mut plan, &mut remap, &mut r).is_some() || !r.refused {
         bad.push("fixed mid-refuse: fixed_load accepted a record with a corrupted layout hash".to_string());
@@ -165,7 +192,7 @@ func TestDamageDiscardsTheWholeLoadRust(t *testing.T) {
     let mut vocab = TableVocabulary::new(&mut storage);
     let mut ar = TableReport::default();
     if !announce_read(&mut vocab, &ANN, &mut ar) { bad.push(format!("message: the announcement did not read: {ar:?}")); }
-    let mut values = vec![RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77 }; TABLE_MESSAGE_BATCH_MAX];
+    let mut values = vec![RootRow { a: 77, inner: InnerRow { ok: true, n: 77 }, b: 77, f: 0.0 }; TABLE_MESSAGE_BATCH_MAX];
     let mut r = TableReport::default();
     let (count, ok) = root_load_messages(&mut values, &vocab, &batch, &mut r);
     if ok || count != 0 { bad.push(format!("message: load_messages answered ok={ok} count={count} on damage")); }
