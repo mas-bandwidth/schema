@@ -6704,7 +6704,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
     const TableRetainPath & path, bool field, uint32_t ordinal )
 {
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    if ( path.node != 0 ? TableRetainRecordNode( record ) != path.node : TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
     if ( field )
     {
@@ -9291,6 +9291,7 @@ inline const Asset * AssetLoadTolerant( uint8_t * region, int64_t region_bytes, 
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -9523,6 +9524,7 @@ inline bool AssetLoadBuilderTolerant( AssetBuilder & builder, const uint8_t * wi
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -10123,6 +10125,7 @@ inline const Catalog * CatalogLoadTolerant( uint8_t * region, int64_t region_byt
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -10355,6 +10358,7 @@ inline bool CatalogLoadBuilderTolerant( CatalogBuilder & builder, const uint8_t 
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -11255,6 +11259,7 @@ inline const Asset * AssetLoadRetain( uint8_t * region, int64_t region_bytes, co
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -11270,6 +11275,7 @@ inline const Asset * AssetLoadRetain( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -11628,6 +11634,7 @@ inline const Catalog * CatalogLoadRetain( uint8_t * region, int64_t region_bytes
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -11643,6 +11650,7 @@ inline const Catalog * CatalogLoadRetain( uint8_t * region, int64_t region_bytes
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }

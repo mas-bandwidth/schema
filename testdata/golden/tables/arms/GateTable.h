@@ -7036,7 +7036,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
     const TableRetainPath & path, bool field, uint32_t ordinal )
 {
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    if ( path.node != 0 ? TableRetainRecordNode( record ) != path.node : TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
     if ( field )
     {
@@ -10655,6 +10655,7 @@ inline const Gate * GateLoadTolerant( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -10673,28 +10674,21 @@ inline const Gate * GateLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
-    if ( region == NULL || region_bytes < (int64_t) sizeof( Gate ) )
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
     {
-        out->malformed = true;
-        return NULL;
+        memset( region, 0, (size_t) region_bytes );
     }
-    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    memset( region, 0, (size_t) region_bytes );
     uint64_t type_id = 0;
     const uint8_t * body = NULL;
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
     int64_t root_extent = 0;
     if ( !GateWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
     {
-        out->malformed = true;
-        return NULL;
+        extent_ok = false;
     }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Gate ) ) + root_extent );
     int64_t records = 0;
@@ -10704,14 +10698,118 @@ inline const Gate * GateLoadTolerant( uint8_t * region, int64_t region_bytes, co
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = GateNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
+            if ( extent_ok )
+            {
+                int64_t storage = GateNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        GateBuilder builder;
+        Gate * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xb5877a7e05bbfed2ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = GateNodeAlloc( type_id, builder.main, length );
+                if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )
+                {
+                    out->malformed = true;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                    directory[k + 1].type_id = type_id;
+                    k++;
+                    continue;
+                }
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
             {
                 out->malformed = true;
-                return NULL;
             }
-            if ( storage > 0 ) { data += storage; }
         }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    GateNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            GateLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Gate ) )
+    {
+        out->malformed = true;
+        return NULL;
+    }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )
+    {
+        out->malformed = true;
+        return NULL;
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
@@ -10897,6 +10995,7 @@ inline bool GateLoadBuilderTolerant( GateBuilder & builder, const uint8_t * wire
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -10999,7 +11098,7 @@ inline bool GateLoadBuilderTolerant( GateBuilder & builder, const uint8_t * wire
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = GateLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && GateLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
@@ -11648,6 +11747,7 @@ inline const Gate * GateLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -11663,6 +11763,7 @@ inline const Gate * GateLoadRetain( uint8_t * region, int64_t region_bytes, cons
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -11681,28 +11782,21 @@ inline const Gate * GateLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
-    if ( region == NULL || region_bytes < (int64_t) sizeof( Gate ) )
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
     {
-        out->malformed = true;
-        return NULL;
+        memset( region, 0, (size_t) region_bytes );
     }
-    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    memset( region, 0, (size_t) region_bytes );
     uint64_t type_id = 0;
     const uint8_t * body = NULL;
     int64_t length = 0;
 
     // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
     int64_t root_extent = 0;
     if ( !GateWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
     {
-        out->malformed = true;
-        return NULL;
+        extent_ok = false;
     }
     int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Gate ) ) + root_extent );
     int64_t records = 0;
@@ -11712,14 +11806,124 @@ inline const Gate * GateLoadRetain( uint8_t * region, int64_t region_bytes, cons
         while ( TableNodeScanNext( scan, type_id, body, length ) )
         {
             records++;
-            int64_t storage = GateNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
+            if ( extent_ok )
+            {
+                int64_t storage = GateNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        GateBuilder builder;
+        Gate * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xb5877a7e05bbfed2ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = GateNodeAlloc( type_id, builder.main, length );
+                if ( type_id == kTableStringTypeId && !TableUtf8Valid( body, length ) )
+                {
+                    out->malformed = true;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                    directory[k + 1].type_id = type_id;
+                    k++;
+                    continue;
+                }
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
             {
                 out->malformed = true;
-                return NULL;
             }
-            if ( storage > 0 ) { data += storage; }
         }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    GateNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            GateLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
+    if ( region == NULL || region_bytes < (int64_t) sizeof( Gate ) )
+    {
+        out->malformed = true;
+        return NULL;
+    }
+    if ( ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) != 0 )
+    {
+        out->malformed = true;
+        return NULL;
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )

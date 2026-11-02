@@ -2363,6 +2363,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
         in.report->malformed = 1;
         return 0;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     ok = tabledemo_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
@@ -2679,6 +2680,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_graph( tabledemo_table_worker
     memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
     if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->malformed = 1; return 0; }
     info->reset(root);
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     ok = tabledemo_table_json_read_table(&in,root,info,0);
     if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
     tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
