@@ -20,7 +20,7 @@ func TestTableIdsWriteBulkProperties(t *testing.T) {
 		"if ( w.overflow || w.offset < 0 || w.offset > w.capacity || total_bytes > w.capacity - w.offset )",
 		"uint8_t * dst = w.buffer + w.offset;",
 		"defined( __ORDER_LITTLE_ENDIAN__ ) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__",
-		"memcpy( dst, ids.ids, (size_t)( count * 8 ) );",
+		"memcpy( dst, ids.ids, (size_t) ( count * 8 ) );",
 		"const uint64_t n = uint64_t( count );",
 		"memcpy( dst + count * 8, &n, 8 );",
 		"const uint64_t v = i < count ? ids.ids[i] : uint64_t( count );",

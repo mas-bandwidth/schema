@@ -51,7 +51,7 @@ inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 // The measure reads no field value: it walks each record's field headers,
 // skipping every payload by its framing, to reach each N at every depth. A
 // false is a REFUSAL, and it carries its reason (§6.5).
-typedef bool ( * TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
+typedef bool ( *TableWireExtentFn )( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason );
 
 // the framing walk over an ARRAY OF TABLES held by value: its elements' own
 // lists and maps are part of this node's extent too
@@ -274,12 +274,12 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 	g.pf("// the running offset exactly as %sExtentPack advances it (§2.8, §2.9).\n", st.Name)
 	g.pf("template <typename Ctx>\ninline bool %sExtentAt( const Ctx & ctx, const %s & value, int64_t & at )\n{\n", st.Name, st.Name)
 	if !g.hasExtent(st) {
-		g.pf("    (void) ctx; (void) value; (void) at; // no list or map below this record\n")
+		g.pf("    (void) ctx;\n    (void) value;\n    (void) at; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		// a variable member with no extent of its own is still a root Lock and
 		// a cook size from, so its whole extent is spelled, and it is zero
 		g.pf("template <typename Ctx>\ninline int64_t %sExtent( const Ctx & ctx, const %s & value )\n{\n", st.Name, st.Name)
-		g.pf("    (void) ctx; (void) value; // no list or map below this record\n")
+		g.pf("    (void) ctx;\n    (void) value; // no list or map below this record\n")
 		g.pf("    return 0;\n}\n\n")
 		return
 	}
@@ -334,7 +334,7 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 	g.pf("// advancing the same running offset %sExtentAt advances (§2.8, §2.9).\n", st.Name)
 	g.pf("template <typename Ctx>\ninline bool %sExtentPack( const Ctx & ctx, const %s & src, %s & dst, uint8_t * extent, int64_t & at, int64_t capacity )\n{\n", st.Name, st.Name, st.Name)
 	if !g.hasExtent(st) {
-		g.pf("    (void) ctx; (void) src; (void) dst; (void) extent; (void) at; (void) capacity; // no list or map below this record\n")
+		g.pf("    (void) ctx;\n    (void) src;\n    (void) dst;\n    (void) extent;\n    (void) at;\n    (void) capacity; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -527,7 +527,7 @@ func (g *tableGen) emitWireExtent(st *ir.Struct) {
 	g.pf("// expect before one byte is allocated (docs/SPEC-TABLES.md §6.5).\n")
 	g.pf("inline bool %sWireExtent( const uint8_t * body, int64_t length, int64_t & at, const TableIdTable * ids, TableRefuseReason & reason )\n{\n", st.Name)
 	if !g.hasExtent(st) {
-		g.pf("    (void) body; (void) length; (void) at; (void) ids; (void) reason; // no list or map below this record\n")
+		g.pf("    (void) body;\n    (void) length;\n    (void) at;\n    (void) ids;\n    (void) reason; // no list or map below this record\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -643,13 +643,17 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 // plus the extent its own lists and maps take, read from the wire framing
 // (§2.8, §2.9, §6.5). `reason` is the refusal's carrier, declared by the
 // caller where a unit has an extent.
-func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind, onBad string) {
+func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind string, onBad ...string) {
 	if !g.anyExtent {
 		g.pf("%sint64_t data = TableAlignUp64( (int64_t) sizeof( %s ) );\n", ind, st.Name)
 		return
 	}
 	g.pf("%sint64_t root_extent = 0;\n", ind)
-	g.pf("%sif ( !%sWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) ) { %s }\n", ind, st.Name, onBad)
+	g.pf("%sif ( !%sWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )\n%s{\n", ind, st.Name, ind)
+	for _, statement := range onBad {
+		g.pf("%s    %s\n", ind, statement)
+	}
+	g.pf("%s}\n", ind)
 	g.pf("%sint64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( %s ) ) + root_extent );\n", ind, st.Name)
 }
 
@@ -664,7 +668,7 @@ func (g *tableGen) emitRootDataBytes(st *ir.Struct, ind, onBad string) {
 
 // cookExtentSignature is one record's extent writer.
 func (g *tableGen) cookExtentSignature(st *ir.Struct) string {
-	return fmt.Sprintf("template <typename Ctx> inline bool %sCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %s & value, TableByteOrder order )", st.Name, st.Name)
+	return fmt.Sprintf("template <typename Ctx>\ninline bool %sCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const %s & value, TableByteOrder order )", st.Name, st.Name)
 }
 
 // emitCookExtent emits one record's extent writer: every list and map
@@ -676,7 +680,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 	g.pf("// own cook writer (§2.8, §2.9, §7.6).\n")
 	g.pf("%s\n{\n", g.cookExtentSignature(st))
 	if !g.hasExtent(st) {
-		g.pf("    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;\n")
+		g.pf("    (void) ctx;\n    (void) region;\n    (void) extent;\n    (void) at;\n    (void) record;\n    (void) value;\n    (void) order;\n")
 		g.pf("    return true; // no list or map below this record\n}\n\n")
 		return
 	}
@@ -761,7 +765,7 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 func (g *tableGen) emitCookNode(st *ir.Struct) {
 	record := ir.CookExtentStart(g.unit, st)
 	g.pf("// %sCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).\n", st.Name)
-	g.pf("template <typename Ctx> inline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
+	g.pf("template <typename Ctx>\ninline bool %sCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )\n{\n", st.Name, st.Name)
 	if g.isVar(st.Name) {
 		g.pf("    if ( !%sCookBody( ctx, region, at, value, order ) ) { return false; }\n", st.Name)
 	} else {
@@ -806,13 +810,13 @@ func (g *tableGen) emitCookExtentSurface(members []*ir.Struct) {
 func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 	ml := ir.RecordLayout(g.unit, st)
 	if !g.anyExtent || !g.hasExtent(st) {
-		g.pf("%ssize = %d; node_align = %d;\n", ind, ml.Size, ml.Align)
+		g.pf("%ssize = %d;\n%snode_align = %d;\n", ind, ml.Size, ind, ml.Align)
 		return
 	}
 	g.pf("%s{\n", ind)
 	g.pf("%s    const int64_t extent = %sExtent( ctx, %s );\n", ind, st.Name, expr)
 	g.pf("%s    if ( extent < 0 ) { %s }\n", ind, onBad)
-	g.pf("%s    size = %d + extent; node_align = %d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ir.CookNodeAlign(g.unit, st))
+	g.pf("%s    size = %d + extent;\n%s    node_align = %d; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)\n", ind, ir.CookExtentStart(g.unit, st), ind, ir.CookNodeAlign(g.unit, st))
 	g.pf("%s}\n", ind)
 }
 

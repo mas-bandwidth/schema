@@ -286,7 +286,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 			ind, rdr, rdr, tag, none)
 	case f.Type.Blob(), f.Type.Pointer && f.Array == ir.ArrayNone:
 		g.emitNodeIndexLoad(f, value, ind, rdr,
-			fmt.Sprintf("%s = %s; r.report->malformed = true; break;", tag, none), sfx, true)
+			[]string{fmt.Sprintf("%s = %s;", tag, none), "r.report->malformed = true;", "break;"}, sfx, true)
 	case f.Type.Kind == ir.TString:
 		g.establishArm(v, base, ind)
 		length, keep := "arm_len"+sfx, "arm_keep"+sfx
@@ -431,7 +431,7 @@ func (g *tableGen) emitArmLoad(v ir.UnionVariant, base, ind, rdr, tag, none, sfx
 		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, value, ind, rdr,
-			fmt.Sprintf("%s = %s; r.report->malformed = true; break;", tag, none))
+			fmt.Sprintf("%s = %s;", tag, none), "r.report->malformed = true;", "break;")
 	}
 }
 
