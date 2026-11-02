@@ -68,7 +68,38 @@ import '../../../build/tables-generated-dart/m2/M2Cook.dart' as m2cook;
 import '../../../build/tables-generated-dart/stream/StreamCook.dart' as streamcook;
 import '../../../build/tables-generated-dart/messages/MessagesCook.dart' as messagescook;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalarsCook.dart' as scalarscook;
+import '../../../build/tables-generated-dart/lists/SaveCook.dart' as lsavecook;
+import '../../../build/tables-generated-dart/lists/SharedCook.dart' as lsharedcook;
+import '../../../build/tables-generated-dart/lists/HoldersCook.dart' as lholderscook;
+import '../../../build/tables-generated-dart/lists/MigrateCook.dart' as lmigratecook;
+import '../../../build/tables-generated-dart/maps/CellsCook.dart' as mcellscook;
+import '../../../build/tables-generated-dart/maps/ChunksCook.dart' as mchunkscook;
+import '../../../build/tables-generated-dart/maps/CrewsCook.dart' as mcrewscook;
+import '../../../build/tables-generated-dart/maps/DepthCook.dart' as mdepthcook;
+import '../../../build/tables-generated-dart/maps/DocsCook.dart' as mdocscook;
+import '../../../build/tables-generated-dart/maps/FleetCook.dart' as mfleetcook;
+import '../../../build/tables-generated-dart/maps/PairsCook.dart' as mpairscook;
+import '../../../build/tables-generated-dart/maps/RunsCook.dart' as mrunscook;
+import '../../../build/tables-generated-dart/maps/SlotsCook.dart' as mslotscook;
+import '../../../build/tables-generated-dart/maps/SpansCook.dart' as mspanscook;
+import '../../../build/tables-generated-dart/maps/TextCook.dart' as mtextcook;
+import '../../../build/tables-generated-dart/maps/TrailsCook.dart' as mtrailscook;
+import '../../../build/tables-generated-dart/widelist/WidelistdemoWire.dart' as widelist;
+import '../../../build/tables-generated-dart/widelist/WidesCook.dart' as widelistcook;
 import '../../../build/tables-generated-dart/rt1/Tblrt1Wire.dart' as tblrt1;
+import '../../../build/tables-generated-dart/features/FeaturewitnessesWire.dart' as feature;
+import '../../../build/tables-generated-dart/features/FeaturesCook.dart' as featurecook;
+
+// Decode JSON bytes before entering a generated String reader. Dart's UTF-8
+// decoder skips one leading BOM, matching the Go reader's whole-text boundary.
+String? readJsonTextFile(String path) {
+  final bytes = File(path).readAsBytesSync();
+  try {
+    return utf8.decode(bytes, allowMalformed: false);
+  } on FormatException {
+    return null;
+  }
+}
 
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
@@ -782,6 +813,11 @@ String _reportLine(int unknown, int kind, int widened, int clamped, int duplicat
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return feature.rootWireSave(feature.rootWireLoad(wire));
+    case 'featurewitnesses ArrayRoot':
+      return feature.arrayRootWireSave(feature.arrayRootWireLoad(wire));
+
     case 'tblg1 Guarded':
       return tblg1.guardedWireSave(tblg1.guardedWireLoad(wire));
     case 'tblv1 Cfg':
@@ -840,6 +876,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return widedemo.captionWireSave(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampWireLoad(wire));
+    case 'widelist Wide':
+      return widelist.wideWireSave(widelist.wideWireLoad(wire));
     case 'listdemo Army':
       return listdemo.armyWireSave(listdemo.armyWireLoad(wire));
     case 'listdemo Mixed':
@@ -886,6 +924,11 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return feature.rootWireSave(feature.rootFromJson(text));
+    case 'featurewitnesses ArrayRoot':
+      return feature.arrayRootWireSave(feature.arrayRootFromJson(text));
+
     case 'tblw1 Fleet':
       return tblw1.fleetWireSave(tblw1.fleetFromJson(text));
     case 'tblw2 Fleet':
@@ -934,6 +977,8 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       return widedemo.captionWireSave(widedemo.captionFromJson(text));
     case 'widedemo Stamp':
       return widedemo.stampWireSave(widedemo.stampFromJson(text));
+    case 'widelist Wide':
+      return widelist.wideWireSave(widelist.wideFromJson(text));
     case 'listdemo Army':
       return listdemo.armyWireSave(listdemo.armyFromJson(text));
     case 'listdemo Mixed':
@@ -990,6 +1035,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return feature.rootToJson(feature.rootWireLoad(wire));
+    case 'featurewitnesses ArrayRoot':
+      return feature.arrayRootToJson(feature.arrayRootWireLoad(wire));
+
     case 'graphdemo ListNode':
       return graphdemo.listNodeToJson(graphdemo.listNodeWireLoad(wire));
     case 'listdemo Bounded':
@@ -1046,6 +1096,8 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return widedemo.captionToJson(widedemo.captionWireLoad(wire));
     case 'widedemo Stamp':
       return widedemo.stampToJson(widedemo.stampWireLoad(wire));
+    case 'widelist Wide':
+      return widelist.wideToJson(widelist.wideWireLoad(wire));
     case 'listdemo Army':
       return listdemo.armyToJson(listdemo.armyWireLoad(wire));
     case 'listdemo Mixed':
@@ -1102,6 +1154,13 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 
 String? loadReport(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      final r=feature.TableWireReport();feature.rootWireLoad(wire,r);
+      return _reportLine(r.unknown,r.kindMismatch,r.widened,r.clamped,r.duplicate,r.malformed,r.refused);
+    case 'featurewitnesses ArrayRoot':
+      final r=feature.TableWireReport();feature.arrayRootWireLoad(wire,r);
+      return _reportLine(r.unknown,r.kindMismatch,r.widened,r.clamped,r.duplicate,r.malformed,r.refused);
+
     case 'graphdemo ListNode':
       final r = graphdemo.TableWireReport();
       graphdemo.listNodeWireLoad(wire, r);
@@ -1304,6 +1363,15 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
   Uint8List wire,
 ) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      final r=feature.TableWireReport();final value=feature.rootWireLoad(wire,r);
+      if(r.malformed||r.refused)return(-1,(_,__)=>false);
+      return(featurecook.RootCook.cookMeasure(value),(out,order)=>featurecook.RootCook.cook(value,out,order));
+    case 'featurewitnesses ArrayRoot':
+      final r=feature.TableWireReport();final value=feature.arrayRootWireLoad(wire,r);
+      if(r.malformed||r.refused)return(-1,(_,__)=>false);
+      return(featurecook.ArrayRootCook.cookMeasure(value),(out,order)=>featurecook.ArrayRootCook.cook(value,out,order));
+
     case 'graphdemo Scene':
       final r = graphdemo.TableWireReport();
       final value = graphdemo.sceneWireLoad(wire, r);
@@ -1441,6 +1509,158 @@ const Map<String, String> cookWriteAbsent = <String, String>{};
         streamcook.FeedCook.cookMeasure(value),
         (out, order) => streamcook.FeedCook.cook(value, out, order),
       );
+    case 'listdemo Save':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.saveWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lsavecook.SaveCook.cookMeasure(value),
+        (out, order) => lsavecook.SaveCook.cook(value, out, order),
+      );
+    case 'listdemo Mixed':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.mixedWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lsavecook.MixedCook.cookMeasure(value),
+        (out, order) => lsavecook.MixedCook.cook(value, out, order),
+      );
+    case 'listdemo Album':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.albumWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lsharedcook.AlbumCook.cookMeasure(value),
+        (out, order) => lsharedcook.AlbumCook.cook(value, out, order),
+      );
+    case 'listdemo Sheet':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.sheetWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lholderscook.SheetCook.cookMeasure(value),
+        (out, order) => lholderscook.SheetCook.cook(value, out, order),
+      );
+    case 'listdemo Army':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.armyWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lholderscook.ArmyCook.cookMeasure(value),
+        (out, order) => lholderscook.ArmyCook.cook(value, out, order),
+      );
+    case 'listdemo Unbounded':
+      final r = listdemo.TableWireReport();
+      final value = listdemo.unboundedWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        lmigratecook.UnboundedCook.cookMeasure(value),
+        (out, order) => lmigratecook.UnboundedCook.cook(value, out, order),
+      );
+    case 'mapdemo Cells':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.cellsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mcellscook.CellsCook.cookMeasure(value),
+        (out, order) => mcellscook.CellsCook.cook(value, out, order),
+      );
+    case 'mapdemo Chunks':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.chunksWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mchunkscook.ChunksCook.cookMeasure(value),
+        (out, order) => mchunkscook.ChunksCook.cook(value, out, order),
+      );
+    case 'mapdemo Crews':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.crewsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mcrewscook.CrewsCook.cookMeasure(value),
+        (out, order) => mcrewscook.CrewsCook.cook(value, out, order),
+      );
+    case 'mapdemo Depth':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.depthWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mdepthcook.DepthCook.cookMeasure(value),
+        (out, order) => mdepthcook.DepthCook.cook(value, out, order),
+      );
+    case 'mapdemo Docs':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.docsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mdocscook.DocsCook.cookMeasure(value),
+        (out, order) => mdocscook.DocsCook.cook(value, out, order),
+      );
+    case 'mapdemo Fleet':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.fleetWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mfleetcook.FleetCook.cookMeasure(value),
+        (out, order) => mfleetcook.FleetCook.cook(value, out, order),
+      );
+    case 'mapdemo Pairs':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.pairsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mpairscook.PairsCook.cookMeasure(value),
+        (out, order) => mpairscook.PairsCook.cook(value, out, order),
+      );
+    case 'mapdemo Runs':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.runsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mrunscook.RunsCook.cookMeasure(value),
+        (out, order) => mrunscook.RunsCook.cook(value, out, order),
+      );
+    case 'mapdemo Slots':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.slotsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mslotscook.SlotsCook.cookMeasure(value),
+        (out, order) => mslotscook.SlotsCook.cook(value, out, order),
+      );
+    case 'mapdemo Spans':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.spansWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mspanscook.SpansCook.cookMeasure(value),
+        (out, order) => mspanscook.SpansCook.cook(value, out, order),
+      );
+    case 'mapdemo Text':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.textWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mtextcook.TextCook.cookMeasure(value),
+        (out, order) => mtextcook.TextCook.cook(value, out, order),
+      );
+    case 'mapdemo Trails':
+      final r = mapdemo.TableWireReport();
+      final value = mapdemo.trailsWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        mtrailscook.TrailsCook.cookMeasure(value),
+        (out, order) => mtrailscook.TrailsCook.cook(value, out, order),
+      );
+    case 'widelist Wide':
+      final r = widelist.TableWireReport();
+      final value = widelist.wideWireLoad(wire, r);
+      if (r.malformed || r.refused) return (-1, (_, _) => false);
+      return (
+        widelistcook.WideCook.cookMeasure(value),
+        (out, order) => widelistcook.WideCook.cook(value, out, order),
+      );
   }
   return null;
 }
@@ -1522,7 +1742,9 @@ int surfaceJsonRead(String outDir) {
       spillAbsent(outDir, f[1]);
       continue;
     }
-    final saved = jsonReadSave(f[2], f[3], File(textPath).readAsStringSync());
+    final text = readJsonTextFile(textPath);
+    if (text == null) throw FormatException('invalid UTF-8 in $textPath');
+    final saved = jsonReadSave(f[2], f[3], text);
     if (saved == null) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -1551,6 +1773,11 @@ String? jsonHostileReport(String unit, String root, String text) {
   dynamic r;
   try {
     switch ('$unit $root') {
+      case 'featurewitnesses Root':
+        r=feature.TableTextReport();feature.rootFromJson(text,r);break;
+      case 'featurewitnesses ArrayRoot':
+        r=feature.TableTextReport();feature.arrayRootFromJson(text,r);break;
+
       case 'tabledemo RootConfig':
         r = tabledemo.TableTextReport();
         tabledemo.rootConfigFromJson(text, r);
@@ -1590,7 +1817,7 @@ String? jsonHostileReport(String unit, String root, String text) {
       default:
         return null;
     }
-  } catch (_) {
+  } on FormatException {
     return 'refused\n';
   }
   return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n';
@@ -1598,7 +1825,11 @@ String? jsonHostileReport(String unit, String root, String text) {
 
 int surfaceJsonHostile(String outDir) {
   for (final f in kind('json-hostile')) {
-    final text = utf8.decode(File('${f[4]}/${f[3]}.json').readAsBytesSync(), allowMalformed: true);
+    final text = readJsonTextFile('${f[4]}/${f[3]}.json');
+    if (text == null) {
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+      continue;
+    }
     final verdict = jsonHostileReport(f[2], f[3], text);
     if (verdict == null) {
       spillAbsent(outDir, f[1]);
@@ -2141,7 +2372,9 @@ _FuzzRun _plainCodec<V, R>(
     final report = mkReport();
     final m = measure(wire);
     final value = load(wire, report);
-    return _fuzzReplyFor(report as dynamic, m >= 0, m, _refusable(() => save(value)));
+    final dynamic r=report;
+    final loaded=!r.malformed&&!r.refused;
+    return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value)) : null);
   };
 }
 
@@ -2160,7 +2393,9 @@ _FuzzRun _retainCodec<V, R, T>(
     final retain = mkRetain(1048576, List<int>.filled(131072, 0));
     final m = measure(wire);
     final value = load(wire, retain, report);
-    return _fuzzReplyFor(report as dynamic, m >= 0, m, _refusable(() => save(value, retain, report)));
+    final dynamic r=report;
+    final loaded=!r.malformed&&!r.refused;
+    return _fuzzReplyFor(r,loaded,m,loaded ? _refusable(() => save(value, retain, report)) : null);
   };
 }
 
@@ -2184,7 +2419,9 @@ List<int> _fuzzReplyFor(dynamic r, bool loaded, int measure, List<int>? saved) {
     clamped: r.clamped as int,
     duplicate: r.duplicate as int,
     malformed: r.malformed as bool,
-    refused: r.refused as bool,
+    // Builder count refusal rides the completion/save-failure channel;
+    // the shared builder oracle keeps its ordinary report counters.
+    refused: (r.refused as bool) && r.reason != 'count_over_extent_cap',
     measure: measure,
     retained: r.retained as int,
     retainLost: r.retainLost as int,
@@ -2194,6 +2431,15 @@ List<int> _fuzzReplyFor(dynamic r, bool loaded, int measure, List<int>? saved) {
 
 _FuzzRoot? fuzzRoot(String unit, String root) {
   switch ('$unit $root') {
+    case 'featurewitnesses Root':
+      return _FuzzRoot(
+        _plainCodec(feature.TableWireReport.new,feature.rootWireMeasure,feature.rootWireLoad,feature.rootWireSave),
+        retain:_retainCodec(feature.TableRetain.new,feature.TableWireReport.new,feature.rootWireMeasure,feature.rootWireLoadRetain,feature.rootWireSaveRetain));
+    case 'featurewitnesses ArrayRoot':
+      return _FuzzRoot(
+        _plainCodec(feature.TableWireReport.new,feature.arrayRootWireMeasure,feature.arrayRootWireLoad,feature.arrayRootWireSave),
+        retain:_retainCodec(feature.TableRetain.new,feature.TableWireReport.new,feature.arrayRootWireMeasure,feature.arrayRootWireLoadRetain,feature.arrayRootWireSaveRetain));
+
     case 'cards Card':
       return _FuzzRoot(
           _plainCodec(TableWireReport.new, cardWireMeasure, cardWireLoad, cardWireSave),
@@ -2414,6 +2660,10 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave),
           retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoadRetain, widedemo.stampWireSaveRetain));
+    case 'widelist Wide':
+      return _FuzzRoot(
+          _plainCodec(widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoad, widelist.wideWireSave),
+          retain: _retainCodec(widelist.TableRetain.new, widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoadRetain, widelist.wideWireSaveRetain));
   }
   return null;
 }

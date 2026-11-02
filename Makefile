@@ -5662,7 +5662,7 @@ CPP_REGION_DISCARD_NC := build/cpp-region-discard-nc
 .PHONY: tables-cpp-region-discard-negative-control
 tables-cpp-region-discard-negative-control:
 	@rm -rf $(CPP_REGION_DISCARD_NC) && mkdir -p $(CPP_REGION_DISCARD_NC)
-	@sed -e 's|if ( out->malformed ) { memset( region, 0, (size_t) region_bytes ); return NULL; }|if ( false ) { memset( region, 0, (size_t) region_bytes ); return NULL; } // NEGATIVE CONTROL: the region discard is gone|' \
+	@sed -e '/damage discards the whole load/ { /TableRetainReset/! s|if ( out->malformed )|if ( false )|; }' \
 		internal/codegen/cpptable/pointers.go > $(CPP_REGION_DISCARD_NC)/pointers.go.txt
 	@cmp -s internal/codegen/cpptable/pointers.go $(CPP_REGION_DISCARD_NC)/pointers.go.txt && \
 		{ echo "NEGATIVE CONTROL: the C++ region discard sabotage patched nothing"; exit 1; } || true
@@ -5678,6 +5678,177 @@ tables-cpp-region-discard-negative-control:
 		  cat $(CPP_REGION_DISCARD_NC)/log; exit 1; }
 	@grep -m1 "handed back a root" $(CPP_REGION_DISCARD_NC)/log
 	@echo "negative control: removing the C++ region discard turns the whole-load gate RED"
+
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# 2026-10-31). The C++ check is Kahn's algorithm over the load's directory
+# (TableCycleAcyclic, internal/codegen/cpptable/arena.go). The first control
+# drops its verdict in a COPY of arena.go, so a cyclic graph loads, and
+# TestPointerNamingAnOpenNodeIsRefusedCPP must go red on it.
+CPP_CYCLE_NC := build/cpp-cycle-nc
+.PHONY: tables-cpp-cycle-negative-control
+tables-cpp-cycle-negative-control:
+	@rm -rf $(CPP_CYCLE_NC) && mkdir -p $(CPP_CYCLE_NC)
+	@sed -e 's#    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle#    if ( c.broken ) { return false; } // NEGATIVE CONTROL: the cycle verdict is gone#' \
+		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_NC)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_NC)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(CPP_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedCPP$$' \
+			./internal/codegen/cpptable > $(CPP_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ cycle verdict is gone and the gate stayed green"; \
+		cat $(CPP_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "cycle: the region load handed back a cyclic graph" $(CPP_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(CPP_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "cyclic graph" $(CPP_CYCLE_NC)/log
+	@echo "negative control: removing the C++ cycle verdict turns the cycle gate RED"
+
+# The LINEAR control: the second pass stacks a node at EVERY slot naming it
+# rather than at the last, so a shared node is entered once per path into it,
+# and the forty-diamond chain TestDiamondChainLoadsLinearCPP loads must go red.
+CPP_CYCLE_LINEAR_NC := build/cpp-cycle-linear-nc
+.PHONY: tables-cpp-cycle-linear-negative-control
+tables-cpp-cycle-linear-negative-control:
+	@rm -rf $(CPP_CYCLE_LINEAR_NC) && mkdir -p $(CPP_CYCLE_LINEAR_NC)
+	@sed -e 's|    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free|    TableCyclePush( c, p ); // NEGATIVE CONTROL: entered once per path|' \
+		internal/codegen/cpptable/arena.go > $(CPP_CYCLE_LINEAR_NC)/arena.go.txt
+	@cmp -s internal/codegen/cpptable/arena.go $(CPP_CYCLE_LINEAR_NC)/arena.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C++ linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/arena.go":"%s/$(CPP_CYCLE_LINEAR_NC)/arena.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(CPP_CYCLE_LINEAR_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 300s -overlay $(CPP_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearCPP$$' \
+			./internal/codegen/cpptable > $(CPP_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
+		cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(CPP_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(CPP_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "diamond:" $(CPP_CYCLE_LINEAR_NC)/log
+	@echo "negative control: entering a shared node once per path turns the diamond gate RED"
+
+# The engine's twin: a pointer to an OPEN node is let through in a COPY of
+# decodenodes.go, so the oracle reads node_cycle_self clean, and the framing
+# oracle check TestFramingVectorsReadThroughTheEngine must go red on that row.
+ENGINE_CYCLE_NC := build/engine-cycle-nc
+.PHONY: tables-engine-cycle-negative-control
+tables-engine-cycle-negative-control:
+	@rm -rf $(ENGINE_CYCLE_NC) && mkdir -p $(ENGINE_CYCLE_NC)
+	@sed -e 's|return true // a pointer to an OPEN node: a cycle|continue // NEGATIVE CONTROL: cycles read clean|' \
+		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the engine cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_NC)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_CYCLE_NC)/overlay.json -run '^TestFramingVectorsReadThroughTheEngine$$' \
+			./test/conformance/harness > $(ENGINE_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: cycles read clean and the framing oracle check stayed green"; \
+		cat $(ENGINE_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "node_cycle_self" $(ENGINE_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the check went red, but not on node_cycle_self"; \
+		  cat $(ENGINE_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "node_cycle_self" $(ENGINE_CYCLE_NC)/log
+	@echo "negative control: letting the engine read a cycle turns node_cycle_self RED"
+
+# THE CHECK IS LINEAR (docs/SPEC-TABLES.md §3.1): a COPY of decodenodes.go
+# re-enters a CLOSED node instead of taking it as a share, which is the
+# open-path-only walk, exponential on a diamond chain, and
+# TestDiamondChainLoadsLinear must miss its deadline.
+ENGINE_CYCLE_LINEAR_NC := build/engine-cycle-linear-nc
+.PHONY: tables-engine-cycle-linear-negative-control
+tables-engine-cycle-linear-negative-control:
+	@rm -rf $(ENGINE_CYCLE_LINEAR_NC) && mkdir -p $(ENGINE_CYCLE_LINEAR_NC)
+	@sed -e 's|continue // a pointer to a CLOSED node: a share, never re-entered|// NEGATIVE CONTROL: a share is re-entered|' \
+		internal/tablewire/decodenodes.go > $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt
+	@cmp -s internal/tablewire/decodenodes.go $(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt && \
+		{ echo "NEGATIVE CONTROL: the engine linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/tablewire/decodenodes.go":"%s/$(ENGINE_CYCLE_LINEAR_NC)/decodenodes.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(ENGINE_CYCLE_LINEAR_NC)/overlay.json
+	@if go test -count=1 -overlay $(ENGINE_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinear$$' \
+			./internal/tablewire > $(ENGINE_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: shares are re-entered and the diamond gate stayed green"; \
+		cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(ENGINE_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(ENGINE_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "did not finish linear" $(ENGINE_CYCLE_LINEAR_NC)/log
+	@echo "negative control: re-entering a shared node turns the diamond gate RED"
+
+# NOTHING OF A REFUSED BUILDER LOAD IS USED (docs/SPEC-TABLES.md §4): the control
+# removes the root reset from a COPY of pointers.go, so a damaged builder load
+# leaves its root holding what it decoded.
+TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR := build/tables-cpp-builder-discard-negative-control
+.PHONY: tables-cpp-builder-discard-negative-control
+tables-cpp-builder-discard-negative-control:
+	@rm -rf $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)
+	@sed -e 's#if ( out->malformed || !ok ) { %sReset( \*root ); }#if ( false ) { %sReset( *root ); } // NEGATIVE CONTROL: the reset is gone#' \
+		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestDamageDiscardsTheWholeLoadCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestDamageDiscardsTheWholeLoadCPP stayed green"; \
+		cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "builder: a damaged load left a usable root" $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "usable root" $(TABLES_CPP_BUILDER_DISCARD_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestDamageDiscardsTheWholeLoadCPP RED"
+
+# A REFUSED RETAINING LOAD KEEPS NOTHING (docs/SPEC-TABLES.md §3.3, §6.6): the
+# control removes the store reset from the non-finite exit of a COPY of
+# pointers.go, so a NaN leaves the retention store holding records.
+TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-retain-refusal-negative-control
+.PHONY: tables-cpp-retain-refusal-negative-control
+tables-cpp-retain-refusal-negative-control:
+	@rm -rf $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)
+	@sed -e '/if ( TableNonFiniteRefused/ s|        TableRetainReset( retain, nodes, region );\\n||' \
+		internal/codegen/cpptable/pointers.go > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/pointers.go $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/pointers.go":"%s/$(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestRefusedLoadsHandBackNothingCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestRefusedLoadsHandBackNothingCPP stayed green"; \
+		cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "nan: the retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestRefusedLoadsHandBackNothingCPP RED"
+
+# A REFUSED FIXED BATCH KEEPS NOTHING (docs/SPEC-TABLES.md §4, §6.5): the control
+# removes the no_layout reset from a COPY of fixedform.go, so record 0 of a
+# batch refused at record 1 stays decoded.
+TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-fixed-refusal-negative-control
+.PHONY: tables-cpp-fixed-refusal-negative-control
+tables-cpp-fixed-refusal-negative-control:
+	@rm -rf $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)
+	@sed -e 's|for ( int64_t j = 0; j < k; ++j ) { %sReset( values\[j\] ); }|for ( int64_t j = 0; j < 0; ++j ) { %sReset( values[j] ); } // NEGATIVE CONTROL: the reset is gone|' \
+		internal/codegen/cpptable/fixedform.go > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
+	@cmp -s internal/codegen/cpptable/fixedform.go $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
+		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/cpptable/fixedform.go":"%s/$(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/overlay.json -run '^TestFixedRefusalHandsBackNothingCPP$$' \
+			./internal/codegen/cpptable > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestFixedRefusalHandsBackNothingCPP stayed green"; \
+		cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
+	fi
+	@grep -q "fixed: no_layout left record 0 usable" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
+	@grep -m1 "left record 0" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the reset turns TestFixedRefusalHandsBackNothingCPP RED"
 
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
@@ -6320,6 +6491,15 @@ include make/checks/schema-shared-hostile-corpus.mk
 # (issue #599): --skip takes the same names, and the harness prints each one it
 # passes over. The reference leg cannot be skipped.
 .PHONY: conformance
+# A separate four-case whole-text entry gate, not four new global corpus rows.
+# The caller builds the selected driver first; nightly already has that build.
+CONFORMANCE_BOM_LANG ?= cpp
+CONFORMANCE_BOM_HARNESS ?= build/conformance-harness
+CONFORMANCE_BOM_OUT ?= build/conformance-bom-entry/$(CONFORMANCE_BOM_LANG)
+.PHONY: conformance-bom-entry
+conformance-bom-entry: $(CONFORMANCE_BOM_HARNESS)
+	sh test/conformance/bom-entry "$(CONFORMANCE_BOM_LANG)" "$(CONFORMANCE_BOM_HARNESS)" "$(CONFORMANCE_BOM_OUT)"
+
 conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness run \
 		--results build/conformance/results.json \
@@ -7263,13 +7443,13 @@ build-version-elemkind-negative-control:
 .PHONY: tables-wire-text-total-negative-control
 tables-wire-text-total-negative-control:
 	@mkdir -p build
-	@sed -e 's@^[[:space:]]*if f.TextTotal <= 0 || !f.IsTextList() {$$@if true { // SABOTAGED: the total is never held@' \
+	@sed -e 's@^[[:space:]]*if f.TextTotal <= 0 || !f.IsTextList() {$$@if true || f.TextTotal <= 0 || !f.IsTextList() { // SABOTAGED: the total is never held@' \
 		internal/tablewire/decode.go > build/tablewire-no-total.gotext
 	@grep -q SABOTAGED build/tablewire-no-total.gotext || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch the total clamp"; exit 1; }
 	@printf '{"Replace":{"%s/internal/tablewire/decode.go":"%s/build/tablewire-no-total.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/tablewire-no-total-overlay.json
-	@if SCHEMA_SLOW=1 go test -count=1 -overlay=build/tablewire-no-total-overlay.json \
+	@if SCHEMA_SLOW=1 go test -timeout=0 -count=1 -overlay=build/tablewire-no-total-overlay.json \
 		./internal/tablewire -run TestTextTotalClampsTheReadToAPrefix > build/tablewire-no-total.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the total test passed with the clamp gone"; \
 		cat build/tablewire-no-total.log; exit 1; \
@@ -7363,3 +7543,10 @@ test: vuln-selftest
 
 # Ensure the Go sibling runtime before any tests can enter a Go gate.
 test: deps
+
+# Strict CookCheck is the hostile boundary; generated Open consumes trusted bytes.
+# Exercise accepted cooks in optimized and debug/checkptr Go builds, and prove
+# the gate catches both a weakened checker and a broken native accessor.
+.PHONY: tables-go-checked-cook
+tables-go-checked-cook:
+	SCHEMA_SLOW=1 go test -count=1 -v ./compiler -run '^TestCheckedCookGoConsumers'

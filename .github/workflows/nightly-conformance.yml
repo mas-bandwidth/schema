@@ -1,29 +1,21 @@
 name: Nightly conformance
 
-# THE CROSS-LANGUAGE NIGHTLY (test/conformance/README.md, "The nightly";
-# design approved by Glenn, 2026-10-25). Every night, both directions, every
-# port the registry discovers:
+# THE CROSS-LANGUAGE NIGHTLY (test/conformance/README.md, "The nightly").
+# Validate one canonical corpus with C++, then have every registered language
+# read that corpus and require each writer's output to be byte-identical.
+# Equality is transitive: rereading identical output once per writer adds no
+# evidence. Work is O(n) in languages, never an all-pairs matrix (Glenn,
+# 2026-11-01).
 #
-#   1. every port reads every value the C++ reference writes, on every surface
-#      and form the harness covers, and its bytes equal C++'s canonical write;
-#   2. the C++ reference reads what every port writes, accepts it, and re-saves
-#      it byte-identical;
-#   3. a case a port CLAIMS — its unit uses a construct the port's target
-#      registers as carried (compiler/carries_<target>.go) — and answers ABSENT
-#      fails the night;
-#   4. a case a port does not carry yet does not fail the night, and the
-#      coverage table every run publishes in its summary is how the gap stays
-#      seen (Glenn, 2026-10-25: "that's fine").
-#
-# THE JOBS. `registry` reads the ports out of test/conformance/<lang>/ci.json
-# (`harness matrix --ports`), so a port joins by registering its driver and
-# nothing here moves. `cpp-writes` builds the reference, has it write the whole
-# corpus, publishes it as the `cpp-corpus` artifact and fails if it is not the
-# committed one. `port (<lang>)` runs one port over that corpus with the claim
-# check on, runs its fixed-form gate against the C++ byte oracle, and
-# publishes everything it wrote as `port-<lang>-writes`. `cpp-reads-ports`
-# hands every port's writes back to the reference (`harness cross-read`).
-# `coverage` turns every row into the table.
+# `registry` discovers ports from test/conformance/<lang>/ci.json. `cpp-writes`
+# builds, writes and validates the canonical corpus and verifies the committed
+# pins. `port (<lang>)` reads it, checks canonical output and claimed coverage,
+# and runs its fixed-form gate. The original nine also run the full readiness
+# entrypoint, including strict fuzz/retain acceptance. `coverage` requires all
+# runtime receipts AND 100% of the underlying roadmap task graph for packet,
+# fixed and variable tables. An open task, missing receipt or skipped surface
+# cannot be reported as original-nine completion. Expansion languages remain
+# visible without this completion obligation. Work across languages stays O(n).
 #
 # THE FLEET'S RUNNERS, never hosted (standing rule, 2026-10-21), and never the
 # host named space, which is the game server and in no runner pool: every job
@@ -59,11 +51,11 @@ concurrency:
 # files and leg.yml move together.
 env:
   SERIALIZE_TAG: v2.1.3
-  SERIALIZE_C_TAG: v2.0.2
+  SERIALIZE_C_TAG: v2.1.1
   SERIALIZE_GO_TAG: v2.1.1
   SERIALIZE_RS_TAG: v5.0.0
-  SERIALIZE_CS_TAG: v2.0.1
-  SERIALIZE_JS_TAG: v2.0.1
+  SERIALIZE_CS_TAG: v2.1.1
+  SERIALIZE_JS_TAG: v2.1.2
   # The harness is built with every leg's tag, because a target behind a tag
   # registers what it carries only in a binary built with it, and the claim
   # check refuses a leg it has no registration for rather than enforcing
@@ -74,7 +66,6 @@ jobs:
   registry:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 5
     outputs:
       ports: ${{ steps.discover.outputs.ports }}
     steps:
@@ -99,7 +90,6 @@ jobs:
   cpp-writes:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
     steps:
       - name: never the host named space
         run: |
@@ -164,10 +154,18 @@ jobs:
           ./build/conformance-harness generate
 
       - name: the C++ reference writes the fixed form (form 3)
-        run: make tables-fixedform-corpus
+        run: make tables-fixedform-corpus tables-fixedform-bench-corpus
 
-      - name: the C++ leg over every surface of its own corpus
-        run: ./build/conformance-harness run --only cpp
+      # The C++ readiness run executes the full shared harness once, including
+      # the BOM oracle and every permanent corpus/gate regression.
+      - name: the C++ leg checks the four BOM entry cases
+        run: make conformance-bom-entry CONFORMANCE_BOM_LANG=cpp CONFORMANCE_BOM_OUT=build/nightly/reference-report/bom
+
+      - name: the C++ leg validates the canonical corpus
+        run: |
+          mkdir -p build/nightly/reference-report
+          ./build/conformance-harness run --only cpp \
+            --coverage build/nightly/reference-report/coverage-cpp.json
 
       - name: pack the C++ corpus
         if: always()
@@ -177,6 +175,7 @@ jobs:
           mkdir -p build/nightly/cpp-corpus/testdata build/nightly/cpp-corpus/build
           cp -R testdata/wire testdata/conformance build/nightly/cpp-corpus/testdata/
           if [ -d build/fixedform-corpus ]; then cp -R build/fixedform-corpus build/nightly/cpp-corpus/build/; fi
+          if [ -d build/fixedform-bench-corpus ]; then cp -R build/fixedform-bench-corpus build/nightly/cpp-corpus/build/; fi
           if [ -d build/conformance/out/cpp ]; then cp -R build/conformance/out/cpp build/nightly/cpp-corpus/cpp-answers; fi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -199,6 +198,37 @@ jobs:
             exit 1
           fi
 
+      - name: the C++ original-nine readiness gate
+        if: ${{ !cancelled() }}
+        run: |
+          set -uo pipefail
+          mkdir -p build/nightly/reference-report
+          record=build/nightly/reference-report/readiness-cpp.txt
+          echo fail > "$record"
+          git rev-parse HEAD > "${record%.txt}.revision" || exit 1
+          if python3 test/conformance/nightly-readiness cpp 2>&1 | tee build/nightly/reference-report/readiness-cpp.log; then
+            if [ "$(grep -Ec '^NIGHTLY_READINESS_PASS language=cpp phases=[1-9][0-9]*$' build/nightly/reference-report/readiness-cpp.log)" = 1 ]; then
+              echo pass > "$record"
+            else
+              echo "::error::readiness command returned without its complete acceptance result"; exit 1
+            fi
+          else
+            exit 1
+          fi
+
+      - name: retain C++ acceptance evidence
+        if: always()
+        run: |
+          mkdir -p build/nightly/reference-report
+          if [ -d build/nightly-readiness/cpp ]; then cp -R build/nightly-readiness/cpp build/nightly/reference-report/acceptance; fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: reference-report
+          path: build/nightly/reference-report
+          if-no-files-found: error
+
   port:
     needs: [registry, cpp-writes]
     # a port runs against whatever the reference wrote tonight, even when that
@@ -206,7 +236,6 @@ jobs:
     if: ${{ !cancelled() && needs.registry.result == 'success' }}
     name: port (${{ matrix.lang }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.registry.outputs.ports) }}
@@ -310,7 +339,10 @@ jobs:
           name: cpp-corpus
           path: build/nightly/cpp-corpus
       - name: read the C++ corpus
-        run: cp -R build/nightly/cpp-corpus/testdata/. testdata/
+        run: |
+          cp -R build/nightly/cpp-corpus/testdata/. testdata/
+          # Reuse the reference's fixed-form and benchmark corpus as well.
+          cp -R build/nightly/cpp-corpus/build/. build/
 
       - name: build the ${{ matrix.lang }} driver and the nightly harness
         run: |
@@ -328,6 +360,12 @@ jobs:
           mkdir -p build/nightly/report
           env ${{ matrix.env }} ./build/nightly-harness run --only ${{ matrix.lang }} --claims \
             --coverage build/nightly/report/coverage-${{ matrix.lang }}.json
+
+      - name: the original-nine leg checks the four BOM entry cases
+        if: contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang)
+        run: |
+          env ${{ matrix.env }} make conformance-bom-entry CONFORMANCE_BOM_LANG=${{ matrix.lang }} \
+            CONFORMANCE_BOM_HARNESS=build/nightly-harness CONFORMANCE_BOM_OUT=build/nightly/report/bom
 
       # THE FIXED FORM (form 3) is read from the C++ reference's byte oracle,
       # build/fixedform-corpus, by each leg's own gate — the targets ci-fast.yml's
@@ -354,6 +392,24 @@ jobs:
           esac
           if $gate; then echo pass > "$record"; else echo fail > "$record"; exit 1; fi
 
+      - name: the original-nine runtime readiness gate
+        if: ${{ !cancelled() && contains(fromJSON('["c","cs","go","rust","java","js","dart","elixir"]'), matrix.lang) }}
+        run: |
+          set -uo pipefail
+          mkdir -p build/nightly/report
+          record=build/nightly/report/readiness-${{ matrix.lang }}.txt
+          echo fail > "$record"
+          git rev-parse HEAD > "${record%.txt}.revision" || exit 1
+          if env ${{ matrix.env }} python3 test/conformance/nightly-readiness ${{ matrix.lang }} 2>&1 | tee build/nightly/report/readiness-${{ matrix.lang }}.log; then
+            if [ "$(grep -Ec '^NIGHTLY_READINESS_PASS language=${{ matrix.lang }} phases=[1-9][0-9]*$' build/nightly/report/readiness-${{ matrix.lang }}.log)" = 1 ]; then
+              echo pass > "$record"
+            else
+              echo "::error::readiness command returned without its complete acceptance result"; exit 1
+            fi
+          else
+            exit 1
+          fi
+
       - name: pack what the ${{ matrix.lang }} leg wrote
         if: always()
         run: |
@@ -364,6 +420,7 @@ jobs:
             cp -R build/conformance/out/${{ matrix.lang }}/. build/nightly/port-writes/
           fi
           if [ -d build/nightly/report ]; then cp -R build/nightly/report/. build/nightly/port-writes/nightly-report/; fi
+          if [ -d build/nightly-readiness/${{ matrix.lang }} ]; then cp -R build/nightly-readiness/${{ matrix.lang }} build/nightly/port-writes/nightly-report/acceptance; fi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -372,73 +429,10 @@ jobs:
           path: build/nightly/port-writes
           if-no-files-found: warn
 
-  cpp-reads-ports:
-    needs: [cpp-writes, port]
-    if: ${{ !cancelled() && needs.cpp-writes.result != 'skipped' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 30
-    steps:
-      - name: never the host named space
-        run: |
-          if [ "$(hostname -s)" = space ]; then
-            echo "::error::space is the game server and never runs CI"; exit 1
-          fi
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check out the C++ serialize runtime (pinned release)
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize
-          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: cpp-corpus
-          path: build/nightly/cpp-corpus
-      - name: read the C++ corpus
-        run: cp -R build/nightly/cpp-corpus/testdata/. testdata/
-      - name: build the C++ reference and the nightly harness
-        run: |
-          make -j"$(nproc)" build/conformance-cpp build/schema_test_cook
-          go build -tags "$HARNESS_TAGS" -o build/nightly-harness ./test/conformance/harness
-      # every port-<lang>-writes artifact, each in its own directory
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: port-*-writes
-          path: build/nightly/ports
-      - name: the C++ reference reads what every port wrote
-        run: |
-          set -uo pipefail
-          mkdir -p build/nightly/crossread-report
-          status=0
-          found=0
-          for dir in build/nightly/ports/port-*-writes; do
-            [ -d "$dir" ] || continue
-            found=1
-            lang=${dir##*/port-}
-            lang=${lang%-writes}
-            ./build/nightly-harness cross-read --lang "$lang" --writes "$dir" \
-              --work "build/nightly/crossread-work" \
-              --coverage "build/nightly/crossread-report/crossread-$lang.json" || status=1
-          done
-          if [ "$found" = 0 ]; then echo "::error::no port wrote anything to re-read"; exit 1; fi
-          exit $status
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: crossread-report
-          path: build/nightly/crossread-report
-          if-no-files-found: warn
-
   coverage:
-    needs: [port, cpp-reads-ports]
+    needs: [cpp-writes, port]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 10
     steps:
       - name: never the host named space
         run: |
@@ -455,18 +449,23 @@ jobs:
         with:
           pattern: port-*-writes
           path: build/nightly/rows
+        continue-on-error: true  # missing artifacts are named by the completion gate
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: crossread-report
-          path: build/nightly/rows/crossread-report
+          name: reference-report
+          path: build/nightly/rows/reference-report
         continue-on-error: true
+      # The coverage command invokes SBCL itself and records a missing validator
+      # as a failed acceptance check, alongside every other missing receipt.
       - name: the coverage table
         run: |
           set -euo pipefail
           mkdir -p build/nightly/coverage build/nightly/rows
-          go run ./test/conformance/harness coverage --in build/nightly/rows > build/nightly/coverage/coverage.md
+          status=0
+          go run ./test/conformance/harness coverage --in build/nightly/rows --require-original-nine > build/nightly/coverage/coverage.md 2>&1 || status=$?
           cat build/nightly/coverage/coverage.md >> "$GITHUB_STEP_SUMMARY"
           cat build/nightly/coverage/coverage.md
+          exit "$status"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

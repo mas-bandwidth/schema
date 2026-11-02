@@ -192,6 +192,7 @@ abstract final class TableFixedRefusal {
   /// a NaN or an infinity in a record refuses the whole
   /// read by name, the report naming the field, and nothing lands.
   static const int nonFiniteFloat = 18;
+  static const int integrityMismatch = 19;
 
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
@@ -232,6 +233,8 @@ abstract final class TableFixedRefusal {
         return 'layout_unsupported';
       case textIllFormed:
         return 'text_ill_formed';
+      case integrityMismatch:
+        return 'integrity_mismatch';
       case nonFiniteFloat:
         return 'non_finite_float';
       default:

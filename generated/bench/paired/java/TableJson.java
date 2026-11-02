@@ -73,6 +73,198 @@ public final class TableJson {
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
+    static long[] civilFromDays(long z) {
+        z += 719468L;
+        long era = (z >= 0 ? z : z - 146096L) / 146097L;
+        long doe = z - era * 146097L;
+        long yoe = (doe - doe / 1460L + doe / 36524L - doe / 146096L) / 365L;
+        long y = yoe + era * 400L;
+        long doy = doe - (365L * yoe + yoe / 4L - yoe / 100L);
+        long mp = (5L * doy + 2L) / 153L;
+        long d = doy - (153L * mp + 2L) / 5L + 1L;
+        long m = mp < 10L ? mp + 3L : mp - 9L;
+        if (m <= 2L) y++;
+        return new long[] {y, m, d};
+    }
+
+    public static void writeTimestamp(StringBuilder b, long nanos) {
+        long sec = Math.floorDiv(nanos, 1_000_000_000L);
+        long sub = Math.floorMod(nanos, 1_000_000_000L);
+        long days = Math.floorDiv(sec, 86400L);
+        long sod = Math.floorMod(sec, 86400L);
+        long[] ymd = civilFromDays(days);
+        int hour = (int) (sod / 3600L);
+        int minute = (int) ((sod % 3600L) / 60L);
+        int second = (int) (sod % 60L);
+        b.append('"');
+        int y = (int) ymd[0];
+        b.append((char) ('0' + (y / 1000) % 10))
+                .append((char) ('0' + (y / 100) % 10))
+                .append((char) ('0' + (y / 10) % 10))
+                .append((char) ('0' + y % 10))
+                .append('-')
+                .append((char) ('0' + ((int) ymd[1] / 10) % 10))
+                .append((char) ('0' + (int) ymd[1] % 10))
+                .append('-')
+                .append((char) ('0' + ((int) ymd[2] / 10) % 10))
+                .append((char) ('0' + (int) ymd[2] % 10))
+                .append('T')
+                .append((char) ('0' + (hour / 10) % 10))
+                .append((char) ('0' + hour % 10))
+                .append(':')
+                .append((char) ('0' + (minute / 10) % 10))
+                .append((char) ('0' + minute % 10))
+                .append(':')
+                .append((char) ('0' + (second / 10) % 10))
+                .append((char) ('0' + second % 10));
+        if (sub != 0) {
+            char[] frac = new char[9];
+            long v = sub;
+            for (int i = 8; i >= 0; i--) {
+                frac[i] = (char) ('0' + (v % 10L));
+                v /= 10L;
+            }
+            int end = 9;
+            while (end > 0 && frac[end - 1] == '0') end--;
+            b.append('.');
+            b.append(frac, 0, end);
+        }
+        b.append("Z\"");
+    }
+
+    static boolean timestampLeap(int y) {
+        return (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+    }
+
+    static int timestampMonthDays(int y, int m) {
+        switch (m) {
+            case 1:
+            case 3:
+            case 5:
+            case 7:
+            case 8:
+            case 10:
+            case 12:
+                return 31;
+            case 4:
+            case 6:
+            case 9:
+            case 11:
+                return 30;
+            case 2:
+                return timestampLeap(y) ? 29 : 28;
+            default:
+                return 0;
+        }
+    }
+
+    static long timestampDays(int y, int m, int d) {
+        long yr = y - (m <= 2 ? 1L : 0L);
+        long era = (yr >= 0 ? yr : yr - 399L) / 400L;
+        long yoe = yr - era * 400L;
+        long mp = m + (m > 2 ? -3L : 9L);
+        long doy = (153L * mp + 2L) / 5L + d - 1L;
+        long doe = yoe * 365L + yoe / 4L - yoe / 100L + doy;
+        return era * 146097L + doe - 719468L;
+    }
+
+    static int timestampDigit(String s, int i) {
+        char c = s.charAt(i);
+        return (c >= '0' && c <= '9') ? (c - '0') : -1;
+    }
+
+    public static long readTimestamp(In in, String field) {
+        String s = in.scanString();
+        if (in.bad || s == null) {
+            return 0L;
+        }
+        Long parsed = parseRfc3339(s);
+        if (parsed == null) {
+            in.bad = true;
+            if (in.rep != null && in.rep.reason == null) {
+                in.rep.reason = "timestamp_not_rfc3339: " + field;
+            }
+            return 0L;
+        }
+        return parsed;
+    }
+
+    static Long parseRfc3339(String s) {
+        int n = s.length();
+        if (n < 20) return null;
+        int y0 = timestampDigit(s, 0), y1 = timestampDigit(s, 1), y2 = timestampDigit(s, 2), y3 = timestampDigit(s, 3);
+        int m0 = timestampDigit(s, 5), m1 = timestampDigit(s, 6);
+        int d0 = timestampDigit(s, 8), d1 = timestampDigit(s, 9);
+        int h0 = timestampDigit(s, 11), h1 = timestampDigit(s, 12);
+        int min0 = timestampDigit(s, 14), min1 = timestampDigit(s, 15);
+        int s0 = timestampDigit(s, 17), s1 = timestampDigit(s, 18);
+        if (y0 < 0 || y1 < 0 || y2 < 0 || y3 < 0
+                || m0 < 0 || m1 < 0 || d0 < 0 || d1 < 0
+                || h0 < 0 || h1 < 0 || min0 < 0 || min1 < 0
+                || s0 < 0 || s1 < 0) {
+            return null;
+        }
+        if (s.charAt(4) != '-' || s.charAt(7) != '-'
+                || (s.charAt(10) != 'T' && s.charAt(10) != 't')
+                || s.charAt(13) != ':' || s.charAt(16) != ':') {
+            return null;
+        }
+        int year = y0 * 1000 + y1 * 100 + y2 * 10 + y3;
+        int month = m0 * 10 + m1;
+        int day = d0 * 10 + d1;
+        int hour = h0 * 10 + h1;
+        int minute = min0 * 10 + min1;
+        int second = s0 * 10 + s1;
+        if (month < 1 || month > 12) return null;
+        int maxDay = timestampMonthDays(year, month);
+        if (day < 1 || day > maxDay) return null;
+        if (hour > 23 || minute > 59 || second > 59) return null;
+        int i = 19;
+        long sub = 0L;
+        if (i < n && s.charAt(i) == '.') {
+            i++;
+            int fracStart = i;
+            long scale = 100_000_000L;
+            while (i < n) {
+                int dg = timestampDigit(s, i);
+                if (dg < 0) break;
+                if (i - fracStart >= 9) return null;
+                sub += dg * scale;
+                scale /= 10L;
+                i++;
+            }
+            if (i == fracStart) return null;
+        }
+        if (i >= n) return null;
+        long offsetSec = 0L;
+        char tz = s.charAt(i);
+        if (tz == 'Z' || tz == 'z') {
+            i++;
+            if (i != n) return null;
+        } else if (tz == '+' || tz == '-') {
+            if (i + 6 != n || s.charAt(i + 3) != ':') return null;
+            int oh0 = timestampDigit(s, i + 1), oh1 = timestampDigit(s, i + 2);
+            int om0 = timestampDigit(s, i + 4), om1 = timestampDigit(s, i + 5);
+            if (oh0 < 0 || oh1 < 0 || om0 < 0 || om1 < 0) return null;
+            int oh = oh0 * 10 + oh1;
+            int om = om0 * 10 + om1;
+            if (oh > 23 || om > 59) return null;
+            offsetSec = oh * 3600L + om * 60L;
+            if (tz == '+') offsetSec = -offsetSec;
+        } else {
+            return null;
+        }
+        long sec = timestampDays(year, month, day) * 86400L
+                + hour * 3600L + minute * 60L + second + offsetSec;
+        if (sec < -9223372037L || sec > 9223372036L) return null;
+        if (sec == -9223372037L && sub < 145_224_192L) return null;
+        if (sec == 9223372036L && sub > 854_775_807L) return null;
+        if (sec == -9223372037L) {
+            return Long.MIN_VALUE + (sub - 145_224_192L);
+        }
+        return sec * 1_000_000_000L + sub;
+    }
+
     // indent starts a new line at the given depth: two spaces per level.
     public static void indent(StringBuilder b, int depth) {
         b.append('\n');
@@ -266,6 +458,18 @@ public final class TableJson {
         In(byte[] t, TableVariable.Report rep) {
             this.t = t;
             this.rep = rep;
+        }
+
+        // byteOrderMark skips a leading UTF-8 byte-order mark (docs/SPEC-TABLES.md
+        // §16.2, §16.12): EF BB BF as the text's first three bytes and nowhere else.
+        public void byteOrderMark() {
+            if (p == 0
+                    && t.length >= 3
+                    && (t[0] & 0xff) == 0xef
+                    && (t[1] & 0xff) == 0xbb
+                    && (t[2] & 0xff) == 0xbf) {
+                p = 3;
+            }
         }
 
         // space skips whitespace and both comment forms (§16.2). An unclosed

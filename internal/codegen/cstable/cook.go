@@ -162,7 +162,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	sort.Strings(c.order)
 	c.align = ir.RegionAlignOf(aligns...)
@@ -277,6 +277,9 @@ func (g *cookGen) emit() {
 		return // the runtime home the unit has no file for declares nothing
 	}
 	for _, st := range g.file.Tables {
+		if !st.CarriesForm("cook") {
+			continue
+		}
 		if g.cook.opens(st.Name) {
 			g.emitCookHandle(st)
 			continue
@@ -413,6 +416,9 @@ func (g *cookGen) emitBlittableField(f *ir.Field, w *cookWriter) {
 		// one: <T>Cook.At is the one add that resolves it.
 		next()
 		g.sf("    public long %s; // *%s: signed self-relative delta, zero is null (§6.3)\n", name, f.Type.Name)
+	case f.Type.TextUnbounded():
+		next()
+		g.sf("    public long %s; // unbounded text: self-relative blob slot\n", name)
 	case f.Type.Kind == ir.TString:
 		next()
 		g.sf("    public fixed byte %s[%d]; // string(%d): buffer, used length beside it\n", name, f.Type.Size+1, f.Type.Size)
@@ -560,7 +566,7 @@ func (g *cookGen) cookFieldAddress(f *ir.Field) string {
 	if f.IsList() || f.IsMap() {
 		return "&probe." + name
 	}
-	if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
+	if !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString) {
 		return "probe." + name // a fixed-size buffer IS a pointer in unsafe context
 	}
 	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
@@ -669,7 +675,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        ulong alignment = Schema.TableCookRead64(at + %d);\n", 40)
 	g.hf("        if (alignment < %d || alignment > %d) { reason = TableRefuseReason.bad_alignment; return false; }\n", ir.RegionAlignFloor, cookMaxAlign)
 	g.hf("        if ((alignment & (alignment - 1)) != 0) { reason = TableRefuseReason.bad_alignment; return false; } // a power of two\n")
-	g.hf("        if ((alignment %% %d) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof\n\n", ml.Align)
+	g.hf("        if ((alignment %% %d) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof\n\n", ir.CookNodeAlign(g.unit, st))
 	g.hf("        // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.hf("        // computes is a fact two writers cannot disagree about, and it is 64 for\n")
 	g.hf("        // every unit this language can declare.\n")
@@ -761,6 +767,8 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 			continue
 		case f.Type.Kind == ir.TWString:
 			g.hf("    public static ReadOnlySpan<char> %s(%sRow* row) { int used = row->%sLength; return new ReadOnlySpan<char>(row->%s, used < 0 || used > %d ? 0 : used); }\n\n", member, name, member, member, f.Type.Size)
+		case f.Type.TextUnbounded():
+			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row) { byte* slot=(byte*)&row->%s; long delta=*(long*)slot; if(delta==0){return default;} byte* blob=slot+delta; return new ReadOnlySpan<byte>(blob+8,checked((int)*(uint*)blob)); }\n", member, name, member)
 		case f.Type.Kind == ir.TString:
 			g.hf("    // string(%d): the used bytes, without the zero tail (§7.2).\n", f.Type.Size)
 			g.hf("    public static ReadOnlySpan<byte> %s(%sRow* row)\n    {\n", member, name)
@@ -850,7 +858,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 				countOffset = pieces[len(pieces)-2].Offset
 			}
 		}
-		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
+		if !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			countOffset = pieces[1].Offset
 		}
@@ -861,7 +869,7 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 			bound = f.ArrayBound
 			elemSize = ir.FieldPieces(g.unit, f, fl.Offset)[0].Size / bound
 		}
-		if !f.Type.Pointer && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
+		if !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes) {
 			// the COUNT COMPANION of a string or a `bytes` bounds a walker just
 			// as an array's does (§7.4), and the bound is the declared length
 			bound = f.Type.Size
@@ -882,8 +890,8 @@ func (g *cookGen) emitRecordDescriptor(record string) {
 			pieces := ir.FieldPieces(g.unit, f, fl.Offset)
 			presentOffset = pieces[len(pieces)-1].Offset
 		}
-		g.hf("            new TableCookFieldInfo { Name = %q, Offset = %d, Size = %d, ElemSize = %d, IsArray = %t, ArrayBound = %d, IsPointer = %t, CountOffset = %d, PresentOffset = %d, Storage = TableCookStorage.%s, RecordRef = %s },\n",
-			f.Name, fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
+		g.hf("            new TableCookFieldInfo { Name = %q, Offset = %d, Size = %d, ElemSize = %d, IsArray = %t, ArrayBound = %d, IsPointer = %t, Unbounded = %t, CountOffset = %d, PresentOffset = %d, Storage = TableCookStorage.%s, RecordRef = %s },\n",
+			f.Name, fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, f.Type.TextUnbounded(), countOffset, presentOffset,
 			cookStorageKind(f), names)
 	}
 	g.hf("        },\n    };\n\n")
@@ -964,7 +972,8 @@ public sealed class TableCookFieldInfo
     public int ElemSize;    // one element's size, for an array; the field's own otherwise
     public bool IsArray;
     public int ArrayBound;  // the DECLARED bound: a counted array's N, a string's or bytes' length
-    public bool IsPointer;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
+    public bool IsPointer;
+    public bool Unbounded;  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
     public int CountOffset; // the count companion's offset, or -1 when the field has none
     public int PresentOffset; // an optional's presence bool, or -1
     public TableCookStorage Storage; // what one slot HOLDS, at ElemSize bytes

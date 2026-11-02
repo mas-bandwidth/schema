@@ -223,42 +223,44 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union) string {
 		}
 		b.WriteString("return v;}\n")
 	}
-	b.WriteString("    static void jsonFields(StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
-	for i, arm := range un.Variants {
-		fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
-		if arm.Void() {
-			b.WriteString("        b.append(\"null\");\n")
-		} else {
-			one := *arm.F
-			one.Name = mem[i]
-			b.WriteString("        {int nestedDepth=depth+1;\n")
-			var child strings.Builder
-			writeJsonFieldValue(&child, u, st, &one)
-			b.WriteString(strings.ReplaceAll(child.String(), "depth", "nestedDepth"))
-			b.WriteString("        }\n")
-		}
-		b.WriteString("        break;}\n")
-	}
-	b.WriteString("        default:break;}TableJson.indent(b,depth);b.append('}');}\n")
-	b.WriteString("    static Value readJson(TableJson.In in){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanString();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
-	for i, arm := range un.Variants {
-		fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)
-		if arm.Void() {
-			fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
-		} else {
-			one := *arm.F
-			one.Name = mem[i]
-			shape := variableJsonShape(&one, "in.peek()")
-			if one.Type.Pointer {
-				shape = "(" + shape + "||in.peek()=='n')"
+	if unitCarriesForm(u, "json") {
+		b.WriteString("    static void jsonFields(StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
+		for i, arm := range un.Variants {
+			fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
+			if arm.Void() {
+				b.WriteString("        b.append(\"null\");\n")
+			} else {
+				one := *arm.F
+				one.Name = mem[i]
+				b.WriteString("        {int nestedDepth=depth+1;\n")
+				var child strings.Builder
+				writeJsonFieldValue(&child, u, st, &one)
+				b.WriteString(strings.ReplaceAll(child.String(), "depth", "nestedDepth"))
+				b.WriteString("        }\n")
 			}
-			fmt.Fprintf(&b, "        if(%s){\n", shape)
-			readJsonFieldValue(&b, u, st, &one)
-			fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
+			b.WriteString("        break;}\n")
 		}
-		b.WriteString("        }else ")
+		b.WriteString("        default:break;}TableJson.indent(b,depth);b.append('}');}\n")
+		b.WriteString("    static Value readJson(TableJson.In in){Value v=new Value();if(in.peek()!='{'){in.bad=true;return v;}in.p++;if(in.peek()=='}'){in.p++;return v;}String armName=in.scanString();if(in.bad)return v;if(in.peek()!=':'){in.bad=true;return v;}in.p++;\n")
+		for i, arm := range un.Variants {
+			fmt.Fprintf(&b, "        if(%q.equals(armName)){\n", arm.Name)
+			if arm.Void() {
+				fmt.Fprintf(&b, "        if(in.peek()=='n'){in.lit(\"null\");v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
+			} else {
+				one := *arm.F
+				one.Name = mem[i]
+				shape := variableJsonShape(&one, "in.peek()")
+				if one.Type.Pointer {
+					shape = "(" + shape + "||in.peek()=='n')"
+				}
+				fmt.Fprintf(&b, "        if(%s){\n", shape)
+				readJsonFieldValue(&b, u, st, &one)
+				fmt.Fprintf(&b, "        if(!in.bad)v.tag=%d;}else{in.skipValue();in.rep.kindMismatch++;}\n", i+1)
+			}
+			b.WriteString("        }else ")
+		}
+		b.WriteString("{in.rep.unknown++;in.skipValue();}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}\n")
 	}
-	b.WriteString("{in.rep.unknown++;in.skipValue();}if(in.peek()==','){in.p++;}if(in.peek()!='}'){in.bad=true;return v;}in.p++;return v;}\n")
 	// Enum payload helpers use the same ID-to-ordinal rule as table fields.
 	for _, f := range st.Fields {
 		if en, ok := f.Type.Ref.(*ir.Enum); ok {

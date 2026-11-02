@@ -1138,7 +1138,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5454,8 +5454,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace blockdemo
@@ -11508,8 +11554,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderStaticPropLoadBody( TableReader & r, RenderSta
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -12421,8 +12470,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderCosmeticPropLoadBody( TableReader & r, RenderC
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -13378,8 +13430,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderLaserLoadBody( TableReader & r, RenderLaser & 
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -14201,8 +14256,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderExplosionLoadBody( TableReader & r, RenderExpl
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -16878,8 +16936,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -16918,8 +16979,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -16958,8 +17022,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderVector3LoadBody( TableReader & r, RenderVector
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -17471,8 +17538,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -17511,8 +17581,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -17551,8 +17624,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -17591,8 +17667,11 @@ BLOCKDEMO_TABLE_INLINE bool RenderQuaternionLoadBody( TableReader & r, RenderQua
                     {
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
-                        if ( !r.has( 4 ) ) { r.report->malformed = true;
-                    return false; }
+                        if ( !r.has( 4 ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         {
                             const uint32_t widened_bits = r.get32();
                             if ( !TableBitsFinite32( widened_bits ) ) { TableNonFiniteFloat( r.report ); }
@@ -18894,9 +18973,17 @@ inline int64_t RenderCameraFixedLoadTolerant( RenderCamera * values, int64_t cap
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderCameraReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderCameraReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderCameraFixedGuards );
         if ( !RenderCameraFixedFiniteBody( values[k] ) )
@@ -19354,15 +19441,21 @@ inline int64_t RenderShipFixedLoadTolerant( RenderShip * values, int64_t capacit
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderShipReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderShipReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderShipFixedGuards );
         if ( !RenderShipFixedFiniteBody( values[k] ) )
         {
@@ -19375,8 +19468,9 @@ inline int64_t RenderShipFixedLoadTolerant( RenderShip * values, int64_t capacit
                                     (uint8_t *) &values[k], report );
         if ( !RenderShipFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderShipReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -19785,15 +19879,21 @@ inline int64_t RenderTurretFixedLoadTolerant( RenderTurret * values, int64_t cap
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderTurretReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderTurretReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderTurretFixedGuards );
         if ( !RenderTurretFixedFiniteBody( values[k] ) )
         {
@@ -19806,8 +19906,9 @@ inline int64_t RenderTurretFixedLoadTolerant( RenderTurret * values, int64_t cap
                                     (uint8_t *) &values[k], report );
         if ( !RenderTurretFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderTurretReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -20230,15 +20331,21 @@ inline int64_t RenderMissileFixedLoadTolerant( RenderMissile * values, int64_t c
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderMissileReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderMissileReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderMissileFixedGuards );
         if ( !RenderMissileFixedFiniteBody( values[k] ) )
         {
@@ -20251,8 +20358,9 @@ inline int64_t RenderMissileFixedLoadTolerant( RenderMissile * values, int64_t c
                                     (uint8_t *) &values[k], report );
         if ( !RenderMissileFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderMissileReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -20680,15 +20788,21 @@ inline int64_t RenderDynamicPropFixedLoadTolerant( RenderDynamicProp * values, i
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderDynamicPropReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderDynamicPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderDynamicPropFixedGuards );
         if ( !RenderDynamicPropFixedFiniteBody( values[k] ) )
         {
@@ -20701,8 +20815,9 @@ inline int64_t RenderDynamicPropFixedLoadTolerant( RenderDynamicProp * values, i
                                     (uint8_t *) &values[k], report );
         if ( !RenderDynamicPropFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderDynamicPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -21130,15 +21245,21 @@ inline int64_t RenderStaticPropFixedLoadTolerant( RenderStaticProp * values, int
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderStaticPropReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderStaticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderStaticPropFixedGuards );
         if ( !RenderStaticPropFixedFiniteBody( values[k] ) )
         {
@@ -21151,8 +21272,9 @@ inline int64_t RenderStaticPropFixedLoadTolerant( RenderStaticProp * values, int
                                     (uint8_t *) &values[k], report );
         if ( !RenderStaticPropFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderStaticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -21585,15 +21707,21 @@ inline int64_t RenderCosmeticPropFixedLoadTolerant( RenderCosmeticProp * values,
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderCosmeticPropReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderCosmeticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderCosmeticPropFixedGuards );
         if ( !RenderCosmeticPropFixedFiniteBody( values[k] ) )
         {
@@ -21606,8 +21734,9 @@ inline int64_t RenderCosmeticPropFixedLoadTolerant( RenderCosmeticProp * values,
                                     (uint8_t *) &values[k], report );
         if ( !RenderCosmeticPropFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderCosmeticPropReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -22020,15 +22149,21 @@ inline int64_t RenderLaserFixedLoadTolerant( RenderLaser * values, int64_t capac
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderLaserReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderLaserReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderLaserFixedGuards );
         if ( !RenderLaserFixedFiniteBody( values[k] ) )
         {
@@ -22041,8 +22176,9 @@ inline int64_t RenderLaserFixedLoadTolerant( RenderLaser * values, int64_t capac
                                     (uint8_t *) &values[k], report );
         if ( !RenderLaserFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderLaserReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -22465,15 +22601,21 @@ inline int64_t RenderExplosionFixedLoadTolerant( RenderExplosion * values, int64
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RenderExplosionReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RenderExplosionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RenderExplosionFixedGuards );
         if ( !RenderExplosionFixedFiniteBody( values[k] ) )
         {
@@ -22486,8 +22628,9 @@ inline int64_t RenderExplosionFixedLoadTolerant( RenderExplosion * values, int64
                                     (uint8_t *) &values[k], report );
         if ( !RenderExplosionFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { RenderExplosionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -22983,7 +23126,7 @@ inline void RenderQuaternionSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const RenderCamera * RenderCameraOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderCamera *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) alignof( RenderCamera ), reason );
+    return (const RenderCamera *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCamera ), (uint64_t) 8, reason );
 }
 
 // RenderShipOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23013,7 +23156,7 @@ inline const RenderCamera * RenderCameraOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const RenderShip * RenderShipOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderShip *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) alignof( RenderShip ), reason );
+    return (const RenderShip *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderShip ), (uint64_t) 8, reason );
 }
 
 // RenderTurretOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23043,7 +23186,7 @@ inline const RenderShip * RenderShipOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const RenderTurret * RenderTurretOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderTurret *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) alignof( RenderTurret ), reason );
+    return (const RenderTurret *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderTurret ), (uint64_t) 8, reason );
 }
 
 // RenderMissileOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23073,7 +23216,7 @@ inline const RenderTurret * RenderTurretOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const RenderMissile * RenderMissileOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderMissile *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) alignof( RenderMissile ), reason );
+    return (const RenderMissile *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderMissile ), (uint64_t) 8, reason );
 }
 
 // RenderDynamicPropOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23103,7 +23246,7 @@ inline const RenderMissile * RenderMissileOpen( const void * bytes, uint64_t len
 // parameter on a load.
 inline const RenderDynamicProp * RenderDynamicPropOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderDynamicProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) alignof( RenderDynamicProp ), reason );
+    return (const RenderDynamicProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderDynamicProp ), (uint64_t) 8, reason );
 }
 
 // RenderStaticPropOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23133,7 +23276,7 @@ inline const RenderDynamicProp * RenderDynamicPropOpen( const void * bytes, uint
 // parameter on a load.
 inline const RenderStaticProp * RenderStaticPropOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderStaticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) alignof( RenderStaticProp ), reason );
+    return (const RenderStaticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderStaticProp ), (uint64_t) 8, reason );
 }
 
 // RenderCosmeticPropOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23163,7 +23306,7 @@ inline const RenderStaticProp * RenderStaticPropOpen( const void * bytes, uint64
 // parameter on a load.
 inline const RenderCosmeticProp * RenderCosmeticPropOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderCosmeticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) alignof( RenderCosmeticProp ), reason );
+    return (const RenderCosmeticProp *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderCosmeticProp ), (uint64_t) 8, reason );
 }
 
 // RenderLaserOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23193,7 +23336,7 @@ inline const RenderCosmeticProp * RenderCosmeticPropOpen( const void * bytes, ui
 // parameter on a load.
 inline const RenderLaser * RenderLaserOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderLaser *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) alignof( RenderLaser ), reason );
+    return (const RenderLaser *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderLaser ), (uint64_t) 8, reason );
 }
 
 // RenderExplosionOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23223,7 +23366,7 @@ inline const RenderLaser * RenderLaserOpen( const void * bytes, uint64_t length,
 // parameter on a load.
 inline const RenderExplosion * RenderExplosionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderExplosion *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) alignof( RenderExplosion ), reason );
+    return (const RenderExplosion *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderExplosion ), (uint64_t) 8, reason );
 }
 
 // RenderFrameOpen: match the header and POINT. On a match the bytes ARE what this
@@ -23253,7 +23396,7 @@ inline const RenderExplosion * RenderExplosionOpen( const void * bytes, uint64_t
 // parameter on a load.
 inline const RenderFrame * RenderFrameOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RenderFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) alignof( RenderFrame ), reason );
+    return (const RenderFrame *) TableCookOpen( bytes, length, (uint64_t) sizeof( RenderFrame ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

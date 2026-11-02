@@ -249,7 +249,7 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 	g.emitCookExtentSurface(members)
 
 	for _, st := range bodies {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 			// a `type` is no root, and a map's generated ENTRY is §2.8's one
 			// exception to "a root is any table" — its cook BODY is emitted
 			// above, and that is the whole of what it carries
@@ -272,9 +272,9 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 	g.pf("%s\n{\n", g.cookBodySignature(st))
 	if len(ml.Fields) == 0 {
 		if variable {
-			g.pf("    (void) ctx; (void) region; (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+			g.pf("    (void) ctx;\n    (void) region;\n    (void) at;\n    (void) value;\n    (void) order; // a record with no field writes nothing\n")
 		} else {
-			g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+			g.pf("    (void) at;\n    (void) value;\n    (void) order; // a record with no field writes nothing\n")
 		}
 	}
 	if variable && len(ml.Fields) > 0 && g.noCookRefs(st) {
@@ -583,7 +583,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    region.numbering = &numbering;\n")
 	g.pf("    region.count = numbering.count + 1;\n")
 	if g.anyExtent && g.hasExtent(st) {
-		g.pf("    const int64_t root_extent = %sExtent( ctx, root );\n", n)
+		g.pf("    const int64_t root_extent = %sExtent<Ctx, true>( ctx, root );\n", n)
 		g.pf("    if ( root_extent < 0 ) { return false; }\n")
 		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", ir.CookExtentStart(g.unit, st))
 	} else {
@@ -612,8 +612,12 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 			tl := ir.RecordLayout(g.unit, t)
 			if g.anyExtent && g.hasExtent(t) {
 				g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.WireName()), t.Name)
-				g.emitCookNodeBytes(t, "            ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
-				g.pf("            break;\n")
+				ind := "                "
+				if g.hasExtent(t) {
+					ind = "            "
+				}
+				g.emitCookNodeBytes(t, ind, fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
+				g.pf("%sbreak;\n", ind)
 				continue
 			}
 			g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)

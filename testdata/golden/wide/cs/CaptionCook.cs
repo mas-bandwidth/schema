@@ -226,10 +226,10 @@ namespace Wide
             NumFields = 4,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "title", Offset = 0, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
-                new TableCookFieldInfo { Name = "line", Offset = 20, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordLine; } },
-                new TableCookFieldInfo { Name = "lines", Offset = 36, Size = 52, ElemSize = 16, IsArray = true, ArrayBound = 3, IsPointer = false, CountOffset = 84, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordLine; } },
-                new TableCookFieldInfo { Name = "body", Offset = 88, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "title", Offset = 0, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "line", Offset = 20, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordLine; } },
+                new TableCookFieldInfo { Name = "lines", Offset = 36, Size = 52, ElemSize = 16, IsArray = true, ArrayBound = 3, IsPointer = false, Unbounded = false, CountOffset = 84, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = delegate { return cookRecordLine; } },
+                new TableCookFieldInfo { Name = "body", Offset = 88, Size = 20, ElemSize = 20, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
             },
         };
 
@@ -241,7 +241,7 @@ namespace Wide
             NumFields = 1,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "text", Offset = 0, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "text", Offset = 0, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
             },
         };
 
@@ -430,8 +430,8 @@ namespace Wide
             NumFields = 2,
             Fields = new TableCookFieldInfo[]
             {
-                new TableCookFieldInfo { Name = "label", Offset = 0, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
-                new TableCookFieldInfo { Name = "seq", Offset = 16, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
+                new TableCookFieldInfo { Name = "label", Offset = 0, Size = 16, ElemSize = 16, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Record, RecordRef = null },
+                new TableCookFieldInfo { Name = "seq", Offset = 16, Size = 4, ElemSize = 4, IsArray = false, ArrayBound = 1, IsPointer = false, Unbounded = false, CountOffset = -1, PresentOffset = -1, Storage = TableCookStorage.Unsigned, RecordRef = null },
             },
         };
 

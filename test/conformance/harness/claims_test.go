@@ -218,7 +218,7 @@ func TestCoverageMarkdown(t *testing.T) {
 		"| surface | aa | bb |",
 		"| wire (fixed) | 12/16 +4nc | 13/16 x1 !2 |",
 		"| block | — | absent |",
-		"## C++ reads what each port writes",
+		"## Reference reread diagnostics",
 		"| wire (fixed) | 12/12 |",
 		"| bb | none |",
 	}, nil)

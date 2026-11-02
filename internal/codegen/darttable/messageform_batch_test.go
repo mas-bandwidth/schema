@@ -348,7 +348,7 @@ const batchDamageBody = `
   final wire = Uint8List.fromList([2, 2, 0xF0, 0x00]);
   final damageRep = h.TableReport();
   final damageCount = r.rootLoadMessages(<h.Root>[h.Root(), h.Root(), h.Root()], wire, vocab, damageRep);
-  check(damageCount == 1 && damageRep.malformed && !damageRep.refused,
+  check(damageCount == 0 && damageRep.malformed && !damageRep.refused,
       'damage in body 2: count=$damageCount malformed=${damageRep.malformed}');
   // "BYTES AFTER THE PAD ARE MALFORMED ... a buffer with bytes left over
   // describes no batch this reader can name."
@@ -361,7 +361,7 @@ const batchDamageBody = `
   padded.setRange(0, m, buf);
   final padRep = h.TableReport();
   final padCount = r.rootLoadMessages(<h.Root>[h.Root()], padded, vocab, padRep);
-  check(padCount == 1 && padRep.malformed && !padRep.refused,
+  check(padCount == 0 && padRep.malformed && !padRep.refused,
       'bytes after the pad: count=$padCount malformed=${padRep.malformed}');
   // "The FORM BYTE is a whole byte and is read FIRST ... a form a reader does
   // not know is a REFUSAL by name and never damage."

@@ -13,7 +13,6 @@ clean reports. Additional permanent tests cover the generated-Go golden,
 long Unicode keys with a common prefix, duplicate-key identity, optional
 values, element APIs, bounded lengths/counts, invalid UTF-8 and embedded NUL.
 
-The nightly runs these shared oracle regressions once and retains their Go
-test events in the shared-regression-report artifact. These fixtures are
-neutral oracle regressions; they do not claim that every port
+The full shared harness runs once in original-nine nightly readiness. These
+fixtures are neutral oracle regressions; they do not claim that every port
 already implements unbounded text or replace per-language feature witnesses.

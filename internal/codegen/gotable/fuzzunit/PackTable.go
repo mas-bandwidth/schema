@@ -6270,7 +6270,7 @@ func init() {
 		return GunnerSettingsSaveBodyRetain(w, (*GunnerSettings)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerSettingsLoadBodyRetain(&r, (*GunnerSettings)(p))
-	}, CookSize: 36, CookAlign: 4}
+	}, CycleIndex: 7, CycleType: tableCycleType, CookSize: 36, CookAlign: 4}
 }
 
 // GunnerSettingsTableType returns GunnerSettings's reflection descriptor.
@@ -6344,7 +6344,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 var ShipEntryTableInfo TableTypeInfo
 
 func init() {
-	ShipEntryTableInfo = TableTypeInfo{Name: "ShipEntry", Size: uint32(unsafe.Sizeof(ShipEntry{})), NumFields: 5, Fields: ShipEntryTableFields, Reset: func(storage unsafe.Pointer) { ShipEntryReset((*ShipEntry)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1d1a9911da171a29, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ShipEntrySaveBody(w, (*ShipEntry)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ShipEntryLoadBody(&r, (*ShipEntry)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return ShipEntrySaveBodyRetain(w, (*ShipEntry)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return ShipEntryLoadBodyRetain(&r, (*ShipEntry)(p)) }, CookSize: 108, CookAlign: 4}
+	ShipEntryTableInfo = TableTypeInfo{Name: "ShipEntry", Size: uint32(unsafe.Sizeof(ShipEntry{})), NumFields: 5, Fields: ShipEntryTableFields, Reset: func(storage unsafe.Pointer) { ShipEntryReset((*ShipEntry)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1d1a9911da171a29, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ShipEntrySaveBody(w, (*ShipEntry)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ShipEntryLoadBody(&r, (*ShipEntry)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return ShipEntrySaveBodyRetain(w, (*ShipEntry)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return ShipEntryLoadBodyRetain(&r, (*ShipEntry)(p)) }, CycleIndex: 19, CycleType: tableCycleType, CookSize: 108, CookAlign: 4}
 }
 
 // ShipEntryTableType returns ShipEntry's reflection descriptor.
@@ -6410,7 +6410,7 @@ func init() {
 		return GlobalSettingsSaveBodyRetain(w, (*GlobalSettings)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GlobalSettingsLoadBodyRetain(&r, (*GlobalSettings)(p))
-	}, CookSize: 72, CookAlign: 4}
+	}, CycleIndex: 5, CycleType: tableCycleType, CookSize: 72, CookAlign: 4}
 }
 
 // GlobalSettingsTableType returns GlobalSettings's reflection descriptor.
@@ -6488,7 +6488,7 @@ func init() {
 		return PackConfigSaveBodyRetain(w, (*PackConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return PackConfigLoadBodyRetain(&r, (*PackConfig)(p))
-	}, CookSize: 740, CookAlign: 4}
+	}, CycleIndex: 11, CycleType: tableCycleType, CookSize: 740, CookAlign: 4}
 }
 
 // PackConfigTableType returns PackConfig's reflection descriptor.

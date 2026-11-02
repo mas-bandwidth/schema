@@ -79,8 +79,9 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: bin/schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
+build/tables-generated-js/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) $(wildcard examples-wide/*.schema) test/tables/Scalars2.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema
 	@mkdir -p build/tables-generated-js
+	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
 	# the POINTERED unit: its FIXED surface is refused by name for every
 	# pointered table (§3.4, §11), its two ACCELERATORS are emitted all the same
@@ -634,7 +635,7 @@ test-js: tables-js-cook-write-rows
 # found by <F>Find). The rows' bytes themselves are tables-js-cook-write-rows.
 .PHONY: tables-js-cook-map
 tables-js-cook-map:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^(TestCookMapWriterHoldsTheSortJavaScript|TestCookMapFindJavaScript)$$'
 	@echo 'tables JS cook map: a Map built out of key order cooks the reference bytes, and a cooked map is found in place'
 
 test-js: tables-js-cook-map
@@ -832,7 +833,7 @@ tables-js-message-form-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/messagebatch.go":"%s/build/js-message-form-sabotage/messagebatch.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-message-form-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-message-form-sabotage/overlay.json \
 			-count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestMessageFormBatchJavaScript$$' \
 			> build/js-message-form-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the batch writer padded wrongly and the gate stayed green"; \
@@ -866,7 +867,7 @@ tables-js-fixed-roadmap-negative-control:
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both layout compares"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-roadmap-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-roadmap-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-roadmap-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run '^(TestFixedRoadmapJsT13LayoutHashCollision)$$' \
 			> build/js-roadmap-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the second layout read as the held one and the gate stayed green"; \
@@ -893,7 +894,7 @@ tables-js-versioning-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedmodule.go":"%s/build/js-versioning-sabotage/fixedmodule.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-versioning-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-versioning-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-versioning-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
 			> build/js-versioning-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a file outside the lineage refused under the wrong name and the gate stayed green"; \
@@ -996,7 +997,7 @@ tables-js-union-arm-text-negative-control: build/fixedform-corpus/.stamp
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch both halves of the lane"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/jstable/fixedruntime.go":"%s/build/js-armtext-sabotage/fixedruntime.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/js-armtext-sabotage/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -overlay=build/js-armtext-sabotage/overlay.json \
 			-count=1 ./internal/codegen/jstable/ -run TestJSFixedVersioning \
 			> build/js-armtext-sabotage/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the text flavour sharing the guard's lane left the versioning gate green"; \
@@ -1546,7 +1547,7 @@ define js_jstable_control
 	@rm -rf build/$@ && mkdir -p build/$@
 	@go run ./tools/sabotage -name $(1) -out build/$@/source.gotext $(2)
 	@printf '{"Replace":{"%s/$(2)":"%s/build/$@/source.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/$@/overlay.json
-	@if SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
+	@if SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -overlay=$(CURDIR)/build/$@/overlay.json $(4) -run '$(3)' \
 			> build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the $(1) sabotage left $(3) green"; cat build/$@/log; exit 1; \
 	fi
@@ -1707,7 +1708,7 @@ test-js: conformance-negative-control-js-absent
 # TestMessageFormBatchJavaScript/damage, where a damaged batch delivers no body.
 .PHONY: tables-js-discard
 tables-js-discard:
-	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^(TestDamageDiscardsTheWholeLoadJavaScript|TestMessageFormBatchJavaScript)$$'
 	@echo 'tables JS discard: damaged input hands back no value on every load (§4)'
 
 test-js: tables-js-discard
@@ -1724,3 +1725,46 @@ tables-js-batch-discard-negative-control:
 	$(call js_jstable_control,js-batch-discard-dropped,internal/codegen/jstable/messagebatch.go,^TestMessageFormBatchJavaScript$$,./internal/codegen/jstable/,damage inside body 2 delivered a body)
 
 test-js: tables-js-discard-negative-control tables-js-batch-discard-negative-control
+
+# A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the gate loads the
+# manifest's cycle rows through Load and LoadRetain and requires nothing back,
+# and the chain and the forty-level diamond chain beside them to load. Its
+# control blinds the three-mark walk to an OPEN vertex, through a tools/sabotage
+# copy reached by a Go overlay, and requires the gate red on a cyclic wire.
+.PHONY: tables-js-cycle tables-js-cycle-negative-control
+tables-js-cycle:
+	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s ./internal/codegen/jstable/ -run '^TestCyclicWireIsDamageJavaScript$$'
+	@echo 'tables JS cycle: a cyclic wire is damage, a shared node is not (§3.1)'
+
+tables-js-cycle-negative-control:
+	$(call js_jstable_control,js-cycle-dropped,internal/codegen/jstable/variableruntime.go,^TestCyclicWireIsDamageJavaScript$$,./internal/codegen/jstable/,a cyclic wire loaded)
+
+test-js: tables-js-cycle tables-js-cycle-negative-control
+
+# The conformance adapter preserves the JSON byte boundary before generated JS
+# reads strings. Replacement decoding must not hide an invalid UTF-8 input.
+.PHONY: conformance-js-text-boundary conformance-negative-control-js-text-boundary
+conformance-js-text-boundary: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control-text-boundary positive
+
+conformance-negative-control-js-text-boundary: conformance-js-text-boundary
+	sh test/conformance/js/negative-control-text-boundary replacement
+
+test-js: conformance-js-text-boundary
+
+
+.PHONY: tables-js-blob-shared-report
+tables-js-blob-shared-report: toolchain-js
+	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) \
+		sh test/slowgate/proof tables-js-blob-shared-report 'TestJavaScriptBlobSharedReportCensus' \
+		-count=1 -timeout=0 -run '^TestJavaScriptBlobSharedReportCensus$$' ./internal/codegen/jstable/
+
+test-js: tables-js-blob-shared-report
+
+.PHONY: tables-js-helper-closure
+tables-js-helper-closure: toolchain-js
+	SCHEMA_REQUIRE_CORPUS=1 ESLINT=$(ESLINT) \
+		sh test/slowgate/proof tables-js-helper-closure 'TestJavaScriptVariableHelperClosure' \
+		-count=1 -timeout=0 -run '^TestJavaScriptVariableHelperClosure$$' ./internal/codegen/jstable/
+
+test-js: tables-js-helper-closure

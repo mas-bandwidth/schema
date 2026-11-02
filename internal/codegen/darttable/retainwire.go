@@ -8,6 +8,7 @@
 package darttable
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -24,11 +25,52 @@ func (g *wireGen) emitRetainRuntime() {
 	for _, id := range ir.TableWireIds(g.unit) {
 		ids = append(ids, dartU64Literal(id))
 	}
-	g.pf(dartRetainRuntime, strings.Join(ids, ", "))
+	g.pf(dartRetainRuntime, g.retainForgetCases(), strings.Join(ids, ", "))
 }
 
-// dartRetainRuntime is the Dart source of the retain-unknown runtime, with one
-// %s placeholder for the unit's known-id set (docs/SPEC-TABLES.md §6.6). It
+// retainForgetCases walks only owned by-value storage. Pointer nodes remain
+// in the loaded region and are accounted as unreachable by the save.
+func (g *wireGen) retainForgetCases() string {
+	var b strings.Builder
+	child := func(f *ir.Field, expr string) string {
+		if f.Type.Pointer || f.Type.Blob() {
+			return ""
+		}
+		if f.IsMap() || f.Array != ir.ArrayNone {
+			if f.IsMap() || tableRef(f) != nil || unionRef(f) != nil {
+				return fmt.Sprintf("          pending.addAll(%s);\n", expr)
+			}
+		} else if tableRef(f) != nil || unionRef(f) != nil {
+			return fmt.Sprintf("          pending.add(%s);\n", expr)
+		}
+		return ""
+	}
+	emit := func(name, body string) {
+		if body != "" {
+			fmt.Fprintf(&b, "        case %s v:\n%s          break;\n", name, body)
+		}
+	}
+	for _, st := range g.closure {
+		var body strings.Builder
+		for _, f := range st.Fields {
+			body.WriteString(child(f, "v."+fieldMember(f)))
+		}
+		emit(st.Name, body.String())
+	}
+	for _, un := range g.closureUnions() {
+		var body strings.Builder
+		for _, arm := range un.Variants {
+			if !arm.Void() {
+				body.WriteString(child(arm.F, "v."+armMember(arm)))
+			}
+		}
+		emit(un.Name, body.String())
+	}
+	return b.String()
+}
+
+// dartRetainRuntime is the Dart source of the retain-unknown runtime, with
+// placeholders for its owned-child walk and unit's known-id set (docs/SPEC-TABLES.md §6.6). It
 // reuses the wire runtime's reader and writer, so a retained record's resolved
 // bytes are the same canonical framing the plain save writes.
 const dartRetainRuntime = `
@@ -46,9 +88,52 @@ final class TableRetain {
   int idUsed = 0;
   int used = 0;
   final List<_RetainRecord> records = <_RetainRecord>[];
+  final Map<Object, List<_RetainRecord>> _byOwner = Map.identity();
+  final Map<Object, Map<String, List<Object>>> _maps = Map.identity();
   TableRetain(this.capacity, this.ids);
+
+  void add(_RetainRecord record) {
+    records.add(record);
+    (_byOwner[record.owner] ??= <_RetainRecord>[]).add(record);
+  }
+
+  void rememberMap(Object owner, String field, Object entry) {
+    final fields = _maps[owner] ??= <String, List<Object>>{};
+    (fields[field] ??= <Object>[]).add(entry);
+  }
+
+  void forgetMap(Object owner, String field) {
+    final entries = _maps[owner]?.remove(field);
+    if (entries != null) {
+      for (final entry in entries) { forget(entry); }
+    }
+  }
+
+  // A replacement supersedes its old body without moving either counter.
+  // Keep byte capacity consumed, as the append-only caller store does.
+  void forget(Object owner) {
+    final pending = <Object>[owner];
+    final seen = Set<Object>.identity();
+    while (pending.isNotEmpty) {
+      final value = pending.removeLast();
+      if (!seen.add(value)) continue;
+      final old = _byOwner.remove(value);
+      if (old != null) {
+        for (final rec in old) { rec.discarded = true; }
+      }
+      final maps = _maps.remove(value);
+      if (maps != null) {
+        for (final entries in maps.values) { pending.addAll(entries); }
+      }
+      switch (value) {
+%s        default: break;
+      }
+    }
+  }
   void reset() {
     records.clear();
+    _byOwner.clear();
+    _maps.clear();
     used = 0;
     idUsed = 0;
   }
@@ -66,6 +151,8 @@ final class _RetainRecord {
   final int id;
   final int kind;
   final List<int> resolved;
+  bool placed = false;
+  bool discarded = false;
   _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
@@ -189,7 +276,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainResolve(r, ak, depth + 1);
+      final sub = _retainFramed(r, ak, depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -218,8 +305,12 @@ List<int>? _retainContent(TableWireReader r, int kind, int depth) {
     case 14:
     case 16:
       return _retainArray(r, kind, depth);
-    default:
+    case 15:
+    case 30:
       return _retainResolve(r, kind, depth);
+    default:
+      // The enclosing arm/keyed-slot length already frames scalar content.
+      return _retainRaw(r, r.limit-r.pos);
   }
 }
 
@@ -352,7 +443,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitPayload(state, ak, c, depth + 1);
+      final sub = _retainEmitFramed(state, ak, c, depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -386,8 +477,11 @@ List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int en
     case 14:
     case 16:
       return _retainEmitArray(state, kind, c, end, depth);
-    default:
+    case 15:
+    case 30:
       return _retainEmitPayload(state, kind, c, depth);
+    default:
+      final out=c.b.sublist(c.at,end);c.at=end;return out;
   }
 }
 
@@ -446,8 +540,8 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
 void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
-  for (final rec in t.records) {
-    if (!identical(rec.owner, owner)) continue;
+  for (final rec in t._byOwner[owner] ?? const <_RetainRecord>[]) {
+    rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -475,15 +569,18 @@ void _retainTail(TableWireWriter w, Object owner) {
 func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	n := st.Name
 	d := dartName(n)
-	_, strBlob := ir.PointerReachableBlobs(st)
+	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
 	g.pf("\tretain.reset();\n")
 	g.pf("\tfinal v = %s();\n", n)
+	g.pf("\tif (report.integrityMismatch) report.malformed = false;\n\treport.integrityMismatch = false;\n")
+	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
-	g.pf("\tr.report.nonFiniteFloat = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
+	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
 	g.emitKnownTypes(st, "r", "v")
@@ -493,12 +590,27 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
-	g.pf("\tr.scanNodeTable();\n")
-	g.pf("\tr.pos = 1;\n")
-	g.pf("\t%s(r, v, false);\n", d+"WireLoadBody")
+	g.pf("\ttry {\n")
+	g.pf("\t\tr.scanNodeTable();\n")
+	g.pf("\t\tr.pos = 1;\n")
+	g.pf("\t\t%s(r, v, false);\n", d+"WireLoadBody")
+	g.pf("\t} on _TableMissingRequired {\n\t\tretain.reset();\n\t\treturn %s();\n", n)
+	g.pf("\t} on _TableWireCountRefusal {\n")
+	g.pf("\t\tr.report.refused = true;\n\t\tr.report._countRefused = true;\n")
+	g.pf("\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
 	// A NON-FINITE FLOAT REFUSES THE READ (docs/SPEC-TABLES.md §3.3, §6.6):
 	// nothing lands, the retained store included.
-	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty) {\n")
+	g.pf("\tif (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {\n")
+	g.pf("\t\tretain.reset();\n")
+	g.pf("\t\treturn %s();\n", n)
+	g.pf("\t}\n")
+	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): nothing lands,
+	// the retained store included.
+	g.pf("\t_collectNodeEdges(r);\n")
+	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\tretain.reset();\n\t\treturn %s();\n\t}\n", n)
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4, §6.6): nothing
+	// decoded lands and nothing is retained.
+	g.pf("\tif (r.report.malformed) {\n")
 	g.pf("\t\tretain.reset();\n")
 	g.pf("\t\treturn %s();\n", n)
 	g.pf("\t}\n")
@@ -507,6 +619,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 
 	g.pf("Uint8List %sWireSaveRetain(%s v, TableRetain retain, TableWireReport report) {\n", d, n)
 	g.pf("\tretain.idUsed = 0;\n")
+	g.pf("\tfor (final rec in retain.records) { rec.placed = false; }\n")
 	g.pf("\tfinal state = WireState()..refuseSharedBlob = true;\n")
 	g.pf("\tstate.retain = retain;\n")
 	g.pf("\tstate.report = report;\n")
@@ -518,10 +631,15 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tw.putByte(1);\n")
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", d)
 	g.pf("\t_writeNodeTable(w);\n")
+	g.pf("\tfor (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }\n")
 	g.pf("\tw.putByte(0);\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
-	g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	if st.Integrity != "" {
+		g.pf("\treturn tableIntegritySeal(w.buf);\n")
+	} else {
+		g.pf("\treturn Uint8List.fromList(w.buf);\n")
+	}
 	g.pf("}\n\n")
 
 	g.pf("int %sWireMeasureRetain(%s v, TableRetain retain) {\n", d, n)

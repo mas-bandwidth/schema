@@ -256,6 +256,10 @@ public final class MixedHitEventVariable {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.targetId & 0xffffffffL) > 4095L) {
+                        v.targetId = (int) 4095L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -521,13 +525,25 @@ public final class MixedHitEventVariable {
             }
             return null;
         }
+        nt.from = 1;
         resolveNodes(v, nt, v, TYPE_ID, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
                 if (rec.table != null) {
+                    nt.from = i + 2;
                     resolveNodePointers(rec.table, rec.typeId, nt, v, TYPE_ID, report);
                 }
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE LOAD (§4)
+        if (report.malformed) {
+            return null;
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            return null;
         }
         return v;
     }
@@ -659,10 +675,18 @@ public final class MixedHitEventVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
+        in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v);
         if (in.bad) {
             report.malformed = true;
+        }
+        if (report.refused) {
+            return null;
+        }
+        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
+        if (report.malformed) {
+            return null;
         }
         return v;
     }
@@ -832,7 +856,7 @@ public final class MixedHitEventVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             String key = in.scanString();
             if (in.bad) {
@@ -942,7 +966,7 @@ public final class MixedHitEventVariable {
             }
             if (c == '}') {
                 in.p++;
-                return;
+                break;
             }
             in.bad = true;
             return;

@@ -318,13 +318,41 @@ func (g *rowGen) emitRowField(fl ir.FieldLayout) {
 		g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)
 		g.f("    /** the raw SIGNED SELF-RELATIVE delta; zero is null. */\n")
 		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n\n", name, pieces[0].Offset)
-	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
+	case f.Type.TextUnbounded():
+		g.f("    /** string: the 8-byte self-relative reference slot to its blob in the node extent (§2.13.1, §6.3, §7.2). */\n")
+		g.f("    public static int %sSlot(int at) { return at + %d; }\n", name, pieces[0].Offset)
+		g.f("    /** the raw SIGNED SELF-RELATIVE delta; zero is the empty string. */\n")
+		g.f("    public static long %sDelta(byte[] data, int at) { return TableBytes.i64(data, at + %d); }\n", name, pieces[0].Offset)
+		g.f("    /** the UTF-8 bytes' offset inside data, or 0 when empty or out of bounds. */\n")
+		g.f("    public static int %sAt(byte[] data, int at) {\n", name)
+		g.f("        long delta = TableBytes.i64(data, at + %d);\n", pieces[0].Offset)
+		g.f("        if (delta == 0L) { return 0; }\n")
+		g.f("        long blob = (long) (at + %d) + delta;\n", pieces[0].Offset)
+		g.f("        return blob < 0L || blob + 8L > data.length ? 0 : (int) (blob + 8L);\n")
+		g.f("    }\n")
+		g.f("    /** the UTF-8 byte length, or 0 when empty or out of bounds. */\n")
+		g.f("    public static int %sLength(byte[] data, int at) {\n", name)
+		g.f("        long delta = TableBytes.i64(data, at + %d);\n", pieces[0].Offset)
+		g.f("        if (delta == 0L) { return 0; }\n")
+		g.f("        long blob = (long) (at + %d) + delta;\n", pieces[0].Offset)
+		g.f("        if (blob < 0L || blob + 8L > data.length) { return 0; }\n")
+		g.f("        int used = TableBytes.i32(data, (int) blob);\n")
+		g.f("        return used < 0 || blob + 8L + used > data.length ? 0 : used;\n")
+		g.f("    }\n\n")
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		what := "string"
 		if f.Type.Kind == ir.TBytes {
 			what = "bytes"
 		}
+		if f.Type.Kind == ir.TWString {
+			what = "wstring"
+		}
 		g.f("    /** %s(%d): the buffer's own offset and the used length beside it (§7.2).\n", what, f.Type.Size)
-		g.f("     *  The used bytes are data[%sAt(at) .. +%sLength(data, at)]. */\n", name, name)
+		if f.Type.Kind == ir.TWString {
+			g.f("     *  The used length counts UTF-16 code units, two bytes each. */\n")
+		} else {
+			g.f("     *  The used bytes are data[%sAt(at) .. +%sLength(data, at)]. */\n", name, name)
+		}
 		g.f("    public static int %sAt(int at) { return at + %d; }\n", name, pieces[0].Offset)
 		g.f("    public static int %sLength(byte[] data, int at) {\n", name)
 		g.f("        int used = TableBytes.i32(data, at + %d);\n", pieces[1].Offset)
@@ -513,11 +541,11 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 			countOffset = pieces[len(pieces)-2].Offset
 		}
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		// Only an INLINE string(N)/bytes(N) carries a count companion beside its
-		// bytes; a *string/*bytes BLOB is a pointer slot (REFERENCE, §2.5, §6.3)
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+		// Only inline string(N), wstring(N), or bytes(N) carries a count companion
+		// beside its buffer; a *string/*bytes BLOB is a pointer slot (REFERENCE, §2.5, §6.3)
 		// and has no companion, so its countOffset stays -1.
-		if !f.Type.Pointer {
+		if !f.Type.Pointer && !f.Type.TextUnbounded() {
 			countOffset = pieces[1].Offset
 		}
 	}
@@ -531,8 +559,8 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 		bound = f.ArrayBound
 		elemSize = pieces[0].Size / bound
 	}
-	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		// the COUNT COMPANION of a string or a `bytes` bounds a walker just as an
+	if f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes {
+		// the count companion of text or bytes bounds a walker just as an
 		// array's does (§7.4), and the bound is the declared length
 		bound = f.Type.Size
 		isArray = false
@@ -560,6 +588,8 @@ func cookStorageKind(f *ir.Field) string {
 		return "FLOAT"
 	case ir.TString:
 		return "STRING"
+	case ir.TWString:
+		return "WSTRING"
 	case ir.TBytes:
 		return "BYTES"
 	case ir.TBits:
@@ -606,8 +636,12 @@ func (g *rowGen) cookHolderInfo(fl ir.FieldLayout) string {
 		elem = g.cookFieldInfo(ir.FieldLayout{Field: variableElement(f), Offset: 0, Size: size, Align: align})
 		kind = "LIST"
 	}
-	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, false, 1, false, -1, -1, TableCookStorage.%s, null).extent(%d, %d, %s)",
-		f.Name, varMember(f), fl.Offset, fl.Size, pieces[0].Size, kind, size, align, elem)
+	presentOffset := int64(-1)
+	if f.Type.Optional {
+		presentOffset = pieces[len(pieces)-1].Offset
+	}
+	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, false, 1, false, -1, %d, TableCookStorage.%s, null).extent(%d, %d, %s)",
+		f.Name, varMember(f), fl.Offset, fl.Size, pieces[0].Size, presentOffset, kind, size, align, elem)
 }
 
 // emitRowHolder is a LIST's or a MAP's sixteen-byte holder (docs/SPEC-TABLES.md
@@ -650,13 +684,17 @@ func (g *rowGen) emitRowFind(f *ir.Field, name string, stride int64) {
 	entry := f.MapEntry.Name + "Row"
 	kname := member(key)
 	if key.Type.Kind == ir.TString {
+		atCall := fmt.Sprintf("%s.%sAt(at)", entry, kname)
+		if key.Type.TextUnbounded() {
+			atCall = fmt.Sprintf("%s.%sAt(data, at)", entry, kname)
+		}
 		g.f("    /** the entry whose key is these UTF-8 bytes, in the array at entries, or -1. */\n")
 		g.f("    public static int %sFind(byte[] data, int entries, int count, byte[] key) {\n", name)
 		g.f("        int low = 0, high = count;\n")
 		g.f("        while (low < high) {\n")
 		g.f("            int mid = (low + high) >>> 1;\n")
 		g.f("            int at = entries + mid * %d;\n", stride)
-		g.f("            int k = %s.%sAt(at), n = %s.%sLength(data, at);\n", entry, kname, entry, kname)
+		g.f("            int k = %s, n = %s.%sLength(data, at);\n", atCall, entry, kname)
 		g.f("            int order = java.util.Arrays.compareUnsigned(data, k, k + n, key, 0, key.length);\n")
 		g.f("            if (order == 0) { return at; }\n")
 		g.f("            if (order < 0) { low = mid + 1; } else { high = mid; }\n")

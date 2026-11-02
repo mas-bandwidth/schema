@@ -27,6 +27,7 @@ func init() {
 		Name{Name: "TableCookByteOrder", What: "this build's byte order, as a cooked header records it", RustConst: true},
 		Name{Name: "TableCookMaxAlign", What: "the greatest region alignment a cooked header may name", RustConst: true},
 		Name{Name: "TableCookRead64", What: "the cooked header read BYTEWISE. C# spells it a Schema member, which claims nothing; DART puts it at library scope, so the claim is the union"},
+		Name{Name: "TableCookTextStart", What: "the cook reader checked start of an unbounded text node (§7.2)"},
 		Name{Name: "TableCookGetWide", What: "the cook's 128-bit read: a kind 18-29 slot's raw value as a BigInt"},
 		Name{Name: "TableCookInfo", What: "a cooked record's reflection descriptor"},
 		Name{Name: "TableCookFieldInfo", What: "a cooked field's reflection descriptor"},

@@ -1166,7 +1166,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5093,8 +5093,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace messagedemo
@@ -7847,7 +7893,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                     uint64_t widened_v = 0;
                                     if ( !TableReadUnsignedAt( sub, arm_kind, widened_v ) )
                                     {
-                                        value.origin.type = OriginType::None; r.report->malformed = true; break;
+                                        value.origin.type = OriginType::None;
+                                        r.report->malformed = true;
+                                        break;
                                     }
                                     uint32_t decoded_v = (uint32_t) widened_v;
                                     if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -7866,7 +7914,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                             if ( sub.size != 4 ) { value.origin.type = OriginType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) )
                             {
-                                value.origin.type = OriginType::None; r.report->malformed = true; break;
+                                value.origin.type = OriginType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             uint32_t decoded_v = uint32_t( sub.get32() );
                             if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -7888,7 +7938,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                             {
                                 uint32_t arm_len = uint32_t( sub.size );
                                 uint32_t arm_keep = arm_len;
-                                // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts
+                                // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                 if ( !TableUtf8Valid( sub.buffer + sub.offset, sub.size ) ) { value.origin.type = OriginType::None; r.report->malformed = true; break; }
                                 if ( arm_keep > 24 ) { arm_keep = (uint32_t) TableUtf8Clamp( sub.buffer + sub.offset, sub.size, 24 ); r.report->clamped++; } // at a code point boundary
                                 memcpy( value.origin.note.value, sub.buffer + sub.offset, arm_keep );
@@ -8009,7 +8059,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                                 uint64_t widened_v = 0;
                                                 if ( !TableReadUnsignedAt( elem_arm, elem_arm_kind, widened_v ) )
                                                 {
-                                                    value.origins[(int32_t) i].type = OriginType::None; r.report->malformed = true; break;
+                                                    value.origins[(int32_t) i].type = OriginType::None;
+                                                    r.report->malformed = true;
+                                                    break;
                                                 }
                                                 uint32_t decoded_v = (uint32_t) widened_v;
                                                 if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -8024,7 +8076,9 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                         if ( elem_arm.size != 4 ) { value.origins[(int32_t) i].type = OriginType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                         if ( !elem_arm.has( 4 ) )
                                         {
-                                            value.origins[(int32_t) i].type = OriginType::None; r.report->malformed = true; break;
+                                            value.origins[(int32_t) i].type = OriginType::None;
+                                            r.report->malformed = true;
+                                            break;
                                         }
                                         uint32_t decoded_v = uint32_t( elem_arm.get32() );
                                         if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -8042,7 +8096,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                                         {
                                             uint32_t arm_lena = uint32_t( elem_arm.size );
                                             uint32_t arm_keepa = arm_lena;
-                                            // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts
+                                            // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                             if ( !TableUtf8Valid( elem_arm.buffer + elem_arm.offset, elem_arm.size ) ) { value.origins[(int32_t) i].type = OriginType::None; r.report->malformed = true; break; }
                                             if ( arm_keepa > 24 ) { arm_keepa = (uint32_t) TableUtf8Clamp( elem_arm.buffer + elem_arm.offset, elem_arm.size, 24 ); r.report->clamped++; } // at a code point boundary
                                             memcpy( value.origins[(int32_t) i].note.value, elem_arm.buffer + elem_arm.offset, arm_keepa );
@@ -9678,7 +9732,12 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
                                     memset( (void *) &value.body.tally, 0, sizeof( value.body.tally ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; }
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                    {
+                                        value.body.type = EditBodyType::None;
+                                        r.report->malformed = true;
+                                        break;
+                                    }
                                     int32_t decoded_v = (int32_t) widened_v;
                                     if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                                     else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
@@ -9697,7 +9756,9 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                             if ( sub.size != 4 ) { value.body.type = EditBodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) )
                             {
-                                value.body.type = EditBodyType::None; r.report->malformed = true; break;
+                                value.body.type = EditBodyType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
@@ -12048,7 +12109,12 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                                 if ( elem_arm.size != TableKindWidth( elem_arm_kind ) ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; }
                                                 memset( (void *) &value.pending[(int32_t) i].tally, 0, sizeof( value.pending[(int32_t) i].tally ) ); // selection establishes the arm (§2.6)
                                                 int64_t widened_v = 0;
-                                                if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; }
+                                                if ( !TableReadSignedAt( elem_arm, elem_arm_kind, widened_v ) )
+                                                {
+                                                    value.pending[(int32_t) i].type = EditBodyType::None;
+                                                    r.report->malformed = true;
+                                                    break;
+                                                }
                                                 int32_t decoded_v = (int32_t) widened_v;
                                                 if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
                                                 else if ( decoded_v > 100 ) { decoded_v = 100; r.report->clamped++; }
@@ -12063,7 +12129,9 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                                         if ( elem_arm.size != 4 ) { value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                         if ( !elem_arm.has( 4 ) )
                                         {
-                                            value.pending[(int32_t) i].type = EditBodyType::None; r.report->malformed = true; break;
+                                            value.pending[(int32_t) i].type = EditBodyType::None;
+                                            r.report->malformed = true;
+                                            break;
                                         }
                                         int32_t decoded_v = int32_t( elem_arm.get32() );
                                         if ( decoded_v < 0 ) { decoded_v = 0; r.report->clamped++; }
@@ -14316,7 +14384,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                     uint64_t widened_v = 0;
                                     if ( !TableReadUnsignedAt( sub, arm_kind, widened_v ) )
                                     {
-                                        value.body.type = ToolBodyType::None; r.report->malformed = true; break;
+                                        value.body.type = ToolBodyType::None;
+                                        r.report->malformed = true;
+                                        break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
                                     value.body.caps = decoded_v;
@@ -14334,7 +14404,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                             if ( sub.size != 8 ) { value.body.type = ToolBodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 8 ) )
                             {
-                                value.body.type = ToolBodyType::None; r.report->malformed = true; break;
+                                value.body.type = ToolBodyType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
                             value.body.caps = decoded_v;
@@ -14368,8 +14440,11 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                     for ( uint64_t widened_i = 0; widened_i < widened_keep; widened_i++ )
                                     {
                                         int64_t widened_v = 0;
-                                        if ( !TableReadSignedAt( widened_sub, arm_elem_kind, widened_v ) ) { r.report->malformed = true;
-                                            break; }
+                                        if ( !TableReadSignedAt( widened_sub, arm_elem_kind, widened_v ) )
+                                        {
+                                            r.report->malformed = true;
+                                            break;
+                                        }
                                         int32_t decoded_v = (int32_t) widened_v;
                                         value.body.spans[(int32_t) widened_i] = decoded_v;
                                         widened_decoded = widened_i + 1;
@@ -14456,7 +14531,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                     uint64_t widened_v = 0;
                                                     if ( !TableReadUnsignedAt( arm_inner, arm_inner_kind, widened_v ) )
                                                     {
-                                                        value.body.origin.type = OriginType::None; r.report->malformed = true; break;
+                                                        value.body.origin.type = OriginType::None;
+                                                        r.report->malformed = true;
+                                                        break;
                                                     }
                                                     uint32_t decoded_v = (uint32_t) widened_v;
                                                     if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -14471,7 +14548,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             if ( arm_inner.size != 4 ) { value.body.origin.type = OriginType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !arm_inner.has( 4 ) )
                                             {
-                                                value.body.origin.type = OriginType::None; r.report->malformed = true; break;
+                                                value.body.origin.type = OriginType::None;
+                                                r.report->malformed = true;
+                                                break;
                                             }
                                             uint32_t decoded_v = uint32_t( arm_inner.get32() );
                                             if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -14489,7 +14568,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                             {
                                                 uint32_t arm_lena = uint32_t( arm_inner.size );
                                                 uint32_t arm_keepa = arm_lena;
-                                                // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts
+                                                // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                                 if ( !TableUtf8Valid( arm_inner.buffer + arm_inner.offset, arm_inner.size ) ) { value.body.origin.type = OriginType::None; r.report->malformed = true; break; }
                                                 if ( arm_keepa > 24 ) { arm_keepa = (uint32_t) TableUtf8Clamp( arm_inner.buffer + arm_inner.offset, arm_inner.size, 24 ); r.report->clamped++; } // at a code point boundary
                                                 memcpy( value.body.origin.note.value, arm_inner.buffer + arm_inner.offset, arm_keepa );
@@ -14653,7 +14732,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                 uint64_t widened_v = 0;
                                                 if ( !TableReadUnsignedAt( elem_arm, elem_arm_kind, widened_v ) )
                                                 {
-                                                    value.history[(int32_t) i].type = ToolBodyType::None; r.report->malformed = true; break;
+                                                    value.history[(int32_t) i].type = ToolBodyType::None;
+                                                    r.report->malformed = true;
+                                                    break;
                                                 }
                                                 uint64_t decoded_v = (uint64_t) widened_v;
                                                 value.history[(int32_t) i].caps = decoded_v;
@@ -14667,7 +14748,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         if ( elem_arm.size != 8 ) { value.history[(int32_t) i].type = ToolBodyType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                         if ( !elem_arm.has( 8 ) )
                                         {
-                                            value.history[(int32_t) i].type = ToolBodyType::None; r.report->malformed = true; break;
+                                            value.history[(int32_t) i].type = ToolBodyType::None;
+                                            r.report->malformed = true;
+                                            break;
                                         }
                                         uint64_t decoded_v = uint64_t( elem_arm.get64() );
                                         value.history[(int32_t) i].caps = decoded_v;
@@ -14697,8 +14780,11 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                 for ( uint64_t widened_i = 0; widened_i < widened_keepa; widened_i++ )
                                                 {
                                                     int64_t widened_v = 0;
-                                                    if ( !TableReadSignedAt( widened_suba, arm_elem_kinda, widened_v ) ) { r.report->malformed = true;
-                                                        break; }
+                                                    if ( !TableReadSignedAt( widened_suba, arm_elem_kinda, widened_v ) )
+                                                    {
+                                                        r.report->malformed = true;
+                                                        break;
+                                                    }
                                                     int32_t decoded_v = (int32_t) widened_v;
                                                     value.history[(int32_t) i].spans[(int32_t) widened_i] = decoded_v;
                                                     widened_decoded = widened_i + 1;
@@ -14781,7 +14867,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                                 uint64_t widened_v = 0;
                                                                 if ( !TableReadUnsignedAt( arm_innera, arm_inner_kinda, widened_v ) )
                                                                 {
-                                                                    value.history[(int32_t) i].origin.type = OriginType::None; r.report->malformed = true; break;
+                                                                    value.history[(int32_t) i].origin.type = OriginType::None;
+                                                                    r.report->malformed = true;
+                                                                    break;
                                                                 }
                                                                 uint32_t decoded_v = (uint32_t) widened_v;
                                                                 if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -14796,7 +14884,9 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         if ( arm_innera.size != 4 ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                                         if ( !arm_innera.has( 4 ) )
                                                         {
-                                                            value.history[(int32_t) i].origin.type = OriginType::None; r.report->malformed = true; break;
+                                                            value.history[(int32_t) i].origin.type = OriginType::None;
+                                                            r.report->malformed = true;
+                                                            break;
                                                         }
                                                         uint32_t decoded_v = uint32_t( arm_innera.get32() );
                                                         if ( decoded_v > 1000 ) { decoded_v = 1000; r.report->clamped++; }
@@ -14814,7 +14904,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         {
                                                             uint32_t arm_lenaa = uint32_t( arm_innera.size );
                                                             uint32_t arm_keepaa = arm_lenaa;
-                                                            // ILL-FORMED TEXT at an arm (§3): the union reads None, one malformed counts
+                                                            // ILL-FORMED TEXT at an arm (§3) is damage: malformed counts and the whole load is discarded (§4)
                                                             if ( !TableUtf8Valid( arm_innera.buffer + arm_innera.offset, arm_innera.size ) ) { value.history[(int32_t) i].origin.type = OriginType::None; r.report->malformed = true; break; }
                                                             if ( arm_keepaa > 24 ) { arm_keepaa = (uint32_t) TableUtf8Clamp( arm_innera.buffer + arm_innera.offset, arm_innera.size, 24 ); r.report->clamped++; } // at a code point boundary
                                                             memcpy( value.history[(int32_t) i].origin.note.value, arm_innera.buffer + arm_innera.offset, arm_keepaa );
@@ -18769,22 +18859,29 @@ inline int64_t UserFixedLoadTolerant( User * values, int64_t capacity, const uin
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         UserReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { UserReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, UserFixedGuards );
         TableFixedClampKnownRanges( UserFixedKnownRanges[lineage_at], UserFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !UserFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { UserReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -19116,22 +19213,29 @@ inline int64_t ScriptFixedLoadTolerant( Script * values, int64_t capacity, const
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         ScriptReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { ScriptReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ScriptFixedGuards );
         TableFixedClampKnownRanges( ScriptFixedKnownRanges[lineage_at], ScriptFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !ScriptFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { ScriptReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -19462,9 +19566,17 @@ inline int64_t SelectionFixedLoadTolerant( Selection * values, int64_t capacity,
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         SelectionReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { SelectionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SelectionFixedGuards );
         TableFixedClampKnownRanges( SelectionFixedKnownRanges[lineage_at], SelectionFixedKnownRangeCounts[lineage_at],
@@ -19960,22 +20072,29 @@ inline int64_t InsertTextFixedLoadTolerant( InsertText * values, int64_t capacit
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         InsertTextReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { InsertTextReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, InsertTextFixedGuards );
         TableFixedClampKnownRanges( InsertTextFixedKnownRanges[lineage_at], InsertTextFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !InsertTextFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { InsertTextReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -20311,9 +20430,17 @@ inline int64_t RemoveTextFixedLoadTolerant( RemoveText * values, int64_t capacit
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         RemoveTextReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { RemoveTextReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, RemoveTextFixedGuards );
         TableFixedClampKnownRanges( RemoveTextFixedKnownRanges[lineage_at], RemoveTextFixedKnownRangeCounts[lineage_at],
@@ -20934,22 +21061,29 @@ inline int64_t EditFixedLoadTolerant( Edit * values, int64_t capacity, const uin
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         EditReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { EditReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, EditFixedGuards );
         TableFixedClampKnownRanges( EditFixedKnownRanges[lineage_at], EditFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !EditFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { EditReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -21308,22 +21442,29 @@ inline int64_t OpenDocumentFixedLoadTolerant( OpenDocument * values, int64_t cap
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         OpenDocumentReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { OpenDocumentReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, OpenDocumentFixedGuards );
         TableFixedClampKnownRanges( OpenDocumentFixedKnownRanges[lineage_at], OpenDocumentFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !OpenDocumentFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { OpenDocumentReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -21655,22 +21796,29 @@ inline int64_t SaveDocumentFixedLoadTolerant( SaveDocument * values, int64_t cap
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         SaveDocumentReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { SaveDocumentReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SaveDocumentFixedGuards );
         TableFixedClampKnownRanges( SaveDocumentFixedKnownRanges[lineage_at], SaveDocumentFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !SaveDocumentFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { SaveDocumentReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -22888,22 +23036,29 @@ inline int64_t TransactionFixedLoadTolerant( Transaction * values, int64_t capac
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         TransactionReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { TransactionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, TransactionFixedGuards );
         TableFixedClampKnownRanges( TransactionFixedKnownRanges[lineage_at], TransactionFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !TransactionFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { TransactionReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -26094,22 +26249,29 @@ inline int64_t ToolMessageFixedLoadTolerant( ToolMessage * values, int64_t capac
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         ToolMessageReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { ToolMessageReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md
-        // §5.8): the counters this record's plan and ranges have moved are put
-        // back before the refusal returns, so the refusing record moves none.
-        const int32_t rec_clamped = report->clamped;
-        const int32_t rec_widened = report->widened;
+        // §5.8): every record written so far goes back to its defaults and
+        // the counters back to what they were before the batch.
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ToolMessageFixedGuards );
         TableFixedClampKnownRanges( ToolMessageFixedKnownRanges[lineage_at], ToolMessageFixedKnownRangeCounts[lineage_at],
                                     (uint8_t *) &values[k], report );
         if ( !ToolMessageFixedClamp( values[k], report ) )
         {
-            report->clamped = rec_clamped;
-            report->widened = rec_widened;
+            for ( int64_t j = 0; j <= k; ++j ) { ToolMessageReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
             return -1;
         }
         at += record_bytes;
@@ -26605,7 +26767,7 @@ inline void PingSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const User * UserOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const User *) TableCookOpen( bytes, length, (uint64_t) sizeof( User ), (uint64_t) alignof( User ), reason );
+    return (const User *) TableCookOpen( bytes, length, (uint64_t) sizeof( User ), (uint64_t) 4, reason );
 }
 
 // ScriptOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26635,7 +26797,7 @@ inline const User * UserOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Script * ScriptOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Script *) TableCookOpen( bytes, length, (uint64_t) sizeof( Script ), (uint64_t) alignof( Script ), reason );
+    return (const Script *) TableCookOpen( bytes, length, (uint64_t) sizeof( Script ), (uint64_t) 4, reason );
 }
 
 // SelectionOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26665,7 +26827,7 @@ inline const Script * ScriptOpen( const void * bytes, uint64_t length, TableRefu
 // parameter on a load.
 inline const Selection * SelectionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Selection *) TableCookOpen( bytes, length, (uint64_t) sizeof( Selection ), (uint64_t) alignof( Selection ), reason );
+    return (const Selection *) TableCookOpen( bytes, length, (uint64_t) sizeof( Selection ), (uint64_t) 4, reason );
 }
 
 // InsertTextOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26695,7 +26857,7 @@ inline const Selection * SelectionOpen( const void * bytes, uint64_t length, Tab
 // parameter on a load.
 inline const InsertText * InsertTextOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const InsertText *) TableCookOpen( bytes, length, (uint64_t) sizeof( InsertText ), (uint64_t) alignof( InsertText ), reason );
+    return (const InsertText *) TableCookOpen( bytes, length, (uint64_t) sizeof( InsertText ), (uint64_t) 4, reason );
 }
 
 // RemoveTextOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26725,7 +26887,7 @@ inline const InsertText * InsertTextOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const RemoveText * RemoveTextOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const RemoveText *) TableCookOpen( bytes, length, (uint64_t) sizeof( RemoveText ), (uint64_t) alignof( RemoveText ), reason );
+    return (const RemoveText *) TableCookOpen( bytes, length, (uint64_t) sizeof( RemoveText ), (uint64_t) 4, reason );
 }
 
 // EditOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26755,7 +26917,7 @@ inline const RemoveText * RemoveTextOpen( const void * bytes, uint64_t length, T
 // parameter on a load.
 inline const Edit * EditOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Edit *) TableCookOpen( bytes, length, (uint64_t) sizeof( Edit ), (uint64_t) alignof( Edit ), reason );
+    return (const Edit *) TableCookOpen( bytes, length, (uint64_t) sizeof( Edit ), (uint64_t) 4, reason );
 }
 
 // OpenDocumentOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26785,7 +26947,7 @@ inline const Edit * EditOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const OpenDocument * OpenDocumentOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const OpenDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( OpenDocument ), (uint64_t) alignof( OpenDocument ), reason );
+    return (const OpenDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( OpenDocument ), (uint64_t) 4, reason );
 }
 
 // SaveDocumentOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26815,7 +26977,7 @@ inline const OpenDocument * OpenDocumentOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const SaveDocument * SaveDocumentOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const SaveDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( SaveDocument ), (uint64_t) alignof( SaveDocument ), reason );
+    return (const SaveDocument *) TableCookOpen( bytes, length, (uint64_t) sizeof( SaveDocument ), (uint64_t) 4, reason );
 }
 
 // TransactionOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26845,7 +27007,7 @@ inline const SaveDocument * SaveDocumentOpen( const void * bytes, uint64_t lengt
 // parameter on a load.
 inline const Transaction * TransactionOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Transaction *) TableCookOpen( bytes, length, (uint64_t) sizeof( Transaction ), (uint64_t) alignof( Transaction ), reason );
+    return (const Transaction *) TableCookOpen( bytes, length, (uint64_t) sizeof( Transaction ), (uint64_t) 4, reason );
 }
 
 // ToolMessageOpen: match the header and POINT. On a match the bytes ARE what this
@@ -26875,7 +27037,7 @@ inline const Transaction * TransactionOpen( const void * bytes, uint64_t length,
 // parameter on a load.
 inline const ToolMessage * ToolMessageOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const ToolMessage *) TableCookOpen( bytes, length, (uint64_t) sizeof( ToolMessage ), (uint64_t) alignof( ToolMessage ), reason );
+    return (const ToolMessage *) TableCookOpen( bytes, length, (uint64_t) sizeof( ToolMessage ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----

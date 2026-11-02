@@ -1,0 +1,6 @@
+package messageintegrity
+
+fixed table Root | integrity = "crc32c"
+{
+    value int32
+}

@@ -1258,7 +1258,7 @@ classic twin, which is the wire oracle for the stated model.
 | `f bool` | 1 bit | `serialize_bool` |
 | `f float32` | 32 raw IEEE-754 bits of a FINITE value — the pattern, `-0` and subnormals bit exact; a NaN or an infinity is refused on write and refused on read as `non_finite_float` | `serialize_float` |
 | `f float64` | 64 raw bits (low dword first) of a FINITE value, exactly as `float32`'s row | `serialize_double` |
-| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
+| `f float32 | min = A, max = B, resolution = R` | quantized to ceil((B−A)/R) steps — the actual step is (B−A)/ceil((B−A)/R), ≤ R; read rejects values above the step count, and a dequantized value that is not finite as `non_finite_float` | `serialize_compressed_float` (exact formulas incl. the ceil, +0.5f rounding and clamp); storage stays `float32` — the attributes describe the wire |
 | `f Weapon` (an enum) | minimal bits for [0, max], max being the variant count; read rejects above max, so an unnamed value never reaches the object | `serialize_int` over [0, max] |
 | `f Damage` (a `flags` declaration, §4.2) | W raw bits, W = variant count (or the widened max); every pattern legal; storage `uint64` in every target | `serialize_bits` |
 | `f Inner` (a type) | Inner's fields, in place | `serialize_object` |
@@ -1466,7 +1466,13 @@ All compile errors with positions:
   rather than a silent infinity; the checker still carries the NaN arm as
   defense in depth. The derived float32 subtraction and division must also
   remain positive and at most `4294967040`, the runtime's upper clamp; a
-  triple that overflows or requires that clamp is refused. Fractional counts
+  triple that overflows or requires that clamp is refused. The top step must
+  dequantize to a finite float32 in the reader's own arithmetic,
+  `float32(1 * delta) + min`: every parameter can be finite and that add can
+  still round past the largest float32 (`min = 3 * 2^103`, `max` the largest
+  float32), and such a triple is refused. A reader still refuses a dequantized
+  value that is not finite, as `non_finite_float`, wherever the declaration
+  reaches it unchecked (a hostile announcement, §3.3 of SPEC-TABLES). Fractional counts
   below one legitimately encode one step. Codec widths use
   `ir.CompressedFloatParams`' float32 arithmetic. The projection's `steps`
   token retains its historical float64 formula, alongside all three original

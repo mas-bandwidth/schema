@@ -193,6 +193,14 @@ func (g *tableGen) sequenceType(f *ir.Field) string {
 	return g.cFieldType(e.Type)
 }
 
+func (g *tableGen) sequenceAlign(f *ir.Field) int64 {
+	if f.IsMap() {
+		return ir.RecordLayout(g.unit, f.MapEntry).Align
+	}
+	_, align := ir.ListElementLayout(g.unit, f)
+	return align
+}
+
 func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	typ := g.sequenceType(f)
 	name := st.Name + ir.GoExportName(f.Name)
@@ -221,21 +229,126 @@ func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	g.pf("}\n")
 }
 
+func sequenceWireKind(f *ir.Field) int {
+	if f.IsMap() {
+		return tkTable
+	}
+	return ir.TableWireScalarKind(f)
+}
+
+func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
+	if ir.TextListUnbounded(f) {
+		return
+	}
+	name := st.Name + ir.GoExportName(f.Name)
+	elem := f.Type.Name
+	v := ir.TextListValue(f)
+	m := v.Type.Size
+	optional := ir.TextListOptional(f)
+	absent := ""
+	present := ""
+	if optional {
+		absent = " || !p->value_present"
+		present = " p->value_present = 1;"
+	}
+	if f.IsList() {
+		g.pf("static SCHEMA_UNUSED const char * %s(const TableCtx * ctx, const %s * value, int32_t i, int32_t * out_len)\n{\n", g.api(name, "text_at"), st.Name)
+		g.pf("    TableSequenceCursor c; const %s * p = NULL; int32_t k;\n", elem)
+		g.pf("    if ( out_len != NULL ) { *out_len = 0; }\n")
+		g.pf("    if ( value == NULL || i < 0 || i >= value->%s.count ) { return NULL; }\n", f.Name)
+		g.pf("    c = table_sequence_cursor( ctx, &value->%s, sizeof( %s ) ); if ( !c.ok ) { return NULL; }\n", f.Name, elem)
+		g.pf("    for ( k = 0; k <= i; k++ ) { p = (const %s *) table_sequence_next( &c ); }\n", elem)
+		g.pf("    if ( p == NULL || p->value_length < 0 || p->value_length > %d%s ) { return NULL; }\n", m, absent)
+		g.pf("    if ( out_len != NULL ) { *out_len = p->value_length; }\n    return p->value;\n}\n")
+		g.pf("static SCHEMA_UNUSED int %s(TableWorker * worker, %s * value, const char * text, int32_t length)\n{\n", g.api(name, "append"), st.Name)
+		g.pf("    %s * p;\n", elem)
+		g.pf("    if ( worker == NULL || worker->arena == NULL || value == NULL || length < 0 || length > %d || ( length > 0 && text == NULL ) ) { return 0; }\n", m)
+		g.pf("    if ( !table_wire_utf8( (const uint8_t *) text, (uint64_t) length ) ) { return 0; }\n")
+		if f.TextTotal > 0 {
+			g.pf("    { TableCtx ctx; TableSequenceCursor c; int64_t spent = (int64_t) length; int32_t k;\n")
+			g.pf("      memset( &ctx, 0, sizeof( ctx ) ); ctx.arena = worker->arena;\n")
+			g.pf("      c = table_sequence_cursor( &ctx, &value->%s, sizeof( %s ) ); if ( !c.ok ) { return 0; }\n", f.Name, elem)
+			g.pf("      for ( k = 0; k < value->%s.count; k++ ) {\n", f.Name)
+			g.pf("          const %s * e = (const %s *) table_sequence_next( &c ); if ( e == NULL ) { return 0; }\n", elem, elem)
+			if optional {
+				g.pf("          if ( e->value_present && e->value_length > 0 ) { spent += (int64_t) e->value_length; }\n")
+			} else {
+				g.pf("          if ( e->value_length > 0 ) { spent += (int64_t) e->value_length; }\n")
+			}
+			g.pf("      }\n      if ( spent > %d ) { return 0; }\n    }\n", f.TextTotal)
+		}
+		g.pf("    p = %s( worker, &value->%s ); if ( p == NULL ) { return 0; }\n", g.api(name, "add"), f.Name)
+		g.pf("    if ( length > 0 ) { memcpy( p->value, text, (size_t) length ); }\n")
+		g.pf("    p->value[length] = 0; p->value_length = length;%s return 1;\n}\n", present)
+		if optional {
+			g.pf("static SCHEMA_UNUSED int %s(TableWorker * worker, %s * value)\n{\n", g.api(name, "append_absent"), st.Name)
+			g.pf("    if ( value == NULL ) { return 0; }\n    return %s( worker, &value->%s ) != NULL;\n}\n", g.api(name, "add"), f.Name)
+		}
+	} else {
+		g.pf("static SCHEMA_UNUSED const char * %s(const %s * value, int32_t i, int32_t * out_len)\n{\n", g.api(name, "text_at"), st.Name)
+		g.pf("    const %s * p;\n    if ( out_len != NULL ) { *out_len = 0; }\n", elem)
+		g.pf("    if ( value == NULL || i < 0 || i >= value->%s_count || value->%s_count > %d ) { return NULL; }\n", f.Name, f.Name, f.ArrayBound)
+		g.pf("    p = &value->%s[i];\n    if ( p->value_length < 0 || p->value_length > %d%s ) { return NULL; }\n", f.Name, m, absent)
+		g.pf("    if ( out_len != NULL ) { *out_len = p->value_length; }\n    return p->value;\n}\n")
+		g.pf("static SCHEMA_UNUSED int %s(%s * value, const char * text, int32_t length)\n{\n", g.api(name, "append"), st.Name)
+		g.pf("    %s * p;\n", elem)
+		g.pf("    if ( value == NULL || length < 0 || length > %d || ( length > 0 && text == NULL ) ) { return 0; }\n", m)
+		g.pf("    if ( !table_wire_utf8( (const uint8_t *) text, (uint64_t) length ) ) { return 0; }\n")
+		g.pf("    if ( value->%s_count < 0 || value->%s_count >= %d ) { return 0; }\n", f.Name, f.Name, f.ArrayBound)
+		if f.TextTotal > 0 {
+			g.pf("    { int64_t spent = (int64_t) length; int32_t k;\n")
+			g.pf("      for ( k = 0; k < value->%s_count && k < %d; k++ ) {\n", f.Name, f.ArrayBound)
+			if optional {
+				g.pf("          if ( value->%s[k].value_present && value->%s[k].value_length > 0 ) { spent += (int64_t) value->%s[k].value_length; }\n", f.Name, f.Name, f.Name)
+			} else {
+				g.pf("          if ( value->%s[k].value_length > 0 ) { spent += (int64_t) value->%s[k].value_length; }\n", f.Name, f.Name)
+			}
+			g.pf("      }\n      if ( spent > %d ) { return 0; }\n    }\n", f.TextTotal)
+		}
+		g.pf("    p = &value->%s[value->%s_count]; %s( p );\n", f.Name, f.Name, g.api(elem, "reset"))
+		g.pf("    if ( length > 0 ) { memcpy( p->value, text, (size_t) length ); }\n")
+		g.pf("    p->value[length] = 0; p->value_length = length;%s value->%s_count++; return 1;\n}\n", present, f.Name)
+		if optional {
+			g.pf("static SCHEMA_UNUSED int %s(%s * value)\n{\n", g.api(name, "append_absent"), st.Name)
+			g.pf("    if ( value == NULL || value->%s_count < 0 || value->%s_count >= %d ) { return 0; }\n", f.Name, f.Name, f.ArrayBound)
+			g.pf("    %s( &value->%s[value->%s_count] ); value->%s_count++; return 1;\n}\n", g.api(elem, "reset"), f.Name, f.Name, f.Name)
+		}
+	}
+}
+
 func (g *tableGen) emitSequenceWrite(f *ir.Field, expr string) {
 	e := sequenceElement(f)
 	typ := g.sequenceType(f)
+	kind := sequenceWireKind(f)
+	if f.IsTextList() && f.TextTotal > 0 {
+		val := ir.TextListValue(f)
+		g.pf("    { TableSequenceCursor tc=%s; int64_t total=0; int32_t ti;\n", g.sequenceCursor(f, "w->nodes", expr))
+		g.pf("      if(!tc.ok) { return 0; }\n")
+		g.pf("      for(ti=0;ti<%s.count;ti++) {\n", expr)
+		g.pf("          const %s * te=(const %s *)table_sequence_next(&tc); if(te==NULL) { return 0; }\n", typ, typ)
+		if val.Type.Optional {
+			g.pf("          if(!te->value_present) { continue; }\n")
+		}
+		g.pf("          if(te->value_length<0 || te->value_length>%d) { return 0; }\n", val.Type.Size)
+		g.pf("          total+=te->value_length; if(total>%d) { return 0; }\n", f.TextTotal)
+		g.pf("      }\n    }\n")
+	}
 	g.pf("    TableSequenceCursor cursor=%s; int32_t i;\n", g.sequenceCursor(f, "w->nodes", expr))
-	g.pf("    if(!cursor.ok) { return 0; } table_writer_put8(w,%d); table_writer_leb(w,(uint64_t)%s.count);\n", ir.TableWireScalarKind(e), expr)
+	g.pf("    if(!cursor.ok) { return 0; } table_writer_put8(w,%d); table_writer_leb(w,(uint64_t)%s.count);\n", kind, expr)
 	g.pf("    for(i=0;i<%s.count;i++) {\n        const %s * element=(const %s *)table_sequence_next(&cursor); if(element==NULL) { return 0; }\n", expr, typ, typ)
 	g.retainIndex(f, "i", "        ")
-	g.wirePayload(e, "(*element)", "        ")
+	if ir.TextListPlain(f) {
+		g.wirePayload(f, "(*element)", "        ")
+	} else {
+		g.wirePayload(e, "(*element)", "        ")
+	}
 	g.pf("    }\n")
 }
 
 func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	e := sequenceElement(f)
 	typ := g.sequenceType(f)
-	kind := ir.TableWireScalarKind(e)
+	kind := sequenceWireKind(f)
 	g.pf("                TableReader sub;\n")
 	if bounded == "" {
 		g.pf("                if(!table_reader_span(r,&sub)) { r->report->malformed=1; return 0; }\n")
@@ -250,7 +363,10 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	}
 	g.pf("                    if(elem_kind!=%d) { if(!(%s)) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.retainReplace(f, "                    ")
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s));\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, typ)
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, g.sequenceAlign(f))
+	if f.IsTextList() && f.TextTotal > 0 {
+		g.pf("                    int64_t spent=0;\n")
+	}
 	g.pf("                    for(i=0;i<count;i++) {\n                        %s * element=(%s *)table_sequence_fill_next(&fill); if(element==NULL) { r->report->malformed=1; break; }\n", typ, typ)
 	g.retainIndex(f, "i", "                        ")
 	if ref, ok := e.Type.Ref.(*ir.Struct); ok && !e.Type.Pointer {
@@ -259,24 +375,43 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	g.pf("                        do {\n")
 	bad := "r->report->malformed=1; table_sequence_fill_drop(&fill,element); goto list_end_" + f.Name + ";"
 	switch kind {
+	case tkString:
+		val := ir.TextListValue(f)
+		g.pf("                            TableReader item; uint64_t keep;\n")
+		g.pf("                            if(!table_reader_span(&sub,&item)) { %s }\n", bad)
+		g.pf("                            if(!table_wire_utf8(item.buffer,(uint64_t)item.size)) { %s(element); %s }\n", g.api(f.Type.Name, "reset"), bad)
+		g.pf("                            keep=(uint64_t)item.size;\n")
+		g.pf("                            if(keep>%d) { keep=table_wire_utf8_clamp(item.buffer,keep,%d); r->report->clamped++; }\n", val.Type.Size, val.Type.Size)
+		g.pf("                            memset(element->value,0,sizeof(element->value));\n")
+		g.pf("                            memcpy(element->value,item.buffer,(size_t)keep); element->value[keep]=0; element->value_length=(int32_t)keep;\n")
 	case tkTable:
 		g.pf("                            TableReader item; if(!table_reader_span(&sub,&item)) { %s }\n                            %s(&item,element);\n", bad, g.api(e.Type.Name, "load_body"))
 		g.wireRefusalCheck("                            ")
 		g.pf("                            if(item.offset!=item.size) { r->report->malformed=1; %s(element); }\n", g.api(e.Type.Name, "reset"))
 	case tkUnion:
-		g.pf("                            if(!%s(&sub,element,1)) { %s }\n", g.unionWireName(e.Type.Ref.(*ir.Union), "load"), bad)
+		g.pf("                            if(!%s(&sub,element,1)) {\n", g.unionWireName(e.Type.Ref.(*ir.Union), "load"))
+		g.wireRefusalCheck("                                ")
+		g.pf("                                %s }\n", bad)
 	default:
 		g.wireScalarRead(e, "(*element)", "sub", "elem_kind", "                            ", bad)
+	}
+	if f.IsTextList() && f.TextTotal > 0 {
+		if ir.TextListOptional(f) {
+			g.pf("                            if(element->value_present && element->value_length>0) { spent+=(int64_t)element->value_length; }\n")
+		} else {
+			g.pf("                            if(element->value_length>0) { spent+=(int64_t)element->value_length; }\n")
+		}
+		g.pf("                            if(spent>%d) { r->report->clamped++; %s(element); table_sequence_fill_drop(&fill,element); goto list_end_%s; }\n", f.TextTotal, g.api(f.Type.Name, "reset"), f.Name)
 	}
 	g.pf("                        } while(0);\n                    }\n                    list_end_%s: table_sequence_fill_end(&fill);\n                }\n", f.Name)
 }
 
 func sequenceFloor(f *ir.Field) int {
-	k := ir.TableWireScalarKind(sequenceElement(f))
+	k := sequenceWireKind(f)
 	switch k {
 	case tkTable:
 		return 2
-	case tkUnion, ir.TableKindEnum, 17:
+	case tkUnion, ir.TableKindEnum, 17, tkString:
 		return 1
 	}
 	return tableKindWidth(k)

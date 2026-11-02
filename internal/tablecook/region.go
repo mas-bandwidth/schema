@@ -286,6 +286,11 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 			return w.ref(value.Offset, f, nil)
 		}
 		return w.ref(value.Offset, f, fv.Cell.Node)
+	case f.Type.TextUnbounded():
+		// THE SLOT IS THE EXTENT WRITER'S (docs/SPEC-TABLES.md §2.13.1): the
+		// reference is a delta to a blob record in this record's own extent,
+		// and an empty string's encoding is the null reference (zero).
+		return nil
 	case f.Type.Kind == ir.TString:
 		// char[N+1]: the used bytes, then a zero tail — the terminator the
 		// generated buffer carries is the first byte of that tail

@@ -1,0 +1,28 @@
+package probe
+
+table R {
+    outer bool
+    if outer {
+        inner bool
+        if inner { yes int32 | required }
+        else { no int32 | required }
+    }
+}
+
+table N {
+    outer bool
+    if !outer {
+        inner bool
+        if !inner { yes int32 | required }
+        else { no int32 | required }
+    }
+}
+
+table Leaf { x int32 }
+table P {
+    outer bool
+    if outer {
+        inner bool
+        if inner { child *Leaf | required }
+    }
+}

@@ -33,6 +33,7 @@ const tableBuilderLoadSource = `
         if (bytes.Length == 0) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         if (bytes[0] != 1)
         { report.Refused = true; report.Reason = bytes[0] == 2 ? "message_form_as_file" : "newer_form"; Finish(report, Verdict.Refused); return false; }
+        if (type.Integrity && !IntegrityRead(ref bytes)) { IntegrityDamage(report); return false; }
         if (bytes.Length < 9) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         ulong idCount = Read64(bytes, bytes.Length - 8);
         if (idCount > (ulong)(bytes.Length - 9) / 8) { Damage(report); Finish(report, Verdict.Damaged); return false; }
@@ -82,7 +83,9 @@ const tableBuilderLoadSource = `
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);
             if (state.Refused) { return false; }
             // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
-            if (NonFiniteRefused(report)) { Finish(report, Verdict.Refused); return false; }
+            if (NonFiniteRefused(report) || report.Refused) { NativeReset(new NativeValue(data, 0) { Mutable = true }, type); Finish(report, Verdict.Refused); return false; }
+            // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)
+            if (good && RegionCyclic(data, directory, count, type, worker.Arena.Allocator, true)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
             Finish(report, complete ? Verdict.Ok : Verdict.BodyStopped); return complete;
         }
         finally { worker.Arena.Allocator.Release(directory); }

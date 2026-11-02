@@ -271,7 +271,7 @@ inline const uint8_t * TableCookOpen( const void * bytes, uint64_t length, uint6
 func (g *tableGen) emitCookSurface(members []*ir.Struct) {
 	first := true
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 			// a `type` is not a node and cannot be a cook's root, and a map's
 			// generated ENTRY is §2.8's one exception to "a root is any
 			// table": it is reached only through its map
@@ -322,7 +322,7 @@ func (g *tableGen) emitCookOpen(st *ir.Struct) {
 	g.pf("// over the ATTRIBUTION part beside the data — a person's decision, never a\n")
 	g.pf("// parameter on a load.\n")
 	g.pf("inline const %s * %sOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )\n{\n", n, n)
-	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) alignof( %s ), reason );\n}\n\n", n, n, n)
+	g.pf("    return (const %s *) TableCookOpen( bytes, length, (uint64_t) sizeof( %s ), (uint64_t) %d, reason );\n}\n\n", n, n, ir.CookNodeAlign(g.unit, st))
 }
 
 // emitCookLayoutAsserts is this backend's half of the LAYOUT CONTRACT

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -106,6 +107,7 @@ func jsDiscardWire(t *testing.T, writer, reader *ir.Unit, root, text string) (cl
 // under the leg's own node; probe imports the module as `m`.
 func jsDiscardRun(t *testing.T, u *ir.Unit, files map[string][]byte, probe string) {
 	t.Helper()
+	slowtest.Gate(t, "node (it runs the generated module)")
 	gen, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)
@@ -161,6 +163,7 @@ console.log("ok");
 func TestDamageDiscardsTheWholeLoadJavaScript(t *testing.T) {
 	slowtest.Gate(t, "node (whole read discard)")
 	t.Parallel()
+	slowtest.Gate(t, "node (it runs the generated module)")
 
 	t.Run("nested", func(t *testing.T) {
 		t.Parallel()
@@ -281,4 +284,223 @@ for (const row of %s) {
 			})
 		}
 	})
+}
+
+// TestCyclicWireIsDamageJavaScript is the JavaScript leg's gate for A CYCLIC
+// WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4; Glenn, 2026-10-31): the
+// manifest's cycle rows (a node naming itself, a node naming the root, a cycle
+// in the middle of a chain) load as nothing through Load and LoadRetain with
+// the report saying malformed, and the two acyclic rows beside them load: a
+// chain, and a diamond chain of forty levels whose 2^40 paths a walk that
+// re-entered shared nodes would never finish.
+func TestCyclicWireIsDamageJavaScript(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "node (it runs the generated module)")
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]bool{ // case -> it must load
+		"node_cycle_self":    false,
+		"node_cycle_to_root": false,
+		"node_cycle_mid":     false,
+		"node_chain_two":     true,
+		"node_diamond_chain": true,
+	}
+	type row struct {
+		Case string `json:"case"`
+		Root string `json:"root"`
+		Wire string `json:"wire"`
+		Load bool   `json:"load"`
+	}
+	var rows []row
+	f, err := os.Open(filepath.Join(repo, "testdata/conformance/tables/MANIFEST.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		fs := strings.Fields(sc.Text())
+		if len(fs) < 6 || fs[0] != "framing" {
+			continue
+		}
+		load, ok := cases[fs[1]]
+		if !ok {
+			continue
+		}
+		if fs[2] != "graphdemo" {
+			t.Fatalf("%s names unit %s, not graphdemo", fs[1], fs[2])
+		}
+		if want := "malformed"; !load && fs[5] != want {
+			t.Fatalf("%s: the manifest's verdict is %s, not %s", fs[1], fs[5], want)
+		}
+		rows = append(rows, row{fs[1], fs[3], filepath.Join(repo, fs[4]), load})
+	}
+	if err := sc.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != len(cases) {
+		t.Fatalf("the manifest holds %d of the %d cycle rows", len(rows), len(cases))
+	}
+	js, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitForMeasure(t, repo, "tables/pointers")
+	jsDiscardRun(t, u, nil, fmt.Sprintf(`
+for (const row of %s) {
+  const wire = new Uint8Array(readFileSync(row.wire));
+  const r = new m.TableVariableReport();
+  const v = m[row.root + "Load"](wire, r);
+  const retain = new m.TableVariableRetain(new Uint8Array(1 << 16), new Array(256));
+  const rr = new m.TableVariableReport();
+  const rv = m[row.root + "LoadRetain"](wire, retain, rr);
+  if (row.load) {
+    if (v === null || r.malformed) { fail(row.case + ": an acyclic wire did not load: " + JSON.stringify(r)); }
+    if (rv === null || rr.malformed) { fail(row.case + ": an acyclic wire did not load retained: " + JSON.stringify(rr)); }
+    continue;
+  }
+  if (v !== null || !r.malformed) { fail(row.case + ": a cyclic wire loaded (malformed=" + r.malformed + ")"); }
+  if (rv !== null || !rr.malformed || retain.used !== 0 || retain.count !== 0) {
+    fail(row.case + ": a cyclic wire loaded retained (malformed=" + rr.malformed + " used=" + retain.used + ")");
+  }
+}
+// Unreached cycle: zero the root's next pointer (byte 9: 2 -> 0) in node_cycle_mid
+// so records 2 and 3 form a cycle the root never reaches (§3.1).
+{
+  const midRow = (%s).find(x => x.case === "node_cycle_mid");
+  const unreached = new Uint8Array(readFileSync(midRow.wire));
+  unreached[9] = 0;
+  const r = new m.TableVariableReport();
+  const v = m.ListNodeLoad(unreached, r);
+  if (v !== null || !r.malformed) { fail("unreached_cycle: loaded (malformed=" + r.malformed + ")"); }
+}
+// Overwritten self-edge in the same body: next = 1 (self) followed by next = 0 (null)
+// in the root body must load cleanly with next === null because only final stored
+// slots belong to the loaded graph (§3.1).
+{
+  const selfRow = (%s).find(x => x.case === "node_cycle_self");
+  const base = new Uint8Array(readFileSync(selfRow.wire));
+  // Insert [3, 17, 1] before [3, 17, 2] at offset 7, and change [3, 17, 2] to [3, 17, 0]
+  // while zeroing the node record's self-edge so the only self-edge was the overwritten one.
+  const over = new Uint8Array(base.length + 3);
+  over.set(base.subarray(0, 7), 0);
+  over.set([3, 17, 1, 3, 17, 0], 7);
+  over.set(base.subarray(10), 13);
+  // In the node record body (which starts after the node header), replace [3, 17, 2] with [3, 17, 0]
+  for (let i = 13; i + 2 < over.length; i++) {
+    if (over[i] === 3 && over[i + 1] === 17 && over[i + 2] === 2) {
+      over[i + 2] = 0;
+      break;
+    }
+  }
+  const r = new m.TableVariableReport();
+  const v = m.ListNodeLoad(over, r);
+  if (v === null || r.malformed || v.next !== null) {
+    fail("overwritten_self_cycle: refused or next !== null: " + JSON.stringify(r));
+  }
+}
+`, js, js, js))
+
+	// List, map, and false-guard pointer-slot cycles (§2.8, §2.9, §3.1).
+	cu := loadSchemaString(t, "cycle.schema", `package cyclecheck
+table Node
+{
+    a      int32 = 0
+    on     bool
+    left   *Node
+    right  *Node
+    items  []*Node
+    lookup map[int32]*Node
+    if on
+    {
+        side *Node
+    }
+}
+`)
+	cm := tabletext.NewModel(cu)
+	makeGraph := func(kind string) ([]byte, []byte) {
+		nodes := make([]*tabletext.Instance, 4)
+		for i := range nodes {
+			nodes[i] = cm.New(cm.Lookup("Node"))
+		}
+		f0, _ := nodes[0].FieldByKey("left")
+		f0.Cell.Node = nodes[1]
+		f1, _ := nodes[1].FieldByKey("left")
+		f1.Cell.Node = nodes[2]
+		switch kind {
+		case "list":
+			f2, _ := nodes[2].FieldByKey("items")
+			f2.Elems = []tabletext.Cell{{Node: nodes[3]}}
+			f2.Count = 1
+		case "map":
+			f2, _ := nodes[2].FieldByKey("lookup")
+			ent := cm.NewMapEntry(f2.Def)
+			ent.Fields[0].Cell.I = 1
+			ent.Fields[1].Cell.Node = nodes[3]
+			f2.Entries = []tabletext.Cell{{Tab: ent}}
+		case "guard":
+			on, _ := nodes[2].FieldByKey("on")
+			on.Cell.B = true
+			f2, _ := nodes[2].FieldByKey("side")
+			f2.Cell.Node = nodes[3]
+		}
+		twin, err := tablewire.Encode(cm, nodes[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if kind == "guard" {
+			for i := 0; i+2 < len(twin); i++ {
+				if twin[i+1] == byte(ir.TableKindBool) && twin[i+2] == 1 {
+					try := bytes.Clone(twin)
+					try[i+2] = 0
+					inst := cm.New(cm.Lookup("Node"))
+					var rep tabletext.Report
+					if ok, err := tablewire.Decode(cm, inst, try, &rep); ok && err == nil && !rep.Malformed {
+						twin = try
+						break
+					}
+				}
+			}
+		}
+		cyc := bytes.Clone(twin)
+		if kind == "list" {
+			pat := []byte{byte(ir.TableKindPointer), 1, 4}
+			if bytes.Count(cyc, pat) != 1 {
+				t.Fatalf("list pattern count != 1")
+			}
+			cyc[bytes.Index(cyc, pat)+2] = 2
+		} else {
+			pat := []byte{byte(ir.TableKindPointer), 4, 0}
+			if bytes.Count(cyc, pat) != 1 {
+				t.Fatalf("%s pattern count != 1", kind)
+			}
+			cyc[bytes.Index(cyc, pat)+1] = 2
+		}
+		return twin, cyc
+	}
+	listTwin, listCycle := makeGraph("list")
+	mapTwin, mapCycle := makeGraph("map")
+	guardTwin, guardCycle := makeGraph("guard")
+	jsDiscardRun(t, cu, map[string][]byte{
+		"list-twin.bin": listTwin, "list-cycle.bin": listCycle,
+		"map-twin.bin": mapTwin, "map-cycle.bin": mapCycle,
+		"guard-twin.bin": guardTwin, "guard-cycle.bin": guardCycle,
+	}, `
+for (const [name, wantLoad] of [
+  ["list-twin.bin", true], ["list-cycle.bin", false],
+  ["map-twin.bin", true], ["map-cycle.bin", false],
+  ["guard-twin.bin", true], ["guard-cycle.bin", false],
+]) {
+  const wire = new Uint8Array(readFileSync(name));
+  const r = new m.TableVariableReport();
+  const v = m.NodeLoad(wire, r);
+  if (wantLoad) {
+    if (v === null || r.malformed) { fail(name + ": did not load: " + JSON.stringify(r)); }
+  } else {
+    if (v !== null || !r.malformed) { fail(name + ": a cyclic wire loaded (malformed=" + r.malformed + ")"); }
+  }
+}
+`)
 }

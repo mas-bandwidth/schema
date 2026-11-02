@@ -43,6 +43,19 @@ if (process.argv[2] !== "wire-fuzz") {
   graphCook = await load("pointers/GraphCook.js");
 }
 
+// JSON is a byte protocol at the file boundary. Replacement decoding would
+// hide malformed input from the generated string-based reader.
+const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+function readJsonTextFile(path) {
+  const bytes = readFileSync(path);
+  try {
+    return jsonUTF8.decode(bytes);
+  } catch (error) {
+    if (error instanceof TypeError && error.code === "ERR_ENCODING_INVALID_ENCODED_DATA") { return null; }
+    throw error;
+  }
+}
+
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
 function readManifest(path) {
@@ -639,6 +652,8 @@ async function surfaceMessage(lines, outDir) {
 // instance and report pairs less a named uncarried set (empty today), and
 // TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
+  ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
+  ["featurewitnesses", "ArrayRoot", "features/FeaturewitnessesVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -824,6 +839,7 @@ async function codecOf(unit, root, path) {
 // answer `<case>.absent`, which the matrix counts as the row of work that is
 // left, never as a pass.
 const textUnits = {
+  featurewitnesses: "features/FeaturewitnessesVariable.js",
   tabledemo: "examples/TabledemoVariable.js",
   graphdemo: "pointers/GraphdemoVariable.js",
   blobdemo: "blobs/BlobdemoVariable.js",
@@ -931,7 +947,9 @@ async function surfaceJsonRead(lines, outDir) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.fromJson(readFileSync(join("testdata/conformance/tables/json", f[1] + ".json"), "utf8"), r);
+    const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
+    if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
+    const v = codec.fromJson(text, r);
     if (r.malformed) { fail(f[1] + ": FromJson refused the text"); }
     const saved = codec.save(v);
     if (saved === null) { fail(f[1] + ": save refused the value"); }
@@ -960,7 +978,9 @@ async function surfaceJsonHostile(lines, outDir) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.fromJson(readFileSync(join(f[4], f[3] + ".json"), "utf8"), r);
+    const text = readJsonTextFile(join(f[4], f[3] + ".json"));
+    if (text === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
+    const v = codec.fromJson(text, r);
     const verdict = v === null || v === undefined || r.malformed || r.refused
       ? "refused"
       : [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",");

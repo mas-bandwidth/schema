@@ -157,7 +157,7 @@ func TestWideTextInATableClosureRidesTheDartFixedForm(t *testing.T) {
 		switch {
 		case strings.HasSuffix(name, "Fixed.dart"):
 			fixed = append(fixed, name)
-		case strings.HasSuffix(name, "Block.dart"), strings.HasSuffix(name, "Cook.dart"):
+		case strings.HasSuffix(name, "Block.dart"):
 			accelerator = append(accelerator, name)
 		}
 	}

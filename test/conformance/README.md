@@ -350,33 +350,82 @@ because the contract is a COMMAND.
 
 ## The nightly
 
-`.github/workflows/nightly-conformance.yml` runs the corpus in BOTH
-DIRECTIONS every night at 05:41 UTC, on the fleet's runners and never on the
-host named space, and on `gh workflow run nightly-conformance.yml --ref
-<branch>`. Every port the registry discovers joins it with no edit there:
-the port list is `harness matrix --ports`, the registry without the reference.
+`.github/workflows/nightly-conformance.yml` checks cross-language compatibility
+every night at 05:41 UTC, on the fleet's runners and never on the host named
+space, and on `gh workflow run nightly-conformance.yml --ref <branch>`.
+Every registered port joins through `harness matrix --ports`.
 
-1. **Ports read what C++ writes.** `cpp-writes` builds the reference, has it
-   write the whole corpus (the type and table wires, the message form, the
-   block images, the cook and block pins, the fixed-form oracle in
-   `build/fixedform-corpus`), publishes it as the `cpp-corpus` artifact and
-   fails if it is not the committed one. Each `port (<lang>)` job lays that
-   corpus over its checkout, runs `harness run --only <lang> --claims` — every
-   answer byte-compared with C++'s canonical write, exactly as the per-commit
-   matrix does — then the leg's fixed-form gate, and publishes everything the
-   leg wrote as `port-<lang>-writes`.
-2. **C++ reads what ports write.** `cpp-reads-ports` hands each port's writes
-   to `harness cross-read --lang <lang> --writes <dir>`. On every surface
-   whose answer is a form the reference loads back — `wire` and `json-read`
-   (wire bytes, re-read by the reference's `wire`), `message` (re-read by its
-   `message`) and `json-write` (re-read by the reference-only `json-text`
-   surface: FromJson the port's text, ToJson it) — the port's bytes must
-   equal C++'s own write for the case, and the reference must accept them and
-   re-save them byte-identical. A refusal is rerun one case at a time, so it
-   is named by case. The other surfaces write answers the reference has no
-   reader for (a report, a verdict, a dump) or bytes it does not write
-   (`retain-save`, and `cook-write`, which `schema cook` writes), so they
-   have one direction.
+The current completion target is the original nine: C++, C, C#, Go, Rust,
+Java, JavaScript, Dart and Elixir. Required gaps in any of these remain open;
+results for other registered ports do not substitute for them.
+
+1. **C++ writes and validates one canonical corpus.** `cpp-writes` produces
+   the wire, text, message, block, cook and fixed-form corpus, checks it against
+   the committed pins, and runs `harness run --only cpp`. The reference reads
+   the corpus and its answers must match the expected bytes. The job publishes
+   the shared `cpp-corpus` and its own `reference-report` coverage artifact.
+2. **Every port reads that same corpus and matches its output.** Each
+   `port (<lang>)` job runs `harness run --only <lang> --claims` and its
+   fixed-form gate. Every writer's answer must equal the canonical bytes;
+   missing answers and mismatches fail, while named unsupported cases remain
+   visible. The job saves its writes and coverage as `port-<lang>-writes`.
+
+**Work is O(n) in languages, not O(n²).** If every writer produces the same
+bytes and every reader accepts those bytes, every writer's output is
+interoperable with every reader on the covered corpus. The reference need
+not read a separate identical copy from each writer. The `coverage` job
+records the reference and port results together. Its
+`coverage --require-original-nine` gate requires C++, C, C#, Go, Rust, Java,
+JavaScript, Dart and Elixir to cover every manifest-defined surface/class and
+case count. The reference rows are checked independently against that shape,
+so a missing reference row cannot shrink the denominator. Answered cases and
+the manifest's named required refusals count as complete; missing, failed or
+uncarried cases do not. Each of the eight ports must also record a passing
+fixed-form gate. These corpus results are necessary, but they cannot by
+themselves certify a full implementation.
+
+`coverage --require-original-nine` is the unified full-implementation gate. It
+also requires all of the following, independently of what a port chooses to
+claim:
+
+- Every required construct in `compiler.CarryConstructs()` must be supported
+  by every original-nine backend. Missing features remain failures even when
+  the current corpus contains no example of them.
+- Required features must have executable corpus witnesses and successful
+  code generation. Declaring an unrelated feature in an unused table does
+  not cover it. The `implementation --lang <lang>` command checks these
+  prerequisites; it is not a substitute for native execution.
+- Every original-nine language, including C++, must pass
+  `test/conformance/nightly-readiness`. This runs the mandatory native,
+  packet, fixed-form, strict fuzz and retention acceptance gates. Unsupported
+  valid roots/forms, omitted comparisons, live skipped obligations and failed
+  controls cannot count as completion. Named retired tests are reported
+  explicitly; their replacement obligations still have to pass.
+- Each language must supply exactly one passing `readiness-<lang>.txt` and
+  an adjacent `readiness-<lang>.revision` matching the current Git checkout.
+  Missing, failed, duplicate or stale receipts fail. Nightly writes these
+  only from the actual acceptance command and uploads the complete logs.
+- The roadmap renderer must validate the current graph and evidence overlays,
+  find all three sections and all nine columns complete, and confirm that
+  `ROADMAP.md` matches the data. A manually completed task cannot override a
+  failed implementation or runtime check. SBCL and a Git checkout are required;
+  absence of either fails closed.
+
+Full implementation is the prerequisite for success. Neither a smaller
+passing corpus nor a green roadmap can substitute for it. The six expansion
+languages remain visible but are not part of this completion obligation. The
+table and all failure diagnostics are printed and uploaded even when the gate
+fails; ordinary `coverage` remains an informational report.
+Every confirmed defect found by these gates must leave a permanent regression.
+Keep the original trigger and seed, minimize it, and commit the expected decoded
+values, canonical bytes or refusal report. Language-neutral cases belong in the
+shared corpus; language-specific API behavior also needs a native regression.
+Record that the broken implementation fails and the repair passes, and wire the
+case into nightly acceptance. An uncommitted workbench reproducer does not close
+the defect, and re-pinning incorrect bytes is not a repair.
+
+The `harness cross-read` command remains available for individual diagnostics,
+but is not repeated per language in the nightly.
 
 **A CLAIMED CASE MAY NOT BE ABSENT; AN UNCLAIMED ONE IS COVERAGE.** A port
 claims a case when the case's unit uses at least one construct of the
@@ -389,11 +438,11 @@ registered as one. Under
 `--claims` a claimed case answered `<case>.absent`, on a surface the leg
 runs, fails the night by name (the reversed witness is
 `harness/claims_test.go`); a case the port does not claim, and a whole
-surface it does not run, fail nothing and are counted, and the `coverage`
-job publishes the per-port table of answered, failed, claimed-absent and
-not-carried cases per surface and class in every run's summary — Glenn,
-2026-10-25: a gap that does not fail the night is fine as long as it is
-seen. The harness is built with every `schema_leg_<lang>` tag there, because
+surface it does not run, remain informational in `run --claims`. The final
+original-nine completion gate is stricter: those gaps fail completion even
+when no individual feature was claimed. Expansion-language gaps remain
+visible in the per-port table of answered, failed, claimed-absent and
+not-carried cases per surface and class. The harness is built with every `schema_leg_<lang>` tag there, because
 a target behind a tag registers only under it, and a leg with no
 registration is refused rather than read as claiming nothing.
 
@@ -596,8 +645,11 @@ and canonical saved bytes only after a successful read. A failed read emits a
 save failure (`-1`); the partial value must be discarded. This arm does not
 preflight or compare region extents. In particular, an int32 list count-cap
 refusal stops without inventing the region reader's malformed-data event.
-`--builder` cannot be combined with `--message` or `--retain`. The existing
-region and retention arms retain their measurement and bounds checks.
+`--builder --retain` uses the mutable retaining reader and checks both
+retention counters and canonical saved bytes. `--builder` cannot be combined
+with `--message`. The region profiles retain their measurement and bounds
+checks; native heap readers such as Dart use the builder profile and test
+region sizing separately.
 
 For an instance with a Go writer refusal, the manifest may carry the
 go-refusal=<reason> marker. On that Go wire row the driver writes the

@@ -1213,7 +1213,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -5263,8 +5263,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace listdemo
@@ -6217,6 +6263,9 @@ struct TableNodeMap
     // int32 cap met while a body decoded. LoadBuilder answers NULL for it
     // and moves no counter; mutable for the reason the cursor is.
     mutable bool refused = false;
+    // During construction, keep validated TABLE indices for the cycle check.
+    // Blob references resolve normally. No root is returned in this state.
+    bool cycle_indices = false;
     // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
     // slot naming a blob marks its directory entry, and every later slot naming
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
@@ -6264,8 +6313,216 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         map.entries[index - 1].type_id = ~target;
     }
+    if ( map.cycle_indices && target != kTableBytesTypeId && target != kTableStringTypeId )
+    {
+        slot.value = (int64_t) index;
+        return;
+    }
     slot.value = map.arena ? (int64_t) entry.offset
                            : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+}
+
+// ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
+//
+// During construction table pointer slots hold validated wire indices. Kahn's
+// two passes therefore reach the directory directly: each node is entered once
+// and each slot is visited a fixed number of times, with no sorting or reverse
+// offset lookup. A final pass resolves the slots to their published offsets.
+// The directory's type_id word carries the degree and stack link; its offset
+// high bits carry the type ordinal. The caller restores both before publishing
+// a region. Region loads allocate nothing and no pointer graph is recursed.
+static const uint64_t kTableCycleAbsent = 1ull << 63;
+static const uint64_t kTableCycleVertex = 1ull << 62;
+static const int kTableCycleOrdinalShift = 48;
+static const uint64_t kTableCycleOffsetMask = ( 1ull << 48 ) - 1;
+
+struct TableCycle
+{
+    TableNodeDirEntry * entries = NULL;
+    int64_t count = 0;
+    const uint8_t * base = NULL;
+    const TableArena * arena = NULL;
+    uint32_t head = 0;
+    int64_t vertices = 0;
+    int64_t processed = 0;
+    bool releasing = false;
+    bool resolving = false;
+    bool broken = false;
+};
+
+inline bool TableCycleIsVertex( const TableCycle & c, int64_t p )
+{
+    return ( c.entries[p].offset & ( kTableCycleAbsent | kTableCycleVertex ) ) == kTableCycleVertex;
+}
+
+inline uint32_t TableCycleOrdinal( const TableCycle & c, int64_t p )
+{
+    return (uint32_t) ( ( c.entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
+}
+
+inline const void * TableCycleNode( const TableCycle & c, int64_t p )
+{
+    const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+    if ( c.arena != NULL ) { return (const void *) TableArenaAt( *c.arena, (uint32_t) offset ); }
+    return (const void *) ( c.base + offset );
+}
+
+inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( *ordinal )( uint64_t type_id ) )
+{
+    c.entries = entries;
+    c.count = count;
+    c.base = base;
+    c.arena = arena;
+    if ( count <= 0 || count >= ( 1ll << 31 ) )
+    {
+        c.broken = true;
+        return false;
+    }
+    for ( int64_t p = 0; p < count; p++ )
+    {
+        TableNodeDirEntry & e = entries[p];
+        if ( e.offset == kTableNodeAbsent )
+        {
+            e.offset = kTableCycleAbsent;
+            continue;
+        }
+        if ( e.offset > kTableCycleOffsetMask )
+        {
+            c.broken = true;
+            return false;
+        }
+        const uint32_t kind = ordinal( e.type_id );
+        if ( kind == 0 ) { continue; } // a byte buffer or an already marked blob
+        e.offset |= kTableCycleVertex | ( (uint64_t) kind << kTableCycleOrdinalShift );
+        e.type_id = 0;
+        c.vertices++;
+    }
+    return true;
+}
+
+inline void TableCyclePush( TableCycle & c, int64_t p )
+{
+    c.entries[p].type_id = ( c.entries[p].type_id & 0xFFFFFFFFull ) | ( (uint64_t) c.head << 32 );
+    c.head = (uint32_t) ( p + 1 );
+}
+
+// TableCycleEdge is one stored pointer slot: pass one counts the in-degree of
+// the node it names, and pass two takes the count down and stacks the node
+// when the last slot naming it has been met.
+inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
+{
+    if ( slot.value == 0 ) { return true; }
+    const uint64_t index = (uint64_t) slot.value;
+    if ( index - 1 >= (uint64_t) c.count )
+    {
+        c.broken = true;
+        return false;
+    }
+    const int64_t p = (int64_t) index - 1;
+    if ( !TableCycleIsVertex( c, p ) )
+    {
+        c.broken = true;
+        return false;
+    }
+    if ( c.resolving )
+    {
+        const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+        // The visitor borrows const views, but these are this load's mutable
+        // construction slots. No caller can observe their temporary indices.
+        TableRef & output = const_cast<TableRef &>( slot );
+        output.value = c.arena != NULL ? (int64_t) offset
+                                       : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
+        return true;
+    }
+    const uint32_t degree = (uint32_t) c.entries[p].type_id;
+    if ( !c.releasing )
+    {
+        if ( degree == 0xFFFFFFFFu )
+        {
+            c.broken = true;
+            return false;
+        }
+        c.entries[p].type_id += 1;
+        return true;
+    }
+    if ( degree == 0 )
+    {
+        c.broken = true;
+        return false;
+    }
+    c.entries[p].type_id -= 1;
+    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free
+    return true;
+}
+
+// TableCycleAcyclic checks the graph, then resolves its slots. VISIT enumerates one node's stored
+// slots through TableCycleEdge. True is a graph with no cycle; false is a
+// cycle, or a directory this check could not carry.
+template <typename Ctx, typename Visit>
+inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
+{
+    if ( c.broken ) { return false; }
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    c.releasing = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && (uint32_t) c.entries[p].type_id == 0 ) { TableCyclePush( c, p ); }
+    }
+    while ( c.head != 0 )
+    {
+        const int64_t p = (int64_t) c.head - 1;
+        c.head = (uint32_t) ( c.entries[p].type_id >> 32 );
+        // a node is entered ONCE: more entries than nodes is a walk gone wrong
+        if ( ++c.processed > c.vertices )
+        {
+            c.broken = true;
+            return false;
+        }
+        if ( !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle
+    c.resolving = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    return !c.broken;
+}
+
+// TableCycleRestore puts back one table node's type id, the one the wire
+// carries; a byte buffer's entry was never touched.
+inline void TableCycleRestore( TableCycle & c, int64_t p, uint64_t type_id )
+{
+    if ( p >= 0 && p < c.count && TableCycleIsVertex( c, p ) ) { c.entries[p].type_id = type_id; }
+}
+
+// TableCycleEnd removes the construction tags from directory offsets.
+inline void TableCycleEnd( TableCycle & c )
+{
+    for ( int64_t p = 0; p < c.count && c.entries != NULL; p++ )
+    {
+        uint64_t & offset = c.entries[p].offset;
+        if ( ( offset & kTableCycleAbsent ) != 0 ) { offset = kTableNodeAbsent; }
+        else
+        {
+            offset &= kTableCycleOffsetMask;
+        }
+    }
 }
 
 // ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
@@ -7231,7 +7488,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
     const TableRetainPath & path, bool field, uint32_t ordinal )
 {
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    if ( path.node != 0 ? TableRetainRecordNode( record ) != path.node : TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
     if ( field )
     {
@@ -8254,6 +8511,44 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
+// The cycle check needs stored entries, not canonical writer order. Visit
+// each entry directly, with no sort or temporary pointer array.
+template <typename Entry, typename Visit>
+inline bool TableMapVisitStored( const TableRegionCtx &, const TableMap<Entry> & map, Visit visit )
+{
+    if ( map.count < 0 ) { return false; }
+    const Entry * entries = map.Entries();
+    if ( map.count > 0 && entries == NULL ) { return false; }
+    for ( int32_t i = 0; i < map.count; i++ )
+    {
+        if ( !visit( entries[i] ) ) { return false; }
+    }
+    return true;
+}
+
+template <typename Entry, typename Visit>
+inline bool TableMapVisitStored( const TableArenaCtx & ctx, const TableMap<Entry> & map, Visit visit )
+{
+    if ( map.count < 0 ) { return false; }
+    if ( map.entries.value == 0 ) { return map.count == 0; }
+    const TableMapHead * head = (const TableMapHead *) TableArenaAt( *ctx.arena, (uint32_t) map.entries.value );
+    if ( head->live != map.count ) { return false; }
+    int32_t seen = 0;
+    TableRef segment_ref = head->first;
+    while ( segment_ref.value != 0 )
+    {
+        const TableMapSegment<Entry> * segment = (const TableMapSegment<Entry> *) TableArenaAt( *ctx.arena, (uint32_t) segment_ref.value );
+        for ( int32_t i = 0; i < segment->used; i++ )
+        {
+            if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
+            if ( seen >= map.count || !visit( segment->entries[i] ) ) { return false; }
+            seen++;
+        }
+        segment_ref = segment->next;
+    }
+    return seen == map.count;
+}
+
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -8996,10 +9291,10 @@ inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fi
     return TableListPlace( *fill.worker, *fill.list );
 }
 
-// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9, §4): the array keeps
-// what it decoded, and an element whose own framing gave out before one byte
-// of it decoded was not decoded. The region's form uncounts it, and the builder's
-// marks it dead, which is what the storage rule allows mid-build.
+// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9): an element whose own
+// framing gave out was not decoded. That is damage, and the load that met it is
+// discarded whole (§4); until it is, the region's form uncounts the slot and the
+// builder's marks it dead, which is what the storage rule allows mid-build.
 template <typename T>
 inline void TableListFillDrop( TableListFill<T> & fill )
 {
@@ -9910,8 +10205,11 @@ LISTDEMO_TABLE_INLINE bool SampleLoadBody( TableReader & r, Sample & value )
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.v = decoded_v;
                         r.report->widened++;
@@ -10445,8 +10743,11 @@ inline bool RowLoadBody( TableReader & r, const TableNodeMap & nodes, Row & valu
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.label = decoded_v;
                         r.report->widened++;
@@ -10850,8 +11151,11 @@ LISTDEMO_TABLE_INLINE bool ItemLoadBody( TableReader & r, Item & value )
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.count = decoded_v;
                         r.report->widened++;
@@ -11511,7 +11815,6 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
                             // elided field of the repeat reads as its default. The map's
                             // count excludes it.
                             slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
                         }
                         else
                         {
@@ -11522,6 +11825,7 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             SquadRosterEntryLoadBody( elem, *slot );
                         }
+                        if ( order == 0 ) { r.report->duplicate++; }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
@@ -11539,8 +11843,11 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.name = decoded_v;
                         r.report->widened++;
@@ -11801,8 +12108,11 @@ inline bool ArmyLoadBody( TableReader & r, const TableNodeMap & nodes, Army & va
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.past = decoded_v;
                         r.report->widened++;
@@ -12036,8 +12346,11 @@ inline bool DeckLoadBody( TableReader & r, const TableNodeMap & nodes, Deck & va
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.past = decoded_v;
                         r.report->widened++;
@@ -12395,9 +12708,17 @@ inline int64_t SampleFixedLoadTolerant( Sample * values, int64_t capacity, const
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         SampleReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { SampleReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, SampleFixedGuards );
         TableFixedClampKnownRanges( SampleFixedKnownRanges[lineage_at], SampleFixedKnownRangeCounts[lineage_at],
@@ -12705,9 +13026,17 @@ inline int64_t ItemFixedLoadTolerant( Item * values, int64_t capacity, const uin
         memset( (void *) &defaults, 0, sizeof( defaults ) );
         ItemReset( defaults );
     }
+    const int32_t batch_clamped = report->clamped;
+    const int32_t batch_widened = report->widened;
     for ( int64_t k = 0; k < n; ++k )
     {
-        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }
+        if ( TableFixedGet64( at ) != hash )
+        {
+            for ( int64_t j = 0; j < k; ++j ) { ItemReset( values[j] ); }
+            report->clamped = batch_clamped;
+            report->widened = batch_widened;
+            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;
+        }
         TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );
         TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, ItemFixedGuards );
         TableFixedClampKnownRanges( ItemFixedKnownRanges[lineage_at], ItemFixedKnownRangeCounts[lineage_at],
@@ -12767,27 +13096,35 @@ inline bool RowWireExtent( const uint8_t * body, int64_t length, int64_t & at, c
     }
 }
 
-// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as RowExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// RowExtentAt: the node extent Row's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as RowExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool RowExtentAt( const Ctx & ctx, const Row & value, int64_t & at )
 {
     {
         TableListCursor<Sample> cursor = TableListElements( ctx, value.items );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Sample ) - 1 ) & ~( (int64_t) alignof( Sample ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Sample ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Sample ) - 1 ) & ~( (int64_t) alignof( Sample ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Sample ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t RowExtent( const Ctx & ctx, const Row & value )
 {
     int64_t at = 0;
-    if ( !RowExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -12845,19 +13182,27 @@ inline bool SheetWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// SheetExtentAt: the node extent Sheet's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SheetExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SheetExtentAt: the node extent Sheet's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SheetExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SheetExtentAt( const Ctx & ctx, const Sheet & value, int64_t & at )
 {
     {
         TableListCursor<Row> cursor = TableListElements( ctx, value.rows );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Row ) - 1 ) & ~( (int64_t) alignof( Row ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Row ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 24; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Row ) - 1 ) & ~( (int64_t) alignof( Row ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Row ); // native pack layout
+        }
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, element by element in index order
         {
-            if ( !RowExtentAt( ctx, cursor[i], at ) ) { return false; }
+            if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, cursor[i], at ) ) { return false; }
         }
     }
     return true;
@@ -12865,11 +13210,11 @@ inline bool SheetExtentAt( const Ctx & ctx, const Sheet & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SheetExtent( const Ctx & ctx, const Sheet & value )
 {
     int64_t at = 0;
-    if ( !SheetExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SheetExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -12931,9 +13276,9 @@ inline bool SquadWireExtent( const uint8_t * body, int64_t length, int64_t & at,
     }
 }
 
-// SquadExtentAt: the node extent Squad's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as SquadExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// SquadExtentAt: the node extent Squad's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as SquadExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool SquadExtentAt( const Ctx & ctx, const Squad & value, int64_t & at )
 {
     {
@@ -12948,11 +13293,11 @@ inline bool SquadExtentAt( const Ctx & ctx, const Squad & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t SquadExtent( const Ctx & ctx, const Squad & value )
 {
     int64_t at = 0;
-    if ( !SquadExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13011,19 +13356,27 @@ inline bool ArmyWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// ArmyExtentAt: the node extent Army's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as ArmyExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// ArmyExtentAt: the node extent Army's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as ArmyExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool ArmyExtentAt( const Ctx & ctx, const Army & value, int64_t & at )
 {
     {
         TableListCursor<Squad> cursor = TableListElements( ctx, value.squads );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( Squad ) - 1 ) & ~( (int64_t) alignof( Squad ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( Squad ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 7 ) & ~(int64_t) 7;
+            at += (int64_t) cursor.count * 24; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( Squad ) - 1 ) & ~( (int64_t) alignof( Squad ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( Squad ); // native pack layout
+        }
         for ( int32_t i = 0; i < cursor.count; i++ ) // then, element by element in index order
         {
-            if ( !SquadExtentAt( ctx, cursor[i], at ) ) { return false; }
+            if ( !SquadExtentAt<Ctx, schema_cook_extent>( ctx, cursor[i], at ) ) { return false; }
         }
     }
     return true;
@@ -13031,11 +13384,11 @@ inline bool ArmyExtentAt( const Ctx & ctx, const Army & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t ArmyExtent( const Ctx & ctx, const Army & value )
 {
     int64_t at = 0;
-    if ( !ArmyExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !ArmyExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13097,14 +13450,14 @@ inline bool DeckWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// DeckExtentAt: the node extent Deck's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as DeckExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// DeckExtentAt: the node extent Deck's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as DeckExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool DeckExtentAt( const Ctx & ctx, const Deck & value, int64_t & at )
 {
     for ( int32_t i = 0; i < value.hands_count && i < 3; i++ ) // hands
     {
-        if ( !RowExtentAt( ctx, value.hands[i], at ) ) { return false; }
+        if ( !RowExtentAt<Ctx, schema_cook_extent>( ctx, value.hands[i], at ) ) { return false; }
     }
     for ( int32_t i = value.hands_count; i < 3; i++ ) // hands: the slots the walk does not reach (§7.6)
     {
@@ -13115,11 +13468,11 @@ inline bool DeckExtentAt( const Ctx & ctx, const Deck & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t DeckExtent( const Ctx & ctx, const Deck & value )
 {
     int64_t at = 0;
-    if ( !DeckExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !DeckExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -13328,6 +13681,16 @@ inline bool RowNumber( const Ctx & ctx, TableNumbering & numbering, const Row & 
     return true;
 }
 
+// RowCycleSlots: the cycle check's edges below one Row, guards ignored.
+template <typename Ctx>
+inline bool RowCycleSlots( const Ctx & ctx, TableCycle & cycle, const Row & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    return true;
+}
+
 // RowPackMeasure: the packed region bytes of everything Row POINTS AT.
 // ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
 // node two references name is measured ONCE and packed once, and a
@@ -13419,6 +13782,25 @@ inline bool SheetNumber( const Ctx & ctx, TableNumbering & numbering, const Shee
             }
         }
     }
+    return true;
+}
+
+// SheetCycleSlots: the cycle check's edges below one Sheet, guards ignored.
+template <typename Ctx>
+inline bool SheetCycleSlots( const Ctx & ctx, TableCycle & cycle, const Sheet & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    { // rows: a by-value edge, elements in INDEX order (§2.9, §3.1)
+        TableListCursor<Row> cursor_rows = TableListElements( ctx, value.rows );
+        if ( !cursor_rows.ok ) { return false; }
+        for ( int32_t i = 0; i < cursor_rows.count; i++ )
+        {
+            if ( !RowCycleSlots( ctx, cycle, cursor_rows[i] ) ) { return false; }
+        }
+    }
+    if ( !TableCycleEdge( cycle, value.pinned ) ) { return false; } // pinned
     return true;
 }
 
@@ -13546,6 +13928,16 @@ inline bool SquadNumber( const Ctx & ctx, TableNumbering & numbering, const Squa
     return true;
 }
 
+// SquadCycleSlots: the cycle check's edges below one Squad, guards ignored.
+template <typename Ctx>
+inline bool SquadCycleSlots( const Ctx & ctx, TableCycle & cycle, const Squad & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    return true;
+}
+
 // SquadPackMeasure: the packed region bytes of everything Squad POINTS AT.
 // ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
 // node two references name is measured ONCE and packed once, and a
@@ -13609,6 +14001,24 @@ inline bool ArmyNumber( const Ctx & ctx, TableNumbering & numbering, const Army 
         for ( int32_t i = 0; i < cursor_squads.count; i++ )
         {
             if ( !SquadNumber( ctx, numbering, cursor_squads[i] ) ) { return false; }
+        }
+    }
+    return true;
+}
+
+// ArmyCycleSlots: the cycle check's edges below one Army, guards ignored.
+template <typename Ctx>
+inline bool ArmyCycleSlots( const Ctx & ctx, TableCycle & cycle, const Army & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    { // squads: a by-value edge, elements in INDEX order (§2.9, §3.1)
+        TableListCursor<Squad> cursor_squads = TableListElements( ctx, value.squads );
+        if ( !cursor_squads.ok ) { return false; }
+        for ( int32_t i = 0; i < cursor_squads.count; i++ )
+        {
+            if ( !SquadCycleSlots( ctx, cycle, cursor_squads[i] ) ) { return false; }
         }
     }
     return true;
@@ -13683,6 +14093,20 @@ inline bool DeckNumber( const Ctx & ctx, TableNumbering & numbering, const Deck 
     for ( int32_t i = 0; i < value.hands_count && i < 3; i++ ) // hands
     {
         if ( !RowNumber( ctx, numbering, value.hands[i] ) ) { return false; }
+    }
+    return true;
+}
+
+// DeckCycleSlots: the cycle check's edges below one Deck, guards ignored.
+template <typename Ctx>
+inline bool DeckCycleSlots( const Ctx & ctx, TableCycle & cycle, const Deck & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    for ( int32_t i = 0; i < value.hands_count && i < 3; i++ ) // hands
+    {
+        if ( !RowCycleSlots( ctx, cycle, value.hands[i] ) ) { return false; }
     }
     return true;
 }
@@ -13947,6 +14371,28 @@ inline void RowNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap &
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// RowCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t RowCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xa013e119fec906fbull: return 1; // Row
+        default: return 0;
+    }
+}
+
+// RowCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool RowCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return RowCycleSlots( ctx, cycle, *(const Row *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -14099,11 +14545,10 @@ inline int64_t RowLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byte
 }
 
 // RowLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Row * RowLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -14126,6 +14571,7 @@ inline const Row * RowLoadTolerant( uint8_t * region, int64_t region_bytes, cons
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -14144,6 +14590,125 @@ inline const Row * RowLoadTolerant( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = RowNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        RowBuilder builder;
+        Row * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xa013e119fec906fbull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = RowNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    RowNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            RowLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Row ) )
     {
         out->malformed = true;
@@ -14154,36 +14719,6 @@ inline const Row * RowLoadTolerant( uint8_t * region, int64_t region_bytes, cons
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = RowNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -14192,6 +14727,7 @@ inline const Row * RowLoadTolerant( uint8_t * region, int64_t region_bytes, cons
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -14275,6 +14811,26 @@ inline const Row * RowLoadTolerant( uint8_t * region, int64_t region_bytes, cons
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &RowCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &RowCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xa013e119fec906fbull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -14339,6 +14895,7 @@ inline bool RowLoadBuilderTolerant( RowBuilder & builder, const uint8_t * wire_f
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -14380,6 +14937,7 @@ inline bool RowLoadBuilderTolerant( RowBuilder & builder, const uint8_t * wire_f
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xa013e119fec906fbull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -14432,16 +14990,29 @@ inline bool RowLoadBuilderTolerant( RowBuilder & builder, const uint8_t * wire_f
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = RowLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && RowLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &RowCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &RowCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { RowReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -14473,6 +15044,8 @@ inline bool RowLoadBuilder( RowBuilder & builder, const uint8_t * wire_file, int
                 out->refuse_reason = wire_damaged;
             }
         }
+        Row * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { RowReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -14765,6 +15338,30 @@ inline void SheetNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// SheetCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t SheetCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x0cc9e0af9a85fbc8ull: return 1; // Sheet
+        case 0xa013e119fec906fbull: return 2; // Row
+        default: return 0;
+    }
+}
+
+// SheetCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool SheetCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return SheetCycleSlots( ctx, cycle, *(const Sheet *) node );
+        case 2: return RowCycleSlots( ctx, cycle, *(const Row *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -14917,11 +15514,10 @@ inline int64_t SheetLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 }
 
 // SheetLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Sheet * SheetLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -14944,6 +15540,7 @@ inline const Sheet * SheetLoadTolerant( uint8_t * region, int64_t region_bytes, 
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -14962,6 +15559,125 @@ inline const Sheet * SheetLoadTolerant( uint8_t * region, int64_t region_bytes, 
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !SheetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Sheet ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = SheetNodeStorage( type_id, body, length, &ids_table, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        SheetBuilder builder;
+        Sheet * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x0cc9e0af9a85fbc8ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = SheetNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    SheetNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            SheetLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Sheet ) )
     {
         out->malformed = true;
@@ -14972,36 +15688,6 @@ inline const Sheet * SheetLoadTolerant( uint8_t * region, int64_t region_bytes, 
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !SheetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Sheet ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = SheetNodeStorage( type_id, body, length, &ids_table, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -15010,6 +15696,7 @@ inline const Sheet * SheetLoadTolerant( uint8_t * region, int64_t region_bytes, 
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -15093,6 +15780,26 @@ inline const Sheet * SheetLoadTolerant( uint8_t * region, int64_t region_bytes, 
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &SheetCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &SheetCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x0cc9e0af9a85fbc8ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -15157,6 +15864,7 @@ inline bool SheetLoadBuilderTolerant( SheetBuilder & builder, const uint8_t * wi
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -15198,6 +15906,7 @@ inline bool SheetLoadBuilderTolerant( SheetBuilder & builder, const uint8_t * wi
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x0cc9e0af9a85fbc8ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -15250,16 +15959,29 @@ inline bool SheetLoadBuilderTolerant( SheetBuilder & builder, const uint8_t * wi
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = SheetLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && SheetLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &SheetCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &SheetCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { SheetReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -15291,6 +16013,8 @@ inline bool SheetLoadBuilder( SheetBuilder & builder, const uint8_t * wire_file,
                 out->refuse_reason = wire_damaged;
             }
         }
+        Sheet * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { SheetReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -15556,6 +16280,28 @@ inline void SquadNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// SquadCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t SquadCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xec07a2f760550a91ull: return 1; // Squad
+        default: return 0;
+    }
+}
+
+// SquadCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool SquadCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return SquadCycleSlots( ctx, cycle, *(const Squad *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -15708,11 +16454,10 @@ inline int64_t SquadLoadMeasure( const uint8_t * wire_file, int64_t wire_file_by
 }
 
 // SquadLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Squad * SquadLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -15735,6 +16480,7 @@ inline const Squad * SquadLoadTolerant( uint8_t * region, int64_t region_bytes, 
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -15753,6 +16499,125 @@ inline const Squad * SquadLoadTolerant( uint8_t * region, int64_t region_bytes, 
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !SquadWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Squad ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = SquadNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        SquadBuilder builder;
+        Squad * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xec07a2f760550a91ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = SquadNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    SquadNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            SquadLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Squad ) )
     {
         out->malformed = true;
@@ -15763,36 +16628,6 @@ inline const Squad * SquadLoadTolerant( uint8_t * region, int64_t region_bytes, 
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !SquadWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Squad ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = SquadNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -15801,6 +16636,7 @@ inline const Squad * SquadLoadTolerant( uint8_t * region, int64_t region_bytes, 
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -15884,6 +16720,26 @@ inline const Squad * SquadLoadTolerant( uint8_t * region, int64_t region_bytes, 
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &SquadCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &SquadCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xec07a2f760550a91ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -15948,6 +16804,7 @@ inline bool SquadLoadBuilderTolerant( SquadBuilder & builder, const uint8_t * wi
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -15989,6 +16846,7 @@ inline bool SquadLoadBuilderTolerant( SquadBuilder & builder, const uint8_t * wi
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xec07a2f760550a91ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -16041,16 +16899,29 @@ inline bool SquadLoadBuilderTolerant( SquadBuilder & builder, const uint8_t * wi
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = SquadLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && SquadLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &SquadCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &SquadCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { SquadReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -16082,6 +16953,8 @@ inline bool SquadLoadBuilder( SquadBuilder & builder, const uint8_t * wire_file,
                 out->refuse_reason = wire_damaged;
             }
         }
+        Squad * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { SquadReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -16347,6 +17220,28 @@ inline void ArmyNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// ArmyCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t ArmyCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x06e2378b553a9e84ull: return 1; // Army
+        default: return 0;
+    }
+}
+
+// ArmyCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool ArmyCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return ArmyCycleSlots( ctx, cycle, *(const Army *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -16499,11 +17394,10 @@ inline int64_t ArmyLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
 }
 
 // ArmyLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Army * ArmyLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -16526,6 +17420,7 @@ inline const Army * ArmyLoadTolerant( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -16544,6 +17439,125 @@ inline const Army * ArmyLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !ArmyWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Army ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = ArmyNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        ArmyBuilder builder;
+        Army * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x06e2378b553a9e84ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = ArmyNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    ArmyNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            ArmyLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Army ) )
     {
         out->malformed = true;
@@ -16554,36 +17568,6 @@ inline const Army * ArmyLoadTolerant( uint8_t * region, int64_t region_bytes, co
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !ArmyWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Army ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = ArmyNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -16592,6 +17576,7 @@ inline const Army * ArmyLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -16675,6 +17660,26 @@ inline const Army * ArmyLoadTolerant( uint8_t * region, int64_t region_bytes, co
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &ArmyCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &ArmyCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x06e2378b553a9e84ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -16739,6 +17744,7 @@ inline bool ArmyLoadBuilderTolerant( ArmyBuilder & builder, const uint8_t * wire
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -16780,6 +17786,7 @@ inline bool ArmyLoadBuilderTolerant( ArmyBuilder & builder, const uint8_t * wire
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x06e2378b553a9e84ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -16832,16 +17839,29 @@ inline bool ArmyLoadBuilderTolerant( ArmyBuilder & builder, const uint8_t * wire
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = ArmyLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && ArmyLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &ArmyCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &ArmyCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { ArmyReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -16873,6 +17893,8 @@ inline bool ArmyLoadBuilder( ArmyBuilder & builder, const uint8_t * wire_file, i
                 out->refuse_reason = wire_damaged;
             }
         }
+        Army * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { ArmyReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -17138,6 +18160,28 @@ inline void DeckNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// DeckCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t DeckCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0xd043187343bfcfe8ull: return 1; // Deck
+        default: return 0;
+    }
+}
+
+// DeckCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool DeckCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return DeckCycleSlots( ctx, cycle, *(const Deck *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -17290,11 +18334,10 @@ inline int64_t DeckLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
 }
 
 // DeckLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Deck * DeckLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -17317,6 +18360,7 @@ inline const Deck * DeckLoadTolerant( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -17335,6 +18379,125 @@ inline const Deck * DeckLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !DeckWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Deck ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = DeckNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        DeckBuilder builder;
+        Deck * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xd043187343bfcfe8ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = DeckNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    DeckNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            DeckLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Deck ) )
     {
         out->malformed = true;
@@ -17345,36 +18508,6 @@ inline const Deck * DeckLoadTolerant( uint8_t * region, int64_t region_bytes, co
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !DeckWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Deck ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = DeckNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -17383,6 +18516,7 @@ inline const Deck * DeckLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -17466,6 +18600,26 @@ inline const Deck * DeckLoadTolerant( uint8_t * region, int64_t region_bytes, co
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &DeckCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &DeckCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xd043187343bfcfe8ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -17530,6 +18684,7 @@ inline bool DeckLoadBuilderTolerant( DeckBuilder & builder, const uint8_t * wire
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -17571,6 +18726,7 @@ inline bool DeckLoadBuilderTolerant( DeckBuilder & builder, const uint8_t * wire
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0xd043187343bfcfe8ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -17623,16 +18779,29 @@ inline bool DeckLoadBuilderTolerant( DeckBuilder & builder, const uint8_t * wire
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = DeckLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && DeckLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &DeckCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &DeckCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { DeckReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -17664,6 +18833,8 @@ inline bool DeckLoadBuilder( DeckBuilder & builder, const uint8_t * wire_file, i
                 out->refuse_reason = wire_damaged;
             }
         }
+        Deck * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { DeckReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -17790,8 +18961,11 @@ LISTDEMO_TABLE_INLINE bool SampleLoadBodyRetain( TableReader & r, Sample & value
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.v = decoded_v;
                         r.report->widened++;
@@ -18052,8 +19226,11 @@ inline bool RowLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Row 
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.label = decoded_v;
                         r.report->widened++;
@@ -18450,8 +19627,11 @@ LISTDEMO_TABLE_INLINE bool ItemLoadBodyRetain( TableReader & r, Item & value, Ta
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.count = decoded_v;
                         r.report->widened++;
@@ -18851,7 +20031,6 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                             // elided field of the repeat reads as its default. The map's
                             // count excludes it.
                             slot = TableMapFillLast( fill );
-                            r.report->duplicate++;
                         }
                         else
                         {
@@ -18862,6 +20041,7 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                             TableReader elem( elem_body, (int64_t) elem_len, r.report, r.ids );
                             SquadRosterEntryLoadBodyRetain( elem, *slot, retain, TableRetainStepInto( path, 0, (uint32_t) ( fill.map->count - 1 ) ) );
                         }
+                        if ( order == 0 ) { r.report->duplicate++; }
                         last_key = read.key; // the WIRE keys of the entries that LAND
                         landed = true;
                     }
@@ -18879,8 +20059,11 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.name = decoded_v;
                         r.report->widened++;
@@ -19146,8 +20329,11 @@ inline bool ArmyLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Arm
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.past = decoded_v;
                         r.report->widened++;
@@ -19386,8 +20572,11 @@ inline bool DeckLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Dec
                         // WIDENED (§4): a kind that grew since the writer decodes
                         // exactly at its own width, the value lands, one widened counts
                         int64_t widened_v = 0;
-                        if ( !TableReadSignedAt( r, kind, widened_v ) ) { r.report->malformed = true;
-                            return false; }
+                        if ( !TableReadSignedAt( r, kind, widened_v ) )
+                        {
+                            r.report->malformed = true;
+                            return false;
+                        }
                         int32_t decoded_v = (int32_t) widened_v;
                         value.past = decoded_v;
                         r.report->widened++;
@@ -19464,11 +20653,10 @@ inline void RowNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNod
 }
 
 // RowLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -19480,6 +20668,7 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -19495,6 +20684,7 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -19513,6 +20703,131 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = RowNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        RowBuilder builder;
+        Row * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xa013e119fec906fbull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = RowNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    RowNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            RowLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Row ) )
     {
         out->malformed = true;
@@ -19523,36 +20838,6 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !RowWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Row ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = RowNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -19561,6 +20846,7 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -19655,7 +20941,28 @@ inline const Row * RowLoadRetain( uint8_t * region, int64_t region_bytes, const 
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &RowCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &RowCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xa013e119fec906fbull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -19804,11 +21111,10 @@ inline void SheetNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 }
 
 // SheetLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -19820,6 +21126,7 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -19835,6 +21142,7 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -19853,6 +21161,131 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !SheetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Sheet ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = SheetNodeStorage( type_id, body, length, &ids_table, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        SheetBuilder builder;
+        Sheet * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x0cc9e0af9a85fbc8ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = SheetNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    SheetNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            SheetLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Sheet ) )
     {
         out->malformed = true;
@@ -19863,36 +21296,6 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !SheetWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Sheet ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = SheetNodeStorage( type_id, body, length, &ids_table, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -19901,6 +21304,7 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -19995,7 +21399,28 @@ inline const Sheet * SheetLoadRetain( uint8_t * region, int64_t region_bytes, co
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &SheetCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &SheetCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x0cc9e0af9a85fbc8ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -20154,11 +21579,10 @@ inline void SquadNodeBodyRetain( uint64_t type_id, TableReader & r, const TableN
 }
 
 // SquadLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -20170,6 +21594,7 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -20185,6 +21610,7 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -20203,6 +21629,131 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !SquadWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Squad ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = SquadNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        SquadBuilder builder;
+        Squad * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xec07a2f760550a91ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = SquadNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    SquadNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            SquadLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Squad ) )
     {
         out->malformed = true;
@@ -20213,36 +21764,6 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !SquadWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Squad ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = SquadNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -20251,6 +21772,7 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -20345,7 +21867,28 @@ inline const Squad * SquadLoadRetain( uint8_t * region, int64_t region_bytes, co
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &SquadCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &SquadCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xec07a2f760550a91ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -20492,11 +22035,10 @@ inline void ArmyNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
 }
 
 // ArmyLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -20508,6 +22050,7 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -20523,6 +22066,7 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -20541,6 +22085,131 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !ArmyWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Army ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = ArmyNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        ArmyBuilder builder;
+        Army * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x06e2378b553a9e84ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = ArmyNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    ArmyNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            ArmyLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Army ) )
     {
         out->malformed = true;
@@ -20551,36 +22220,6 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !ArmyWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Army ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = ArmyNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -20589,6 +22228,7 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -20683,7 +22323,28 @@ inline const Army * ArmyLoadRetain( uint8_t * region, int64_t region_bytes, cons
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &ArmyCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &ArmyCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x06e2378b553a9e84ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -20830,11 +22491,10 @@ inline void DeckNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
 }
 
 // DeckLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -20846,6 +22506,7 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -20861,6 +22522,7 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -20879,6 +22541,131 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !DeckWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Deck ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = DeckNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        DeckBuilder builder;
+        Deck * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0xd043187343bfcfe8ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = DeckNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    DeckNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            DeckLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Deck ) )
     {
         out->malformed = true;
@@ -20889,36 +22676,6 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !DeckWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Deck ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = DeckNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -20927,6 +22684,7 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -21021,7 +22779,28 @@ inline const Deck * DeckLoadRetain( uint8_t * region, int64_t region_bytes, cons
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &DeckCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &DeckCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0xd043187343bfcfe8ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -21256,7 +23035,7 @@ inline void ItemSaveRetainMessages( Args &&... )
 // parameter on a load.
 inline const Sample * SampleOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Sample *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sample ), (uint64_t) alignof( Sample ), reason );
+    return (const Sample *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sample ), (uint64_t) 4, reason );
 }
 
 // RowOpen: match the header and POINT. On a match the bytes ARE what this
@@ -21287,7 +23066,7 @@ inline const Sample * SampleOpen( const void * bytes, uint64_t length, TableRefu
 // parameter on a load.
 inline const Row * RowOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Row *) TableCookOpen( bytes, length, (uint64_t) sizeof( Row ), (uint64_t) alignof( Row ), reason );
+    return (const Row *) TableCookOpen( bytes, length, (uint64_t) sizeof( Row ), (uint64_t) 8, reason );
 }
 
 // SheetOpen: match the header and POINT. On a match the bytes ARE what this
@@ -21318,7 +23097,7 @@ inline const Row * RowOpen( const void * bytes, uint64_t length, TableRefuseReas
 // parameter on a load.
 inline const Sheet * SheetOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Sheet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sheet ), (uint64_t) alignof( Sheet ), reason );
+    return (const Sheet *) TableCookOpen( bytes, length, (uint64_t) sizeof( Sheet ), (uint64_t) 8, reason );
 }
 
 // ItemOpen: match the header and POINT. On a match the bytes ARE what this
@@ -21348,7 +23127,7 @@ inline const Sheet * SheetOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) alignof( Item ), reason );
+    return (const Item *) TableCookOpen( bytes, length, (uint64_t) sizeof( Item ), (uint64_t) 4, reason );
 }
 
 // SquadOpen: match the header and POINT. On a match the bytes ARE what this
@@ -21379,7 +23158,7 @@ inline const Item * ItemOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Squad * SquadOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Squad *) TableCookOpen( bytes, length, (uint64_t) sizeof( Squad ), (uint64_t) alignof( Squad ), reason );
+    return (const Squad *) TableCookOpen( bytes, length, (uint64_t) sizeof( Squad ), (uint64_t) 8, reason );
 }
 
 // ArmyOpen: match the header and POINT. On a match the bytes ARE what this
@@ -21410,7 +23189,7 @@ inline const Squad * SquadOpen( const void * bytes, uint64_t length, TableRefuse
 // parameter on a load.
 inline const Army * ArmyOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Army *) TableCookOpen( bytes, length, (uint64_t) sizeof( Army ), (uint64_t) alignof( Army ), reason );
+    return (const Army *) TableCookOpen( bytes, length, (uint64_t) sizeof( Army ), (uint64_t) 8, reason );
 }
 
 // DeckOpen: match the header and POINT. On a match the bytes ARE what this
@@ -21441,7 +23220,7 @@ inline const Army * ArmyOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Deck * DeckOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Deck *) TableCookOpen( bytes, length, (uint64_t) sizeof( Deck ), (uint64_t) alignof( Deck ), reason );
+    return (const Deck *) TableCookOpen( bytes, length, (uint64_t) sizeof( Deck ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -21562,7 +23341,13 @@ inline bool DeckCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
 template <typename Ctx>
 inline bool SampleCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Sample & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
     return true; // no list or map below this record
 }
 
@@ -21624,7 +23409,13 @@ inline bool SheetCookExtent( const Ctx & ctx, const TableCookRegion & region, ui
 template <typename Ctx>
 inline bool ItemCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const Item & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
     return true; // no list or map below this record
 }
 
@@ -21634,7 +23425,13 @@ inline bool ItemCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
 template <typename Ctx>
 inline bool SquadRosterEntryCookExtent( const Ctx & ctx, const TableCookRegion & region, uint8_t * extent, int64_t & at, uint8_t * record, const SquadRosterEntry & value, TableByteOrder order )
 {
-    (void) ctx; (void) region; (void) extent; (void) at; (void) record; (void) value; (void) order;
+    (void) ctx;
+    (void) region;
+    (void) extent;
+    (void) at;
+    (void) record;
+    (void) value;
+    (void) order;
     return true; // no list or map below this record
 }
 
@@ -21725,7 +23522,7 @@ inline bool RowCookNode( const Ctx & ctx, const TableCookRegion & region, uint8_
     if ( !RowCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !RowCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == RowExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == RowExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SheetCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -21735,7 +23532,7 @@ inline bool SheetCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SheetCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SheetCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SheetExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SheetExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ItemCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -21763,7 +23560,7 @@ inline bool SquadCookNode( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SquadCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !SquadCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == SquadExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == SquadExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // ArmyCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -21773,7 +23570,7 @@ inline bool ArmyCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !ArmyCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !ArmyCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == ArmyExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == ArmyExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // DeckCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -21783,7 +23580,7 @@ inline bool DeckCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !DeckCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !DeckCookExtent( ctx, region, at + 80, extent_at, at, value, order ) ) { return false; }
-    return extent_at == DeckExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == DeckExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // SampleCookMeasure: the whole cooked file's bytes — the header, the data part
@@ -21853,7 +23650,7 @@ inline bool RowCookLayout( const Ctx & ctx, const Row & root, const TableNumberi
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = RowExtent( ctx, root );
+    const int64_t root_extent = RowExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -22008,7 +23805,7 @@ inline bool SheetCookLayout( const Ctx & ctx, const Sheet & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SheetExtent( ctx, root );
+    const int64_t root_extent = SheetExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -22021,7 +23818,7 @@ inline bool SheetCookLayout( const Ctx & ctx, const Sheet & root, const TableNum
         {
             case 0xa013e119fec906fbull: // Row
             {
-                const int64_t extent = RowExtent( ctx, *(const Row *) numbering.entries[k].node );
+                const int64_t extent = RowExtent<Ctx, true>( ctx, *(const Row *) numbering.entries[k].node );
                 if ( extent < 0 ) { return false; }
                 size = 24 + extent;
                 node_align = 8; // the extent begins at sizeof rounded to max( 8, its arrays' alignment ), and the node aligns to that too (§2.8)
@@ -22241,7 +24038,7 @@ inline bool SquadCookLayout( const Ctx & ctx, const Squad & root, const TableNum
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = SquadExtent( ctx, root );
+    const int64_t root_extent = SquadExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -22396,7 +24193,7 @@ inline bool ArmyCookLayout( const Ctx & ctx, const Army & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = ArmyExtent( ctx, root );
+    const int64_t root_extent = ArmyExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -22551,7 +24348,7 @@ inline bool DeckCookLayout( const Ctx & ctx, const Deck & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = DeckExtent( ctx, root );
+    const int64_t root_extent = DeckExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 80 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

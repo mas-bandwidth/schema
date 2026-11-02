@@ -32,8 +32,14 @@ func generateBlocks(u *ir.Unit, blocks *ir.BlockUnit, banner string) (map[string
 
 	byFile := map[string][]*ir.BlockLayout{}
 	for _, bl := range blocks.Tables {
+		if !bl.Table.CarriesForm("block") {
+			continue
+		}
 		base := u.DeclFile[bl.Table.Name]
 		byFile[base] = append(byFile[base], bl)
+	}
+	if len(byFile) == 0 {
+		return nil, nil
 	}
 	for base, tables := range byFile {
 		sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
@@ -458,6 +464,8 @@ func (b *blockGen) blockFieldRow(bl *ir.BlockLayout, fl ir.FieldLayout, projecti
 		stride = fmt.Sprint(a.Stride)
 		element = fmt.Sprintf("Some(%s)", fn(a.ElemName, "block_info"))
 		isArray, counted, arrayBound, elemSize = true, true, f.ArrayBound, 0
+	case f.Type.TextUnbounded():
+		elemSize = 8
 	case f.Type.Kind == ir.TString:
 		counted, arrayBound, elemSize = true, f.Type.Size, 1
 		if len(pieces) > 1 {
@@ -538,6 +546,7 @@ func (b *blockGen) projectionMembers(bl *ir.BlockLayout, f *ir.Field) []string {
 	var names []string
 	names = append(names, f.Name)
 	switch {
+	case f.Type.TextUnbounded():
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes:
 		names = append(names, f.Name+"_length")
 	case f.Array == ir.ArrayCounted && f.KeyEnum == "":
@@ -557,6 +566,8 @@ func (b *blockGen) emitProjectionField(bl *ir.BlockLayout, fl ir.FieldLayout) {
 		return
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		b.pf("    pub %s: i64,\n", f.Name)
 	case f.Type.Kind == ir.TString:
 		b.pf("    pub %s: [u8; %d], // string(%s): buffer, used length beside it\n",
 			f.Name, f.Type.Size+1, ir.RenderExpr(f.Type.SizeExpr))

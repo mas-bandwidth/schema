@@ -58,8 +58,8 @@ table Noted
 			t.Errorf("%s must get its cook writer: a list and a map ride the node extent", root)
 		}
 	}
-	if strings.Contains(got, "pub fn noted_cook_write(") {
-		t.Error("noted reaches a list of text and must get no cook writer")
+	if !strings.Contains(got, "pub fn noted_cook_write(") {
+		t.Error("noted reaches an unbounded text list and must get its cook writer")
 	}
 	if !strings.Contains(got, "pub fn holder_cook_carve(") {
 		t.Error("holder holds a list and a map and must get its extent carve")

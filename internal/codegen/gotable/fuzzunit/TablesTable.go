@@ -6432,7 +6432,7 @@ func init() {
 		return RootConfigSaveBodyRetain(w, (*RootConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RootConfigLoadBodyRetain(&r, (*RootConfig)(p))
-	}, CookSize: 1480, CookAlign: 8}
+	}, CycleIndex: 17, CycleType: tableCycleType, CookSize: 1480, CookAlign: 8}
 }
 
 // RootConfigTableType returns RootConfig's reflection descriptor.
@@ -6545,7 +6545,7 @@ func init() {
 		return WeaponConfigSaveBodyRetain(w, (*WeaponConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WeaponConfigLoadBodyRetain(&r, (*WeaponConfig)(p))
-	}, CookSize: 28, CookAlign: 4}
+	}, CycleIndex: 22, CycleType: tableCycleType, CookSize: 28, CookAlign: 4}
 }
 
 // WeaponConfigTableType returns WeaponConfig's reflection descriptor.
@@ -6647,7 +6647,7 @@ func init() {
 		return LoadoutConfigSaveBodyRetain(w, (*LoadoutConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return LoadoutConfigLoadBodyRetain(&r, (*LoadoutConfig)(p))
-	}, CookSize: 176, CookAlign: 8}
+	}, CycleIndex: 10, CycleType: tableCycleType, CookSize: 176, CookAlign: 8}
 }
 
 // LoadoutConfigTableType returns LoadoutConfig's reflection descriptor.
@@ -6821,7 +6821,7 @@ func init() {
 		return ProfileConfigSaveBodyRetain(w, (*ProfileConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProfileConfigLoadBodyRetain(&r, (*ProfileConfig)(p))
-	}, CookSize: 304, CookAlign: 8}
+	}, CycleIndex: 13, CycleType: tableCycleType, CookSize: 304, CookAlign: 8}
 }
 
 // ProfileConfigTableType returns ProfileConfig's reflection descriptor.
@@ -6863,7 +6863,7 @@ func init() {
 		return AttachmentSaveBodyRetain(w, (*AttachmentRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return AttachmentLoadBodyRetain(&r, (*AttachmentRow)(p))
-	}, CookSize: 8, CookAlign: 4}
+	}, CycleIndex: 2, CycleType: tableCycleType, CookSize: 8, CookAlign: 4}
 }
 
 // AttachmentTableType returns Attachment's reflection descriptor.
@@ -6889,7 +6889,7 @@ var BuffTableFields = []TableFieldInfo{
 var BuffTableInfo TableTypeInfo
 
 func init() {
-	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CycleIndex: 3, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // BuffTableType returns Buff's reflection descriptor.
@@ -6915,7 +6915,7 @@ var DebuffTableFields = []TableFieldInfo{
 var DebuffTableInfo TableTypeInfo
 
 func init() {
-	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CookSize: 4, CookAlign: 4}
+	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CycleIndex: 4, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // DebuffTableType returns Debuff's reflection descriptor.

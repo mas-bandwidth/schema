@@ -1381,7 +1381,7 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 	// every byte written, through the Go oracle's tableIntegritySeal
 	// (internal/codegen/gotable/integrity.go).
 	if st.Integrity != "" {
-		g.pf("    TableWriter w( buffer, capacity - 4 );\n")
+		g.pf("    TableWriter w( buffer, capacity < 4 ? 0 : capacity - 4 );\n")
 	} else {
 		g.pf("    TableWriter w( buffer, capacity );\n")
 	}
@@ -1870,7 +1870,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				g.pf("                    if ( TableKindWidens( kind, %d ) )\n                    {\n", wireKind)
 				g.pf("                        // WIDENED (§4): a kind that grew since the writer decodes\n")
 				g.pf("                        // exactly at its own width, the value lands, one widened counts\n")
-				g.emitWidenedScalar(f, wireKind, "kind", "value."+f.Name, "                        ", "r", "r.report->malformed = true;\n                    return false;")
+				g.emitWidenedScalar(f, wireKind, "kind", "value."+f.Name, "                        ", "r", "r.report->malformed = true;", "return false;")
 				if !st.IsMapEntry() || f.Name != ir.MapKeyFieldName {
 					g.pf("                        r.report->widened++;\n")
 				} // a generated entry key was counted once by the map key scan
@@ -1936,12 +1936,12 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		// whole-file DAMAGE named integrity_mismatch, with nothing decoded, as
 		// the Go oracle's tableIntegrityOpen does (internal/codegen/gotable/
 		// integrity.go). The read then proceeds over the file without it.
-		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
+		g.pf("    if ( buffer != NULL && bytes > 0 && buffer[0] == kTableWireForm && !schema_integrity_holds( buffer, bytes ) )\n    {\n")
 		g.pf("        %sReset( value );\n", st.Name)
 		g.pf("        to->malformed = true;\n")
 		g.pf("        to->damage_reason = integrity_mismatch;\n")
 		g.pf("        return TableOpenDamaged;\n    }\n")
-		g.pf("    if ( bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
+		g.pf("    if ( buffer != NULL && bytes > 0 && buffer[0] == kTableWireForm ) { bytes -= 4; } // checked form-1 trailer only\n")
 	}
 	g.pf("    const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );\n")
 	g.pf("    if ( verdict != TableOpenOk )\n    {\n")
@@ -2042,7 +2042,7 @@ func (g *tableGen) emitUnknownArm(ind string) {
 // position's extra check: a reference-shaped arm's `L` must be the byte count
 // of the reference it frames, and anything else is that arm's own framing
 // damage (§3).
-func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr, onBad, sfx string, exact bool) {
+func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr string, onBad []string, sfx string, exact bool) {
 	target := fmt.Sprintf("0x%016xull", ir.TableWireId(ir.PointeeWireName(f)))
 	comment := "*" + f.Type.Name
 	if f.Type.Blob() {
@@ -2051,9 +2051,9 @@ func (g *tableGen) emitNodeIndexLoad(f *ir.Field, dst, ind, rdr, onBad, sfx stri
 	}
 	index := "node_index" + sfx
 	g.pf("%s{\n%s    uint64_t %s = 0;\n", ind, ind, index)
-	g.pf("%[1]s    if ( !%[2]s.getleb( %[3]s ) )\n%[1]s    {\n%[1]s        %[4]s\n%[1]s    }\n", ind, rdr, index, cppActionLines(onBad, ind+"        "))
+	g.emitIfActions(ind+"    ", fmt.Sprintf("!%s.getleb( %s )", rdr, index), onBad...)
 	if exact {
-		g.pf("%s    if ( %s.offset != %s.size ) { %s }\n", ind, rdr, rdr, onBad)
+		g.emitIfActions(ind+"    ", fmt.Sprintf("%s.offset != %s.size", rdr, rdr), onBad...)
 	}
 	g.pf("%s    TableNodeResolve( nodes, %s, %s, %s, r.report ); // %s\n%s}\n", ind, dst, index, target, comment, ind)
 }
@@ -2140,7 +2140,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// A POINTER FIELD'S PAYLOAD IS A NUMBER (docs/SPEC-TABLES.md §3.1): it is\n", ind)
 		g.pf("%s// bounds-checked and resolved through the numbering, never FOLLOWED, so\n", ind)
 		g.pf("%s// there is no traversal here and therefore no traversal bound.\n", ind)
-		g.emitNodeIndexLoad(f, "value."+f.Name, ind, "r", "r.report->malformed = true;\n                    return false;", "", false)
+		g.emitNodeIndexLoad(f, "value."+f.Name, ind, "r", []string{"r.report->malformed = true;", "return false;"}, "", false)
 	case f.Type.Kind == ir.TString:
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
@@ -2293,9 +2293,8 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    %s;\n", ind, g.loadCall(f, f.Type.Name, "sub", "value."+f.Name))
 		g.emitLoadRefusal(f.Type.Name, ind+"    ")
 		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
-		// terminator is not the last byte of its `L` is framing damage —
-		// the payload stops, the field reads its declared defaults, and the
-		// enclosing body continues past it by `L`.
+		// terminator is not the last byte of its `L` is framing damage, and
+		// damage discards the whole load (§4).
 		g.pf("%s    if ( sub.offset != sub.size )\n%s    {\n", ind, ind)
 		g.pf("%s        r.report->malformed = true;\n", ind)
 		g.pf("%s        %sReset( value.%s );\n", ind, f.Type.Name, f.Name)
@@ -2305,7 +2304,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.emitEnumRefLoad(f, "value."+f.Name, ind, "r", "r.report->malformed = true;\n                    return false;")
 	default:
 		g.emitTableReadScalarFrom(f, kind, "value."+f.Name, ind,
-			"r", "r.report->malformed = true;\n                    return false;")
+			"r", "r.report->malformed = true;", "return false;")
 	}
 }
 
@@ -2366,7 +2365,7 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 	case tkNodeIndex:
 		// one slot of an array of pointers: a node index, bounds-checked and
 		// resolved through the numbering, never followed (§3.1)
-		g.emitNodeIndexLoad(f, dst, ind, rdr, "r.report->malformed = true;\n                                break;", sfx, false)
+		g.emitNodeIndexLoad(f, dst, ind, rdr, []string{"r.report->malformed = true;", "break;"}, sfx, false)
 	case tkTable:
 		g.pf("%suint64_t elem_len%s = 0;\n", ind, sfx)
 		g.pf("%sif ( !%s.getleb( elem_len%s ) || !%s.room( elem_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
@@ -2382,17 +2381,18 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		g.pf("%s}\n", ind)
 	default:
 		g.emitTableReadScalarFrom(f, kind, dst, ind,
-			rdr, "r.report->malformed = true;\n                                break;")
+			rdr, "r.report->malformed = true;", "break;")
 	}
 }
 
 // emitTableReadScalarFrom decodes one fixed-width scalar from the named
 // reader into a storage lvalue, with range clamps where the schema declares
 // them. onTrunc is the truncation action: a scalar FIELD stops the decode
-// (outer framing damage), an array ELEMENT keeps the prefix and breaks.
-func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, rdr, onTrunc string) {
+// and an array ELEMENT breaks, both flagging damage, which discards the whole
+// load (docs/SPEC-TABLES.md §4).
+func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, rdr string, onTrunc ...string) {
 	width := tableKindWidth(kind)
-	g.pf("%[1]sif ( !%[2]s.has( %[3]d ) )\n%[1]s{\n%[1]s    %[4]s\n%[1]s}\n", ind, rdr, width, cppActionLines(onTrunc, ind+"    "))
+	g.emitIfActions(ind, fmt.Sprintf("!%s.has( %d )", rdr, width), onTrunc...)
 	switch kind {
 	case tkBool:
 		// A BOOL BYTE THAT IS NEITHER 0 NOR 1 reads true and is MALFORMED on
@@ -2443,7 +2443,7 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 			g.pf("%[1]suint64_t lo_v = 0, hi_v = 0;\n%[1]s%[2]s.get128( lo_v, hi_v );\n", ind, rdr)
 			g.pf("%s%s decoded_v = %s( ( serialize::uint128_t( hi_v ) << 64 ) | serialize::uint128_t( lo_v ) );\n", ind, storage, storage)
 		} else {
-			g.pf("%s%s decoded_v = %s( %s.%s() );\n", ind, storage, storage, rdr, tableGet(width))
+			g.pf("%[1]s%[2]s decoded_v = %[3]s( %[4]s.%[5]s() );\n", ind, storage, storage, rdr, tableGet(width))
 		}
 		// the declared range on the RAW scale — a fixed field's whole-unit
 		// bounds shifted by F — clamps and counts as every bounded scalar

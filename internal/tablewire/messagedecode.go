@@ -9,8 +9,8 @@
 //
 // DAMAGE IS TERMINAL FOR THE BATCH. A byte-framed body has a place to resume
 // and a bit stream does not, so a reader that has lost its position has lost
-// it for the rest of the buffer: the fields decoded before it stand, ONE
-// `malformed` counts, and nothing after it is read.
+// it for the rest of the buffer: the whole batch is discarded,
+// `malformed` is reported, and nothing after it is read.
 package tablewire
 
 import (
@@ -78,6 +78,10 @@ func DecodeMessages(m *tabletext.Model, insts []*tabletext.Instance, data []byte
 	report.Malformed = false
 	n, ok, err := decodeMessagesWalk(m, insts, data, v, report)
 	if refusal := refusedNonFinite(report); refusal != nil {
+		// A refused later body also discards every earlier body in the batch.
+		for _, inst := range insts {
+			m.Clear(inst)
+		}
 		report.Malformed = report.Malformed || priorMalformed
 		return 0, false, refusal
 	}
@@ -117,6 +121,15 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 		report.Refused = true
 		return 0, false, &MessageRefusal{Reason: ReasonNewerForm}
 	}
+	if len(insts) > 0 {
+		var valid bool
+		data, valid = messageIntegrityBody(insts[0].Def, data)
+		if !valid {
+			report.Malformed = true
+			report.Reason = "integrity_mismatch"
+			return 0, false, nil
+		}
+	}
 	// A BODY FROM AN ENDPOINT THAT NEVER ANNOUNCED IS REFUSED BY NAME. Nothing is
 	// decoded, no counter moves and `malformed` does not fire.
 	if v == nil || !v.announced {
@@ -135,6 +148,8 @@ func decodeMessagesWalk(m *tabletext.Model, insts []*tabletext.Instance, data []
 		return count, false, &MessageRefusal{Reason: ReasonBatchTooLarge, BuildVersion: v.buildVersion}
 	}
 	for i := range count {
+		// Omitted fields take declared defaults, including when storage is reused.
+		m.Clear(insts[i])
 		d := &bitDecoder{m: m, v: v, report: report, r: r, refBits: v.RefBits()}
 		if !d.body(insts[i]) {
 			return i, false, nil
@@ -872,7 +887,16 @@ func (d *bitDecoder) float32(cell *tabletext.Cell, f *ir.Field, shape ir.TableMe
 		}
 		// THE PACKET WIRE'S RULE, IN FLOAT32 (SPEC.md §4.3, §3.3): the float an
 		// index names is the float a packet's reader names for it
-		v := float64(ir.TableMessageDequantize(shape, uint32(index)))
+		dequantized := ir.TableMessageDequantize(shape, uint32(index))
+		if !tabletext.FiniteF32(math.Float32bits(dequantized)) {
+			// A DEQUANTIZED VALUE THAT IS NOT FINITE IS REFUSED, as the packet
+			// reader refuses it (SPEC.md §4.3): every announced fact can be
+			// finite and the top steps still round past the largest float32,
+			// and a clamp would invent a value the sender never named
+			d.report.RefuseNonFinite(FloatOwner(d.m, f))
+			return true
+		}
+		v := float64(dequantized)
 		if ir.TableScalarKind(f) == ir.TableKindF64 {
 			cell.F = v // widened into f64 (§4): exact, and no clamp fires
 			return true

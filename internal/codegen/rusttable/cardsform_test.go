@@ -30,6 +30,7 @@ func TestCardConstructsAreNotRefused(t *testing.T) {
 		&ir.Field{Name: "id", Type: ir.FieldType{Kind: ir.TString, Size: 64}},
 		&ir.Field{Name: "priority", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Enum{Name: "Priority"}}},
 		&ir.Field{Name: "deadline_minutes", Type: ir.FieldType{Kind: ir.TInt, Width: 32}},
+		&ir.Field{Name: "speed", HasFloatRange: true, FMin: -1, FMax: 1, Resolution: 1, Steps: 2, Type: ir.FieldType{Kind: ir.TFloat32}},
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
@@ -58,7 +59,6 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		keywords []string
 	}{
 		{"counted_minimum", &ir.Field{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum"}},
-		{"compressed_float", &ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}}, []string{"compressed float"}},
 	}
 
 	for _, tc := range cases {
@@ -116,14 +116,14 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "speed", HasFloatRange: true, Type: ir.FieldType{Kind: ir.TFloat32}},
+		&ir.Field{Name: "samples", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying a compressed float was not refused")
+		t.Fatal("a card unit carrying a nonzero counted minimum was not refused")
 	}
-	for _, want := range []string{"Card", "speed", "compressed float"} {
+	for _, want := range []string{"Card", "samples", "declared minimum"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}

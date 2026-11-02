@@ -58,7 +58,7 @@ import (
 // saying which table and why.
 func generateBlockFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	if blocks == nil {
+	if blocks == nil || !formAllowed(u, "block") {
 		return out, nil
 	}
 	// THE BLOCK HOME is <Package>Block.js — one home per unit, named by the

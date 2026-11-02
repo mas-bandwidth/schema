@@ -57,9 +57,23 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	prior := report.NonFiniteFloat
 	report.NonFiniteFloat = ""
 	priorMalformed := report.Malformed
+	missingBefore := report.MissingRequired
 	report.Malformed = false
 	ok, err := decodeWalk(m, inst, data, report, rt, region)
+	if report.MissingRequired != missingBefore {
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
+		report.Malformed = report.Malformed || priorMalformed
+		return false, &tabletext.MissingRequired{Reason: report.Reason}
+	}
 	if refusal := refusedNonFinite(report); refusal != nil {
+		// Refusal publishes no value or retained prefix, just as damage does.
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
 		report.Malformed = report.Malformed || priorMalformed
 		return false, refusal
 	}
@@ -98,6 +112,13 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 			return false, &MessageRefusal{Reason: ReasonMessageFormAsFile}
 		}
 		return false, &FormRefusal{Form: data[0]}
+	}
+	var valid bool
+	data, valid = fileIntegrityBody(inst.Def, data)
+	if !valid {
+		report.Malformed = true
+		report.Reason = "integrity_mismatch"
+		return false, nil
 	}
 	body, ids, ok := trailer(data)
 	if !ok {
@@ -200,6 +221,7 @@ func bodyExtent(body []byte, ids []uint64) (end int, terminated bool) {
 }
 
 type wireReader struct {
+	fieldSkipped bool // the current field had an incompatible collection header
 	// Installed by decodeVariable and shared by its nested readers. Only
 	// value-only and framing/key scanners omit it; none can decode a list.
 	countRefusal *bool // a storage refusal, not a malformed event
@@ -370,6 +392,8 @@ func (r *wireReader) body(inst *tabletext.Instance) bool {
 // the numbering's own rule — a second numbering cannot exist, so a body
 // claiming one is damaged (§3.1).
 func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
+	missingBefore := r.report.MissingRequired
+	seen := make([]bool, len(inst.Fields))
 	index := map[uint64]int{}
 	for i := range inst.Fields {
 		index[ir.TableFieldWireId(inst.Fields[i].Def)] = i
@@ -384,7 +408,7 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			return false
 		}
 		if ref == 0 {
-			return true // the body ENDS AT ITS OWN ZERO REFERENCE
+			return r.report.MissingRequired == missingBefore && r.report.RequireSeen(inst, func(i int) bool { return seen[i] })
 		}
 		id, named := r.id(ref)
 		if !named {
@@ -459,6 +483,7 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 				if !r.scalarAt(&fv.Cell, fv.Def, int(kind)) {
 					return false
 				}
+				seen[i] = true
 				if !inst.Def.IsMapEntry() || fv.Def.Name != ir.MapKeyFieldName {
 					r.report.Widened++
 				}
@@ -482,9 +507,10 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			// record under it goes before the winning occurrence is read.
 			r.rt.forgetField(fv)
 		}
-		if !r.field(fv) {
+		if !r.field(fv) || r.report.MissingRequired != missingBefore {
 			return false
 		}
+		seen[i] = seen[i] || !r.fieldSkipped
 		if fv.Def.Type.Optional && fv.Def.Array == ir.ArrayNone {
 			// the field rode, so it is PRESENT — content decides nothing here
 			// either (docs/SPEC-TABLES.md §2.3). An optional ARRAY's presence is
@@ -496,15 +522,15 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 }
 
 func (r *wireReader) field(fv *tabletext.Field) bool {
+	r.fieldSkipped = false
 	f := fv.Def
 	switch {
 	case f.IsMap():
 		return r.mapField(fv)
 	case f.Type.Pointer && f.Array == ir.ArrayNone:
 		// A pointer field's payload is a NUMBER: it is bounds-checked and
-		// stored, never followed. There is no traversal on the load path, and
-		// therefore no traversal bound — no depth cap, no visited set, no
-		// ordering rule on the indices (docs/SPEC-TABLES.md §3.1).
+		// stored, and the decode never follows it. The cycle check runs once
+		// the scan has resolved every index (decodenodes.go, cyclic; §3.1).
 		index, ok := r.leb()
 		if !ok {
 			r.report.Malformed = true
@@ -598,7 +624,9 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		} else {
 			r.m.Refill(fv.Cell.Tab)
 		}
-		sub.bodyAt(fv.Cell.Tab, true)
+		if !sub.bodyAt(fv.Cell.Tab, true) {
+			return false
+		}
 		if r.countRefused() {
 			return false
 		}
@@ -694,6 +722,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 		// A MAP HEADER WHOSE ELEMENT KIND IS NOT 13 is the ordinary array kind
 		// mismatch of §4, and nothing about a map is special-cased
 		if int(elemKind) != ir.TableKindTable {
+			r.fieldSkipped = true
 			r.report.KindMismatch++
 			r.off = end
 			return true
@@ -736,6 +765,7 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 				// A MAP WITH HALF ITS KEYS IS NOT A MAP (§2.8): the map resets
 				// to EMPTY, ONE kind_mismatch counts for it, and the rest is
 				// skipped. Events counted inside earlier entries stand.
+				r.fieldSkipped = true
 				r.report.KindMismatch++
 				fv.Entries = nil
 				break
@@ -766,7 +796,9 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.buf = body.buf
 			whole.off = 0
 			decoded := r.m.NewMapEntry(f)
-			whole.bodyAt(decoded, true)
+			if !whole.bodyAt(decoded, true) {
+				return false
+			}
 			r.rt.builtMapEntry(fv, decoded)
 			if r.countRefused() {
 				return false
@@ -832,6 +864,7 @@ func (r *wireReader) mapKey(f *ir.Field, entry *tabletext.Instance, kindBad, wid
 			cell := &entry.Fields[0].Cell
 			if int(kind) != want && ir.TableKindWidens(int(kind), want) {
 				*widened = true
+				*kindBad = false // this occurrence replaces the earlier key kind
 				if !scan.scalarAt(cell, keyField, int(kind)) {
 					return key, false
 				}
@@ -879,7 +912,8 @@ func (r *wireReader) scalarOrString(cell *tabletext.Cell, f *ir.Field) bool {
 }
 
 func (r *wireReader) array(fv *tabletext.Field) bool {
-	ok, _ := r.arrayBody(fv, -1)
+	ok, selected := r.arrayBody(fv, -1)
+	r.fieldSkipped = !selected
 	return ok
 }
 
@@ -995,6 +1029,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			fv.Cell.Str = payload
 		} else {
+			var spent int64
 			for i := 0; i < keep; i++ {
 				if f.Array == ir.ArrayList {
 					fv.Elems = append(fv.Elems, r.m.ElementZero(f))
@@ -1002,12 +1037,14 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				if !sub.element(fv, i, int(ek)) {
 					break
 				}
-				decoded = i + 1
+				decoded = r.textTotal(fv, i+1, &spent)
+				if decoded != i+1 {
+					break
+				}
 			}
 			if f.Array == ir.ArrayList {
 				fv.Elems = fv.Elems[:decoded] // the prefix the body covered
 			}
-			decoded = r.textTotal(fv, decoded)
 		}
 		if counted {
 			// Entry reset initializes the unused tail. A replacement need only
@@ -1082,7 +1119,9 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 		} else {
 			r.m.Refill(fv.Elems[i].Tab)
 		}
-		sub.bodyAt(fv.Elems[i].Tab, true)
+		if !sub.bodyAt(fv.Elems[i].Tab, true) {
+			return false
+		}
 		if r.countRefused() {
 			return false
 		}
@@ -1104,37 +1143,15 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 // element that would carry the sum past N and every element after it, and
 // counts `clamped` ONCE for the field, naming it. A count clamped against
 // `[..N]` above is counted apart. It returns the count the field keeps.
-func (r *wireReader) textTotal(fv *tabletext.Field, decoded int) int {
+func (r *wireReader) textTotal(fv *tabletext.Field, decoded int, spent *int64) int {
 	f := fv.Def
 	if f.TextTotal <= 0 || !f.IsTextList() {
 		return decoded
 	}
-	var sum int64
-	keep := decoded
-	for i := range decoded {
-		if rec := fv.Elems[i].Tab; rec != nil {
-			sum += int64(len(rec.Fields[0].Cell.Str))
-		}
-		if sum > f.TextTotal {
-			keep = i
-			break
-		}
-	}
-	if keep == decoded {
+	if r.m.KeepTextTotal(fv, decoded-1, spent, r.report) {
 		return decoded
 	}
-	r.report.Clamped++
-	if r.report.Reason == "" {
-		r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
-	}
-	if f.Array == ir.ArrayList {
-		fv.Elems = fv.Elems[:keep]
-	} else {
-		for i := keep; i < decoded; i++ {
-			fv.Elems[i] = r.m.ElementZero(f)
-		}
-	}
-	return keep
+	return decoded - 1
 }
 
 // textListElement reads one element of a PLAIN text list (docs/SPEC-TABLES.md
@@ -1206,6 +1223,7 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 	}
 	if int(elemKind) != ir.TableWireElemKind(f) {
 		if !ir.TableKindWidens(int(elemKind), ir.TableWireElemKind(f)) {
+			r.fieldSkipped = true
 			r.report.KindMismatch++
 			r.off = end
 			return true
@@ -1262,7 +1280,9 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			} else {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
-			elem.bodyAt(fv.Elems[slot].Tab, true)
+			if !elem.bodyAt(fv.Elems[slot].Tab, true) {
+				return false
+			}
 			if r.countRefused() {
 				return false
 			}
@@ -1375,7 +1395,9 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		if arm.Body() {
 			payload := r.m.New(arm.Ref)
 			r.rt.builtArm(fv, index, payload)
-			sub.bodyAt(payload, true)
+			if !sub.bodyAt(payload, true) {
+				return false
+			}
 			if r.countRefused() {
 				return false
 			}

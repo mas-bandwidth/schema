@@ -1190,7 +1190,7 @@ enum TableOpenVerdict
 
 inline TableOpenVerdict TableOpen( const uint8_t * buffer, int64_t bytes, TableIdTable & table, int64_t & body_bytes )
 {
-    if ( bytes < 1 ) { return TableOpenDamaged; }
+    if ( buffer == NULL || bytes < 1 ) { return TableOpenDamaged; }
     if ( buffer[0] != kTableWireForm ) { return TableOpenRefused; }
     if ( bytes < 9 ) { return TableOpenDamaged; }
     const uint8_t * tail = buffer + bytes - 8;
@@ -4873,8 +4873,54 @@ inline bool schema_integrity_holds( const uint8_t * data, int64_t bytes )
 // written, and the file's longer length.
 inline int64_t schema_integrity_seal( uint8_t * buffer, int64_t n )
 {
+    if ( buffer == NULL || n < 0 || n > INT64_MAX - 4 ) { return -1; }
     TableFixedPut32( buffer + n, schema_crc32c( buffer, n ) );
     return n + 4;
+}
+
+// TableMessageBatchSeal appends the four-byte CRC-32C integrity trailer after
+// the n batch bytes already written (docs/SPEC-TABLES.md §2.14, §3.3).
+inline int64_t TableMessageBatchSeal( uint8_t * buffer, int64_t n, int64_t capacity )
+{
+    if ( buffer == NULL || n < 0 || capacity < 4 || n > capacity - 4 ) { return -1; }
+    return schema_integrity_seal( buffer, n );
+}
+
+// TableMessageBatchCheckIntegrity checks the batch's four-byte CRC-32C trailer
+// against the bytes before it (docs/SPEC-TABLES.md §2.14, §3.3).
+inline bool TableMessageBatchCheckIntegrity( const uint8_t * buffer, int64_t bytes )
+{
+    if ( buffer == NULL || bytes < 6 ) { return false; }
+    return schema_integrity_holds( buffer, bytes );
+}
+
+// TableMessageBatchOpenSealed is §3.3's read with §2.14's trailer: the form
+// byte first, then the batch trailer checked before any body, then the
+// original open over the bytes the trailer was removed from.
+inline int64_t TableMessageBatchOpenSealed( TableMessageBatchReader & br, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
+{
+    br.report = report != NULL ? report : &br.ignored;
+    br.vocabulary = &vocabulary;
+    if ( buffer == NULL || bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !TableMessageBatchCheckIntegrity( buffer, bytes ) )
+    {
+        br.report->malformed = true;
+        br.report->damage_reason = integrity_mismatch;
+        br.report->reason = integrity_mismatch;
+        br.report->refuse_reason = integrity_mismatch;
+        return -1;
+    }
+    return TableMessageBatchOpen( br, vocabulary, buffer, bytes - 4, report );
 }
 
 } // namespace armdemo
@@ -5840,6 +5886,9 @@ struct TableNodeMap
     // int32 cap met while a body decoded. LoadBuilder answers NULL for it
     // and moves no counter; mutable for the reason the cursor is.
     mutable bool refused = false;
+    // During construction, keep validated TABLE indices for the cycle check.
+    // Blob references resolve normally. No root is returned in this state.
+    bool cycle_indices = false;
     // ONCE is the file and message REGION reads' rule (§2.5, §16.7): the first
     // slot naming a blob marks its directory entry, and every later slot naming
     // it is one blob_shared event and resolves to the ONE decoded node. The Go
@@ -5887,8 +5936,216 @@ inline void TableNodeResolve( const TableNodeMap & map, TableRef & slot, uint64_
     {
         map.entries[index - 1].type_id = ~target;
     }
+    if ( map.cycle_indices && target != kTableBytesTypeId && target != kTableStringTypeId )
+    {
+        slot.value = (int64_t) index;
+        return;
+    }
     slot.value = map.arena ? (int64_t) entry.offset
                            : (int64_t) ( ( map.base + entry.offset ) - (const uint8_t *) &slot );
+}
+
+// ---- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4) ----
+//
+// During construction table pointer slots hold validated wire indices. Kahn's
+// two passes therefore reach the directory directly: each node is entered once
+// and each slot is visited a fixed number of times, with no sorting or reverse
+// offset lookup. A final pass resolves the slots to their published offsets.
+// The directory's type_id word carries the degree and stack link; its offset
+// high bits carry the type ordinal. The caller restores both before publishing
+// a region. Region loads allocate nothing and no pointer graph is recursed.
+static const uint64_t kTableCycleAbsent = 1ull << 63;
+static const uint64_t kTableCycleVertex = 1ull << 62;
+static const int kTableCycleOrdinalShift = 48;
+static const uint64_t kTableCycleOffsetMask = ( 1ull << 48 ) - 1;
+
+struct TableCycle
+{
+    TableNodeDirEntry * entries = NULL;
+    int64_t count = 0;
+    const uint8_t * base = NULL;
+    const TableArena * arena = NULL;
+    uint32_t head = 0;
+    int64_t vertices = 0;
+    int64_t processed = 0;
+    bool releasing = false;
+    bool resolving = false;
+    bool broken = false;
+};
+
+inline bool TableCycleIsVertex( const TableCycle & c, int64_t p )
+{
+    return ( c.entries[p].offset & ( kTableCycleAbsent | kTableCycleVertex ) ) == kTableCycleVertex;
+}
+
+inline uint32_t TableCycleOrdinal( const TableCycle & c, int64_t p )
+{
+    return (uint32_t) ( ( c.entries[p].offset >> kTableCycleOrdinalShift ) & 0x3FFFu );
+}
+
+inline const void * TableCycleNode( const TableCycle & c, int64_t p )
+{
+    const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+    if ( c.arena != NULL ) { return (const void *) TableArenaAt( *c.arena, (uint32_t) offset ); }
+    return (const void *) ( c.base + offset );
+}
+
+inline bool TableCycleBegin( TableCycle & c, TableNodeDirEntry * entries, int64_t count, const uint8_t * base, const TableArena * arena, uint32_t ( *ordinal )( uint64_t type_id ) )
+{
+    c.entries = entries;
+    c.count = count;
+    c.base = base;
+    c.arena = arena;
+    if ( count <= 0 || count >= ( 1ll << 31 ) )
+    {
+        c.broken = true;
+        return false;
+    }
+    for ( int64_t p = 0; p < count; p++ )
+    {
+        TableNodeDirEntry & e = entries[p];
+        if ( e.offset == kTableNodeAbsent )
+        {
+            e.offset = kTableCycleAbsent;
+            continue;
+        }
+        if ( e.offset > kTableCycleOffsetMask )
+        {
+            c.broken = true;
+            return false;
+        }
+        const uint32_t kind = ordinal( e.type_id );
+        if ( kind == 0 ) { continue; } // a byte buffer or an already marked blob
+        e.offset |= kTableCycleVertex | ( (uint64_t) kind << kTableCycleOrdinalShift );
+        e.type_id = 0;
+        c.vertices++;
+    }
+    return true;
+}
+
+inline void TableCyclePush( TableCycle & c, int64_t p )
+{
+    c.entries[p].type_id = ( c.entries[p].type_id & 0xFFFFFFFFull ) | ( (uint64_t) c.head << 32 );
+    c.head = (uint32_t) ( p + 1 );
+}
+
+// TableCycleEdge is one stored pointer slot: pass one counts the in-degree of
+// the node it names, and pass two takes the count down and stacks the node
+// when the last slot naming it has been met.
+inline bool TableCycleEdge( TableCycle & c, const TableRef & slot )
+{
+    if ( slot.value == 0 ) { return true; }
+    const uint64_t index = (uint64_t) slot.value;
+    if ( index - 1 >= (uint64_t) c.count )
+    {
+        c.broken = true;
+        return false;
+    }
+    const int64_t p = (int64_t) index - 1;
+    if ( !TableCycleIsVertex( c, p ) )
+    {
+        c.broken = true;
+        return false;
+    }
+    if ( c.resolving )
+    {
+        const uint64_t offset = c.entries[p].offset & kTableCycleOffsetMask;
+        // The visitor borrows const views, but these are this load's mutable
+        // construction slots. No caller can observe their temporary indices.
+        TableRef & output = const_cast<TableRef &>( slot );
+        output.value = c.arena != NULL ? (int64_t) offset
+                                       : (int64_t) ( ( c.base + offset ) - (const uint8_t *) &slot );
+        return true;
+    }
+    const uint32_t degree = (uint32_t) c.entries[p].type_id;
+    if ( !c.releasing )
+    {
+        if ( degree == 0xFFFFFFFFu )
+        {
+            c.broken = true;
+            return false;
+        }
+        c.entries[p].type_id += 1;
+        return true;
+    }
+    if ( degree == 0 )
+    {
+        c.broken = true;
+        return false;
+    }
+    c.entries[p].type_id -= 1;
+    if ( degree == 1 ) { TableCyclePush( c, p ); } // the last slot naming it: its descent is free
+    return true;
+}
+
+// TableCycleAcyclic checks the graph, then resolves its slots. VISIT enumerates one node's stored
+// slots through TableCycleEdge. True is a graph with no cycle; false is a
+// cycle, or a directory this check could not carry.
+template <typename Ctx, typename Visit>
+inline bool TableCycleAcyclic( TableCycle & c, const Ctx & ctx, Visit visit )
+{
+    if ( c.broken ) { return false; }
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    c.releasing = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && (uint32_t) c.entries[p].type_id == 0 ) { TableCyclePush( c, p ); }
+    }
+    while ( c.head != 0 )
+    {
+        const int64_t p = (int64_t) c.head - 1;
+        c.head = (uint32_t) ( c.entries[p].type_id >> 32 );
+        // a node is entered ONCE: more entries than nodes is a walk gone wrong
+        if ( ++c.processed > c.vertices )
+        {
+            c.broken = true;
+            return false;
+        }
+        if ( !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    if ( c.broken || c.processed != c.vertices ) { return false; } // an unfreed node sits on a cycle
+    c.resolving = true;
+    for ( int64_t p = 0; p < c.count; p++ )
+    {
+        if ( TableCycleIsVertex( c, p ) && !visit( ctx, c, p ) )
+        {
+            c.broken = true;
+            return false;
+        }
+    }
+    return !c.broken;
+}
+
+// TableCycleRestore puts back one table node's type id, the one the wire
+// carries; a byte buffer's entry was never touched.
+inline void TableCycleRestore( TableCycle & c, int64_t p, uint64_t type_id )
+{
+    if ( p >= 0 && p < c.count && TableCycleIsVertex( c, p ) ) { c.entries[p].type_id = type_id; }
+}
+
+// TableCycleEnd removes the construction tags from directory offsets.
+inline void TableCycleEnd( TableCycle & c )
+{
+    for ( int64_t p = 0; p < c.count && c.entries != NULL; p++ )
+    {
+        uint64_t & offset = c.entries[p].offset;
+        if ( ( offset & kTableCycleAbsent ) != 0 ) { offset = kTableNodeAbsent; }
+        else
+        {
+            offset &= kTableCycleOffsetMask;
+        }
+    }
 }
 
 // ---- the record SCAN, and it is the whole of load's bound (§3.1) ----
@@ -6826,7 +7083,7 @@ inline void TableRetainReset( TableRetain * retain, const TableNodeMap & nodes, 
 inline bool TableRetainUnder( const uint8_t * record, const void * at, const TableRetain & retain,
     const TableRetainPath & path, bool field, uint32_t ordinal )
 {
-    if ( TableRetainRecordAt( retain, record ) != at ) { return false; }
+    if ( path.node != 0 ? TableRetainRecordNode( record ) != path.node : TableRetainRecordAt( retain, record ) != at ) { return false; }
     const int32_t depth = TableRetainRecordDepth( record );
     if ( field )
     {
@@ -7887,10 +8144,10 @@ inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fi
     return TableListPlace( *fill.worker, *fill.list );
 }
 
-// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9, §4): the array keeps
-// what it decoded, and an element whose own framing gave out before one byte
-// of it decoded was not decoded. The region's form uncounts it, and the builder's
-// marks it dead, which is what the storage rule allows mid-build.
+// A SLOT WHOSE ELEMENT NEVER LANDED is given back (§2.9): an element whose own
+// framing gave out was not decoded. That is damage, and the load that met it is
+// discarded whole (§4); until it is, the region's form uncounts the slot and the
+// builder's marks it dead, which is what the storage rule allows mid-build.
 template <typename T>
 inline void TableListFillDrop( TableListFill<T> & fill )
 {
@@ -8683,7 +8940,12 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
                                     memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                    {
+                                        value.inner.type = InnerType::None;
+                                        r.report->malformed = true;
+                                        break;
+                                    }
                                     int32_t decoded_v = (int32_t) widened_v;
                                     value.inner.plain = decoded_v;
                                     value.inner.type = InnerType::Plain;
@@ -8700,7 +8962,9 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
                             if ( sub.size != 4 ) { value.inner.type = InnerType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) )
                             {
-                                value.inner.type = InnerType::None; r.report->malformed = true; break;
+                                value.inner.type = InnerType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             value.inner.plain = decoded_v;
@@ -9050,7 +9314,12 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                                     if ( arm_inner.size != TableKindWidth( arm_inner_kind ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
                                                     memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
                                                     int64_t widened_v = 0;
-                                                    if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                                    if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) )
+                                                    {
+                                                        value.outer.inner.type = InnerType::None;
+                                                        r.report->malformed = true;
+                                                        break;
+                                                    }
                                                     int32_t decoded_v = (int32_t) widened_v;
                                                     value.outer.inner.plain = decoded_v;
                                                     value.outer.inner.type = InnerType::Plain;
@@ -9063,7 +9332,9 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                             if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !arm_inner.has( 4 ) )
                                             {
-                                                value.outer.inner.type = InnerType::None; r.report->malformed = true; break;
+                                                value.outer.inner.type = InnerType::None;
+                                                r.report->malformed = true;
+                                                break;
                                             }
                                             int32_t decoded_v = int32_t( arm_inner.get32() );
                                             value.outer.inner.plain = decoded_v;
@@ -9087,7 +9358,12 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.outer.type = OuterType::None; r.report->malformed = true; break; }
                                     memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.outer.type = OuterType::None; r.report->malformed = true; break; }
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->malformed = true;
+                                        break;
+                                    }
                                     int32_t decoded_v = (int32_t) widened_v;
                                     value.outer.plain = decoded_v;
                                     value.outer.type = OuterType::Plain;
@@ -9104,7 +9380,9 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             if ( sub.size != 4 ) { value.outer.type = OuterType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) )
                             {
-                                value.outer.type = OuterType::None; r.report->malformed = true; break;
+                                value.outer.type = OuterType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             value.outer.plain = decoded_v;
@@ -9195,8 +9473,11 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             do
                             {
                                 int64_t widened_v = 0;
-                                if ( !TableReadSignedAt( sub, elem_kind, widened_v ) ) { r.report->malformed = true;
-                                    break; }
+                                if ( !TableReadSignedAt( sub, elem_kind, widened_v ) )
+                                {
+                                    r.report->malformed = true;
+                                    break;
+                                }
                                 int32_t decoded_v = (int32_t) widened_v;
                                 ( *slot ) = decoded_v;
                                 landed = true;
@@ -9315,16 +9596,16 @@ inline bool TwigWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// TwigExtentAt: the node extent Twig's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as TwigExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// TwigExtentAt: the node extent Twig's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as TwigExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool TwigExtentAt( const Ctx & ctx, const Twig & value, int64_t & at )
 {
     switch ( value.inner.type ) // inner: the set arm is the edge
     {
         case InnerType::Leaf:
         {
-            if ( !LeafExtentAt( ctx, value.inner.leaf, at ) ) { return false; }
+            if ( !LeafExtentAt<Ctx, schema_cook_extent>( ctx, value.inner.leaf, at ) ) { return false; }
             break;
         }
         default: break;
@@ -9334,11 +9615,11 @@ inline bool TwigExtentAt( const Ctx & ctx, const Twig & value, int64_t & at )
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t TwigExtent( const Ctx & ctx, const Twig & value )
 {
     int64_t at = 0;
-    if ( !TwigExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !TwigExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -9394,9 +9675,9 @@ inline bool NestWireExtent( const uint8_t * body, int64_t length, int64_t & at, 
     }
 }
 
-// NestExtentAt: the node extent Nest's lists and maps take, PRE-ORDER, advancing
-// the running offset exactly as NestExtentPack advances it (§2.8, §2.9).
-template <typename Ctx>
+// NestExtentAt: the node extent Nest's lists and maps take, PRE-ORDER.
+// The default native mode advances exactly as NestExtentPack (§2.8, §2.9).
+template <typename Ctx, bool schema_cook_extent = false>
 inline bool NestExtentAt( const Ctx & ctx, const Nest & value, int64_t & at )
 {
     switch ( value.outer.type ) // outer: the set arm is the edge
@@ -9407,7 +9688,7 @@ inline bool NestExtentAt( const Ctx & ctx, const Nest & value, int64_t & at )
             {
                 case InnerType::Leaf:
                 {
-                    if ( !LeafExtentAt( ctx, value.outer.inner.leaf, at ) ) { return false; }
+                    if ( !LeafExtentAt<Ctx, schema_cook_extent>( ctx, value.outer.inner.leaf, at ) ) { return false; }
                     break;
                 }
                 default: break;
@@ -9419,19 +9700,27 @@ inline bool NestExtentAt( const Ctx & ctx, const Nest & value, int64_t & at )
     {
         TableListCursor<int32_t> cursor = TableListElements( ctx, value.tail );
         if ( !cursor.ok ) { return false; }
-        at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
-        at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // the whole array FIRST
+        if constexpr ( schema_cook_extent )
+        {
+            at = ( at + 3 ) & ~(int64_t) 3;
+            at += (int64_t) cursor.count * 4; // canonical cook layout
+        }
+        else
+        {
+            at = ( at + (int64_t) alignof( int32_t ) - 1 ) & ~( (int64_t) alignof( int32_t ) - 1 );
+            at += (int64_t) cursor.count * (int64_t) sizeof( int32_t ); // native pack layout
+        }
     }
     return true;
 }
 
 // the whole extent of one node, from a fresh offset: what a pack reserves
 // for it beside the record's own storage.
-template <typename Ctx>
+template <typename Ctx, bool schema_cook_extent = false>
 inline int64_t NestExtent( const Ctx & ctx, const Nest & value )
 {
     int64_t at = 0;
-    if ( !NestExtentAt( ctx, value, at ) ) { return -1; }
+    if ( !NestExtentAt<Ctx, schema_cook_extent>( ctx, value, at ) ) { return -1; }
     return at;
 }
 
@@ -9605,6 +9894,25 @@ inline bool TwigNumber( const Ctx & ctx, TableNumbering & numbering, const Twig 
     return true;
 }
 
+// TwigCycleSlots: the cycle check's edges below one Twig, guards ignored.
+template <typename Ctx>
+inline bool TwigCycleSlots( const Ctx & ctx, TableCycle & cycle, const Twig & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    switch ( value.inner.type ) // inner: the set arm is the edge
+    {
+        case InnerType::Leaf:
+        {
+            if ( !LeafCycleSlots( ctx, cycle, value.inner.leaf ) ) { return false; }
+            break;
+        }
+        default: break;
+    }
+    return true;
+}
+
 // TwigPackMeasure: the packed region bytes of everything Twig POINTS AT.
 // ONE VISIT PER NODE: `seen` carries the first-visit numbering (§3.1), so a
 // node two references name is measured ONCE and packed once, and a
@@ -9681,6 +9989,33 @@ inline bool NestNumber( const Ctx & ctx, TableNumbering & numbering, const Nest 
                 case InnerType::Leaf:
                 {
                     if ( !LeafNumber( ctx, numbering, value.outer.inner.leaf ) ) { return false; }
+                    break;
+                }
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    return true;
+}
+
+// NestCycleSlots: the cycle check's edges below one Nest, guards ignored.
+template <typename Ctx>
+inline bool NestCycleSlots( const Ctx & ctx, TableCycle & cycle, const Nest & value )
+{
+    (void) ctx;
+    (void) cycle;
+    (void) value;
+    switch ( value.outer.type ) // outer: the set arm is the edge
+    {
+        case OuterType::Inner:
+        {
+            switch ( value.outer.inner.type ) // outer: the set arm is the edge
+            {
+                case InnerType::Leaf:
+                {
+                    if ( !LeafCycleSlots( ctx, cycle, value.outer.inner.leaf ) ) { return false; }
                     break;
                 }
                 default: break;
@@ -9978,6 +10313,28 @@ inline void TwigNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// TwigCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t TwigCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x9f8e22fb612a2f78ull: return 1; // Twig
+        default: return 0;
+    }
+}
+
+// TwigCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool TwigCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return TwigCycleSlots( ctx, cycle, *(const Twig *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -10130,11 +10487,10 @@ inline int64_t TwigLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
 }
 
 // TwigLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -10157,6 +10513,7 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -10175,6 +10532,125 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !TwigWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Twig ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = TwigNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        TwigBuilder builder;
+        Twig * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x9f8e22fb612a2f78ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = TwigNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    TwigNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            TwigLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Twig ) )
     {
         out->malformed = true;
@@ -10185,36 +10661,6 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !TwigWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Twig ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = TwigNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -10223,6 +10669,7 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -10306,6 +10753,26 @@ inline const Twig * TwigLoadTolerant( uint8_t * region, int64_t region_bytes, co
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &TwigCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &TwigCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x9f8e22fb612a2f78ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -10370,6 +10837,7 @@ inline bool TwigLoadBuilderTolerant( TwigBuilder & builder, const uint8_t * wire
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -10411,6 +10879,7 @@ inline bool TwigLoadBuilderTolerant( TwigBuilder & builder, const uint8_t * wire
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x9f8e22fb612a2f78ull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -10463,16 +10932,29 @@ inline bool TwigLoadBuilderTolerant( TwigBuilder & builder, const uint8_t * wire
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = TwigLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && TwigLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &TwigCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &TwigCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { TwigReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -10504,6 +10986,8 @@ inline bool TwigLoadBuilder( TwigBuilder & builder, const uint8_t * wire_file, i
                 out->refuse_reason = wire_damaged;
             }
         }
+        Twig * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { TwigReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -10769,6 +11253,28 @@ inline void NestNodeBody( uint64_t type_id, TableReader & r, const TableNodeMap 
     nodes.carve = NULL; // the cursor is ONE node's, and this node's body is done
 }
 
+// NestCycleOrdinal: a record's type, as the cycle check's ordinal (§3.1, §4).
+inline uint32_t NestCycleOrdinal( uint64_t type_id )
+{
+    switch ( type_id )
+    {
+        case 0x0fe46fc6a1b583abull: return 1; // Nest
+        default: return 0;
+    }
+}
+
+// NestCycleNode: one directory node's stored slots, by its ordinal.
+template <typename Ctx>
+inline bool NestCycleNode( const Ctx & ctx, TableCycle & cycle, int64_t position )
+{
+    const void * node = TableCycleNode( cycle, position );
+    switch ( TableCycleOrdinal( cycle, position ) )
+    {
+        case 1: return NestCycleSlots( ctx, cycle, *(const Nest *) node );
+        default: return true;
+    }
+}
+
 // The numbering both wire walks derive, and NEITHER CARRIES THE OTHER'S: the
 // root takes index 1 and its entry stays open for the whole walk, so a
 // reference back at it is the cycle it is (§3.1).
@@ -10921,11 +11427,10 @@ inline int64_t NestLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
 }
 
 // NestLoadTolerant: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, const uint8_t * wire_file, int64_t wire_file_bytes, TableReport * report )
 {
     TableReport ignored;
@@ -10948,6 +11453,7 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -10966,6 +11472,125 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !NestWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Nest ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = NestNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        NestBuilder builder;
+        Nest * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x0fe46fc6a1b583abull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = NestNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good ) { out->unknown += unknown_records; }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    NestNodeBody( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            NestLoadBody( r, nodes, *root );
+        }
+        table_release( allocator, directory );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Nest ) )
     {
         out->malformed = true;
@@ -10976,36 +11601,6 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !NestWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Nest ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = NestNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -11014,6 +11609,7 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -11097,6 +11693,26 @@ inline const Nest * NestLoadTolerant( uint8_t * region, int64_t region_bytes, co
         memset( region, 0, (size_t) region_bytes );
         return NULL;
     }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &NestCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &NestCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x0fe46fc6a1b583abull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     if ( out->malformed )
     {
         memset( region, 0, (size_t) region_bytes );
@@ -11161,6 +11777,7 @@ inline bool NestLoadBuilderTolerant( NestBuilder & builder, const uint8_t * wire
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
         }
@@ -11202,6 +11819,7 @@ inline bool NestLoadBuilderTolerant( NestBuilder & builder, const uint8_t * wire
     directory[0].offset = (uint64_t) builder.root_ref.value;
     directory[0].type_id = 0x0fe46fc6a1b583abull;
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = NULL;
     nodes.entries = directory;
     nodes.count = records + 1;
@@ -11254,16 +11872,29 @@ inline bool NestLoadBuilderTolerant( NestBuilder & builder, const uint8_t * wire
     TableExtentCarve root_carve;
     root_carve.worker = &builder.main;
     nodes.carve = &root_carve;
-    bool ok = NestLoadBody( r, nodes, *root );
+    bool ok = !nodes.refused && NestLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the partial builder is the caller's to discard, and the report
-    // holds what it held when the count was met
+    // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
+    if ( ok && !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableArenaCtx cycle_ctx = { &builder.arena };
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, NULL, &builder.arena, &NestCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &NestCycleNode<TableArenaCtx> );
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
+    }
     table_release( allocator, directory );
-    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the builder
-    // holds nothing to use, and false says so
+    // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), and so does
+    // every refusal: the root goes back to its declared defaults, so no
+    // node the walk placed is reachable from it and the builder holds
+    // nothing to use. The nodes stay in the arena, unreachable, until the
+    // builder is destroyed; Lock packs from the root and never sees them.
+    if ( out->malformed || !ok ) { NestReset( *root ); }
     if ( out->malformed ) { return false; }
     out->malformed = malformed_before;
     return ok;
@@ -11295,6 +11926,8 @@ inline bool NestLoadBuilder( NestBuilder & builder, const uint8_t * wire_file, i
                 out->refuse_reason = wire_damaged;
             }
         }
+        Nest * refused_root = builder.GetRoot();
+        if ( refused_root != NULL ) { NestReset( *refused_root ); } // nothing of a refused read is used (§4, §6.5)
         return false;
     }
     out->refuse_reason = ok;
@@ -11534,7 +12167,12 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
                                     memset( (void *) &value.inner.plain, 0, sizeof( value.inner.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                    {
+                                        value.inner.type = InnerType::None;
+                                        r.report->malformed = true;
+                                        break;
+                                    }
                                     int32_t decoded_v = (int32_t) widened_v;
                                     value.inner.plain = decoded_v;
                                     value.inner.type = InnerType::Plain;
@@ -11551,7 +12189,9 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
                             if ( sub.size != 4 ) { value.inner.type = InnerType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) )
                             {
-                                value.inner.type = InnerType::None; r.report->malformed = true; break;
+                                value.inner.type = InnerType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             value.inner.plain = decoded_v;
@@ -11909,7 +12549,12 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                                     if ( arm_inner.size != TableKindWidth( arm_inner_kind ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
                                                     memset( (void *) &value.outer.inner.plain, 0, sizeof( value.outer.inner.plain ) ); // selection establishes the arm (§2.6)
                                                     int64_t widened_v = 0;
-                                                    if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; }
+                                                    if ( !TableReadSignedAt( arm_inner, arm_inner_kind, widened_v ) )
+                                                    {
+                                                        value.outer.inner.type = InnerType::None;
+                                                        r.report->malformed = true;
+                                                        break;
+                                                    }
                                                     int32_t decoded_v = (int32_t) widened_v;
                                                     value.outer.inner.plain = decoded_v;
                                                     value.outer.inner.type = InnerType::Plain;
@@ -11922,7 +12567,9 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                             if ( arm_inner.size != 4 ) { value.outer.inner.type = InnerType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                                             if ( !arm_inner.has( 4 ) )
                                             {
-                                                value.outer.inner.type = InnerType::None; r.report->malformed = true; break;
+                                                value.outer.inner.type = InnerType::None;
+                                                r.report->malformed = true;
+                                                break;
                                             }
                                             int32_t decoded_v = int32_t( arm_inner.get32() );
                                             value.outer.inner.plain = decoded_v;
@@ -11946,7 +12593,12 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                                     if ( sub.size != TableKindWidth( arm_kind ) ) { value.outer.type = OuterType::None; r.report->malformed = true; break; }
                                     memset( (void *) &value.outer.plain, 0, sizeof( value.outer.plain ) ); // selection establishes the arm (§2.6)
                                     int64_t widened_v = 0;
-                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) ) { value.outer.type = OuterType::None; r.report->malformed = true; break; }
+                                    if ( !TableReadSignedAt( sub, arm_kind, widened_v ) )
+                                    {
+                                        value.outer.type = OuterType::None;
+                                        r.report->malformed = true;
+                                        break;
+                                    }
                                     int32_t decoded_v = (int32_t) widened_v;
                                     value.outer.plain = decoded_v;
                                     value.outer.type = OuterType::Plain;
@@ -11963,7 +12615,9 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             if ( sub.size != 4 ) { value.outer.type = OuterType::None; r.report->malformed = true; break; } // an L that is not the kind's width is that arm's own framing damage (§3)
                             if ( !sub.has( 4 ) )
                             {
-                                value.outer.type = OuterType::None; r.report->malformed = true; break;
+                                value.outer.type = OuterType::None;
+                                r.report->malformed = true;
+                                break;
                             }
                             int32_t decoded_v = int32_t( sub.get32() );
                             value.outer.plain = decoded_v;
@@ -12054,8 +12708,11 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             do
                             {
                                 int64_t widened_v = 0;
-                                if ( !TableReadSignedAt( sub, elem_kind, widened_v ) ) { r.report->malformed = true;
-                                    break; }
+                                if ( !TableReadSignedAt( sub, elem_kind, widened_v ) )
+                                {
+                                    r.report->malformed = true;
+                                    break;
+                                }
                                 int32_t decoded_v = (int32_t) widened_v;
                                 ( *slot ) = decoded_v;
                                 landed = true;
@@ -12173,11 +12830,10 @@ inline void TwigNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
 }
 
 // TwigLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -12189,6 +12845,7 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -12204,6 +12861,7 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -12222,6 +12880,131 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !TwigWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Twig ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = TwigNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        TwigBuilder builder;
+        Twig * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x9f8e22fb612a2f78ull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = TwigNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    TwigNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            TwigLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Twig ) )
     {
         out->malformed = true;
@@ -12232,36 +13015,6 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !TwigWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Twig ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = TwigNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -12270,6 +13023,7 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -12364,7 +13118,28 @@ inline const Twig * TwigLoadRetain( uint8_t * region, int64_t region_bytes, cons
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &TwigCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &TwigCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x9f8e22fb612a2f78ull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -12511,11 +13286,10 @@ inline void NestNodeBodyRetain( uint64_t type_id, TableReader & r, const TableNo
 }
 
 // NestLoadRetain: decode the tolerant wire into the caller's exact-sized region and
-// return the root. LOAD IS A SCAN, and that is the whole of its bound: it
-// follows no reference, so there is no depth cap, no visited set and no
-// ordering rule on the indices. Partial results are kept, as everywhere on
-// this wire — the report says what happened. NULL means the CALLER's buffer
-// was wrong.
+// return the root. LOAD IS A SCAN: the decode follows no reference, and a
+// cyclic graph is refused afterwards by one linear pass over the node
+// directory (docs/SPEC-TABLES.md §3.1). Damage discards the whole load
+// (§4). NULL means refusal, damage or a CALLER's buffer that was wrong.
 // UNDER RETENTION it also fills the caller's two stores with the fields
 // this build cannot name, and the report carries what it could not keep
 // (docs/SPEC-TABLES.md §6.6). It is Load's own path and nothing else: the
@@ -12527,6 +13301,7 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     const int32_t non_finite_before = out->non_finite_floats;
     const bool malformed_before = out->malformed;
     out->malformed = false;
+    TableRetainReset( retain, TableNodeMap(), NULL );
     // THE FORM BYTE IS READ FIRST, then the trailer, and only then a body:
     // a file that is both a newer form and damaged is a REFUSAL and never
     // damage (docs/SPEC-TABLES.md §3).
@@ -12542,6 +13317,7 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
         }
         else
         {
+            out->malformed = malformed_before;
             out->refused = true;
             out->refuse_reason = unknown_form;
             if ( wire_file_bytes > 0 && wire_file[0] == kTableWireMessageForm ) { out->reason = message_form_as_file; }
@@ -12560,6 +13336,131 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
     const uint8_t * const wire = wire_file + 1;
     const int64_t wire_bytes = body_bytes;
+    if ( region != NULL && region_bytes > 0 && ( ( (uintptr_t) region ) & ( kTableAlign - 1 ) ) == 0 )
+    {
+        memset( region, 0, (size_t) region_bytes );
+    }
+    uint64_t type_id = 0;
+    const uint8_t * body = NULL;
+    int64_t length = 0;
+
+    // the record count and the data bytes, from the FRAMING alone
+    TableRefuseReason reason = count_over_length;
+    bool extent_ok = true;
+    int64_t root_extent = 0;
+    if ( !NestWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
+    {
+        extent_ok = false;
+    }
+    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Nest ) ) + root_extent );
+    int64_t records = 0;
+    {
+        TableReport counting;
+        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
+        while ( TableNodeScanNext( scan, type_id, body, length ) )
+        {
+            records++;
+            if ( extent_ok )
+            {
+                int64_t storage = NestNodeStorage( type_id, length, reason );
+                if ( storage == kTableNodeRefused ) { extent_ok = false; }
+                else if ( storage > 0 ) { data += storage; }
+            }
+        }
+    }
+    if ( !extent_ok )
+    {
+        NestBuilder builder;
+        Nest * root = builder.GetRoot();
+        const TableAllocator allocator = builder.arena.allocator;
+        TableNodeDirEntry * directory = root != NULL ? (TableNodeDirEntry *) table_allocate( allocator, ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry ) ) : NULL;
+        if ( directory == NULL )
+        {
+            out->malformed = true;
+            return NULL;
+        }
+        directory[0].offset = (uint64_t) builder.root_ref.value;
+        directory[0].type_id = 0x0fe46fc6a1b583abull;
+        TableNodeMap nodes;
+        nodes.cycle_indices = true;
+        nodes.arena = true;
+        nodes.worker = &builder.main;
+        nodes.entries = directory;
+        nodes.count = records + 1;
+        nodes.once = true;
+        TableRetainReset( retain, nodes, NULL );
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            int32_t unknown_records = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                uint32_t at = NestNodeAlloc( type_id, builder.main, length );
+                if ( at == 0 )
+                {
+                    unknown_records++;
+                    directory[k + 1].offset = kTableNodeAbsent;
+                }
+                else
+                {
+                    directory[k + 1].offset = (uint64_t) at;
+                }
+                directory[k + 1].type_id = type_id;
+                k++;
+            }
+            nodes.good = TableNodeScanWhole( scan );
+            if ( nodes.good )
+            {
+                out->unknown += unknown_records;
+                out->retain_lost += unknown_records;
+            }
+            else
+            {
+                out->malformed = true;
+            }
+        }
+        if ( nodes.good )
+        {
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                if ( directory[k + 1].offset != kTableNodeAbsent )
+                {
+                    TableReader sub( body, length, out, &ids_table );
+                    NestNodeBodyRetain( type_id, sub, nodes, TableArenaAt( builder.arena, (uint32_t) directory[k + 1].offset ), retain, (uint32_t) ( k + 2 ) );
+                    if ( nodes.refused ) { break; }
+                }
+                k++;
+            }
+        }
+        if ( !nodes.refused )
+        {
+            TableReader r( wire, wire_bytes, out, &ids_table );
+            r.nested = false;
+            TableExtentCarve root_carve;
+            root_carve.worker = &builder.main;
+            nodes.carve = &root_carve;
+            NestLoadBodyRetain( r, nodes, *root, retain, TableRetainPathRoot( (const void *) root, 1 ) );
+        }
+        table_release( allocator, directory );
+        TableRetainReset( retain, TableNodeMap(), NULL );
+        if ( TableNonFiniteRefused( out, non_finite_before ) )
+        {
+            out->malformed = out->malformed || malformed_before;
+            return NULL;
+        }
+        if ( nodes.refused && !out->malformed )
+        {
+            out->refused = true;
+            out->reason = count_over_extent_cap;
+            out->refuse_reason = count_over_extent_cap;
+            out->malformed = malformed_before;
+            return NULL;
+        }
+        out->malformed = true;
+        return NULL;
+    }
     if ( region == NULL || region_bytes < (int64_t) sizeof( Nest ) )
     {
         out->malformed = true;
@@ -12570,36 +13471,6 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
         out->malformed = true;
         return NULL;
     }
-    memset( region, 0, (size_t) region_bytes );
-    uint64_t type_id = 0;
-    const uint8_t * body = NULL;
-    int64_t length = 0;
-
-    // the record count and the data bytes, from the FRAMING alone
-    TableRefuseReason reason = count_over_length; // LoadMeasure is where a caller reads it; a Load past a refusal is malformed
-    int64_t root_extent = 0;
-    if ( !NestWireExtent( wire, wire_bytes, root_extent, &ids_table, reason ) )
-    {
-        out->malformed = true;
-        return NULL;
-    }
-    int64_t data = TableAlignUp64( TableAlignUp64( (int64_t) sizeof( Nest ) ) + root_extent );
-    int64_t records = 0;
-    {
-        TableReport counting;
-        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &counting, &ids_table );
-        while ( TableNodeScanNext( scan, type_id, body, length ) )
-        {
-            records++;
-            int64_t storage = NestNodeStorage( type_id, length, reason );
-            if ( storage == kTableNodeRefused )
-            {
-                out->malformed = true;
-                return NULL;
-            }
-            if ( storage > 0 ) { data += storage; }
-        }
-    }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
     if ( data + attribution > region_bytes )
     {
@@ -12608,6 +13479,7 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     }
 
     TableNodeMap nodes;
+    nodes.cycle_indices = true; // construction indices become offsets only after the cycle check
     nodes.base = region;
     nodes.entries = (TableNodeDirEntry *) ( region + data );
     nodes.count = records + 1;
@@ -12702,7 +13574,28 @@ inline const Nest * NestLoadRetain( uint8_t * region, int64_t region_bytes, cons
     {
         out->malformed = out->malformed || malformed_before;
         memset( region, 0, (size_t) region_bytes );
+        TableRetainReset( retain, nodes, region );
         return NULL;
+    }
+    if ( !out->malformed && nodes.good )
+    {
+        TableCycle cycle;
+        TableRegionCtx cycle_ctx;
+        const bool acyclic = TableCycleBegin( cycle, directory, records + 1, region, NULL, &NestCycleOrdinal ) &&
+            TableCycleAcyclic( cycle, cycle_ctx, &NestCycleNode<TableRegionCtx> );
+        TableCycleRestore( cycle, 0, 0x0fe46fc6a1b583abull );
+        {
+            TableReport restoring;
+            TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, &restoring, &ids_table );
+            int64_t k = 0;
+            while ( TableNodeScanNext( scan, type_id, body, length ) )
+            {
+                TableCycleRestore( cycle, k + 1, type_id );
+                k++;
+            }
+        }
+        TableCycleEnd( cycle );
+        if ( !acyclic ) { out->malformed = true; } // a cycle: no writer produces one
     }
     if ( out->malformed )
     {
@@ -12850,7 +13743,7 @@ inline int64_t NestSaveRetain( const Nest * root, TableRetain * retain, uint8_t 
 // parameter on a load.
 inline const Twig * TwigOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Twig *) TableCookOpen( bytes, length, (uint64_t) sizeof( Twig ), (uint64_t) alignof( Twig ), reason );
+    return (const Twig *) TableCookOpen( bytes, length, (uint64_t) sizeof( Twig ), (uint64_t) 8, reason );
 }
 
 // NestOpen: match the header and POINT. On a match the bytes ARE what this
@@ -12881,7 +13774,7 @@ inline const Twig * TwigOpen( const void * bytes, uint64_t length, TableRefuseRe
 // parameter on a load.
 inline const Nest * NestOpen( const void * bytes, uint64_t length, TableRefuseReason * reason = NULL )
 {
-    return (const Nest *) TableCookOpen( bytes, length, (uint64_t) sizeof( Nest ), (uint64_t) alignof( Nest ), reason );
+    return (const Nest *) TableCookOpen( bytes, length, (uint64_t) sizeof( Nest ), (uint64_t) 8, reason );
 }
 
 // ---- the cooked form: WRITE a cook (docs/SPEC-TABLES.md §7.6) ----
@@ -13024,7 +13917,7 @@ inline bool TwigCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !TwigCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !TwigCookExtent( ctx, region, at + 24, extent_at, at, value, order ) ) { return false; }
-    return extent_at == TwigExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == TwigExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // NestCookNode: one node, the record, then the extent its lists and maps take (§2.8, §2.9).
@@ -13034,7 +13927,7 @@ inline bool NestCookNode( const Ctx & ctx, const TableCookRegion & region, uint8
     if ( !NestCookBody( ctx, region, at, value, order ) ) { return false; }
     int64_t extent_at = 0;
     if ( !NestCookExtent( ctx, region, at + 48, extent_at, at, value, order ) ) { return false; }
-    return extent_at == NestExtent( ctx, value ); // the extent written is the extent measured, or no header is written
+    return extent_at == NestExtent<Ctx, true>( ctx, value ); // the extent written is the extent measured, or no header is written
 }
 
 // TwigCookLayout: the tool's own Layout (docs/SPEC-TABLES.md §7.2) over one
@@ -13052,7 +13945,7 @@ inline bool TwigCookLayout( const Ctx & ctx, const Twig & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = TwigExtent( ctx, root );
+    const int64_t root_extent = TwigExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 24 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;
@@ -13207,7 +14100,7 @@ inline bool NestCookLayout( const Ctx & ctx, const Nest & root, const TableNumbe
 {
     region.numbering = &numbering;
     region.count = numbering.count + 1;
-    const int64_t root_extent = NestExtent( ctx, root );
+    const int64_t root_extent = NestExtent<Ctx, true>( ctx, root );
     if ( root_extent < 0 ) { return false; }
     int64_t offset = 48 + root_extent; // the root at zero, its extent behind it
     int64_t align = 8;

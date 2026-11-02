@@ -215,13 +215,20 @@ public final class FixedTableMessage {
                 }
                 return 0;
             }
-            if (!read) {
-                return i;
+            if (!read || report.malformed) {
+                report.malformed = true;
+                for (int j = 0; j <= i; j++) {
+                    reset(values[j]);
+                }
+                return 0;
             }
         }
         if (!r.align() || r.at != r.totalBits) {
             report.malformed = true;
-            return count;
+            for (int j = 0; j < count; j++) {
+                reset(values[j]);
+            }
+            return 0;
         }
         return count;
     }

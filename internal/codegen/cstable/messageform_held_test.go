@@ -21,10 +21,8 @@ import (
 // out of that run. A clause that printed nothing DID NOT RUN — the assembly did
 // not build or the name moved — and that is a failure and never a pass.
 //
-// The C# table wire carries no serialize dependency (the generated home's own
-// header), so the project compiles the generated unit standing alone; the
-// sibling `serialize.cs` runtime, which the PACKET emitter's tests need, is not
-// a requirement here.
+// The pointer unit includes a packet connection, so this probe links the real
+// serialize.cs runtime and executes its manifest announcement row too.
 func TestMessageFormHeldCSharp(t *testing.T) {
 	t.Parallel()
 	out, err := csHeldRun(t)
@@ -65,28 +63,6 @@ func TestMessageFormHeldCSharp(t *testing.T) {
 		t.Run("connection_"+conn.key, func(t *testing.T) {
 			t.Parallel()
 			csHeldAssert(t, out, err, "row/"+conn.key)
-		})
-	}
-	for _, conn := range csHeldRuntimeConns {
-		t.Run("connection_"+conn.key, func(t *testing.T) {
-			t.Parallel()
-			rowOut, rowErr := csHeldRuntimeAttempt(t, conn)
-			if rowErr == nil {
-				t.Fatalf("connection_%s built without the sibling runtime; its announcement check must run", conn.key)
-			}
-			// The row is named as not run only when the build's own
-			// diagnostics say the sibling `../serialize.cs` runtime is what is
-			// missing; any other compiler error is a generated-code or
-			// compiler regression this leg must show, never hide (§3.3).
-			if !csHeldMissingRuntime(rowOut) {
-				t.Fatalf("connection_%s failed to build for a reason other than the sibling ../serialize.cs runtime:\n%s", conn.key, rowOut)
-			}
-			// An OWED GAP, not a toolchain absence: this attempt compiles the
-			// unit without the sibling runtime on purpose and no leg here yet
-			// links ../serialize.cs to run the announcement check, so the row
-			// stays a named skip even under SCHEMA_REQUIRE_CORPUS (staging the
-			// sibling does not change it). make tables-cs-fixed-rows lists it.
-			t.Skipf("not run: the packet emitter names the sibling ../serialize.cs runtime this checkout does not carry:\n%s", csHeldFirstErrors(rowOut))
 		})
 	}
 	for _, msg := range csHeldMsgs {
@@ -154,6 +130,21 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 			sources = append(sources, path)
 		}
 	}
+	runtimeDir := os.Getenv("SERIALIZE_CS")
+	if runtimeDir == "" {
+		runtimeDir = "../../../../serialize.cs"
+	}
+	runtimeDir, err := filepath.Abs(runtimeDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Serialize.cs", "Int128Pair.cs"} {
+		path := filepath.Join(runtimeDir, "src", name)
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("C# message connection runtime: %v", err)
+		}
+		sources = append(sources, path)
+	}
 	held := filepath.Join(dir, "Held.cs")
 	if err := os.WriteFile(held, []byte(csHeldCompose(t)), 0o600); err != nil {
 		t.Fatal(err)
@@ -185,115 +176,6 @@ func csHeldBuild(t *testing.T) ([]byte, error) {
 	run.Env, run.Dir = csDotnetEnv(dir, dir), dir
 	runOut, runErr := run.CombinedOutput()
 	return append(compileOut, runOut...), runErr
-}
-
-// csHeldRuntimeAttempt generates one csHeldRuntimeUnits unit with both emitters
-// and compiles it as a library, returning the compiler's own output and error.
-// The unit is compiled whole, with its packet file kept, so the refusal the
-// missing sibling `../serialize.cs` runtime produces is the build's real one,
-// not a guess: the connection row is named as not run only when this attempt
-// says the runtime it needs is what is missing.
-func csHeldRuntimeAttempt(t *testing.T, conn csHeldConn) (string, error) {
-	t.Helper()
-	var unit csHeldUnit
-	for _, u := range csHeldRuntimeUnits {
-		if u.pkg == conn.pkg {
-			unit = u
-		}
-	}
-	if unit.pkg == "" {
-		t.Fatalf("no runtime unit for %s", conn.pkg)
-	}
-	dir := t.TempDir()
-	u := unitFrom(t, csHeldSchemaFor(t, unit))
-	files, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	packet, err := csharp.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, packet)
-	var sources []string
-	for name, data := range files {
-		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		sources = append(sources, path)
-	}
-	csc, refs, _ := csDotnetToolchain(t)
-	dotnet := csDotnet()
-	lib := filepath.Join(dir, "csmsgrow.dll")
-	args := []string{"exec", csc, "-nologo", "-noconfig", "-target:library", "-unsafe",
-		"-nullable:annotations", "-langversion:latest", "-nostdlib+", "-out:" + lib}
-	for _, ref := range refs {
-		args = append(args, "-r:"+ref)
-	}
-	args = append(args, sources...)
-	compile := exec.Command(dotnet, args...)
-	compile.Env, compile.Dir = csDotnetEnv(dir, dir), dir
-	out, err := compile.CombinedOutput()
-	return string(out), err
-}
-
-// csHeldRuntimeTypes are the names the sibling `../serialize.cs` runtime
-// provides and the PACKET emitter's generated unit references: the `Serialize`
-// namespace and its stream and batch ref structs. A build that fails only
-// because this checkout does not stage that sibling reports each of these as an
-// unresolved name (error CS0246, docs/SPEC-TABLES.md §3.3's wire functions call
-// the packet runtime); any other diagnostic is a generated-code or compiler
-// regression.
-var csHeldRuntimeTypes = []string{"Serialize", "ReadStream", "WriteStream", "ReadBatch", "WriteBatch"}
-
-// csHeldMissingRuntime reports whether an attempt's compiler diagnostics
-// identify the sibling `../serialize.cs` runtime as what is missing: at least
-// one error, and every error a CS0246 whose unresolved name is one of
-// csHeldRuntimeTypes. A diagnosis with any other error, or no error at all, is
-// not the missing runtime and must fail the row instead of being named not run
-// (docs/SPEC-TABLES.md §3.3).
-func csHeldMissingRuntime(out string) bool {
-	sawError := false
-	for line := range strings.SplitSeq(out, "\n") {
-		if !strings.Contains(line, "error CS") {
-			continue
-		}
-		sawError = true
-		if !strings.Contains(line, "error CS0246:") {
-			return false
-		}
-		found := false
-		for _, name := range csHeldRuntimeTypes {
-			if strings.Contains(line, "'"+name+"'") {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return sawError
-}
-
-// csHeldFirstErrors keeps the first compiler error lines of an attempt's
-// output, so a not-run skip names what the build actually refused on instead
-// of an assumed reason.
-func csHeldFirstErrors(out string) string {
-	var lines []string
-	for line := range strings.SplitSeq(out, "\n") {
-		if strings.Contains(line, "error CS") {
-			lines = append(lines, strings.TrimSpace(line))
-			if len(lines) == 3 {
-				break
-			}
-		}
-	}
-	if len(lines) == 0 {
-		return out
-	}
-	return strings.Join(lines, "\n")
 }
 
 // csDotnet is the dotnet command the leg's Makefile pins, DOTNET or the name on
@@ -720,15 +602,6 @@ var csHeldUnits = []csHeldUnit{
 	{"tables/backend", "backenddemo", "Backenddemo", "B"},
 	{"tables/vocab", "vocabdemo", "Vocabdemo", "V"},
 	{"tables/vocab9", "vocab9demo", "Vocab9demo", "N"},
-}
-
-// csHeldRuntimeUnits are the manifest units whose connection rows the Go
-// leg answers and this leg's own build does not carry: their packet emitter
-// names the sibling `../serialize.cs` runtime this checkout does not stage, and
-// this card's rule that such a target is NAMED AS NOT RUN and never faked
-// holds. Each row's subtest attempts the build and reports the compiler's own
-// refusal, so the not-run status is evidenced rather than assumed.
-var csHeldRuntimeUnits = []csHeldUnit{
 	{"tables/pointers", "graphdemo", "Graphdemo", "G"},
 }
 
@@ -740,12 +613,6 @@ var csHeldConns = []csHeldConn{
 	{"backend_conn", "backenddemo", "backend_conn.bin", "0x16d0630a084485ae"},
 	{"vocab_conn", "vocabdemo", "vocab_conn.bin", "0x40062c876abfc027"},
 	{"vocab9_conn", "vocab9demo", "vocab9_conn.bin", "0x3a923c7d0da66dd8"},
-}
-
-// csHeldRuntimeConns are the `connection` rows of MANIFEST.txt the main
-// build cannot carry (csHeldRuntimeUnits), each with its announcement wire and
-// the build version the row pins.
-var csHeldRuntimeConns = []csHeldConn{
 	{"graph_conn", "graphdemo", "graph_conn.bin", "0xfdaabe4726d81d5c"},
 }
 

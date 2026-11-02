@@ -8,6 +8,7 @@ package tabletext
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"math"
 	"math/big"
@@ -63,10 +64,11 @@ type labelEntry struct {
 // its declared defaults with nothing the read placed.
 func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 	priorMalformed := report.Malformed
+	missingBefore := report.MissingRequired
 	report.Malformed = false
 	ok := m.read(inst, text, report)
 	if !ok || report.Malformed {
-		report.Malformed = true
+		report.Malformed = priorMalformed || report.Malformed || report.MissingRequired == missingBefore
 		m.Clear(inst)
 		return false
 	}
@@ -75,6 +77,7 @@ func (m *Model) Read(inst *Instance, text []byte, report *Report) bool {
 }
 
 func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
+	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	if m.IsVariable(inst.Def.Name) {
 		in.graph = map[uint64]labelEntry{}
@@ -88,7 +91,7 @@ func (m *Model) read(inst *Instance, text []byte, report *Report) bool {
 		}
 	}
 	if in.bad || !ok {
-		report.Malformed = true
+		report.Malformed = in.bad || report.MissingRequired == missingBefore
 		return false
 	}
 	return true
@@ -722,7 +725,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			c = in.peek()
 			if c == '}' {
 				in.pos++
-				return true
+				return in.report.RequireSeen(inst, func(i int) bool { return seen[i] })
 			}
 			if c == 0 {
 				in.bad = true
@@ -801,7 +804,7 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 		}
 		if c == '}' {
 			in.pos++
-			return true
+			return in.report.RequireSeen(inst, func(i int) bool { return seen[i] })
 		}
 		in.bad = true
 		return false
@@ -978,7 +981,7 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		// an empty object: a node at its defaults, named once
 		in.pos++
 		cell.Node = in.m.New(st)
-		return true
+		return in.report.RequireSeen(cell.Node, func(int) bool { return false })
 	}
 	if c == 0 {
 		in.bad = true
@@ -1285,6 +1288,8 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 	}
 	fv.Count = 0
 	placed := 0
+	var spent int64
+	full := false
 	bound := int(f.ArrayBound)
 	if f.Array == ir.ArrayList {
 		bound = math.MaxInt32
@@ -1306,10 +1311,15 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		if f.Array == ir.ArrayList && placed == len(fv.Elems) {
+		if !full && f.Array == ir.ArrayList && placed == len(fv.Elems) {
 			fv.Elems = append(fv.Elems, in.m.elementZero(f))
 		}
+		before := placed
 		switch {
+		case full:
+			if !in.skipValue(depth + 1) {
+				return false
+			}
 		case placed >= bound:
 			in.report.Clamped++
 			if !in.skipValue(depth + 1) {
@@ -1341,6 +1351,13 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 				rec.Fields[0].Present = true
 			}
 			placed++
+		}
+		if placed > before && !in.m.KeepTextTotal(fv, placed-1, &spent, in.report) {
+			placed--
+			full = true
+			if f.Array == ir.ArrayList {
+				fv.Elems = fv.Elems[:placed]
+			}
 		}
 		c = in.peek()
 		if c == ',' {
@@ -1620,16 +1637,21 @@ func (in *reader) placeInteger(cell *Cell, f *ir.Field, token string, integral b
 	// THE DECLARED RANGE FIRST, THEN THE STORAGE WIDTH, the wire's order (§4),
 	// so a text and a wire loaded from the same data land the same instance.
 	bounded := number
-	lo, hi, implied := ImpliedRange(f)
-	if f.HasIntRange {
-		lo, hi, implied = bigToFloat(f.IntMin), bigToFloat(f.IntMax), true
+	var lo, hi jsonInteger
+	hasRange := f.HasIntRange
+	if hasRange {
+		lo, hi = integerBound(f.IntMin), integerBound(f.IntMax)
+	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		lo = jsonInteger{finite: true}
+		hi = jsonInteger{finite: true, magnitude: uint64(1)<<uint(f.Type.Width) - 1}
+		hasRange = true
 	}
-	if implied {
-		if scale := number.scale(); scale < lo {
-			bounded = integerOf(lo)
+	if hasRange {
+		if compareInteger(number, lo) < 0 {
+			bounded = lo
 			in.report.Clamped++
-		} else if scale > hi {
-			bounded = integerOf(hi)
+		} else if compareInteger(number, hi) > 0 {
+			bounded = hi
 			in.report.Clamped++
 		}
 	}
@@ -1692,7 +1714,11 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			cell.U = uint64(tag)
 		}
 	} else if arm.Body() {
-		if in.valueShape() != 'o' {
+		shape := byte('o')
+		if arm.Ref.JsonArray {
+			shape = 'a'
+		}
+		if in.valueShape() != shape {
 			// the wrong JSON type for the arm's row: the union reads None,
 			// the event is counted, and the enclosing object continues (§16.2)
 			in.report.KindMismatch++
@@ -1977,30 +2003,25 @@ func interpretIntegerExact(token string) jsonInteger {
 	return out
 }
 
-// integerOf is a declared range bound as the same value. A bound is inside the
-// field's own domain by construction, so nothing here saturates.
-func integerOf(bound float64) jsonInteger {
-	out := jsonInteger{finite: true, negative: bound < 0}
-	whole := math.Abs(bound)
-	if whole >= 18446744073709551616.0 {
-		out.magnitude = math.MaxUint64
-	} else {
-		out.magnitude = uint64(whole)
-	}
-	if out.magnitude == 0 {
-		out.negative = false
-	}
-	return out
+// integerBound keeps an exact schema bound in the same sign/magnitude form
+// as the parsed token. Checked narrow-integer bounds fit in one uint64 lane;
+// converting either side to float64 would merge adjacent values above 2^53.
+func integerBound(bound *big.Int) jsonInteger {
+	return jsonInteger{finite: true, negative: bound.Sign() < 0, magnitude: bound.Uint64()}
 }
 
-// scale is the value on its OWN number line, for comparing against a declared
-// bound: correctly signed past MaxInt64, where the storage's bit pattern is not
-// a number to compare.
-func (n jsonInteger) scale() float64 {
-	if n.negative {
-		return -float64(n.magnitude)
+func compareInteger(a, b jsonInteger) int {
+	if a.negative != b.negative {
+		if a.negative {
+			return -1
+		}
+		return 1
 	}
-	return float64(n.magnitude)
+	order := cmp.Compare(a.magnitude, b.magnitude)
+	if a.negative {
+		return -order
+	}
+	return order
 }
 
 // integerInDomain is THE TARGET DOMAIN, established before the value reaches
@@ -2046,13 +2067,6 @@ func integerInDomain(n jsonInteger, signed bool, bytes int) (int64, bool) {
 	return int64(magnitude), moved
 }
 
-// bigToFloat renders an IR range bound as the double the descriptors carry, so
-// the text form's clamp compares the same two numbers the generated walk does.
-func bigToFloat(v *big.Int) float64 {
-	f, _ := new(big.Float).SetInt(v).Float64()
-	return f
-}
-
 // ---- the packer's two entry points (docs/SPEC-TABLES.md §17.1) ----
 
 // ReadValue places ONE FIELD's value from one text — a plain `<field>.json` at
@@ -2060,6 +2074,7 @@ func bigToFloat(v *big.Int) float64 {
 // checked before the value is placed, presence of the FILE is presence for a
 // `?T`, and nothing is coerced.
 func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
+	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	m.reset(fv)
@@ -2071,6 +2086,9 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	case shape != Shape(fv.Def):
 		report.KindMismatch++
 		ok = in.skipValue(0)
+		if ok && fv.Def.Type.Optional {
+			fv.Present = true
+		}
 	default:
 		ok = in.readField(fv, 0)
 		if ok && fv.Def.Type.Optional {
@@ -2085,7 +2103,8 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 	}
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
-		report.Malformed = true
+		m.reset(fv)
+		report.Malformed = report.Malformed || in.bad || report.MissingRequired == missingBefore
 		return false
 	}
 	return true
@@ -2095,6 +2114,7 @@ func (m *Model) ReadValue(fv *Field, text []byte, report *Report) bool {
 // `<Variant>.json` under an enum-keyed field's directory, or one of the files
 // that become a bounded array's elements in name order.
 func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bool {
+	missingBefore := report.MissingRequired
 	in := &reader{text: text, report: report, m: m}
 	in.byteOrderMark() // §16.2, §16.12: a whole text, so its leading mark is skipped
 	fv.Elems[slot] = m.elementZero(fv.Def)
@@ -2116,7 +2136,8 @@ func (m *Model) ReadElement(fv *Field, slot int, text []byte, report *Report) bo
 	}
 	if in.bad || !ok {
 		in.nameZero(m.ownerTable(fv.Def), fv) // §16.3, §17.4
-		report.Malformed = true
+		fv.Elems[slot] = m.elementZero(fv.Def)
+		report.Malformed = report.Malformed || in.bad || report.MissingRequired == missingBefore
 		return false
 	}
 	return true
@@ -2311,6 +2332,17 @@ func (in *reader) readMapValue(fv *Field, depth int) bool {
 			return false
 		}
 		in.m.reset(fv)
+		return true
+	}
+	if in.valueShape() != Shape(fv.Def) {
+		in.report.KindMismatch++
+		if !in.skipValue(depth + 1) {
+			return false
+		}
+		// Null is the only absent optional map value (§16.2).
+		if fv.Def.Type.Optional {
+			fv.Present = true
+		}
 		return true
 	}
 	if !in.readField(fv, depth) {

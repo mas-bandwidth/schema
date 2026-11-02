@@ -318,6 +318,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_is_enum( const tabledemo_table_fie
 
 static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 'a'; }
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( tabledemo_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( tabledemo_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
@@ -325,9 +326,11 @@ static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_fiel
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
     if ( tabledemo_table_json_is_enum( f ) ) { return 's'; }
     if ( tabledemo_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -335,11 +338,14 @@ static SCHEMA_UNUSED char tabledemo_table_json_shape( const tabledemo_table_fiel
 /* the ELEMENT shape of an array field — the same classifier one level down */
 static SCHEMA_UNUSED char tabledemo_table_json_element_shape( const tabledemo_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 's'; }
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }
     if ( tabledemo_table_json_is_enum( f ) ) { return 's'; }
     if ( tabledemo_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -714,6 +720,57 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_float( tabledemo_table_json_
     return 1;
 }
 
+static SCHEMA_UNUSED void schema_tabledemo_table_json_civil_from_days_( int64_t z, int * year, int * month, int * day )
+{
+    int64_t era, doe, yoe, y, doy, mp, d, m;
+    z += 719468;
+    era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    doe = z - era * 146097;
+    yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    y = yoe + era * 400;
+    doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    mp = ( 5 * doy + 2 ) / 153;
+    d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_timestamp_( tabledemo_table_json_out_t * out, const void * storage )
+{
+    int64_t nanos = 0, seconds, fraction, days, second_of_day;
+    int year = 0, month = 0, day = 0, hour, minute, second, length;
+    char text[48];
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    seconds = nanos / 1000000000;
+    fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    days = seconds / 86400;
+    second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    schema_tabledemo_table_json_civil_from_days_( days, &year, &month, &day );
+    hour = (int) ( second_of_day / 3600 );
+    minute = (int) ( ( second_of_day / 60 ) % 60 );
+    second = (int) ( second_of_day % 60 );
+    length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
+    tabledemo_table_json_put( out, '"' );
+    tabledemo_table_json_raw( out, text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        int placed = 9;
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        while ( placed > 1 && digits[placed - 1] == '0' ) { placed--; }
+        tabledemo_table_json_put( out, '.' );
+        tabledemo_table_json_raw( out, digits, placed );
+    }
+    tabledemo_table_json_put( out, 'Z' );
+    tabledemo_table_json_put( out, '"' );
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_write_value( tabledemo_table_json_out_t * out, const void * base, const tabledemo_table_type_info_t * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
@@ -731,8 +788,40 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_pointer( tabledemo_table_jso
 static SCHEMA_UNUSED int tabledemo_table_json_write_pointer( tabledemo_table_json_out_t * out, const void * slot, const tabledemo_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+static SCHEMA_UNUSED int schema_tabledemo_table_json_write_text_element_( tabledemo_table_json_out_t * out, const void * p, const tabledemo_table_field_info_t * f )
+{
+    const tabledemo_table_field_info_t * v = &f->table->fields[0];
+    int32_t n;
+    if ( f->text_list == 2 && tabledemo_table_json_get_raw( (const uint8_t *) p + v->present_offset, 1 ) == 0 )
+    {
+        tabledemo_table_json_raw( out, "null", 4 );
+        return 1;
+    }
+    n = tabledemo_table_json_count( p, v );
+    if ( n < 0 || n > v->array_bound ) { return 0; }
+    tabledemo_table_json_write_string( out, (const char *) p + v->offset, n );
+    return 1;
+}
+
+static SCHEMA_UNUSED int64_t schema_tabledemo_table_json_text_bytes_( const void * p, int32_t count, const tabledemo_table_field_info_t * f )
+{
+    const tabledemo_table_field_info_t * v = &f->table->fields[0];
+    int64_t spent = 0;
+    int32_t i;
+    for ( i = 0; i < count; i++ )
+    {
+        const uint8_t * e = (const uint8_t *) p + (int64_t) i * f->elem_size;
+        int32_t n;
+        if ( f->text_list == 2 && tabledemo_table_json_get_raw( e + v->present_offset, 1 ) == 0 ) { continue; }
+        n = tabledemo_table_json_count( e, v );
+        if ( n > 0 ) { spent += (int64_t) n; }
+    }
+    return spent;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json_out_t * out, const void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
+    if ( f->text_list != 0 ) { return schema_tabledemo_table_json_write_text_element_( out, storage, f ); }
     if ( f->kind == 17 ) { return tabledemo_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
@@ -834,6 +923,8 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
             memcpy( &v, storage, sizeof( v ) );
             return tabledemo_table_json_write_float( out, v, 0 );
         }
+        case 36:
+            return schema_tabledemo_table_json_write_timestamp_( out, storage );
         case 2: case 3: case 4: case 5:
             tabledemo_table_json_write_signed( out, tabledemo_table_json_get_signed( storage, f->elem_size ) );
             return 1;
@@ -855,7 +946,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
     if ( f->kind == 33 ) {
         tabledemo_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, tabledemo_table_json_count( base, f ) ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         tabledemo_table_json_write_string( out, (const char *) storage, tabledemo_table_json_count( base, f ) );
         return 1;
@@ -897,6 +988,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
     {
         int32_t count = tabledemo_table_json_count( base, f );
         int32_t i;
+        if ( f->text_total > 0 && schema_tabledemo_table_json_text_bytes_( storage, count, f ) > f->text_total )
+        {
+            return 0;
+        }
         if ( count == 0 )
         {
             tabledemo_table_json_raw( out, "[]", 2 );
@@ -952,6 +1047,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_fields( tabledemo_table_json
 static SCHEMA_UNUSED int tabledemo_table_json_write_value( tabledemo_table_json_out_t * out, const void * base, const tabledemo_table_type_info_t * info, int32_t depth )
 {
     int any = 0;
+    if ( info->json_array && info->num_fields == 1 ) { return tabledemo_table_json_write_field( out, base, &info->fields[0], depth ); }
     if ( !tabledemo_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
     if ( !any ) { tabledemo_table_json_raw(out,"{}",2); return 1; }
     tabledemo_table_json_line(out,depth); tabledemo_table_json_put(out,'}'); return 1;
@@ -1226,10 +1322,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_string_as( tabledemo_table_js
         if ( !tabledemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
-        if ( out == NULL ) { placed += unit_length; }
+        if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }
         else
         {
-            if ( !clamped && placed + unit_length <= capacity )
+            if ( !clamped && placed <= capacity - unit_length )
             {
                 memcpy( out + placed, unit, (size_t) unit_length );
                 placed += unit_length;
@@ -1310,9 +1406,10 @@ static SCHEMA_UNUSED int tabledemo_table_json_scan_w_string( tabledemo_table_jso
         }
         if ( out == NULL )
         {
+            if ( placed > INT32_MAX - units_length ) { in->bad = 1; return 0; }
             placed += units_length;
         }
-        else if ( !clamped && placed + units_length <= capacity )
+        else if ( !clamped && placed <= capacity - units_length )
         {
             for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
             placed += units_length;
@@ -1782,11 +1879,183 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_
 static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t * in,void * storage,const tabledemo_table_field_info_t * f,int32_t depth);
 #endif
 #endif
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_digit_( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_leap_( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_month_days_( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return schema_tabledemo_table_json_timestamp_leap_( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+static SCHEMA_UNUSED int64_t schema_tabledemo_table_json_timestamp_days_( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    int64_t era, year_of_era, month_of_year, day_of_year, day_of_era;
+    if ( m <= 2 ) { y--; }
+    era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    year_of_era = y - era * 400;
+    month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_timestamp_parse_( tabledemo_table_json_in_t * in, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0, digits = 0, offset_sign = 0, offset_hour = 0, offset_minute = 0, phase = 0;
+    int64_t fraction = 0, offset, seconds;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    uint64_t total;
+    if ( tabledemo_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    in->pos++;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        char c;
+        if ( !tabledemo_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return 0; }
+        c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return 0; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return 0; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return 0; } }
+            else
+            {
+                if ( digit < 0 ) { return 0; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return 0; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return 0; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = schema_tabledemo_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return 0;
+    }
+    if ( phase != 10 ) { return 0; }
+    if ( month < 1 || month > 12 ) { return 0; }
+    if ( day < 1 || day > schema_tabledemo_table_json_timestamp_month_days_( year, month ) ) { return 0; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return 0; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return 0; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    seconds = schema_tabledemo_table_json_timestamp_days_( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    if ( seconds < min_second || seconds > max_second ) { return 0; }
+    if ( seconds == min_second && fraction < min_nanos ) { return 0; }
+    if ( seconds == max_second && fraction > max_nanos ) { return 0; }
+    total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_read_text_element_( tabledemo_table_json_in_t * in, void * p, const tabledemo_table_field_info_t * f, int32_t depth )
+{
+    const tabledemo_table_type_info_t * t = f->table;
+    const tabledemo_table_field_info_t * v = &t->fields[0];
+    t->reset( p );
+    if ( tabledemo_table_json_value_shape( in ) == 'z' ) { return tabledemo_table_json_literal( in, "null" ); }
+    if ( !tabledemo_table_json_read_field( in, p, v, depth ) ) { return 0; }
+    if ( f->text_list == 2 ) { tabledemo_table_json_set_raw( (uint8_t *) p + v->present_offset, 1, 1 ); }
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_tabledemo_table_json_text_total_keep_( tabledemo_table_json_in_t * in, void * p, const tabledemo_table_field_info_t * f, int64_t * spent )
+{
+    *spent += schema_tabledemo_table_json_text_bytes_( p, 1, f );
+    if ( *spent <= f->text_total ) { return 1; }
+    f->table->reset( p );
+    in->report->clamped++;
+    return 0;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_in_t * in, void * storage, const tabledemo_table_field_info_t * f, int32_t depth )
 {
     char token[TABLEDEMO_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
+    if ( f->text_list != 0 ) { return schema_tabledemo_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( tabledemo_table_json_value_shape(in) == 'z' ) { tabledemo_table_json_set_raw(storage,f->elem_size,0); return tabledemo_table_json_literal(in,"null"); }
@@ -1924,6 +2193,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_scalar( tabledemo_table_json_
         tabledemo_table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
     }
+    if ( f->kind == 36 )
+    {
+        int64_t nanos = 0;
+        if ( !schema_tabledemo_table_json_timestamp_parse_( in, &nanos ) ) { in->bad = 1; return 0; }
+        tabledemo_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
+        return 1;
+    }
     if ( !tabledemo_table_json_scan_number( in, token, TABLEDEMO_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
     {
         in->bad = 1;
@@ -2013,7 +2289,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         ((uint16_t *)(void *)storage)[length] = 0;
         tabledemo_table_json_set_count( base, f, length ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
         if ( !tabledemo_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
@@ -2188,7 +2464,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
         char shape;
         if ( tabledemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
-        if ( f->kind == 13 )
+        int64_t spent = 0;
+        int full = 0;
+        if ( f->kind == 13 || f->text_list != 0 )
         {
             int32_t i;
             for ( i = 0; i < f->array_bound; i++ )
@@ -2207,14 +2485,18 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             char c = tabledemo_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( placed >= f->array_bound )
+            if ( full )
+            {
+                if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( tabledemo_table_json_value_shape( in ) != shape && !(f->kind == 17 && tabledemo_table_json_value_shape(in) == 'z') )
+            else if ( tabledemo_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && tabledemo_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
                 if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2222,8 +2504,16 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
             }
             else
             {
-                if ( !tabledemo_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
-                placed++;
+                uint8_t * elem = storage + (int64_t) placed * f->elem_size;
+                if ( !tabledemo_table_json_read_scalar( in, elem, f, depth + 1 ) ) { return 0; }
+                if ( f->text_total > 0 && !schema_tabledemo_table_json_text_total_keep_( in, elem, f, &spent ) )
+                {
+                    full = 1;
+                }
+                else
+                {
+                    placed++;
+                }
             }
             c = tabledemo_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
@@ -2243,6 +2533,23 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_field( tabledemo_table_json_i
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
+static SCHEMA_UNUSED int schema_tabledemo_table_json_require_seen_( tabledemo_table_json_in_t * in, const void * base, const tabledemo_table_type_info_t * info, const uint64_t * seen )
+{
+    int32_t i;
+    for ( i = 0; i < info->num_fields && i < 512; i++ )
+    {
+        const tabledemo_table_field_info_t * f = &info->fields[i];
+        if ( !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !tabledemo_table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( (uint64_t) 1 << ( i & 63 ) ) ) == 0 )
+        {
+            in->report->missing_required++;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth, const char * first_key )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
@@ -2260,7 +2567,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         else
         {
             c = tabledemo_table_json_peek(in);
-            if ( c == '}' ) { in->pos++; return 1; }
+            if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
@@ -2304,8 +2611,11 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
             {
                 if ( !tabledemo_table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
-                   occurrence is null must not leave an earlier value standing */
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                   occurrence is null must not leave an earlier value standing.
+                   A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                   ENTRY table its descriptor names (docs/SPEC-TABLES.md §2.8, §16.2). */
+                if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 tabledemo_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
@@ -2329,7 +2639,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
         }
         c = tabledemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-        if ( c == '}' ) { in->pos++; return 1; }
+        if ( c == '}' ) { in->pos++; return schema_tabledemo_table_json_require_seen_( in, base, info, seen ); }
         in->bad = 1;
         return 0;
     }
@@ -2339,7 +2649,13 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_table_keys( tabledemo_table_j
 
 static SCHEMA_UNUSED int tabledemo_table_json_read_table( tabledemo_table_json_in_t * in, void * base, const tabledemo_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH || tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( tabledemo_table_json_peek(in) != '[' ) { in->bad = 1; return 0; }
+        return tabledemo_table_json_read_field( in, base, &info->fields[0], depth );
+    }
+    if ( tabledemo_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
     return tabledemo_table_json_read_table_keys(in,base,info,depth,NULL);
 }
@@ -2349,6 +2665,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     tabledemo_table_report_t ignored;
     tabledemo_table_json_in_t in;
     int ok;
+    int32_t missing_before;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
     in.size = bytes;
@@ -2362,6 +2679,8 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
         in.report->malformed = 1;
         return 0;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    missing_before = in.report->missing_required;
     ok = tabledemo_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
@@ -2370,7 +2689,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_read( void * value, const tabledem
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = 1;
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; }
         return 0;
     }
     return 1;
@@ -2566,9 +2885,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_pointer( tabledemo_table_json
     in->pos++; c = tabledemo_table_json_peek(in);
     if ( c == '}' )
     {
-        in->pos++;
-        if ( tabledemo_table_json_emplace(graph,slot,f->table) == NULL ) { in->bad = 1; return 0; }
-        return 1;
+        node = tabledemo_table_json_emplace(graph,slot,f->table);
+        if ( node == NULL ) { in->bad = 1; return 0; }
+        return tabledemo_table_json_read_table_keys(in,node,f->table,depth+1,NULL);
     }
     if ( !tabledemo_table_json_scan_string(in,key,TABLEDEMO_K_TABLE_JSON_MAX_KEY-1,&length) ) { return 0; }
     key[length] = 0;
@@ -2678,10 +2997,14 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_graph( tabledemo_table_worker
     memset(&in,0,sizeof(in)); in.text = text; in.size = bytes; in.report = report ? report : &ignored; in.graph = &graph;
     if ( root == NULL || worker->arena == NULL || text == NULL || bytes < 0 ) { in.report->malformed = 1; return 0; }
     info->reset(root);
-    ok = tabledemo_table_json_read_table(&in,root,info,0);
-    if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
-    tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
-    if ( in.bad || !ok ) { in.report->malformed = 1; return 0; }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    {
+        int32_t missing_before = in.report->missing_required;
+        ok = tabledemo_table_json_read_table(&in,root,info,0);
+        if ( ok ) { tabledemo_table_json_space(&in); if ( in.pos != in.size ) { in.bad = 1; } }
+        tabledemo_table_release(graph.labels.allocator,graph.labels.entries);
+        if ( in.bad || !ok ) { if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; } return 0; }
+    }
     return 1;
 }
 
@@ -2713,6 +3036,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_list(tabledemo_table_json_ou
     const TableSequence * list=(const TableSequence *)storage;
     TableSequenceCursor cursor=table_sequence_cursor(NULL,list,f->elem_size); int32_t i;
     if(!cursor.ok) { return 0; }
+    if(f->text_total>0 && list->count>0 && schema_tabledemo_table_json_text_bytes_(cursor.array,list->count,f)>f->text_total) { return 0; }
     tabledemo_table_json_put(out,'[');
     for(i=0;i<list->count;i++) {
         const void * element=table_sequence_next(&cursor); if(element==NULL) { return 0; }
@@ -2725,18 +3049,29 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_list(tabledemo_table_json_in_
 {
     tabledemo_table_json_graph_in_t * graph=(tabledemo_table_json_graph_in_t *)in->graph;
     TableSequence * list=(TableSequence *)storage; char shape=tabledemo_table_json_element_shape(f);
+    int64_t spent=0; int full=0;
     if(graph==NULL || tabledemo_table_json_peek(in)!='[') { in->bad=1; return 0; }
     memset(list,0,sizeof(*list)); in->pos++;
     for(;;) {
         char c=tabledemo_table_json_peek(in); void * element;
         if(c==']') { in->pos++; return 1; }
         if(c==0) { in->bad=1; return 0; }
+        if(full) {
+            if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
+            c=tabledemo_table_json_peek(in);
+            if(c==',') { in->pos++; continue; }
+            if(c==']') { in->pos++; return 1; }
+            in->bad=1; return 0;
+        }
         element=table_sequence_add(graph->worker,list,f->elem_size);
         if(element==NULL) { in->bad=1; return 0; }
-        if(f->kind==13) { f->table->reset(element); }
-        if(tabledemo_table_json_value_shape(in)!=shape && !(f->kind==17 && tabledemo_table_json_value_shape(in)=='z')) {
+        if(f->kind==13 || f->text_list!=0) { f->table->reset(element); }
+        if(tabledemo_table_json_value_shape(in)!=shape && !((f->kind==17 || f->text_list==2) && tabledemo_table_json_value_shape(in)=='z')) {
             in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
         } else if(!tabledemo_table_json_read_scalar(in,element,f,depth+1)) { return 0; }
+        else if(f->text_total>0 && !schema_tabledemo_table_json_text_total_keep_(in,element,f,&spent)) {
+            full=1; table_sequence_erase(graph->worker->arena,list,element,f->elem_size);
+        }
         c=tabledemo_table_json_peek(in);
         if(c==',') { in->pos++; continue; }
         if(c==']') { in->pos++; return 1; }
@@ -2819,7 +3154,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_map(tabledemo_table_json_out
             else { tabledemo_table_json_write_unsigned(out,tabledemo_table_json_get_raw(entry+key->offset,key->elem_size)); }
             tabledemo_table_json_put(out,'"');
         }
-        tabledemo_table_json_raw(out,": ",2); if(!tabledemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
+        tabledemo_table_json_raw(out,": ",2); if(value->optional && !tabledemo_table_json_get_raw(entry+value->present_offset,1)) { tabledemo_table_json_raw(out,"null",4); } else if(!tabledemo_table_json_write_field(out,entry,value,depth+1)) { return 0; }
     }
     if(map->count) { tabledemo_table_json_line(out,depth); } tabledemo_table_json_put(out,'}'); return 1;
 }
@@ -2857,20 +3192,25 @@ static SCHEMA_UNUSED int tabledemo_table_json_read_map(tabledemo_table_json_in_t
         if(entry!=NULL && map->count==before) { in->report->duplicate++; }
         c=tabledemo_table_json_value_shape(in);
         if(entry==NULL) { if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; } }
-        else if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
-            in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
-        } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
+        else if(value->optional && c=='z') {
+            if(!tabledemo_table_json_literal(in,"null")) { return 0; }
+        } else {
+            if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+                in->report->kind_mismatch++; if(!tabledemo_table_json_skip_value(in,depth+1)) { return 0; }
+            } else if(!tabledemo_table_json_read_field(in,entry,value,depth+1)) { return 0; }
+            if(value->optional) { tabledemo_table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
+        }
         c=tabledemo_table_json_peek(in); if(c==',') { in->pos++; continue; } if(c=='}') { in->pos++; return 1; }
         in->bad=1; return 0;
     }
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_archive_config_fields_[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( tabledemo_archive_config_t ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL };
+const tabledemo_table_type_info_t schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( tabledemo_archive_config_t ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_tabledemo_archive_config_from_json_( tabledemo_archive_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {

@@ -148,6 +148,7 @@ export const TableFixedRefusal = Object.freeze({
   // destination write, as it refuses an ill-formed text, and every writer
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
+  IntegrityMismatch: 19,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -172,6 +173,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
+    case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
     default: return "???";
   }
 }
@@ -1605,7 +1607,7 @@ function TableMessageKindBytes(kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
     case 3: case 7: case 21: case 26: return 2;
     case 4: case 8: case 10: case 22: case 27: return 4;
-    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 8;
     case 18: case 19: case 24: case 29: return 16;
   }
   return 0;
@@ -1625,7 +1627,7 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 33; }
+function TableMessageKnownKind(k) { return k <= 33 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -1633,7 +1635,7 @@ function TableMessageKindBits(k) {
     case 2: case 6: case 20: case 25: return 8;
     case 3: case 7: case 21: case 26: return 16;
     case 4: case 8: case 10: case 22: case 27: return 32;
-    case 5: case 9: case 11: case 23: case 28: return 64;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 64;
     case 18: case 19: case 24: case 29: return 128;
   }
   return -1;
@@ -2243,7 +2245,7 @@ export function BenchMixedFixedWriteBody(view, at, value) {
   view.setInt32(at + 1232, value.idleTicks, true);
 }
 
-// BenchMixed's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).
+// BenchMixed's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
 export function BenchMixedFixedCheckBody(value) {
   if (!Number.isFinite(Math.fround(value.aimX))) { return false; }
   if (!Number.isFinite(Math.fround(value.aimY))) { return false; }
@@ -2437,7 +2439,7 @@ export function FixedTableFixedWriteBody(view, at, value) {
   BenchMixedFixedWriteBody(view, at, value.value);
 }
 
-// FixedTable's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).
+// FixedTable's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
 export function FixedTableFixedCheckBody(value) {
   if (!BenchMixedFixedCheckBody(value.value)) { return false; }
   return true;

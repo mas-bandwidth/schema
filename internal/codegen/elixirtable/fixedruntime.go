@@ -44,6 +44,9 @@ func fixedRuntimeModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "defmodule %s.FixedRuntime do\n", ns)
 	b.WriteString(fixedRuntimeBody)
+	if hasIntegrity(u) {
+		b.WriteString("\n" + integritySource(true))
+	}
 	b.WriteString("end\n")
 	return []byte(b.String())
 }
@@ -675,10 +678,10 @@ const fixedRuntimeBody = `  @moduledoc """
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
   # the no-payload variant 32, wstring 33, and the ONE kind this form's layout
-  # adds, the optional wrapper 35. 31 is §3's body framing escape and 34 is
-  # reserved: neither is a kind a declaration spells.
+  # adds, the optional wrapper 35, plus timestamp 36. 31 is §3's body framing
+  # escape and 34 is reserved: neither is a kind a declaration spells.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
-  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35
+  defp known_kind?(kind), do: kind == 32 or kind == 33 or kind == 35 or kind == 36
 
   # A LEAF KIND'S ADMITTED SIZES. Kind and size fix each other on this wire with
   # ONE exception, stated here rather than left to be found: a bits(N) field
@@ -709,6 +712,7 @@ const fixedRuntimeBody = `  @moduledoc """
   defp leaf_size(28, size), do: {true, size == 8}
   defp leaf_size(24, size), do: {true, size == 16}
   defp leaf_size(29, size), do: {true, size == 16}
+  defp leaf_size(36, size), do: {true, size == 8}
   defp leaf_size(32, size), do: {true, size == 0}
   defp leaf_size(_, _), do: {false, true}
 

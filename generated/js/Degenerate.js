@@ -168,7 +168,7 @@ export function ZeroSpanI64(value) {
 
 export function WriteSpanI64(stream, value) {
   for (let i = 0; i < 2; i++) {
-    BIGINT_SCRATCH.value = value.values[i];
+    BIGINT_SCRATCH.value = BigInt.asUintN(64, value.values[i]);
     if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
       return false;
     }

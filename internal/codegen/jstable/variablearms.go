@@ -234,12 +234,12 @@ function TableVariableElemIsDefault(e, x) {
 
 // ---- edges (the numbering, §3.1) --------------------------------------------
 
-function TableVariableUnionEdges(u, val, out) {
+function TableVariableUnionEdges(u, val, out, everyGuard) {
   if (val === null) { return; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined || arm.void) { return; }
-  if (arm.body) { TableVariableEdges(arm.c, val.value, out); return; }
-  TableVariableFieldEdges(arm.f, val, out);
+  if (arm.body) { TableVariableEdges(arm.c, val.value, out, everyGuard); return; }
+  TableVariableFieldEdges(arm.f, val, out, everyGuard);
 }
 
 // ---- the save (encode.go) ---------------------------------------------------
@@ -248,7 +248,24 @@ function TableVariableUnionEdges(u, val, out) {
 // and an all-default table included
 function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
   const val = v[fd.n];
+  if (!TableVariableRequiredValue(fd, val)) { return false; }
   switch (fd.s) {
+    case "keyed": return TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path);
+    case "union":
+      TableVariableHeader(w, ids, fd, 15);
+      if (val === null) { w.u8(0); return true; }
+      return TableVariableArmWrite(fd.u, w, ids, nodes, val, retain, path, fd.o);
+    case "ptr":
+      TableVariableHeader(w, ids, fd, 17); w.leb(val === null ? 0 : nodes.index.get(val)); return true;
+    case "sblob": case "bblob": {
+      const index = val === null ? 0 : (fd.s === "sblob" && typeof val === "string" ? nodes.slot(v, fd.n) : nodes.index.get(val));
+      TableVariableHeader(w, ids, fd, 17); w.leb(index); return true;
+    }
+    case "wstr":
+      if (val.length > fd.bound) { return false; }
+      TableVariableHeader(w, ids, fd, 33); w.leb(val.length * 2);
+      return TableVariableWideWrite(w, val, fd.bound);
+    case "map": return TableVariableWriteMap(fd, w, ids, nodes, val, retain, path);
     case "bool": TableVariableHeader(w, ids, fd, 1); w.u8(val ? 1 : 0); return true;
     case "int": case "flags": TableVariableHeader(w, ids, fd, fd.k); TableVariableWriteInt(w, fd.kw, val); return true;
     case "float":
@@ -256,6 +273,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       TableVariableHeader(w, ids, fd, fd.k);
       return TableVariableWriteFloat(w, fd.f32, val);
     case "str": {
+      if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       const b = TableVariableUtf8Encode(val);
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
@@ -290,6 +308,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       return true;
     }
     case "arr": {
+      if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       w.leb(ids.ref(fd.id));
       w.u8(14);
@@ -308,9 +327,10 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
 }
 
 // A MAP (encodeMap): kind 14 over element kind 13, its entries in ascending key
-// order, each entry ALWAYS riding (identity is the key); an empty map elides
+// order, each entry ALWAYS riding (identity is the key); only a non-optional
+// empty map elides. A present optional map keeps its empty header (§2.8).
 function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
-  if (val.size === 0) { return true; }
+  if (val.size === 0 && !fd.opt && !fd.req) { return true; }
   const ents = TableVariableMapEntries(fd, val);
   w.leb(ids.ref(fd.id));
   w.u8(14);
@@ -361,7 +381,7 @@ function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
     body.raw(eb.b);
     pairs++;
   }
-  if (pairs === 0) { ids.rollback(mark); return true; }
+  if (pairs === 0 && !fd.req) { ids.rollback(mark); return true; }
   w.leb(ref);
   w.u8(16);
   const inner = new TableVariableWriter();
@@ -503,11 +523,11 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     const ek = r.u8();
     const count = r.leb();
     if (r.bad) { report.malformed = true; r.at = end; return true; }
-    if (ek !== 13) { report.kindMismatch++; r.at = end; return true; }
+    if (ek !== 13) { report.kindMismatch++; r.at = end; return undefined; }
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
-    if (count > 0x7fffffff) { report.malformed = true; r.at = end; return true; }
+    if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false;
@@ -520,7 +540,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       if (scan.widened && !widened) { widened = true; report.widened++; }
       if (scan.kindBad) { report.kindMismatch++; ents.length = 0; break; }
       if (!scan.ok) { report.malformed = true; break; }
-      if (fd.ks && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.clamped++; continue; }
+      if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(scan.key).length > fd.kb) { report.clamped++; continue; }
       let order = -1;
       if (landed) { order = TableVariableKeyOrder(fd, last, scan.key); }
       if (order > 0) { report.malformed = true; break; }
@@ -528,6 +548,7 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
       if (path !== null) { path.push({ o: fd.o, i: order === 0 ? ents.length - 1 : ents.length }); }
       TableVariableBodyRead(fd.c, new TableVariableReader(r.b, eat, eat + elen), table, entry, report, st, true, retain, path);
       if (path !== null) { path.pop(); }
+      if (TableVariableCountRefused(report)) { return false; }
       entry.key = scan.key;
       if (order === 0) { ents[ents.length - 1] = entry; report.duplicate++; continue; }
       ents.push(entry);
@@ -557,7 +578,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
   if (r.bad) { report.malformed = true; r.at = end; return true; }
   const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
   if (ek !== fd.ek) {
-    if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return true; }
+    if (!TableVariableWidens(ek, fd.ek)) { report.kindMismatch++; r.at = end; return undefined; }
     report.widened++;
   }
   const arr = v[fd.n];
@@ -585,6 +606,7 @@ function TableVariableReadKeyed(fd, r, table, v, report, st, retain, path) {
         if (path !== null) { path.push({ o: fd.o, i: slot }); }
         TableVariableBodyRead(fd.e.c, er, table, inst, report, st, true, retain, path);
         if (path !== null) { path.pop(); }
+        if (TableVariableCountRefused(report)) { return false; }
         if (er.at !== er.end) { report.malformed = true; inst = fd.e.c.make(); }
         arr[slot] = inst;
         break;
@@ -641,6 +663,7 @@ function TableVariableUnionRead(u, r, table, report, st, retain, path, o) {
     if (path !== null) { path.push({ o: o, i: 0 }); }
     TableVariableBodyRead(arm.c, sub, table, inst, report, st, true, retain, path);
     if (path !== null) { path.pop(); }
+    if (TableVariableCountRefused(report)) { return undefined; }
     if (sub.at !== end) { report.malformed = true; } else { out = { arm: arm.name, value: inst }; }
   } else {
     out = TableVariableArmRead(arm, sub, table, report, st, retain, path, o);
@@ -730,6 +753,7 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
   const ind = "\n" + "  ".repeat(depth + 1);
   out.push("{");
   for (let i = 0; i < ents.length; i++) {
+    if (fd.ks && fd.kb < 0 && !TableVariableUnboundedTextValid(ents[i].key)) { return false; }
     if (i > 0) { out.push(","); }
     out.push(ind + TableVariableJsonString(String(ents[i].key)) + ": ");
     if (!TableVariableJsonField(vd, ents[i].value, depth + 1, g, out)) { return false; }
@@ -794,15 +818,20 @@ function TableVariableMapKeyNumber(kd, s) {
   return { status: "ok", key: kd.big ? x : Number(x) };
 }
 
-// one field read at a holder WITHOUT the key walk's shape gate: what a map's
-// value takes (readMap calls readField directly), null placing a pointer's null
+// Map values retain an entry even when its non-null value has the wrong
+// shape. Only null means optional absence; a skipped value is present-default.
 function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
-  if (inp.shape() === "z" && (fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
+  const shape = inp.shape();
+  if (shape === "z" && (fd.opt || fd.s === "ptr" || fd.s === "sblob" || fd.s === "bblob")) {
     if (!inp.literal("null")) { return false; }
     holder[fd.n] = null;
     return true;
   }
-  if (inp.shape() !== fd.js) { inp.bad = true; return false; }
+  holder[fd.n] = TableVariableFieldDefault(fd);
+  if (shape !== fd.js) {
+    report.kindMismatch++;
+    return inp.skip(depth, graph);
+  }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
 
@@ -811,13 +840,15 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
+  const mapField = inp.field;
   v[fd.n] = new Map();
   for (;;) {
     let ch = inp.peek();
     if (ch === "}") { inp.p++; break; }
     if (ch === "") { inp.bad = true; return false; }
+    inp.field = mapField;
     const ks = inp.str();
-    if (ks === null) { return false; }
+    if (!TableVariableStoredText(ks, inp, report)) { return false; }
     if (inp.peek() !== ":") { inp.bad = true; return false; }
     inp.p++;
     let key = ks, status = "ok";
@@ -830,7 +861,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     if (status === "mismatch") {
       report.kindMismatch++;
       if (!inp.skip(depth, graph)) { return false; }
-    } else if (fd.ks && TableVariableUtf8Encode(key).length > fd.kb) {
+    } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
       // KEYS NEVER CLAMP: the entry drops whole (§2.8)
       report.clamped++;
       if (!inp.skip(depth, graph)) { return false; }
@@ -912,7 +943,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       holder[key] = { arm: arm.name, value: null };
     }
   } else if (arm.body) {
-    if (inp.shape() !== "o") {
+    if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
       report.kindMismatch++;
       if (!inp.skip(depth + 1, graph)) { return false; }
     } else {

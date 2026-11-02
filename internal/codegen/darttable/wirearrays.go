@@ -101,9 +101,12 @@ func (g *wireGen) emitSaveFixed(f *ir.Field, expr, ind string, id uint64) {
 	case ek == wireKindF32 || ek == wireKindF64:
 		// a float element's elision compares BITS (docs/SPEC-TABLES.md §3.3):
 		// one -0 under a +0 default is enough for the array to ride
-		open = fmt.Sprintf("if (%s.any((e) => %s)) {", expr, floatRides(singleOf(f), "e", g.elemDefault(f)))
+		open = fmt.Sprintf("if (%s.any((e) => %s)) {", expr, wireFloatRides(singleOf(f), "e", g.elemDefault(f)))
 	case ek != wireKindTable:
 		open = fmt.Sprintf("if (%s.any((e) => e != %s)) {", expr, g.elemDefault(f))
+	}
+	if f.Required {
+		open = "{"
 	}
 	g.pf("%s%s\n", ind, open)
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
@@ -145,7 +148,7 @@ func (g *wireGen) emitSaveKeyed(f *ir.Field, expr, ind string, id uint64) {
 		g.pf("%s\t\tif (eb.buf.length <= 1) { w.state.rollback(slotMark); continue; }\n", ind)
 	case wireKindF32, wireKindF64:
 		// a float slot at its default elides by BITS (docs/SPEC-TABLES.md §3.3)
-		g.pf("%s\t\tif (!(%s)) { w.state.rollback(slotMark); continue; }\n", ind, floatRides(single, "e", g.elemDefault(f)))
+		g.pf("%s\t\tif (!(%s)) { w.state.rollback(slotMark); continue; }\n", ind, wireFloatRides(single, "e", g.elemDefault(f)))
 		g.emitPutPayload(single, "e", "eb", ind+"\t\t")
 	default:
 		g.pf("%s\t\tif (e == %s) { w.state.rollback(slotMark); continue; }\n", ind, g.elemDefault(f))
@@ -156,7 +159,7 @@ func (g *wireGen) emitSaveKeyed(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s\t\tbody.putBytes(eb.buf);\n", ind)
 	g.pf("%s\t\tpairs++;\n", ind)
 	g.pf("%s\t}\n", ind)
-	g.pf("%s\tif (pairs == 0) {\n", ind)
+	g.pf("%s\tif (%v && pairs == 0) {\n", ind, !f.Required)
 	g.pf("%s\t\tw.state.rollback(mark);\n", ind)
 	g.pf("%s\t} else {\n", ind)
 	g.pf("%s\t\tfinal inner = w.sub();\n", ind)
@@ -412,6 +415,24 @@ func (g *wireGen) emitNumberArray(f *ir.Field, expr, ind string) {
 		g.pf("%s\tif (e != null) s.noteTable(%s, e, open, (o) { %sNumber(s, e, o); });\n", ind, typeConst(ref), dartName(ref.Name))
 	} else {
 		g.pf("%s\t%sNumber(s, e, open);\n", ind, dartName(ref.Name))
+	}
+	g.pf("%s}\n", ind)
+}
+
+func (g *wireGen) emitEdgesArray(f *ir.Field, expr, ind string) {
+	if un := unionRef(f); un != nil {
+		g.pf("%sfor (final e in %s) { %s(r, owner, e); }\n", ind, expr, unionFn(un, "Edges"))
+		return
+	}
+	ref := tableRef(f)
+	if ref == nil {
+		return
+	}
+	g.pf("%sfor (final e in %s) {\n", ind, expr)
+	if f.Type.Pointer {
+		g.pf("%s\tr.noteEdge(owner, e);\n", ind)
+	} else {
+		g.pf("%s\t%sEdges(r, owner, e);\n", ind, dartName(ref.Name))
 	}
 	g.pf("%s}\n", ind)
 }

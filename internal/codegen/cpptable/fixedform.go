@@ -791,15 +791,21 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    if ( fill_count > 0 )\n    {\n")
 	g.pf("        memset( (void *) &defaults, 0, sizeof( defaults ) );\n")
 	g.pf("        %sReset( defaults );\n    }\n", st.Name)
+	// NOTHING OF A REFUSED BATCH IS KEPT (docs/SPEC-TABLES.md §4, §6.5): every
+	// refusal inside the loop resets each record it wrote and puts the two
+	// counters back to what they were before the batch.
+	g.pf("    const int32_t batch_clamped = report->clamped;\n")
+	g.pf("    const int32_t batch_widened = report->widened;\n")
 	g.pf("    for ( int64_t k = 0; k < n; ++k )\n    {\n")
-	g.pf("        if ( TableFixedGet64( at ) != hash ) { report->refused = true; report->reason = TableMessageReason::no_layout; return -1; }\n")
+	g.pf("        if ( TableFixedGet64( at ) != hash )\n        {\n")
+	g.pf("            for ( int64_t j = 0; j < k; ++j ) { %sReset( values[j] ); }\n", st.Name)
+	g.pf("            report->clamped = batch_clamped;\n            report->widened = batch_widened;\n")
+	g.pf("            report->refused = true; report->reason = TableMessageReason::no_layout; return -1;\n        }\n")
 	g.pf("        TableFixedFillRun( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) &values[k] );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        // A CONTENT VIOLATION REFUSES THE WHOLE READ (docs/FIXED-FORM-ALGORITHM.md\n")
-		g.pf("        // §5.8): the counters this record's plan and ranges have moved are put\n")
-		g.pf("        // back before the refusal returns, so the refusing record moves none.\n")
-		g.pf("        const int32_t rec_clamped = report->clamped;\n")
-		g.pf("        const int32_t rec_widened = report->widened;\n")
+		g.pf("        // §5.8): every record written so far goes back to its defaults and\n")
+		g.pf("        // the counters back to what they were before the batch.\n")
 	}
 	g.pf("        TableFixedRun( entries, entry_count, entry_guarded, at + 8, (uint8_t *) &values[k], report, %sFixedGuards );\n", st.Name)
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
@@ -818,7 +824,8 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("                                    (uint8_t *) &values[k], report );\n")
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        if ( !%sFixedClamp( values[k], report ) )\n", st.Name)
-		g.pf("        {\n            report->clamped = rec_clamped;\n            report->widened = rec_widened;\n            return -1;\n        }\n")
+		g.pf("        {\n            for ( int64_t j = 0; j <= k; ++j ) { %sReset( values[j] ); }\n", st.Name)
+		g.pf("            report->clamped = batch_clamped;\n            report->widened = batch_widened;\n            return -1;\n        }\n")
 	}
 	g.pf("        at += record_bytes;\n    }\n    return n;\n}\n\n")
 	g.emitFixedLoadStrict(st)

@@ -178,6 +178,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
     }
+    static Report Copy(Widelistdemo.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
+    }
     static Report Copy(Mapdemo.TableReport r)
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
@@ -214,8 +218,20 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
     }
+    static Report Copy(Featurewitnesses.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
+    }
     static readonly List<Codec> codecs = new List<Codec>
     {
+        Row<Featurewitnesses.Root, Featurewitnesses.TableReport>("featurewitnesses", "Root", () => new Featurewitnesses.TableReport(), Copy,
+            Featurewitnesses.Schema.RootLoad, Featurewitnesses.Schema.RootMeasure, Featurewitnesses.Schema.RootSave,
+            Featurewitnesses.Schema.RootFromJson, Featurewitnesses.Schema.RootToJsonMeasure, Featurewitnesses.Schema.RootToJson, Featurewitnesses.Schema.RootLoadMeasure),
+
+        Row<Featurewitnesses.ArrayRoot, Featurewitnesses.TableReport>("featurewitnesses", "ArrayRoot", () => new Featurewitnesses.TableReport(), Copy,
+            Featurewitnesses.Schema.ArrayRootLoad, Featurewitnesses.Schema.ArrayRootMeasure, Featurewitnesses.Schema.ArrayRootSave,
+            Featurewitnesses.Schema.ArrayRootFromJson, Featurewitnesses.Schema.ArrayRootToJsonMeasure, Featurewitnesses.Schema.ArrayRootToJson, Featurewitnesses.Schema.ArrayRootLoadMeasure),
+
         // THE CARDS UNIT (tables/cards, docs/SPEC-TABLES.md §2): the sprint's own
         // variable-table record, compiled from build/tables-generated-cs/cards so
         // cards-cs-wire-fuzz and cards-cs-retain-fuzz hold the C# Card codec to
@@ -304,6 +320,9 @@ static partial class Program
         Row<Mapdemo.Fleet, Mapdemo.TableReport>("mapdemo", "Fleet", () => new Mapdemo.TableReport(), Copy,
             Mapdemo.Schema.FleetLoad, Mapdemo.Schema.FleetMeasure, Mapdemo.Schema.FleetSave,
             Mapdemo.Schema.FleetFromJson, Mapdemo.Schema.FleetToJsonMeasure, Mapdemo.Schema.FleetToJson, Mapdemo.Schema.FleetLoadMeasure),
+        Row<Widelistdemo.Wide, Widelistdemo.TableReport>("widelist", "Wide", () => new Widelistdemo.TableReport(), Copy,
+            Widelistdemo.Schema.WideLoad, Widelistdemo.Schema.WideMeasure, Widelistdemo.Schema.WideSave,
+            Widelistdemo.Schema.WideFromJson, Widelistdemo.Schema.WideToJsonMeasure, Widelistdemo.Schema.WideToJson, Widelistdemo.Schema.WideLoadMeasure),
         Row<Listdemo.Unbounded, Listdemo.TableReport>("listdemo", "Unbounded", () => new Listdemo.TableReport(), Copy,
             Listdemo.Schema.UnboundedLoad, Listdemo.Schema.UnboundedMeasure, Listdemo.Schema.UnboundedSave,
             Listdemo.Schema.UnboundedFromJson, Listdemo.Schema.UnboundedToJsonMeasure, Listdemo.Schema.UnboundedToJson, Listdemo.Schema.UnboundedLoadMeasure),
@@ -826,12 +845,18 @@ static partial class Program
             bool malformed = report.Malformed || (value == null && !report.Refused);
             string head = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
                           report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
+            // THE NATIVE LOADS answer the same row: the region load and the
+            // builder load must refuse exactly what the managed load refuses,
+            // so a disagreement is written into the answer and the row fails
+            string native = NativeFramingDisagrees(f[2], f[3], wire, malformed);
+            if (native != null) { head = native + "\n" + head; }
             byte[] answer = System.Text.Encoding.ASCII.GetBytes(head);
             if (value != null && !report.Refused && !noValue)
             {
                 long size = codec.ToJsonMeasure(value);
                 if (size < 0)
                 {
+                    if (f[0] == "framing") { File.WriteAllBytes(Path.Combine(outDir, f[1]), answer); continue; }
                     Console.Error.WriteLine("driver: " + f[1] + " holds a value ToJson refuses");
                     return 1;
                 }
@@ -849,6 +874,41 @@ static partial class Program
             File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
         }
         return 0;
+    }
+
+    // The region and builder loads of the pointered framing roots: null when
+    // both agree with the managed load on whether the bytes are damage.
+    static unsafe string NativeFramingDisagrees(string unit, string root, byte[] wire, bool malformed)
+    {
+        bool regionRefused, builderRefused;
+        if (unit == "graphdemo" && root == "ListNode")
+        {
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.ListNodeLoadMeasure, (data, need, bytes, r) => (IntPtr)Graphdemo.Schema.ListNodeLoad(data, need, bytes, r));
+            using var builder = new Graphdemo.ListNodeBuilder();
+            builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
+        }
+        else if (unit == "graphdemo" && root == "Scene")
+        {
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.SceneLoadMeasure, (data, need, bytes, r) => (IntPtr)Graphdemo.Schema.SceneLoad(data, need, bytes, r));
+            using var builder = new Graphdemo.SceneBuilder();
+            builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
+        }
+        else { return null; }
+        if (malformed && !regionRefused) { return "native: the region load read damaged bytes"; }
+        if (malformed && !builderRefused) { return "native: the builder load read damaged bytes"; }
+        if (!malformed && regionRefused) { return "native: the region load refused clean bytes"; }
+        if (!malformed && builderRefused) { return "native: the builder load refused clean bytes"; }
+        return null;
+    }
+    delegate IntPtr NativeRegionLoad(IntPtr data, long need, byte[] bytes, Graphdemo.TableReport report);
+    delegate long NativeRegionMeasure(ReadOnlySpan<byte> bytes);
+    static unsafe bool NativeRegionRefuses(byte[] wire, NativeRegionMeasure measure, NativeRegionLoad load)
+    {
+        long need = measure(wire);
+        if (need < 0) { return true; }
+        byte* data = (byte*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc(checked((nuint)(need + 64)), 64);
+        try { return load((IntPtr)data, need, wire, new Graphdemo.TableReport()) == IntPtr.Zero; }
+        finally { System.Runtime.InteropServices.NativeMemory.AlignedFree(data); }
     }
 
     // A block's base is 64-byte aligned by construction (§19.1) and `extent` is
@@ -1457,6 +1517,16 @@ static partial class Program
             Codec c = Find("mapdemo", "Fleet");
             c.CookMeasure = value => Mapdemo.Schema.FleetCookMeasure((Mapdemo.Fleet)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.FleetCook((Mapdemo.Fleet)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("widelist", "Wide");
+            c.CookMeasure = value => Widelistdemo.Schema.WideCookMeasure((Widelistdemo.Wide)value);
+            c.Cook = (value, bytes, big) => Widelistdemo.Schema.WideCook((Widelistdemo.Wide)value, bytes, big ? Widelistdemo.TableByteOrder.Big : Widelistdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("listdemo", "Unbounded");
+            c.CookMeasure = value => Listdemo.Schema.UnboundedCookMeasure((Listdemo.Unbounded)value);
+            c.Cook = (value, bytes, big) => Listdemo.Schema.UnboundedCook((Listdemo.Unbounded)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
         }
         {
             Codec c = Find("listdemo", "Album");

@@ -12,13 +12,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// TestListdemoNamesUncarriedRoots pins docs/SPEC-TABLES.md §2.6, §2.8 and §11:
-// tables/lists generates through the elixir target, and the roots that reach
-// a map or a union are named in @uncarried — the set the cook write and the
-// wire-fuzz roster do not yet walk; the id-table wire and the text form carry
-// them (TestMapsAndUnionArmsOnTheTableWireElixir). A map-only unit, refused by
-// name before the elixir target registered as a map carrier, now generates.
-// No Elixir: this test never leaves the generator.
+// TestListdemoNamesUncarriedRoots keeps the compatibility roster empty now that
+// map, keyed and union extents are carried. Native behavior is pinned by
+// TestRegionClosureElixir; this test checks the complete listdemo closure.
 //
 // The test is an external package. elixirtable's own tests cannot import
 // compiler: target_elixir.go imports elixirtable, and that cycle is refused.
@@ -51,11 +47,11 @@ func TestListdemoNamesUncarriedRoots(t *testing.T) {
 		t.Fatalf("Table.ex has no @uncarried block before carried?/1")
 	}
 	block := text[start:end]
-	want := []string{"Army", "Mixed", "Squad", "SquadRosterEntry"}
+	var want []string
 	if got := quotedNames(block); strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("uncarried = %v, want %v", got, want)
 	}
-	for _, carried := range []string{"Save", "Album", "Sheet", "Unbounded", "Bytes", "Ints", "Floats", "Deck", "Item", "Point", "Row"} {
+	for _, carried := range []string{"Army", "Mixed", "Squad", "SquadRosterEntry", "Save", "Album", "Sheet", "Unbounded", "Bytes", "Ints", "Floats", "Deck", "Item", "Point", "Row"} {
 		if strings.Contains(block, `"`+carried+`"`) {
 			t.Errorf("%s is carried and was named uncarried", carried)
 		}

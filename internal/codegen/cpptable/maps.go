@@ -602,6 +602,44 @@ inline TableMapEach<Entry> TableMapEachOf( const TableArena & arena, const Table
     return each;
 }
 
+// The cycle check needs stored entries, not canonical writer order. Visit
+// each entry directly, with no sort or temporary pointer array.
+template <typename Entry, typename Visit>
+inline bool TableMapVisitStored( const TableRegionCtx &, const TableMap<Entry> & map, Visit visit )
+{
+    if ( map.count < 0 ) { return false; }
+    const Entry * entries = map.Entries();
+    if ( map.count > 0 && entries == NULL ) { return false; }
+    for ( int32_t i = 0; i < map.count; i++ )
+    {
+        if ( !visit( entries[i] ) ) { return false; }
+    }
+    return true;
+}
+
+template <typename Entry, typename Visit>
+inline bool TableMapVisitStored( const TableArenaCtx & ctx, const TableMap<Entry> & map, Visit visit )
+{
+    if ( map.count < 0 ) { return false; }
+    if ( map.entries.value == 0 ) { return map.count == 0; }
+    const TableMapHead * head = (const TableMapHead *) TableArenaAt( *ctx.arena, (uint32_t) map.entries.value );
+    if ( head->live != map.count ) { return false; }
+    int32_t seen = 0;
+    TableRef segment_ref = head->first;
+    while ( segment_ref.value != 0 )
+    {
+        const TableMapSegment<Entry> * segment = (const TableMapSegment<Entry> *) TableArenaAt( *ctx.arena, (uint32_t) segment_ref.value );
+        for ( int32_t i = 0; i < segment->used; i++ )
+        {
+            if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
+            if ( seen >= map.count || !visit( segment->entries[i] ) ) { return false; }
+            seen++;
+        }
+        segment_ref = segment->next;
+    }
+    return seen == map.count;
+}
+
 // ---- the LOAD side: where a decoded entry lands (§2.8) ----
 //
 // THE READER TRUSTS NOTHING and spends one compare per entry. Every load path
@@ -1177,6 +1215,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 		typ, _ := g.cppFieldType(key.Type)
 		g.pf("            if ( field_kind != %d && TableKindWidens( field_kind, %d ) )\n            {\n", kind, kind)
 		g.pf("                out.widened = true;\n")
+		g.pf("                out.kind_bad = false; // this occurrence replaces an earlier key kind (§2.8, §3)\n")
 		g.pf("                out.found = true;\n")
 		if ir.TableKindSigned(kind) {
 			g.pf("                int64_t widened_v = 0;\n")
@@ -1217,7 +1256,7 @@ func (g *tableGen) emitMapKeyReader(f *ir.Field) {
 // emitMapReadField decodes one map field, and it is where every reader rule
 // §2.8 states lands: the key before the slot, ascending against the key of the
 // last entry that LANDED, a duplicate that resets the slot it took, a
-// descending key that stops the map and lets the parent read on, a key that
+// descending key that is damage and discards the whole load (§4), a key that
 // does not fit skipped by its L and counted clamped, and a key kind the
 // reader does not declare emptying the map for one kind_mismatch.
 func (g *tableGen) emitMapReadField(f *ir.Field) {
@@ -1289,7 +1328,6 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s            // elided field of the repeat reads as its default. The map's\n", ind)
 	g.pf("%s            // count excludes it.\n", ind)
 	g.pf("%s            slot = TableMapFillLast( fill );\n", ind)
-	g.pf("%s            r.report->duplicate++;\n", ind)
 	g.pf("%s        }\n%s        else\n%s        {\n", ind, ind, ind)
 	g.pf("%s            slot = TableMapFillNext( fill ); // ASCENDING: the next slot\n", ind)
 	g.pf("%s        }\n", ind)
@@ -1301,6 +1339,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 		g.emitLoadRefusal(n, ind+"            ")
 	})
 	g.pf("%s        }\n", ind)
+	g.pf("%s        if ( order == 0 ) { r.report->duplicate++; }\n", ind)
 	if mapKeyIsString(f) {
 		g.pf("%s        last_key = read.key; last_length = read.length; // the WIRE keys of the entries that LAND\n", ind)
 	} else {

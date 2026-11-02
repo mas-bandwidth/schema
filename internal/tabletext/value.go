@@ -31,10 +31,11 @@ type Report struct {
 	// f32 into f64, decoded exactly. It is the one counter that names no
 	// loss, and the wire's own event: a text carries no kind to widen from,
 	// so the text form leaves it at zero (§16.2).
-	Widened   int
-	Clamped   int
-	Duplicate int
-	Malformed bool
+	Widened         int
+	Clamped         int
+	Duplicate       int
+	MissingRequired int // bodies refused for absent required fields
+	Malformed       bool
 	// BlobShared counts the extra slots that named a blob record another slot
 	// already named (docs/SPEC-TABLES.md §2.5). The tolerant read keeps the one
 	// node and never a copy per slot, and the strict read refuses blob_shared.
@@ -76,6 +77,7 @@ func (r *Report) Add(o Report) {
 	r.Widened += o.Widened
 	r.Clamped += o.Clamped
 	r.Duplicate += o.Duplicate
+	r.MissingRequired += o.MissingRequired
 	r.BlobShared += o.BlobShared
 	r.Malformed = r.Malformed || o.Malformed
 	if o.Reason != "" {
@@ -111,7 +113,7 @@ func FiniteF64(bits uint64) bool { return bits&0x7FF0000000000000 != 0x7FF000000
 // beside the other counters in the safety check §6.6 states rather than folded
 // into the read's own silence.
 func (r Report) Silent() bool {
-	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && !r.Malformed
+	return r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 && r.Clamped == 0 && r.Duplicate == 0 && r.BlobShared == 0 && r.MissingRequired == 0 && !r.Malformed
 }
 
 // Cell is one storage slot: a scalar in whichever representation its kind

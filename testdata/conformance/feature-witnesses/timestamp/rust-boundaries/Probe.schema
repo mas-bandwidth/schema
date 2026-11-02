@@ -1,0 +1,7 @@
+package probe
+table Clock {
+    at timestamp
+}
+fixed table Tick {
+    at timestamp
+}

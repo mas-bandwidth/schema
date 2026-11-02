@@ -672,19 +672,23 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		// a variable table, which no leg carries, and every leg names why.
 		if _, err := os.Stat(answer); err == nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		reason, err := os.ReadFile(answer + ".absent")
 		if err != nil {
 			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, VariableMessageRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		if string(reason) != VariableMessageRefusal {
 			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), VariableMessageRefusal))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		r.missing++
 		r.named++
+		r.mark(e.name, outcomeNamed)
 		return
 	}
 	if goWireRefusal := inst.WireRefusal(lang); surface == "wire" && goWireRefusal != "" {
@@ -743,9 +747,11 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	if e.damaged {
 		if !answersDamage(got) {
 			r.failures = append(r.failures, fmt.Sprintf("%s: damaged input owes the refusal, a report line saying malformed; got %q", e.name, firstLine(got)))
+			r.mark(e.name, outcomeFail)
 			return
 		}
 		r.pass++
+		r.mark(e.name, outcomePass)
 		return
 	}
 	if !bytes.Equal(got, e.want) {

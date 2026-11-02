@@ -204,6 +204,13 @@ func emitRecordObject(b *strings.Builder, u *ir.Unit, name string, ml *ir.Member
 			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
 			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
 			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %sDelta(view, at)", f.Name, member))
+		case f.Type.TextUnbounded():
+			pf("  function %sSlot(at) { return at + %d; }\n", member, fl.Offset)
+			pf("  function %sDelta(view, at) { return view.getBigInt64(at + %d, true); }\n", member, fl.Offset)
+			pf("  function %sTarget(view, at) { const slot = at + %d; const delta = view.getInt32(slot + 4, true) * 4294967296 + view.getUint32(slot, true); return delta === 0 ? -1 : slot + delta; }\n", member, fl.Offset)
+			pf("  function %sLength(view, at) { const blob = %sTarget(view, at); return blob < 0 ? 0 : view.getUint32(blob, true); }\n", member, member)
+			pf("  function %s(bytes, view, at) { const blob = %sTarget(view, at); return blob < 0 ? bytes.subarray(0,0) : bytes.subarray(blob + 8, blob + 8 + view.getUint32(blob, true)); }\n", member, member)
+			uniform = append(uniform, fmt.Sprintf("%q: (bytes, view, at) => %s(bytes, view, at)", f.Name, member))
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			pf("  function %sLength(view, at) { return view.getInt32(at + %d, true); }\n", member, pieces[1].Offset)
 			pf("  function %s(bytes, view, at) {\n", member)
@@ -271,6 +278,8 @@ func recordMembers(u *ir.Unit, ml *ir.MemberLayout) []string {
 		switch {
 		case f.Type.Pointer:
 			out = append(out, member+"Slot", member+"Delta")
+		case f.Type.TextUnbounded():
+			out = append(out, member, member+"Length", member+"Slot", member+"Delta")
 		case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 			out = append(out, member, member+"Length")
 		case isClassRef(f.Type) && f.Type.Kind == ir.TNamed:
@@ -340,11 +349,17 @@ func emitRowHolder(pf func(string, ...any), u *ir.Unit, owner string, f *ir.Fiel
 		pf("    while (low < high) {\n")
 		pf("      const mid = (low + high) >>> 1;\n")
 		pf("      const e = base + mid * %d;\n", stride)
-		pf("      let used = view.getInt32(e + %d, true);\n", pieces[1].Offset)
-		pf("      if (!(used >= 0) || used > %d) { used = 0; }\n", key.Type.Size)
+		if key.Type.TextUnbounded() {
+			pf("      const slot = e + %d; const delta = view.getInt32(slot + 4, true) * 4294967296 + view.getUint32(slot, true);\n", pieces[0].Offset)
+			pf("      const text = delta === 0 ? 0 : slot + delta + 8; const used = delta === 0 ? 0 : view.getUint32(text - 8, true);\n")
+		} else {
+			pf("      let used = view.getInt32(e + %d, true);\n", pieces[1].Offset)
+			pf("      if (!(used >= 0) || used > %d) { used = 0; }\n", key.Type.Size)
+			pf("      const text = e + %d;\n", pieces[0].Offset)
+		}
 		pf("      const m = used < key.length ? used : key.length;\n")
 		pf("      let order = 0;\n")
-		pf("      for (let i = 0; i < m && order === 0; i++) { order = bytes[e + %d + i] - key[i]; }\n", pieces[0].Offset)
+		pf("      for (let i = 0; i < m && order === 0; i++) { order = bytes[text + i] - key[i]; }\n")
 		pf("      if (order === 0) { order = used - key.length; }\n")
 		pf("      if (order === 0) { return e; }\n")
 		pf("      if (order < 0) { low = mid + 1; } else { high = mid; }\n")
@@ -383,7 +398,7 @@ func rowFindKey(f *ir.Field) *ir.Field {
 	}
 	key := ir.MapKeyField(f)
 	switch {
-	case key.Type.Kind == ir.TString && !key.Type.Pointer && !key.Type.Unbounded && key.Type.Size > 0:
+	case key.Type.Kind == ir.TString && !key.Type.Pointer && (key.Type.TextUnbounded() || key.Type.Size > 0):
 		return key
 	case key.Type.Kind == ir.TInt && key.Type.Width <= 64:
 		return key

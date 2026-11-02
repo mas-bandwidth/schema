@@ -52,6 +52,7 @@ public final class TableVariable {
         public boolean malformed;
         public int widened;
         public int duplicate;
+        public int missingRequired;
         public boolean refused;
         public String reason;
         public int retained;
@@ -71,6 +72,8 @@ public final class TableVariable {
             clamped = 0;
             malformed = false;
             widened = 0;
+            duplicate = 0;
+            missingRequired = 0;
             refused = false;
             reason = null;
             retained = 0;
@@ -769,6 +772,44 @@ public final class TableVariable {
         return v;
     }
 
+    public static int crc32c(byte[] data, int len) {
+        int crc = 0xffffffff;
+        for (int i = 0; i < len; i++) {
+            crc ^= data[i] & 0xff;
+            for (int k = 0; k < 8; k++) {
+                crc = (crc >>> 1) ^ ((crc & 1) != 0 ? 0x82f63b78 : 0);
+            }
+        }
+        return ~crc;
+    }
+
+    public static boolean integrityHolds(byte[] data) {
+        if (data == null || data.length < 5) {
+            return false;
+        }
+        int n = data.length - 4;
+        int want =
+                (data[n] & 0xff)
+                        | ((data[n + 1] & 0xff) << 8)
+                        | ((data[n + 2] & 0xff) << 16)
+                        | ((data[n + 3] & 0xff) << 24);
+        return want == crc32c(data, n);
+    }
+
+    public static byte[] integrityOpen(byte[] data, Report report) {
+        if (data == null || data.length == 0 || (data[0] & 0xff) != 1) {
+            return data;
+        }
+        if (integrityHolds(data)) {
+            return java.util.Arrays.copyOf(data, data.length - 4);
+        }
+        if (report != null) {
+            report.malformed = true;
+            report.reason = "integrity_mismatch";
+        }
+        return null;
+    }
+
     // bodyExtent walks the framing of the body in [off, limit) to the zero
     // reference that ends it (§3). It answers the offset just past the
     // terminator, or -1 where the walk cannot reach one at all — §4's framing
@@ -943,6 +984,32 @@ public final class TableVariable {
         return off + w <= limit ? off + w : -1;
     }
 
+    public static long utf8Len(String s) {
+        if (s == null) {
+            return 0;
+        }
+        int n = s.length();
+        long len = 0;
+        for (int i = 0; i < n; i++) {
+            char c = s.charAt(i);
+            if (c < 0x80) {
+                len += 1;
+            } else if (c < 0x800) {
+                len += 2;
+            } else if (Character.isHighSurrogate(c)
+                    && i + 1 < n
+                    && Character.isLowSurrogate(s.charAt(i + 1))) {
+                len += 4;
+                i++;
+            } else if (Character.isSurrogate(c)) {
+                len += 1;
+            } else {
+                len += 3;
+            }
+        }
+        return len;
+    }
+
     // textValid reports whether a kind-12 payload is well-formed UTF-8 with no
     // zero byte among its bytes (docs/SPEC-TABLES.md §3, §4): checked as it
     // ARRIVES, before the reader's own bound, because a payload that is not
@@ -1012,6 +1079,7 @@ public final class TableVariable {
         public byte[] bytes;
         public Object table;
         public boolean textMalformed;
+        public boolean named;
 
         public NodeRecord(long typeId, byte[] body) {
             this.typeId = typeId;
@@ -1407,6 +1475,23 @@ public final class TableVariable {
     // mismatch; an index past the records is malformed; and a record whose
     // type id is not the string id reads null, its unknown already counted at
     // the scan.
+    // isSharedBlob marks a blob record named by a pointer slot and answers true
+    // when an earlier slot in the same load already named it (§2.5, §3.1).
+    public static boolean isSharedBlob(NodeRecord[] recs, long index, long expectedTypeId) {
+        if (index < 2 || recs == null || index - 2 >= recs.length) {
+            return false;
+        }
+        NodeRecord rec = recs[(int) (index - 2)];
+        if (rec.typeId != expectedTypeId) {
+            return false;
+        }
+        if (rec.named) {
+            return true;
+        }
+        rec.named = true;
+        return false;
+    }
+
     public static String resolveString(NodeRecord[] recs, long index, Report report) {
         if (index == 0) {
             return null;
@@ -1521,6 +1606,93 @@ public final class TableVariable {
         // no counter (§3.1). It is false when the field is absent — an empty
         // but valid numbering — or was read whole.
         public boolean bad;
+        // THE POINTER EDGES the resolve met, as (from, to) node index pairs:
+        // from is the node whose fields are resolving (1 the root, k >= 2 the
+        // record), to the node a pointer named. cyclic() walks them (§3.1).
+        public long from = 1;
+        long[] edges = new long[16];
+        int edgeCount;
+
+        void edge(long to) {
+            if (edgeCount + 2 > edges.length) {
+                edges = java.util.Arrays.copyOf(edges, edges.length * 2);
+            }
+            edges[edgeCount++] = from;
+            edges[edgeCount++] = to;
+        }
+    }
+
+    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): no writer
+    // produces one, so the load walks the resolved graph, the root first and
+    // then every record the root did not reach, and a pointer that reaches a
+    // node whose descent is still OPEN (a back edge) refuses the whole load; a
+    // pointer to a CLOSED node is a share and legal and is never re-entered.
+    // Three marks per node (unvisited, open, closed), each node entered once:
+    // linear, iterative, nothing recursed.
+    public static boolean cyclic(NodeTable nt) {
+        int pairs = nt.edgeCount / 2;
+        if (pairs == 0) {
+            return false;
+        }
+        int n = (nt.recs == null ? 0 : nt.recs.length) + 2;
+        int[] start = new int[n + 1];
+        for (int i = 0; i < pairs; i++) {
+            start[(int) nt.edges[2 * i] + 1]++;
+        }
+        for (int i = 0; i < n; i++) {
+            start[i + 1] += start[i];
+        }
+        int[] to = new int[pairs];
+        int[] fill = java.util.Arrays.copyOf(start, n);
+        for (int i = 0; i < pairs; i++) {
+            to[fill[(int) nt.edges[2 * i]]++] = (int) nt.edges[2 * i + 1];
+        }
+        byte[] state = new byte[n]; // 0 unvisited, 1 open, 2 closed
+        int[] stack = new int[n];
+        int[] next = new int[n];
+        for (int root = 1; root < n; root++) {
+            if (state[root] != 0) {
+                continue;
+            }
+            int depth = 0;
+            stack[depth++] = root;
+            state[root] = 1;
+            next[root] = start[root];
+            while (depth > 0) {
+                int at = stack[depth - 1];
+                if (next[at] == start[at + 1]) {
+                    state[at] = 2;
+                    depth--;
+                    continue;
+                }
+                int t = to[next[at]++];
+                if (state[t] == 1) {
+                    return true;
+                }
+                if (state[t] == 0) {
+                    state[t] = 1;
+                    next[t] = start[t];
+                    stack[depth++] = t;
+                }
+            }
+        }
+        return false;
+    }
+
+    // resolveTable against the load's NodeTable: the record's table, and the
+    // edge recorded for cyclic().
+    public static <T> T resolveTable(
+            NodeTable nt,
+            long index,
+            long targetTypeId,
+            Object root,
+            long rootTypeId,
+            Report report) {
+        T t = resolveTable(nt.recs, index, targetTypeId, root, rootTypeId, report);
+        if (t != null) {
+            nt.edge(index);
+        }
+        return t;
     }
 
     @SuppressWarnings("unchecked")
@@ -1691,6 +1863,22 @@ public final class TableVariable {
             return true;
         }
 
+        public long recordBlob(Object target, long typeId) {
+            if (target == null) return 0;
+            if (nodeCount == nodeValue.length) {
+                int cap = nodeCount * 2;
+                nodeValue = java.util.Arrays.copyOf(nodeValue, cap);
+                nodeType = java.util.Arrays.copyOf(nodeType, cap);
+                nodeBlob = java.util.Arrays.copyOf(nodeBlob, cap);
+            }
+            long idx = (long) (nodeCount + 2);
+            nodeValue[nodeCount] = target;
+            nodeType[nodeCount] = typeId;
+            nodeBlob[nodeCount] = true;
+            nodeCount++;
+            return idx;
+        }
+
         public int nodeCount() {
             return nodeCount;
         }
@@ -1823,6 +2011,7 @@ public final class TableVariable {
             case 9:
             case 23:
             case 28:
+            case 36:
                 return 8;
             case 18:
             case 19:
@@ -1835,7 +2024,7 @@ public final class TableVariable {
     }
 
     static boolean signedKind(int kind) {
-        return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24;
+        return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24 || kind == 36;
     }
 
     static java.math.BigInteger readInteger(Reader r, int kind) {

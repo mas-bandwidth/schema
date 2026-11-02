@@ -123,6 +123,11 @@ func cCollectionDifferential(t *testing.T, mode string) {
 		}
 		count++
 	}
+	pinnedGateMutant, err := os.ReadFile("testdata/wire/tables/c_arms_gate_text_unplaced_blob_mark.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(seeds[len(seeds)-1], indexes[len(seeds)-1], "pinned-unplaced-blob-mark", pinnedGateMutant)
 	for i, s := range seeds {
 		enumerated(s, func(pass string, wire []byte) { check(s, indexes[i], pass, wire) })
 	}

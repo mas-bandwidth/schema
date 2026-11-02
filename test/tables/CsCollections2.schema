@@ -12,3 +12,16 @@ table WideRoot
     nodes []*WideNode
     values []uint128
 }
+
+table CycleNode
+{
+    id     int32 = 7
+    active bool
+    next   *CycleNode
+    if active
+    {
+        guarded *CycleNode
+    }
+    links  []*CycleNode
+    edges  map[int32]*CycleNode
+}

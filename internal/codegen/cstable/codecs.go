@@ -242,6 +242,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		g.tf("    public %s %s;\n", typ, name)
 	case f.Type.Kind == ir.TWString:
 		g.tf("    public char[] %s = new char[%d];\n    public int %sLength;\n", name, f.Type.Size, name)
+	case f.Type.TextUnbounded():
+		g.tf("    public byte[] %s = Array.Empty<byte>();\n    public int %sLength;\n", name, name)
 	case f.Type.Kind == ir.TString:
 		g.tf("    public byte[] %s = new byte[%d]; // string(%s): max length, used length beside it\n",
 			name, f.Type.Size, ir.RenderExpr(f.Type.SizeExpr))
@@ -611,16 +613,26 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("    info.Id = 0x%016xul;\n", identity)
 	g.pf("    info.NumFields = %d;\n", len(st.Fields))
+	for _, f := range st.Fields {
+		if f.Required {
+			g.pf("    info.HasRequired = true;\n")
+			break
+		}
+	}
 	g.pf("    info.Create = delegate { return new global::%s.%s(); };\n", capitalize(g.unit.Package), st.Name)
 	layout := ir.RecordLayout(g.unit, st)
 	align := int64(8)
 	for _, table := range g.unit.Tables {
-		if a := ir.RecordLayout(g.unit, table).Align; a > align {
+		if a := ir.CookNodeAlign(g.unit, table); a > align {
 			align = a
 		}
 	}
-	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, layout.Align, align)
+	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, ir.CookNodeAlign(g.unit, st), align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
+	g.pf("    info.Integrity = %t;\n", st.Integrity == "crc32c")
+	if st.JsonArray {
+		g.pf("    info.JsonArray = true;\n")
+	}
 	g.pf("    info.RootElemSlots = %d;\n", rootElemSlots(st))
 	var pt strings.Builder
 	pt.WriteString("info.PointerType = delegate (ulong id) { switch (id) { ")
@@ -739,7 +751,7 @@ func csRawGet(expr string, t ir.FieldType) string {
 		return "unchecked((ulong)BitConverter.DoubleToInt64Bits(" + expr + "))"
 	case ir.TInt:
 		if t.Signed {
-			return "(ulong)(long)" + expr
+			return "unchecked((ulong)(long)(" + expr + "))"
 		}
 		return "(ulong)" + expr
 	case ir.TBits:
@@ -848,6 +860,12 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", GetPresent = delegate (object o) { return %s%sPresent; }", cast, name)
 		fmt.Fprintf(&b, ", SetPresent = delegate (object o, bool p) { %s%sPresent = p; }", cast, name)
 	}
+	if f.Type.TextUnbounded() {
+		fmt.Fprintf(&b, ", Unbounded = true, EnsureCount = delegate (object o, int n) { var value = (%s)o; if (value.%s.Length < n) { Array.Resize(ref value.%s,n); } }", ownerType, name, name)
+	}
+	if f.IsTextList() {
+		fmt.Fprintf(&b, ", TextList = true, TextField = %q, TextTotal = %dL", g.owner.Name+"."+f.Name, f.TextTotal)
+	}
 	return b.String()
 }
 
@@ -868,7 +886,7 @@ func (g *tableGen) emitTableFieldDescriptor(f *ir.Field, guard string) {
 	// names its size (docs/SPEC-TABLES.md §2.4, §8.1)
 	bound := "0"
 	switch {
-	case f.IsMap(), f.IsList():
+	case f.IsMap(), f.IsList(), f.Type.TextUnbounded():
 		bound = "int.MaxValue"
 	case f.KeyEnum != "":
 		bound = fmt.Sprintf("(int)global::%s.Schema.%sMax", capitalize(g.unit.Package), f.KeyEnum)

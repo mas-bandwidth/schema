@@ -28,28 +28,15 @@
 # 24845619678, on Certify run 33887252419.
 stream_count_past_body streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_count_past_body.bin
 
-# THE FORGED POINTER CYCLE (§3.1, §14 note 9; schema#535, filed on #521 as
-# G-19). One flipped bit in a three-node ListNode chain turns the middle node's
-# `next` index from 3 into 2, which is that node's own index. The wire loads,
-# the report is all zero, and the loaded node points at itself.
+# THE FORGED POINTER CYCLE (§3.1, §4; schema#535, filed on #521 as G-19). One
+# flipped bit in a three-node ListNode chain turns the middle node's `next`
+# index from 3 into 2, which is that node's own index.
 #
-# THAT IS THE CONTRACT, NOT A HOLE, and this vector pins it as one. §3.1: "A
-# pointer field's payload is a NUMBER: it is bounds-checked and stored, never
-# followed... Load itself is safe on any input: it scans, it terminates, it
-# fabricates nothing. What a cyclic structure costs is paid by whatever WALKS
-# it." The index names a node that exists and whose type matches, so no §4
-# event happened and no counter may move. §14 note 9 prices the reader-side
-# acyclicity check this version does not spend.
-#
-# The vector's job here is the REFERENCE AND THE ORACLE AGREEING on that: both
-# must accept it with a silent report, and a port that starts following
-# references — or one that stops bounds-checking the index — parts from the
-# other and this seeks the disagreement rather than searching for it. The
-# walking consumers' half of the contract is held beside it, in Go, by
-# internal/tablewire's TestForgedPointerCycleLoadsSilentlyAndRefusesEveryWalk:
-# the text export and a re-encode each refuse the loaded instance BY NAME, and
-# each refusal returns rather than recursing away. Its three negative controls
-# are the two guards reverted and a counter added on the load path.
+# A CYCLIC WIRE IS DAMAGE (Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS
+# attack somebody would do on this protocol!"), so the whole load is refused as
+# `malformed`. The vector's job here is the REFERENCE AND THE ORACLE AGREEING
+# on that refusal. internal/tablewire's TestForgedPointerCycleIsDamage holds the
+# engine's half.
 pointer_self_cycle graphdemo Scene    testdata/wire/tables/fuzz-vectors/pointer_self_cycle.bin
 
 # ILL-FORMED TEXT ON A MESSAGE BODY (§3, §3.3; schema#620). §3's one content
@@ -215,3 +202,35 @@ arm_array_count_past_arm_length messagedemo ToolMessage testdata/wire/tables/fuz
 # Found by the index pass (#33, corpus seed blob_small) of the retention arm at
 # seed 24845619678, on tables-cs-release on hetzner1.
 retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_blob_shared_refused.bin
+
+# Retained unknown unions carry an explicit arm frame, even for fixed scalars.
+# Dart previously consumed the frame length as payload and lost the field.
+retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin
+
+# Retaining readers must recognize every reachable byte-blob type like plain readers.
+# Dart omitted bytesBlob initialization and dropped valid nodes as unknown.
+retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_byte_blob_reachability.bin
+
+# Two empty string records have distinct incoming identity despite canonical String values.
+# Dart formerly merged them and refused the valid graph as blob_shared.
+distinct_empty_string_blobs blobdemo Catalog testdata/wire/tables/fuzz-vectors/distinct_empty_string_blobs.bin
+
+# An unknown enum in a counted list is an excluded retained class.
+# Dart counted unknown but omitted retain_lost for this list element.
+retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin
+
+# Retained records in nodes no longer reached by the save count retain_lost.
+# Dart saved the right bytes but omitted the unvisited retained-record count.
+retain_unreachable_record mapdemo Trails testdata/wire/tables/fuzz-vectors/retain_unreachable_record.bin
+
+# Replaced map entries discard their retained bodies without reporting loss.
+# The discarded body and an unreachable pointer node have different ownership.
+retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin
+# Final widened key occurrence replaces an earlier incompatible key kind.
+# The neutral oracle and C++ previously retained the earlier mismatch flag.
+map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin
+# A malformed child stops its collection before a later non-finite float.
+list_damaged_child_stop listdemo Save testdata/wire/tables/fuzz-vectors/list_damaged_child_stop.bin
+
+# Reserved node-table transport has exactly kind12; a different kind is damage.
+node_table_wrong_kind featurewitnesses ArrayRoot testdata/wire/tables/fuzz-vectors/node_table_wrong_kind.bin

@@ -6939,7 +6939,7 @@ func init() {
 		return RangedSignedSaveBodyRetain(w, (*RangedSigned)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RangedSignedLoadBodyRetain(&r, (*RangedSigned)(p))
-	}, CookSize: 80, CookAlign: 8}
+	}, CycleIndex: 14, CycleType: tableCycleType, CookSize: 80, CookAlign: 8}
 }
 
 // RangedSignedTableType returns RangedSigned's reflection descriptor.
@@ -7161,7 +7161,7 @@ func init() {
 		return RangedUnsignedSaveBodyRetain(w, (*RangedUnsigned)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RangedUnsignedLoadBodyRetain(&r, (*RangedUnsigned)(p))
-	}, CookSize: 104, CookAlign: 8}
+	}, CycleIndex: 15, CycleType: tableCycleType, CookSize: 104, CookAlign: 8}
 }
 
 // RangedUnsignedTableType returns RangedUnsigned's reflection descriptor.
@@ -7251,7 +7251,7 @@ func init() {
 		return RangedWidthsSaveBodyRetain(w, (*RangedWidths)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RangedWidthsLoadBodyRetain(&r, (*RangedWidths)(p))
-	}, CookSize: 40, CookAlign: 8}
+	}, CycleIndex: 16, CycleType: tableCycleType, CookSize: 40, CookAlign: 8}
 }
 
 // RangedWidthsTableType returns RangedWidths's reflection descriptor.

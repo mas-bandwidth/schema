@@ -1507,7 +1507,7 @@ struct TableJsonIn
     int64_t size;
     int64_t pos;
     TableReport * report;
-    bool bad;     // the text is not JSON: the walk stops and keeps what it placed
+    bool bad;     // the text is not JSON: the walk stops and the read is discarded whole
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
 
@@ -1742,7 +1742,8 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
             // form built has to be storage the wire can carry (§5).
             if ( !TableUtf8Valid( (const uint8_t *) unit, unit_length ) )
             {
-                unit_length = TableJsonEncodeUtf8( 0xfffd, unit );
+                in.bad = true;
+                return false;
             }
         }
     }
@@ -1762,7 +1763,7 @@ inline bool TableJsonScanUnit( TableJsonIn & in, char * unit, int32_t * unit_len
 // because a key never clamps: a key this buffer could not hold whole is not a
 // shorter key, and its entry drops instead (§2.8).
 inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity, int32_t * length,
-    bool * clamped_out = NULL )
+    bool * clamped_out = NULL, bool text = false )
 {
     if ( TableJsonPeek( in ) != '"' )
     {
@@ -1778,6 +1779,11 @@ inline bool TableJsonScanString( TableJsonIn & in, char * out, int32_t capacity,
         int32_t unit_length = 0;
         if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
         if ( unit_length == 0 ) { break; }
+        if ( text && unit[0] == 0 )
+        {
+            in.bad = true;
+            return false;
+        }
         if ( out == NULL )
         {
             placed += unit_length; // measured and not kept: a byte buffer's read sizes its node this way (§2.5)
@@ -1974,6 +1980,11 @@ inline bool TableJsonScanWString( TableJsonIn & in, char16_t * out, int32_t capa
         if ( !TableJsonScanUnit( in, unit, &unit_length ) ) { return false; }
         if ( unit_length == 0 ) { break; }
         const uint32_t code = TableJsonDecodeUtf8( unit, unit_length );
+        if ( code == 0 )
+        {
+            in.bad = true;
+            return false;
+        }
         char16_t units[2];
         int32_t units_length = 1;
         if ( code < 0x10000 )
@@ -3281,7 +3292,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     if ( f->kind == 12 )
     {
         int32_t length = 0;
-        if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length ) ) { return false; }
+        if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length, NULL, true ) ) { return false; }
         storage[length] = 0;
         TableJsonSetCount( base, f, length );
         return true;
@@ -3729,6 +3740,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         in.report->malformed = true;
         return false;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
     bool ok = TableJsonReadTable( in, value, info, 0 );
     if ( ok )
     {
@@ -5002,7 +5014,12 @@ bool CaptionFromJsonTolerant( Caption & value, const char * text, int64_t bytes,
     const bool malformed_before = to->malformed;
     to->malformed = false;
     const bool ok = TableJsonRead( &value, CaptionTableType(), text, bytes, to );
-    if ( !ok || to->malformed ) { to->malformed = true; CaptionTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    if ( !ok || to->malformed )
+    {
+        to->malformed = true;
+        CaptionTableType()->reset( &value );
+        return false;
+    } // damage discards the whole load (§4)
     to->malformed = malformed_before;
     return true;
 }
@@ -5045,7 +5062,12 @@ bool StampFromJsonTolerant( Stamp & value, const char * text, int64_t bytes, Tab
     const bool malformed_before = to->malformed;
     to->malformed = false;
     const bool ok = TableJsonRead( &value, StampTableType(), text, bytes, to );
-    if ( !ok || to->malformed ) { to->malformed = true; StampTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    if ( !ok || to->malformed )
+    {
+        to->malformed = true;
+        StampTableType()->reset( &value );
+        return false;
+    } // damage discards the whole load (§4)
     to->malformed = malformed_before;
     return true;
 }
@@ -5088,7 +5110,12 @@ bool LineFromJsonTolerant( Line & value, const char * text, int64_t bytes, Table
     const bool malformed_before = to->malformed;
     to->malformed = false;
     const bool ok = TableJsonRead( &value, LineTableType(), text, bytes, to );
-    if ( !ok || to->malformed ) { to->malformed = true; LineTableType()->reset( &value ); return false; } // damage discards the whole load (§4)
+    if ( !ok || to->malformed )
+    {
+        to->malformed = true;
+        LineTableType()->reset( &value );
+        return false;
+    } // damage discards the whole load (§4)
     to->malformed = malformed_before;
     return true;
 }

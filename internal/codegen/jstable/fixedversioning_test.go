@@ -38,6 +38,7 @@ package jstable
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -72,11 +73,6 @@ type jsVersionRow struct {
 	// grown element width, which §5.9 #33 says is FOUR widen entries and never a
 	// folded run — and `widened > 0` cannot tell the two apart.
 	widenedExact int
-	// unported is a row whose schema this backend refuses to generate at all —
-	// kind 33, `wstring(N)`, is still refused in a JavaScript table
-	// (compiler/target_javascript.go, refuseWideText). It is NOT a §5 red: the
-	// row is named here, skipped by name, and owed the day the kind lands.
-	unported string
 	// check is JavaScript asserting the landed values, over `back[0]`.
 	check string
 }
@@ -163,7 +159,7 @@ var jsVersionRows = []jsVersionRow{
   if (back[0].pick.alpha.y !== 55) {
     fail("the arm's reader-appended field is not its declared default: " + show(back[0]));
   }`},
-	{row: "wstring_grow", unported: "kind 33, wstring(N), is refused in a JavaScript table (schema#366 / refuseWideText)"},
+	{row: "wstring_grow"},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -175,9 +171,6 @@ func TestJSFixedVersioningNewReadsOld(t *testing.T) {
 	for _, r := range jsVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
-			if r.unported != "" {
-				t.Skipf("NOT PORTED, not a §5 red: %s", r.unported)
-			}
 			newer := jsReadSchema(t, "VNEW_"+r.row)
 			older := jsReadSchema(t, "VOLD_"+r.row)
 			table := jsFixedRootName(t, older)
@@ -249,9 +242,6 @@ func TestJSFixedVersioningOldRefusesNew(t *testing.T) {
 	for _, r := range jsVersionRows {
 		t.Run(r.row, func(t *testing.T) {
 			t.Parallel()
-			if r.unported != "" {
-				t.Skipf("NOT PORTED, not a §5 red: %s", r.unported)
-			}
 			older := jsReadSchema(t, "VOLD_"+r.row)
 			table := jsFixedRootName(t, older)
 			file := filepath.Join(corpus, "new_"+r.row+".bin")
@@ -564,9 +554,7 @@ if (!(got.head === 81 && got.tail === 88)) {
 // so that one index comes back by one. The manifest names a field AS THE WIRE
 // NAMES IT, so a `was =` rename pairs by wire id for free (§5.9 #41).
 //
-// A value form this leg cannot express as one comparison — a wstring literal —
-// is LEFT OUT BY NAME rather than weakened into a pass; every row carrying one
-// is already unported (§5.9 #44).
+// Wide literals are compared as UTF-16 code units, including surrogate pairs.
 func jsManifestChecks(t *testing.T, corpus, file string, readerSchema string) string {
 	t.Helper()
 	records, values := jsManifestRow(t, corpus, file)
@@ -801,9 +789,8 @@ func jsManifestNonFinite(t *testing.T, path string) map[string]bool {
 	return out
 }
 
-// jsManifestCompare is ONE assertion for one manifest value, or nothing where
-// the form is one this leg cannot express (a wstring literal — and every row
-// carrying one is unported, §5.9 #44).
+// jsManifestCompare emits one assertion per supported manifest value. Wide
+// literals retain their UTF-16 code units instead of passing through a byte string.
 func jsManifestCompare(path, want string) (string, bool) {
 	fail := func(cond string) (string, bool) {
 		return fmt.Sprintf("if (%s) { fail(%q + \" is \" + %s + \", and the manifest says %s\"); }\n",
@@ -813,7 +800,11 @@ func jsManifestCompare(path, want string) (string, bool) {
 	case want == "true" || want == "false":
 		return fail(fmt.Sprintf("%s !== %s", path, want))
 	case strings.HasPrefix(want, `u"`):
-		return "", false // a wstring literal: named, never weakened into a pass
+		literal := want[1:]
+		if !json.Valid([]byte(literal)) {
+			return "", false
+		}
+		return fail(fmt.Sprintf("%s.split(\"\").some((c, i) => %s[i] !== c.charCodeAt(0))", literal, path))
 	case strings.HasPrefix(want, `"`):
 		lit, err := strconv.Unquote(want)
 		if err != nil {

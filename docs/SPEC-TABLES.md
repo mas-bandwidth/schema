@@ -640,9 +640,10 @@ Four spellings are Dart's own and the reason is at each site.
   verbs, because a value that measures as unsaveable and a buffer too short
   are one contract in the reference and this port does not split it.
 - **A float32 field's storage is a `double`**, and a plain float's elision
-  compares BIT PATTERNS (§3.3): a value at a nonzero default elides by `==`,
-  and at a zero default by `==` and the sign (`isNegative`), so a `-0` under a
-  `+0` default rides as it does on every leg. A NaN or an infinity is refused
+  compares BIT PATTERNS at the field's declared width (§3.3): float32 values
+  and defaults are compared after conversion to 32 bits; float64 compares all
+  64 bits. Thus a `-0` under a `+0` default rides as it does on every leg,
+  including when conversion to float32 produces zero. A NaN or an infinity is refused
   before any comparison matters (§3.3).
 - **THE DESCRIPTORS ARE `const`, and their memory columns are STATIC METHODS**
   of a per-type `<Name>TableFields` class rather than C++'s offset and width: a
@@ -5803,13 +5804,36 @@ is visited a fixed number of times, in index order, and each is consumed
 in full before the next begins, so the work is linear in the wire's bytes
 and termination needs no argument beyond the record lengths and the end
 of the stream. A pointer field's payload is a NUMBER: it is
-bounds-checked and stored, never followed. There is no traversal on the
-load path, and therefore no traversal bound — no depth cap, no visited
-set, no ordering rule on the indices. The nesting that remains is
+bounds-checked and stored, and the decode never follows it.
+**A CYCLIC WIRE IS DAMAGE, and the whole load is refused.** Glenn's ruling,
+2026-10-31: "Why the fuck would I want to read a cycle" and "It's perhaps the
+MOST OBVIOUS attack somebody would do on this protocol!" No writer produces a
+cyclic wire: the numbering walk refuses a cycle at an open entry (below), and
+a cooked region is never cyclic. So once the scan has resolved every index,
+the load checks the graph it STORED: the vertices are the root and every
+record it placed, and the edges are every non-null table pointer slot a
+node's by-value closure holds — a slot under a FALSE GUARD included, because
+the load stored it (a guard decides what a write elides, never what a read
+places), and a cycle among records the root never reaches included. A cycle
+anywhere is `malformed` (§4) on every read: strict, tolerant, retaining,
+region and builder alike. A byte buffer reaches nothing and takes no part.
+
+**THE CHECK IS LINEAR, and that is part of the rule.** Each node carries
+one of three marks — UNVISITED, OPEN, CLOSED — and is ENTERED ONCE. A
+pointer to an OPEN node is a cycle; a pointer to a CLOSED node is a SHARE
+(a DAG), which is legal and is never re-entered. A walk that tracked only the
+open path would re-enter every shared node from every path that reaches it,
+and a diamond chain of forty levels — 2^40 paths over 82 nodes — would
+never finish; the conformance row `node_diamond_chain` is that chain and must
+load. The marks live on the node records the load already holds (a region's
+node directory, §6.3), so the region load still allocates nothing (§6.5),
+and no pass recurses over the pointer graph, so a chain's length is never a
+stack depth. The
+nesting that remains is
 by-value nesting, whose depth is fixed by the SCHEMA and cannot be driven
-by data, because §2 refuses by-value cycles. §14 records the two
-traversal bounds that were weighed and rejected, and why a type id
-removes the walk instead of bounding it.
+by data, because §2 refuses by-value cycles. §14 records the traversal
+bounds that were weighed, why a type id removes the walk that types the
+nodes, and the ruling that took the cycle check (notes 4 and 9).
 
 **Identity is preserved: one index, one node.** The numbering is by first
 visit, so a node three parents name takes one index and writes one body,
@@ -5826,17 +5850,14 @@ to an entry still open is a cycle, named, and measure, save, `Cook` and
 to NODES, never to bytes, and it lives on the AUTHORING side, where §6.5
 licenses allocation.
 
-**A region is not re-proved, and the claim stops there.** A save from a
-LOCKED region needs no map — the region's node directory (§6.3) already
-is the numbering — so it reproduces the structure it was handed, cycle
-and all. A region `Lock` produced is acyclic because `Lock` refused
-otherwise; a region LOADED from a wire is exactly as acyclic as its
-writer made it. Load itself is safe on any input: it scans, it
-terminates, it fabricates nothing. What a cyclic structure costs is paid
-by whatever WALKS it, and a consumer walking untrusted table data — a
-reflection dump, a text export (§16) — carries its own visit bound, the
-way any graph walker must. §14 prices the reader-side check this version
-does not spend.
+**A region is not re-proved, and it does not need to be.** A save from a
+LOCKED region needs no map — the region's node directory (§6.3) already is
+the numbering — so it reproduces the structure it was handed. A region
+`Lock` produced is acyclic because `Lock` refused otherwise; a region
+LOADED from a wire is acyclic because the load refused otherwise (above);
+and a cook is acyclic because the cook refused otherwise, and
+`schema cook-check` refuses a cyclic one (§7.4). Load itself is safe on
+any input: it scans, it terminates, it fabricates nothing.
 
 **Framing, worked.** Given
 
@@ -8814,8 +8835,10 @@ tolerance is the versioning model:
   is judged only up to the bound: the elements the reader keeps must lie
   inside the body), a descending map key, an arm whose `L` does not frame
   its kind, a bool byte other than `0` or `1`, ill-formed text, a node table
-  that cannot be read whole, a reserved id out of place, and every case that
-  makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
+  that cannot be read whole, a cycle (a loaded graph in which a pointer
+  names a node whose descent is still open, which no writer produces, §3.1),
+  a reserved id out of place, and
+  every case that makes the whole wire malformed (§3). **BYTES A READER STEPS OVER BY `L` ARE
   OPAQUE**, and damage inside them is not damage: an unknown field, a
   kind-mismatched field, a retained record and the CLAMPED TAIL of an array
   (the elements past the reader's bound, stepped over by the field's `L`) are
@@ -9997,7 +10020,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `foreign_order` | the magic is this build's constant byte-reversed: a cook of the other byte order (§7.1, §15) |
   | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below |
   | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) |
-  | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root's own `alignof` (§7) |
+  | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root node's required alignment, including its extent (§6.2) (§7) |
   | `truncated` | a file or buffer shorter than its framing, or a fixed record whose inputs run past the bytes given (§3, §7) |
   | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
   | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
@@ -11065,8 +11088,8 @@ the wire, and keeps the flexibility that comes with it.
     POWER OF TWO, at least EIGHT (§7.1's floor) and at most SIXTY-FOUR — the
     same sixty-four a block's base takes (§19.1), and past which the derived
     data offset would no longer be the 64 every unit this language can declare
-    produces — and a multiple of the ROOT's own `alignof`, since the root sits
-    at the region's base. A zero there is a division by
+    produces — and a multiple of the ROOT node's required alignment, including its extent (§6.2), since
+    the root sits at the region's base. A zero there is a division by
     zero inside the check, which is the defect the check exists to prevent.
   - **The DATA PART MUST HOLD THE ROOT.** The two part lengths frame the FILE;
     they do not say the region is at least `sizeof( root )`. Without that
@@ -11105,7 +11128,7 @@ the wire, and keeps the flexibility that comes with it.
   | the BYTE ORDER the magic established | `not_a_cook` again, and this is the one clause with no value of its own. A header whose `byte_order` word contradicts its own magic describes no cook in EITHER order, so there is nothing a distinct value would tell a caller that this one does not (§7.1) |
   | the build version | `wrong_build_version` where the `build_version` word is not this build's (§20) |
   | every reserved word zero | `reserved_not_zero` |
-  | the `alignment` word validated | `bad_alignment` where it is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root's own `alignof` |
+  | the `alignment` word validated | `bad_alignment` where it is not a power of two, is below eight, is above sixty-four, or is not a multiple of the root node's required alignment, including its extent (§6.2) |
   | the two part lengths against the caller's `length` | `truncated` |
   | the ROOT's storage inside the data part | `truncated`, the second clause on that value: the part lengths frame the file and do not say the region is at least `sizeof( root )` |
   | the base's alignment | `unaligned_base`, the pointer the caller passed not aligned for the region the header names. This is the caller's defect and not the file's, and it is the reason worth telling apart from every other |
@@ -11259,7 +11282,7 @@ the wire, and keeps the flexibility that comes with it.
   | deref | `const T * t = XAt( slot )` | `XRow* r = Schema.XAt(slot)` | `r := XAt(slot)` with `slot *int64`; the signature is `XAt(slot *int64, arena ...*TableArena)`, the variadic arena naming the unlocked builder's storage | `XCook.At(cook, slot)` — the target's offset, or `null` for a null reference; a delta that leaves the region throws a `RangeError` naming the cook as corrupt | `row.<field>(into)` moves a lent `TRow` cursor; an escaping delta answers `TableCookRef.outside` |
   | the record | the generated struct | `XRow` (§11's claimed suffix) | `XRow`, the same claim | `XRow`, a frozen object of accessors over `(view, at)`: no struct to declare, so the offsets ARE the record | `XRow`, the same claim — a cursor of `(view, at)`, since Dart has no struct |
   | the descriptors | `XTableType()` | `XCook.Type` | `cook.Type() *TableCookInfo` | `XCook.Type` | `XCook.type`, a `const TableCookInfo` |
-  | §7.1's facts | `sizeof( X )` and `alignof( X )`, which `XOpen` holds the header to; the region alignment is the header's own word | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
+  | §7.1's facts | `sizeof( X )` and the root node's required alignment, including its extent (§6.2), which `XOpen` holds the header to; the region alignment is the header's own word | the same constants | `cook.RegionAlignment()`, `RootSize()`, `RootAlign()` — methods, which §11 leaves a language free to make them; `RegionAlignment()` is the UNIT's ceiling, the max over every cook closure, and not the opened file's per-region header word | `XCook.RegionAlignment`, `RootSize`, `RootAlign` | `XRow.rowSize` and `XRow.rowAlign`, `static const` on every record; the region alignment is the header's, read at `open` |
 
   **A MAP FIELD IS READ AS ITS ENTRIES, in every column** (§2.8, §7.2): the
   slot is the delta and the count, and a cooked holder exposes the count, the
@@ -11417,14 +11440,19 @@ the wire, and keeps the flexibility that comes with it.
      whose counts bound a walker just as a table's do. It reads no field
      value and decodes no payload.
 
+  3. **No cycle.** A cook is never cyclic (§3.1), so the edges pass two
+     resolved are walked once with three marks a node — unvisited, open,
+     closed — and a reference to an OPEN node refuses the file; a
+     reference to a CLOSED node is a share and is not re-entered.
+
   Every node is checked exactly once because the scan visits each entry
-  once, and no reference is ever FOLLOWED, so no reference can cause a
-  second visit. A forged file whose references alias into a
-  legal-looking DAG costs nothing extra, and neither does a cycle. The
-  scan also checks the nodes NOTHING POINTS AT, which no traversal from
-  the root can reach. The cost is `O(R + P log N)` — linear in the
-  region, plus one search per pointer slot — with no allocation and no
-  per-node state, and it terminates on every input.
+  once, and the cycle walk enters each node once, so no reference can
+  cause a second visit. A forged file whose references alias into a
+  legal-looking DAG costs nothing extra. The scan also checks the nodes
+  NOTHING POINTS AT, which no traversal from the root can reach. The
+  cost is `O(R + P log N)` — linear in the region, plus one search per
+  pointer slot — with one mark and one edge list per node, and it
+  terminates on every input.
 
 - **Pack order and checking are INDEPENDENT.** The region is packed in
   pre-order (§6.3) because that is the order the wire numbers nodes in
@@ -14962,10 +14990,14 @@ possible, and minimize copying (§6.2):
 
 **The node table's shape** (§3.1):
 
-4. **A visited-index guard on load — REJECTED.** It is what an untyped node
-   table forces: type the nodes by traversing, and bound the traversal with a
-   set. That is state proportional to the graph on the READING path, which
-   §6.5 forbids. The type id removes the walk instead of bounding it.
+4. **A visited-index guard on load — SUPERSEDED (Glenn, 2026-10-31).** It
+   was rejected as state proportional to the graph on the reading path. That
+   reasoning was never Glenn's (it came from #264 and #336), and his ruling
+   reverses it: "Why the fuck would I want to read a cycle" — "It's perhaps
+   the MOST OBVIOUS attack somebody would do on this protocol!" A cyclic wire
+   is damage (§3.1). The type id still removes the walk that TYPES the nodes;
+   the cycle check is a separate pass, three marks a node carried on the
+   records the load already holds, linear and allocation-free on a region.
 5. **An index-monotonic reference rule — REJECTED.** Requiring every reference
    to name a larger index would bound a traversal with no state at all, but it
    holds only under a TOPOLOGICAL numbering and pre-order is not one:
@@ -14991,12 +15023,13 @@ possible, and minimize copying (§6.2):
    under the encoding every other field uses, and a skipper that knows kind
    `12` frames it correctly without knowing what it holds. A second encoding
    would have bought nothing and cost every reader a case.
-9. **A reader-side acyclicity check — PRICED, NOT TAKEN.** Pre-order numbering
-   gives every node a contiguous index interval, so with a `max index in
-   subtree` on each record a cycle is an `O(1)` test per reference. It costs
-   bytes a node plus a pass to prove the intervals are genuinely nested, for a
-   property the writer already guarantees (§3.1). It is the shape the check
-   would take if untrusted-input hardening ever demands one.
+9. **A reader-side acyclicity check — TAKEN (Glenn, 2026-10-31).** It was
+   priced and not taken (#264, #336) on the ground that the writer already
+   guarantees the property. A reader cannot rely on what a forger's writer
+   guarantees, and Glenn ruled: "It's perhaps the MOST OBVIOUS attack
+   somebody would do on this protocol!" The shape taken is not the interval
+   scheme weighed here (bytes a node plus a nesting proof) but the
+   three-mark walk of §3.1, which costs no wire bytes.
 10. **Node-directory INDICES in place of self-relative deltas** — making the
     region and the wire one encoding — **REJECTED on the hot path.** A deref
     would become a directory load plus a base pointer where today it is one
@@ -15880,7 +15913,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8, or a lone or out-of-order surrogate escape, is REFUSED BY NAME on read (`string_not_utf8`, `string_lone_surrogate`, §16.3), never transcoded to `U+FFFD`. So one in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) is `kind_mismatch`, the field at its default. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string makes the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -16129,14 +16162,28 @@ text's integrity without saying so. Refusing also keeps §5's guarantee for the
 text as it holds for the wire: an instance a read produced is always one the
 reference can re-save. §16.12 holds both readers to it over an outside corpus. What remains is an instance
 built in code, and the writer answers for it rather than emitting a text no
-conforming parser can read. Held first in Go, in both of its text readers:
-the generated walk (`internal/codegen/gotable/json.go`, `scanText`) and the
-pack text reader `schema pack` reads a tree with (`internal/tabletext/read.go`,
-`scanStored` and `scanWString`), which refuses with the same `Malformed` and
-the same `Reason`. The C walk carries it too (`table_json_scan_unit`; C's report
-has no `Reason` text, so it answers `Malformed`), and so does the Rust reader
-(`Jr::read_string` under `<root>_from_json_bytes`, answering `Malformed`); every
-other backend keeps its behaviour until its port.
+conforming parser can read.
+The two named refusals stand at different stages today:
+`string_not_utf8` is held now in Go — in both the generated walk
+(`internal/codegen/gotable/json.go`, `scanText`) and the pack text reader
+`schema pack` reads a tree with (`internal/tabletext/read.go`, `scanStored` and
+`scanWString`), which refuses with the same `Malformed` and the same `Reason` —
+and in the C (`table_json_scan_unit`), Rust (`Jr::read_string` under
+`<root>_from_json_bytes`), C# (`TableJson.ScanText`), Java, and Elixir
+byte-accepting text readers (plus the JavaScript conformance byte boundary);
+every other backend keeps its UTF-8 input boundary until its port.
+`string_lone_surrogate`, by contrast, is **pending** under deferred card
+`sprint-out/schema-go-json-refuses-lone-surrogates` (`docs/roadmap.sexp`,
+`testdata/jsontestsuite/PENDING.tsv`, §16.12): until that card lands, a
+well-formed `\uXXXX\uYYYY` surrogate pair decodes to its supplementary scalar
+value, and a lone or out-of-order `\uD800`..`\uDFFF` escape currently reads as
+`U+FFFD` across `internal/tabletext/read.go` and all nine original ports (`go`,
+`cpp`, `c`, `cs`, `rust`, `java`, `js`, `dart`, `elixir`), as pinned by
+conformance rows `str-lone-lead-surrogate` and `str-lone-trail-surrogate`
+(`testdata/conformance/tables/MANIFEST.txt`) and hostile-corpus rows
+`conformance-str-lone-lead-surrogate`, `conformance-str-lone-trail-surrogate`,
+and `fuzz-text-lone_lead_surrogate`
+(`internal/ci/hostilecorpus/corpus/manifest.tsv`).
 **The refusal comes BEFORE any clamp**: an ill-formed byte at or past a
 field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
@@ -17176,7 +17223,12 @@ emits one.
 that are not well-formed UTF-8, `string_lone_surrogate` for a lone or
 out-of-order surrogate escape, at every string site. A silent `U+FFFD` would
 make two texts one value; this is the security rule, and it is not traded for
-leniency.
+leniency. `string_not_utf8` is met today; the ten `string_lone_surrogate` rows
+in the table below remain pending under deferred card
+`sprint-out/schema-go-json-refuses-lone-surrogates` (`testdata/jsontestsuite/PENDING.tsv`),
+while the current readers across `internal/tabletext/read.go` and all nine
+original ports decode a lone or out-of-order `\uD800`..`\uDFFF` escape as
+`U+FFFD` (§16.2, §16.3).
 
 The table below is read by `internal/jsontestsuite` out of this file, which is
 its one source; no test carries a copy. A file with no row takes its prefix's
@@ -17210,16 +17262,16 @@ verdict.
 | `i_string_overlong_sequence_6_bytes.json` | refuse | `string_not_utf8`: an overlong encoding (§16.3) |
 | `i_string_overlong_sequence_6_bytes_null.json` | refuse | `string_not_utf8`: an overlong encoding of zero (§16.3) |
 | `i_string_truncated-utf-8.json` | refuse | `string_not_utf8`: a sequence cut short (§16.3) |
-| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3) |
-| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3) |
-| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3) |
-| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3) |
-| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
-| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3) |
-| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3) |
-| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3) |
-| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3) |
-| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3) |
+| `i_object_key_lone_2nd_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone, in a key (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_1st_surrogate_but_2nd_missing.json` | refuse | `string_lone_surrogate`: a high surrogate escape with no low half (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_1st_valid_surrogate_2nd_invalid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by a non-surrogate escape (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_incomplete_surrogate_and_escape_valid.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by another escape (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_incomplete_surrogate_pair.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_incomplete_surrogates_escape_valid.json` | refuse | `string_lone_surrogate`: two high surrogate escapes (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_invalid_lonely_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape alone (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_invalid_surrogate.json` | refuse | `string_lone_surrogate`: a high surrogate escape followed by plain text (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_inverted_surrogates_U+1D11E.json` | refuse | `string_lone_surrogate`: the low half escaped before the high (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
+| `i_string_lone_second_surrogate.json` | refuse | `string_lone_surrogate`: a low surrogate escape alone (§16.3; pending `schema-go-json-refuses-lone-surrogates`) |
 | `i_string_UTF-16LE_with_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a UTF-16 mark starts no value |
 | `i_string_utf16BE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte starts no value |
 | `i_string_utf16LE_no_BOM.json` | refuse | not UTF-8: a JSON text is UTF-8 (RFC 8259 §8.1), and a zero byte inside an array is not JSON |
@@ -17228,9 +17280,10 @@ verdict.
 
 **PENDING.** `testdata/jsontestsuite/PENDING.tsv` names each file a reader at
 this commit does not yet meet, one per line as `<file>` TAB `<card>`, with the
-card that meets it. A pending file may disagree with its row and the harness
-lists it; a pending file that AGREES is a failure, "met: remove it from
-PENDING", so the list cannot outlive the gap it names.
+card that meets it (currently the ten `i_*surrogate*.json` rows above under
+`schema-go-json-refuses-lone-surrogates`). A pending file may disagree with its
+row and the harness lists it; a pending file that AGREES is a failure, "met:
+remove it from PENDING", so the list cannot outlive the gap it names.
 
 **Held by test.** `TestJSONTestSuiteEngine` drives every file through the
 engine's layer in its own package; `TestJSONTestSuiteGenerated` drives every
@@ -17289,8 +17342,8 @@ union of seven arms whose Array and Object arms hold `[]*JsonValue` and
 `[]*JsonMember`. It needs a pointer per child and a node record per child. A
 ported reader would have to carry pointered units (§3.1) to read it. It can
 share a node or form a cycle, which a JSON text cannot express, so every read
-would have to refuse both. And depth would come back onto a load path that is
-a scan and has no traversal bound (§3.1). The tape has one variable edge of
+would have to refuse both. And depth would come back onto a decode that is a
+scan (§3.1). The tape has one variable edge of
 each kind. It has no pointer to a table. It cannot share a node or form a
 cycle, because nothing in it names a node. Its depth is counted by the same
 linear scan that checks it (below). Every port that carries `[]T` of a table,

@@ -119,6 +119,16 @@ BigInt tableCookGetWide(ByteData view, int at, int width, bool signed) {
 // pointer past the region is the caller's problem at the dereference, and in
 // Dart the read after it would be an escaping RangeError — which is not a
 // refusal.
+int tableCookTextStart(ByteData view,int slot) {
+ if(slot<0||slot>view.lengthInBytes-8)return -1;
+ final delta=view.getInt64(slot,Endian.little);
+ if(delta==0||delta < -slot||delta > view.lengthInBytes-slot-8)return -1;
+ final at=slot+delta;
+ final n=view.getUint32(at,Endian.little);
+ if(n>view.lengthInBytes-at-9)return -1;
+ return at;
+}
+
 abstract final class TableCookRef {
   static const int none = -1;
   static const int outside = -2;
@@ -155,6 +165,7 @@ final class TableCookFieldInfo {
   final int arrayBound;
   // an eight-byte SIGNED self-relative reference slot (§6.3)
   final bool isPointer;
+  final bool unboundedText;
   // the int32 used-length companion, or -1
   final int countOffset;
   // the bool presence companion of a ?T, or -1
@@ -184,6 +195,7 @@ final class TableCookFieldInfo {
     required this.isArray,
     required this.arrayBound,
     required this.isPointer,
+    this.unboundedText = false,
     required this.countOffset,
     required this.presentOffset,
     required this.storage,
@@ -232,11 +244,37 @@ final class TableCookGraph {
   final Endian order;
   final List<int> offsets;
   final int Function(Object node) indexOf;
-  final int Function(int id, Object blob) blobIndex;
+  final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
     : offsets = List<int>.filled(count, 0);
+
+  // A map's entries in ASCENDING KEY ORDER (§2.8), a stable sort of a copy:
+  // the writer holds the sort, whatever order the value holds them in, and
+  // the caller's list is not reordered.
+  static List<T> sorted<T>(List<T> entries, int Function(T a, T b) order) {
+    final out = List<T>.of(entries);
+    for (var i = 1; i < out.length; i++) {
+      final x = out[i];
+      var j = i - 1;
+      while (j >= 0 && order(out[j], x) > 0) {
+        out[j + 1] = out[j];
+        j--;
+      }
+      out[j + 1] = x;
+    }
+    return out;
+  }
+
+  // Two string keys by their UTF-8 bytes, unsigned, a prefix first (§2.8).
+  static int bytesOrder(List<int> a, List<int> b) {
+    final n = a.length < b.length ? a.length : b.length;
+    for (var i = 0; i < n; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  }
 
   // A reference slot holds the signed delta from the slot to its target node,
   // and a null is a delta of zero (§6.3).
@@ -250,11 +288,11 @@ final class TableCookGraph {
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
-  void blob(int slot, int id, Object? blob) {
+  void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
     final out = this.out;
     if (out == null) return;
     var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob) - 1] - slot;
+    if (blob != null) delta = 64 + offsets[blobIndex(id, blob, owner, field) - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }

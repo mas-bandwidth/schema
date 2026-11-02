@@ -51,7 +51,7 @@ func TestCookWriterOfUnionArmsNamesNoWideStore(t *testing.T) {
 				t.Errorf("%s cook writes a union element as a wide scalar: %q", name, bad)
 			}
 		}
-		if !strings.Contains(text, "if (!_cook") || !strings.Contains(text, "(l[i], c, array + i * ") {
+		if !strings.Contains(text, "if (!_cook") || !strings.Contains(text, "(l1[i1], c, array1 + i1 * ") {
 			t.Errorf("%s cook does not write a list of unions through the union's element writer", name)
 		}
 	}

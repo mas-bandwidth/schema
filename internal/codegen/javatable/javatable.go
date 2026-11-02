@@ -94,6 +94,9 @@ func tableScalarKind(f *ir.Field) int {
 	case ir.TBool:
 		return tkBool
 	case ir.TInt:
+		if f.Type.Timestamp {
+			return ir.TableKindTimestamp
+		}
 		if f.Type.Signed {
 			switch f.Type.Width {
 			case 8:
@@ -187,6 +190,66 @@ func javaFile(u *ir.Unit, summary, body string) []byte {
 // block and cook read halves with their runtime types, and the build version —
 // and nothing when the unit declares no table: a table-free unit's generated
 // Java is byte-identical with or without this package.
+func filterBlocks(b *ir.BlockUnit) *ir.BlockUnit {
+	if b == nil {
+		return nil
+	}
+	restricted := false
+	for _, bl := range b.Tables {
+		if !bl.Table.CarriesForm("block") {
+			restricted = true
+			break
+		}
+	}
+	if !restricted {
+		return b
+	}
+	out := &ir.BlockUnit{
+		Members: map[string]*ir.MemberLayout{},
+		Skipped: maps.Clone(b.Skipped),
+	}
+	var add func(name string)
+	add = func(name string) {
+		if _, done := out.Members[name]; done {
+			return
+		}
+		ml := b.Members[name]
+		if ml == nil {
+			return
+		}
+		out.Members[name] = ml
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for _, bl := range b.Tables {
+		if !bl.Table.CarriesForm("block") {
+			out.Skipped[bl.Table.Name] = "it omits the block form in its forms declaration"
+			continue
+		}
+		out.Tables = append(out.Tables, bl)
+		for _, arr := range bl.Arrays {
+			add(arr.ElemName)
+		}
+		for _, fl := range bl.Projection.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && !ir.BlockOutOfLine(fl.Field) {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for name := range out.Members {
+		out.Order = append(out.Order, name)
+	}
+	sort.Strings(out.Order)
+	return out
+}
+
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
@@ -229,22 +292,25 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 		// the BLOCK form (§19) builds and opens in-place block images and the
 		// COOK (§7) measures, writes, and opens cooked regions, reaching every
 		// cookable table of the unit — a pointered unit's cooks open and write in full.
-		blocks := ir.Blocks(u)
+		blocks := filterBlocks(ir.Blocks(u))
 		if scope.Accelerators {
 			blocks = nil
 		}
 		ck := cookUnitOf(u)
 		set := collectRecords(u, blocks, ck)
+		withBlock := anyBlockForm(u, blocks)
+		withCook := len(ck.tables) > 0 || len(ck.skipped) > 0
 		// TableBytes and BuildVersion BELONG TO THE TWO ACCELERATORS and to
 		// nothing else: block.go and cook.go are their only callers, the fixed
 		// form reads its bytes through TableFixed's own accessors and carries
 		// its own layout hash rather than the build version. So they ride in
 		// this branch, where the accelerators are, and a wide-kind unit that
 		// gets only a fixed form is not handed two classes nobody names.
-		out["TableBytes.java"] = tableBytesFile(u)
-		out["BuildVersion.java"] = buildVersionFile(u)
-		maps.Copy(out, emitRowFiles(u, set, blocks, ck))
-		withBlock := anyBlockForm(u, blocks)
+		if withBlock || withCook {
+			out["TableBytes.java"] = tableBytesFile(u)
+			out["BuildVersion.java"] = buildVersionFile(u)
+			maps.Copy(out, emitRowFiles(u, set, blocks, ck))
+		}
 		if withBlock {
 			blockFiles, err := generateBlockFiles(u, blocks)
 			if err != nil {
@@ -253,12 +319,14 @@ func generateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry, canon f
 			maps.Copy(out, blockFiles)
 			out["TableBlockLayout.java"] = emitBlockLayoutFile(u, blocks, set)
 		}
-		cooks, err := generateCookFiles(u, ck)
-		if err != nil {
-			return nil, err
+		if withCook {
+			cooks, err := generateCookFiles(u, ck)
+			if err != nil {
+				return nil, err
+			}
+			maps.Copy(out, cooks)
+			out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
 		}
-		maps.Copy(out, cooks)
-		out["TableCookLayout.java"] = emitCookLayoutFile(u, ck, set, withBlock)
 	}
 	// THE FIXED FORM (docs/SPEC-TABLES.md §3.4), form byte 3: this backend's
 	// FIRST table wire. It rides unconditionally — a wire a consumer can be

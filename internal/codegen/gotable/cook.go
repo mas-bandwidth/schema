@@ -148,7 +148,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	sort.Strings(c.order)
 	c.slot = make(map[string]int, len(c.order))
@@ -572,7 +572,7 @@ func(cook *%sCook)Open(base unsafe.Pointer,length int64)error{
  cook.Region=unsafe.Add(base,uintptr(dataOffset));cook.RegionLength=int64(dataLength)
  return nil
 }
-`, name, name, name, name, name, bits.ReverseBytes64(cookMagic), ml.Align, ml.Size)
+`, name, name, name, name, name, bits.ReverseBytes64(cookMagic), ir.CookNodeAlign(g.unit, st), ml.Size)
 }
 
 func (g *cookGen) emitAt(st *ir.Struct) {

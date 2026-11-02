@@ -78,6 +78,11 @@ func TestCookLibrariesDefineEveryClassTheyName(t *testing.T) {
 				for cls := range core {
 					visible[cls] = true
 				}
+				// a generic method's own type parameter (`sorted<T>(`) is
+				// declared where it is used
+				for _, m := range typeParamRe.FindAllStringSubmatch(string(data), -1) {
+					visible[m[1]] = true
+				}
 				// relative imports bring every class they declare, restricted by
 				// a `show` list when one is present.
 				for imp, show := range importsOf(string(data)) {
@@ -134,6 +139,9 @@ var identRe = regexp.MustCompile(`\b[A-Z][A-Za-z0-9_]*`)
 // with comments and string literals removed: the class names a cook library
 // could name. CamelCase method members (sublistView, getInt64) are not whole
 // tokens, so they are not named as types.
+// typeParamRe matches a generic method's type parameter declaration.
+var typeParamRe = regexp.MustCompile(`\b[a-z]\w*<([A-Z])>\(`)
+
 func capitalizedIdentifiers(src string) []string {
 	var out []string
 	seen := map[string]bool{}
