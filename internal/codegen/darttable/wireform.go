@@ -2958,6 +2958,10 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	// A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the whole load
 	// is refused, and the caller holds the type's defaults.
 	g.pf("\tif (r.cyclic()) {\n\t\tr.report.malformed = true;\n\t\treturn %s();\n\t}\n", n)
+	// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
+	// met damage anywhere hands back nothing it decoded, only the type's
+	// defaults, with the report saying malformed.
+	g.pf("\tif (r.report.malformed) return %s();\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
 }
