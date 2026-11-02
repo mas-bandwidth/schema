@@ -258,12 +258,22 @@ func (g *tableGen) emitFixedMessageSave(st *ir.Struct) {
 		verb, extra, buf, cap := "save_messages", ",uint8_t * buffer,int64_t capacity,TableReport * report", "buffer", "capacity"
 		if measure {
 			verb, extra, buf, cap = "measure_messages", ",TableReport * report", "NULL", "INT64_MAX"
+		} else if st.Integrity != "" {
+			cap = "capacity-4"
 		}
 		g.pf("static SCHEMA_UNUSED int64_t %s(const %s * values,int64_t count%s)\n{\n", g.api(st.Name, verb), st.Name, extra)
 		g.pf(" TableBitWriter w=table_bit_writer(%s,%s); int64_t i;\n if(count<1 || values==NULL) return -1;\n if(count>kTableMessageBatchMax) {if(report!=NULL) {report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;}return -1;}\n", buf, cap)
 		if !measure {
-			g.pf(" if(buffer==NULL || capacity<0) return -1;\n")
+			if st.Integrity != "" {
+				g.pf(" if(buffer==NULL || capacity<6) return -1;\n")
+			} else {
+				g.pf(" if(buffer==NULL || capacity<0) return -1;\n")
+			}
 		}
-		g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", g.api(st.Name, "save_message_body"))
+		if st.Integrity != "" {
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : schema_table_integrity_seal_(%s,w.bits/8);\n}\n", g.api(st.Name, "save_message_body"), buf)
+		} else {
+			g.pf(" table_bit_put(&w,2,8); table_bit_put(&w,(uint64_t)(count-1),8);\n for(i=0;i<count;i++) if(!%s(&w,values+i)) return -1;\n table_bit_align_write(&w); return w.overflow ? -1 : w.bits/8;\n}\n", g.api(st.Name, "save_message_body"))
+		}
 	}
 }
