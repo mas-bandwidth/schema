@@ -5,6 +5,13 @@ static partial class Program
     static bool? builderLoaded;
     static unsafe void RegisterBuilders()
     {
+        Find("widelist","Wide").PartialLoad=(bytes,report)=>
+        {
+            using var builder=new Widelistdemo.WideBuilder();
+            var inner=new Widelistdemo.TableReport(); Widelistdemo.Schema.WideLoadBuilder(builder,bytes,inner); Fill(report,Copy(inner));
+            if(inner.Refused || inner.Malformed) { return new Widelistdemo.Wide(); }
+            return Widelistdemo.Schema.TableWire.CopyRegion(Widelistdemo.Schema.WideTableType(),(IntPtr)builder.GetRoot(),true);
+        };
         Find("listdemo","Unbounded").PartialLoad=(bytes,report)=>
         {
             using var builder=new Listdemo.UnboundedBuilder();

@@ -178,6 +178,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
     }
+    static Report Copy(Widelistdemo.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
+    }
     static Report Copy(Mapdemo.TableReport r)
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
@@ -304,6 +308,9 @@ static partial class Program
         Row<Mapdemo.Fleet, Mapdemo.TableReport>("mapdemo", "Fleet", () => new Mapdemo.TableReport(), Copy,
             Mapdemo.Schema.FleetLoad, Mapdemo.Schema.FleetMeasure, Mapdemo.Schema.FleetSave,
             Mapdemo.Schema.FleetFromJson, Mapdemo.Schema.FleetToJsonMeasure, Mapdemo.Schema.FleetToJson, Mapdemo.Schema.FleetLoadMeasure),
+        Row<Widelistdemo.Wide, Widelistdemo.TableReport>("widelist", "Wide", () => new Widelistdemo.TableReport(), Copy,
+            Widelistdemo.Schema.WideLoad, Widelistdemo.Schema.WideMeasure, Widelistdemo.Schema.WideSave,
+            Widelistdemo.Schema.WideFromJson, Widelistdemo.Schema.WideToJsonMeasure, Widelistdemo.Schema.WideToJson, Widelistdemo.Schema.WideLoadMeasure),
         Row<Listdemo.Unbounded, Listdemo.TableReport>("listdemo", "Unbounded", () => new Listdemo.TableReport(), Copy,
             Listdemo.Schema.UnboundedLoad, Listdemo.Schema.UnboundedMeasure, Listdemo.Schema.UnboundedSave,
             Listdemo.Schema.UnboundedFromJson, Listdemo.Schema.UnboundedToJsonMeasure, Listdemo.Schema.UnboundedToJson, Listdemo.Schema.UnboundedLoadMeasure),
@@ -1498,6 +1505,16 @@ static partial class Program
             Codec c = Find("mapdemo", "Fleet");
             c.CookMeasure = value => Mapdemo.Schema.FleetCookMeasure((Mapdemo.Fleet)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.FleetCook((Mapdemo.Fleet)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("widelist", "Wide");
+            c.CookMeasure = value => Widelistdemo.Schema.WideCookMeasure((Widelistdemo.Wide)value);
+            c.Cook = (value, bytes, big) => Widelistdemo.Schema.WideCook((Widelistdemo.Wide)value, bytes, big ? Widelistdemo.TableByteOrder.Big : Widelistdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("listdemo", "Unbounded");
+            c.CookMeasure = value => Listdemo.Schema.UnboundedCookMeasure((Listdemo.Unbounded)value);
+            c.Cook = (value, bytes, big) => Listdemo.Schema.UnboundedCook((Listdemo.Unbounded)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
         }
         {
             Codec c = Find("listdemo", "Album");

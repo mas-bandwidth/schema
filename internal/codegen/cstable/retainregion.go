@@ -72,5 +72,7 @@ func tableRetainRegionSource() string {
 		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }")
 	s = tableReplace(s, "Finish(report, Verdict.Damaged); return IntPtr.Zero; }\n        report.Malformed = malformedBefore;",
 		"Finish(report, Verdict.Damaged); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }\n        report.Malformed = malformedBefore;")
+	s = tableReplace(s, "Finish(report, Verdict.Refused); return IntPtr.Zero; }",
+		"Finish(report, Verdict.Refused); retain->Used = 0; retain->IdUsed = 0; retain->Count = 0; return IntPtr.Zero; }")
 	return s
 }

@@ -4117,6 +4117,8 @@ namespace Bench
                 if (report.Refused) { return Finish(report, Verdict.Refused); }
                 if (total == 0) { return Finish(report, Verdict.Damaged); }
                 if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+                bool malformedBefore = report.Malformed;
+                report.Malformed = false;
                 BitReader r = new BitReader(bytes); r.At = 16;
                 for (; count < total; count++)
                 {
@@ -4126,10 +4128,11 @@ namespace Bench
                     // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
-                    { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (!good) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
+                    { report.Malformed |= malformedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+                    if (!good || report.Malformed) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
                 }
                 if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
+                report.Malformed = malformedBefore;
                 return Finish(report, Verdict.Ok);
             }
             // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
@@ -4230,7 +4233,7 @@ namespace Bench
                 w.Put(at, raw, f.NativeElementSize); return true;
             }
             static long NativeRecordBytes(TableTypeInfo type)
-            { return NativeExtent(type) ? Align(type.StorageSize, 8) : type.StorageSize; }
+            { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
             static long NativePlace(object value, TableTypeInfo type, Graph graph, out int alignment)
             {
                 alignment = Math.Max(8, type.StorageAlign);

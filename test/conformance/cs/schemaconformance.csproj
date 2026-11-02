@@ -50,6 +50,7 @@
     <Compile Include="$(TablesGeneratedDir)/stream/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/maps/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/lists/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/widelist/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/w2/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/w1/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/p2/*.cs" />

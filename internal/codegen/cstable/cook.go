@@ -162,7 +162,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 	aligns := make([]int64, 0, len(c.members))
 	for name := range c.members {
 		c.order = append(c.order, name)
-		aligns = append(aligns, c.members[name].Align)
+		aligns = append(aligns, ir.CookNodeAlign(u, cookMember(u, name)))
 	}
 	sort.Strings(c.order)
 	c.align = ir.RegionAlignOf(aligns...)
@@ -669,7 +669,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.hf("        ulong alignment = Schema.TableCookRead64(at + %d);\n", 40)
 	g.hf("        if (alignment < %d || alignment > %d) { reason = TableRefuseReason.bad_alignment; return false; }\n", ir.RegionAlignFloor, cookMaxAlign)
 	g.hf("        if ((alignment & (alignment - 1)) != 0) { reason = TableRefuseReason.bad_alignment; return false; } // a power of two\n")
-	g.hf("        if ((alignment %% %d) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof\n\n", ml.Align)
+	g.hf("        if ((alignment %% %d) != 0) { reason = TableRefuseReason.bad_alignment; return false; }             // and a multiple of the ROOT's own alignof\n\n", ir.CookNodeAlign(g.unit, st))
 	g.hf("        // THE DATA OFFSET IS DERIVED, never a header field: a fact a reader\n")
 	g.hf("        // computes is a fact two writers cannot disagree about, and it is 64 for\n")
 	g.hf("        // every unit this language can declare.\n")

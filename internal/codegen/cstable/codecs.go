@@ -615,11 +615,11 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	layout := ir.RecordLayout(g.unit, st)
 	align := int64(8)
 	for _, table := range g.unit.Tables {
-		if a := ir.RecordLayout(g.unit, table).Align; a > align {
+		if a := ir.CookNodeAlign(g.unit, table); a > align {
 			align = a
 		}
 	}
-	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, layout.Align, align)
+	g.pf("    info.StorageSize = %d; info.StorageAlign = %d; info.RegionAlign = %d;\n", layout.Size, ir.CookNodeAlign(g.unit, st), align)
 	g.pf("    info.Variable = %t;\n", ir.VariableTables(g.unit)[st.Name])
 	g.pf("    info.RootElemSlots = %d;\n", rootElemSlots(st))
 	var pt strings.Builder
