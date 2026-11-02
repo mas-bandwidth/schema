@@ -31,6 +31,11 @@ func (g *gen) emitNestedMeasureHelper(b *strings.Builder, root *ir.Struct) {
 		for _, f := range st.Fields {
 			fid := ir.TableFieldWireId(f)
 			switch {
+			case f.Type.TextUnbounded():
+				fmt.Fprintf(b, "                (0x%016x, 0x%016x) if kind == 12 => {\n", tid, fid)
+				fmt.Fprint(b, "                    let Some(n)=leb_read(wire,&mut off) else {break;}; if n > (wire.len()-off) as u64 {break;}\n")
+				emitUnboundedMeasure(b, "n", ir.TableRegionAlign(g.unit), "                    ")
+				fmt.Fprint(b, "                    off+=n as usize;\n                }\n")
 			case f.IsMap() || f.Array != ir.ArrayNone || f.KeyEnum != "":
 				g.emitMeasureArrayCase(b, tid, fid, f)
 			case classOf(f) == vTable:
@@ -131,7 +136,12 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
 			fmt.Fprint(b, "                                if leb_read(&wire[..sub], &mut off).is_none() { break; }\n")
 		}
 		fmt.Fprint(b, "                                if off >= sub { break; } let Some(el) = leb_read(&wire[..sub], &mut off) else { break; }; if el > (sub - off) as u64 { break; }\n")
-		fmt.Fprintf(b, "                                at = nested_measure(0x%016x, &wire[off..off + el as usize], ids, at); if at < 0 { return -1; } off += el as usize;\n", ir.TableWireId(child.WireName()))
+		if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+			emitUnboundedMeasure(b, "el", ir.TableRegionAlign(g.unit), "                                ")
+			fmt.Fprint(b, "                                off += el as usize;\n")
+		} else {
+			fmt.Fprintf(b, "                                at = nested_measure(0x%016x, &wire[off..off + el as usize], ids, at); if at < 0 { return -1; } off += el as usize;\n", ir.TableWireId(child.WireName()))
+		}
 		fmt.Fprint(b, "                            }\n")
 	}
 	fmt.Fprint(b, `                        }
@@ -188,4 +198,8 @@ func scaled(n string, size int64) string {
 		return n
 	}
 	return fmt.Sprintf("%s * %d", n, size)
+}
+
+func emitUnboundedMeasure(b *strings.Builder, length string, align int64, ind string) {
+	fmt.Fprintf(b, "%sif %s > 0xffffffff { return -1; }\n%sif %s != 0 { at=(at+7)&!7; at+=(9+%s as i64+%d-1)&!(%d-1); }\n", ind, length, ind, length, length, align, align)
 }

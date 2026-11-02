@@ -56,7 +56,7 @@ func cookHasExtentSeen(st *ir.Struct, seenS map[*ir.Struct]bool, seenU map[*ir.U
 // cookFieldHasExtent reports a field that is a container, or whose by-value
 // storage can hold one.
 func cookFieldHasExtent(f *ir.Field, seenS map[*ir.Struct]bool, seenU map[*ir.Union]bool) bool {
-	if f.IsMap() || f.IsList() {
+	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return true
 	}
 	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -183,6 +183,12 @@ func (g *gen) emitCarveField(b *strings.Builder, f *ir.Field, x, base string, of
 // emitCarveValue descends ONE by-value value at `at`: a record through its own
 // carve, a union through its set arm.
 func (g *gen) emitCarveValue(b *strings.Builder, f *ir.Field, x, at, ind string) {
+	if f.Type.TextUnbounded() {
+		align := ir.TableRegionAlign(g.unit)
+		fmt.Fprintf(b, "%sif !%s.is_empty() {\n%s let bytes=%s.as_bytes();\n%s let size=(9 + bytes.len() as i64 + %d - 1) & !(%d - 1);\n%s let start=c.place(1,size,8);\n%s if let Some(w)=w.as_deref_mut(){let blob=c.extent_at+start;w.put(%s,(blob-(%s)) as u64,8);w.put_blob(blob,bytes); }\n%s}\n", ind, x, ind, x, ind, align, align, ind, ind, at, at, ind)
+		return
+	}
+
 	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
 		return
 	}
