@@ -38,7 +38,7 @@ func (g *tableGen) typeCodecColumns(st *ir.Struct) string {
 		columns += fmt.Sprintf(",SaveBodyRetain:func(w *TableRetainWriter,p unsafe.Pointer)bool{return %sSaveBodyRetain(w,(*%s)(p))},LoadBodyRetain:func(r TableRetainReader,p unsafe.Pointer)bool{return %sLoadBodyRetain(&r,(*%s)(p))}", st.Name, g.storageName(st.Name), st.Name, g.storageName(st.Name))
 	}
 	ml := ir.RecordLayout(g.unit, st)
-	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ml.Align)
+	columns += fmt.Sprintf(", CookSize:%d, CookAlign:%d", ml.Size, ir.CookNodeAlign(g.unit, st))
 
 	if g.regional && ir.VariableTables(g.unit)[st.Name] {
 		var nodes strings.Builder

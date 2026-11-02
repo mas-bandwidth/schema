@@ -37,7 +37,8 @@ const (
 	// +821: table floats are finite only (SPEC-TABLES §3.3, Glenn 2026-10-27): every float read tests its raw bits, every tolerant load and message batch refuses a non-finite one, and every fixed type holding a float gains its finite pass and its writer clause (tables-finite/go)
 	// -7200: variable tables carry no message form: no body codecs, region-message or retain-message runtime for them
 	// +431: damage discards the whole load (SPEC-TABLES §4): every fixed tolerant read resets its value on malformed, the region, builder and text reads discard, and the message batch delivers no body
-	goExamplesLineBudget = 59289
+	// +1: round each cooked node to its extent alignment before placing nested containers.
+	goExamplesLineBudget = 59290
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
