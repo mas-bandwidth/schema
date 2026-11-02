@@ -115,9 +115,6 @@ func t12W13(t *testing.T, corpus string) {
 		checked++
 	}
 	for _, r := range versionRows {
-		if r.unported != "" {
-			continue
-		}
 		uOld := versionUnit(t, versionSchema(t, "VOLD_"+r.row))
 		t12AssertLayoutAndHashMatchBin(t, uOld, versionRoot(t, uOld), filepath.Join(corpus, "old_"+r.row+".bin"), checked < 8)
 		checked++
@@ -289,9 +286,6 @@ func t12R27(t *testing.T, corpus string) {
 		t.Fatalf("rust/R27: manifest.txt has %d rows, want at least 76", lines)
 	}
 	for _, r := range versionRows {
-		if r.unported != "" {
-			continue
-		}
 		for _, prefix := range []string{"old_", "new_"} {
 			file := prefix + r.row + ".bin"
 			if _, ok := seenFiles[file]; !ok {

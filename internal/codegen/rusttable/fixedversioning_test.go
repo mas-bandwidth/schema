@@ -85,12 +85,6 @@ type versionRow struct {
 	poison bool
 	// check is Rust source asserting the landed values, over `values` and `n`.
 	check string
-	// unported is the REFUSAL that stops this leg's language surface from
-	// holding the row's kind at all, cited by name. §5.9 #44: such a row is ⚪
-	// UNPORTED and skipped BY NAME, never 🔴 and NEVER FOLDED INTO A GREEN — a
-	// red is a debt §5 owes, an unported row is a debt another section owes,
-	// and a reviewer may not read either as "this row passed".
-	unported string
 }
 
 var versionRows = []versionRow{
@@ -228,7 +222,13 @@ var versionRows = []versionRow{
         arm.y == 55,
         "the field appended to the arm's payload is not its declared default: y={} (a union zeroed whole, not reset arm by arm)", arm.y
     );`},
-	{row: "wstring_grow", unported: "kind 33 is not carried in a TABLE closure by this leg: compiler/widetext.go's tableWideTextTargets lists C, C++, C#, Dart and Go and NOT rust, so `refuseWideText` refuses a Rust unit that declares a wstring(N) field and there is no reader to generate. This harness reaches the backend directly and would BYPASS that refusal, which §5.9 #44 forbids folding into a green"},
+	{row: "wstring_grow", poison: true, check: `
+    // Independent producer: test/tables/versioning_numbers.cpp's eight
+    // UTF-16 code units include both halves of a surrogate pair and U+FFFF.
+    assert_eq!(values[0].text_length, 8);
+    assert_eq!(&values[0].text[..8], &[0x0068, 0x0065, 0x006c, 0x006c, 0x006f, 0xd83d, 0xde00, 0xffff]);
+    assert!(values[0].text[8..].iter().all(|&u| u == 0), "grown UTF-16 storage is not zero-prefilled");
+    `},
 }
 
 // ---- NEW-READS-OLD ----------------------------------------------------------
@@ -237,9 +237,6 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
-			if r.unported != "" {
-				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
-			}
 			versionAssert(t, out, "v_"+r.row+"_new_reads_old")
 		})
 	}
@@ -251,9 +248,6 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
 	out := versionRun(t)
 	for _, r := range versionRows {
 		t.Run(r.row, func(t *testing.T) {
-			if r.unported != "" {
-				t.Skipf("UNPORTED (§5.9 #44), not green and not red: %s", r.unported)
-			}
 			versionAssert(t, out, "v_"+r.row+"_old_refuses_new")
 		})
 	}
@@ -344,13 +338,6 @@ func versionProbeSet(t *testing.T, corpus string) []versionProbe {
 	nonFinite := versionManifestNonFinite(t, corpus)
 
 	for _, r := range versionRows {
-		if r.unported != "" {
-			// NO PROBE AT ALL for a row whose kind this leg's language surface
-			// cannot hold (§5.9 #44): generating one here would bypass the
-			// compiler's own refusal and publish a green for a row that has no
-			// reader. The mark and the reason live on the row.
-			continue
-		}
 		// NEW-READS-OLD: the newer unit is handed the OLDER unit's locked entry.
 		counters := `    assert!(
         report.widened == 0,
