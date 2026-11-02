@@ -172,6 +172,8 @@ def required_phases(lang):
                      for shape in ("normal", "ludicrous") for mode in range(modes)}
     required |= {"wire-" + arm + "-" + str(seed)
                  for arm in ("plain", "retain") for seed in (1, 2, 3)}
+    if lang == "cs":
+        required |= {"wire-builder-" + str(seed) for seed in (1, 2, 3)}
     if lang == "c":
         required |= {"retain-c-plant", "retain-c"}
     elif lang == "go":
@@ -290,14 +292,14 @@ def implementation_result(text, lang):
     return []
 
 
-def fuzz_result(text, arm, seed, lang=""):
+def fuzz_result(text, arm, seed, lang="", builder=False):
     """The harness's old exit-0 permits absent roots; readiness does not."""
     errors = []
     if re.search(r"seeds absent|non-finite mutants not compared|finite-owed", text):
         errors.append("wire roster or finite-value exemption was reported")
-    if arm != "retain" and "seeds outside the arm" in text:
+    if arm != "retain" and not builder and "seeds outside the arm" in text:
         errors.append("plain wire-fuzz unexpectedly excluded seeds")
-    prefix = "wire-fuzz" + ("-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
+    prefix = "wire-fuzz" + ("-builder" if builder or lang == "dart" else "") + (" retain" if arm == "retain" else "")
     pattern = (r"^" + re.escape(prefix) + r": seed (\d+), (\d+) seeds over (\d+) roots"
                r"(?:, \d+ seeds outside the arm)?, (\d+) enumerated \+ (\d+) random = "
                r"(\d+) mutants, 0 divergences, [0-9.]+ s, [0-9.]+ mutants/s$")
@@ -533,12 +535,13 @@ def run_external(runner, lang):
     runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
 
 
-def driver_command(root, lang):
+def driver_command(root, lang, builder=False):
     if lang in ("cpp", "c"):
         return "./build/wire-fuzz-" + lang
     if lang == "cs":
         return shlex.join(tool("DOTNET", "dotnet") +
-                          ["test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll", "wire-fuzz"])
+                          ["test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll",
+                           "wire-fuzz-builder" if builder else "wire-fuzz-region"])
     if lang == "java":
         return shlex.join(tool("JAVA", "java") + ["-cp", str(root / "build/conformance-java"), "TablesWireFuzz"])
     if lang == "rust":
@@ -568,6 +571,19 @@ def run_fuzz(runner, lang):
             # also the known default-roster variable-root/message mismatch;
             # this script does not silently delete either kind of input.
             runner.run(name, args, validate=lambda text, a=arm, s=seed: fuzz_result(text, a, s, lang))
+
+
+    if lang == "cs":
+        # C# also exposes a mutable builder. Its plain reader follows Decode's
+        # count-cap contract; retention above uses the actual region API.
+        for seed in SEEDS:
+            name = "wire-builder-" + str(seed)
+            args = ["./build/conformance-harness", "wire-fuzz", "--builder",
+                    "--driver", driver_command(runner.root, lang, builder=True),
+                    "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
+                    "--failed", str(runner.out / (name + ".bin"))]
+            runner.run(name, args,
+                       validate=lambda text, s=seed: fuzz_result(text, "plain", s, lang, builder=True))
 
 
 def overlay_control(runner, name, source, test, package, expected, sabotage=None,

@@ -24,8 +24,8 @@ def native(package="gotable", name="TestReady", action="pass", output=""):
         {"Package":pkg,"Action":"pass"}])
 
 
-def fuzz(arm="plain", seed=1, lang=""):
-    prefix = "wire-fuzz" + ("-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
+def fuzz(arm="plain", seed=1, lang="", builder=False):
+    prefix = "wire-fuzz" + ("-builder" if builder or lang == "dart" else "") + (" retain" if arm == "retain" else "")
     return f"{prefix}: seed {seed}, 41 seeds over 20 roots, 30 enumerated + 100000 random = 100030 mutants, 0 divergences, 1.0 s, 100030 mutants/s"
 
 
@@ -54,6 +54,8 @@ class FakeRunner(m.Runner):
         elif name.startswith("wire-plain-") or (name.startswith("wire-retain-") and name[-1:].isdigit()):
             _,arm,seed = name.split("-")
             text = fuzz(arm,int(seed),self.lang)
+        elif name.startswith("wire-builder-"):
+            text = fuzz("plain", int(name.rsplit("-", 1)[1]), self.lang, builder=True)
         elif name.startswith("packet-"):
             text = "OK"
             if name == "packet-schema_test_random":
@@ -249,6 +251,43 @@ class Contracts(unittest.TestCase):
                 runner.temporary.cleanup()
         finally:
             m.Runner=real
+
+    def test_cs_profiles_are_distinct_and_both_mandatory(self):
+        runner = FakeRunner(ROOT, "cs")
+        try:
+            m.run_fuzz(runner, "cs")
+            region = [(name, argv) for name, argv, _ in runner.calls
+                      if name.startswith(("wire-plain-", "wire-retain-"))]
+            builder = [(name, argv) for name, argv, _ in runner.calls
+                       if name.startswith("wire-builder-")]
+            self.assertEqual(len(region), 6)
+            self.assertEqual(len(builder), 3)
+            for name, argv in region:
+                self.assertIn("wire-fuzz-region", argv[argv.index("--driver")+1])
+                self.assertNotIn("--builder", argv)
+                self.assertEqual("--retain" in argv, name.startswith("wire-retain-"))
+            for name, argv in builder:
+                self.assertIn("wire-fuzz-builder", argv[argv.index("--driver")+1])
+                self.assertIn("--builder", argv)
+                self.assertNotIn("--retain", argv)
+                self.assertEqual(argv[argv.index("--n")+1], "100000")
+                self.assertIn(name, m.required_phases("cs"))
+            for seed in m.SEEDS:
+                region_text = fuzz("plain", seed)
+                builder_text = fuzz("plain", seed, builder=True)
+                self.assertEqual(m.fuzz_result(builder_text, "plain", seed, "cs", builder=True), [])
+                self.assertTrue(m.fuzz_result(region_text, "plain", seed, "cs", builder=True))
+                self.assertTrue(m.fuzz_result(builder_text, "plain", seed, "cs"))
+                outside = builder_text.replace("20 roots,", "20 roots, 120 seeds outside the arm,")
+                self.assertEqual(m.fuzz_result(outside, "plain", seed, "cs", builder=True), [])
+                self.assertTrue(m.fuzz_result(outside, "plain", seed, "cs"))
+                for text in ("", builder_text+"\n"+builder_text,
+                             builder_text.replace("100000 random", "0 random"),
+                             builder_text.replace("20 roots,", "20 roots, 1 seeds absent,"),
+                             builder_text.replace("20 roots,", "20 roots, 1 non-finite mutants not compared,")):
+                    self.assertTrue(m.fuzz_result(text, "plain", seed, "cs", builder=True))
+        finally:
+            runner.temporary.cleanup()
 
     def test_omitted_native_fuzz_or_controls_fail_actual_main_contract(self):
         real_runner=m.Runner
