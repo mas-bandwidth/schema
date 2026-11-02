@@ -583,7 +583,11 @@ template <typename Entry> struct TableMapEach
         it.Skip();
         return it;
     }
-    Iterator end() const { Iterator it = { arena, NULL, 0 }; return it; }
+    Iterator end() const
+    {
+        Iterator it = { arena, NULL, 0 };
+        return it;
+    }
 };
 
 template <typename Entry>
@@ -761,7 +765,11 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     if ( r.get8() != 13 ) { return true; } // not an array of tables: §4's ordinary kind mismatch
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
-    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        reason = count_over_extent_cap;
+        return false;
+    }
     const int64_t rest = length - r.offset;
     if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
@@ -1218,7 +1226,7 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	n := entry.Name
 	ind := "                "
 	g.pf("%suint64_t body_len = 0;\n", ind)
-	g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 	g.pf("%sif ( body_len >= 2 )\n%s{\n", ind, ind)
 	g.pf("%s    uint8_t elem_kind = r.get8();\n", ind)
@@ -1229,8 +1237,8 @@ func (g *tableGen) emitMapReadField(f *ir.Field) {
 	g.pf("%s    if ( elem_kind != %d ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, tkTable)
 	g.emitRetainReplaced(f, ind+"    ")
 	g.pf("%s    TableMapFill<%s> fill = TableMapFillBegin( nodes, value.%s, count );\n", ind, n, f.Name)
-	g.pf("%s    if ( fill.refused ) { nodes.refused = true; return false; }\n", ind)
-	g.pf("%s    if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }\n", ind)
+	g.pf("%[1]s    if ( fill.refused )\n%[1]s    {\n%[1]s        nodes.refused = true;\n%[1]s        return false;\n%[1]s    }\n", ind)
+	g.pf("%[1]s    if ( !fill.ok )\n%[1]s    {\n%[1]s        r.report->malformed = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
 	g.pf("%s    TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 	if mapKeyIsString(f) {
 		g.pf("%s    const char * last_key = NULL; int32_t last_length = 0;\n", ind)

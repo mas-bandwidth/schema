@@ -207,11 +207,17 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// emit. The refusal still names every wide field, and it is stated by name in
 	// every module this unit gets.
 	//
-	// THE ANSWER IS THIS LEG'S OWN ROOTS, the way java and elixir answer it
-	// (len(jsFixedUnitRoots) > 0), and not a hard-coded `true`: a unit this leg lays no
-	// fixed table out for has no wire left to put in the accelerators' place, and
-	// `true` would have told ir otherwise and let the unit through unrefused.
-	scope := ir.WideTableKinds(u, "JavaScript", len(jsFixedUnitRoots(u)) > 0)
+	// THE ANSWER IS THIS LEG'S OWN ROOTS, and not a hard-coded `true`: a unit
+	// this leg lays no table out for, on the fixed form (jsFixedUnitRoots) or the
+	// variable form (variableRoots), has no wire left to put in the
+	// accelerators' place. The variable form carries the 128-bit kinds and its
+	// cook writer lays them (docs/PORTING.md M19's widelist_wide), so a unit
+	// whose tables are variable-only is carried, not refused.
+	carried := len(jsFixedUnitRoots(u)) > 0
+	for _, f := range u.Files {
+		carried = carried || len(variableRoots(u, f.Tables)) > 0
+	}
+	scope := ir.WideTableKinds(u, "JavaScript", carried)
 	if scope.Unit {
 		return nil, scope.Refusal
 	}
@@ -263,10 +269,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, fixed)
-	// A unit whose wide kinds cost it the accelerators AND that has no fixed
-	// form to put in their place has nothing to emit, so it is refused whole
-	// and by name, exactly as it was before the form arrived.
-	if len(wide) > 0 && len(fixed) == 0 {
+	// A unit whose wide kinds cost it the accelerators AND that has no table
+	// wire to put in their place has nothing to emit, so it is refused whole
+	// and by name.
+	if len(wide) > 0 && len(fixed) == 0 && len(variable) == 0 {
 		return nil, scope.Refusal
 	}
 	// THE VIEW (docs/SPEC-TABLES.md §8.2, §8.3, §8.5): every table and every

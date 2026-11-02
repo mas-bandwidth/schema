@@ -73,7 +73,7 @@ static const int64_t kTableMessageEntriesHere = %d;
 
 	b.WriteString(cppMessageRuntime)
 
-	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %d entries and %d bytes. It is an
+	fmt.Fprintf(&b, `// THE UNIT'S ANNOUNCEMENT, byte for byte: %[1]d entries and %[2]d bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -91,7 +91,7 @@ static const int64_t kTableMessageEntriesHere = %d;
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = %d;
+static const int64_t kTableAnnounceBytes = %[3]d;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -100,18 +100,10 @@ static const int64_t kTableAnnounceBytes = %d;
 // group the linker discards strands any surviving reference to it. One
 // entity, its own COMDAT, and every definition of it token-identical because
 // there is only one header that writes it.
-inline const uint8_t kTableAnnounce[ kTableAnnounceBytes ] = {
+inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
 `, len(entries), len(announcement), len(announcement))
-	for i, by := range announcement {
-		if i%12 == 0 {
-			b.WriteString("    ")
-		}
-		fmt.Fprintf(&b, "0x%02x,", by)
-		if i%12 == 11 || i == len(announcement)-1 {
-			b.WriteString("\n")
-		} else {
-			b.WriteString(" ")
-		}
+	for _, by := range announcement {
+		fmt.Fprintf(&b, "    0x%02x,\n", by)
 	}
 	b.WriteString("};\n\n")
 	b.WriteString(cppMessageAnnounce)
@@ -132,9 +124,7 @@ const cppMessageRuntime = `// THE BIT STREAM the bodies ride on (§3.3). It is t
 // instead of one touch a byte, and the BITS ON THE WIRE do not move.
 inline uint64_t table_message_byteswap64( uint64_t v )
 {
-    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-         | ( v << 56 );
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull ) | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull ) | ( v << 56 );
 }
 
 inline uint64_t table_message_load64( const uint8_t * p )
@@ -177,7 +167,12 @@ struct TableBitWriter
     void put( uint64_t value, int64_t n )
     {
         if ( n <= 0 ) { return; }
-        if ( ( bits + n + 7 ) / 8 > capacity ) { overflow = true; bits += n; return; }
+        if ( ( bits + n + 7 ) / 8 > capacity )
+        {
+            overflow = true;
+            bits += n;
+            return;
+        }
         if ( n < 64 ) { value &= ( uint64_t( 1 ) << n ) - 1; } // a caller's high bits never leak
         const int64_t index = bits >> 3;
         const int64_t bit = bits & 7;
@@ -207,7 +202,12 @@ struct TableBitWriter
         if ( n <= 0 ) { return; }
         if ( ( bits & 7 ) == 0 )
         {
-            if ( ( bits >> 3 ) + n > capacity ) { overflow = true; bits += n * 8; return; }
+            if ( ( bits >> 3 ) + n > capacity )
+            {
+                overflow = true;
+                bits += n * 8;
+                return;
+            }
             memcpy( buffer + ( bits >> 3 ), data, (size_t) n );
             bits += n * 8;
             return;
@@ -294,7 +294,12 @@ struct TableBitReader
         return true;
     }
 
-    bool skip( int64_t n ) { if ( !has( n ) ) { return false; } offset += n; return true; }
+    bool skip( int64_t n )
+    {
+        if ( !has( n ) ) { return false; }
+        offset += n;
+        return true;
+    }
 
     // the pad to the next byte boundary is VERIFIED ZERO, which is the packet
     // wire's rule for the same reason (SPEC.md §4.3)
@@ -314,7 +319,11 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
     if ( max <= min ) { return 0; }
     uint64_t span = (uint64_t) ( max - min );
     int64_t n = 0;
-    while ( span > 0 ) { n++; span >>= 1; }
+    while ( span > 0 )
+    {
+        n++;
+        span >>= 1;
+    }
     return n;
 }
 
@@ -367,10 +376,23 @@ inline int64_t TableMessageKindBits( uint8_t kind )
 {
     switch ( kind )
     {
-        case 2: case 6: case 20: case 25: return 8;
-        case 3: case 7: case 21: case 26: return 16;
-        case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 8;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 16;
+        case 4:
+        case 8:
+        case 22:
+        case 27: return 32;
+        case 5:
+        case 9:
+        case 23:
+        case 28:
+        case 36: return 64; // 36 is the timestamp, the i64's width (§2.11)
         default: return 128;
     }
 }
@@ -397,11 +419,16 @@ inline bool TableMessageQuantization( float qmin, float qmax, float qres, float 
 // rounds to float32 BEFORE the add, which a compiler permitted to contract
 // would otherwise fuse into one rounding and move the wire.
 #if ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __aarch64__ ) || defined( _M_ARM64 ) )
-#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+w" ( x ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+w"( x ) )
 #elif ( defined( __GNUC__ ) || defined( __clang__ ) ) && ( defined( __x86_64__ ) || defined( __i386__ ) )
-#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__ ( "" : "+x" ( x ) )
+#define TABLE_FLOAT_FORCE_ROUND( x ) __asm__( "" : "+x"( x ) )
 #else
-#define TABLE_FLOAT_FORCE_ROUND( x ) do { volatile float table_float_force_round_slot = ( x ); ( x ) = table_float_force_round_slot; } while ( 0 )
+#define TABLE_FLOAT_FORCE_ROUND( x ) \
+    do \
+    { \
+        volatile float table_float_force_round_slot = ( x ); \
+        ( x ) = table_float_force_round_slot; \
+    } while ( 0 )
 #endif
 
 // TableMessageQuantize is the writer's half: the index a value takes.
@@ -449,7 +476,7 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
     for ( int64_t shift = 0; at < size; shift += 7 )
     {
         if ( shift >= 64 ) { return false; }
-        const uint8_t by = in[ at++ ];
+        const uint8_t by = in[at++];
         if ( shift == 63 && by > 1 ) { return false; }
         value |= uint64_t( by & 0x7F ) << shift;
         if ( ( by & 0x80 ) == 0 ) { return !( shift > 0 && by == 0 ); }
@@ -461,9 +488,18 @@ inline bool TableMessageLeb( const uint8_t * in, int64_t size, int64_t & at, uin
 // or its element's, which is the one nesting this wire has.
 struct TableMessageShapeFacts
 {
-    uint8_t & packing; int64_t & value_bits; int64_t & base_lo; int64_t & base_hi;
-    float & qmin; float & qmax; float & qres; float & qdelta; uint32_t & qcount;
-    int64_t & min; int64_t & max; uint8_t & elem_kind;
+    uint8_t & packing;
+    int64_t & value_bits;
+    int64_t & base_lo;
+    int64_t & base_hi;
+    float & qmin;
+    float & qmax;
+    float & qres;
+    float & qdelta;
+    uint32_t & qcount;
+    int64_t & min;
+    int64_t & max;
+    uint8_t & elem_kind;
 };
 
 inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & at, uint8_t kind, TableMessageShapeFacts f );
@@ -477,8 +513,8 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
 {
     if ( at + 9 > size ) { return false; }
     entry = TableMessageEntry();
-    for ( int i = 0; i < 8; i++ ) { entry.id |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
-    entry.kind = in[ at + 8 ];
+    for ( int i = 0; i < 8; i++ ) { entry.id |= uint64_t( in[at + i] ) << ( 8 * i ); }
+    entry.kind = in[at + 8];
     at += 9;
     if ( !TableMessageKnownKind( entry.kind ) ) { return false; }
     // The parse lands in LOCALS and the entry keeps what a decode reads: the
@@ -488,8 +524,8 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
     float qmin = 0.0f, qmax = 0.0f, qres = 0.0f, qdelta = 0.0f;
     uint32_t qcount = 0;
     TableMessageShapeFacts own = { packing, bits, base_lo, base_hi,
-                                   qmin, qmax, qres, qdelta, qcount,
-                                   min, max, elem_kind };
+        qmin, qmax, qres, qdelta, qcount,
+        min, max, elem_kind };
     if ( !TableMessageShapeRead( in, size, at, entry.kind, own ) ) { return false; }
     entry.packing = packing;
     entry.value_bits = (int16_t) TableMessageValueBits( entry.kind, packing, bits );
@@ -508,8 +544,8 @@ inline bool TableMessageEntryRead( const uint8_t * in, int64_t size, int64_t & a
         float elem_qmin = 0.0f, elem_qmax = 0.0f, elem_qres = 0.0f, elem_qdelta = 0.0f;
         uint32_t elem_qcount = 0;
         TableMessageShapeFacts elem = { elem_packing, elem_bits, elem_base_lo, elem_base_hi,
-                                        elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
-                                        elem_min, elem_max, inner_kind };
+            elem_qmin, elem_qmax, elem_qres, elem_qdelta, elem_qcount,
+            elem_min, elem_max, inner_kind };
         if ( !TableMessageShapeRead( in, size, at, entry.elem_kind, elem ) ) { return false; }
         entry.elem_packing = elem_packing;
         entry.elem_value_bits = (int16_t) TableMessageValueBits( entry.elem_kind, elem_packing, elem_bits );
@@ -536,7 +572,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
     if ( TableMessageIntegerKind( kind ) || TableMessageFixedKind( kind ) || kind == 10 )
     {
         if ( at >= size ) { return false; }
-        f.packing = in[ at++ ];
+        f.packing = in[at++];
         if ( f.packing == 0 ) { return true; }
         if ( f.packing == 1 && kind != 10 )
         {
@@ -546,22 +582,29 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
             {
                 if ( at + 16 > size ) { return false; }
                 uint64_t lo = 0, hi = 0;
-                for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[ at + i ] ) << ( 8 * i ); }
-                for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[ at + 8 + i ] ) << ( 8 * i ); }
-                f.base_lo = (int64_t) lo; f.base_hi = (int64_t) hi;
+                for ( int i = 0; i < 8; i++ ) { lo |= uint64_t( in[at + i] ) << ( 8 * i ); }
+                for ( int i = 0; i < 8; i++ ) { hi |= uint64_t( in[at + 8 + i] ) << ( 8 * i ); }
+                f.base_lo = (int64_t) lo;
+                f.base_hi = (int64_t) hi;
                 at += 16;
                 return true;
             }
             if ( !TableMessageLeb( in, size, at, v ) ) { return false; }
             if ( kind >= 2 && kind <= 5 ) { f.base_lo = (int64_t) ( v >> 1 ) ^ -(int64_t) ( v & 1 ); } // zigzag
-            else { f.base_lo = (int64_t) v; }                                                       // the unsigned domain, whole
+            else
+            {
+                f.base_lo = (int64_t) v;
+            }                                                       // the unsigned domain, whole
             return true;
         }
         if ( f.packing == 2 && kind == 10 )
         {
             if ( at + 12 > size ) { return false; }
             uint32_t raw[3] = { 0, 0, 0 };
-            for ( int k = 0; k < 3; k++ ) { for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[ at + 4 * k + i ] ) << ( 8 * i ); } }
+            for ( int k = 0; k < 3; k++ )
+            {
+                for ( int i = 0; i < 4; i++ ) { raw[k] |= uint32_t( in[at + 4 * k + i] ) << ( 8 * i ); }
+            }
             at += 12;
             memcpy( &f.qmin, &raw[0], 4 );
             memcpy( &f.qmax, &raw[1], 4 );
@@ -594,7 +637,7 @@ inline bool TableMessageShapeRead( const uint8_t * in, int64_t size, int64_t & a
         if ( (int64_t) v < f.min ) { return false; }
         f.max = (int64_t) v;
         if ( at >= size ) { return false; }
-        f.elem_kind = in[ at++ ];
+        f.elem_kind = in[at++];
         if ( !TableMessageKnownKind( f.elem_kind ) ) { return false; }
         // AND AN ELEMENT KIND OF 12 OR 33 IS REFUSED HERE, at the
         // announcement, rather than at the skip that would meet it (§3.3): no
@@ -620,10 +663,22 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
         if ( packing == 1 ) { return value_bits; }
         switch ( kind )
         {
-            case 2: case 6: case 20: case 25: return 8;
-            case 3: case 7: case 21: case 26: return 16;
-            case 4: case 8: case 22: case 27: return 32;
-            case 5: case 9: case 23: case 28: return 64;
+            case 2:
+            case 6:
+            case 20:
+            case 25: return 8;
+            case 3:
+            case 7:
+            case 21:
+            case 26: return 16;
+            case 4:
+            case 8:
+            case 22:
+            case 27: return 32;
+            case 5:
+            case 9:
+            case 23:
+            case 28: return 64;
             default: return 128;
         }
     }
@@ -682,7 +737,7 @@ struct TableVocabulary
 // ARRAY INDEX into the caller's resolved storage, no parse and no branch.
 inline const TableMessageEntry & TableVocabularyEntryAt( const TableVocabulary & vocabulary, uint64_t slot )
 {
-    return vocabulary.entries[ slot - 1 ];
+    return vocabulary.entries[slot - 1];
 }
 
 // AnnounceRead reads an announcement into one direction's vocabulary (§3.3).
@@ -719,24 +774,40 @@ inline bool AnnounceRead( TableVocabulary & vocabulary, const uint8_t * buffer, 
 
 inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * to )
 {
-    if ( bytes < 1 ) { to->malformed = true; return false; }
+    if ( bytes < 1 )
+    {
+        to->malformed = true;
+        return false;
+    }
     if ( buffer[0] != kTableWireForm )
     {
         to->refused = true;
         to->reason = buffer[0] == kTableWireMessageForm ? message_form_as_file : newer_form;
         return false;
     }
-    if ( bytes < 9 ) { to->malformed = true; return false; }
+    if ( bytes < 9 )
+    {
+        to->malformed = true;
+        return false;
+    }
     TableIdTable table;
     int64_t body_bytes = 0;
     const TableOpenVerdict verdict = TableOpen( buffer, bytes, table, body_bytes );
     if ( verdict != TableOpenOk )
     {
         if ( verdict == TableOpenDamaged ) { to->malformed = true; }
-        else { to->refused = true; to->reason = newer_form; }
+        else
+        {
+            to->refused = true;
+            to->reason = newer_form;
+        }
         return false;
     }
-    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) ) { to->malformed = true; return false; }
+    if ( TableBodyEndsEarly( buffer + 1, body_bytes, table ) )
+    {
+        to->malformed = true;
+        return false;
+    }
     TableReader r( buffer + 1, body_bytes, to, &table );
     uint64_t version = 0;
     const uint8_t * words = NULL;
@@ -745,14 +816,26 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     for ( ;; )
     {
         uint64_t ref = 0;
-        if ( !r.getleb( ref ) ) { to->malformed = true; return false; }
+        if ( !r.getleb( ref ) )
+        {
+            to->malformed = true;
+            return false;
+        }
         if ( ref == 0 ) { break; }
-        if ( ref > (uint64_t) table.count || !r.has( 1 ) ) { to->malformed = true; return false; }
+        if ( ref > (uint64_t) table.count || !r.has( 1 ) )
+        {
+            to->malformed = true;
+            return false;
+        }
         const uint64_t id = table.at( ref );
         const uint8_t kind = r.get8();
         if ( id == kTableBuildVersionFieldId )
         {
-            if ( kind != 9 || !r.has( 8 ) ) { to->malformed = true; return false; }
+            if ( kind != 9 || !r.has( 8 ) )
+            {
+                to->malformed = true;
+                return false;
+            }
             version = r.get64();
             // THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so
             // that a refusal on this connection NAMES IT (§3.3). It is not the
@@ -766,23 +849,48 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
             // kind 14 over element kind 6, which is §3's spelling for an
             // opaque run of bytes
             uint64_t framed = 0;
-            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) ) { to->malformed = true; return false; }
+            if ( kind != 14 || !r.getleb( framed ) || !r.has( (int64_t) framed ) )
+            {
+                to->malformed = true;
+                return false;
+            }
             const int64_t begin = r.offset, end = r.offset + (int64_t) framed;
             r.offset = end;
-            if ( begin >= end || r.buffer[ begin ] != 6 ) { to->malformed = true; return false; }
+            if ( begin >= end || r.buffer[begin] != 6 )
+            {
+                to->malformed = true;
+                return false;
+            }
             int64_t at = begin + 1;
             uint64_t length = 0;
-            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end ) { to->malformed = true; return false; }
-            if ( (int64_t) length > vocabulary.max_bytes ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
+            if ( !TableMessageLeb( r.buffer, end, at, length ) || at + (int64_t) length != end )
+            {
+                to->malformed = true;
+                return false;
+            }
+            if ( (int64_t) length > vocabulary.max_bytes )
+            {
+                to->refused = true;
+                to->reason = vocabulary_too_large;
+                return false;
+            }
             words = r.buffer + at;
             words_bytes = (int64_t) length;
             seen_vocabulary++;
             continue;
         }
         to->unknown++;
-        if ( !r.skip( kind ) ) { to->malformed = true; return false; }
+        if ( !r.skip( kind ) )
+        {
+            to->malformed = true;
+            return false;
+        }
     }
-    if ( seen_version != 1 || seen_vocabulary != 1 ) { to->malformed = true; return false; }
+    if ( seen_version != 1 || seen_vocabulary != 1 )
+    {
+        to->malformed = true;
+        return false;
+    }
 
     // THE ENTRIES, RESOLVED ONCE into the caller's storage (§3.3): every width
     // is checked here and never again, and no body after this parses a byte of
@@ -791,16 +899,36 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     int64_t at = 0, count = 0, node_table_slots = 0;
     while ( at < words_bytes )
     {
-        if ( count >= vocabulary.max_entries ) { to->refused = true; to->reason = vocabulary_too_large; return false; }
-        TableMessageEntry & parsed = vocabulary.entries[ count ];
+        if ( count >= vocabulary.max_entries )
+        {
+            to->refused = true;
+            to->reason = vocabulary_too_large;
+            return false;
+        }
+        TableMessageEntry & parsed = vocabulary.entries[count];
         const int64_t began = at;
-        if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) ) { to->malformed = true; return false; }
+        if ( !TableMessageEntryRead( words, words_bytes, at, parsed ) )
+        {
+            to->malformed = true;
+            return false;
+        }
         // THE RESERVED IDS WHERE THEY DO NOT BELONG (§3.3): the announcement's
         // own two never take a slot, and the node-table id takes exactly one,
         // so a vocabulary carrying either of the first or a SECOND node-table
         // id is malformed whole and sets nothing
-        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId ) { to->malformed = true; return false; }
-        if ( parsed.id == kTableNodeTableFieldId ) { if ( node_table_slots++ > 0 ) { to->malformed = true; return false; } }
+        if ( parsed.id == kTableBuildVersionFieldId || parsed.id == kTableMessageVocabularyFieldId )
+        {
+            to->malformed = true;
+            return false;
+        }
+        if ( parsed.id == kTableNodeTableFieldId )
+        {
+            if ( node_table_slots++ > 0 )
+            {
+                to->malformed = true;
+                return false;
+            }
+        }
         // A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
         // agree on the id, the kind and every fact of the shape are malformed
         // (§3.3): no writer this wire has produces one, and a reader that took
@@ -821,8 +949,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         const int64_t length = at - began;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
-            const TableMessageEntry & other = vocabulary.entries[ seen ];
-            if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 ) { to->malformed = true; return false; }
+            const TableMessageEntry & other = vocabulary.entries[seen];
+            if ( other.max - other.min == length && memcmp( words + other.min, words + began, (size_t) length ) == 0 )
+            {
+                to->malformed = true;
+                return false;
+            }
         }
         parsed.min = began;
         parsed.max = at;
@@ -832,7 +964,11 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     at = 0;
     for ( int64_t slot = 0; slot < count; slot++ )
     {
-        if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[ slot ] ) ) { to->malformed = true; return false; }
+        if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
+        {
+            to->malformed = true;
+            return false;
+        }
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
@@ -911,7 +1047,8 @@ inline bool TableMessageSkipElement( TableBitReader & r, const TableVocabulary &
     if ( depth > 128 ) { return false; }
     switch ( entry.elem_kind )
     {
-        case 0: case 32: return true;
+        case 0:
+        case 32: return true;
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
         case 30: return TableMessageSkipVariant( r, vocabulary );
         case 17: return index_bits > 0 && r.skip( index_bits );
@@ -942,8 +1079,12 @@ inline int64_t TableMessageElementRunBits( const TableVocabulary & vocabulary, c
         // a nested body, a union arm, an enum's variant and a node index each
         // RESOLVE something, and a resolve that contradicts its position is
         // damage this reader must still find, so they are walked
-        case 13: case 15: case 30: case 17: return -1;
-        case 0: case 32: elem = 0; break;
+        case 13:
+        case 15:
+        case 30:
+        case 17: return -1;
+        case 0:
+        case 32: elem = 0; break;
         default: elem = entry.elem_value_bits; break;
     }
     if ( elem < 0 ) { return -1; }
@@ -968,7 +1109,8 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     if ( depth > 128 ) { return false; }
     switch ( entry.kind )
     {
-        case 0: case 32: return true;              // a name, and a payload-free arm
+        case 0:
+        case 32: return true;              // a name, and a payload-free arm
         case 30: return TableMessageSkipVariant( r, vocabulary );
         case 13: return TableMessageSkipBody( r, vocabulary, index_bits, depth + 1 );
         case 17: return index_bits > 0 && r.skip( index_bits ); // a node index, at the width the body's node count settled
@@ -1002,7 +1144,8 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !r.align() || !r.get( n, 32 ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 14: case 16:
+        case 14:
+        case 16:
         {
             uint64_t n = (uint64_t) entry.min;
             const int64_t width = entry.kind == 16 ? TableBitsRequired( 0, entry.max ) : TableBitsRequired( entry.min, entry.max );
@@ -1123,12 +1266,30 @@ inline int64_t TableMessageBatchOpen( TableMessageBatchReader & br, const TableV
 {
     br.report = report != NULL ? report : &br.ignored;
     br.vocabulary = &vocabulary;
-    if ( bytes < 1 ) { br.report->malformed = true; return -1; }
-    if ( buffer[0] != kTableWireMessageForm ) { br.report->refused = true; br.report->reason = newer_form; return -1; }
-    if ( !vocabulary.announced ) { br.report->refused = true; br.report->reason = no_vocabulary; return -1; }
+    if ( bytes < 1 )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
+    if ( buffer[0] != kTableWireMessageForm )
+    {
+        br.report->refused = true;
+        br.report->reason = newer_form;
+        return -1;
+    }
+    if ( !vocabulary.announced )
+    {
+        br.report->refused = true;
+        br.report->reason = no_vocabulary;
+        return -1;
+    }
     br.r = TableBitReader( buffer + 1, bytes - 1 );
     uint64_t count = 0;
-    if ( !br.r.get( count, 8 ) ) { br.report->malformed = true; return -1; }
+    if ( !br.r.get( count, 8 ) )
+    {
+        br.report->malformed = true;
+        return -1;
+    }
     br.remaining = (int64_t) count + 1;
     return br.remaining;
 }
@@ -1148,7 +1309,11 @@ inline void TableMessageRefuseBatch( TableReport * report )
 // left over describes no batch this reader can name (§3.3).
 inline bool TableMessageBatchClose( TableMessageBatchReader & br )
 {
-    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits ) { br.report->malformed = true; return false; }
+    if ( br.remaining != 0 || !br.r.align() || br.r.offset != br.r.bits )
+    {
+        br.report->malformed = true;
+        return false;
+    }
     return true;
 }
 

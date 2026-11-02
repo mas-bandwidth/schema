@@ -15,8 +15,8 @@ import (
 // retained=1 retain_lost=3".
 func TestRetainCarriesTheTimestampKind(t *testing.T) {
 	t.Parallel()
-	src := cppRetainRuntime
-	if got := strings.Count(src, "case 5: case 9: case 11: case 23: case 28: case 36:\n"); got != 2 {
+	src := cppSourceSpelling(cppRetainRuntime)
+	if got := strings.Count(src, "case 5: case 9: case 11: case 23: case 28: case 36: case 18:"); got != 2 {
 		t.Errorf("kind 36 is a retainable fixed-width kind in %d of the capture and emit switches, want 2", got)
 	}
 	if got := strings.Count(src, "case 5: case 9: case 11: case 23: case 28: case 36: width = 8;"); got != 2 {

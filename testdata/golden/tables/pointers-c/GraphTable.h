@@ -5261,9 +5261,10 @@ static SCHEMA_UNUSED int graphdemo_meta_load_body( graphdemo_table_reader_t * r,
     }
 }
 
-/* meta_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* meta_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int graphdemo_meta_load_tolerant( graphdemo_meta_t * value, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -5274,7 +5275,8 @@ static SCHEMA_UNUSED int graphdemo_meta_load_tolerant( graphdemo_meta_t * value,
     non_finite_before = report->non_finite_floats;
     whole = graphdemo_meta_load_body( &r, value );
     if ( graphdemo_table_non_finite_refused( report, non_finite_before ) ) { graphdemo_meta_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { graphdemo_meta_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN meta_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -5628,9 +5630,10 @@ static SCHEMA_UNUSED int graphdemo_settings_load_body( graphdemo_table_reader_t 
     }
 }
 
-/* settings_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps the
-   recovered value and its report, and answers 0 only for a refusal or a
-   body the walk could not finish. */
+/* settings_load_tolerant is the TOLERANT read (docs/SPEC-TABLES.md §6.5): it keeps what
+   evolution leaves (unknown, widened, clamped, kind_mismatch, counted on the
+   report) and answers 0 with the value reset for a refusal or for damage
+   anywhere in the wire, which discards the whole load (§4). */
 static SCHEMA_UNUSED int graphdemo_settings_load_tolerant( graphdemo_settings_t * value, const uint8_t * buffer, int64_t bytes, graphdemo_table_report_t * report )
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t r; int32_t non_finite_before; int whole;
@@ -5641,7 +5644,8 @@ static SCHEMA_UNUSED int graphdemo_settings_load_tolerant( graphdemo_settings_t 
     non_finite_before = report->non_finite_floats;
     whole = graphdemo_settings_load_body( &r, value );
     if ( graphdemo_table_non_finite_refused( report, non_finite_before ) ) { graphdemo_settings_reset( value ); return 0; } /* a NaN or an infinity: nothing lands (§3.3) */
-    return whole;
+    if ( !whole || report->malformed ) { graphdemo_settings_reset( value ); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 
 /* The PLAIN settings_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): it refuses
@@ -10494,7 +10498,7 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_load_graph_(graphdemo_table_
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* list_node_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* list_node_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total;
@@ -10506,7 +10510,7 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_tole
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xf60ec899a5a69fa9);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_list_node_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_list_node_load_graph_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_list_node_load_graph_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_list_node_t *)(const void *)region;
 }
 /* list_node_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -10523,7 +10527,9 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_builder_tolerant(graphdemo_lis
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xf60ec899a5a69fa9);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { graphdemo_list_node_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN list_node_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -10729,7 +10735,7 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_load_graph_(graphdemo_table_
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* tree_node_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* tree_node_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total;
@@ -10741,7 +10747,7 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_tole
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xb97e90a3784c431d);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_tree_node_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_tree_node_load_graph_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_tree_node_load_graph_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_tree_node_t *)(const void *)region;
 }
 /* tree_node_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -10758,7 +10764,9 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_builder_tolerant(graphdemo_tre
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xb97e90a3784c431d);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { graphdemo_tree_node_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN tree_node_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -10964,7 +10972,7 @@ static SCHEMA_UNUSED int schema_graphdemo_layer_load_graph_(graphdemo_table_read
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* layer_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* layer_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total;
@@ -10976,7 +10984,7 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x9d167ef77aed79b6);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_layer_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_layer_load_graph_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_layer_load_graph_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_layer_t *)(const void *)region;
 }
 /* layer_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -10993,7 +11001,9 @@ static SCHEMA_UNUSED int graphdemo_layer_load_builder_tolerant(graphdemo_layer_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x9d167ef77aed79b6);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { graphdemo_layer_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN layer_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -11203,7 +11213,7 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_load_graph_(graphdemo_table_read
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* scene_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* scene_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total;
@@ -11215,7 +11225,7 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x4a9a31623ab5f213);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_scene_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_scene_load_graph_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_scene_load_graph_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_scene_t *)(const void *)region;
 }
 /* scene_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -11232,7 +11242,9 @@ static SCHEMA_UNUSED int graphdemo_scene_load_builder_tolerant(graphdemo_scene_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x4a9a31623ab5f213);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { graphdemo_scene_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN scene_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -11438,7 +11450,7 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_load_graph_(graphdemo_table_read
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* depot_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* depot_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total;
@@ -11450,7 +11462,7 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0x327fe6dc702553fd);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_depot_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_depot_load_graph_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_depot_load_graph_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_depot_t *)(const void *)region;
 }
 /* depot_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -11467,7 +11479,9 @@ static SCHEMA_UNUSED int graphdemo_depot_load_builder_tolerant(graphdemo_depot_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x327fe6dc702553fd);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { graphdemo_depot_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN depot_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -11677,7 +11691,7 @@ static SCHEMA_UNUSED int schema_graphdemo_album_load_graph_(graphdemo_table_read
       if(graphdemo_table_non_finite_refused(reader->report,non_finite_before)) { return 0; }
       return !nodes->refused && (!nodes->arena || read_ok); }
 }
-/* album_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the recovered root and its report. */
+/* album_load_tolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5): the root and its report; NULL for a refusal or for damage, which discards the whole load (§4). */
 static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_tolerant(uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
     graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_region_sink_t place; graphdemo_table_sink_t sink; int64_t data,records,total;
@@ -11689,7 +11703,7 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_tolerant(uin
     directory[0].offset=0; directory[0].type_id=UINT64_C(0xd858c2cb7f1514cc);
     nodes.base=region; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=0; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     place.base=region; place.capacity=data; place.used=schema_graphdemo_album_wire_storage_(&reader); sink.region=&place; sink.worker=NULL;
-    if(!schema_graphdemo_album_load_graph_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink)) { if(report->refused && report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT) { memset(region,0,(size_t)total); } graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; }
+    if(!schema_graphdemo_album_load_graph_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink) || report->malformed) { memset(region,0,(size_t)total); graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return NULL; } /* damage discards the whole load (§4) */
     graphdemo_table_release(graphdemo_table_default_allocator(),nodes.blob_named); return (const graphdemo_album_t *)(const void *)region;
 }
 /* album_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
@@ -11706,7 +11720,9 @@ static SCHEMA_UNUSED int graphdemo_album_load_builder_tolerant(graphdemo_album_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xd858c2cb7f1514cc);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named); return ok;
+    ok=schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink); graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    if(!ok || report->malformed) { graphdemo_album_reset(root); return 0; } /* damage discards the whole load (§4) */
+    return 1;
 }
 /* The PLAIN album_load IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers NULL, the report this read's own and its refuse_reason set. unknown and widened alone never refuse. */
 static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load( uint8_t * region, int64_t region_bytes, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report )
@@ -11871,9 +11887,11 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_reta
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_list_node_load_graph_retain_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_graphdemo_list_node_load_graph_retain_(&reader,(graphdemo_list_node_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const graphdemo_list_node_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const graphdemo_list_node_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_list_node_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -12027,9 +12045,11 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_reta
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_tree_node_load_graph_retain_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_graphdemo_tree_node_load_graph_retain_(&reader,(graphdemo_tree_node_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const graphdemo_tree_node_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const graphdemo_tree_node_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -12183,9 +12203,11 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_layer_load_graph_retain_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_graphdemo_layer_load_graph_retain_(&reader,(graphdemo_layer_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const graphdemo_layer_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const graphdemo_layer_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_layer_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -12346,9 +12368,11 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_scene_load_graph_retain_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_graphdemo_scene_load_graph_retain_(&reader,(graphdemo_scene_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const graphdemo_scene_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const graphdemo_scene_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_scene_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -12505,9 +12529,11 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_depot_load_graph_retain_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_graphdemo_depot_load_graph_retain_(&reader,(graphdemo_depot_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const graphdemo_depot_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const graphdemo_depot_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_depot_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -12668,9 +12694,11 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_retain(uint8
  memset(&retention,0,sizeof(retention));
  retention.retain=retain;
  retention.path=graphdemo_table_retain_root(region,1);
- if(!schema_graphdemo_album_load_graph_retain_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink,retention)){if(report->refused&&report->reason==SCHEMA_GRAPHDEMO_TABLE_NON_FINITE_FLOAT)memset(region,0,(size_t)total);
+ if(!schema_graphdemo_album_load_graph_retain_(&reader,(graphdemo_album_t *)(void *)region,&nodes,directory,&sink,retention)||report->malformed){memset(region,0,(size_t)total);
+ graphdemo_table_retain_reset(retain,NULL,NULL);
  return NULL;
- }return (const graphdemo_album_t *)(const void *)region;
+ } /* damage discards the whole load, the retention store too (§4) */
+ return (const graphdemo_album_t *)(const void *)region;
 }
 static SCHEMA_UNUSED int schema_graphdemo_album_retain_save_node_(graphdemo_table_writer_t * w,const void * value,uint64_t id,graphdemo_table_retain_walk_t retention)
 {
@@ -13194,7 +13222,11 @@ int schema_graphdemo_meta_from_json_( graphdemo_meta_t * value, const char * tex
 int64_t schema_graphdemo_meta_to_json_( const graphdemo_meta_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int graphdemo_meta_from_json_tolerant( graphdemo_meta_t * value, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return schema_graphdemo_meta_from_json_( value, text, bytes, report );
+    graphdemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_meta_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { graphdemo_meta_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN meta_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_meta_from_json( graphdemo_meta_t * value, const char * text, int64_t bytes, graphdemo_table_report_t * report )
@@ -13224,7 +13256,11 @@ int schema_graphdemo_settings_from_json_( graphdemo_settings_t * value, const ch
 int64_t schema_graphdemo_settings_to_json_( const graphdemo_settings_t * value, char * buffer, int64_t capacity );
 static SCHEMA_UNUSED int graphdemo_settings_from_json_tolerant( graphdemo_settings_t * value, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
-    return schema_graphdemo_settings_from_json_( value, text, bytes, report );
+    graphdemo_table_report_t ignored;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_settings_from_json_( value, text, bytes, report ) && !report->malformed ) { return 1; }
+    if ( value != NULL ) { graphdemo_settings_reset( value ); } /* damage discards the whole load (§4) */
+    return 0;
 }
 /* The PLAIN settings_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0 with the value reset to its declared defaults, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_settings_from_json( graphdemo_settings_t * value, const char * text, int64_t bytes, graphdemo_table_report_t * report )
@@ -13249,7 +13285,15 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_to_json( const graphdemo_setting
 
 int schema_graphdemo_list_node_from_json_( graphdemo_list_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report );
 int64_t schema_graphdemo_list_node_to_json_( const graphdemo_list_node_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int graphdemo_list_node_from_json_tolerant( graphdemo_list_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report ) { return schema_graphdemo_list_node_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int graphdemo_list_node_from_json_tolerant( graphdemo_list_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
+{
+    graphdemo_table_report_t ignored;
+    graphdemo_list_node_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_list_node_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = graphdemo_list_node_builder_root( builder ); if ( root != NULL ) { graphdemo_list_node_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN list_node_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_list_node_from_json( graphdemo_list_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
@@ -13257,7 +13301,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_from_json( graphdemo_list_node_buil
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_graphdemo_list_node_from_json_( builder, text, bytes, report );
+    decoded = graphdemo_list_node_from_json_tolerant( builder, text, bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t graphdemo_list_node_to_json_measure( const graphdemo_list_node_t * value ) { return schema_graphdemo_list_node_to_json_(value,NULL,0,graphdemo_table_default_allocator()); }
@@ -13268,7 +13312,15 @@ static SCHEMA_UNUSED int64_t graphdemo_list_node_to_json_measure_with_allocator(
 
 int schema_graphdemo_tree_node_from_json_( graphdemo_tree_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report );
 int64_t schema_graphdemo_tree_node_to_json_( const graphdemo_tree_node_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int graphdemo_tree_node_from_json_tolerant( graphdemo_tree_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report ) { return schema_graphdemo_tree_node_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int graphdemo_tree_node_from_json_tolerant( graphdemo_tree_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
+{
+    graphdemo_table_report_t ignored;
+    graphdemo_tree_node_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_tree_node_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = graphdemo_tree_node_builder_root( builder ); if ( root != NULL ) { graphdemo_tree_node_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN tree_node_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_tree_node_from_json( graphdemo_tree_node_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
@@ -13276,7 +13328,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_from_json( graphdemo_tree_node_buil
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_graphdemo_tree_node_from_json_( builder, text, bytes, report );
+    decoded = graphdemo_tree_node_from_json_tolerant( builder, text, bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t graphdemo_tree_node_to_json_measure( const graphdemo_tree_node_t * value ) { return schema_graphdemo_tree_node_to_json_(value,NULL,0,graphdemo_table_default_allocator()); }
@@ -13287,7 +13339,15 @@ static SCHEMA_UNUSED int64_t graphdemo_tree_node_to_json_measure_with_allocator(
 
 int schema_graphdemo_layer_from_json_( graphdemo_layer_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report );
 int64_t schema_graphdemo_layer_to_json_( const graphdemo_layer_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int graphdemo_layer_from_json_tolerant( graphdemo_layer_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report ) { return schema_graphdemo_layer_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int graphdemo_layer_from_json_tolerant( graphdemo_layer_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
+{
+    graphdemo_table_report_t ignored;
+    graphdemo_layer_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_layer_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = graphdemo_layer_builder_root( builder ); if ( root != NULL ) { graphdemo_layer_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN layer_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_layer_from_json( graphdemo_layer_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
@@ -13295,7 +13355,7 @@ static SCHEMA_UNUSED int graphdemo_layer_from_json( graphdemo_layer_builder_t * 
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_graphdemo_layer_from_json_( builder, text, bytes, report );
+    decoded = graphdemo_layer_from_json_tolerant( builder, text, bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t graphdemo_layer_to_json_measure( const graphdemo_layer_t * value ) { return schema_graphdemo_layer_to_json_(value,NULL,0,graphdemo_table_default_allocator()); }
@@ -13306,7 +13366,15 @@ static SCHEMA_UNUSED int64_t graphdemo_layer_to_json_measure_with_allocator(cons
 
 int schema_graphdemo_scene_from_json_( graphdemo_scene_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report );
 int64_t schema_graphdemo_scene_to_json_( const graphdemo_scene_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int graphdemo_scene_from_json_tolerant( graphdemo_scene_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report ) { return schema_graphdemo_scene_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int graphdemo_scene_from_json_tolerant( graphdemo_scene_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
+{
+    graphdemo_table_report_t ignored;
+    graphdemo_scene_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_scene_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = graphdemo_scene_builder_root( builder ); if ( root != NULL ) { graphdemo_scene_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN scene_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_scene_from_json( graphdemo_scene_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
@@ -13314,7 +13382,7 @@ static SCHEMA_UNUSED int graphdemo_scene_from_json( graphdemo_scene_builder_t * 
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_graphdemo_scene_from_json_( builder, text, bytes, report );
+    decoded = graphdemo_scene_from_json_tolerant( builder, text, bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t graphdemo_scene_to_json_measure( const graphdemo_scene_t * value ) { return schema_graphdemo_scene_to_json_(value,NULL,0,graphdemo_table_default_allocator()); }
@@ -13325,7 +13393,15 @@ static SCHEMA_UNUSED int64_t graphdemo_scene_to_json_measure_with_allocator(cons
 
 int schema_graphdemo_depot_from_json_( graphdemo_depot_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report );
 int64_t schema_graphdemo_depot_to_json_( const graphdemo_depot_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int graphdemo_depot_from_json_tolerant( graphdemo_depot_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report ) { return schema_graphdemo_depot_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int graphdemo_depot_from_json_tolerant( graphdemo_depot_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
+{
+    graphdemo_table_report_t ignored;
+    graphdemo_depot_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_depot_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = graphdemo_depot_builder_root( builder ); if ( root != NULL ) { graphdemo_depot_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN depot_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_depot_from_json( graphdemo_depot_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
@@ -13333,7 +13409,7 @@ static SCHEMA_UNUSED int graphdemo_depot_from_json( graphdemo_depot_builder_t * 
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_graphdemo_depot_from_json_( builder, text, bytes, report );
+    decoded = graphdemo_depot_from_json_tolerant( builder, text, bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t graphdemo_depot_to_json_measure( const graphdemo_depot_t * value ) { return schema_graphdemo_depot_to_json_(value,NULL,0,graphdemo_table_default_allocator()); }
@@ -13344,7 +13420,15 @@ static SCHEMA_UNUSED int64_t graphdemo_depot_to_json_measure_with_allocator(cons
 
 int schema_graphdemo_album_from_json_( graphdemo_album_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report );
 int64_t schema_graphdemo_album_to_json_( const graphdemo_album_t * value, char * buffer, int64_t capacity, graphdemo_table_allocator_t allocator );
-static SCHEMA_UNUSED int graphdemo_album_from_json_tolerant( graphdemo_album_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report ) { return schema_graphdemo_album_from_json_(builder,text,bytes,report); }
+static SCHEMA_UNUSED int graphdemo_album_from_json_tolerant( graphdemo_album_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
+{
+    graphdemo_table_report_t ignored;
+    graphdemo_album_t * root;
+    if ( report == NULL ) { memset( &ignored, 0, sizeof( ignored ) ); report = &ignored; }
+    if ( schema_graphdemo_album_from_json_( builder, text, bytes, report ) && !report->malformed ) { return 1; }
+    root = graphdemo_album_builder_root( builder ); if ( root != NULL ) { graphdemo_album_reset( root ); } /* damage discards the whole load (§4) */
+    return 0;
+}
 /* The PLAIN album_from_json IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): whatever the strict read refuses answers 0, the report this read's own and its refuse_reason set. */
 static SCHEMA_UNUSED int graphdemo_album_from_json( graphdemo_album_builder_t * builder, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
@@ -13352,7 +13436,7 @@ static SCHEMA_UNUSED int graphdemo_album_from_json( graphdemo_album_builder_t * 
     int decoded;
     if ( report == NULL ) { report = &ignored; }
     memset( report, 0, sizeof( *report ) ); /* this read's report, not the caller's last one */
-    decoded = schema_graphdemo_album_from_json_( builder, text, bytes, report );
+    decoded = graphdemo_album_from_json_tolerant( builder, text, bytes, report );
     return !graphdemo_table_report_strict_refuses( report, decoded );
 }
 static SCHEMA_UNUSED int64_t graphdemo_album_to_json_measure( const graphdemo_album_t * value ) { return schema_graphdemo_album_to_json_(value,NULL,0,graphdemo_table_default_allocator()); }

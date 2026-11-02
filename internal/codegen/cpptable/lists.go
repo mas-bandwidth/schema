@@ -160,18 +160,28 @@ static const int32_t kTableListSegmentElements = 32;
 
 // THE ELEMENT STORAGE: T itself, and a TableRef slot for a []*T, whose
 // elements are references exactly as a pointer field's slot is (§2.1)
-template <typename T> struct TableListStorage { typedef T Element; };
-template <typename T> struct TableListStorage<T *> { typedef TableRef Element; };
+template <typename T>
+struct TableListStorage
+{
+    typedef T Element;
+};
+template <typename T>
+struct TableListStorage<T *>
+{
+    typedef TableRef Element;
+};
 
 // WHAT THE CONST FORM ANSWERS: the element by reference, and on a []*T the
 // RESOLVED pointer, one add on the self-relative delta, NULL for a null slot,
 // exactly as <T>At answers it (§6.2, §6.3)
-template <typename T> struct TableListConst
+template <typename T>
+struct TableListConst
 {
     typedef const T & Result;
     static Result At( const T * element ) { return *element; }
 };
-template <typename T> struct TableListConst<T *>
+template <typename T>
+struct TableListConst<T *>
 {
     typedef const T * Result;
     static Result At( const TableRef * element )
@@ -187,7 +197,8 @@ template <typename T> struct TableListConst<T *>
 // arena it names the builder's HEAD, in a region it is the delta from the slot
 // to the first element, and 0 is the empty list in both. It is the map's slot
 // exactly, because it is the same two facts.
-template <typename T> struct TableList
+template <typename T>
+struct TableList
 {
     typedef typename TableListStorage<T>::Element Element;
 
@@ -235,7 +246,11 @@ template <typename T> struct TableList
     {
         const Element * at;
         typename TableListConst<T>::Result operator*() const { return TableListConst<T>::At( at ); }
-        ConstIterator & operator++() { at++; return *this; }
+        ConstIterator & operator++()
+        {
+            at++;
+            return *this;
+        }
         bool operator==( const ConstIterator & other ) const { return at == other.at; }
         bool operator!=( const ConstIterator & other ) const { return at != other.at; }
     };
@@ -259,18 +274,19 @@ struct TableListHead
     int32_t dead;
 };
 
-template <typename Element> struct TableListSegment
+template <typename Element>
+struct TableListSegment
 {
     TableRef next;
     int32_t used;                                          // elements carved from this segment
     int32_t padding;
-    uint32_t dead[ ( kTableListSegmentElements + 31 ) / 32 ]; // Erase marks one bit, never the element
-    Element elements[ kTableListSegmentElements ];
+    uint32_t dead[( kTableListSegmentElements + 31 ) / 32]; // Erase marks one bit, never the element
+    Element elements[kTableListSegmentElements];
 };
 
 inline bool TableListSegmentDead( const uint32_t * dead, int32_t index )
 {
-    return ( dead[ index / 32 ] & ( 1u << ( index % 32 ) ) ) != 0;
+    return ( dead[index / 32] & ( 1u << ( index % 32 ) ) ) != 0;
 }
 
 // the head, allocated when the first element is added
@@ -367,7 +383,7 @@ inline bool TableListErase( TableArena & arena, TableList<T> & list, const typen
         {
             const int32_t i = (int32_t) ( element - segment->elements );
             if ( TableListSegmentDead( segment->dead, i ) ) { return false; } // already erased
-            segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+            segment->dead[i / 32] |= 1u << ( i % 32 );
             head->live--;
             head->dead++;
             list.count--;
@@ -379,7 +395,8 @@ inline bool TableListErase( TableArena & arena, TableList<T> & list, const typen
 }
 
 // ---- iterate on the BUILDER: INDEX order, live elements only (§2.9) ----
-template <typename T> struct TableListEach
+template <typename T>
+struct TableListEach
 {
     typedef typename TableList<T>::Element Element;
     const TableArena * arena;
@@ -402,12 +419,21 @@ template <typename T> struct TableListEach
                     index = 0;
                     continue;
                 }
-                if ( TableListSegmentDead( segment->dead, index ) ) { index++; continue; }
+                if ( TableListSegmentDead( segment->dead, index ) )
+                {
+                    index++;
+                    continue;
+                }
                 return;
             }
         }
         Element * operator*() const { return segment->elements + index; }
-        Iterator & operator++() { index++; Skip(); return *this; }
+        Iterator & operator++()
+        {
+            index++;
+            Skip();
+            return *this;
+        }
         // the end is a NULL segment at any index: the loop body then never sees a NULL segment
         bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
         bool operator!=( const Iterator & other ) const { return !( *this == other ); }
@@ -419,7 +445,11 @@ template <typename T> struct TableListEach
         it.Skip();
         return it;
     }
-    Iterator end() const { Iterator it = { arena, NULL, 0 }; return it; }
+    Iterator end() const
+    {
+        Iterator it = { arena, NULL, 0 };
+        return it;
+    }
 };
 
 template <typename T>
@@ -443,7 +473,8 @@ inline TableListEach<T> TableListEachOf( const TableArena & arena, const TableLi
 // i + 2, so the cursor remembers where the last access landed and moves one
 // live slot per step. An access behind the memo restarts from the first
 // segment, which no walk here does.
-template <typename Element> struct TableListCursor
+template <typename Element>
+struct TableListCursor
 {
     const Element * elements = NULL; // the region's form: the array in place
     const TableArena * arena = NULL; // the builder's form: the segments
@@ -504,7 +535,12 @@ inline TableListCursor<typename TableList<T>::Element> TableListElements( const 
     TableListCursor<typename TableList<T>::Element> cursor;
     cursor.arena = &arena;
     cursor.count = list.count;
-    if ( list.elements.value == 0 || list.count <= 0 ) { cursor.ok = list.count == 0; cursor.count = 0; return cursor; }
+    if ( list.elements.value == 0 || list.count <= 0 )
+    {
+        cursor.ok = list.count == 0;
+        cursor.count = 0;
+        return cursor;
+    }
     const TableListHead * head = (const TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
     if ( head->live != list.count ) { return cursor; } // the slot and the head disagree: refused, never guessed
     cursor.first = head->first;
@@ -524,7 +560,8 @@ inline TableListCursor<typename TableList<T>::Element> TableListElements( const 
 // cannot tell which it has: a REGION carves the element array out of the
 // holder node's own extent, PRE-ORDER, and the TOOL's path appends into the
 // builder's arena.
-template <typename T> struct TableListFill
+template <typename T>
+struct TableListFill
 {
     typedef typename TableList<T>::Element Element;
     TableList<T> * list = NULL;
@@ -574,7 +611,8 @@ inline TableListFill<T> TableListFillBegin( const TableNodeMap & nodes, TableLis
 
 // the next slot, at the element's declared defaults. NULL when the arena
 // could not carve, which the decoder reports as framing damage
-template <typename T> inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
+template <typename T>
+inline typename TableList<T>::Element * TableListFillNext( TableListFill<T> & fill )
 {
     typedef typename TableList<T>::Element Element;
     if ( fill.array != NULL )
@@ -592,7 +630,8 @@ template <typename T> inline typename TableList<T>::Element * TableListFillNext(
 // what it decoded, and an element whose own framing gave out before one byte
 // of it decoded was not decoded. The region's form uncounts it, and the builder's
 // marks it dead, which is what the storage rule allows mid-build.
-template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
+template <typename T>
+inline void TableListFillDrop( TableListFill<T> & fill )
 {
     typedef typename TableList<T>::Element Element;
     if ( fill.array != NULL )
@@ -607,7 +646,7 @@ template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
     if ( segment->used <= 0 ) { return; }
     const int32_t i = segment->used - 1;
     if ( TableListSegmentDead( segment->dead, i ) ) { return; }
-    segment->dead[ i / 32 ] |= 1u << ( i % 32 );
+    segment->dead[i / 32] |= 1u << ( i % 32 );
     head->live--;
     head->dead++;
     fill.list->count--;
@@ -615,7 +654,8 @@ template <typename T> inline void TableListFillDrop( TableListFill<T> & fill )
 
 // an EMPTY list's reference is null in both encodings, so a load that placed
 // nothing leaves the slot exactly as a Reset does
-template <typename T> inline void TableListFillEnd( TableListFill<T> & fill )
+template <typename T>
+inline void TableListFillEnd( TableListFill<T> & fill )
 {
     if ( fill.array != NULL && fill.list->count == 0 ) { fill.list->elements.value = 0; }
 }
@@ -628,8 +668,8 @@ template <typename T> inline void TableListFillEnd( TableListFill<T> & fill )
 // headers under it. Every -1 carries its REASON (§6.5): the int32 cap first,
 // because a count past it cannot fit any body, and then the body's own L.
 inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t & at,
-                                 int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
-                                 TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
+    int64_t elem_size, int64_t elem_align, uint8_t elem_kind, int64_t elem_floor,
+    TableWireExtentFn inner, const TableIdTable * ids, TableRefuseReason & reason )
 {
     TableReport scratch;
     TableReader r( body, length, &scratch, ids );
@@ -644,9 +684,17 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
     }
     uint64_t n = 0;
     if ( !r.getleb( n ) ) { return true; }
-    if ( n > (uint64_t) INT32_MAX ) { reason = count_over_extent_cap; return false; }
+    if ( n > (uint64_t) INT32_MAX )
+    {
+        reason = count_over_extent_cap;
+        return false;
+    }
     const int64_t rest = length - r.offset;
-    if ( n > (uint64_t) ( rest / elem_floor ) ) { reason = count_over_length; return false; } // an N the list's L cannot carry
+    if ( n > (uint64_t) ( rest / elem_floor ) )
+    {
+        reason = count_over_length;
+        return false;
+    } // an N the list's L cannot carry
     at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
     at += (int64_t) n * elem_size;
     if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
@@ -706,7 +754,7 @@ func (g *tableGen) emitListWriteField(f *ir.Field) {
 	restore := g.openElemCache(f, listElementWireKind(f), 0, "            ", "_"+f.Name)
 	defer restore()
 	g.emitArrayBodyMeasure(f, listElementWireKind(f), "body_"+f.Name, cursor+".count", cursor+"[%s]", "            ", "return false;", "_"+f.Name)
-	g.pf("            w.header( ref_%s, %d ); w.putleb( (uint64_t) body_%s ); // %s\n", f.Name, tkArray, f.Name, f.Name)
+	g.pf("            w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkArray, f.Name, f.Name)
 	g.emitArrayBodyWrite(f, listElementWireKind(f), cursor+".count", cursor+"[%s]", "            ", "_"+f.Name)
 	g.pf("        }\n")
 	g.pf("    }\n")
@@ -721,7 +769,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 	ind := "                "
 	elemKind := listElementWireKind(f)
 	g.pf("%suint64_t body_len = 0;\n", ind)
-	g.pf("%sif ( !r.getleb( body_len ) || !r.room( body_len ) ) { r.report->malformed = true; return false; }\n", ind)
+	g.pf("%[1]sif ( !r.getleb( body_len ) || !r.room( body_len ) )\n%[1]s{\n%[1]s    r.report->malformed = true;\n%[1]s    return false;\n%[1]s}\n", ind)
 	g.pf("%sint64_t body_end = r.offset + (int64_t) body_len;\n", ind)
 	g.pf("%s// A BODY TOO SHORT FOR ITS OWN HEADER is INERT (§4): the field keeps\n", ind)
 	g.pf("%s// the value it has, no counter is raised, and the walk continues past L.\n", ind)
@@ -737,7 +785,7 @@ func (g *tableGen) emitListReadField(f *ir.Field) {
 		// mismatch branch with a fill of its own: ONE count for the field,
 		// every element decoded at the wire kind's width
 		g.pf("%s    else if ( elem_kind != %d )\n%s    {\n", ind, elemKind, ind)
-		g.pf("%s        if ( !TableKindWidens( elem_kind, %d ) ) { r.report->kind_mismatch++; r.offset = body_end; break; }\n", ind, elemKind)
+		g.pf("%[1]s        if ( !TableKindWidens( elem_kind, %[2]d ) )\n%[1]s        {\n%[1]s            r.report->kind_mismatch++;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind, elemKind)
 		g.pf("%s        r.report->widened++;\n", ind)
 		g.emitListFill(f, elemKind, ind, true)
 		g.pf("%s    }\n", ind)
@@ -761,19 +809,19 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	g.pf("%s        // fill's refusal, and it moves no counter.\n", ind)
 	g.emitRetainReplaced(f, ind+"        ")
 	g.pf("%s        TableListFill<%s> fill = TableListFillBegin( nodes, value.%s, count );\n", ind, g.listTypeArg(f), f.Name)
-	g.pf("%s        if ( fill.refused ) { nodes.refused = true; return false; }\n", ind)
-	g.pf("%s        if ( !fill.ok ) { r.report->malformed = true; r.offset = body_end; break; }\n", ind)
+	g.pf("%[1]s        if ( fill.refused )\n%[1]s        {\n%[1]s            nodes.refused = true;\n%[1]s            return false;\n%[1]s        }\n", ind)
+	g.pf("%[1]s        if ( !fill.ok )\n%[1]s        {\n%[1]s            r.report->malformed = true;\n%[1]s            r.offset = body_end;\n%[1]s            break;\n%[1]s        }\n", ind)
 	g.pf("%s        // elements are BOUNDED by the field body: a count the length cannot\n", ind)
 	g.pf("%s        // cover is damage, flags malformed, and the load is discarded\n", ind)
 	g.pf("%s        // whole (§4)\n", ind)
 	g.pf("%s        TableReader sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 	g.pf("%s        for ( uint64_t i = 0; i < count; i++ )\n%s        {\n", ind, ind)
 	g.pf("%s            %s * slot = TableListFillNext( fill );\n", ind, g.listElementType(f))
-	g.pf("%s            if ( slot == NULL ) { r.report->malformed = true; break; } // the arena could not carve\n", ind)
+	g.pf("%[1]s            if ( slot == NULL )\n%[1]s            {\n%[1]s                r.report->malformed = true;\n%[1]s                break;\n%[1]s            } // the arena could not carve\n", ind)
 	g.pf("%s            bool landed = false;\n", ind)
 	g.pf("%s            do\n%s            {\n", ind, ind)
 	if widened {
-		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->malformed = true; break;")
+		g.emitWidenedScalar(f, elemKind, "elem_kind", "( *slot )", ind+"                ", "sub", "r.report->malformed = true;\n                                break;")
 	} else {
 		g.inStep("i", func() {
 			g.emitTableReadElementInto(f, elemKind, "( *slot )", ind+"                ", "sub", "_"+f.Name)
@@ -781,7 +829,7 @@ func (g *tableGen) emitListFill(f *ir.Field, elemKind int, ind string, widened b
 	}
 	g.pf("%s                landed = true;\n", ind)
 	g.pf("%s            } while ( 0 );\n", ind)
-	g.pf("%s            if ( !landed ) { TableListFillDrop( fill ); break; } // the element's own framing gave out before it decoded\n", ind)
+	g.pf("%[1]s            if ( !landed )\n%[1]s            {\n%[1]s                TableListFillDrop( fill );\n%[1]s                break;\n%[1]s            } // the element's own framing gave out before it decoded\n", ind)
 	g.pf("%s        }\n", ind)
 	g.pf("%s        TableListFillEnd( fill );\n", ind)
 }

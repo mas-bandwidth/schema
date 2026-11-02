@@ -409,6 +409,8 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	}
 	m.Printf("  size = %d,\n", layout.Size)
 	m.Printf("  align = %d,\n", layout.Align)
+	m.Printf("  cook_align = %d,\n", ir.CookNodeAlign(m.Unit, st))
+	m.Printf("  cook_record = %d,\n", ir.CookExtentStart(m.Unit, st))
 	m.Printf("  region_align = %d,\n", regionAlign)
 	m.Printf("  fields = {\n")
 	guards := structGuards(st)

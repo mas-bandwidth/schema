@@ -50,8 +50,7 @@ var cookWriteUnits = map[string]string{
 // one must have its <t>_cook_write, and its rows run and pass byte for byte
 // whether or not it is still named — an entry whose reader has landed is
 // spent, and the run says so.
-var cookWriteOwed = map[string]string{
-}
+var cookWriteOwed = map[string]string{}
 
 type cookWriteCase struct {
 	name, unit, root string

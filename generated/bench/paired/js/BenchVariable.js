@@ -1347,11 +1347,19 @@ function TableVariableLoad(c, bytes, report, retain) {
   if (report === undefined || report === null) { report = new TableVariableReport(); }
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
+  // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
+  // its own damage, so a report a caller hands in already marked malformed
+  // stays marked and does not refuse a clean wire.
+  const carried = report.malformed;
+  report.malformed = false;
   const open = TableVariableOpen(bytes, report);
-  // A non-variable root starts at its declared defaults and keeps them when
-  // the file framing is damaged or refused before any field decodes
-  // (docs/SPEC-TABLES.md §3, §4).
-  if (open === null) { return c.variable ? null : c.make(); }
+  // A REFUSED form byte hands a non-variable root back at its declared
+  // defaults (§3); DAMAGE hands back nothing (§4).
+  if (open === null) {
+    const damaged = report.malformed;
+    report.malformed = carried || damaged;
+    return c.variable || damaged ? null : c.make();
+  }
   const table = open.table;
   const v = c.make();
   const raw = c.variable ? TableVariableNodeTableScan(bytes, table, open.end, report) : null;
@@ -1397,6 +1405,13 @@ function TableVariableLoad(c, bytes, report, retain) {
     return null;
   }
   TableVariableResolve(st, report);
+  // DAMAGE DISCARDS THE WHOLE LOAD (§4): a read that met damage anywhere hands
+  // back no root, and a retaining read keeps nothing it would save.
+  if (report.malformed) {
+    if (retain !== null) { retain.reset(); }
+    return null;
+  }
+  report.malformed = carried;
   return v;
 }
 
@@ -3073,6 +3088,8 @@ class TableVariableTextIn {
 // ONE TEXT: the root's object and nothing after it. The instance holds what
 // was placed before any stop; a text that is not JSON is malformed.
 function TableVariableFromJson(c, text, report) {
+  const carried = report.malformed;
+  report.malformed = false;
   const inp = new TableVariableTextIn(text);
   const v = c.make();
   const ok = TableVariableReadTable(c, inp, v, 0, new Map(), report);
@@ -3080,7 +3097,10 @@ function TableVariableFromJson(c, text, report) {
     inp.space();
     if (inp.p !== text.length) { inp.bad = true; }
   }
-  if (inp.bad || !ok) { report.malformed = true; }
+  // DAMAGE DISCARDS THE WHOLE LOAD (§4, §16.2): text that does not read hands
+  // back no value
+  if (inp.bad || !ok || report.malformed) { report.malformed = true; return null; }
+  report.malformed = carried;
   return v;
 }
 
@@ -4293,6 +4313,10 @@ export const TableCookWrite = (() => {
       if (view !== null) { view.setUint8(base + fd.presentAt, 1); }
     }
     if (fd.k === "arr") { return writeArray(view, base, fd, parent, le, ctx); }
+    // a LIST's or a MAP's holder is written by the extent's carve, which
+    // places the array it points at (§2.8, §2.9)
+    if (fd.k === "list" || fd.k === "map") { return true; }
+    if (fd.k === "wstr") { return writeWide(view, base, fd, parent, le); }
     if (fd.k === "str" || fd.k === "bytes" || fd.k === "vstr" || fd.k === "vbytes") { return writeText(view, base, fd, parent, le); }
     if (fd.k === "union") { return writeUnion(view, base + fd.at, fd, parent[fd.n], le, ctx); }
     if (fd.k === "ptr") { return writeRef(view, base + fd.at, ptrIndex(ctx, parent[fd.n]), le, ctx); }
@@ -4336,9 +4360,21 @@ export const TableCookWrite = (() => {
         return writeRef(view, at, ptrIndex(ctx, value), le, ctx);
       case "union":
         return writeUnion(view, at, fd, value, le, ctx);
+      case "list": case "map":
+        return true;
       default:
         return false;
     }
+  }
+  // char16_t[N+1]: a JavaScript string IS its UTF-16 code units, each written
+  // as a two-byte scalar in the cook's byte order, the unit count beside them
+  function writeWide(view, base, fd, parent, le) {
+    const s = parent[fd.n];
+    if (typeof s !== "string" || s.length > fd.cap) { return false; }
+    if (view !== null) {
+      for (let i = 0; i < s.length; i++) { view.setUint16(base + fd.at + 2 * i, s.charCodeAt(i), le); }
+    }
+    return putWidth(view, base + fd.lenAt, 4, s.length, true, le);
   }
   function holeValue(fd) {
     switch (fd.k) {
@@ -4452,6 +4488,109 @@ export const TableCookWrite = (() => {
     if (a <= 1) { return n; }
     return Math.floor((n + a - 1) / a) * a;
   }
+  // ---- THE NODE EXTENT (docs/SPEC-TABLES.md §2.8, §2.9, §7.2, §7.6;
+  // docs/PORTING.md M19; the layout tla/NodeExtent.tla models and
+  // internal/tablecook/extent.go writes). A record's lists and maps lay their
+  // arrays after the record's own storage: field by field in declaration
+  // order, each holder's WHOLE array at the running offset rounded to its
+  // element's alignment, then, element by element, the arrays those elements
+  // hold by value — PRE-ORDER. The holder takes the self-relative delta to its
+  // array (zero when empty) and the count. With view null the same walk
+  // measures: one walk, two halves, so they cannot drift. at is the value's
+  // own offset, base the extent's, and cur.at the running offset inside it.
+  function carveRecord(view, at, base, cur, value, layout, le, ctx) {
+    if (layout === undefined || !layout.ext) { return true; }
+    if (value === null || typeof value !== "object") { return false; }
+    for (let i = 0; i < layout.fields.length; i++) {
+      const fd = layout.fields[i];
+      if (fd.k === "ptr" || fd.k === "sblob" || fd.k === "bblob") { continue; }
+      const v = value[fd.n];
+      if (fd.presentAt !== undefined && v === null) { continue; }
+      if (!carveValue(view, at + fd.at, base, cur, fd, v, le, ctx)) { return false; }
+    }
+    return true;
+  }
+  function carveValue(view, at, base, cur, fd, v, le, ctx) {
+    switch (fd.k) {
+      case "list": case "map":
+        return carveHolder(view, at, base, cur, fd, v, le, ctx);
+      case "rec":
+        return carveRecord(view, at, base, cur, v, layouts[fd.t], le, ctx);
+      case "arr": {
+        const e = fd.elem;
+        if (e.k !== "rec" && e.k !== "union" && e.k !== "list" && e.k !== "map") { return true; }
+        if (e.k === "rec" && !layouts[e.t].ext) { return true; }
+        // a slot past a counted array's live elements holds the
+        // value-initialized element, which holds no list and no map
+        const n = fd.countFrom === "len" ? (Array.isArray(v) ? v.length : 0) : fd.bound;
+        for (let i = 0; i < n; i++) {
+          if (!carveValue(view, at + i * fd.stride, base, cur, e, v[i], le, ctx)) { return false; }
+        }
+        return true;
+      }
+      case "union": {
+        if (!fd.var || v === null || v === undefined || typeof v !== "object") { return true; }
+        for (let i = 0; i < fd.arm.length; i++) {
+          const arm = fd.arm[i];
+          if (arm.an !== v.arm) { continue; }
+          if (arm.v || arm.k === "ptr" || arm.k === "sblob" || arm.k === "bblob") { return true; }
+          return carveValue(view, at + fd.armAt + arm.at, base, cur, arm, v.value, le, ctx);
+        }
+        return true;
+      }
+      default:
+        return true;
+    }
+  }
+  // A holder's elements in the order its array lays them: a list's as it holds
+  // them, a map's entries ASCENDING BY KEY (§2.8). THE WRITER HOLDS THE SORT:
+  // TableVariableMapEntries orders the entries a Map holds in whatever order,
+  // so a Map built out of key order cooks the same bytes, and under the
+  // cook's entry cache the numbering, the measure and the write all see the
+  // same entry objects.
+  function holderElements(fd, v) {
+    if (fd.k === "map") {
+      if (!(v instanceof Map)) { return null; }
+      return TableVariableMapEntries({ c: layouts[fd.t], ks: fd.ks === 1 }, v);
+    }
+    return Array.isArray(v) ? v : null;
+  }
+  function carveHolder(view, slot, base, cur, fd, v, le, ctx) {
+    const elems = holderElements(fd, v);
+    if (elems === null) { return false; }
+    const n = elems.length;
+    cur.at = alignUp(cur.at, fd.align);
+    const array = base + cur.at;
+    cur.at += n * fd.size;
+    if (view !== null) {
+      view.setBigInt64(slot, n > 0 ? BigInt(array - slot) : 0n, le);
+      view.setInt32(slot + 8, n, le);
+    }
+    if (fd.k === "map") {
+      const entry = layouts[fd.t];
+      for (let i = 0; i < n; i++) {
+        if (!writeStruct(view, array + i * fd.size, entry, elems[i], le, ctx)) { return false; }
+      }
+      for (let i = 0; i < n; i++) {
+        if (!carveRecord(view, array + i * fd.size, base, cur, elems[i], entry, le, ctx)) { return false; }
+      }
+      return true;
+    }
+    for (let i = 0; i < n; i++) {
+      if (!writeValue(view, array + i * fd.size, fd.elem, elems[i], le, ctx)) { return false; }
+    }
+    for (let i = 0; i < n; i++) {
+      if (!carveValue(view, array + i * fd.size, base, cur, fd.elem, elems[i], le, ctx)) { return false; }
+    }
+    return true;
+  }
+  // the save's entry cache (TableVariableEntryCache), held for one whole
+  // measure or write so every walk sees one sorted entry object per map
+  function withEntries(f) {
+    const outer = TableVariableEntryCache;
+    TableVariableEntryCache = new Map();
+    try { return f(); } finally { TableVariableEntryCache = outer; }
+  }
   function blobSize(entry) {
     return 8 + entry.len + (entry.string ? 1 : 0);
   }
@@ -4473,18 +4612,29 @@ export const TableCookWrite = (() => {
         entries.push({ typeId: child.typeId, v: n.v, blob: false, layout: child, offset: 0 });
       }
     }
+    const ctx = { entries, nodes, nonFinite: false };
+    // a record node that holds a list or a map is its storage rounded to
+    // ir.CookExtentStart, then its extent, at ir.CookNodeAlign (§2.8, §6.2)
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      e.extent = 0;
+      if (!e.blob && e.layout.ext) {
+        const cur = { at: 0 };
+        if (!carveRecord(null, 0, 0, cur, e.v, e.layout, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
+        e.extent = cur.at;
+      }
+    }
     let data = 0, align = 8;
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      const alignment = e.blob ? 8 : e.layout.align;
-      const size = e.blob ? blobSize(e) : e.layout.size;
+      const alignment = e.blob ? 8 : (e.layout.ext ? e.layout.nodeAlign : e.layout.align);
+      const size = e.blob ? blobSize(e) : (e.layout.ext ? e.layout.extentStart + e.extent : e.layout.size);
       if (alignment > align) { align = alignment; }
       data = alignUp(data, alignment);
       e.offset = data;
       data += size;
     }
     data = alignUp(data, align);
-    const ctx = { entries, nodes, nonFinite: false };
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       if (!e.blob && !writeStruct(null, 64 + e.offset, e.layout, e.v, true, ctx)) { return { reason: ctx.nonFinite ? "non_finite_float" : "invalid_value" }; }
@@ -4492,15 +4642,22 @@ export const TableCookWrite = (() => {
     return { reason: null, total: 64 + data + entries.length * 16, data, align, entries, ctx };
   }
   function variableMeasure(name, value) {
-    const reg = region(name, value);
-    return reg.reason === null ? reg.total : -1;
+    return withEntries(() => {
+      const reg = region(name, value);
+      return reg.reason === null ? reg.total : -1;
+    });
   }
   function variableReason(name, value) {
-    const reg = region(name, value);
-    if (reg.reason !== null) { return [-1, reg.reason]; }
-    return [reg.total, null];
+    return withEntries(() => {
+      const reg = region(name, value);
+      if (reg.reason !== null) { return [-1, reg.reason]; }
+      return [reg.total, null];
+    });
   }
   function variableFrom(name, value, buffer, order) {
+    return withEntries(() => cookFrom(name, value, buffer, order));
+  }
+  function cookFrom(name, value, buffer, order) {
     if (order !== 1 && order !== 2) { return false; }
     const reg = region(name, value);
     if (reg.reason !== null) { return false; }
@@ -4523,7 +4680,10 @@ export const TableCookWrite = (() => {
           const src = e.body instanceof Uint8Array ? e.body : Uint8Array.from(e.body);
           new Uint8Array(view.buffer, view.byteOffset + at + 8, e.len).set(src);
         }
-      } else if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+      } else {
+        if (!writeStruct(view, at, e.layout, e.v, le, reg.ctx)) { return false; }
+        if (e.layout.ext && !carveRecord(view, at, at + e.layout.extentStart, { at: 0 }, e.v, e.layout, le, reg.ctx)) { return false; }
+      }
     }
     const dir = 64 + reg.data;
     for (let i = 0; i < reg.entries.length; i++) {

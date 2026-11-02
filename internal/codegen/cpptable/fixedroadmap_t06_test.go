@@ -85,7 +85,7 @@ func t06Case(src, op string) string {
 
 func t06Has(t *testing.T, src, want, clause string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !strings.Contains(cppSourceSpelling(src), cppSourceSpelling(want)) {
 		t.Errorf("%s: the emitted source does not carry %q", clause, want)
 	}
 }
