@@ -112,6 +112,7 @@ func (g *wireGen) emitTextForm() {
 // invents no contract of its own — the byte layout is §16.1's, read down to the
 // card's closure.
 func (g *wireGen) emitTextRuntime() {
+	g.pf("%s", timestampTextRuntime)
 	g.pf(`// ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
 // TableTextReport is a tolerant text read's report (§16.3): the three events

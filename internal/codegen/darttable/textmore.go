@@ -30,7 +30,7 @@ import (
 // walk below rather than the card-class emitters in textform.go.
 func needsGenericText(f *ir.Field) bool {
 	return f.IsMap() || unionRef(f) != nil || f.Array == ir.ArrayFixed || f.Type.Kind == ir.TWString ||
-		isWide(f) || f.Type.Optional || isFlags(f)
+		isWide(f) || f.Type.Optional || isFlags(f) || f.Type.Timestamp
 }
 
 func depthExpr(d int) string {
@@ -817,6 +817,8 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%sout.raw(_jsonWide(%s, %d, %v));\n", ind, expr, f.Type.FracBits, k == ir.TableKindI128 || k == ir.TableKindU128)
 	case isFlags(f):
 		g.pf("%s%s(out, %s, %s);\n", ind, flagsFn(flagsRef(f), "ToJson"), expr, depthExpr(d))
+	case f.Type.Timestamp:
+		g.pf("%sout.raw(_jsonString(_timestampText(%s)));\n", ind, expr)
 	case f.Type.Kind == ir.TWString, f.Type.Kind == ir.TString:
 		g.pf("%sout.raw(_jsonString(%s));\n", ind, expr)
 	case f.Type.Kind == ir.TBytes:
@@ -851,6 +853,8 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 		cond = item + " is String"
 	case isFlags(f):
 		cond = item + " is List"
+	case f.Type.Timestamp:
+		cond = item + " is String"
 	case f.Type.Kind == ir.TBool:
 		cond = item + " is bool"
 	default:
@@ -945,6 +949,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		return fmt.Sprintf("_jsonWideField(%s, r, %d, %v, %s, %s, %s)", val, f.Type.FracBits, ir.TableKindSigned(wideKind(f)), lo, hi, wdef)
 	case isFlags(f):
 		return fmt.Sprintf("%s(%s, r%s)", flagsFn(flagsRef(f), "FromJson"), val, fbArg)
+	case f.Type.Timestamp:
+		return fmt.Sprintf("_timestampField(%s, r%s)", val, fbArg)
 	case f.Type.Kind == ir.TWString:
 		return fmt.Sprintf("_jsonWStringField(%s, %d, r%s)", val, f.Type.Size, fbArg)
 	case f.Type.Kind == ir.TString:

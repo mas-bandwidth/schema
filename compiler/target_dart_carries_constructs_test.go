@@ -3,10 +3,11 @@ package compiler
 import "testing"
 
 func init() {
-	nonGoCarriers["dart"] = append(nonGoCarriers["dart"], carryOneSidedRange, carryArrayRoot)
+	nonGoCarriers["dart"] = append(nonGoCarriers["dart"], carryOneSidedRange, carryArrayRoot, carryTimestamp)
 }
 func TestDartCarriesRangeAndArrayRoot(t *testing.T) {
 	for _, src := range []string{
+		"package probe\n fixed table Clock { at timestamp }\n",
 		"package probe\n fixed table Range { n uint64 = 9007199254740993 | min = 9007199254740993 }\n",
 		"package probe\n table Item { n int32 }\n table Items | json = \"array\" { entries []Item }\n table Holder { items Items }\n",
 	} {

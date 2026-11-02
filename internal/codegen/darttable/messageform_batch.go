@@ -1191,7 +1191,7 @@ final class TableMessageShape {
     if (kind == 1) {
       return 1;
     }
-    if (kind == 11) {
+    if (kind == 11 || kind == 36) {
       return 64;
     }
     if (kind == 10) {

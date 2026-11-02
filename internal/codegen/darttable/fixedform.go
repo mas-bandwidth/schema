@@ -430,7 +430,11 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		}
 	}
-	w.push(fixedLayoutEntry{id: id, kind: ir.TableWireScalarKind(f), size: size, children: 0, note: note},
+	kind := ir.TableWireScalarKind(f)
+	if f.Type.Timestamp {
+		kind = ir.TableKindI64
+	} // §2.11: fixed layout deliberately shares int64's identity.
+	w.push(fixedLayoutEntry{id: id, kind: kind, size: size, children: 0, note: note},
 		fixedDst{dst: at})
 }
 
