@@ -155,6 +155,42 @@ public final class BlobSharedDriver {
         }
         long docsCookLen = mapdemo.DocsCook.cookMeasure(docs);
         System.out.println("map-literal-two-nodes " + (docsWire != null && dm.nodeRecords == 2 && docsCookLen > scookLen));
+
+        // Large populated map (2,000 entries) where every entry's *string slot
+        // holds the same String literal: each slot gets its own cooked node via
+        // O(1) Plan.slotNode lookup.
+        int n500 = 500;
+        int n2000 = 2000;
+        mapdemo.DocsVariable.Value docs500 = new mapdemo.DocsVariable.Value();
+        for (int i = 0; i < n500; i++) {
+            mapdemo.DocsPagesEntryVariable.Value e = new mapdemo.DocsPagesEntryVariable.Value();
+            e.key = String.format("k%04d", i);
+            e.value = "the same literal";
+            docs500.pages.add(e);
+        }
+        mapdemo.DocsVariable.Value docs2000 = new mapdemo.DocsVariable.Value();
+        for (int i = 0; i < n2000; i++) {
+            mapdemo.DocsPagesEntryVariable.Value e = new mapdemo.DocsPagesEntryVariable.Value();
+            e.key = String.format("k%04d", i);
+            e.value = "the same literal";
+            docs2000.pages.add(e);
+        }
+        long len500 = mapdemo.DocsCook.cookMeasure(docs500);
+        byte[] buf500 = new byte[(int) len500];
+        mapdemo.DocsCook.cookFrom(docs500, buf500, mapdemo.TableCookWrite.LITTLE);
+        long t0 = System.nanoTime();
+        long len2000 = mapdemo.DocsCook.cookMeasure(docs2000);
+        byte[] buf2000 = new byte[(int) len2000];
+        boolean ok2000 = mapdemo.DocsCook.cookFrom(docs2000, buf2000, mapdemo.TableCookWrite.LITTLE);
+        long elapsedMs = (System.nanoTime() - t0) / 1_000_000L;
+        mapdemo.DocsCook cook2000 = mapdemo.DocsCook.open(buf2000);
+        int root2000 = cook2000 != null ? cook2000.root() : -1;
+        int count2000 = root2000 >= 0 ? mapdemo.DocsRow.pagesCount(buf2000, root2000) : -1;
+        int pages2000 = count2000 >= 0 ? cook2000.at(mapdemo.DocsRow.pagesSlot(root2000), count2000 * mapdemo.DocsRow.pagesStride) : -1;
+        int at0 = pages2000 >= 0 ? mapdemo.DocsRow.pagesFind(buf2000, pages2000, count2000, "k0000".getBytes("UTF-8")) : -1;
+        int at1999 = pages2000 >= 0 ? mapdemo.DocsRow.pagesFind(buf2000, pages2000, count2000, "k1999".getBytes("UTF-8")) : -1;
+        boolean readOk = count2000 == n2000 && at0 >= 0 && at1999 > at0;
+        System.out.println("map-large-2000 " + (ok2000 && readOk && len2000 > len500 + 1500L * 32L && elapsedMs < 5000L));
     }
 }
 `
@@ -201,6 +237,7 @@ public final class BlobSharedDriver {
 		"distinct-save written",
 		"literal-two-nodes true",
 		"map-literal-two-nodes true",
+		"map-large-2000 true",
 	}, "\n")
 	if got != want {
 		t.Fatalf("the Java writers on a shared blob (§2.5):\n%s\nwant:\n%s", got, want)

@@ -9,6 +9,7 @@ import (
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestBitsFieldAndArrayWidthClampJava is the regression test for the wire-fuzz
@@ -57,15 +58,35 @@ func TestBitsFieldAndArrayWidthClampJava(t *testing.T) {
 	}
 	minSchema := `package bitsclampdemo
 
+table MiniLane {
+    ch bits(6)
+}
+
 table MiniBits {
-    small bits(6)
-    wide  bits(37)
+    small      bits(6)
+    wide       bits(37)
+    lanes      [..4]uint8
+    wide_lanes [..4]uint64
+    items      [..4]MiniLane
 }
 `
 	if err := os.WriteFile(filepath.Join(minSchemaDir, "MiniBits.schema"), []byte(minSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mu := unitFromDir(t, minSchemaDir)
+	// Exercise both writeIntFieldRead (scalar bits(6) and bits(37), plus
+	// table-wrapped items [..4]MiniLane) and writeArrayElemRead on direct
+	// ir.TBits array elements ([..4]bits(6) and [..4]bits(37)).
+	for _, f := range mu.Tables["MiniBits"].Fields {
+		switch f.Name {
+		case "lanes":
+			f.Type.Kind = ir.TBits
+			f.Type.Width = 6
+		case "wide_lanes":
+			f.Type.Kind = ir.TBits
+			f.Type.Width = 37
+		}
+	}
 	mfiles, err := Generate(mu)
 	if err != nil {
 		t.Fatal(err)
@@ -123,15 +144,37 @@ public final class BitsClampDriver {
                 + " saved=" + (rsaved == null ? -1 : rsaved.length));
 
         // Minimized reproducer covering bits(6) scalar, bits(37) >32-bit scalar,
-        // and [..4]bits(6) array element clamping:
+        // [..4]bits(6) array, [..4]bits(37) array, and [..4]MiniLane table array:
         bitsclampdemo.MiniBitsVariable.Value m = new bitsclampdemo.MiniBitsVariable.Value();
         m.small = 45;
         m.wide = 0x15_0000_0000L;
+        m.lanes.add(12);
+        m.lanes.add(46);
+        m.lanes.add(63);
+        m.wideLanes.add(7L);
+        m.wideLanes.add(0x16_0000_0000L);
+        bitsclampdemo.MiniLaneVariable.Value item0 = new bitsclampdemo.MiniLaneVariable.Value();
+        item0.ch = 47;
+        bitsclampdemo.MiniLaneVariable.Value item1 = new bitsclampdemo.MiniLaneVariable.Value();
+        item1.ch = 63;
+        m.items.add(item0);
+        m.items.add(item1);
         byte[] mwire = bitsclampdemo.MiniBitsVariable.save(m);
-        // Mutate small (0x2d -> 0xe8) and wide high byte (0x15 -> 0xff)
         for (int i = 0; i < mwire.length; i++) {
-            if (mwire[i] == 0x2d) {
+            if (mwire[i] == 45) {
                 mwire[i] = (byte) 0xe8;
+                break;
+            }
+        }
+        for (int i = 0; i < mwire.length; i++) {
+            if (mwire[i] == 46) {
+                mwire[i] = (byte) 0xc8;
+                break;
+            }
+        }
+        for (int i = 0; i < mwire.length; i++) {
+            if (mwire[i] == 47) {
+                mwire[i] = (byte) 0xf0;
                 break;
             }
         }
@@ -141,11 +184,25 @@ public final class BitsClampDriver {
                 break;
             }
         }
+        for (int i = 0; i < mwire.length - 4; i++) {
+            if (mwire[i] == 0x00 && mwire[i + 1] == 0x00 && mwire[i + 2] == 0x00 && mwire[i + 3] == 0x00 && mwire[i + 4] == 0x16) {
+                mwire[i + 4] = (byte) 0xfe;
+                break;
+            }
+        }
         bitsclampdemo.TableVariable.Report mrep = new bitsclampdemo.TableVariable.Report();
         bitsclampdemo.MiniBitsVariable.Value ml = bitsclampdemo.MiniBitsVariable.load(mwire, mrep);
+        bitsclampdemo.TableRetain mret = new bitsclampdemo.TableRetain(1 << 20, 1024);
+        bitsclampdemo.TableVariable.Report mrrep = new bitsclampdemo.TableVariable.Report();
+        bitsclampdemo.MiniBitsVariable.Value mrl = bitsclampdemo.MiniBitsRetain.loadRetain(mwire, mret, mrrep);
         System.out.println("mini small=" + ml.small
                 + " wide=" + Long.toHexString(ml.wide)
-                + " clamped=" + mrep.clamped);
+                + " lanes=" + ml.lanes
+                + " wideLanes=" + Long.toHexString(ml.wideLanes.get(0)) + "," + Long.toHexString(ml.wideLanes.get(1))
+                + " items=" + ml.items.get(0).ch + "," + ml.items.get(1).ch
+                + " clamped=" + mrep.clamped
+                + " retainClamped=" + mrrep.clamped
+                + " retainLanes=" + mrl.lanes);
     }
 }
 `
@@ -174,7 +231,7 @@ public final class BitsClampDriver {
 	want := strings.Join([]string{
 		"archive loaded=true channel=63 clamped=1 malformed=false refused=false saved=598 reloaded=63 reclamped=0",
 		"archive-retain loaded=true channel=63 clamped=1 saved=598",
-		"mini small=63 wide=1fffffffff clamped=2",
+		"mini small=63 wide=1fffffffff lanes=[12, 63, 63] wideLanes=7,1fffffffff items=63,63 clamped=5 retainClamped=5 retainLanes=[12, 63, 63]",
 	}, "\n")
 	if got != want {
 		t.Fatalf("bits(N) width clamp mismatch:\n%s\nwant:\n%s", got, want)

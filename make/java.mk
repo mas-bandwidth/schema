@@ -1723,6 +1723,8 @@ JAVA_RETAIN_VECTORS := retain_declared_default:graphdemo:Scene retain_node_recor
 # the oracle reads the count against the parent and counts one kind_mismatch,
 # no damage. They join INDEX.txt, which every leg replays, when every leg reads
 # these headers against the parent.
+# KeyedConfig and ArchiveConfig are fixed tables (!r.variable), which wirefuzz.go excludes from --retain --replay;
+# ArchiveConfigRetain on bits_width_clamp_archive_r83429.bin is covered in TestBitsFieldAndArrayWidthClampJava.
 JAVA_PLAIN_VECTORS := keyed_header_count_past_length:tabledemo:KeyedConfig map_header_count_past_length:mapdemo:Slots pointer_index_past_numbering:streamdemo:Feed pointer_tail_unreadable_clean:streamdemo:Feed node_reference_kind_judged_as_read:blobdemo:Catalog node_reference_above_int64:graphdemo:Scene map_key_past_entry_body:mapdemo:Cells map_key_ill_formed_text:mapdemo:Cells bits_width_clamp_archive_r83429:tabledemo:ArchiveConfig ../widelist_wide:widelist:Wide
 .PHONY: tables-java-wire-fuzz tables-java-wire-fuzz-negative-control tables-java-retain-fuzz-negative-control
 tables-java-wire-fuzz: build/conformance-harness build-conformance-java

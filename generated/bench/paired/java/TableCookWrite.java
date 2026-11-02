@@ -63,27 +63,70 @@ public final class TableCookWrite {
         private final java.util.ArrayList<Node> nodes = new java.util.ArrayList<>();
         private final java.util.IdentityHashMap<Object, Node> index =
                 new java.util.IdentityHashMap<>();
-        private final java.util.ArrayList<Object> slotHolders = new java.util.ArrayList<>();
-        private final java.util.ArrayList<TableCookFieldInfo> slotFields =
-                new java.util.ArrayList<>();
-        private final java.util.ArrayList<Node> slotNodes = new java.util.ArrayList<>();
+        private Object[] slotHolders = new Object[16];
+        private TableCookFieldInfo[] slotFields = new TableCookFieldInfo[16];
+        private Node[] slotNodes = new Node[16];
+        private int slotCount;
         public long total;
         private long dataLength;
         private long alignment;
 
+        static int slotHash(Object holder, TableCookFieldInfo f) {
+            int h = System.identityHashCode(holder) * 31 + System.identityHashCode(f);
+            return h ^ (h >>> 16);
+        }
+
         Node slotNode(Object holder, TableCookFieldInfo f) {
-            for (int i = 0; i < slotHolders.size(); i++) {
-                if (slotHolders.get(i) == holder && slotFields.get(i) == f) {
-                    return slotNodes.get(i);
+            int mask = slotHolders.length - 1;
+            int idx = slotHash(holder, f) & mask;
+            while (slotHolders[idx] != null) {
+                if (slotHolders[idx] == holder && slotFields[idx] == f) {
+                    return slotNodes[idx];
                 }
+                idx = (idx + 1) & mask;
             }
             return null;
         }
 
         void putSlotNode(Object holder, TableCookFieldInfo f, Node n) {
-            slotHolders.add(holder);
-            slotFields.add(f);
-            slotNodes.add(n);
+            if (slotCount * 2 >= slotHolders.length) {
+                rehashSlots(slotHolders.length * 2);
+            }
+            int mask = slotHolders.length - 1;
+            int idx = slotHash(holder, f) & mask;
+            while (slotHolders[idx] != null) {
+                if (slotHolders[idx] == holder && slotFields[idx] == f) {
+                    slotNodes[idx] = n;
+                    return;
+                }
+                idx = (idx + 1) & mask;
+            }
+            slotHolders[idx] = holder;
+            slotFields[idx] = f;
+            slotNodes[idx] = n;
+            slotCount++;
+        }
+
+        void rehashSlots(int cap) {
+            Object[] oldH = slotHolders;
+            TableCookFieldInfo[] oldF = slotFields;
+            Node[] oldN = slotNodes;
+            slotHolders = new Object[cap];
+            slotFields = new TableCookFieldInfo[cap];
+            slotNodes = new Node[cap];
+            int mask = cap - 1;
+            for (int i = 0; i < oldH.length; i++) {
+                if (oldH[i] == null) {
+                    continue;
+                }
+                int idx = slotHash(oldH[i], oldF[i]) & mask;
+                while (slotHolders[idx] != null) {
+                    idx = (idx + 1) & mask;
+                }
+                slotHolders[idx] = oldH[i];
+                slotFields[idx] = oldF[i];
+                slotNodes[idx] = oldN[i];
+            }
         }
     }
 
