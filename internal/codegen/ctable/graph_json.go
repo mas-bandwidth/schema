@@ -422,7 +422,7 @@ static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * st
             else { table_json_write_unsigned(out,table_json_get_raw(entry+key->offset,key->elem_size)); }
             table_json_put(out,'"');
         }
-        table_json_raw(out,": ",2); if(!table_json_write_field(out,entry,value,depth+1)) { return 0; }
+        table_json_raw(out,": ",2); if(value->optional && !table_json_get_raw(entry+value->present_offset,1)) { table_json_raw(out,"null",4); } else if(!table_json_write_field(out,entry,value,depth+1)) { return 0; }
     }
     if(map->count) { table_json_line(out,depth); } table_json_put(out,'}'); return 1;
 }
@@ -460,9 +460,14 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
         if(entry!=NULL && map->count==before) { in->report->duplicate++; }
         c=table_json_value_shape(in);
         if(entry==NULL) { if(!table_json_skip_value(in,depth+1)) { return 0; } }
-        else if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
-            in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
-        } else if(!table_json_read_field(in,entry,value,depth+1)) { return 0; }
+        else if(value->optional && c=='z') {
+            if(!table_json_literal(in,"null")) { return 0; }
+        } else {
+            if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
+                in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
+            } else if(!table_json_read_field(in,entry,value,depth+1)) { return 0; }
+            if(value->optional) { table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
+        }
         c=table_json_peek(in); if(c==',') { in->pos++; continue; } if(c=='}') { in->pos++; return 1; }
         in->bad=1; return 0;
     }
