@@ -128,9 +128,10 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblk1:test/tables/K1.schema tblk2:test/tables/K2.schema \
 	tblscalars2:test/tables/Scalars2.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
-	tblg1:test/tables/G1.schema widelist:tables/widelist
+	tblg1:test/tables/G1.schema widelist:tables/widelist \
+	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) $(wildcard examples-wide/*.schema) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -144,7 +145,7 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk $(SCHEMAS_TABLES
 
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex \
+	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/*/*.ex \
 		test/conformance/elixir/driver_impl.ex
 	@touch $@
 
