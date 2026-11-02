@@ -2606,7 +2606,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               {raw, report}
           end
 
-        read_list_elements(f, after_sub, n - 1, nodes, ids, [%{"value" => value} | acc], report)
+        value = %{"value" => value}
+
+        case text_list_keep(f, value, report) do
+          {:keep, f, report} ->
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+          {:drop, report} ->
+            {Enum.reverse(acc), report}
+        end
 
       _ ->
         {Enum.reverse(acc), %{report | malformed: true}}
@@ -2629,15 +2637,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               read_element(Map.fetch!(@tables, f.elem), sub, nodes, ids)
             end)
 
-          read_list_elements(
-            f,
-            after_sub,
-            n - 1,
-            nodes,
-            ids,
-            [value | acc],
-            merge_report(report, elem_report)
-          )
+          case text_list_keep(f, value, merge_report(report, elem_report)) do
+            {:keep, f, report} ->
+              read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+            {:drop, report} ->
+              {Enum.reverse(acc), report}
+          end
         end
 
       _ ->
@@ -3206,7 +3212,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
 
-    Enum.each(elements, fn element ->
+    Enum.reduce(elements, 0, fn element, used ->
       if not is_map(element), do: throw(:invalid_value)
       default = if f.text_optional, do: nil, else: ""
       value = Map.get(element, "value", default)
@@ -3215,8 +3221,29 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         if not is_binary(value) or not utf8_valid?(value) or byte_size(value) > f.text_size,
           do: throw(:invalid_value)
       end
+
+      used = used + if(value == nil, do: 0, else: byte_size(value))
+      total = Map.get(f, :text_total, 0)
+      if total > 0 and used > total, do: throw(:invalid_value)
+      used
     end)
   end
+
+  # The total is applied after each element's own clamp. Once one element
+  # overflows, the remaining wire/JSON tail is not interpreted (§2.13).
+  defp text_list_keep(%{text_list: true, text_total: total} = f, value, report) when total > 0 do
+    left = Map.get(f, :text_left, total)
+    text = Map.get(value, "value")
+    size = if text == nil, do: 0, else: byte_size(text)
+
+    if size > left do
+      {:drop, %{report | clamped: report.clamped + 1}}
+    else
+      {:keep, Map.put(f, :text_left, left - size), report}
+    end
+  end
+
+  defp text_list_keep(f, _value, report), do: {:keep, f, report}
 
   defp utf8_valid?(raw) do
     String.valid?(raw) and :binary.match(raw, <<0>>) == :nomatch
@@ -4261,18 +4288,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :list, text_list: true} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elements, _count, report} =
-      Enum.reduce_while(raw, {[], 0, report}, fn raw, {acc, count, report} ->
+    {elements, _count, _f, report} =
+      Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
         cond do
           report.malformed ->
-            {:halt, {acc, count, report}}
+            {:halt, {acc, count, f, report}}
 
           bound > 0 and count >= bound ->
-            {:halt, {acc, count, %{report | clamped: report.clamped + 1}}}
+            {:halt, {acc, count, f, %{report | clamped: report.clamped + 1}}}
 
           true ->
             {value, report} = json_read_list_elem(f, raw, report)
-            {:cont, {[value | acc], count + 1, report}}
+
+            case text_list_keep(f, value, report) do
+              {:keep, f, report} -> {:cont, {[value | acc], count + 1, f, report}}
+              {:drop, report} -> {:halt, {acc, count, f, report}}
+            end
         end
       end)
 
@@ -5927,7 +5958,9 @@ const variableRetainSource = `
 
       {value, report, retain} =
         read_elements_retain(
-          Map.put(Map.fetch!(@tables, f.elem), :map_entry, Map.get(f, :map_entry, false)),
+          Map.fetch!(@tables, f.elem)
+          |> Map.put(:map_entry, Map.get(f, :map_entry, false))
+          |> Map.merge(Map.take(f, [:text_list, :text_total])),
           elems,
           n,
           nodes,
@@ -6418,18 +6451,25 @@ const variableRetainSource = `
           {value, report, retain} =
             read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, length(acc))
 
-          read_elements_retain(
-            desc,
-            after_sub,
-            n - 1,
-            nodes,
-            ids,
-            [value | acc],
-            report,
-            retain,
-            ordinal,
-            path
-          )
+          case text_list_keep(desc, value, report) do
+            {:keep, desc, report} ->
+              read_elements_retain(
+                desc,
+                after_sub,
+                n - 1,
+                nodes,
+                ids,
+                [value | acc],
+                report,
+                retain,
+                ordinal,
+                path
+              )
+
+            {:drop, report} ->
+              retain = retain_reset(retain, path, ordinal, length(acc))
+              {Enum.reverse(acc), report, retain}
+          end
         end
 
       _ ->
@@ -7117,7 +7157,7 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		fmt.Fprintf(&b, ", t: :list, elem_kind: %d", elemKind)
 		if f.IsTextList() {
 			value := ir.TextListValue(f)
-			fmt.Fprintf(&b, ", text_list: true, text_optional: %v, text_size: %d", ir.TextListOptional(f), value.Type.Size)
+			fmt.Fprintf(&b, ", text_list: true, text_optional: %v, text_size: %d, text_total: %d", ir.TextListOptional(f), value.Type.Size, f.TextTotal)
 			if ir.TextListPlain(f) {
 				fmt.Fprintf(&b, ", elem: %q", f.TextListElem().Name)
 			}
