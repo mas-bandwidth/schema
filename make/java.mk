@@ -122,8 +122,9 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9)
 	@mkdir -p build/tables-generated-java
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
 	# the POINTERED unit and the BYTE-BUFFER unit: their cook readers and
 	# variable-class codecs ride this stamp, and the LIST unit (tables/lists)
@@ -1658,6 +1659,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
+		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 
 # THE PER-CASE ABSENT GATE (docs/PORTING.md I4; test/conformance/README.md).
@@ -1752,7 +1754,8 @@ test-java: tables-java-wire-fuzz
 # spellings, so the differential must go red on the read report, and the
 # unplanted gate above must be green.
 JAVA_WIRE_FUZZ_UNITS := examples pointers blobs maps arms scalars scalars2 messages wide widelist stream lists rt1 \
-	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9
+	block v1 v2 w1 w2 r1 r2 p1 p2 p3 m1 m2 a1 a2 g1 k1 k2 backend vocab vocab9 \
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),featurewitnesses)
 JAVA_WIRE_FUZZ_SABOTAGE := build/java-wire-sabotage
 tables-java-wire-fuzz-negative-control: tables-java-wire-fuzz
 	@rm -rf $(JAVA_WIRE_FUZZ_SABOTAGE) && mkdir -p $(JAVA_WIRE_FUZZ_SABOTAGE)/generated $(JAVA_WIRE_FUZZ_SABOTAGE)/classes
@@ -1968,6 +1971,7 @@ conformance-negative-control-java-block: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/javatable/block.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/javatable-block.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema ./cmd/schema
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/pointers tables/pointers
 	$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/blobs tables/blobs
@@ -2019,6 +2023,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 	@printf '{"Replace":{"%s/internal/codegen/javatable/variableform.go":"%s/$(CONFORMANCE_NEGATIVE_JAVA_WALK)/variableform.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json
 	go build -overlay $(CONFORMANCE_NEGATIVE_JAVA_WALK)/overlay.json -o $(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema ./cmd/schema
+	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/examples tables/examples
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/pointers tables/pointers
 	$(CONFORMANCE_NEGATIVE_JAVA_WALK)/schema generate --lang java --out $(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/blobs tables/blobs

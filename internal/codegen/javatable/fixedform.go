@@ -1825,7 +1825,7 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("    public static int save(Value[] values, int count, byte[] buffer) {\n")
 	g.pf("        if (values == null || buffer == null || count < 0 || count > values.length) { return -1; }\n")
 	g.pf("        final int need = measure(count);\n")
-	g.pf("        if (buffer.length < need) { return -1; }\n")
+	g.pf("        if (need < 0 || buffer.length < need) { return -1; }\n")
 	if fixedCarriesFloat(st.Fields, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md
 		// §3.3): every value is tested before the first byte is stored, so a

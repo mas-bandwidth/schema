@@ -1301,7 +1301,7 @@ public final class TableMessage {
     }
 
     public static int integritySeal(byte[] buffer, int n) {
-        if (n < 0 || n + 4 > buffer.length) {
+        if (buffer == null || n < 0 || buffer.length < 4 || n > buffer.length - 4) {
             return -1;
         }
         int crc = crc32c(buffer, n);
@@ -2445,7 +2445,8 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        w.align();\n")
 	g.pf("        if (w.overflow) { return -1; }\n")
 	if st.Integrity != "" {
-		g.pf("        return w.bytesWritten() + 4;\n")
+		g.pf("        int n = w.bytesWritten();\n")
+		g.pf("        return n > Integer.MAX_VALUE - 4 ? -1 : n + 4;\n")
 	} else {
 		g.pf("        return w.bytesWritten();\n")
 	}
@@ -2475,7 +2476,7 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        }\n")
 	g.pf("        mw.align();\n")
 	if st.Integrity != "" {
-		g.pf("        if (mw.overflow || buffer.length < mw.bytesWritten() + 4) { return -1; }\n")
+		g.pf("        if (mw.overflow || buffer.length < 4 || mw.bytesWritten() > buffer.length - 4) { return -1; }\n")
 	} else {
 		g.pf("        if (mw.overflow || buffer.length < mw.bytesWritten()) { return -1; }\n")
 	}
