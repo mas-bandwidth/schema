@@ -6,5 +6,8 @@ func init() {
 		carryOneSidedRange,
 		carryForms,
 		carryArrayRoot,
+		carryTimestamp,
+		carryOptionalMap,
+		carryRequired,
 	)
 }

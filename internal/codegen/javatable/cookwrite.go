@@ -232,6 +232,7 @@ public final class TableCookWrite {
         if (absentRecord(value, f)) { return; }
         Object source = field(value, f.sourceName);
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             // a holder's elements are walked in the order the array lays them:
             // a list's in index order, a map's entries ascending by key (§2.8)
             for (Object e : elements(source, f)) { discoverValue(p, null, e, f.element); }
@@ -299,6 +300,7 @@ public final class TableCookWrite {
             Object value, TableCookFieldInfo f) throws ReflectiveOperationException {
         if (f.isPointer || absentRecord(value, f)) { return; }
         if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) {
+            if (f.presentOffset >= 0 && !Boolean.TRUE.equals(field(value, f.sourceName + "Present"))) { return; }
             java.util.List<Object> elems = elements(field(value, f.sourceName), f);
             int n = elems.size();
             cursor[0] = aligned(cursor[0], f.extentAlign);
@@ -500,14 +502,14 @@ public final class TableCookWrite {
     // descriptor's offsets: a record's field, or a union's set arm.
     private static void store(Plan p, byte[] out, int order, long at, Object source, TableCookFieldInfo f)
             throws ReflectiveOperationException {
-        // a LIST's or a MAP's holder is written by the extent's carve, which
-        // places the array it points at (§7.6)
-        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) { return; }
-        Object v = field(source, f.sourceName);
         if (f.presentOffset >= 0) {
             Object present = field(source, f.sourceName + "Present");
             put(out, order, at + f.presentOffset, Boolean.TRUE.equals(present) ? 1 : 0, 1);
         }
+        // a LIST's or a MAP's holder is written by the extent's carve, which
+        // places the array it points at (§7.6)
+        if (f.storage == TableCookStorage.LIST || f.storage == TableCookStorage.MAP) { return; }
+        Object v = field(source, f.sourceName);
         long dest = at + f.offset;
         if (absentRecord(source, f)) {
             if (f.countOffset >= 0) { put(out, order, at + f.countOffset, 0, 4); }
