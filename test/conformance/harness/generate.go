@@ -224,7 +224,10 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		// DECODE, and asking for a text here would refuse the variable class
 		// for a file this step throws away
 		report, err := u.c.ReadReport(unit, rc.Root, wire)
-		if err != nil {
+		// Damage is an expected report outcome for hostile fixtures. The
+		// public API also returns an error because it cannot supply a value;
+		// this step records only the report. Other errors still stop generation.
+		if err != nil && !report.Malformed {
 			return fmt.Errorf("%s: read: %w", rc.Name, err)
 		}
 		counts := Counts{
