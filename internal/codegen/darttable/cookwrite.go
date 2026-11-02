@@ -774,6 +774,10 @@ func addrPlus(addr string, off int64) string {
 // by-value value holds — every element of a bounded array (a counted array's
 // live ones, which in Dart are all it holds), a record, or a union's set arm.
 func (g *cookGen) emitCookExtentField(f *ir.Field, val, addr, ind string, write bool, base string) {
+	if f.Type.Optional && f.IsMap() {
+		owner := val[:lastDot(val)]
+		g.pf("%sif (!%s.%s && %s.isNotEmpty) return -1;\n", ind, owner, hasMember(f), val)
+	}
 	if f.IsList() || f.IsMap() {
 		g.emitCookExtentHolder(f, val, addr, ind, write, base)
 		return

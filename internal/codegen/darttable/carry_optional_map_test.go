@@ -82,6 +82,49 @@ check(!wr.malformed&&!wr.refused&&wr.kindMismatch==0&&w.rootToJson(back)==w.root
 		}
 		b.WriteString("}\n")
 	}
+	// Authored stale containers have a named contract distinct from parsed
+	// null: wire/text omit them, but cook refuses until emptied (§2.3).
+	b.WriteString(`{
+final absent=w.Root();
+for(final input in const ['{"tags":{"a":3}}','{"refs":{"p":{"n":17}}}','{"tags":{"a":3},"refs":{"p":{"n":17}}}']){
+final stale=w.rootFromJson(input);
+stale.hasTags=false;stale.hasRefs=false;
+check(hex(w.rootWireSave(stale))==hex(w.rootWireSave(absent)),'stale absent maps own no graph node');
+check(w.rootToJson(stale)==w.rootToJson(absent),'stale absent maps own no JSON node');
+check(c.RootCook.cookMeasure(stale)==-1,'stale absent map cook measure refuses');
+for(final order in [Endian.little,Endian.big]){
+ final out=Uint8List(4096)..fillRange(0,4096,0xa5);final r=c.TableCookWriteReport();
+ check(!c.RootCook.cook(stale,out,order,report:r)&&r.reason=='invalid_value','stale absent map cook refuses');
+ check(out.every((x)=>x==0xa5),'refused cook leaves output untouched');
+}
+stale.tags=[];stale.refs=[];
+for(final order in [Endian.little,Endian.big]){
+ final a=Uint8List(c.RootCook.cookMeasure(absent)),b=Uint8List(c.RootCook.cookMeasure(stale));
+ check(c.RootCook.cook(absent,a,order)&&c.RootCook.cook(stale,b,order)&&hex(a)==hex(b),'emptied optional maps cook as absent');
+}
+}
+}
+`)
+	// A wrong map entry key is an in-body event, not absent framing (§2.8).
+	for _, decl := range []string{"map[int32]int32", "int32", "[]int32"} {
+		other := unitFrom(t, "package probe\ntable Root { tags "+decl+" }\n")
+		model := tabletext.NewModel(other)
+		value := model.New(other.Tables["Root"])
+		input := `{"tags":{"1":3}}`
+		if decl == "int32" {
+			input = `{"tags":3}`
+		} else if decl == "[]int32" {
+			input = `{"tags":[3]}`
+		}
+		if !model.Read(value, []byte(input), &tabletext.Report{}) {
+			t.Fatal("wrong-kind source")
+		}
+		wire, err := tablewire.Encode(model, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&b, "{final wire=Uint8List.fromList([%s]);final r=w.TableWireReport();final v=w.rootWireLoad(wire,r);check(!r.malformed&&!r.refused&&r.kindMismatch==1&&v.hasTags==%v&&v.tags.isEmpty,'map mismatch presence %s');}\n", strings.Trim(strings.ReplaceAll(fmt.Sprint(wire), " ", ","), "[]"), decl == "map[int32]int32", decl)
+	}
 	b.WriteString(`{
 final r=w.TableTextReport();final v=w.rootFromJson('{"values":{"a":"bad","b":null,"c":7,"c":false}}',r);
 check(r.kindMismatch==2&&r.duplicate==1,'map value shape counters');

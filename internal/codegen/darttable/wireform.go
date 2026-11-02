@@ -2284,7 +2284,15 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		had := hadName(f)
 		// an occurrence under a kind the field does not take leaves the field
 		// standing, so it comes back to the presence it had (§4)
-		caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = "+had+";")
+		if f.IsMap() {
+			// Only outer/element-kind mismatch suppresses map presence (§2.8).
+			// An incompatible entry key is an in-body event; the map rode.
+			for _, suffix := range []string{" if (!r.skipKind(kind))", " r.pos = end;"} {
+				caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;"+suffix, "r.report.kindMismatch++; v."+has+" = "+had+";"+suffix)
+			}
+		} else {
+			caseText = strings.ReplaceAll(caseText, "r.report.kindMismatch++;", "r.report.kindMismatch++; v."+has+" = "+had+";")
+		}
 		rest := g.body.String()[:start]
 		g.body.Reset()
 		g.body.WriteString(rest)
