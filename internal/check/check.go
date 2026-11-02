@@ -4127,6 +4127,10 @@ func (c *checker) checkClaimedNames() {
 	// unit keeps `type Announce` and `const ok`, which SPEC §4.6 is the
 	// page that says so.
 	if len(c.tables) > 0 {
+		// JavaScript names the variable descriptor registry after the package.
+		// It shares module scope with declarations, unlike a nested member.
+		add(strings.ToUpper(c.unit.Package[:1])+c.unit.Package[1:]+"UnitRegistry",
+			"the generated JavaScript unit registry (docs/SPEC-TABLES.md §8.3, §11)", unitPos)
 		for _, gen := range tablenames.ClaimedWithATable() {
 			add(gen, tableRuntimeClaim(gen), unitPos)
 		}

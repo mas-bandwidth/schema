@@ -133,7 +133,7 @@ C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion
 
 Remaining Rust: the final full nightly rerun after the nested-reader and neutral-reference fixes was stopped before completion. Its implementation and bounded regression repairs have landed; full acceptance is still open.
 
-Remaining Java: required-blob shared accounting and complete retaining/fuzzer acceptance. Remaining JavaScript: generated UnitRegistry name-collision coverage and final full-roster acceptance.
+Remaining Java: required-blob shared accounting and complete retaining/fuzzer acceptance. JavaScript update: package-derived UnitRegistry name collisions are repaired, with emitted-name regression and packet-only scope control. Final full-roster acceptance remains open.
 
 Remaining Dart: repeated-map-key widening and remaining nightly builder/retirement controls. Remaining Elixir: truncated nested payloads can reach float/bool readers incorrectly; the framing repair is preserved as unfinished work. Their complete retaining/fuzzer acceptance remains open.
 
@@ -173,10 +173,10 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the message form (form byte 2, a bitpacked body) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | retain-unknown | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 81% | 93% | 93% | 96% | 87% | 93% | 84% | 90% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 81% | 93% | 93% | 96% | 87% | 96% | 84% | 90% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
