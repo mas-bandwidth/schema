@@ -154,7 +154,7 @@ public final class Driver {
    check(loaded!=null&&!again.malformed&&again.unknown==(mode==0?2:0)&&loaded.tail==17,"retaining resave mode "+mode);
    if(mode!=1)check(loaded.slots.get(0).value==0&&loaded.choice.tag==1&&loaded.choice.item.value==0,"known child values");
   }
-  TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty!=null&&bad.malformed&&empty.choice.tag==0&&empty.tail==17,"malformed direct text arm resets None and continues parent");
+  TableVariable.Writer damaged=new TableVariable.Writer(new byte[1024],new TableVariable.Ids(64));damaged.put8(1);damaged.putLeb(damaged.ref(RootVariable.F_choice));damaged.put8(15);damaged.putLeb(damaged.ref(CHOICE_WORD));damaged.put8(12);damaged.putLeb(1);damaged.put8(0);damaged.putLeb(damaged.ref(RootVariable.F_tail));damaged.put8(4);damaged.put32(17);damaged.put8(0);damaged.trailer();TableVariable.Report bad=new TableVariable.Report();RootVariable.Value empty=RootVariable.load(java.util.Arrays.copyOf(damaged.buf,damaged.off),bad);check(empty==null&&bad.malformed&&!bad.refused,"malformed direct text arm discards the whole load");
   System.out.println("keyed/union child tails retained, unknown slots/arms excluded, replacements discard old tails");
  }
 }`
