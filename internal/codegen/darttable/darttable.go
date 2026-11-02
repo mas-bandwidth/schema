@@ -125,7 +125,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	text := ir.TableWideTextFields(u)
 	out := map[string][]byte{}
 	{
-		blocks := ir.Blocks(u)
+		blocks := declaredBlocks(u)
 		var err error
 		if len(wide) == 0 && len(text) == 0 {
 			out, err = generateBlockFiles(u, blocks)

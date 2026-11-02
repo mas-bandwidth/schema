@@ -87,6 +87,16 @@ func (g *wireGen) textEnums() []*ir.Enum {
 // load/save have landed: the generic writer/reader runtime, the enum helpers,
 // and per-table toJson/fromJson bodies (roots get the top-level entry points).
 func (g *wireGen) emitTextForm() {
+	present := false
+	for _, st := range g.closure {
+		if st.IsTable && !st.IsMapEntry() && st.CarriesForm("json") {
+			present = true
+			break
+		}
+	}
+	if !present {
+		return
+	}
 	g.emitTextRuntime()
 	g.emitTextMoreRuntime()
 	for _, e := range g.textEnums() {
@@ -99,7 +109,7 @@ func (g *wireGen) emitTextForm() {
 		g.emitTextFromJsonFields(st)
 	}
 	for _, st := range g.closure {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("json") {
 			continue
 		}
 		g.emitTextToJson(st)

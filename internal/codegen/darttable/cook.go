@@ -72,7 +72,7 @@ func cookUnitOf(u *ir.Unit) *cookUnit {
 		// holder's map slot, exactly as the block form treats it (§19). A cook
 		// for it would name a value class that lives only in the variable form's
 		// <Base>Wire.dart, which a cook library does not import.
-		if st.MapEntryOf != "" {
+		if st.MapEntryOf != "" || !st.CarriesForm("cook") {
 			continue
 		}
 		if why := cookableClosure(u, st); why != "" {
@@ -286,6 +286,9 @@ func generateCookFiles(u *ir.Unit, blocks *ir.BlockUnit) (map[string][]byte, err
 		return out, nil
 	}
 	cook := cookUnitOf(u)
+	if len(cook.tables) == 0 && len(cook.skipped) == 0 {
+		return out, nil
+	}
 	home := runtimeHome(u)
 	written := false
 	for _, f := range u.Files {
