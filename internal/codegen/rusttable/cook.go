@@ -737,7 +737,7 @@ func (g *gen) emitCookRow(st *ir.Struct) {
 	g.pf("// %s — a cooked record: %d bytes, aligned %d.\n", st.Name, layout.Size, layout.Align)
 	g.pf("#[repr(C)]\n#[derive(Clone, Copy)]\npub struct %sRow {\n", st.Name)
 	if len(st.Fields) == 0 {
-		g.pf("    _empty: [u8; 0],\n")
+		g.pf("    _empty: [u8; %d],\n", layout.Size)
 	}
 	for _, f := range st.Fields {
 		g.emitCookRowField(f)
