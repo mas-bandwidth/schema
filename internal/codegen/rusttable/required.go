@@ -3,6 +3,8 @@ package rusttable
 import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/ir"
+	"math/big"
+	"strconv"
 	"strings"
 )
 
@@ -65,5 +67,58 @@ func requiredCollectionSkip(f *ir.Field) string {
 func emitRequiredWireSeen(b *strings.Builder, f *ir.Field, ordinal int, ind string) {
 	if f.Required {
 		fmt.Fprintf(b, "%sif !field_skipped { seen[%d] = true; }\n", ind, ordinal)
+	}
+}
+
+// Validate only active authored Required fields. The caller applies guards and
+// uses the same walk for wire numbering and JSON traversal; cooked storage
+// retains inactive bytes without treating them as active values.
+func emitRequiredRangeCheck(b *strings.Builder, f *ir.Field, x, ind, refuse string) {
+	if !f.Required || f.Type.Pointer || f.IsMap() {
+		return
+	}
+	invalid := func(value string) string {
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			t := scalarRust(f)
+			// Omit comparisons that the Rust storage type makes impossible.
+			width, _ := strconv.Atoi(t[1:])
+			low := new(big.Int)
+			high := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(width)), big.NewInt(1))
+			if t[0] == 'i' {
+				low.Neg(new(big.Int).Lsh(big.NewInt(1), uint(width-1)))
+				high.Sub(new(big.Int).Lsh(big.NewInt(1), uint(width-1)), big.NewInt(1))
+			}
+			var terms []string
+			if lo.Cmp(low) > 0 {
+				terms = append(terms, fmt.Sprintf("%s < %s%s", value, lo, t))
+			}
+			if hi.Cmp(high) < 0 {
+				terms = append(terms, fmt.Sprintf("%s > %s%s", value, hi, t))
+			}
+			return strings.Join(terms, " || ")
+		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 && f.Type.Width != 8 && f.Type.Width != 16 && f.Type.Width != 32 {
+			return fmt.Sprintf("%s > %d%s", value, uint64(1)<<uint(f.Type.Width)-1, scalarRust(f))
+		}
+		if f.HasFloatRange {
+			return fmt.Sprintf("(%s as f64) < %s || (%s as f64) > %s", value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMax))
+		}
+		return ""
+	}
+	if invalid(x) == "" {
+		return
+	}
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" {
+		if f.Array == ir.ArrayFixed || f.KeyEnum != "" {
+			n := f.ArrayBound
+			if f.KeyEnumRef != nil {
+				n = int64(len(f.KeyEnumRef.Variants))
+			}
+			fmt.Fprintf(b, "%sfor i in 0..%d { let e=%s.get(i).copied().unwrap_or(%s); if %s { %s } }\n", ind, n, x, scalarDefault(f), invalid("e"), refuse)
+		} else {
+			fmt.Fprintf(b, "%sfor &e in %s.iter() { if %s { %s } }\n", ind, x, invalid("e"), refuse)
+		}
+	} else {
+		fmt.Fprintf(b, "%sif %s { %s }\n", ind, invalid(x), refuse)
 	}
 }

@@ -519,6 +519,7 @@ func (g *gen) emitCookRootWriter(b *strings.Builder, st *ir.Struct) {
 	b.WriteString("    if order != 1 && order != 2 {\n        return Err(String::from(\"invalid_value\"));\n    }\n")
 	b.WriteString("    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
+	b.WriteString("    if g.invalid_required { return Err(String::from(\"invalid_value: required range\")); }\n")
 	rb := cookRecordBytes(g.unit, st)
 	if cookHasExtent(st) {
 		fmt.Fprintf(b, "    let mut m = TableCarve { extent_at: 0, at: 0 };\n    %s(v, &mut m, None, 0);\n", fn(st.Name, "cook_carve"))

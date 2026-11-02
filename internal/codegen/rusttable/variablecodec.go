@@ -548,6 +548,7 @@ func (g *gen) emitVariableNumber(b *strings.Builder, st *ir.Struct) {
 // emitFieldNumber emits one field's step of the numbering walk.
 func (g *gen) emitFieldNumber(b *strings.Builder, f *ir.Field) {
 	x := "v." + ir.RustSnake(f.Name)
+	emitRequiredRangeCheck(b, f, x, bodyIndent, "g.invalid_required = true;")
 	if f.Type.Optional {
 		switch classOf(f) {
 		case vMap:
@@ -932,6 +933,9 @@ func scalarReadFn(f *ir.Field) string {
 // owner is a float's <Owner>.<field>, the name its non_finite_float refusal
 // carries (§3.3).
 func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind string) {
+	if f.HasFloatRange && strings.HasPrefix(dst, "let ") {
+		dst = "let mut " + strings.TrimPrefix(dst, "let ")
+	}
 	switch f.Type.Kind {
 	case ir.TBool:
 		// a bool byte that is neither 0 nor 1 keeps true and is MALFORMED on
@@ -945,11 +949,21 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 		// and the load refuses as non_finite_float, the tolerant one included,
 		// so the 0.0 that stands in is never handed to a caller.
 		fmt.Fprintf(b, "%s%s = if table_finite_f32(raw as u32) { f32::from_bits(raw as u32) } else { report.non_finite(%q); 0.0 };\n", ind, dst, owner)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif table_finite_f32(raw as u32) {\n", ind)
+			emitVariableFloatClamp(b, f, dst, "report.clamped", ind+"    ")
+			fmt.Fprintf(b, "%s}\n", ind)
+		}
 		return
 	case ir.TFloat64:
 		// the float rung (kind 10 into a float64) is the ordinary conversion:
 		// every finite float32 widens exactly (§3.3, §4)
 		fmt.Fprintf(b, "%s%s = if %s == %d { if table_finite_f32(raw as u32) { f64::from(f32::from_bits(raw as u32)) } else { report.non_finite(%q); 0.0 } } else if table_finite_f64(raw) { f64::from_bits(raw) } else { report.non_finite(%q); 0.0 };\n", ind, dst, kvar, ir.TableKindF32, owner, owner)
+		if f.HasFloatRange {
+			fmt.Fprintf(b, "%sif if %s == %d {table_finite_f32(raw as u32)} else {table_finite_f64(raw)} {\n", ind, kvar, ir.TableKindF32)
+			emitVariableFloatClamp(b, f, dst, "report.clamped", ind+"    ")
+			fmt.Fprintf(b, "%s}\n", ind)
+		}
 		return
 	}
 	signed := (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && f.Type.Signed
@@ -1725,6 +1739,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
+	fmt.Fprint(b, "    if g.invalid_required { ids.refused = Some(String::from(\"invalid_value: required range\")); }\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	emitNodeTableWrite(b, false)
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
@@ -1751,6 +1766,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
+	fmt.Fprint(b, "    if g.invalid_required { ids.refused = Some(String::from(\"invalid_value: required range\")); }\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
 	emitNodeTableWrite(b, false)
@@ -1781,6 +1797,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut g = TableNodeGraph::new();\n")
 	fmt.Fprintf(b, "    %s(v, &mut g);\n", fn(st.Name, "number"))
 	fmt.Fprintf(b, "    if g.blob_shared { ids.refused = Some(String::from(TableReason::BlobShared.name())); } // §2.5: a blob two slots name\n")
+	fmt.Fprint(b, "    if g.invalid_required { ids.refused = Some(String::from(\"invalid_value: required range\")); }\n")
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, Some(&mut *retain), Some(&mut *report), TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    retain_emit_tail(&mut out, &mut ids, retain, KNOWN_IDS, TableRetainPath::default(), report);\n")
 	emitNodeTableWrite(b, true)
@@ -2324,4 +2341,14 @@ func requiredWriteGuard(f *ir.Field, differs string) string {
 		return "true"
 	}
 	return differs
+}
+
+// File and JSON floats keep IEEE storage; declared compressed ranges clamp on read.
+func emitVariableFloatClamp(b *strings.Builder, f *ir.Field, value, counter, ind string) {
+	if !f.HasFloatRange {
+		return
+	}
+	kind := scalarRust(f)
+	value = strings.TrimPrefix(value, "let mut ")
+	fmt.Fprintf(b, "%sif (%s as f64) < %s { %s = %s as %s; %s += 1; } else if (%s as f64) > %s { %s = %s as %s; %s += 1; }\n", ind, value, fixedFloatLit(f.FMin), value, fixedFloatLit(f.FMin), kind, counter, value, fixedFloatLit(f.FMax), value, fixedFloatLit(f.FMax), kind, counter)
 }
