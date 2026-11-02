@@ -1714,7 +1714,11 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			cell.U = uint64(tag)
 		}
 	} else if arm.Body() {
-		if in.valueShape() != 'o' {
+		shape := byte('o')
+		if arm.Ref.JsonArray {
+			shape = 'a'
+		}
+		if in.valueShape() != shape {
 			// the wrong JSON type for the arm's row: the union reads None,
 			// the event is counted, and the enclosing object continues (§16.2)
 			in.report.KindMismatch++
