@@ -35,7 +35,7 @@ pub fn table_timestamp_parse(s: &str) -> Option<i64> {
     let mut nanos = 0i64;
     if text.get(p) == Some(&b'.') {
         p += 1;
-        let mut digits = 0;
+        let mut digits = 0usize;
         while p < text.len() && text[p].is_ascii_digit() {
             if digits < 9 { nanos = nanos * 10 + i64::from(text[p] - b'0'); }
             digits += 1;

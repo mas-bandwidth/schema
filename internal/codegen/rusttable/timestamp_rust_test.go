@@ -47,6 +47,7 @@ func TestRustTimestampNative(t *testing.T) {
 	model := tabletext.NewModel(u)
 	work := t.TempDir()
 	var body strings.Builder
+	body.WriteString(`let fraction = format!("1970-01-01T00:00:00.123456789{}Z", "9".repeat(65536)); assert_eq!(table_timestamp_parse(&fraction), Some(123456789));` + "\n")
 	for i, tc := range cases {
 		value := model.New(u.Tables["Clock"])
 		var report tabletext.Report
