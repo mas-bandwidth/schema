@@ -5,10 +5,12 @@ import (
 	"testing"
 )
 
-func init() { nonGoCarriers["rust"] = append(nonGoCarriers["rust"], carryTextList, carryTextListTotal) }
+func init() {
+	nonGoCarriers["rust"] = append(nonGoCarriers["rust"], carryTextList, carryTextListTotal, carryUnboundedText)
+}
 func TestRustCarriesTextLists(t *testing.T) {
 	t.Parallel()
-	for _, path := range []string{"../testdata/conformance/feature-witnesses/text-lists/Probe.schema", "../testdata/conformance/feature-witnesses/text-list-total/Probe.schema"} {
+	for _, path := range []string{"../testdata/conformance/feature-witnesses/text-lists/Probe.schema", "../testdata/conformance/feature-witnesses/text-list-total/Probe.schema", "../testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema"} {
 		source, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

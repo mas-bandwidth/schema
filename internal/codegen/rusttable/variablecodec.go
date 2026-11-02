@@ -814,6 +814,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s}\n", inner)
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vString:
+		if f.Type.TextUnbounded() {
+			fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { ids.refused=Some(String::from(\"invalid_value: unbounded text\")); return; }\n", ind, x, x)
+		}
 		// at its default, empty when none is declared (§3)
 		guard := "!" + x + ".is_empty()"
 		if len(f.DefBytes) > 0 {
@@ -1197,9 +1200,9 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    let b = &wire[*off..s];\n", in)
 		fmt.Fprintf(b, "%s    // ILL-FORMED TEXT IS DAMAGE (§3, §4): the field reads its declared default\n", in)
 		fmt.Fprintf(b, "%s    if !text_valid(b) { report.malformed = true; %s = %s; }\n", in, field, fieldDefault(f))
-		fmt.Fprintf(b, "%s    else if b.len() > %d {\n", in, f.Type.Size)
+		fmt.Fprintf(b, "%s    else if b.len() > %d {\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3)\n", in)
-		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, f.Type.Size)
+		fmt.Fprintf(b, "%s        let mut cut = %d;\n", in, rustTextBound(f))
 		fmt.Fprintf(b, "%s        while cut > 0 && b[cut] & 0xC0 == 0x80 { cut -= 1; }\n", in)
 		fmt.Fprintf(b, "%s        %s = std::str::from_utf8(&b[..cut]).unwrap().to_string();\n", in, field)
 		fmt.Fprintf(b, "%s        report.clamped += 1;\n", in)

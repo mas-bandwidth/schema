@@ -35,6 +35,8 @@ var rustNameUnits = []struct{ crate, path string }{
 	{"formwitnesses", "../testdata/conformance/feature-witnesses/forms"},
 	{"textlists", "../testdata/conformance/feature-witnesses/text-lists/Probe.schema"},
 	{"textlisttotal", "../testdata/conformance/feature-witnesses/text-list-total/Probe.schema"},
+	{"unboundedtext", "../testdata/conformance/feature-witnesses/unbounded-text/complete/Probe.schema"},
+	{"unboundedcrossfile", "../testdata/conformance/feature-witnesses/unbounded-text/cross-file"},
 	{"widedemo", "../examples-wide/Caption.schema"},
 }
 

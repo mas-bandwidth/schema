@@ -22,7 +22,7 @@ func textListStorageCheck(b *strings.Builder, f *ir.Field, x, ind, refusal strin
 	} else {
 		fmt.Fprintf(b, "%s    let text = &e.value;\n", ind)
 	}
-	fmt.Fprintf(b, "%s    if text.as_bytes().contains(&0) || text.len() > %d { %s }\n%s}\n", ind, ir.TextListValue(f).Type.Size, refusal, ind)
+	fmt.Fprintf(b, "%s    if text.as_bytes().contains(&0) || text.len() > %d { %s }\n%s}\n", ind, rustTextBound(ir.TextListValue(f)), refusal, ind)
 }
 
 func emitPlainTextListElement(b *strings.Builder, f *ir.Field, field, ind string) {
@@ -30,7 +30,7 @@ func emitPlainTextListElement(b *strings.Builder, f *ir.Field, field, ind string
 	fmt.Fprintf(b, "%sif *off > sub || length > (sub - *off) as u64 { report.malformed = true; break; }\n", ind)
 	fmt.Fprintf(b, "%slet bytes = &wire[*off..*off + length as usize]; *off += length as usize;\n", ind)
 	fmt.Fprintf(b, "%sif !text_valid(bytes) { report.malformed = true; break; }\n", ind)
-	fmt.Fprintf(b, "%slet text = std::str::from_utf8(bytes).unwrap();\n%slet mut cut = text.len().min(%d);\n", ind, ind, ir.TextListValue(f).Type.Size)
+	fmt.Fprintf(b, "%slet text = std::str::from_utf8(bytes).unwrap();\n%slet mut cut = text.len().min(%d);\n", ind, ind, rustTextBound(ir.TextListValue(f)))
 	fmt.Fprintf(b, "%swhile !text.is_char_boundary(cut) { cut -= 1; }\n", ind)
 	fmt.Fprintf(b, "%sif cut != text.len() { report.clamped += 1; }\n", ind)
 	fmt.Fprintf(b, "%s%s.push(%s { value: text[..cut].to_string() });\n", ind, field, f.Type.Name)
@@ -69,4 +69,11 @@ func textListTotalCheck(b *strings.Builder, f *ir.Field, x, ind, refusal string)
 		length = "e.value.as_ref().map_or(0, |text| text.len())"
 	}
 	fmt.Fprintf(b, "%s    let length = %s as u64;\n%s    if length > text_left { %s }\n%s    text_left -= length;\n%s} }\n", ind, length, ind, refusal, ind, ind)
+}
+
+func rustTextBound(f *ir.Field) int64 {
+	if f.Type.TextUnbounded() {
+		return 0xffffffff
+	}
+	return f.Type.Size
 }
