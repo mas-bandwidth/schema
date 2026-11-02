@@ -31,6 +31,7 @@ var rustNameUnits = []struct{ crate, path string }{
 	{"backenddemo", "../tables/backend"},
 	{"tblfe1", "../test/tables/FE1.schema"},
 	{"tblv1", "../test/tables/V1.schema"},
+	{"integrityforms", "../testdata/conformance/feature-witnesses/integrity-forms/Probe.schema"},
 	{"widedemo", "../examples-wide/Caption.schema"},
 }
 

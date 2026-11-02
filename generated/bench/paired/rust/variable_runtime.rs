@@ -49,6 +49,7 @@ pub enum TableReason {
     NonFiniteFloat,
     JsonRootNotArray,
     TimestampNotRfc3339,
+    IntegrityMismatch,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -86,6 +87,7 @@ impl TableReason {
             TableReason::NonFiniteFloat => "non_finite_float",
             TableReason::JsonRootNotArray => "json_root_not_array",
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
+            TableReason::IntegrityMismatch => "integrity_mismatch",
         }
     }
 }

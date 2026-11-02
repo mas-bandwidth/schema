@@ -349,7 +349,7 @@ func layoutRustUnit(t *testing.T, dir, name string, modules map[string][]byte) {
 	var files []string
 	for file := range modules {
 		if file == BuildVersionModule+".rs" || file == VariableRuntimeModule+".rs" || file == TableEnumsModule+".rs" ||
-			file == FixedRuntimeModule+".rs" || file == MessageRuntimeModule+".rs" ||
+			file == FixedRuntimeModule+".rs" || file == MessageRuntimeModule+".rs" || file == integrityRuntimeModule+".rs" ||
 			strings.HasSuffix(file, "_records.rs") || strings.HasSuffix(file, "_fixed.rs") ||
 			strings.HasSuffix(file, "_table.rs") || strings.HasSuffix(file, "_variable.rs") ||
 			strings.HasSuffix(file, "_message.rs") {

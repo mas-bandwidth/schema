@@ -35,6 +35,9 @@ func (g *gen) variableCodecModule() []byte {
 	var b strings.Builder
 	b.WriteString(header(g.file.Base, g.unit.Package, "the variable wire's storage and codecs (docs/SPEC-TABLES.md §3, §3.1, §16)"))
 	b.WriteString("\nuse super::variable_runtime::*;\n")
+	if len(ir.TableIntegrityTables(g.unit)) > 0 {
+		b.WriteString("#[allow(unused_imports)]\nuse super::integrity_runtime::*;\n")
+	}
 	b.WriteString("#[allow(unused_imports)]\nuse std::any::Any;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::collections::HashMap;\n")
 	b.WriteString("#[allow(unused_imports)]\nuse std::rc::Rc;\n\n")
@@ -1680,6 +1683,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    table_integrity_seal(&mut out);\n")
+	}
 	fmt.Fprintf(b, "    out\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1703,6 +1709,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    table_integrity_seal(&mut out);\n")
+	}
 	fmt.Fprintf(b, "    Ok(out)\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1732,6 +1741,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
 	fmt.Fprintf(b, "    out.extend_from_slice(&(ids.entries.len() as u64).to_le_bytes());\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    table_integrity_seal(&mut out);\n")
+	}
 	fmt.Fprintf(b, "    out\n")
 	fmt.Fprintf(b, "}\n\n")
 
@@ -1766,6 +1778,9 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    report.non_finite_float_id = None;\n")
 	fmt.Fprintf(b, "    if wire.is_empty() { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = if wire[0] == 2 { TableReason::MessageFormAsFile } else { TableReason::NewerForm }; return None; }\n")
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { report.malformed = true; report.reason = TableReason::IntegrityMismatch; return None; };\n")
+	}
 	fmt.Fprintf(b, "    if wire.len() < 9 { report.malformed = true; return None; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().ok()?);\n")
 	fmt.Fprintf(b, "    if count > (wire.len() / 8) as u64 { report.malformed = true; return None; }\n")
@@ -1797,7 +1812,11 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	fmt.Fprintf(b, "    let mut retain = retain;\n")
 	if !st.FixedDeclared {
-		fmt.Fprintf(b, "    if %s_load_measure(wire) < 0 {\n", fnName)
+		measure := fnName + "_load_measure"
+		if st.Integrity == "crc32c" {
+			measure += "_body"
+		}
+		fmt.Fprintf(b, "    if %s(wire) < 0 {\n", measure)
 		fmt.Fprintf(b, "        // A FRAMING THE CONTAINER CANNOT OPEN loads nothing (§3, §6.5). A\n")
 		fmt.Fprintf(b, "        // NON-FINITE FLOAT the walk meets before the damage still outranks it\n")
 		fmt.Fprintf(b, "        // (docs/SPEC-TABLES.md §3.3), as in the oracle, whose walk runs ahead\n")
@@ -1949,7 +1968,15 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
 	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
-	fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return -1; };\n")
+		fmt.Fprintf(b, "    %s_load_measure_body(wire)\n}\n\n", fnName)
+		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n", fnName)
+	} else {
+		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+	}
 	fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { return -1; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());\n")

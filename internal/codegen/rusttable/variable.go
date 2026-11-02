@@ -80,6 +80,9 @@ func variableModules(u *ir.Unit) map[string][]byte {
 		return nil
 	}
 	out := map[string][]byte{}
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		out[integrityRuntimeModule+".rs"] = []byte(header(runtimeSourceName(u), u.Package, "CRC-32C integrity trailers") + integrityRuntimeRust)
+	}
 	out[VariableRuntimeModule+".rs"] = []byte(variableRuntimeModule(u))
 	if d := variableDescriptorModule(u); d != nil {
 		out[VariableDescriptorModule+".rs"] = d
