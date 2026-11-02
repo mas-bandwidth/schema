@@ -309,7 +309,7 @@ static SCHEMA_UNUSED const uint8_t * table_cook_open(const void * bytes,uint64_t
 func (g *tableGen) emitCookSurface(members []*ir.Struct) {
 	first := true
 	for _, st := range members {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 			continue // a `type` is not a node and cannot be a cook's root
 		}
 		if first {

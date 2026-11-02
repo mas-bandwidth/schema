@@ -605,6 +605,158 @@ static SCHEMA_UNUSED int table_non_finite_refused( TableReport * report, int32_t
 // Generate emits <Base>Table.h and <Base>Table.c for every unit file when the
 // unit declares tables, and nothing when it does not — a table-free unit's
 // generated tree is byte-identical with or without this package.
+// declaresForms reports whether any table in the unit carries an explicit
+// `forms` declaration (docs/SPEC-TABLES.md §2.12). Synthesized map entries
+// are never the declaring table.
+func declaresForms(u *ir.Unit) bool {
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.DeclaredForms() {
+			return true
+		}
+	}
+	return false
+}
+
+// formAllowed reports whether the unit's tables let the named form be emitted
+// (docs/SPEC-TABLES.md §2.12).
+func formAllowed(u *ir.Unit, form string) bool {
+	if !declaresForms(u) {
+		return true
+	}
+	for _, t := range u.Tables {
+		if t != nil && !t.IsMapEntry() && t.CarriesForm(form) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterFormsBlocks restricts the block layout surface to the fixed tables
+// that carry the `block` form (docs/SPEC-TABLES.md §2.12).
+func filterFormsBlocks(b *ir.BlockUnit) *ir.BlockUnit {
+	if b == nil {
+		return nil
+	}
+	restricted := false
+	for _, bl := range b.Tables {
+		if bl.Table != nil && !bl.Table.CarriesForm("block") {
+			restricted = true
+			break
+		}
+	}
+	if !restricted {
+		return b
+	}
+	out := &ir.BlockUnit{
+		Members: map[string]*ir.MemberLayout{},
+		Skipped: maps.Clone(b.Skipped),
+	}
+	var add func(name string)
+	add = func(name string) {
+		if _, done := out.Members[name]; done {
+			return
+		}
+		ml := b.Members[name]
+		if ml == nil {
+			return
+		}
+		out.Members[name] = ml
+		for _, fl := range ml.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	for _, bl := range b.Tables {
+		if bl.Table == nil || !bl.Table.CarriesForm("block") {
+			if bl.Table != nil {
+				out.Skipped[bl.Table.Name] = "it omits the block form in its forms declaration"
+			}
+			continue
+		}
+		out.Tables = append(out.Tables, bl)
+		for _, arr := range bl.Arrays {
+			add(arr.ElemName)
+		}
+		for _, fl := range bl.Projection.Fields {
+			if fl.Field.Type.Kind == ir.TNamed {
+				if ref, ok := fl.Field.Type.Ref.(*ir.Struct); ok && !ir.BlockOutOfLine(fl.Field) {
+					add(ref.Name)
+				}
+			}
+		}
+	}
+	out.Order = make([]string, 0, len(out.Members))
+	for name := range out.Members {
+		out.Order = append(out.Order, name)
+	}
+	sort.Strings(out.Order)
+	return out
+}
+
+// cookClosure is every record a cook-carrying table's region can reach
+// (docs/SPEC-TABLES.md §2.12, §7).
+func cookClosure(u *ir.Unit) map[string]bool {
+	seen := map[string]bool{}
+	seenUnion := map[*ir.Union]bool{}
+	var walk func(name string)
+	var walkUnion func(un *ir.Union)
+	walkUnion = func(un *ir.Union) {
+		if seenUnion[un] {
+			return
+		}
+		seenUnion[un] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := v.F.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	walk = func(name string) {
+		if seen[name] {
+			return
+		}
+		st := u.Tables[name]
+		if st == nil {
+			st = u.Structs[name]
+		}
+		if st == nil {
+			return
+		}
+		seen[name] = true
+		for _, f := range st.Fields {
+			if f.IsMap() {
+				walk(f.MapEntry.Name)
+				continue
+			}
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch ref := f.Type.Ref.(type) {
+			case *ir.Struct:
+				walk(ref.Name)
+			case *ir.Union:
+				walkUnion(ref)
+			}
+		}
+	}
+	for name, st := range u.Tables {
+		if st == nil || st.IsMapEntry() || !st.CarriesForm("cook") {
+			continue
+		}
+		walk(name)
+	}
+	return seen
+}
+
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return GenerateLineage(u, nil)
 }
@@ -647,7 +799,13 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			anyMap = anyMap || field.IsMap()
 		}
 	}
-	blocks := ir.Blocks(u)
+	blocks := filterFormsBlocks(ir.Blocks(u))
+	declares := declaresForms(u)
+	if declares && (blocks == nil || len(blocks.Tables) == 0) {
+		blocks = nil
+	}
+	cooks := cookClosure(u)
+	jsonAllowed := formAllowed(u, "json")
 
 	// The BLOCK FORM (docs/SPEC-TABLES.md §19) is emitted ON THE SIDE, into
 	// <Base>Block.h and <Base>Block.c: nothing declares it, every fixed
@@ -684,8 +842,18 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 					}
 				}
 			}
+			cookMembers := make([]*ir.Struct, 0, len(members))
+			bodyCookMembers := make([]*ir.Struct, 0, len(members))
+			for _, st := range members {
+				if cooks[st.Name] {
+					cookMembers = append(cookMembers, st)
+				}
+				if cooks[st.Name] || (g.anyVariable && g.fileWire()) {
+					bodyCookMembers = append(bodyCookMembers, st)
+				}
+			}
 			g.emitCodecDeclarations(members)
-			g.emitCookWriteDeclarations(members)
+			g.emitCookWriteDeclarations(bodyCookMembers)
 			if g.anyVariable && g.fileWire() {
 				g.emitGraphDeclarations(members)
 				g.emitExtentDeclarations(members)
@@ -722,10 +890,10 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			g.emitVariableSurface(members)
 			g.emitRetainRoots(members)
 			g.emitRetainRefusals(members)
-			g.emitCookSurface(members)
-			g.emitCookWriteSurface(members)
+			g.emitCookSurface(cookMembers)
+			g.emitCookWriteSurface(bodyCookMembers)
 			g.emitRelocatabilityPreamble()
-			g.emitCookLayoutAsserts(members)
+			g.emitCookLayoutAsserts(cookMembers)
 			g.pf("/* ---- reflection descriptors (tables only, docs/SPEC-TABLES.md) ----\n\n")
 			g.pf("   The descriptors are CONSTANT data DEFINED in %sTable.c: a translation\n", f.Base)
 			g.pf("   unit that includes this header for the wire codecs pays nothing for\n")
@@ -743,16 +911,24 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			// the TEXT form's surface (docs/SPEC-TABLES.md §16), DECLARED here
 			// and defined in <Base>Table.c beside the one generic walk it
 			// calls.
-			g.pf("/* ---- the text form (docs/SPEC-TABLES.md §16) ---- */\n\n")
-			for _, st := range members {
-				g.emitJsonDeclarations(st)
+			if jsonAllowed {
+				g.pf("/* ---- the text form (docs/SPEC-TABLES.md §16) ---- */\n\n")
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						g.emitJsonDeclarations(st)
+					}
+				}
 			}
 			for _, st := range members {
 				cg.owner = st
 				cg.emitTableDescriptor(st)
 			}
-			for _, st := range members {
-				cg.emitJsonDefinitions(st)
+			if jsonAllowed {
+				for _, st := range members {
+					if !st.IsTable || st.CarriesForm("json") {
+						cg.emitJsonDefinitions(st)
+					}
+				}
 			}
 		} else {
 			if unions := g.fileWireUnions(); g.fileWire() && len(unions) > 0 {
@@ -775,7 +951,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		}
 		out[f.Base+"Table.h"] = g.header(u, f, members)
 		if len(members) > 0 {
-			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members)
+			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members, jsonAllowed)
 		}
 	}
 	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap))
@@ -896,7 +1072,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 
 // tableSource assembles <Base>Table.c: the descriptors and the text form's
 // definitions, plus the one generic walk they call.
-func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*ir.Struct) []byte {
+func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*ir.Struct, jsonAllowed bool) []byte {
 	var c strings.Builder
 	fmt.Fprintf(&c, "/* Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n   SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n   your choice. See the LICENSE exception in the schema compiler; the compiler is\n   AGPL-3.0, its output is not.\n", f.Base)
 	fmt.Fprintf(&c, "   package %s — the TABLE wire's reflection descriptors and text form\n", u.Package)
@@ -907,7 +1083,7 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 	c.WriteString("#include <stdio.h>  /* the text form: number formatting */\n")
 	c.WriteString("#include <stdlib.h> /* the text form: exact number conversion */\n")
 	c.WriteString("#include <locale.h> /* the text form: the runtime's decimal point */\n\n")
-	if len(members) > 0 {
+	if len(members) > 0 && jsonAllowed {
 		c.WriteString(tableJsonWalk(u.Package))
 		c.WriteString("\n")
 		if g.anyVariable {
