@@ -206,3 +206,7 @@ retain_blob_shared_refused blobdemo Catalog testdata/wire/tables/fuzz-vectors/re
 # Retained unknown unions carry an explicit arm frame, even for fixed scalars.
 # Dart previously consumed the frame length as payload and lost the field.
 retain_union_arm_frame streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin
+
+# Retaining readers must recognize every reachable byte-blob type like plain readers.
+# Dart omitted bytesBlob initialization and dropped valid nodes as unknown.
+retain_byte_blob_reachability blobdemo Catalog testdata/wire/tables/fuzz-vectors/retain_byte_blob_reachability.bin

@@ -482,7 +482,7 @@ void _retainTail(TableWireWriter w, Object owner) {
 func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	n := st.Name
 	d := dartName(n)
-	_, strBlob := ir.PointerReachableBlobs(st)
+	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
 	g.pf("\tretain.reset();\n")
@@ -493,6 +493,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.pf("\tr.report = report;\n")
 	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
+	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.retain = retain;\n")
 	g.pf("\tr.path = [1];\n")
 	g.emitKnownTypes(st, "r", "v")
