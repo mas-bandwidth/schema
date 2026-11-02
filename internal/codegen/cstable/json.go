@@ -204,6 +204,7 @@ public static class TableJson
         if (IsBytes(f)) { return 's'; }            // bytes: base64
         if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
         if (f.IsArray) { return 'a'; }
+        if (f.Kind == 36) { return 's'; }
         if (f.Arms != null) { return 'o'; }        // union: an object with ONE key
         if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; } // nested table or type
         if (IsEnum(f)) { return 's'; }
@@ -215,6 +216,7 @@ public static class TableJson
     // the ELEMENT shape of an array field — the same classifier one level down
     static char ElementShape(TableFieldInfo f)
     {
+        if (f.Kind == 36) { return 's'; }
         if (f.Kind == 17) { return f.BlobKind != 0 ? 's' : 'o'; }
         if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; }
         if (f.Kind == 15) { return 'o'; }
@@ -700,6 +702,8 @@ public static class TableJson
         if (f.GetWide != null) { WriteWide(ref o, f.GetWide(owner, index), f); return true; }
         switch (f.Kind)
         {
+            case 36:
+                return WriteTimestamp(ref o, unchecked((long)f.GetRaw(owner, index)));
             case 1:
                 o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                 return true;
@@ -834,7 +838,7 @@ public static class TableJson
     // cursor, the report and the malformed flag, and the TEXT rides beside it
     // as its own ReadOnlySpan parameter. Nothing is copied and nothing is
     // allocated; the span stays the caller's bytes the whole way down.
-` + tableVariableJsonSource + tableMapJsonSource + `
+` + tableVariableJsonSource + tableMapJsonSource + tableTimestampJsonSource + `
     public struct In
     {
         public System.Collections.Generic.Dictionary<ulong, Label> Labels;
@@ -963,15 +967,15 @@ public static class TableJson
         input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
         return false;
     }
-    // The body of a bytes field's base64 string, as the JSON layer reads it
+    // A decoded string body for the base64 and timestamp readers
     // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
     // below 0x20, a backslash that begins no escape, a byte that is not UTF-8
     // (string_not_utf8, §16.3; never replaced by U+FFFD here) and a text that
     // ends inside the string each make the read malformed. A body of plain
     // ASCII is its own decoding and is read in place; any other body is
     // decoded once, so an escape spells what it spells and the base64 grammar
-    // judges the decoded string, as the Go reader does.
-    static bool Base64Body(ReadOnlySpan<byte> text, ref In input, out ReadOnlySpan<byte> body)
+    // or timestamp grammar judges the decoded string, as the Go reader does.
+    static bool DecodedStringBody(ReadOnlySpan<byte> text, ref In input, out ReadOnlySpan<byte> body)
     {
         body = ReadOnlySpan<byte>.Empty;
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1351,6 +1355,7 @@ public static class TableJson
     // place one scalar at one storage slot
     static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
+        if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
         if (f.Arms != null)
         {
@@ -1671,11 +1676,11 @@ public static class TableJson
         }
         if (IsBytes(f))
         {
-            // The JSON layer reads the string first (Base64Body); the base64
+            // The JSON layer reads the string first (DecodedStringBody); the base64
             // grammar then judges what it spells. Validate the stream and its
             // padding before touching storage, so a malformed body leaves the
             // declared default.
-            if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+            if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
             int symbols = 0;
             int pad = 0;
             bool malformed = false;

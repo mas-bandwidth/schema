@@ -71,7 +71,7 @@ const tableVariableJsonSource = `
             if (!ScanString(text, ref input, data, true, out _, stored: true)) { return false; }
             f.SetChild(owner, index, new TableBlob(data)); return true;
         }
-        if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+        if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
         int symbols = 0;
         int pad = 0;
         bool malformed = false;
