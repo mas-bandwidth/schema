@@ -34,7 +34,7 @@ local GENERATED = "build/conformance-luau"
 local SURFACES = {
 	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason",
+	"cook-forgery", "cook-reason", "block-reason", "write-refusal",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -222,6 +222,143 @@ local function surfaceWire(lines: { { string } })
 				error("save refused " .. f[5])
 			else
 				say(f[2], saved)
+			end
+		end
+	end
+end
+
+-- THE WRITE-REFUSAL surface (testdata/conformance/tables/FORMAT.md): the wire
+-- loaded as its root, ONE field set by the row's kind, then save, the same
+-- entry the wire surface uses. The save answers nil and a NAMED reason when
+-- the write contract refuses (docs/SPEC-TABLES.md §3); a nameless nil is a
+-- driver failure. A line is `write-refusal <case> <unit> <root> <wire> <path>
+-- <kind> <value>`.
+--
+-- The path walks the value by the descriptors: `name` is the field whose
+-- name it is (its slot holds it), `name[i]` element i of that array (0-based
+-- in the path, 1-based in Luau). The kinds set the leaf in the value's own
+-- representation (docs/PORT-LUAU.md, THE TYPE MAPPING):
+--   int      a number, an integer or a { lo, hi } pair by the field's domain
+--   count    a counted array's <Slot>Count (past the bound it is set alone,
+--            and storage is untouched); a new element copies element 1
+--   length   a string's <Slot>Length, its buffer holding that many "a" units
+--            (past the bound the Length is set alone)
+--   ordinal  the enum's ordinal itself, the number the slot holds
+--   tag      { Type = k }, a table arm holding its record's declared
+--            defaults (the descriptor's new)
+--   float    nan is 0/0, inf and -inf are +-math.huge
+local function deepCopy(x: any): any
+	if typeof(x) == "buffer" then
+		local b = buffer.create(buffer.len(x))
+		buffer.copy(b, 0, x, 0, buffer.len(x))
+		return b
+	end
+	if typeof(x) ~= "table" then return x end
+	local out = {}
+	for k, v in x do out[k] = deepCopy(v) end
+	return out
+end
+
+local function fieldNamed(d: any, name: string): any
+	if d == nil then return nil end
+	for _, fd in d.fields do
+		if fd.name == name then return fd end
+	end
+	return nil
+end
+
+local function writeRefusalSet(u: any, root: string, v: any, path: string, what: string, value: string)
+	local d = u.S.lookup(root)
+	local holder: any, key: any, fd: any, owner: any = nil, nil, nil, nil
+	local cur = v
+	for step in string.gmatch(path, "[^.]+") do
+		local name, index = string.match(step, "^([%w_]+)%[(%d+)%]$")
+		if name == nil then name = step end
+		fd = fieldNamed(d, name :: string)
+		if fd == nil then error("write-refusal: no field " .. tostring(name) .. " in " .. tostring(d and d.name)) end
+		owner, holder, key = cur, cur, fd.slot
+		if index ~= nil then
+			holder, key = cur[fd.slot], (tonumber(index) :: number) + 1
+			fd = fd.e
+		end
+		cur = holder[key]
+		d = if fd.s == "tab" then u.S.lookup(fd.t) else nil
+	end
+	local n = tonumber(value)
+	if what == "int" then
+		local x: any = n
+		if fd.dom == "integer" then
+			x = integer.create(n :: number)
+		elseif fd.dom == "int128" then
+			x = { lo = integer.create(n :: number), hi = if (n :: number) < 0 then -1i else 0i }
+		end
+		holder[key] = x
+	elseif what == "count" then
+		local c = n :: number
+		local arr = holder[key]
+		if fd.array == "counted" then
+			local was = owner[fd.slot .. "Count"] or 0
+			for i = was + 1, math.min(c, fd.bound) do arr[i] = deepCopy(arr[1]) end
+			owner[fd.slot .. "Count"] = c
+		else
+			for i = #arr + 1, c do arr[i] = deepCopy(arr[1]) end
+			for i = #arr, c + 1, -1 do arr[i] = nil end
+		end
+	elseif what == "length" then
+		local c = n :: number
+		local unit = if fd.wide then 2 else 1
+		if c <= fd.bound then
+			local old = holder[key]
+			local size = math.max(if typeof(old) == "buffer" then buffer.len(old) else 0, c * unit)
+			local b = buffer.create(size)
+			for i = 0, c - 1 do
+				if unit == 2 then buffer.writeu16(b, i * 2, 0x61) else buffer.writeu8(b, i, 0x61) end
+			end
+			holder[key] = b
+		end
+		owner[fd.slot .. "Length"] = c
+	elseif what == "ordinal" then
+		holder[key] = n
+	elseif what == "tag" then
+		local un = u.S.lookup(fd.t)
+		local arm = un.arms[n :: number]
+		local x: any = { Type = n }
+		if arm ~= nil and arm.s == "tab" then x[arm.slot] = u.S.lookup(arm.t).new() end
+		holder[key] = x
+	elseif what == "float" then
+		if value == "nan" then
+			holder[key] = 0 / 0
+		elseif value == "inf" then
+			holder[key] = math.huge
+		elseif value == "-inf" then
+			holder[key] = -math.huge
+		else
+			holder[key] = n
+		end
+	else
+		error("write-refusal: unknown kind " .. what)
+	end
+end
+
+local function surfaceWriteRefusal(lines: { { string } })
+	for _, f in kind(lines, "write-refusal") do
+		local u = unit(f[3])
+		if u == nil or rootOf(u, f[4]) == nil then
+			say(f[2], nil)
+		else
+			local v = u.load.loadTolerant(f[4], file(f[5]), report())
+			if v == nil then
+				error("load refused " .. f[5])
+			end
+			writeRefusalSet(u, f[4], v, f[6], f[7], f[8])
+			local saved, why = u.save.save(u.S.lookup(f[4]), v)
+			if saved == nil then
+				if why == nil or why.name == nil then
+					error(f[2] .. ": save refused without a name")
+				end
+				sayText(f[2], "refused\n")
+			else
+				sayText(f[2], "wrote\n")
 			end
 		end
 	end
@@ -1065,4 +1202,6 @@ elseif surface == "cook-reason" then
 	surfaceForgery(lines, "cook", true)
 elseif surface == "block-reason" then
 	surfaceForgery(lines, "block", true)
+elseif surface == "write-refusal" then
+	surfaceWriteRefusal(lines)
 end

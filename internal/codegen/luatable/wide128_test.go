@@ -53,8 +53,8 @@ var wide128Cases = []struct {
 		"c": "18446744073709551616",
 		"d": "18446744073709551616",
 	}},
-	// the reader clamps b to its declared bounds; the writer leaves
-	// the halves as they are, as the Go engine's does
+	// b past its declared bounds: the Lua writer refuses it, and the reader
+	// clamps it on the Go engine's wire
 	{"clamped", map[string]string{
 		"a": "0",
 		"b": "170141183460469231731687303715884105727",
@@ -147,8 +147,15 @@ func TestLuaWide128BitVariableForm(t *testing.T) {
 				t.Fatalf("the Go engine refused its own wire: ok=%v err=%v report=%+v", ok, err, goReport)
 			}
 
+			// a value past its declared range is refused by the Lua writer by
+			// name (docs/SPEC-TABLES.md §3, invalid_value); the reader's clamp is
+			// held on the Go engine's wire of the same value
 			var want strings.Builder
-			fmt.Fprintf(&want, "%x\n", wire)
+			if goReport.Clamped > 0 {
+				want.WriteString("refused invalid_value\n")
+			} else {
+				fmt.Fprintf(&want, "%x\n", wire)
+			}
 			for _, name := range wide128Fields {
 				lo, hi := wide128Lanes(wide128Cell(t, back, name))
 				fmt.Fprintf(&want, "%s %016x %016x\n", name, lo, hi)
@@ -161,8 +168,12 @@ local load = require("load")
 local inputs = require("inputs")
 local v = T.NewRoot()
 ` + strings.Join(saveValues, "\n") + `
-local wire = save.Save(T, "Root", v)
-print((wire:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
+local wire, why = save.Save(T, "Root", v)
+if wire == nil then
+  print("refused " .. tostring(why):match("^[%w_]+"))
+else
+  print((wire:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
+end
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local back = load.LoadTolerant(T, "Root", inputs.wire, report)
 for _, name in ipairs({ "a", "b", "c", "d" }) do

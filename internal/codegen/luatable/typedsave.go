@@ -2,8 +2,10 @@ package luatable
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -17,8 +19,47 @@ import (
 // shape is dispatched and no default is looked up per call. Every other field
 // of the table goes through the descriptor walk (S.Typed.field, the walk's own
 // write_field) at its constant ordinal, so the body is the walk with its
-// scalar part unrolled, and the two write the same bytes.
+// scalar part unrolled, and the two write the same bytes. A body refuses
+// (false) where the walk does: an integer outside its width, its declared
+// range or its bits(N), and a string past its bound, each tested against
+// constants (the walk's D.int_ok and D.len_ok).
 func init() { RegisterPass(emitTypedSave) }
+
+// typedIntCheck is the refusal test a typed integer leaf carries: the one interval
+// its width, its declared range and its bits(N) leave, tested with Lua's
+// signed compare, or math.ult for a 64-bit unsigned value. It is empty when
+// the interval is the whole of what a Lua integer holds at that width.
+func typedIntCheck(f *ir.Field, width int, signed bool) string {
+	bits := uint(width * 8)
+	lo, hi := new(big.Int), new(big.Int).Lsh(big.NewInt(1), bits)
+	if signed {
+		lo.Neg(new(big.Int).Lsh(big.NewInt(1), bits-1))
+		hi.Lsh(big.NewInt(1), bits-1)
+	}
+	hi.Sub(hi, big.NewInt(1))
+	fullLo, fullHi := new(big.Int).Set(lo), new(big.Int).Set(hi)
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		if rlo.Cmp(lo) > 0 {
+			lo.Set(rlo)
+		}
+		if rhi.Cmp(hi) < 0 {
+			hi.Set(rhi)
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width > 0 && f.Type.Width < 64 {
+		bmax := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		if bmax.Cmp(hi) < 0 {
+			hi.Set(bmax)
+		}
+	}
+	if width == 8 && lo.Cmp(fullLo) == 0 && hi.Cmp(fullHi) == 0 {
+		return ""
+	}
+	if width == 8 && !signed {
+		return fmt.Sprintf("math.ult(x, %s) or math.ult(%s, x)", lua.IntLiteral(lo), lua.IntLiteral(hi))
+	}
+	return fmt.Sprintf("x < %s or x > %s", lua.IntLiteral(lo), lua.IntLiteral(hi))
+}
 
 // typedLeaf says whether the field is one a typed body writes itself, and
 // which writer it takes.
@@ -105,6 +146,11 @@ func emitTypedBody(out *strings.Builder, st *ir.Struct, used map[string]bool) {
 			t := f.Type
 			signed := (t.Kind == ir.TInt || t.Kind == ir.TFixed) && t.Signed
 			var value string
+			check := ""
+			if test := typedIntCheck(f, ir.TableKindWidth(sk), signed); test != "" {
+				// a nil is the field's absence: it writes zero, as the walk does
+				check = fmt.Sprintf("        if x ~= nil and (%s) then return false end\n", test)
+			}
 			switch w := ir.TableKindWidth(sk); w {
 			case 1:
 				used["char"] = true
@@ -120,16 +166,20 @@ func emitTypedBody(out *strings.Builder, st *ir.Struct, used map[string]bool) {
 				used["pack"] = true
 				value = "pack(\"<i8\", x or 0)"
 			}
-			fmt.Fprintf(&body, "    do\n      local x = %s\n      if x ~= %s then\n        head(w, ids, %s, %d)\n        raw(w, %s)\n      end\n    end\n",
-				slot, defaultExpr(f), id, kind, value)
+			fmt.Fprintf(&body, "    do\n      local x = %s\n      if x ~= %s then\n%s        head(w, ids, %s, %d)\n        raw(w, %s)\n      end\n    end\n",
+				slot, defaultExpr(f), check, id, kind, value)
 		case "float":
 			used["head"], used["float"], used["same_float"] = true, true, true
 			fmt.Fprintf(&body, "    do\n      local x = %s\n      if not same(%v, x, %s) then\n        head(w, ids, %s, %d)\n        if not wfloat(w, %v, x) then return false end\n      end\n    end\n",
 				slot, f.Type.Kind == ir.TFloat32, defaultExpr(f), id, kind, f.Type.Kind == ir.TFloat32)
 		case "string":
 			used["head"], used["leb"], used["raw"] = true, true, true
-			fmt.Fprintf(&body, "    do\n      local x = %s\n      if x ~= %s then\n        head(w, ids, %s, 12)\n        leb(w, #x)\n        raw(w, x)\n      end\n    end\n",
-				slot, defaultExpr(f), id)
+			check := ""
+			if f.Type.Size > 0 {
+				check = fmt.Sprintf("        if #x > %d then return false end\n", f.Type.Size)
+			}
+			fmt.Fprintf(&body, "    do\n      local x = %s\n      if x ~= %s then\n%s        head(w, ids, %s, 12)\n        leb(w, #x)\n        raw(w, x)\n      end\n    end\n",
+				slot, defaultExpr(f), check, id)
 		default:
 			delegated = true
 			used["field"] = true
