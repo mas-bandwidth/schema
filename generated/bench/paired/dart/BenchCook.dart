@@ -246,6 +246,7 @@ final class TableCookGraph {
   final int Function(Object node) indexOf;
   final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
+  bool valid = true;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
     : offsets = List<int>.filled(count, 0);
@@ -279,20 +280,38 @@ final class TableCookGraph {
   // A reference slot holds the signed delta from the slot to its target node,
   // and a null is a delta of zero (§6.3).
   void ref(int slot, Object? node) {
+    // Validate during measurement too: dead storage may name a node the
+    // wire's numbering never reached. Refuse before touching output (§7.6).
+    var index = 0;
+    if (node != null) {
+      try {
+        index = indexOf(node);
+      } on StateError {
+        valid = false;
+        return;
+      }
+    }
     final out = this.out;
     if (out == null) return;
-    var delta = 0;
-    if (node != null) delta = 64 + offsets[indexOf(node) - 1] - slot;
+    final delta = index == 0 ? 0 : 64 + offsets[index - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
   void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
+    var index = 0;
+    if (blob != null) {
+      try {
+        index = blobIndex(id, blob, owner, field);
+      } on StateError {
+        valid = false;
+        return;
+      }
+    }
     final out = this.out;
     if (out == null) return;
-    var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob, owner, field) - 1] - slot;
+    final delta = index == 0 ? 0 : 64 + offsets[index - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }
