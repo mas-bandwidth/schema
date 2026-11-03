@@ -707,6 +707,16 @@ json-hostile keyed-none-key               tabledemo PackConfig  testdata/conform
 json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,0,false,read
 json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,0,false,read
 json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-past-depth-cap       refused
+# THE TEXT FORM'S HARD LIMITS, ON THE BOUND (docs/SPEC-TABLES.md §16.2): each
+# limit is pinned by a pair, the value AT the limit that reads and the value one
+# past it that does not.
+#
+# json_max_depth = 128: the root object is depth 0 and the value of one of its
+# keys is depth 1, so a container nested 128 deep under the root reads and one
+# nested 129 deep is malformed. `mystery` is an unknown key, so the pair rides
+# the skip walk every reader has; the at-limit read counts the one unknown key.
+json-hostile nesting-at-depth-cap         tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-at-depth-cap         1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap   tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap   refused
 json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,0,false,read
 json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,0,false,read
 json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused
