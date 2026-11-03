@@ -48,7 +48,7 @@ walk)
 	;;
 cycle)
 	source=internal/codegen/luautable/runtime/schema_load.luau
-	sed 's/^	if _numberingGood and not report.malformed and cyclic() then$/	if false then/' "$source" > "$out/runtime.luau"
+	sed 's/^	if _numberingGood and not _countRefused and not report.malformed and cyclic() then$/	if false then/' "$source" > "$out/runtime.luau"
 	;;
 framing)
 	source=internal/codegen/luautable/runtime/schema_load.luau
