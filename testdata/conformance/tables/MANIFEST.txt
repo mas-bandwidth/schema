@@ -1302,3 +1302,29 @@ framing node_chain_two                        graphdemo ListNode testdata/wire/t
 unit widelist tables/widelist
 instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
 cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook
+
+# THE WRITE CONTRACT (docs/SPEC.md §5.1): every writer refuses a value its
+# declaration does not admit. Each row loads the wire, sets ONE field to the
+# value, and saves through the variable-form Save; the verdict is what the save
+# owes. Every refused row has a lawful twin at the same boundary that must be
+# written, so a driver that refused everything would fail half the battery.
+# An assert leg (C, C++, C#, Rust, Java, Dart) answers from its DEBUG build,
+# where the check is active; every other leg refuses in every build.
+#
+#   write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+write-refusal wref_range_high      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     11  refused
+write-refusal wref_range_high_ok   tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     10  wrote
+write-refusal wref_range_low       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     -1  refused
+write-refusal wref_range_low_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     0   wrote
+write-refusal wref_bits_wide       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     64  refused
+write-refusal wref_bits_wide_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     63  wrote
+write-refusal wref_count           tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   9   refused
+write-refusal wref_count_ok        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   8   wrote
+write-refusal wref_length          tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  17  refused
+write-refusal wref_length_ok       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  16  wrote
+write-refusal wref_enum            tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 4   refused
+write-refusal wref_enum_ok         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 3   wrote
+write-refusal wref_union_tag       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     3   refused
+write-refusal wref_union_tag_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     2   wrote
+write-refusal wref_non_finite      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   nan refused
+write-refusal wref_infinite        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   inf refused
