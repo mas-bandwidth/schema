@@ -3271,11 +3271,11 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_archive_config_fields_[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint64_t) offsetof( tabledemo_archive_config_t, root ), (uint64_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), UINT64_MAX, UINT64_MAX, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint64_t) offsetof( tabledemo_archive_config_t, count ), (uint64_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( tabledemo_archive_config_t ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+const tabledemo_table_type_info_t schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint64_t) sizeof( tabledemo_archive_config_t ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_tabledemo_archive_config_from_json_( tabledemo_archive_config_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {

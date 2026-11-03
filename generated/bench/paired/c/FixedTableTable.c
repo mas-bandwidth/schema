@@ -2735,10 +2735,10 @@ static SCHEMA_UNUSED int64_t bench_table_json_write( const void * value, const b
 /* ---- json walk: end ---- */
 
 static const bench_table_field_info_t schema_bench_fixed_table_fields_[] = {
-    { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_fixed_table_t, value ), (uint32_t) sizeof( ( (bench_fixed_table_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, &schema_bench_bench_mixed_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, 0, 0, 0, 0, 0, (uint64_t) offsetof( bench_fixed_table_t, value ), (uint64_t) sizeof( ( (bench_fixed_table_t *) 0 )->value ), UINT64_MAX, UINT64_MAX, &schema_bench_bench_mixed_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_fixed_table_info_ = { "FixedTable", (uint32_t) sizeof( bench_fixed_table_t ), 1, schema_bench_fixed_table_fields_, schema_bench_fixed_table_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
+const bench_table_type_info_t schema_bench_fixed_table_info_ = { "FixedTable", (uint64_t) sizeof( bench_fixed_table_t ), 1, schema_bench_fixed_table_fields_, schema_bench_fixed_table_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_bench_fixed_table_from_json_( bench_fixed_table_t * value, const char * text, int64_t bytes, bench_table_report_t * report )
 {

@@ -161,7 +161,7 @@ static unsafe class Walk
                     for (int s = 0; s < slots; s++)
                     {
                         string element = f.IsArray ? name + "[" + s + "]" : name;
-                        Emit(element, Scalar(storage + f.Offset + (long)s * f.ElemSize, f.Storage, f.ElemSize));
+                        Emit(element, Scalar(storage + f.Offset + (long)s * f.ElemSize, f.Storage, (int)f.ElemSize)); // a scalar's width, at most 16
                     }
                     break;
                 }

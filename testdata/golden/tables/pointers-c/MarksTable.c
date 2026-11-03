@@ -3271,17 +3271,17 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_(graphd
 }
 #endif
 static const graphdemo_table_field_info_t schema_graphdemo_tally_fields_[] = {
-    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tally_t, hits ), (uint32_t) sizeof( ( (graphdemo_tally_t *) 0 )->hits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 10000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, 0, 0, 0, 0, 0, 0, (uint64_t) offsetof( graphdemo_tally_t, hits ), (uint64_t) sizeof( ( (graphdemo_tally_t *) 0 )->hits ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 10000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const graphdemo_table_type_info_t schema_graphdemo_tally_info_ = { "Tally", (uint32_t) sizeof( graphdemo_tally_t ), 1, schema_graphdemo_tally_fields_, schema_graphdemo_tally_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+const graphdemo_table_type_info_t schema_graphdemo_tally_info_ = { "Tally", (uint64_t) sizeof( graphdemo_tally_t ), 1, schema_graphdemo_tally_fields_, schema_graphdemo_tally_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_marker_fields_[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_marker_t, label ), (uint32_t) sizeof( ( (graphdemo_marker_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_marker_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_marker_t, note ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 8, (uint64_t) offsetof( graphdemo_marker_t, label ), (uint64_t) sizeof( ( (graphdemo_marker_t *) 0 )->label ), (uint64_t) offsetof( graphdemo_marker_t, label_length ), UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, 0, 1, 0, 0, 0, 0, (uint64_t) offsetof( graphdemo_marker_t, note ), (uint64_t) sizeof( graphdemo_table_ref_t ), UINT64_MAX, UINT64_MAX, &schema_graphdemo_tally_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const graphdemo_table_type_info_t schema_graphdemo_marker_info_ = { "Marker", (uint32_t) sizeof( graphdemo_marker_t ), 2, schema_graphdemo_marker_fields_, schema_graphdemo_marker_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+const graphdemo_table_type_info_t schema_graphdemo_marker_info_ = { "Marker", (uint64_t) sizeof( graphdemo_marker_t ), 2, schema_graphdemo_marker_fields_, schema_graphdemo_marker_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_graphdemo_tally_from_json_( graphdemo_tally_t * value, const char * text, int64_t bytes, graphdemo_table_report_t * report )
 {
