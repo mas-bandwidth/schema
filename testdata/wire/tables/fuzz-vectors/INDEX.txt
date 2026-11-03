@@ -182,6 +182,11 @@ retain_declared_default graphdemo Scene testdata/wire/tables/fuzz-vectors/retain
 # list_of_maps, run seed 24845619678.
 map_foreign_kind_count_past_body listdemo Army testdata/wire/tables/fuzz-vectors/map_foreign_kind_count_past_body.bin
 
+# A map's header with a foreign element kind whose count LEB128 spills past L
+# in an otherwise clean frame (#2400): the header is read against the parent,
+# so the oracle counts one kind_mismatch and no damage.
+map_header_count_past_length mapdemo Slots testdata/wire/tables/fuzz-vectors/map_header_count_past_length.bin
+
 # AN ARM'S ARRAY HEADER IS READ INSIDE THE ARM'S L (§3, the arm payload table).
 # ToolMessage's body arrives as the spans arm with L = 4: element kind 2 (an i8,
 # which widens into the declared i32) and a count whose LEB128 runs past the
