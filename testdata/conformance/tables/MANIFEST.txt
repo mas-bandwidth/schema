@@ -833,6 +833,20 @@ json-hostile unknown-key                  tabledemo RootConfig  testdata/conform
 json-hostile text-total-past              featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-past              0,0,0,1,0,false,read
 json-hostile text-total-at                featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-at                0,0,0,0,0,false,read
 json-hostile text-total-after-clamp       featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-after-clamp       0,0,0,2,0,false,read
+# TIMESTAMP DOMAIN EDGES (docs/SPEC-TABLES.md §2.11): the int64 nanosecond
+# domain is 1677-09-21T00:12:43.145224192Z through
+# 2262-04-11T23:47:16.854775807Z. Each end reads, and one nanosecond past each
+# end is refused. The offset rows spell the same instants with a numeric
+# offset, so a reader that bounds the written date or year instead of the
+# instant gives the wrong verdict.
+json-hostile timestamp-domain-min                featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-min                0,0,0,0,0,false,read
+json-hostile timestamp-domain-max                featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-max                0,0,0,0,0,false,read
+json-hostile timestamp-domain-below-min          featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-below-min          refused
+json-hostile timestamp-domain-above-max          featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-above-max          refused
+json-hostile timestamp-domain-min-by-offset      featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-min-by-offset      0,0,0,0,0,false,read
+json-hostile timestamp-domain-max-by-offset      featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-max-by-offset      0,0,0,0,0,false,read
+json-hostile timestamp-domain-past-min-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-min-by-offset refused
+json-hostile timestamp-domain-past-max-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-max-by-offset refused
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node

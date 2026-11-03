@@ -2771,7 +2771,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
 // 00-59 (second 60 is a leap second this kind refuses). The offset is Z, z or
 // sign HH:MM with both fields in range. Nothing may precede or follow the
 // production. An instant outside int64's nanosecond range is refused too,
-// which is Time.UnixNano's domain (1678 through 2262).
+// which is Time.UnixNano's domain (1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z).
 inline int TableJsonTimestampDigit( char c )
 {
     return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;

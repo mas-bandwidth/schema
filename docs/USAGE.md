@@ -2787,8 +2787,8 @@ err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
 when := s.OpenedAtTime()                                      // a time.Time in UTC
 ```
 
-`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — the years
-1678 through 2262 — with a `TableTimestampError` naming the field, and
+`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z —
+with a `TableTimestampError` naming the field, and
 stores nothing; Go's zero `time.Time{}` stores `0`. `FromJson` refuses a
 string that is not RFC 3339 by name (`Reason` is `timestamp_not_rfc3339: opened_at`), and `ToJson` writes `"2026-10-15T12:34:05.123456789Z"`.
 
