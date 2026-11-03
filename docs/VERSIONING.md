@@ -981,8 +981,9 @@ years, and several of the answers are patterns rather than syntax.
 
 - **Widen a field.** A NEW build reads an OLD file's narrower integer of the
   same signedness, and its `float32` as a `float64`, exactly, counting
-  `widened` (SPEC-TABLES.md §4). What is free besides: growing an array bound,
-  a string or bytes capacity, loosening a range. **What the widening does not
+  `widened` (SPEC-TABLES.md §4). What is free besides, for the NEW reader:
+  growing an array bound, a string or bytes capacity, loosening a range; an
+  OLD reader refuses a value or a count past its own bound by name. **What the widening does not
   do is run backwards**, and that is the whole of the pattern: the OLD build
   meets `int64` where it declares `int32`, which is a narrowing, and it
   refuses `kind_mismatch`. So `int32` to `int64` is a one-way
@@ -1095,7 +1096,7 @@ still open.
   counter rather than the values**: `bits(9)` to `bits(16)` is one kind and is
   silent, and `bits(8)` to `bits(9)` moves kind `6` to kind `7`, which the
   widening rule decodes exactly and counts `widened`. Old builds reading the
-  new file still lose it, on the row above.
+  new file refuse it `kind_mismatch`, on the row above.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.

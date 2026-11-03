@@ -67,8 +67,8 @@ their full answer, value included.
 
 **F1. The form byte is read first, and a form the reader does not carry is a
 refusal, never damage.** §3, THE FIRST BYTE: "BYTE `0` AND ANY UNASSIGNED VALUE
-ARE REFUSED BY NAME ... A refusal is not damage and moves none of §4's six
-counters, because nothing was decoded and there is nothing to count. THE FORM
+ARE REFUSED BY NAME ... A refusal of the form moves no counter, because
+nothing was decoded and there is nothing to count. THE FORM
 BYTE IS READ FIRST, before any body and before any trailer, so a file that is
 both an unknown form and damaged is a refusal." §3.3: form `2` stored on its
 own "refuses BY NAME rather than merely by form byte".

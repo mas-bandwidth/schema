@@ -1197,8 +1197,8 @@ each by name:
   absent T and numbers no node behind it; the reader leaves T at its
   defaults on a missing key or `null`, sets presence when the key is
   present and not `null` (§16.2), and builds T's edges only from a value
-  that rode — a value of the wrong JSON kind is skipped and adds no
-  edge;
+  that rode — a value of the wrong JSON kind refuses the read
+  `kind_mismatch` (§16.2), so it builds no edge;
 - **the view** — each field descriptor carries `optional` and the presence
   offset, so a walk over the descriptors gates exactly as the generated
   walks do.
@@ -1905,8 +1905,8 @@ the union does too.
 **Bounds behave as a field's.** An arm's `| min` and `| max`, a compressed
 float's declared range and resolution, and a string's or an array's capacity
 are the field's own facts and act where a field's act: the write refuses a
-value its storage invariant cannot hold, and a load clamps an out-of-range
-value to the READER's bounds and counts it (§4). The BASELINE judges an
+value its storage invariant cannot hold, and a load refuses an out-of-range
+value `out_of_range` (§4). The BASELINE judges an
 arm's line by the same rules it judges a field's, over the facts that line
 records (§18.1), because the wire cannot report a change to them (§4.1).
 
@@ -2331,9 +2331,8 @@ any other, and there is no path that forgives one.
   not contractual (§3), so the reader does not assume where the key sits.
   Before an entry's body decodes, the reader SCANS that body's field headers
   for the key's id and reads the key, which is a bounded string or an integer
-  and always a primitive. The scan decides the slot. Where the body carries
-  the key's id more than once the scan reads the occurrence §3's
-  repeated-field rule keeps, the last one. An entry whose body carries no key
+  and always a primitive. The scan decides the slot. A body that carries
+  the key's id more than once is damage (§3), refused `wire_damaged`. An entry whose body carries no key
   field at all has the key's default. This implementation writes the key
   first in every entry, so on any wire this schema wrote the scan ends at the
   first header, and the rule is the scan and not the position.
@@ -2936,7 +2935,7 @@ payload in its place and a scalar element its fixed width. **So `[]T` and
 `[..N]T` ARE THE SAME BYTES**, which makes the migration true in both
 directions: a schema that outgrew its bound removes the bound and reads every
 file it ever wrote, and one that discovers a bound adds it and reads every file
-too, clamping past it. That is the `[..N]Pair` migration one construct over,
+that fits it, refusing one past it `count_over_bound`. That is the `[..N]Pair` migration one construct over,
 and it is why the bound is a declaration-side fact and never a wire fact.
 
 **THERE IS NO SORT AND NO KEY, so there is no invariant for the writer to hold
@@ -3080,9 +3079,9 @@ takes:
 }
 ```
 
-- **Every element the text carries is read**, because there is no bound to drop
-  a tail against. The bounded array's "more than N are dropped, counted" row
-  has no counterpart here, which is §16.2's mapping of the missing clamp above.
+- **Every element the text carries is read**, because there is no bound to
+  refuse a count against. The bounded array's "more than N refuse
+  `count_over_bound`" row has no counterpart here.
 - **`[]` is an empty list and `null` is `kind_mismatch`**, the array row's own
   rule (§16.2).
 - **A `[]*T`'s elements take the pointer row**, so an element is the pointee's
@@ -3947,8 +3946,9 @@ the block — hold the field as its `int64` count and are not yet tested with
 it; the message form's entry is §3.3's kind-`36` row. **A kind-`36` field a
 reader does not name skips by §3's first skip row, a fixed width of eight:**
 the Go runtime and the shared width
-table both recognize kind `36` as an eight-byte payload, so an unnamed or
-kind-mismatched `timestamp` field is skipped cleanly.
+table both recognize kind `36` as an eight-byte payload, so an unnamed
+`timestamp` field is skipped cleanly, and a kind-mismatched one refuses
+`kind_mismatch` with its framing intact.
 
 ### 2.12 The forms a table carries: `forms`
 
@@ -6086,8 +6086,8 @@ with one message passes one and pays a count of eight bits for it.
   was short by without parsing a byte of the wire itself, and its recovery is
   one call again with a capacity at or above that count.
 - **DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH** (§4, DAMAGE
-  DISCARDS THE WHOLE LOAD). `wire_damaged` counts, no body of the batch is
-  delivered, and nothing in the caller's storage is a value to use, the bodies
+  DISCARDS THE WHOLE LOAD). The batch refuses `wire_damaged`, its count is
+  `0`, no body of the batch is delivered, and nothing in the caller's storage is a value to use, the bodies
   before the damage included.
 - **BYTES AFTER THE PAD ARE DAMAGE**, exactly as they are in the variable form
   (§3): the batch ends at the pad to the byte boundary, and a buffer with bytes
@@ -10583,8 +10583,9 @@ copies attacker-chosen bytes, so the bound is stated rather than assumed:
 - **The interpretation is bounded to §3's own framing rules, and its failures
   are contained.** The resolving walk reads kind bytes, lengths and references
   and nothing else: no value is decoded, no bound is checked, no branch is
-  taken on a payload byte, no allocation is sized from one, and a walk that
-  meets anything it cannot frame drops the record and counts it, as above.
+  taken on a payload byte, no allocation is sized from one, and it meets
+  nothing it cannot frame, because §6.5's step 2 already refused any damage
+  inside the field (above).
   Nothing inside a retained record reaches a decision the reader makes about
   its own data.
 - **The expansion is bounded, and a port states the constant.** A record costs

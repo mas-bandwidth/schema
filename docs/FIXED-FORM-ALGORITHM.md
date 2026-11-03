@@ -843,10 +843,9 @@ sends all four elements and still requires exactly four widenings.
 
 **THE GUARD'S WIDTH, and the remap table's shape.** Two small structures a port must match exactly.
 
-**`argw` is the guard's width in BYTES, clamped to `1..8` at both ends, and `0` reads as `1`.** At compile a
-union stamps `their_tag` onto every entry beneath it, taking `1` for anything outside `1..8` (the reference:
-fixedruntime.go:1063); the push re-stamps the current union's width and reads a zero as one (856-857); and at
-run time the tag load clamps again — `0` to `1`, anything past `8` to `8` (171). **Zero means one** because
+**`argw` is the guard's width in BYTES, `1..8`, and `0` reads as `1`.** A tag width outside `0..8` in a
+lineage entry is a LOCK-VALIDATION refusal: the entry is not a layout the lock can record, and its lane
+carries `layout_malformed` (§5.9 #36); nothing clamps it at compile or at run time. **Zero means one** because
 one is the width a tag had when this lane did not exist, so a plan laid down before it still reads. The guard
 is tested at its FULL width and never at its first byte: one byte fires arm `1` on a foreign tag of `0x0101`,
 an ordinal no arm of this build names (§7, fix 12). And the guard's own reach, `guard + argw`, is bounded by
