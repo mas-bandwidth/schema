@@ -405,13 +405,16 @@ build/conformance/manifest.txt: build/conformance-harness build-conformance-elix
 # controls do and what makes a control independent of the thing it tests: the
 # gate has to FIND a defect in generated code. The sabotage is checked to have
 # APPLIED, because a sed that silently matched nothing is a green light and not
-# a control.
+# a control. The overlay names the emitter by the Go module's root, which is
+# the path go build resolves, and not by make's CURDIR, which can reach the same
+# tree through a symlink.
 define ELIXIR_SABOTAGED_BUILD
 	@rm -rf $(1) && mkdir -p $(1)
 	@sed $($(3)) $(2) > $(1)/sabotaged.go.txt
 	@cmp -s $(2) $(1)/sabotaged.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage of $(2) did not apply"; exit 1; } || true
-	@printf '{"Replace":{"%s/$(2)":"%s/$(1)/sabotaged.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > $(1)/overlay.json
+	@root="$$(dirname "$$(go env GOMOD)")"; \
+		printf '{"Replace":{"%s/$(2)":"%s/$(1)/sabotaged.go.txt"}}\n' "$$root" "$(CURDIR)" > $(1)/overlay.json
 	go build -overlay $(1)/overlay.json -o $(1)/schema ./cmd/schema
 	@for unit in $(ELIXIR_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
