@@ -305,3 +305,16 @@ node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/
 
 # An unknown enum-keyed array slot in variable form skips its length-framed element without decoding inside it (§3.2, §6.6).
 unknown_keyed_slot_length_skip tblv2 Cfg testdata/wire/tables/fuzz-vectors/unknown_keyed_slot_length_skip.bin
+
+# THE ID TABLE'S MAXIMUM (§3, THE DISTINCTNESS CHECK IS BOUNDED WORK; F6 of
+# docs/LAYERS/1-framing.md): an empty root under an id table of 4096 distinct
+# entries the reader cannot name, which resolves and counts nothing, and the
+# same with one entry more, which is malformed whatever the buffer holds. The
+# entries are splitmix64 of 1..n, spread as hashed ids are. The Goose load read
+# any count the buffer allowed and proved the entries distinct pairwise, and
+# C#'s LoadMeasure and builder open loaded the variable-root 4097 table. Each
+# pair rides a variable root and a value-only root, so every arm meets it.
+id_table_4096       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4096.bin
+id_table_4097       graphdemo Scene testdata/wire/tables/fuzz-vectors/id_table_4097.bin
+id_table_4096_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4096_value.bin
+id_table_4097_value tblr1     Cfg   testdata/wire/tables/fuzz-vectors/id_table_4097_value.bin
