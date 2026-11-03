@@ -44,7 +44,7 @@ jobs:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobster(UnitView|TableFree)' -count=1 -v
+          go test ./internal/codegen/lobstertable -run '^TestLobster(UnitView|TableFree|RuntimePackage)' -count=1 -v
       - name: Packet native baseline and negative controls
         env:
           SCHEMA_SLOW: '1'
