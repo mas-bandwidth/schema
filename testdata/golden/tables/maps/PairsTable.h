@@ -13114,7 +13114,7 @@ inline int64_t PairsMeasureWireRetain( const Ctx & ctx, const Pairs & root, Tabl
         }
         return -1;
     };
-    if ( PairsNumberFrom( ctx, numbering, root ) )
+    if ( PairsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13163,7 +13163,7 @@ inline int64_t PairsSaveWireRetain( const Ctx & ctx, const Pairs & root, TableRe
         }
         return false;
     };
-    if ( !PairsNumberFrom( ctx, numbering, root ) )
+    if ( !PairsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

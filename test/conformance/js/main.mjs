@@ -1188,6 +1188,68 @@ async function wireFuzz() {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
       }
+    } else if (form === 2 && retain === 0) {
+      const row = messageRow(unit, root);
+      if (row !== null) {
+        if (!existsSync(resolve(generated, row[2])) || !existsSync(resolve(generated, row[3]))) {
+          fail(unit + "." + root + ": the message wire-fuzz module is missing");
+        }
+        const runtime = await load(row[2]);
+        const m = await load(row[3]);
+        const loadMessages = m[root + "LoadMessages"];
+        const measureMessages = m[root + "MeasureMessages"];
+        const saveMessages = m[root + "SaveMessages"];
+        const initRoot = runtime["Init" + root];
+        const RootClass = runtime[root];
+        if (typeof loadMessages !== "function" || typeof measureMessages !== "function" ||
+            typeof saveMessages !== "function" || typeof initRoot !== "function" ||
+            typeof RootClass !== "function") {
+          fail(unit + "." + root + ": the message wire surface is missing from " + row[3]);
+        }
+        const vocabulary = new runtime.TableVocabulary();
+        vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
+        if (!runtime.AnnounceRead(vocabulary, runtime.TableMessageAnnouncement, {})) {
+          fail(unit + "." + root + ": own announcement was refused");
+        }
+        const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new RootClass());
+        const single = [values[0]];
+        roster[i] = {
+          message: true,
+          run(wire) {
+            for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
+            const rep = {};
+            const n = loadMessages(values, vocabulary, wire, rep);
+            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
+            const malformed = Boolean(rep.Malformed) || (n < 1 && !refused);
+            let saved = null;
+            const ignored = {};
+            const size = measureMessages(single, ignored);
+            if (size >= 0) {
+              const out = new Uint8Array(size);
+              if (saveMessages(single, out, ignored) === size) {
+                saved = out;
+              }
+            }
+            return {
+              loaded: true,
+              saved,
+              report: {
+                reason: rep.Reason ?? "",
+                unknown: rep.Unknown | 0,
+                kindMismatch: rep.KindMismatch | 0,
+                widened: rep.Widened | 0,
+                clamped: rep.Clamped | 0,
+                duplicate: 0,
+                malformed,
+                refused,
+                retained: 0,
+                retainLost: 0,
+              },
+            };
+          },
+        };
+        known[i] = 1;
+      }
     }
   }
   writeSync(1, known);
@@ -1204,7 +1266,12 @@ async function wireFuzz() {
 
     let loaded = false, measure = -1, saved = null;
     const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
-    if (codec !== null) {
+    if (codec !== null && codec.message) {
+      const res = codec.run(wire);
+      loaded = res.loaded;
+      saved = res.saved;
+      Object.assign(report, res.report);
+    } else if (codec !== null) {
       measure = codec.loadMeasure(wire);
       // Measurement and loading are independent observations; even an
       // unframed file must reach Load so its damage report is preserved.

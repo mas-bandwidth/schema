@@ -13087,7 +13087,7 @@ inline int64_t SpansMeasureWireRetain( const Ctx & ctx, const Spans & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( SpansNumberFrom( ctx, numbering, root ) )
+    if ( SpansNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13128,7 +13128,7 @@ inline int64_t SpansSaveWireRetain( const Ctx & ctx, const Spans & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !SpansNumberFrom( ctx, numbering, root ) )
+    if ( !SpansNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

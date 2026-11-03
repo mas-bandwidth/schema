@@ -10786,7 +10786,7 @@ inline int64_t MarkerMeasureWireRetain( const Ctx & ctx, const Marker & root, Ta
         }
         return -1;
     };
-    if ( MarkerNumberFrom( ctx, numbering, root ) )
+    if ( MarkerNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -10835,7 +10835,7 @@ inline int64_t MarkerSaveWireRetain( const Ctx & ctx, const Marker & root, Table
         }
         return false;
     };
-    if ( !MarkerNumberFrom( ctx, numbering, root ) )
+    if ( !MarkerNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

@@ -15303,7 +15303,7 @@ inline int64_t BytesMeasureWireRetain( const Ctx & ctx, const Bytes & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( BytesNumberFrom( ctx, numbering, root ) )
+    if ( BytesNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -15344,7 +15344,7 @@ inline int64_t BytesSaveWireRetain( const Ctx & ctx, const Bytes & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !BytesNumberFrom( ctx, numbering, root ) )
+    if ( !BytesNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -15759,7 +15759,7 @@ inline int64_t IntsMeasureWireRetain( const Ctx & ctx, const Ints & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( IntsNumberFrom( ctx, numbering, root ) )
+    if ( IntsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -15800,7 +15800,7 @@ inline int64_t IntsSaveWireRetain( const Ctx & ctx, const Ints & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !IntsNumberFrom( ctx, numbering, root ) )
+    if ( !IntsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -16215,7 +16215,7 @@ inline int64_t FloatsMeasureWireRetain( const Ctx & ctx, const Floats & root, Ta
         (void) type_id;
         return -1;
     };
-    if ( FloatsNumberFrom( ctx, numbering, root ) )
+    if ( FloatsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -16256,7 +16256,7 @@ inline int64_t FloatsSaveWireRetain( const Ctx & ctx, const Floats & root, Table
         (void) type_id;
         return false;
     };
-    if ( !FloatsNumberFrom( ctx, numbering, root ) )
+    if ( !FloatsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

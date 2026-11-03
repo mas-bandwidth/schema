@@ -265,8 +265,8 @@ var cppVersionRows = []cppVersionRow{
 	{row: "enum_append"},
 	{row: "enum_width", widens: true},
 	{row: "field_append"},
-	{row: "field_deprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ endpoint. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
-	{row: "field_undeprecate", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ endpoint. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "field_deprecate", sameHash: true},
+	{row: "field_undeprecate", sameHash: true},
 	{row: "fixed_I_grow", widens: true},
 	{row: "fixed_I_grow_element", widens: true},
 	{row: "flags_append"},
@@ -276,7 +276,7 @@ var cppVersionRows = []cppVersionRow{
 	{row: "nested_append"},
 	{row: "optional_add"},
 	{row: "range_widen"},
-	{row: "rename_without_was", sameHash: true, unported: "sameHash: the two sides carry equal hashes, so the nil-lock sibling convention collapses to the identity entry alone (one lineage note) and cppRunVersionProbe's interim guard refuses to probe a reader with no distinct VOLD_ endpoint. The row reads in both directions by §5.7, but proving it needs an explicit lock, which is a change to cppRunVersionProbe's signature this card is not"},
+	{row: "rename_without_was", sameHash: true},
 	{row: "string_grow"},
 	{row: "uint_widen", widens: true},
 	{row: "union_append"},
@@ -320,7 +320,15 @@ func TestFixedVersioningNewReadsOld(t *testing.T) {
     %s
     %s
 `, counters, bracket)
-			out, err := cppRunVersionProbe(t, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), body, "")
+			var (
+				out []byte
+				err error
+			)
+			if r.sameHash {
+				out, err = cppRunVersionProbeLock(t, r.row, filepath.Join("..", "..", "..", "test", "tables", "VOLD_"+r.row+".schema"), filepath.Join(corpus, "old_"+r.row+".bin"), body, "")
+			} else {
+				out, err = cppRunVersionProbe(t, r.row, filepath.Join(corpus, "old_"+r.row+".bin"), body, "")
+			}
 			if err != nil {
 				t.Fatalf("NEW-READS-OLD %s: %v\n%s", r.row, err, out)
 			}

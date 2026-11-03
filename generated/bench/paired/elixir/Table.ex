@@ -2948,11 +2948,16 @@ defmodule Bench.Table do
         case arr do
           <<6, count_rest::binary>> ->
             case leb(count_rest) do
-              {n, bytes} when byte_size(bytes) >= n ->
-                raw = binary_part(bytes, 0, n)
+              {n, bytes} ->
                 keep = min(n, f.size)
                 clamped = if n > f.size, do: 1, else: 0
-                {:cont, binary_part(raw, 0, keep), %{report | clamped: report.clamped + clamped}}
+                report = %{report | clamped: report.clamped + clamped}
+
+                if byte_size(bytes) >= keep do
+                  {:cont, binary_part(bytes, 0, keep), report}
+                else
+                  {:cont, bytes, %{report | malformed: true}}
+                end
 
               _ ->
                 {:cont, <<>>, %{report | malformed: true}}
@@ -2976,6 +2981,9 @@ defmodule Bench.Table do
     # SPEC-TABLES §2.8, §3: kind 14 contains framed entry tables. A map's
     # public keys use their JSON spelling; its wire keys remain typed.
     case read_payload(Map.put(%{f | t: :list}, :map_entry, true), payload, nodes, ids, report) do
+      {:cont, :map_key_mismatch, report} ->
+        {:cont, %{}, report}
+
       {:cont, :inert, report} ->
         {:cont, :inert, report}
 
@@ -3029,21 +3037,40 @@ defmodule Bench.Table do
     end
   end
 
-  # wstring(N) (docs/SPEC-TABLES.md §3): L UTF-16LE bytes; past N code units
-  # clamps, and bytes that are not UTF-16 read empty and count malformed.
+  # Validate the whole UTF-16LE payload before clamping. NUL and unpaired
+  # surrogates are damage even beyond the bound; a clamp never splits a pair.
   defp read_payload(%{t: :wstring} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
       {len, rest} when byte_size(rest) >= len and rem(len, 2) == 0 ->
-        {raw, report} =
-          if div(len, 2) > f.size do
-            {binary_part(rest, 0, f.size * 2), %{report | clamped: report.clamped + 1}}
-          else
-            {binary_part(rest, 0, len), report}
-          end
+        raw = binary_part(rest, 0, len)
 
         case :unicode.characters_to_binary(raw, {:utf16, :little}, :utf8) do
-          s when is_binary(s) -> {:cont, s, report}
-          _ -> {:cont, "", %{report | malformed: true}}
+          s when is_binary(s) ->
+            cond do
+              not utf8_valid?(s) ->
+                {:cont, "", %{report | malformed: true}}
+
+              div(len, 2) > f.size ->
+                cut = binary_part(raw, 0, f.size * 2)
+                size = byte_size(cut)
+
+                cut =
+                  if size > 0 do
+                    <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
+                    if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
+                  else
+                    cut
+                  end
+
+                {:cont, :unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
+                 %{report | clamped: report.clamped + 1}}
+
+              true ->
+                {:cont, s, report}
+            end
+
+          _ ->
+            {:cont, "", %{report | malformed: true}}
         end
 
       _ ->
@@ -3097,16 +3124,106 @@ defmodule Bench.Table do
     end
   end
 
-  # Admit each map key before decoding its value, even if value precedes key
-  # on wire. A descending entry is damage; its value cannot introduce a refusal.
-  # This is a per-entry scan, so earlier admitted values keep their precedence.
-  defp map_entry_admitted?(_desc, _sub, [], _nodes, _ids), do: true
+  # A map key is scanned before its value, including the first entry. Its
+  # final kind wins; an incompatible key outranks later scan damage and clears
+  # the whole map. Other fields are skipped only for framing during this scan.
+  defp map_key_admission(desc, sub, acc, ids, report) do
+    if Map.get(desc, :map_entry, false) do
+      [kf | _] = desc.fields
+      {complete, key, bad, widened} = scan_map_key(kf, sub, ids, kf.default, false, false)
+      prior_widened = Map.get(desc, :map_widened, false)
 
-  defp map_entry_admitted?(desc, sub, [previous | _], nodes, ids) do
-    [kf | _] = desc.fields
-    {entry, _report} = read_element(%{desc | fields: [kf]}, sub, nodes, ids)
-    Map.get(entry, "key", kf.default) >= Map.get(previous, "key", kf.default)
+      report =
+        if widened and not prior_widened,
+          do: %{report | widened: report.widened + 1},
+          else: report
+
+      desc = Map.put(desc, :map_widened, prior_widened or widened)
+
+      cond do
+        bad ->
+          {:mismatch, desc, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+        not complete ->
+          {:malformed, desc, %{report | malformed: true}}
+
+        kf.t == :string and not Map.get(kf, :unbounded, false) and byte_size(key) > kf.size ->
+          {:drop, desc, %{report | clamped: report.clamped + 1}}
+
+        acc != [] and key < Map.get(hd(acc), "key", kf.default) ->
+          {:malformed, desc, %{report | malformed: true}}
+
+        true ->
+          duplicate = acc != [] and key == Map.get(hd(acc), "key", kf.default)
+          {:keep, Map.put(desc, :map_duplicate, duplicate), report}
+      end
+    else
+      {:keep, desc, report}
+    end
   end
+
+  # Count a duplicate only after its complete value has been decoded. The
+  # event survives a later key mismatch that clears the map's stored value.
+  defp map_duplicate_report(desc, report) do
+    if Map.get(desc, :map_duplicate, false),
+      do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+      else: report
+  end
+
+  defp scan_map_key(kf, bin, ids, key, bad, widened) do
+    case leb(bin) do
+      {0, rest} ->
+        {rest == <<>>, key, bad, widened}
+
+      {ref, <<kind, rest::binary>>} ->
+        case resolve(ids, ref) do
+          :error ->
+            {false, key, bad, widened}
+
+          id ->
+            is_key = id == kf.id
+            grows = is_key and widens?(kind, kf)
+            bad = if is_key, do: kind != kf.kind and not grows, else: bad
+            widened = widened or grows
+
+            case slice(rest, kind) do
+              {:ok, payload, after_value} ->
+                if is_key and not bad do
+                  case scan_map_key_value(kf, kind, payload) do
+                    {:ok, value} -> scan_map_key(kf, after_value, ids, value, bad, widened)
+                    :error -> {false, key, bad, widened}
+                  end
+                else
+                  scan_map_key(kf, after_value, ids, key, bad, widened)
+                end
+
+              :error ->
+                {false, key, bad, widened}
+            end
+        end
+
+      _ ->
+        {false, key, bad, widened}
+    end
+  end
+
+  defp scan_map_key_value(%{t: :string}, _kind, payload) do
+    case leb(payload) do
+      {len, value} when byte_size(value) == len ->
+        if utf8_valid?(value), do: {:ok, value}, else: :error
+
+      _ ->
+        :error
+    end
+  end
+
+  defp scan_map_key_value(kf, kind, payload),
+    do: {:ok, int_of(payload, kind_width(kind), kf.signed)}
+
+  defp map_key_descriptor(%{map_entry: true, fields: [kf | rest]} = desc),
+    do: %{desc | fields: [Map.put(kf, :map_key, true) | rest]}
+
+  defp map_key_descriptor(desc), do: desc
 
   # a map's wire keys ascend; a key below the one before it is DESCENDING
   # (§2.8), and an equal key is a duplicate, last wins
@@ -3320,7 +3437,8 @@ defmodule Bench.Table do
   defp read_widened(f, kind, payload, report) do
     v = int_of(payload, kind_width(kind), f.signed)
     {clamped, report} = clamp_int(v, f, report)
-    {clamped, %{report | widened: report.widened + 1}}
+    widened = if Map.get(f, :map_key, false), do: report.widened, else: report.widened + 1
+    {clamped, %{report | widened: widened}}
   end
 
   defp kind_width(2), do: 1
@@ -3396,28 +3514,48 @@ defmodule Bench.Table do
         sub = binary_part(body, 0, len)
         after_sub = binary_part(body, len, byte_size(body) - len)
 
-        desc = Map.fetch!(@tables, f.elem)
+        desc =
+          Map.fetch!(@tables, f.elem)
+          |> Map.put(:map_entry, Map.get(f, :map_entry, false))
+          |> Map.put(:map_widened, Map.get(f, :map_widened, false))
+          |> map_key_descriptor()
 
-        if Map.get(f, :map_entry, false) and not map_entry_admitted?(desc, sub, acc, nodes, ids) do
-          {Enum.reverse(acc), %{report | malformed: true}}
-        else
-          {value, elem_report} =
-            carry_count_report(report, fn ->
-              read_element(Map.fetch!(@tables, f.elem), sub, nodes, ids)
-            end)
+        case map_key_admission(desc, sub, acc, ids, report) do
+          {:mismatch, _desc, report} ->
+            {:map_key_mismatch, report}
 
-          case text_list_keep(f, value, merge_report(report, elem_report)) do
-            {:keep, f, report} ->
-              read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+          {:malformed, _desc, report} ->
+            {Enum.reverse(acc), report}
 
-            {:drop, report} ->
-              {Enum.reverse(acc), report}
-          end
+          {:drop, desc, report} ->
+            read_list_elements(
+              Map.put(f, :map_widened, Map.get(desc, :map_widened, false)),
+              after_sub,
+              n - 1,
+              nodes,
+              ids,
+              acc,
+              report
+            )
+
+          {:keep, desc, report} ->
+            {value, elem_report} =
+              carry_count_report(report, fn -> read_element(desc, sub, nodes, ids) end)
+
+            f = Map.put(f, :map_widened, Map.get(desc, :map_widened, false))
+
+            report = map_duplicate_report(desc, merge_report(report, elem_report))
+
+            case text_list_keep(f, value, report) do
+              {:keep, f, report} ->
+                read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+
+              {:drop, report} ->
+                {Enum.reverse(acc), report}
+            end
         end
 
       _ ->
-        # the element's L framing is damaged: the walk stops, one malformed
-        # counts, and the elements already read stand (§4)
         {Enum.reverse(acc), %{report | malformed: true}}
     end
   end

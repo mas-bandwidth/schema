@@ -108,7 +108,9 @@ func TestListRefusalNamesTheCarrier(t *testing.T) {
 	if err == nil {
 		t.Fatalf("refuseLists accepted a list-bearing unit for a non-carrier")
 	}
-	for _, want := range []string{"a []T is " + englishList(listTargets) + " only today", "Save.placements", "--lang cpp"} {
+	carriers := slices.Clone(listTargets)
+	slices.Sort(carriers)
+	for _, want := range []string{"a []T is " + englishList(carriers) + " only today", "Save.placements", "--lang cpp"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the carrier-form refusal does not name %q: %v", want, err)
 		}

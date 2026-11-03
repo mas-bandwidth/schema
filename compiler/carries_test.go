@@ -200,7 +200,7 @@ func TestCarriedQueries(t *testing.T) {
 		t.Errorf("Carried(go) = %v, %v; want every construct", got, ok)
 	}
 	got, ok = Carried("cpp")
-	if !ok || !slices.Equal(got, []string{carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap}) {
+	if !ok || !slices.Equal(got, []string{carryTimestamp, carryRequired, carryForms, carryIntegrity, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap}) {
 		t.Errorf("Carried(cpp) = %v, %v", got, ok)
 	}
 	if got, ok := Carried("carry-test-unregistered"); ok || got != nil {

@@ -99,8 +99,8 @@ IO.puts("ok")
 			"{:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}",
 		}}, ""},
 		{"arm length off width", a2, armProbe, [][2]string{{
-			"if arm_framing_damaged?(a, inner) do",
-			"if false and arm_framing_damaged?(a, inner) do",
+			"arm_framing_damaged?(a, inner) ->",
+			"false and arm_framing_damaged?(a, inner) ->",
 		}}, "(FunctionClauseError) no function clause matching in Tbla2.Table.float_of/3"},
 		{"slot out of range", stream, slotProbe, [][2]string{{
 			":out_of_range -> {nil, %{report | malformed: true}}",

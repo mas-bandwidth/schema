@@ -14,8 +14,9 @@
 # data that spans every file, so their bytes grow with the unit; each is held
 # to its HOME instead: present under the package's name in both trees whenever
 # either tree has one, and the only module that declares its unit-wide data
-# (TableUnit, CookRecords, BlockRecords, MessageAnnouncement). Each module that
-# moved is named; one is red.
+# (TableUnit, CookRecords, BlockRecords, MessageAnnouncement), and so is the
+# unit's view module, <Package>View.goose, the one home of the registry. Each
+# module that moved is named; one is red.
 set -u
 
 if [ $# -ne 2 ]; then
@@ -43,7 +44,11 @@ P=${pkg}_
 # the package modules (internal/codegen/goosetable PackageModule), each with the
 # declaration that is unit-wide data and may live nowhere else
 homes="unit:TableUnit cook:CookRecords block:BlockRecords message:MessageAnnouncement"
+# the unit's view module (docs/SPEC-TABLES.md §8.5), capitalize(package)View,
+# whose unit-wide declaration is the registry, _UnitView
+V=$(printf '%s' "$pkg" | cut -c1 | tr '[:lower:]' '[:upper:]')$(printf '%s' "$pkg" | cut -c2-)View.goose
 ishome() {
+	[ "$1" = "$V" ] && return 0
 	for h in $homes; do [ "$1" = "$P${h%%:*}.goose" ] && return 0; done
 	return 1
 }
@@ -86,6 +91,18 @@ for h in $homes; do
 		for f in $(cd "$w/$tree" && grep -l "^let $decl:" *.goose 2>/dev/null); do
 			[ "$f" = "$m" ] || { echo "unit-wide $decl in $f in the $tree tree: its home is $m"; bad=1; }
 		done
+	done
+done
+if [ -f "$w/base/$V" ] || [ -f "$w/added/$V" ]; then
+	units=$((units + 1))
+	if [ ! -f "$w/base/$V" ] || [ ! -f "$w/added/$V" ]; then
+		echo "view module $V moved: in $( [ -f "$w/base/$V" ] && echo the base tree || echo the tree with Aaa.schema ) only"
+		bad=1
+	fi
+fi
+for tree in base added; do
+	for f in $(cd "$w/$tree" && grep -l "^let _UnitView:" *.goose 2>/dev/null); do
+		[ "$f" = "$V" ] || { echo "unit-wide _UnitView in $f in the $tree tree: its home is $V"; bad=1; }
 	done
 done
 tables=0

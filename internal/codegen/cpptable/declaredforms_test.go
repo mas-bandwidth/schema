@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func cppKeysOf(files map[string][]byte) []string {
@@ -126,6 +127,7 @@ fixed table FoxAll
 		}
 	}
 
+	slowtest.Gate(t, "c++")
 	cxx, err := exec.LookPath("c++")
 	if err != nil {
 		return

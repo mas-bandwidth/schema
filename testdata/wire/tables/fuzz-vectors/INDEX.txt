@@ -267,6 +267,20 @@ retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_arr
 retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
 retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin
 
+# A map key with an unknown kind is a clean whole-map mismatch, not malformed
+# input. Discovered by the Elixir wire pass; TestPinnedMapKeyKindElixir fails
+# against the pre-admission-scan emitter and passes with the repaired scanner.
+map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind_unknown.bin
+
+# Unknown key fields leave two equal default keys: last wins and duplicate counts.
+map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin
+
+# UTF-16 NUL is malformed even though the host Unicode converter accepts it.
+wide_text_zero_unit widedemo Caption testdata/wire/tables/fuzz-vectors/wide_text_zero_unit.bin
+
+# A bounded byte count clamps before payload extent checks.
+bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/bytes_count_clamped_prefix.bin
+
 # A POINTER CYCLE THROUGH NODES THE ROOT REACHES (§3.1, §4). Each is its seed
 # with one pointer's node index lowered to 2 (stream_chain, blob_small,
 # graph_tree), which closes a cycle in the stored pointer graph. A cyclic

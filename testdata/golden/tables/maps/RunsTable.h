@@ -12816,7 +12816,7 @@ inline int64_t RunsMeasureWireRetain( const Ctx & ctx, const Runs & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( RunsNumberFrom( ctx, numbering, root ) )
+    if ( RunsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -12857,7 +12857,7 @@ inline int64_t RunsSaveWireRetain( const Ctx & ctx, const Runs & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !RunsNumberFrom( ctx, numbering, root ) )
+    if ( !RunsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
