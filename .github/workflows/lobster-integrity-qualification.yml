@@ -19,6 +19,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
+      - name: Packet native baseline and negative controls
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobster/... -count=1 -timeout 480s -v
       - name: Native integrity regression and negative control
         env:
           SCHEMA_SLOW: '1'
