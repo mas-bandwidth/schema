@@ -712,6 +712,14 @@ conformance-negative-control-go: build/conformance-harness build/conformance-go
 conformance-negative-control-go-walk: build/conformance-harness build/conformance-go
 	sh test/conformance/go/negative-control walk
 
+# THE CANONICAL WRITER's control (docs/SPEC-TABLES.md §16.14, W6): the
+# generated Go text writer walks every map in DESCENDING key order, and the
+# map_key_order and map_text_order rows of json-write must go red while wire
+# and json-read stay green, which says the key order is what the gate holds.
+.PHONY: conformance-negative-control-go-key-order
+conformance-negative-control-go-key-order: build/conformance-harness build/conformance-go
+	sh test/conformance/go/negative-control key-order
+
 # THE FRAMING SURFACE's own control (docs/LAYERS/1-framing.md): the generated
 # Go reader's 4096 id-table entry cap is removed, and the framing row
 # frame_entries_4097 must go red while the wire surface stays green.
@@ -728,6 +736,7 @@ conformance-negative-control-go-framing: build/conformance-harness build/conform
 test-go: generated/bench/tables/go/.stamp generated/bench/paired/go/.stamp generated/go/.stamp generated/go-ludicrous/.stamp generated/bench/go/.stamp
 	$(MAKE) conformance-negative-control-go
 	$(MAKE) conformance-negative-control-go-walk
+	$(MAKE) conformance-negative-control-go-key-order
 	$(MAKE) conformance-negative-control-go-framing
 	$(MAKE) tables-go-json-walk
 	$(MAKE) tables-go-standalone

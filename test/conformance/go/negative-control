@@ -1,9 +1,10 @@
 #!/bin/sh
 # Prove the restored Go gates detect a changed wire, a changed message batch,
 # a missing text event, a noncanonical integer accepted by the generated
-# wire reader, an absent case that writes no `.absent` answer, and the 4096
+# wire reader, an absent case that writes no `.absent` answer, the 4096
 # id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
-# reader (frame-cap).
+# reader (frame-cap), and a text writer that emits map keys out of order
+# (key-order).
 set -eu
 
 mode=$1
@@ -27,6 +28,13 @@ cycle)
     # §3.1, §4) taken out of the generated graphdemo reader
     source=$(grep -l '^func tableCycleCheck(' build/tables-generated-go/pointers/*.go)
     sed 's/if visited != vertices {/if false { \/\/ SABOTAGED: a cycle reads clean/' "$source" > "$out/source.gotext"
+    ;;
+key-order)
+    # the generated mapdemo text writer walks each map's entries in DESCENDING
+    # key order (docs/SPEC-TABLES.md §16.14, W6): the stored order is untouched,
+    # so only the text moves
+    source=$(grep -l '^func tableJSONWriteMap(' build/tables-generated-go/maps/*TableJson.go)
+    sed 's/at := unsafe.Add(base, int64(i)\*int64(f.ElemSize))/at := unsafe.Add(base, int64(count-1-i)*int64(f.ElemSize)) \/\/ SABOTAGED: descending keys/' "$source" > "$out/source.gotext"
     ;;
 walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
@@ -116,6 +124,11 @@ else
     elif [ "$mode" = message ]; then
         grep -q 'go / message: login_full' "$out/log"
         grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = key-order ]; then
+        grep -q 'go / json-write: map_key_order.json' "$out/log"
+        grep -q 'go / json-write: map_text_order.json' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+        grep -q 'json-read     pass' "$out/log"
     elif [ "$mode" = frame-cap ]; then
         grep -q 'go / framing: frame_entries_4097: damaged input owes the refusal' "$out/log"
         grep -q 'wire          pass' "$out/log"
