@@ -403,7 +403,6 @@ func parseCHexLine(out []byte, prefix string) ([]byte, bool) {
 	return nil, false
 }
 
-
 const cIntegrityMessageSchema = `package probe
 fixed table Ledger | integrity = "crc32c"
 {
