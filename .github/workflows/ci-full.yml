@@ -717,8 +717,8 @@ jobs:
   # rebases; that scan proves the rules EXIST, and the emission from nothing is
   # what proves one ran.
 
-  # THE MOO LEG UNDER ITS BUILD TAG (make/moo-tagged.mk). `-tags
-  # schema_leg_moo` registers the moo target, so every cross-target gate in
+  # THE LEGS UNDER THEIR BUILD TAGS (make/moo-tagged.mk, make/goose-tagged.mk).
+  # `-tags schema_leg_moo` registers the moo target, so every cross-target gate in
   # ./compiler meets one more target; go-test above runs both packages
   # untagged, and certify's test-moo-tables runs only the compiler's tests
   # named Moo, so without this job a tagged red lands unseen. Its own job,
@@ -726,10 +726,11 @@ jobs:
   # credits each go-test row with the tests it selects, and this run selects
   # the compiler's tests a second time under another build. One `go test`
   # over the packages (the conformance harness's tagged half too) builds and
-  # runs them in parallel.
-  moo-tagged:
+  # runs them in parallel. The goose tag's one tagged test file, the
+  # conformance harness's half, rides beside it.
+  leg-tagged:
     if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    name: moo leg under its build tag
+    name: legs under their build tags
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 30
     steps:
@@ -761,6 +762,9 @@ jobs:
 
       - name: the moo leg's packages under schema_leg_moo
         run: make test-moo-tagged
+
+      - name: the conformance harness under schema_leg_goose
+        run: make test-goose-tagged-harness
 
   generated:
     # Runs on EVERY pull request, not behind the `full-ci` label (issue #1421):
