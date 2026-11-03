@@ -479,6 +479,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -8358,6 +8361,189 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
@@ -8600,7 +8786,7 @@ template <typename Entry> struct TableMapCursor
 
 // heapsort: O( n log n ) once per map, no recursion, no allocation past the
 // pointer array the caller already paid for
-template <typename Entry> inline void TableMapSort( const Entry ** order, int32_t count )
+template <typename Entry> inline void TableMapSort( const TableArena & arena, const Entry ** order, int32_t count )
 {
     for ( int32_t start = count / 2 - 1; start >= 0; start-- )
     {
@@ -8609,8 +8795,8 @@ template <typename Entry> inline void TableMapSort( const Entry ** order, int32_
         {
             int32_t child = 2 * root + 1;
             if ( child >= count ) { break; }
-            if ( child + 1 < count && TableEntryOrder( *order[child], *order[child + 1] ) < 0 ) { child++; }
-            if ( TableEntryOrder( *order[root], *order[child] ) >= 0 ) { break; }
+            if ( child + 1 < count && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
+            if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
             const Entry * swap = order[root]; order[root] = order[child]; order[child] = swap;
             root = child;
         }
@@ -8623,8 +8809,8 @@ template <typename Entry> inline void TableMapSort( const Entry ** order, int32_
         {
             int32_t child = 2 * root + 1;
             if ( child >= end ) { break; }
-            if ( child + 1 < end && TableEntryOrder( *order[child], *order[child + 1] ) < 0 ) { child++; }
-            if ( TableEntryOrder( *order[root], *order[child] ) >= 0 ) { break; }
+            if ( child + 1 < end && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
+            if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
             const Entry * hold = order[root]; order[root] = order[child]; order[child] = hold;
             root = child;
         }
@@ -8672,7 +8858,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         table_release( arena.allocator, order );
         return cursor;
     }
-    TableMapSort( order, map.count );
+    TableMapSort( arena, order, map.count );
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -8765,7 +8951,7 @@ inline Entry * TableMapScan( const TableArena & arena, const TableMap<Entry> & m
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
-            if ( TableEntryOrder( segment->entries[i], key ) == 0 ) { return segment->entries + i; }
+            if ( TableEntryOrder( &arena, segment->entries[i], key ) == 0 ) { return segment->entries + i; }
         }
         segment_ref = segment->next;
     }
@@ -8788,7 +8974,7 @@ inline bool TableMapErase( TableArena & arena, TableMap<Entry> & map, Key key )
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
-            if ( TableEntryOrder( segment->entries[i], key ) != 0 ) { continue; }
+            if ( TableEntryOrder( &arena, segment->entries[i], key ) != 0 ) { continue; }
             segment->dead[ i / 32 ] |= 1u << ( i % 32 );
             head->live--;
             head->dead++;
@@ -8827,7 +9013,7 @@ template <typename Entry> struct TableMapEach
                 return;
             }
         }
-        auto operator*() const { return TableEntryEach( segment->entries + index ); }
+        auto operator*() const { return TableEntryEach( arena, segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
         // the end is a NULL segment at any index: the loop body then never sees a NULL segment
         bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
@@ -9108,7 +9294,14 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     Entry * entry = TableMapAppend( worker, head, map );
     if ( entry == NULL ) { return NULL; }
     TableReset( *entry );
-    TableEntrySetKey( *entry, key );
+    if ( !TableEntrySetKey( worker, *entry, key ) )
+    {
+        TableMapSegment<Entry> * seg = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        seg->dead[ ( seg->used - 1 ) / 32 ] |= 1u << ( ( seg->used - 1 ) % 32 );
+        head->live--;
+        map.count--;
+        return NULL;
+    }
     return entry;
 }
 
@@ -9139,6 +9332,12 @@ inline uint64_t TableMapHash( const void * bytes, int32_t length )
     return hash;
 }
 inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int32_t) sizeof( key ) ); }
+inline uint64_t schema_table_map_hash_text_( const TableRef & ref )
+{
+    int32_t n = 0;
+    const char * s = schema_table_text_at_( ref, n );
+    return TableMapHash( (const void *) ( s != NULL ? s : "" ), n > 0 ? n : 0 );
+}
 
 // this runtime's own load factor, and no port reproduces it either: the next
 // power of two at or above twice the count, so a probe run stays short
@@ -9374,6 +9573,21 @@ inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, Ta
     if ( element == NULL ) { return NULL; }
     new ( element ) Element(); // value-init: the declared defaults, and null for a slot
     return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
 }
 
 // ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
@@ -10282,6 +10496,7 @@ inline int TableEntryOrder( const RowEntriesEntry & a, const RowEntriesEntry & b
 {
     return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );
 }
+inline int TableEntryOrder( const TableArena *, const RowEntriesEntry & a, const RowEntriesEntry & b ) { return TableEntryOrder( a, b ); }
 // THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000
 // included, so nothing here measures to the first NUL. The const char *
 // overload beside it is the wrapper the public surface spells.
@@ -10289,21 +10504,25 @@ inline int TableEntryOrder( const RowEntriesEntry & entry, TableMapKeyRef key )
 {
     return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );
 }
+inline int TableEntryOrder( const TableArena *, const RowEntriesEntry & entry, TableMapKeyRef key ) { return TableEntryOrder( entry, key ); }
 inline int TableEntryOrder( const RowEntriesEntry & entry, const char * key )
 {
     return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, kRowEntriesEntryKeyBound ) } );
 }
+inline int TableEntryOrder( const TableArena *, const RowEntriesEntry & entry, const char * key ) { return TableEntryOrder( entry, key ); }
 inline const char * TableEntryKey( const RowEntriesEntry & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes
+inline const char * TableEntryKey( const TableArena *, const RowEntriesEntry & entry ) { return entry.key; }
 inline void TableEntrySetKey( RowEntriesEntry & entry, TableMapKeyRef key )
 {
     memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );
     entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site
     entry.key_length = key.length;
 }
+inline bool TableEntrySetKey( TableWorker &, RowEntriesEntry & entry, TableMapKeyRef key ) { TableEntrySetKey( entry, key ); return true; }
 inline const Item * TableEntryFound( const RowEntriesEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline Item * TableEntryValue( RowEntriesEntry * entry ) { return &entry->value; }
 struct RowEntriesEntryEach { const char * key; decltype( TableEntryValue( (RowEntriesEntry *) NULL ) ) value; };
-inline RowEntriesEntryEach TableEntryEach( RowEntriesEntry * entry ) { return RowEntriesEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
+inline RowEntriesEntryEach TableEntryEach( const TableArena * arena, RowEntriesEntry * entry ) { return RowEntriesEntryEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( RowEntriesEntry & value )
 {
     ItemReset( value.value );
@@ -10369,16 +10588,20 @@ inline int TableEntryOrder( const WideRowEntriesEntry & a, const WideRowEntriesE
 {
     return TableKeyOrder( (uint64_t) a.key, (uint64_t) b.key ); // integers compare by VALUE, unsigned here
 }
+inline int TableEntryOrder( const TableArena *, const WideRowEntriesEntry & a, const WideRowEntriesEntry & b ) { return TableEntryOrder( a, b ); }
 inline int TableEntryOrder( const WideRowEntriesEntry & entry, uint32_t key )
 {
     return TableKeyOrder( (uint64_t) entry.key, (uint64_t) key );
 }
+inline int TableEntryOrder( const TableArena *, const WideRowEntriesEntry & entry, uint32_t key ) { return TableEntryOrder( entry, key ); }
 inline uint32_t TableEntryKey( const WideRowEntriesEntry & entry ) { return entry.key; }
+inline uint32_t TableEntryKey( const TableArena *, const WideRowEntriesEntry & entry ) { return entry.key; }
 inline void TableEntrySetKey( WideRowEntriesEntry & entry, uint32_t key ) { entry.key = key; }
+inline bool TableEntrySetKey( TableWorker &, WideRowEntriesEntry & entry, uint32_t key ) { entry.key = key; return true; }
 inline const Item * TableEntryFound( const WideRowEntriesEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline Item * TableEntryValue( WideRowEntriesEntry * entry ) { return &entry->value; }
 struct WideRowEntriesEntryEach { uint32_t key; decltype( TableEntryValue( (WideRowEntriesEntry *) NULL ) ) value; };
-inline WideRowEntriesEntryEach TableEntryEach( WideRowEntriesEntry * entry ) { return WideRowEntriesEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
+inline WideRowEntriesEntryEach TableEntryEach( const TableArena * arena, WideRowEntriesEntry * entry ) { return WideRowEntriesEntryEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( WideRowEntriesEntry & value )
 {
     ItemReset( value.value );
@@ -10448,6 +10671,7 @@ inline int TableEntryOrder( const EdgeRowNamesEntry & a, const EdgeRowNamesEntry
 {
     return TableKeyOrder( a.key, a.key_length, b.key, b.key_length );
 }
+inline int TableEntryOrder( const TableArena *, const EdgeRowNamesEntry & a, const EdgeRowNamesEntry & b ) { return TableEntryOrder( a, b ); }
 // THE ORDER TAKES DATA AND A LENGTH (§2.8): a key holds any byte, U+0000
 // included, so nothing here measures to the first NUL. The const char *
 // overload beside it is the wrapper the public surface spells.
@@ -10455,21 +10679,25 @@ inline int TableEntryOrder( const EdgeRowNamesEntry & entry, TableMapKeyRef key 
 {
     return TableKeyOrder( entry.key, entry.key_length, key.data, key.length );
 }
+inline int TableEntryOrder( const TableArena *, const EdgeRowNamesEntry & entry, TableMapKeyRef key ) { return TableEntryOrder( entry, key ); }
 inline int TableEntryOrder( const EdgeRowNamesEntry & entry, const char * key )
 {
     return TableEntryOrder( entry, TableMapKeyRef{ key, TableKeyLength( key, kEdgeRowNamesEntryKeyBound ) } );
 }
+inline int TableEntryOrder( const TableArena *, const EdgeRowNamesEntry & entry, const char * key ) { return TableEntryOrder( entry, key ); }
 inline const char * TableEntryKey( const EdgeRowNamesEntry & entry ) { return entry.key; } // NUL-terminated, the storage's own bytes
+inline const char * TableEntryKey( const TableArena *, const EdgeRowNamesEntry & entry ) { return entry.key; }
 inline void TableEntrySetKey( EdgeRowNamesEntry & entry, TableMapKeyRef key )
 {
     memcpy( (void *) entry.key, (const void *) key.data, (size_t) key.length );
     entry.key[key.length] = 0; // NUL-terminated BESIDE its length, for a C call site
     entry.key_length = key.length;
 }
+inline bool TableEntrySetKey( TableWorker &, EdgeRowNamesEntry & entry, TableMapKeyRef key ) { TableEntrySetKey( entry, key ); return true; }
 inline const Item * TableEntryFound( const EdgeRowNamesEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline Item * TableEntryValue( EdgeRowNamesEntry * entry ) { return &entry->value; }
 struct EdgeRowNamesEntryEach { const char * key; decltype( TableEntryValue( (EdgeRowNamesEntry *) NULL ) ) value; };
-inline EdgeRowNamesEntryEach TableEntryEach( EdgeRowNamesEntry * entry ) { return EdgeRowNamesEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
+inline EdgeRowNamesEntryEach TableEntryEach( const TableArena * arena, EdgeRowNamesEntry * entry ) { return EdgeRowNamesEntryEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( EdgeRowNamesEntry & value )
 {
     ItemReset( value.value );
@@ -10535,16 +10763,20 @@ inline int TableEntryOrder( const EdgeRowIdsEntry & a, const EdgeRowIdsEntry & b
 {
     return TableKeyOrder( (uint64_t) a.key, (uint64_t) b.key ); // integers compare by VALUE, unsigned here
 }
+inline int TableEntryOrder( const TableArena *, const EdgeRowIdsEntry & a, const EdgeRowIdsEntry & b ) { return TableEntryOrder( a, b ); }
 inline int TableEntryOrder( const EdgeRowIdsEntry & entry, uint64_t key )
 {
     return TableKeyOrder( (uint64_t) entry.key, (uint64_t) key );
 }
+inline int TableEntryOrder( const TableArena *, const EdgeRowIdsEntry & entry, uint64_t key ) { return TableEntryOrder( entry, key ); }
 inline uint64_t TableEntryKey( const EdgeRowIdsEntry & entry ) { return entry.key; }
+inline uint64_t TableEntryKey( const TableArena *, const EdgeRowIdsEntry & entry ) { return entry.key; }
 inline void TableEntrySetKey( EdgeRowIdsEntry & entry, uint64_t key ) { entry.key = key; }
+inline bool TableEntrySetKey( TableWorker &, EdgeRowIdsEntry & entry, uint64_t key ) { entry.key = key; return true; }
 inline const Item * TableEntryFound( const EdgeRowIdsEntry * entry ) { return entry != NULL ? &entry->value : NULL; }
 inline Item * TableEntryValue( EdgeRowIdsEntry * entry ) { return &entry->value; }
 struct EdgeRowIdsEntryEach { uint64_t key; decltype( TableEntryValue( (EdgeRowIdsEntry *) NULL ) ) value; };
-inline EdgeRowIdsEntryEach TableEntryEach( EdgeRowIdsEntry * entry ) { return EdgeRowIdsEntryEach{ TableEntryKey( *entry ), TableEntryValue( entry ) }; }
+inline EdgeRowIdsEntryEach TableEntryEach( const TableArena * arena, EdgeRowIdsEntry * entry ) { return EdgeRowIdsEntryEach{ TableEntryKey( arena, *entry ), TableEntryValue( entry ) }; }
 inline void TableResetMapValue( EdgeRowIdsEntry & value )
 {
     ItemReset( value.value );
@@ -20026,51 +20258,51 @@ extern const TableTypeInfo EdgeRowIdsEntryTableInfo;
 extern const TableTypeInfo EdgeRowTableInfo;
 
 inline const TableFieldInfo RowEntriesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RowEntriesEntry, value ), (uint32_t) sizeof( RowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RowEntriesEntry, key ), (uint32_t) sizeof( RowEntriesEntry::key ), (uint32_t) offsetof( RowEntriesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RowEntriesEntry, value ), (uint32_t) sizeof( RowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo RowEntriesEntryTableInfo = { "RowEntriesEntry", (uint32_t) sizeof( RowEntriesEntry ), 2, RowEntriesEntryTableFields, +[]( void * p ) { RowEntriesEntryReset( *(RowEntriesEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RowEntriesEntryTableType() { return &RowEntriesEntryTableInfo; }
 
 inline const TableFieldInfo RowTableFields[] = {
-    { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( RowEntriesEntry ), (uint32_t) offsetof( Row, entries.count ), 0xffffffffu, &RowEntriesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, past ), (uint32_t) sizeof( Row::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "entries", "entries", "map[string(8)]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Row, entries ), (uint32_t) sizeof( RowEntriesEntry ), (uint32_t) offsetof( Row, entries.count ), 0xffffffffu, &RowEntriesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<RowEntriesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Row, past ), (uint32_t) sizeof( Row::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo RowTableInfo = { "Row", (uint32_t) sizeof( Row ), 2, RowTableFields, +[]( void * p ) { RowReset( *(Row *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RowTableType() { return &RowTableInfo; }
 
 inline const TableFieldInfo WideRowEntriesEntryTableFields[] = {
-    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, key ), (uint32_t) sizeof( WideRowEntriesEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, value ), (uint32_t) sizeof( WideRowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "key", "key", "uint32", 0x3dc94a19365b10ecull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, key ), (uint32_t) sizeof( WideRowEntriesEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRowEntriesEntry, value ), (uint32_t) sizeof( WideRowEntriesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo WideRowEntriesEntryTableInfo = { "WideRowEntriesEntry", (uint32_t) sizeof( WideRowEntriesEntry ), 2, WideRowEntriesEntryTableFields, +[]( void * p ) { WideRowEntriesEntryReset( *(WideRowEntriesEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * WideRowEntriesEntryTableType() { return &WideRowEntriesEntryTableInfo; }
 
 inline const TableFieldInfo WideRowTableFields[] = {
-    { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRowEntriesEntry ), (uint32_t) offsetof( WideRow, entries.count ), 0xffffffffu, &WideRowEntriesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, past ), (uint32_t) sizeof( WideRow::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "entries", "entries", "map[uint32]Item", 0xc5b2a72c0845a253ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( WideRow, entries ), (uint32_t) sizeof( WideRowEntriesEntry ), (uint32_t) offsetof( WideRow, entries.count ), 0xffffffffu, &WideRowEntriesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<WideRowEntriesEntry> *) slot, (uint32_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WideRow, past ), (uint32_t) sizeof( WideRow::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo WideRowTableInfo = { "WideRow", (uint32_t) sizeof( WideRow ), 2, WideRowTableFields, +[]( void * p ) { WideRowReset( *(WideRow *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * WideRowTableType() { return &WideRowTableInfo; }
 
 inline const TableFieldInfo EdgeRowNamesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 300, (uint32_t) offsetof( EdgeRowNamesEntry, key ), (uint32_t) sizeof( EdgeRowNamesEntry::key ), (uint32_t) offsetof( EdgeRowNamesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowNamesEntry, value ), (uint32_t) sizeof( EdgeRowNamesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 300, (uint32_t) offsetof( EdgeRowNamesEntry, key ), (uint32_t) sizeof( EdgeRowNamesEntry::key ), (uint32_t) offsetof( EdgeRowNamesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowNamesEntry, value ), (uint32_t) sizeof( EdgeRowNamesEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo EdgeRowNamesEntryTableInfo = { "EdgeRowNamesEntry", (uint32_t) sizeof( EdgeRowNamesEntry ), 2, EdgeRowNamesEntryTableFields, +[]( void * p ) { EdgeRowNamesEntryReset( *(EdgeRowNamesEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * EdgeRowNamesEntryTableType() { return &EdgeRowNamesEntryTableInfo; }
 
 inline const TableFieldInfo EdgeRowIdsEntryTableFields[] = {
-    { "key", "key", "uint64", 0x3dc94a19365b10ecull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowIdsEntry, key ), (uint32_t) sizeof( EdgeRowIdsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowIdsEntry, value ), (uint32_t) sizeof( EdgeRowIdsEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "key", "key", "uint64", 0x3dc94a19365b10ecull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowIdsEntry, key ), (uint32_t) sizeof( EdgeRowIdsEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRowIdsEntry, value ), (uint32_t) sizeof( EdgeRowIdsEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo EdgeRowIdsEntryTableInfo = { "EdgeRowIdsEntry", (uint32_t) sizeof( EdgeRowIdsEntry ), 2, EdgeRowIdsEntryTableFields, +[]( void * p ) { EdgeRowIdsEntryReset( *(EdgeRowIdsEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * EdgeRowIdsEntryTableType() { return &EdgeRowIdsEntryTableInfo; }
 
 inline const TableFieldInfo EdgeRowTableFields[] = {
-    { "names", "names", "map[string(300)]Item", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, names ), (uint32_t) sizeof( EdgeRowNamesEntry ), (uint32_t) offsetof( EdgeRow, names.count ), 0xffffffffu, &EdgeRowNamesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<EdgeRowNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false },
-    { "ids", "ids", "map[uint64]Item", 0x2b7dea192bb7be29ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, ids ), (uint32_t) sizeof( EdgeRowIdsEntry ), (uint32_t) offsetof( EdgeRow, ids.count ), 0xffffffffu, &EdgeRowIdsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<EdgeRowIdsEntry> *) slot, (uint64_t) key_value ); }, "", TableDocNone, 0, NULL, true, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRow, past ), (uint32_t) sizeof( EdgeRow::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "names", "names", "map[string(300)]Item", 0xafb728fff268814full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, names ), (uint32_t) sizeof( EdgeRowNamesEntry ), (uint32_t) offsetof( EdgeRow, names.count ), 0xffffffffu, &EdgeRowNamesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<EdgeRowNamesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "ids", "ids", "map[uint64]Item", 0x2b7dea192bb7be29ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( EdgeRow, ids ), (uint32_t) sizeof( EdgeRowIdsEntry ), (uint32_t) offsetof( EdgeRow, ids.count ), 0xffffffffu, &EdgeRowIdsEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<EdgeRowIdsEntry> *) slot, (uint64_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EdgeRow, past ), (uint32_t) sizeof( EdgeRow::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo EdgeRowTableInfo = { "EdgeRow", (uint32_t) sizeof( EdgeRow ), 3, EdgeRowTableFields, +[]( void * p ) { EdgeRowReset( *(EdgeRow *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * EdgeRowTableType() { return &EdgeRowTableInfo; }
