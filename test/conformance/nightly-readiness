@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute original-nine acceptance gates; a report or carried finding is not a pass.
+"""Execute original-nine (and Goose) acceptance gates; a report or carried finding is not a pass.
 
 This entrypoint adds no wall-clock timeout. Native test execution uses -timeout=0;
 protocol deadlines and the existing negative controls' intended oracles stay intact.
@@ -16,14 +16,21 @@ import subprocess
 import sys
 import time
 
-LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir")
+LANGUAGES = ("cpp", "c", "cs", "go", "rust", "java", "js", "dart", "elixir", "goose")
 PACKAGES = {
     "cpp": ("cpp", "cpptable"), "c": ("c", "ctable"),
     "cs": ("csharp", "cstable"), "go": ("golang", "gotable"),
     "rust": ("rust", "rusttable"), "java": ("java", "javatable"),
     "js": ("js", "jstable"), "dart": ("dart", "darttable"),
     "elixir": ("elixir", "elixirtable"),
+    "goose": ("goose", "goosetable"),
 }
+# The pinned Goose release, as internal/codegen/goose/gooserun.Dist names it.
+GOOSE_DIST = "dist/goose-v2026.2-linux-x64"
+# Mutable variable-file loads, with the full fixed/message roster still
+# exercising each root's form-specific reader. Goose's load grows its own
+# value table, so it has no caller region and no LoadMeasure.
+MIXED_BUILDER = ("dart", "js", "goose")
 # These three old algorithms were explicitly retired by the fixed-form lock.
 # This is NOT an allowance for the live Elixir §5.2/§3.4 ruling, UNPORTED rows,
 # missing corpora/toolchains, unsupported roots, or newly introduced skips.
@@ -133,6 +140,7 @@ DRIVER_BUILD = {
     "rust": "build/conformance-rust-all", "java": "build-conformance-java",
     "js": "build/tables-generated-js/.stamp cards-js-generate",
     "dart": "build/conformance-dart", "elixir": "build/elixir-tables-ebin/.stamp",
+    "goose": "build/conformance-goose-wirefuzz",
 }
 WIRE_CONTROLS = {
     "cpp": "tables-wire-fuzz-negative-control tables-wire-fuzz-retain-negative-control",
@@ -144,6 +152,7 @@ WIRE_CONTROLS = {
     "js": "tables-js-wire-fuzz-negative-control cards-js-conformance-upgrade-negative-control",
     "dart": "tables-dart-wire-fuzz-negative-control tables-dart-retain-negative-control",
     "elixir": "tables-elixir-wire-fuzz-refusal-negative-control tables-elixir-retain-negative-control",
+    "goose": "tables-goose-wire-fuzz-negative-control",
 }
 # The external fixed-form/packet executables complement the full native Go
 # packages. The workflow supplies the once-written C++ corpora before this step.
@@ -157,6 +166,9 @@ FIXED_GATES = {
     "js": "tables-js-fixed-form tables-js-fixed-matched",
     "dart": "tables-dart-fixed-form",
     "elixir": "tables-elixir-fixed-form tables-elixir-fixed-bench",
+    "goose": "tables-goose-versioning tables-goose-versioning-negative-control tables-goose-fixedform-negative-control "
+             "tables-goose-message-form tables-goose-message-form-negative-control "
+             "tables-goose-message-peer-negative-control",
 }
 
 
@@ -184,7 +196,7 @@ def required_phases(lang):
                      ("schema_test_c", "schema_test_c_asan", "schema_test_c_ludicrous",
                       "schema_test_bench_c")}
     else:
-        modes = {"cs": 2, "go": 1, "rust": 2, "java": 2, "js": 2, "dart": 3, "elixir": 1}[lang]
+        modes = {"cs": 2, "go": 1, "rust": 2, "java": 2, "js": 2, "dart": 3, "elixir": 1, "goose": 2}[lang]
         required |= {"packet-" + shape + "-" + str(mode)
                      for shape in ("normal", "ludicrous") for mode in range(modes)}
     required |= {"wire-" + arm + "-" + str(seed)
@@ -198,6 +210,8 @@ def required_phases(lang):
                      for mode in ("file-count-floor", "unknown-node") for tail in ("-plant", "")}
     elif lang == "rust":
         required.add("retain-rust")
+    elif lang == "goose":
+        required |= {"retain-goose-" + name for name in GOOSE_RETENTION_CONTROLS}
     return required
 
 
@@ -316,7 +330,7 @@ def fuzz_result(text, arm, seed, lang="", builder=False):
         errors.append("wire roster or finite-value exemption was reported")
     if arm != "retain" and not builder and "seeds outside the arm" in text:
         errors.append("plain wire-fuzz unexpectedly excluded seeds")
-    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in ("dart", "js") else "") + (" retain" if arm == "retain" else "")
+    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in MIXED_BUILDER else "") + (" retain" if arm == "retain" else "")
     pattern = (r"^" + re.escape(prefix) + r": seed (\d+), (\d+) seeds over (\d+) roots"
                r"(?:, \d+ seeds outside the arm)?, (\d+) enumerated \+ (\d+) random = "
                r"(\d+) mutants, 0 divergences, [0-9.]+ s, [0-9.]+ mutants/s$")
@@ -485,6 +499,17 @@ def run_packets(runner, lang):
                           ("schema_test_bench_c", ".")):
             runner.run("packet-" + name, [str(runner.root / "build" / name)],
                        cwd=runner.root / cwd, validate=packet_result)
+    elif lang == "goose":
+        # Both packet programs, generated with the tagged compiler beside the
+        # wire goldens (make/goose-packet.mk), each under the release run and
+        # under --debug, whose overflow and range checks abort.
+        runner.make("packet-build", "build/goose-packet/.stamp")
+        goose = tool("GOOSE", str(runner.root / GOOSE_DIST / "goose"))
+        for label in ("normal", "ludicrous"):
+            for index, command in enumerate((goose + ["run", "main.goose"],
+                                             goose + ["run", "--debug", "main.goose"])):
+                runner.run("packet-" + label + "-" + str(index), command,
+                           cwd=runner.root / "build/goose-packet" / label, validate=packet_result)
     else:
         targets = "generated/{0}/.stamp generated/{0}-ludicrous/.stamp generated/bench/{0}/.stamp".format(lang)
         if lang == "java":
@@ -515,14 +540,56 @@ def run_packets(runner, lang):
     targets = " ".join("packet-" + feature + "-" + lang + tail
                        for feature in ("defaults", "utf8", "wide")
                        for tail in ("", "-negative-control"))
-    if lang in ("go", "java", "dart", "elixir"):
+    if lang in ("go", "java", "dart", "elixir", "goose"):
         targets += " packet-finite-" + lang + " packet-finite-" + lang + "-negative-control"
     makefile = go_packet_makefile(runner) if lang == "go" else None
     if lang != "go" or makefile is not None:
         runner.make("packet-features", targets, makefile=makefile)
 
 
+def goose_uncapped_makefile(runner, targets):
+    """The Goose gates' make recipes, with only their outer go test suite cap removed.
+
+    Each recipe that runs go test is copied from make/goose*.mk with its
+    `-timeout 600s` (or Go's default cap) replaced by -timeout=0, and the copy
+    overrides the recipe in a private makefile that includes the real one.
+    Prerequisites, sabotages and assertions stay the reviewed source's.
+    """
+    sources = {path: path.read_text() for path in sorted((runner.root / "make").glob("goose*.mk"))}
+    text, replaced = "include Makefile\n", {}
+    for target in targets.split():
+        found = [(path, match) for path, source in sources.items()
+                 for match in re.finditer(r"^" + re.escape(target) + r":[^\n]*\n((?:\t[^\n]*\n)+)",
+                                          source, re.MULTILINE)]
+        if len(found) != 1:
+            if any(re.search(r"^" + re.escape(target) + r":", source, re.MULTILINE) for source in sources.values()) \
+                    and not found:
+                continue  # a rule without its own recipe here, e.g. a static pattern rule
+            runner.missing("external-table-gates", "the reviewed Goose recipe is not unique: " + target)
+            return None
+        recipe = found[0][1][1]
+        if "go test " not in recipe:
+            continue
+        amended = recipe.replace(" -timeout 600s", "").replace("go test ", "go test -timeout=0 ")
+        if re.search(r"-timeout[= ](?!0 )", amended):
+            runner.missing("external-table-gates", "the reviewed Goose recipe carries another suite cap: " + target)
+            return None
+        text += target + ":\n" + amended
+        replaced[target] = {"source": str(found[0][0].relative_to(runner.root)),
+                            "source_sha256": hashlib.sha256(recipe.encode()).hexdigest(),
+                            "execution_sha256": hashlib.sha256(amended.encode()).hexdigest()}
+    makefile = runner.out / "Makefile.goose-uncapped"
+    makefile.write_text(text)
+    runner.out.joinpath("Makefile.goose-uncapped.json").write_text(json.dumps(replaced, indent=2) + "\n")
+    return makefile
+
+
 def run_external(runner, lang):
+    if lang == "goose":
+        makefile = goose_uncapped_makefile(runner, FIXED_GATES[lang])
+        if makefile is not None:
+            runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
+        return
     if lang != "cpp":
         runner.make("external-table-gates", FIXED_GATES[lang])
         return
@@ -565,6 +632,10 @@ def driver_command(root, lang, builder=False):
         return "build/conformance-rust-all"
     if lang in ("go", "dart"):
         return "build/conformance-" + lang + " wire-fuzz"
+    if lang == "goose":
+        # test/conformance/goose/wirefuzzdispatch: one driver over every
+        # unit's leg (make/goose-fuzz.mk, build/conformance-goose-wirefuzz)
+        return "build/goose-wirefuzz-dispatch build/goose-wirefuzz-legs/legs"
     return "test/conformance/" + lang + "/driver wire-fuzz"
 
 
@@ -579,7 +650,7 @@ def run_fuzz(runner, lang):
                     "--failed", str(runner.out / (name + ".bin"))]
             # Dart and JavaScript use mutable variable-file loads, with the full fixed/message
             # roster still exercising its existing form-specific readers.
-            if lang in ("dart", "js"):
+            if lang in MIXED_BUILDER:
                 args.append("--mixed-builder")
             if arm == "retain":
                 args.append("--retain")
@@ -649,6 +720,14 @@ def overlay_control(runner, name, source, test, package, expected, sabotage=None
     runner.run(name, args, validate=validate, expected=1)
 
 
+# The Goose runtime is go:embed, which go build -overlay does not reach, so
+# its retention controls plant their sabotage in-test and must pass.
+GOOSE_RETENTION_CONTROLS = {
+    "tablewire": ("TestGooseTableWireNegativeControl",),
+    "fuzz": ("TestGooseRetainingFuzzNegativeControl", "TestGooseRetainingMapReplacementNegativeControl"),
+}
+
+
 def run_controls(runner, lang):
     runner.make("wire-retain-controls", WIRE_CONTROLS[lang] + " N=0 SEED=1 JAVA_WIRE_FUZZ_N=0")
     if lang == "c":
@@ -668,12 +747,18 @@ def run_controls(runner, lang):
                         "TestRetainsAndWidensOnEveryRootRust", "./internal/codegen/rusttable",
                         "retain=true): the leg reports",
                         replacement=("if ret.bytes.len() + need <= ret.bytes.capacity() {", "if false {"))
+    elif lang == "goose":
+        for name, tests in GOOSE_RETENTION_CONTROLS.items():
+            runner.run("retain-goose-" + name,
+                       ["go", "test", "-json", "-timeout=0", "-count=1", "-parallel=2",
+                        "-run", "^(" + "|".join(tests) + ")$", "./internal/codegen/goosetable"],
+                       validate=lambda text, t=tests: native_result(text, list(t), "goosetable"))
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1 or argv[0] not in LANGUAGES:
-        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir>",
+        print("usage: test/conformance/nightly-readiness <cpp|c|cs|go|rust|java|js|dart|elixir|goose>",
               file=sys.stderr)
         return 2
     lang = argv[0]
@@ -696,8 +781,14 @@ def main(argv=None):
         # Native message conformance invokes the compiled driver, before the
         # later fuzz phase. Prepare it on a clean checkout as well.
         prerequisites += " " + DRIVER_BUILD[lang]
+    harness = "./build/conformance-harness"
+    if lang == "goose":
+        # The pinned compiler, and a harness built with the target's tag,
+        # where compiler.Carried("goose") has its registrations.
+        prerequisites += " goose-toolchain-ready build/conformance-harness-goose"
+        harness = "./build/conformance-harness-goose"
     runner.make("prerequisites", prerequisites)
-    runner.run("implementation", ["./build/conformance-harness", "implementation", "--lang", lang],
+    runner.run("implementation", [harness, "implementation", "--lang", lang],
                validate=lambda text: implementation_result(text, lang))
     run_native(runner, lang)
     run_packets(runner, lang)
