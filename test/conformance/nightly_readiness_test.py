@@ -261,6 +261,9 @@ class Contracts(unittest.TestCase):
                     self.assertIn("cards-dart-generate", prerequisites)
                     native_index = next(i for i, call in enumerate(runner.calls) if call[0] == "native-list-darttable")
                     self.assertLess(prerequisite_index, native_index)
+                prerequisite_index = next(i for i, call in enumerate(runner.calls) if call[0] == "prerequisites")
+                self.assertIn("build/fixedform-corpus/.stamp", runner.calls[prerequisite_index][1])
+                self.assertLess(prerequisite_index, next(i for i, call in enumerate(runner.calls) if call[0].startswith("native-")))
                 for name,argv,cwd in runner.calls:
                     if "test" in argv and ("go" in argv):
                         self.assertIn("-timeout=0",argv,(name,argv))

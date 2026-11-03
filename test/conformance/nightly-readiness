@@ -674,7 +674,9 @@ def main(argv=None):
         runner.run("readiness-contracts", [sys.executable, "test/conformance/nightly_readiness_test.py"],
                    validate=lambda text: [] if re.search(r"^Ran [1-9][0-9]* tests? in ", text, re.MULTILINE)
                    and re.search(r"^OK$", text, re.MULTILINE) else ["readiness contract tests did not execute"])
-    prerequisites = "bin/schema build/conformance-harness"
+    # SCHEMA_REQUIRE_CORPUS makes every port's native tests read the C++
+    # reference's byte oracle, so a clean bench builds it here.
+    prerequisites = "bin/schema build/conformance-harness build/fixedform-corpus/.stamp"
     if lang == "cpp":
         prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz"
     if lang == "dart":
