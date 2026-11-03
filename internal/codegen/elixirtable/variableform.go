@@ -300,6 +300,7 @@ const armNodeCheck = "        if input == nil and a.t != :pointer and a.t != :bl
 // kinds an arm can be. Every edit must apply, so a template change that moves
 // one fails the emitter's tests.
 func withArmKinds(runtime string, kinds map[string]bool) string {
+	runtime = withArrayArmCheck(runtime, kinds, false)
 	reached := func(ks []string) bool {
 		for _, k := range ks {
 			if kinds[k] {
@@ -354,6 +355,24 @@ func withArmKinds(runtime string, kinds map[string]bool) string {
 	}
 	check.WriteString(" do\n")
 	return strings.Replace(runtime, armNodeCheck, check.String(), 1)
+}
+
+// withArrayArmCheck omits an inner array-header branch no declared arm can
+// reach. Keep the source replacement checked, like the other arm specializations.
+func withArrayArmCheck(runtime string, kinds map[string]bool, retaining bool) string {
+	if kinds["list"] || kinds["bytes"] || kinds["map"] || kinds["keyed"] {
+		return runtime
+	}
+	suffix := ""
+	if retaining {
+		suffix = ", retain"
+	}
+	clause := "                      not compatible_payload?(a, framed) ->\n" +
+		"                        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}" + suffix + "}\n\n"
+	if strings.Count(runtime, clause) != 1 {
+		panic("elixirtable: array arm check not found exactly once")
+	}
+	return strings.Replace(runtime, clause, "", 1)
 }
 
 // withOnlyVoidArms specializes the four case expressions whose fallback
@@ -501,6 +520,7 @@ func withoutRetainUnions(retain string) string {
 // pointer and enum arms, while the generic reader handles only the remaining kinds.
 // Every clause must be found.
 func withRetainArmKinds(retain string, kinds map[string]bool) string {
+	retain = withArrayArmCheck(retain, kinds, true)
 	table, pointer, enum, list, union, other := kinds["table"], kinds["pointer"], kinds["enum"], kinds["list"], kinds["union"], false
 	for k := range kinds {
 		if k != "table" && k != "pointer" && k != "enum" && k != "list" && k != "union" {
@@ -2061,6 +2081,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       else: value
   end
 
+  defp inert_empty(%{t: :bytes}), do: <<>>
   defp inert_empty(%{t: :list}), do: []
   defp inert_empty(_f), do: %{}
 
@@ -2423,15 +2444,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                     inner = binary_part(content, 0, l)
                     framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
 
-                    if arm_framing_damaged?(a, inner) do
-                      # a fixed-width arm whose L is not its kind's width, a
-                      # payload-free arm with an L, and a reference-shaped arm
-                      # whose L is not its reference's own length are that
-                      # arm's own framing damage: the union reads None and the
-                      # parent reads on past L (§3)
-                      {:cont, nil, %{report | malformed: true}}
-                    else
-                      read_arm_payload(a, name, inner, framed, nodes, ids, report)
+                    cond do
+                      arm_framing_damaged?(a, inner) ->
+                        # a fixed-width arm whose L is not its kind's width, a
+                        # payload-free arm with an L, and a reference-shaped arm
+                        # whose L is not its reference's own length are that
+                        # arm's own framing damage: the union reads None and the
+                        # parent reads on past L (§3)
+                        {:cont, nil, %{report | malformed: true}}
+
+                      not compatible_payload?(a, framed) ->
+                        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+                      true ->
+                        read_arm_payload(a, name, inner, framed, nodes, ids, report)
                     end
 
                   {l, content} when byte_size(content) >= l ->
@@ -6531,17 +6557,22 @@ const variableRetainSource = `
                     framed = binary_part(rest, 0, byte_size(rest) - byte_size(content) + l)
                     arm_path = path ++ [{ordinal, a.ordinal}]
 
-                    if arm_framing_damaged?(a, inner) do
-                      {:cont, nil, %{report | malformed: true}, retain}
-                    else
-                      read_arm_payload_retain(
-                        a,
-                        name,
-                        inner,
-                        framed,
-                        {nodes, ids, report, retain},
-                        arm_path
-                      )
+                    cond do
+                      arm_framing_damaged?(a, inner) ->
+                        {:cont, nil, %{report | malformed: true}, retain}
+
+                      not compatible_payload?(a, framed) ->
+                        {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+
+                      true ->
+                        read_arm_payload_retain(
+                          a,
+                          name,
+                          inner,
+                          framed,
+                          {nodes, ids, report, retain},
+                          arm_path
+                        )
                     end
 
                   {l, content} when byte_size(content) >= l ->
