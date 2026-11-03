@@ -28,6 +28,7 @@ func TestOneSidedRangeConstructElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	schema = append(schema, []byte("\ntable RetainedRanges { value Ranges\n marker []uint8 }\n")...)
 	u := unitFrom(t, string(schema))
 	rawSchema := string(schema)
 	for _, bound := range []string{" | max = 18446744073709551610", " | min = 9007199254740993", " | max = -9007199254740993", " | min = -9223372036854775807"} {
@@ -85,6 +86,7 @@ alias Probe.TableMessage, as: M
 		if err != nil {
 			t.Fatal(err)
 		}
+		retainedWire, retainedWant := rangeRetainedWires(t, m, rawM, u, rawU, "RetainedRanges", text, fmt.Sprintf(`{"%s":%s}`, field, expected))
 		index := -1
 		for i, f := range u.Tables["Ranges"].Fields {
 			if f.Name == field {
@@ -107,9 +109,12 @@ Probe.check(jvalue[field]==%s and r.clamped==%d and not r.malformed,field<>" JSO
 Probe.check(r.clamped==0,field<>" canonical JSON")
 store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
 zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
-{:ok,held,r,store}=T.load_retain("Ranges",wire,store,zero)
-Probe.check(held[field]==%s and r.clamped==%d,field<>" retained clamp")
-{:ok,^want,_,_}=T.save_retain("Ranges",held,store,r)
+{:error,:fixed_root,^zero,^store}=T.load_retain("Ranges",wire,store,zero)
+retained_wire=Base.decode16!(%q,case: :lower)
+retained_want=Base.decode16!(%q,case: :lower)
+{:ok,held,r,store}=T.load_retain("RetainedRanges",retained_wire,store,zero)
+Probe.check(r.clamped==%d and not r.malformed,field<>" retained nested clamp "<>inspect({held,r}))
+{:ok,^retained_want,_,_}=T.save_retain("RetainedRanges",held,store,r)
 {size,:ok}=T.cook_measure_reason("Ranges",value)
 for {order,cook}<-[{:little,le},{:big,be}] do
  {true,^cook}=T.cook_from("Ranges",value,:binary.copy(<<0xA5>>,size),order)
@@ -124,7 +129,7 @@ tail=binary_part(file,at+8,byte_size(file)-at-8)
 forged=<<head::binary,%s::little-signed-64,tail::binary>>
 {:ok,[loaded],r}=F.ranges_fixed_load(forged)
 Probe.check(Map.fetch!(loaded,String.to_existing_atom(field))==%s and r.clamped==%d,field<>" fixed forged clamp")
-`, field, text, hex.EncodeToString(want), hex.EncodeToString(wire), hex.EncodeToString(le), hex.EncodeToString(be), expected, clamps, expected, clamps, expected, clamps, index, input, expected, clamps)
+`, field, text, hex.EncodeToString(want), hex.EncodeToString(wire), hex.EncodeToString(le), hex.EncodeToString(be), expected, clamps, expected, clamps, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant), clamps, index, input, expected, clamps)
 		if clamps > 0 {
 			fmt.Fprintf(&probe, `
 refused=try do
@@ -173,6 +178,8 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
   maybe ?int64 | min = -7
   nested Small
  }
+ table RetainedClosure { value Closure
+ marker []uint8 }
  `
 	u := unitFrom(t, schema)
 	rawSchema := schema
@@ -199,6 +206,7 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	retainedWire, retainedWant := rangeRetainedWires(t, m, rawM, u, rawU, "RetainedClosure", input, expected)
 	probe := fmt.Sprintf(`
  defmodule Probe do
   def check(true,_),do: :ok
@@ -217,14 +225,41 @@ func TestOneSidedRangeClosureElixir(t *testing.T) {
  Probe.check(absent["maybe"]==nil and r.clamped==0,"absent optional has no clamp")
  store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
  zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
- {:ok,held,r,store}=T.load_retain("Closure",wire,store,zero)
+ {:error,:fixed_root,^zero,^store}=T.load_retain("Closure",wire,store,zero)
+ retained_wire=Base.decode16!(%q,case: :lower)
+ retained_want=Base.decode16!(%q,case: :lower)
+ {:ok,held,r,store}=T.load_retain("RetainedClosure",retained_wire,store,zero)
  Probe.check(r.clamped==5 and not r.malformed,"retained closure clamps")
- {:ok,^want,_,_}=T.save_retain("Closure",held,store,r)
+ Probe.check(held["value"]==value,"retained closure value")
+ {:ok,^retained_want,_,_}=T.save_retain("RetainedClosure",held,store,r)
 
  IO.puts("RANGE_CLOSURE_OK")
- `, hex.EncodeToString(wire), hex.EncodeToString(want), input)
+ `, hex.EncodeToString(wire), hex.EncodeToString(want), input, hex.EncodeToString(retainedWire), hex.EncodeToString(retainedWant))
 	out, err := runArmProbe(t, elixirBinary(t), generateElixir(t, u), probe)
 	if err != nil || !strings.Contains(out, "RANGE_CLOSURE_OK") || strings.Contains(out, "warning:") {
 		t.Fatalf("native range closure: %v\n%s", err, out)
 	}
+}
+
+// Fixed bodies retain their range rules below a variable root; the fixed root
+// itself refuses retention without changing the caller report or store.
+func rangeRetainedWires(t *testing.T, m, rawM *tabletext.Model, u, rawU *ir.Unit, root, input, expected string) ([]byte, []byte) {
+	t.Helper()
+	raw, value := rawM.New(rawU.Tables[root]), m.New(u.Tables[root])
+	var report tabletext.Report
+	if !rawM.Read(raw, []byte(`{"value":`+input+`}`), &report) || !report.Silent() {
+		t.Fatal(report)
+	}
+	if !m.Read(value, []byte(`{"value":`+expected+`}`), &report) || !report.Silent() {
+		t.Fatal(report)
+	}
+	wire, err := tablewire.Encode(rawM, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := tablewire.Encode(m, value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wire, want
 }
