@@ -12,12 +12,14 @@ package mootable_test
 //	    the read a form-1 file goes to. moo's strict read answers ONE name, on
 //	    report.reason: for a row whose form column pins the form refusal (Go's
 //	    TableReport.Reason, Goose's report.reason) that name is the form
-//	    column's, and for every other row it is the strict column's. A row
-//	    moo does not yet answer as pinned is named in mooReasonGaps with the
-//	    answer it gives, so a repair turns the gate red until the list says so
+//	    column's, and for every other row it is the strict column's; the
+//	    rows of an open question are named in mooReasonGaps with moo's
+//	    answer, so either change turns the gate red. The tolerant load
+//	    (loadTolerant) names the same form refusal on its report, as Go's
+//	    TableReport.Reason does
 //	TestMooLoadRefusalReasonsNegativeControl  breaks the strict read's
-//	    framing verdict and its form-2 reason, each of which must turn exactly
-//	    its own rows red
+//	    framing verdict, the value-only root's damage bit and the form-2
+//	    reason, each of which must turn exactly its own rows red
 
 import (
 	"encoding/hex"
@@ -42,23 +44,17 @@ var reasonSchemas = map[string]string{
 }
 
 // mooReasonGaps is every pinned row moo's strict read does not answer as the
-// pin does, with the name it answers instead:
-//
-//   - a body the tolerant walk finds malformed behind good framing is named
-//     wire_damaged; the pin, and Go's TableReport.Err(), name it malformed and
-//     keep wire_damaged for the open's damage verdict;
-//   - a count above the int32 extent cap is named count_refusal, the shared
-//     hostile corpus's name for the reference engine's CountRefusal
-//     (internal/ci/hostilecorpus); the pin, Go's ReadStrict, answers
-//     wire_damaged, a load that answers no root and names nothing.
+// pin does, with the name it answers instead. The four rows are a count above
+// the int32 extent cap (§2.9), an open question: the pin's wire_damaged is
+// Go's ReadStrict fallback, while the C++ and C references refuse the load
+// naming count_over_extent_cap; moo answers count_refusal, the shared hostile
+// corpus's name for the reference engine's CountRefusal
+// (internal/ci/hostilecorpus). The ruling decides the name for every leg.
 var mooReasonGaps = map[string]string{
-	"values_over_length":  "wire_damaged",
-	"entries_over_length": "wire_damaged",
-	"fixed_cut_payload":   "wire_damaged",
-	"values_cap31":        "count_refusal",
-	"entries_cap31":       "count_refusal",
-	"values_cap32":        "count_refusal",
-	"entries_cap32":       "count_refusal",
+	"values_cap31":  "count_refusal",
+	"entries_cap31": "count_refusal",
+	"values_cap32":  "count_refusal",
+	"entries_cap32": "count_refusal",
 }
 
 func reasonRows(t *testing.T) []reasonRow {
@@ -90,7 +86,9 @@ const reasonProbe = `local function probe(name: string)
 	if v == nil then
 		answer = string.split(tostring(rep.reason), ":")[1]
 	end
-	print(name .. "\t" .. answer)
+	local tolerant = load.newReport()
+	load.loadTolerant("Root", inputs[name], tolerant)
+	print(name .. "\t" .. answer .. "\t" .. tostring(tolerant.reason))
 end
 `
 
@@ -128,10 +126,13 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 			in[r.name] = wire
 			fmt.Fprintf(&main, "probe(%q)\n", r.name)
 		}
-		got := map[string]string{}
+		got, tolerant := map[string]string{}, map[string]string{}
 		for line := range strings.SplitSeq(g.run(t, main.String(), in), "\n") {
-			name, answer, _ := strings.Cut(line, "\t")
-			got[name] = answer
+			f := strings.Split(line, "\t")
+			if len(f) != 3 {
+				t.Fatalf("the probe printed %q", line)
+			}
+			got[f[0]], tolerant[f[0]] = f[1], f[2]
 		}
 		for _, r := range mine {
 			want := r.strict
@@ -140,6 +141,9 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 			}
 			if gap, ok := mooReasonGaps[r.name]; ok {
 				want = gap
+			}
+			if r.form != "-" && tolerant[r.name] != r.form {
+				bad = append(bad, fmt.Sprintf("%s: the tolerant load's report names %q, want %q", r.name, tolerant[r.name], r.form))
 			}
 			if got[r.name] != want {
 				bad = append(bad, fmt.Sprintf("%s: moo answers %q, want %q (pin: strict %s, form %s)", r.name, got[r.name], want, r.strict, r.form))
@@ -179,6 +183,9 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 //     wire_damaged: the rows its frame-and-terminator check refuses (a form
 //     byte alone, a cut file, a terminator before the id table) go red, and
 //     only they;
+//   - a value-only root's walk that read past damage no longer marks the
+//     verdict's damage: the row whose bool byte is 2 answers malformed and
+//     goes red, and only it;
 //   - form 2 is named newer_form instead of message_form_as_file: the two
 //     form-2 rows go red, and only they.
 func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
@@ -192,6 +199,10 @@ func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"wire_damaged\"\n",
 			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"malformed\"\n",
 			[]string{"cut_last", "fixed_early_end", "form_only"}},
+		{"value-root-damage",
+			"\tif whole and report.malformed and not desc.variable then\n",
+			"\tif false then\n",
+			[]string{"fixed_bool_two"}},
 		{"form-2-reason",
 			"\tif form == 2 then\n\t\trep.reason = \"message_form_as_file\"\n",
 			"\tif form == 2 then\n\t\trep.reason = \"newer_form\"\n",

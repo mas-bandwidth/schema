@@ -97,27 +97,34 @@ end
 local ID_TABLE_BOUND = 4096
 
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
--- byte this reader does not know REFUSES; damage is malformed. The count is
--- the unsigned u64 at the file's end; a high half past zero is huge and never
--- frames.
+-- byte this reader does not know REFUSES, naming it; damage is malformed and
+-- the verdict's damage (report.damaged). The count is the unsigned u64 at the
+-- file's end; a high half past zero is huge and never frames.
 local function open(bytes: buffer, report: any): any
 	local len = buffer.len(bytes)
 	if len < 1 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
-	if buffer.readu8(bytes, 0) ~= 1 then
+	local form = buffer.readu8(bytes, 0)
+	if form ~= 1 then
+		-- the report names which form it refused (§6.5): a batch handed to a
+		-- file reader, or a byte this reader does not carry
 		report.refused += 1
+		report.reason = if form == 2 then "message_form_as_file" else "newer_form"
 		return nil
 	end
 	if len < 9 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
 	local lo = buffer.readu32(bytes, len - 8)
 	local hi = buffer.readu32(bytes, len - 4)
 	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
 	local count = lo
@@ -128,6 +135,7 @@ local function open(bytes: buffer, report: any): any
 		local id = buffer.readstring(bytes, endpos + i * 8, 8)
 		if seen[id] then
 			report.malformed = true
+			report.damaged = true
 			return nil
 		end
 		seen[id] = true
@@ -1525,6 +1533,7 @@ end
 -- a report at rest (docs/SPEC-TABLES.md §4)
 local function reset(report: any)
 	report.malformed = false
+	report.damaged = false
 	report.retained = 0
 	report.retainLost = 0
 	report.refused = 0
@@ -1589,6 +1598,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		if ref == 0 then
 			if walk.at ~= o.e then
 				report.malformed = true
+				report.damaged = true
 				return nil
 			end
 			break
@@ -1640,7 +1650,13 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 			end
 		end
 	end
-	read_body(desc, new_reader(bytes, 1, o.e), v, false)
+	-- A VALUE-ONLY ROOT'S DAMAGE (§4, gotable's <T>LoadTolerant): damage its
+	-- walk read past is the verdict's; damage that stopped the walk is a
+	-- malformed body
+	local whole = read_body(desc, new_reader(bytes, 1, o.e), v, false)
+	if whole and report.malformed and not desc.variable then
+		report.damaged = true
+	end
 	resolve(report)
 	if report.nonFiniteField ~= nil then
 		report.reason = "non_finite_float: " .. report.nonFiniteField
@@ -2029,11 +2045,15 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.field = rep.nonFiniteField
 		return nil
 	end
+	-- a count past the int32 extent cap (§2.9) is the load's own refusal
 	if _countRefused then
 		rep.reason = "count_refusal"
 		return nil
 	end
-	if v == nil and rep.malformed then
+	-- THE VERDICT'S DAMAGE IS wire_damaged, and a malformed body behind good
+	-- framing is malformed (TableReport.Err()'s order); a load that read
+	-- nothing whole and names nothing else is wire_damaged
+	if rep.damaged then
 		rep.reason = "wire_damaged"
 		return nil
 	end
@@ -2048,6 +2068,10 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 			end
 			return nil
 		end
+	end
+	if v == nil then
+		rep.reason = "wire_damaged"
+		return nil
 	end
 	if rep.unknown > 0 then
 		rep.unknownField = witness(root, b, "unknown")
