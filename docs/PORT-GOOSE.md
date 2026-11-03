@@ -122,11 +122,32 @@ ordinal, header kind (§3), its SHAPE (`ShapeBool … ShapeVoid` in
 (`elem`), the array kind and bounds, an enum's variant ids, the integer's
 kind width, signedness and clamp range (as Int128 lanes, one shape for every
 domain), a fixed field's (I, F), a compressed float's range, and the
-default. Unions get `<Name>Descriptor` of `schema_rt::UnionDesc` with their
-arms; a packet type a table reaches by value gets a descriptor too, because
-it rides as a table body. The helper globals a descriptor names
-(`_<Name>Fields`, `_<Name>_e<o>`, `_<Enum>Variants`) start with an
-underscore, which no schema name does.
+default; then the §8.1 columns: the declared type's spelling (`type_name`),
+a union arm's offset in the union's storage at the record layout
+(`arm_offset`, every arm at the one payload base), and what a person wrote,
+`doc` (the `///` block, verbatim; `schema_rt::TableDocNone`, the one empty
+doc, when there is none) and `num_tags` with `tags` (in declared order; 0
+and an empty list when there are none). A `TableDesc` carries the
+declaration's own `doc`, `num_tags` and `tags` the same way. Unions get
+`<Name>Descriptor` of `schema_rt::UnionDesc` with their arms; a packet type
+a table reaches by value gets a descriptor too, because it rides as a table
+body. The helper globals a descriptor names (`_<Name>Fields`,
+`_<Name>_e<o>`, `_<Enum>Variants`, and the tag lists `_<Name>Tags` and
+`_<Owner>_t<ordinal>`) start with an underscore, which no schema name does.
+
+**The view.** Every unit with a table gets `<Package>View.goose`
+(docs/SPEC-TABLES.md §8.5, `goosetable/view.go`), on the side: nothing else
+imports it. It declares the registry's types (`UnitViewInfo`, `ViewType`,
+`ViewVocabulary`, `ViewVariant`, `ViewConstant`, the C++ columns, with
+`ViewType`'s `type` spelled `descriptor` because `type` is a Goose keyword)
+and `UnitView()`, which returns a reference to the one registry global. The
+registry is data: a declaration's row names its `<Name>Descriptor`, a
+record-naming arm its payload's descriptor and a general arm its entry in
+`_<Union>Arms`. A type or union no table reaches gets its `<Name>Descriptor`
+here, with no table-wire identity (§8.2). The corpus gate
+(`TestGooseUnitViewCorpus`, `make tables-goose-view`) prints the registry
+from a Goose program (`test/tables/view_goose.goosetext`) and byte-compares
+it against `internal/viewlisting`.
 
 **How a walk reaches a field.** Goose has no reflection, no `offsetof` and
 no function pointers: function values are compile-time entities passed as
@@ -527,7 +548,7 @@ surface in the files THE RUNTIME LAYOUT names, and none edits `goose.go`,
 | schema-goose-vt-retain-unknown | retain-unknown on load and save | `goosetable/retain_unknown.go`, its runtime file |
 | schema-goose-vt-integrity-forms | the integrity trailer and the forms declaration | `goosetable/integrity_forms.go`, its runtime file, `compiler/carries_goose_integrity_forms.go` |
 | schema-goose-vt-strict-and-refusals | the strict read and every refusal by name (I6) | `goosetable/strict_and_refusals.go`, its runtime file |
-| schema-goose-vt-descriptors | reflection descriptors, doc comments, the unit registry and type views (J1) | `goosetable/descriptors.go`, its runtime file |
+| schema-goose-vt-descriptors | reflection descriptors, doc comments, the unit registry and type views (J1) | `goosetable/descriptors.go`, `goosetable/view.go`, its runtime file, `test/tables/view_goose.goosetext`, `make/goose-view.mk` |
 | schema-goose-fixed-form | the fixed form, form byte 3, against the byte oracle (M22) | `goosetable/fixedform.go`, `goosetable/runtime/fixed.goose` |
 | schema-goose-fixed-form-evolution | fixed tables: versioning, widening and every refusal by Go's name | `goosetable/fixedevolve.go`, its runtime file |
 | schema-goose-message-form | the message form, form byte 2, against its goldens | `goosetable/messageform.go`, `goosetable/runtime/message.goose` |

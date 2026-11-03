@@ -52,6 +52,22 @@ func ValidCompressedFloatParams(fmin, fmax, res float64) bool {
 	return values > 0 && values <= 4294967040.0
 }
 
+// CompressedFloatDecodeFinite reports whether the top step of a triple
+// dequantizes to a finite float32, in the reader's own arithmetic:
+// float32(normalized*delta) + min with normalized = steps/steps. Every operand
+// can be finite and the final add can still round past the largest float32
+// (min = 3*2^103, max = MaxFloat32). Rounding is monotone and the index is
+// bounded by the step count, so the top step is the largest value a reader can
+// produce: when it is finite, every index dequantizes to a finite value.
+func CompressedFloatDecodeFinite(fmin, fmax, res float64) bool {
+	steps, _ := CompressedFloatParams(fmin, fmax, res)
+	min32 := float32(fmin)
+	delta := float32(fmax) - min32
+	normalized := float32(steps) / float32(steps)
+	top := float32(normalized*delta) + min32
+	return math.Float32bits(top)&0x7f800000 != 0x7f800000
+}
+
 func compressedFloatValues(fmin, fmax, res float64) float32 {
 	delta := float32(fmax) - float32(fmin)
 	return delta / float32(res)

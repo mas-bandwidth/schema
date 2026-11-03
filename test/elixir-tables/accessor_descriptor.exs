@@ -88,6 +88,9 @@ defmodule AccessorDescriptor do
 
   def classify_cook(f) do
     cond do
+      f.storage in [:list, :map] ->
+        {:noth, "holder"}
+
       f.is_pointer ->
         {:hold}
 

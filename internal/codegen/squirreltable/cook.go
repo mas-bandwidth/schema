@@ -48,8 +48,8 @@ func cookModule(m *Module) {
 	m.Printf("_M.cookForms <- {\n")
 	for _, st := range m.Closure {
 		ml := ir.RecordLayout(m.Unit, st)
-		m.Printf("  %s = { name = %s, size = %d, align = %d, fields = [\n",
-			squirrel.TableKey(st.Name), squirrel.StringLit([]byte(st.Name)), ml.Size, ml.Align)
+		m.Printf("  %s = { name = %s, size = %d, align = %d, nodeAlign = %d, record = %d, fields = [\n",
+			squirrel.TableKey(st.Name), squirrel.StringLit([]byte(st.Name)), ml.Size, ml.Align, ir.CookNodeAlign(m.Unit, st), ir.CookExtentStart(m.Unit, st))
 		for _, fl := range ml.Fields {
 			m.Printf("    %s,\n", cookField(m.Unit, fl))
 		}
@@ -74,6 +74,10 @@ func cookField(u *ir.Unit, fl ir.FieldLayout) string {
 	isArray := f.KeyEnum != "" || f.Array != ir.ArrayNone
 	bound := int64(1)
 	elemSize := fl.Size
+	elemAlign := int64(1)
+	if f.IsList() {
+		elemSize, elemAlign = ir.ListElementLayout(u, f)
+	}
 	countOffset := int64(-1)
 	presentOffset := int64(-1)
 	if isArray && f.ArrayBound > 0 {
@@ -103,8 +107,8 @@ func cookField(u *ir.Unit, fl ir.FieldLayout) string {
 			table = squirrel.StringLit([]byte(ref.Name))
 		}
 	}
-	return fmt.Sprintf("{ name = %s, offset = %d, size = %d, elemSize = %d, storage = %s, table = %s, isArray = %t, bound = %d, countOffset = %d, presentOffset = %d, isPointer = %t }",
-		squirrel.StringLit([]byte(f.Name)), fl.Offset, fl.Size, elemSize, squirrel.StringLit([]byte(cookStorage(f))),
+	return fmt.Sprintf("{ name = %s, offset = %d, size = %d, elemSize = %d, elemAlign = %d, storage = %s, table = %s, isArray = %t, bound = %d, countOffset = %d, presentOffset = %d, isPointer = %t }",
+		squirrel.StringLit([]byte(f.Name)), fl.Offset, fl.Size, elemSize, elemAlign, squirrel.StringLit([]byte(cookStorage(f))),
 		table, isArray, bound, countOffset, presentOffset, f.Type.Pointer)
 }
 

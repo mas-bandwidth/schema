@@ -243,7 +243,7 @@ fn check_case(name: &str, vocab: &TableVocabulary, wire: &[u8], expect_ok: bool,
             *failed = true;
         }
     } else {
-        if !ok && count == 0 && rep.malformed && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7 {
+        if !ok && count == 0 && rep.malformed && !rep.refused && values.iter().all(|value| value.a == RootRow::default().a) {
             println!("PASS {name}");
         } else {
             println!("FAIL {name}: ok={ok} count={count} malformed={} refused={} a0={} a1={}", rep.malformed, rep.refused, values[0].a, values[1].a);

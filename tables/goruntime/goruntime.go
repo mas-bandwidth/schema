@@ -427,6 +427,10 @@ func (r *TableReport) Err() error {
 		return TableMissingRequired{Fields: f}
 	}
 	if r.Malformed {
+		const p = "malformed: "
+		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
+			return TableMalformedField{Field: r.Reason[len(p):]}
+		}
 		return TableRefuseMalformed
 	}
 	// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
@@ -486,6 +490,23 @@ type TableClampedField struct{ Field string }
 func (e TableClampedField) Error() string { return "clamped: " + e.Field }
 
 func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
+
+// tableTextMalformed names the text list or map whose element or key a read
+// refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
+func TableTextMalformed(r *TableReport, field string) {
+	if r != nil && r.Reason == "" {
+		r.Reason = "malformed: " + field
+	}
+}
+
+// TableMalformedField is a strict read's malformed refusal naming the text
+// list or map it refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1):
+// errors.Is(err, TableRefuseMalformed) holds.
+type TableMalformedField struct{ Field string }
+
+func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
+
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
 
 func TableLebBytes(v uint64) int64 {
 	n := int64(1)
@@ -2205,4 +2226,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xbe8efa752a9b8817
+const Version uint64 = 0xd4efeefe07b82e50

@@ -152,10 +152,12 @@ define tables_generate_c
 	$(1) generate --lang c --out $(2)/wide examples-wide
 	$(1) generate --lang c --out $(2)/scalars tables/scalars
 	$(1) generate --lang c --out $(2)/scalars2 test/tables/Scalars2.schema
+	$(1) generate --lang c --out $(2)/widelist tables/widelist
 	$(1) generate --lang c --out $(2)/jsonkeys test/tables/JsonKeys.schema
+	$(1) generate --lang c --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
-build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema examples-wide/Caption.schema examples-wide/WideText.schema
+build/tables-generated-c/.stamp: bin/schema build/tables-generated-c/collections.stamp make/c.mk test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(wildcard tables/stream/*.schema) $(wildcard tables/blobs/*.schema) $(wildcard tables/vocab9/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/backend/*.schema) test/tables/R2.schema test/tables/R1.schema test/tables/K2.schema test/tables/K1.schema test/tables/A2.schema test/tables/A1.schema test/tables/M2.schema test/tables/M1.schema $(wildcard tables/messages/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema tables/scalars/Scalars.schema test/tables/Scalars2.schema $(SCHEMAS_TABLES_WIDELIST) examples-wide/Caption.schema examples-wide/WideText.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-c
 	$(call tables_generate_c,./bin/schema,build/tables-generated-c)
 	@touch $@
@@ -195,8 +197,8 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	test/conformance/c/unit_tblm1.c build/tables-generated-c/m1/M1Table.c \
 	test/conformance/c/unit_messagedemo.c build/tables-generated-c/messages/MessagesTable.c \
 	test/conformance/c/unit_widedemo.c build/tables-generated-c/wide/CaptionTable.c \
-	test/conformance/c/unit_scalars.c test/conformance/c/unit_tblscalars2.c \
-	build/tables-generated-c/scalars/ScalarsTable.c build/tables-generated-c/scalars2/Scalars2Table.c \
+	test/conformance/c/unit_scalars.c test/conformance/c/unit_tblscalars2.c test/conformance/c/unit_widelist.c \
+	build/tables-generated-c/scalars/ScalarsTable.c build/tables-generated-c/scalars2/Scalars2Table.c build/tables-generated-c/widelist/WidesTable.c \
 	test/conformance/c/unit_tabledemo.c test/conformance/c/unit_tblv1.c \
 	test/conformance/c/unit_tblv2.c test/conformance/c/unit_tblp1.c \
 	test/conformance/c/unit_tblp3.c test/conformance/c/unit_blockdemo.c \
@@ -210,15 +212,16 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	build/tables-generated-c/block/RenderBlock.c build/tables-generated-c/block/RenderTable.c \
 	build/tables-generated-c/block/PaddedBlock.c build/tables-generated-c/block/PaddedTable.c \
 	build/tables-generated-c/pointers/GraphTable.c build/tables-generated-c/pointers/MarksTable.c \
-	build/tables-generated-c/pointers/PartsTable.c
+	build/tables-generated-c/pointers/PartsTable.c \
+	test/conformance/c/unit_featurewitnesses.c build/tables-generated-c/featurewitnesses/FeaturesTable.c
 
 # Each unit's translation unit gets ONLY its own unit on the include path, which
 # is what keeps two units' identically-named headers from meeting. The driver's
 # own headers come from test/conformance/c.
-C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -Ibuild/tables-generated-c/wide -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Itest/conformance/c -Ibuild/tables-generated-c/examples \
+C_CONFORMANCE_INCLUDES := -Ibuild/tables-generated-c -Ibuild/tables-generated-c/w1 -Ibuild/tables-generated-c/w2 -Ibuild/tables-generated-c/rt1 -Ibuild/tables-generated-c/g1 -Ibuild/tables-generated-c/p2 -Ibuild/tables-generated-c/stream -Ibuild/tables-generated-c/blobs -Ibuild/tables-generated-c/vocab9 -Ibuild/tables-generated-c/vocab -Ibuild/tables-generated-c/backend -Ibuild/tables-generated-c/r2 -Ibuild/tables-generated-c/r1 -Ibuild/tables-generated-c/k2 -Ibuild/tables-generated-c/k1 -Ibuild/tables-generated-c/a2 -Ibuild/tables-generated-c/a1 -Ibuild/tables-generated-c/m2 -Ibuild/tables-generated-c/m1 -Ibuild/tables-generated-c/messages -Ibuild/tables-generated-c/wide -I$(SERIALIZE_C) -Ibuild/tables-generated-c/scalars -Ibuild/tables-generated-c/scalars2 -Ibuild/tables-generated-c/widelist -Itest/conformance/c -Ibuild/tables-generated-c/examples \
 	-Ibuild/tables-generated-c/v1 -Ibuild/tables-generated-c/v2 \
 	-Ibuild/tables-generated-c/p1 -Ibuild/tables-generated-c/p3 \
-	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers
+	-Ibuild/tables-generated-c/block -Ibuild/tables-generated-c/pointers -Ibuild/tables-generated-c/featurewitnesses
 
 build/conformance-c: build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.c) $(wildcard test/conformance/c/*.h)
 	@mkdir -p build
@@ -419,7 +422,9 @@ conformance-negative-control-c: build/conformance-harness
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/wide examples-wide
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars tables/scalars
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/scalars2 test/tables/Scalars2.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/widelist tables/widelist
 	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/jsonkeys test/tables/JsonKeys.schema
+	$(CONFORMANCE_NEGATIVE_C)/schema generate --lang c --out $(CONFORMANCE_NEGATIVE_C)/generated/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	@grep -lq SABOTAGED $(CONFORMANCE_NEGATIVE_C)/generated/*/*Table.c || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged walk"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C)/generated,$(C_CONFORMANCE_INCLUDES)) \
@@ -475,6 +480,47 @@ conformance-negative-control-c-absent: build/conformance-harness build/tables-ge
 	@echo "negative control: a C driver that drops a per-case absence turns the harness red"
 
 test-c: conformance-negative-control-c-absent
+
+# THE NEGATIVE CONTROL FOR THE FRAMING SURFACE (docs/LAYERS/1-framing.md). The
+# framing vectors hold the C reader to layer 1's rules; this one breaks the
+# bounded-work contract (docs/SPEC-TABLES.md §3: an id table claiming more than
+# 4096 entries is malformed for the whole wire) in a scratch copy of the
+# generated units, builds the driver against the copy, and requires the harness
+# red on the framing surface, on the 4097-entry vector, while the wire and
+# report surfaces stay green. The tracked tree is never written to.
+CONFORMANCE_NEGATIVE_C_FRAMING := build/conformance-negative-c-framing
+.PHONY: conformance-negative-control-c-framing
+conformance-negative-control-c-framing: build/conformance-harness build/conformance-c
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_FRAMING) && mkdir -p $(CONFORMANCE_NEGATIVE_C_FRAMING)
+	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated
+	@for f in $$(grep -rl 'if ( count > 4096 ) { report->malformed = 1; return 0; }' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated); do \
+		sed 's|if ( count > 4096 ) { report->malformed = 1; return 0; }|if ( 0 ) { return 0; } /* SABOTAGED: the 4096-entry cap */|' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f" || exit 1; \
+	done
+	@grep -rq 'SABOTAGED: the 4096-entry cap' $(CONFORMANCE_NEGATIVE_C_FRAMING)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_FRAMING)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_FRAMING)/generated,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_FRAMING)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_FRAMING)" > $(CONFORMANCE_NEGATIVE_C_FRAMING)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_FRAMING)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_FRAMING)" > $(CONFORMANCE_NEGATIVE_C_FRAMING)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_FRAMING)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C_FRAMING)/work > $(CONFORMANCE_NEGATIVE_C_FRAMING)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a C reader without the 4096-entry cap left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; \
+	fi
+	@grep -q "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on the 4097-entry vector"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
+	@grep -q "framing       FAIL" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the framing surface did not go red"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
+	@grep -q "wire          pass" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the wire surface went red too, so the control localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_FRAMING)/log; exit 1; }
+	@grep -m1 "frame_entries_4097" $(CONFORMANCE_NEGATIVE_C_FRAMING)/log
+	@echo "negative control: a C reader without the 4096-entry cap turns the framing surface red"
+
+test-c: conformance-negative-control-c-framing
 
 # THE NEGATIVE CONTROL FOR THE TWO FOREIGN SURFACES. `cook-foreign` and
 # `block-foreign` are the only rows whose EXPECTED ANSWER IS A REFUSAL, so a
@@ -1616,6 +1662,42 @@ tables-c-skip-timestamp-kind-negative-control: build/conformance-harness build/t
 
 test-c: tables-c-skip-timestamp-kind-negative-control
 
+# THE 16-BYTE EXTENT ALIGNMENT OF 128-BIT SEQUENCES (docs/SPEC-TABLES.md §2.8,
+# §2.9, §6.2): Wide is 40 bytes (8 mod 16) and wides []uint128 aligns at 16
+# (ir.ListElementLayout), while C serialize_uint128_t is an 8-aligned struct of
+# two uint64_t halves. The two pinned mutants are widelist_wide reference #1
+# (seed 1, sha256 11e2e71d...) and widelist_wide widen #0 (seed 1, sha256
+# 7a71d97b...), which at 949ea720287bdd6a17200a8bc7a82cc56b73f437 answered
+# LoadMeasure = 208 (instead of 224) and LoadMeasure = -1 (instead of 224).
+.PHONY: tables-c-widelist-extent-align16
+tables-c-widelist-extent-align16: build/conformance-harness build/wire-fuzz-c build/wire-fuzz-c-asan
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide --retain
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide
+	./build/conformance-harness wire-fuzz --driver ./build/wire-fuzz-c-asan --replay testdata/wire/tables/c_widelist_widen_floor.bin --unit widelist --root Wide --retain
+
+test-c tables-c: tables-c-widelist-extent-align16
+
+.PHONY: tables-c-widelist-extent-align16-negative-control
+tables-c-widelist-extent-align16-negative-control: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf build/c-widelist-sabotage && mkdir -p build/c-widelist-sabotage
+	@cp -R build/tables-generated-c build/c-widelist-sabotage/generated
+	@sed "s|int64_t at=widelistdemo_table_align_up64((int64_t)sizeof(widelistdemo_wide_t));|int64_t at=sizeof(widelistdemo_wide_t); /* SABOTAGED: unaligned extent start */|; s|sizeof(serialize_uint128_t),16|sizeof(serialize_uint128_t),SCHEMA_TABLE_ALIGNOF(serialize_uint128_t) /* SABOTAGED */|g" build/c-widelist-sabotage/generated/widelist/WidesTable.h > build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp && mv build/c-widelist-sabotage/generated/widelist/WidesTable.h.tmp build/c-widelist-sabotage/generated/widelist/WidesTable.h
+	@grep -q "SABOTAGED: unaligned extent start" build/c-widelist-sabotage/generated/widelist/WidesTable.h || { echo "NEGATIVE CONTROL FAILED: the widelist sabotage patched nothing"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(C_CONFORMANCE_INCLUDES)) \
+		test/c-tables/wire_fuzz_main.c $(subst build/tables-generated-c,build/c-widelist-sabotage/generated,$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES))) -o build/c-widelist-sabotage/driver -lm
+	@if ./build/conformance-harness wire-fuzz --driver ./build/c-widelist-sabotage/driver --replay testdata/wire/tables/c_widelist_extent_align16.bin --unit widelist --root Wide > build/c-widelist-sabotage/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: unaligned Wide extent start left the pinned replay green"; exit 1; \
+	fi
+	@grep -q "measure=208" build/c-widelist-sabotage/log && grep -q "the framing commands exactly 224" build/c-widelist-sabotage/log || { cat build/c-widelist-sabotage/log; exit 1; }
+	@echo "C widelist alignment negative control: unaligned Wide extent start reproduces LoadMeasure 208 vs 224"
+
+test-c tables-c: tables-c-widelist-extent-align16-negative-control
+
 # Maps and lists use the C++ reference's pinned file bytes and exact region
 # sizes. Both allocator-backed construction and caller-owned loads are checked
 # through lock, save, and JSON under native execution and ASan/UBSan.
@@ -1951,3 +2033,83 @@ tables-c-two-units-negative-controls: build/c-two-units/main
 	@echo 'negative control: without the package, the same translation unit fails on redefinitions'
 
 test-c: tables-c-two-units tables-c-two-units-negative-controls
+
+# DAMAGE DISCARDS THE WHOLE LOAD, C LEG (docs/SPEC-TABLES.md §4): damage
+# inside a nested body, with a whole field before and after it, makes every
+# public C read hand back nothing it decoded -- the value read and the strict
+# read, the region read, the retaining read (its store emptied), the builder
+# read, both text reads and the message batch. The control removes each
+# read's discard from the emitted C in turn and requires exactly that read's
+# rows of TestDamageDiscardsTheWholeLoadC red and every other row green.
+.PHONY: tables-c-discard tables-c-discard-negative-control
+tables-c-discard:
+	@mkdir -p build/c-discard
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadC$$' > build/c-discard/pin.log 2>&1 || \
+		{ cat build/c-discard/pin.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-discard/pin.log || \
+		{ echo "tables-c-discard: the pin was skipped, so it held nothing"; cat build/c-discard/pin.log; exit 1; }
+	@echo 'C discard: damage hands back no value from any C read'
+tables-c-discard-negative-control:
+	@mkdir -p build/c-discard
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^TestDamageDiscardsTheWholeLoadCNegativeControl$$' > build/c-discard/control.log 2>&1 || \
+		{ cat build/c-discard/control.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-discard/control.log || \
+		{ echo "NEGATIVE CONTROL FAILED: the discard control was skipped, so it is watching nothing"; cat build/c-discard/control.log; exit 1; }
+	@echo 'negative control: each C read with its discard removed hands back a value, on exactly its own rows'
+test-c: tables-c-discard
+
+# A CYCLIC WIRE IS DAMAGE, C LEG (docs/SPEC-TABLES.md §3.1, §4; Glenn's ruling,
+# 2026-10-31). The C check is Kahn's algorithm over the load's directory
+# (table_cycle_acyclic, internal/codegen/ctable/graph.go), using temporary
+# 1-based directory indices during construction and resolving offsets once
+# acyclicity holds. The first control drops the cycle verdict in a copy of
+# graph.go so a cyclic graph loads, and TestPointerNamingAnOpenNodeIsRefusedC
+# must go red on it. The linear control stacks a node at every slot naming it
+# rather than the last, and TestDiamondChainLoadsLinearC must go red on it.
+C_CYCLE_NC := build/c-cycle-nc
+C_CYCLE_LINEAR_NC := build/c-cycle-linear-nc
+.PHONY: tables-c-cycle tables-c-cycle-negative-control tables-c-cycle-linear-negative-control
+tables-c-cycle:
+	@mkdir -p build/c-cycle
+	@SCHEMA_SLOW=1 go test -v -count=1 -timeout 600s ./internal/codegen/ctable/ -run '^Test(PointerNamingAnOpenNodeIsRefusedC|CyclicWireIsRefusedC|DiamondChainLoadsLinearC|CycleOrdinalBoundaryC)$$' > build/c-cycle/pin.log 2>&1 || \
+		{ cat build/c-cycle/pin.log; exit 1; }
+	@! grep -q -- '--- SKIP' build/c-cycle/pin.log || \
+		{ echo "tables-c-cycle: the pin was skipped, so it held nothing"; cat build/c-cycle/pin.log; exit 1; }
+	@echo 'C cycle: cyclic wire graphs are refused as damage and diamond DAGs load in linear time'
+tables-c-cycle-negative-control:
+	@rm -rf $(C_CYCLE_NC) && mkdir -p $(C_CYCLE_NC)
+	@sed -e 's#if ( !c.broken && c.processed == c.vertices ) /\* an unfreed node sits on a cycle \*/#if ( !c.broken ) /* NEGATIVE CONTROL: the cycle verdict is gone */#' \
+		internal/codegen/ctable/graph.go > $(C_CYCLE_NC)/graph.go.txt
+	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_NC)/graph.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C cycle sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_NC)/graph.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -overlay $(C_CYCLE_NC)/overlay.json -run '^TestPointerNamingAnOpenNodeIsRefusedC$$' \
+			./internal/codegen/ctable > $(C_CYCLE_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C cycle verdict is gone and the gate stayed green"; \
+		cat $(C_CYCLE_NC)/log; exit 1; \
+	fi
+	@grep -q "cycle: the region load handed back a cyclic graph" $(C_CYCLE_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
+		  cat $(C_CYCLE_NC)/log; exit 1; }
+	@grep -m1 "cyclic graph" $(C_CYCLE_NC)/log
+	@echo "negative control: removing the C cycle verdict turns the cycle gate RED"
+tables-c-cycle-linear-negative-control:
+	@rm -rf $(C_CYCLE_LINEAR_NC) && mkdir -p $(C_CYCLE_LINEAR_NC)
+	@sed -e 's#if ( degree == 1 ) { table_cycle_push( c, p ); } /\* the last slot naming it: its descent is free \*/#table_cycle_push( c, p ); /* NEGATIVE CONTROL: entered once per path */#' \
+		internal/codegen/ctable/graph.go > $(C_CYCLE_LINEAR_NC)/graph.go.txt
+	@cmp -s internal/codegen/ctable/graph.go $(C_CYCLE_LINEAR_NC)/graph.go.txt && \
+		{ echo "NEGATIVE CONTROL: the C linear sabotage patched nothing"; exit 1; } || true
+	@printf '{"Replace":{"%s/internal/codegen/ctable/graph.go":"%s/$(C_CYCLE_LINEAR_NC)/graph.go.txt"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(C_CYCLE_LINEAR_NC)/overlay.json
+	@if SCHEMA_SLOW=1 go test -count=1 -timeout 300s -overlay $(C_CYCLE_LINEAR_NC)/overlay.json -run '^TestDiamondChainLoadsLinearC$$' \
+			./internal/codegen/ctable > $(C_CYCLE_LINEAR_NC)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a node entered once per path and the diamond gate stayed green"; \
+		cat $(C_CYCLE_LINEAR_NC)/log; exit 1; \
+	fi
+	@grep -q "diamond: the walk did not finish linear" $(C_CYCLE_LINEAR_NC)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the diamond gate went red for some other reason"; \
+		  cat $(C_CYCLE_LINEAR_NC)/log; exit 1; }
+	@grep -m1 "diamond:" $(C_CYCLE_LINEAR_NC)/log
+	@echo "negative control: entering a shared node once per path turns the C diamond gate RED"
+test-c: tables-c-cycle

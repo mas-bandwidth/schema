@@ -134,3 +134,11 @@ replace tblg1 => ../../../build/tables-generated-go/g1
 require cards v0.0.0
 
 replace cards => ../../../build/tables-generated-go/cards
+
+require widelistdemo v0.0.0
+
+replace widelistdemo => ../../../build/tables-generated-go/widelist
+
+require featurewitnesses v0.0.0
+
+replace featurewitnesses => ../../../build/tables-generated-go/featurewitnesses

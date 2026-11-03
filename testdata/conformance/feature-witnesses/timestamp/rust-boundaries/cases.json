@@ -1,0 +1,482 @@
+[
+  {
+    "name": "0",
+    "input": "{\"at\":\"1970-01-01T00:00:00Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "1",
+    "input": "{\"at\":\"1969-12-31T23:59:59.999999999Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "-1",
+    "canonical": "1969-12-31T23:59:59.999999999Z"
+  },
+  {
+    "name": "2",
+    "input": "{\"at\":\"2024-02-29T12:34:05Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1709210045000000000",
+    "canonical": "2024-02-29T12:34:05Z"
+  },
+  {
+    "name": "3",
+    "input": "{\"at\":\"2000-02-29T00:00:00Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "951782400000000000",
+    "canonical": "2000-02-29T00:00:00Z"
+  },
+  {
+    "name": "4",
+    "input": "{\"at\":\"2026-10-17t12:34:05z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445000000000",
+    "canonical": "2026-10-17T12:34:05Z"
+  },
+  {
+    "name": "5",
+    "input": "{\"at\":\"2026-10-17t12:34:05.5z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445500000000",
+    "canonical": "2026-10-17T12:34:05.5Z"
+  },
+  {
+    "name": "6",
+    "input": "{\"at\":\"2026-10-17T12:34:05.1234567899Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445123456789",
+    "canonical": "2026-10-17T12:34:05.123456789Z"
+  },
+  {
+    "name": "7",
+    "input": "{\"at\":\"2026-10-17T12:34:05.1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445123456789",
+    "canonical": "2026-10-17T12:34:05.123456789Z"
+  },
+  {
+    "name": "8",
+    "input": "{\"at\":\"2026-10-17T18:04:05.123456789+05:30\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445123456789",
+    "canonical": "2026-10-17T12:34:05.123456789Z"
+  },
+  {
+    "name": "9",
+    "input": "{\"at\":\"2026-10-17T05:34:05-07:00\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445000000000",
+    "canonical": "2026-10-17T12:34:05Z"
+  },
+  {
+    "name": "10",
+    "input": "{\"at\":\"2026-10-18T12:33:05+23:59\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445000000000",
+    "canonical": "2026-10-17T12:34:05Z"
+  },
+  {
+    "name": "11",
+    "input": "{\"at\":\"2026-10-16T12:35:05-23:59\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1792240445000000000",
+    "canonical": "2026-10-17T12:34:05Z"
+  },
+  {
+    "name": "12",
+    "input": "{\"at\":\"1970-01-01T00:00:00-00:00\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "13",
+    "input": "{\"at\":\"1677-09-21T00:12:43.145224192Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "-9223372036854775808",
+    "canonical": "1677-09-21T00:12:43.145224192Z"
+  },
+  {
+    "name": "14",
+    "input": "{\"at\":\"2262-04-11T23:47:16.854775807Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "9223372036854775807",
+    "canonical": "2262-04-11T23:47:16.854775807Z"
+  },
+  {
+    "name": "15",
+    "input": "{\"at\":\"2026-10-17T12:34:05+24:00\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "16",
+    "input": "{\"at\":\"2026-10-17T12:34:05+05:60\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "17",
+    "input": "{\"at\":\"2026-10-17T12:34:05-24:00\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "18",
+    "input": "{\"at\":\"2026-10-17T12:34:05-05:60\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "19",
+    "input": "{\"at\":\"2016-12-31T23:59:60Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "20",
+    "input": "{\"at\":\"2016-12-31T23:59:60.5Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "21",
+    "input": "{\"at\":\"2026-00-17T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "22",
+    "input": "{\"at\":\"2026-13-17T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "23",
+    "input": "{\"at\":\"2026-10-00T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "24",
+    "input": "{\"at\":\"2026-10-32T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "25",
+    "input": "{\"at\":\"2026-02-30T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "26",
+    "input": "{\"at\":\"2026-04-31T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "27",
+    "input": "{\"at\":\"2025-02-29T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "28",
+    "input": "{\"at\":\"1900-02-29T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "29",
+    "input": "{\"at\":\"2026-10-17T24:00:00Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "30",
+    "input": "{\"at\":\"2026-10-17T12:60:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "31",
+    "input": "{\"at\":\"2026-10-17T12:34:05.Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "32",
+    "input": "{\"at\":\"2026-10-17T12:34:05.1.2Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "33",
+    "input": "{\"at\":\"2026-10-17T12:34:05,123Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "34",
+    "input": "{\"at\":\"2026-10-17T12:34:05\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "35",
+    "input": "{\"at\":\"2026-10-17T12:34:05+0530\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "36",
+    "input": "{\"at\":\"2026-10-17T12:34:05+05\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "37",
+    "input": "{\"at\":\"2026-10-17T12:34:05+05:30:00\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "38",
+    "input": "{\"at\":\"\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "39",
+    "input": "{\"at\":\"2026-10-17\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "40",
+    "input": "{\"at\":\"2026-10-17T12:34Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "41",
+    "input": "{\"at\":\" 2026-10-17T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "42",
+    "input": "{\"at\":\"2026-10-17T12:34:05Z \"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "43",
+    "input": "{\"at\":\"2026-10-17T12:34:05Z\\n\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "44",
+    "input": "{\"at\":\"2026-10-17T12:34:05Zx\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "45",
+    "input": "{\"at\":\"x2026-10-17T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "46",
+    "input": "{\"at\":\"2026-10-17 12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "47",
+    "input": "{\"at\":\"20x6-10-17T12:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "48",
+    "input": "{\"at\":\"2026-10-17T1x:34:05Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "49",
+    "input": "{\"at\":\"0000-01-01T00:00:00Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "50",
+    "input": "{\"at\":\"0099-01-01T00:00:00Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "51",
+    "input": "{\"at\":\"9999-12-31T23:59:59Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "52",
+    "input": "{\"at\":\"1677-09-21T00:12:43.145224191Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "53",
+    "input": "{\"at\":\"2262-04-11T23:47:16.854775808Z\"}",
+    "accepted": false,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": ""
+  },
+  {
+    "name": "absent",
+    "input": "{}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "number",
+    "input": "{\"at\":1}",
+    "accepted": true,
+    "mismatch": 1,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "null",
+    "input": "{\"at\":null}",
+    "accepted": true,
+    "mismatch": 1,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "object",
+    "input": "{\"at\":{}}",
+    "accepted": true,
+    "mismatch": 1,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "array",
+    "input": "{\"at\":[]}",
+    "accepted": true,
+    "mismatch": 1,
+    "value": "0",
+    "canonical": "1970-01-01T00:00:00Z"
+  },
+  {
+    "name": "one-nanosecond",
+    "input": "{\"at\":\"1970-01-01T00:00:00.000000001Z\"}",
+    "accepted": true,
+    "mismatch": 0,
+    "value": "1",
+    "canonical": "1970-01-01T00:00:00.000000001Z"
+  }
+]

@@ -41,7 +41,7 @@ func TestDartFloat32CellsAreBitTransparent(t *testing.T) {
 		{message, "final f = value.value;", "message write must narrow the field's own double"},
 		{message, "if (!f.isFinite) return false;", "message write must refuse a NaN or an infinity"},
 		{message, "if ((b & 0x7f800000) == 0x7f800000) return r.report.RefuseNonFiniteFloat('Cell.value');", "message read must refuse a NaN or an infinity on its raw bits"},
-		{message, "if (value.value != 0 || value.value.isNegative) {", "message write must elide a plain float by its bits"},
+		{message, "if (TableBitWriter._float32Words[0] != 0) {", "message write must elide a plain float by its bits"},
 	} {
 		if !strings.Contains(check.source, check.fragment) {
 			t.Errorf("%s", check.what)

@@ -75,7 +75,7 @@ func t03Header(t *testing.T, u *ir.Unit) string {
 // t03Has is a required substring of emitted source, named by the rule it proves.
 func t03Has(t *testing.T, src, want, what string) {
 	t.Helper()
-	if !strings.Contains(src, want) {
+	if !strings.Contains(cppSourceSpelling(src), cppSourceSpelling(want)) {
 		t.Errorf("%s: the emitted source does not carry %q", what, want)
 	}
 }
@@ -215,9 +215,9 @@ fixed table T
 `)
 	hdr := t03Header(t, u)
 	t03Has(t, hdr, "constexpr uint32_t kTableFixedRecordMaxBytes = 65536u;", "R14 the 65536 ceiling constant")
-	t03Has(t, hdr, "if ( e.size > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }", "R14 a single entry past the 65536 bound")
-	t03Has(t, hdr, "if ( sum > kTableFixedRecordMaxBytes ) { TableFixedFail( c, layout_record_too_large ); return 0; }", "R14 a subtree's sum past the 65536 bound")
-	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes ) { why = layout_record_too_large; return false; }", "R14 the zero root and the 65536 bound")
+	t03Has(t, hdr, "if ( e.size > kTableFixedRecordMaxBytes )\n    {\n        TableFixedFail( c, layout_record_too_large );\n        return 0;\n    }", "R14 a single entry past the 65536 bound")
+	t03Has(t, hdr, "if ( sum > kTableFixedRecordMaxBytes )\n        {\n            TableFixedFail( c, layout_record_too_large );\n            return 0;\n        }", "R14 a subtree's sum past the 65536 bound")
+	t03Has(t, hdr, "if ( root.size == 0u || root.size > kTableFixedRecordMaxBytes )\n    {\n        why = layout_record_too_large;\n        return false;\n    }", "R14 the zero root and the 65536 bound")
 	t03Has(t, hdr, "c.record = TableFixedEntryAt( theirs, 0 ).size;", "R14 the writer's own declared record is the compiler's bound")
 	t03Has(t, hdr, "if ( c.hostile && report != NULL ) { report->reason = layout_record_too_large; }", "R14 an entry reaching past the writer's record is named layout_record_too_large")
 	t03Has(t, hdr, "report->reason = ( made == -2 ) ? TableMessageReason::layout_record_too_large : TableMessageReason::plan_too_large;", "R14 the plan is refused WHOLE")

@@ -23,6 +23,20 @@ const int _kTypeTableChatEvent = -7595037280231051973; // fnv1a64("TableChatEven
 const int _kTypeTablePickupEvent = 8694226076464086509; // fnv1a64("TablePickupEvent")
 const int _kTypeTableMixed = 4871457021464447630; // fnv1a64("TableMixed")
 
+
+final class _TableMissingRequired implements Exception { const _TableMissingRequired(); }
+bool _requiredCollectionKind(TableWireReader r, int expected) {
+ final peek=TableWireReader.sub(r,r.pos,r.limit);
+ final length=peek.readLeb();
+ if(length==null||!peek.has(length))return false;
+ if(length<2)return true;
+ final kind=peek.readByte();
+ return kind==expected||_kindWidens(kind,expected);
+}
+
+int tableTextByteLength(String value) => utf8.encode(value).length;
+bool tableTextValueValid(String value,int bound) =>
+    _wideValid(value.codeUnits) && (utf8.encode(value).length <= (bound < 0 ? 0xffffffff : bound));
 // The report a tolerant read fills: §4's five counters (unknown, kindMismatch,
 // widened, clamped, duplicate) and the refusal verdict (§3). malformed and
 // refused are the verdict flags; duplicate rises on an EQUAL map key (§2.8),
@@ -32,9 +46,15 @@ final class TableWireReport {
   int kindMismatch = 0;
   int widened = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
+  int blobShared = 0;
   bool malformed = false;
+  bool integrityMismatch = false;
   bool refused = false;
+  bool _countRefused = false;
+  int missingRequired = 0;
+  String missingFields = '';
   int retained = 0;
   int retainLost = 0;
 
@@ -57,20 +77,60 @@ final class TableWireReport {
   // does not carry is unknown_form, framing the reader cannot follow is
   // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
   // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field rather than kept beside them, so the verdict and its reason
-  // can never disagree. A widened, clamped or unknown field is not a refusal:
-  // the read still answers ok.
+  // stored field; _countRefused records a builder storage refusal without
+  // adding a malformed event. Earlier report events remain available.
+  // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
+    if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
+    if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
+    if (_countRefused) return 'count_over_extent_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
   }
 }
 
+// A builder storage refusal is terminal, including inside a nested body.
+// Unwind to the public loader before its framing checks can add damage.
+final class _TableWireCountRefusal implements Exception {
+  const _TableWireCountRefusal();
+}
+
 // WireState is the id table (§3) and node numbering (§3.1) a save accumulates
 // in FIRST-USE order: one per file, shared by the writer and every sub-writer.
 final class WireState {
+  // Immutable strings may be canonicalized. Metadata belongs weakly to
+  // decoded owners; node tokens carry no payload or input-buffer references.
+  static final Expando<Map<String, ({String value, Object token})>> _stringBlobOrigins =
+      Expando<Map<String, ({String value, Object token})>>();
+
+  static String? _getStringBlob(Object owner, String field) =>
+      _stringBlobOrigins[owner]?[field]?.value;
+
+  static void _setStringBlob(Object owner, String field, String? value) {
+    if (value == null) {
+      _stringBlobOrigins[owner]?.remove(field);
+      return;
+    }
+    final slots = _stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    // An explicit assignment owns this slot, even for a canonical String
+    // identical to its prior value. Decoders install incoming tokens directly.
+    slots[field] = (value: value, token: Object());
+  }
+
+  static Object _blobIdentity(Object blob, Object? owner, String? field) {
+    if (blob is String && owner != null && field != null) {
+      final slots = _stringBlobOrigins[owner];
+      final origin = slots?[field];
+      if (origin != null) {
+        if (identical(origin.value, blob)) return origin.token;
+        slots!.remove(field);
+      }
+    }
+    return blob;
+  }
+
   final Map<int, int> refs = <int, int>{};
   final List<int> ids = <int>[];
   final List<int> nodeTypes = <int>[];
@@ -129,15 +189,17 @@ final class WireState {
 
   // noteBlob numbers one *bytes/*string blob node (§3.1): record k = node
   // index k + 1, keyed by the blob's IDENTITY — the String or byte list the
-  // field holds — never by its content and never per slot (§2.5, §3.1). A
+  // field holds, or a decoded String slot's incoming node token (§2.5, §3.1). A
   // blob reached twice is one record, because two fields that loaded the same
   // node hold the same object; two distinct blobs carrying equal bytes are two
   // records, as the reference numbers them by pointer
   // (testdata/wire/tables/blob_equal_bytes.bin). Numbering does not intern
-  // ids — the node-table write does, in record order (§3). On the web a
-  // String is a value, so two equal strings there are one blob.
-  int noteBlob(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  // ids — the node-table write does, in record order (§3). Authored String
+  // fields own one node per slot; their setters distinguish explicit
+  // reassignment from multiple slots resolving one incoming node.
+  int noteBlob(int typeId, Object blob, [Object? owner, String? field]) {
+    final identity = _blobIdentity(blob, owner, field);
+    final found = _blobIndex[identity];
     if (found != null) {
       if (refuseSharedBlob) {
         throw StateError('blob_shared: a blob is owned by one slot and every writer refuses it (docs/SPEC-TABLES.md §2.5)');
@@ -148,14 +210,14 @@ final class WireState {
     nodes.add(blob is String ? utf8.encode(blob) : List<int>.from(blob as List<int>));
     nodeObjs.add(null);
     final idx = nodes.length + 1;
-    _blobIndex[blob] = idx;
+    _blobIndex[identity] = idx;
     return idx;
   }
 
   int nodeIndexForBlob(int typeId, Object blob) => noteBlob(typeId, blob);
 
-  int blobIndex(int typeId, Object blob) {
-    final found = _blobIndex[blob];
+  int blobIndex(int typeId, Object blob, [Object? owner, String? field]) {
+    final found = _blobIndex[_blobIdentity(blob, owner, field)];
     if (found == null) {
       throw StateError('blob was not numbered (docs/SPEC-TABLES.md §3.1)');
     }
@@ -239,7 +301,7 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
-// _round is the region's 8-byte alignment (§6.2).
+// _round is the region's alignment (§6.2, ir.TableRegionAlign).
 int _round(int n) => (n + 7) & -8;
 
 // _kindFloor is the minimum byte cost of one element of a counted array body,
@@ -379,7 +441,7 @@ final class _ExtentScan {
         if (!union(r, f.uni)) return false;
         continue;
       }
-      if (kind != 13 && kind != 14 && kind != 16) {
+      if (kind != 13 && kind != 14 && kind != 16 && !(kind == 12 && f.mode == 3)) {
         if (!r.skipKind(kind)) return true;
         continue;
       }
@@ -390,9 +452,12 @@ final class _ExtentScan {
     }
   }
 
+  bool text(int n){if(n==0)return true;if(n>0xffffffff)return false;at=(at+7)&-8;at+=_round(9+n);return true;}
+
   // field is extentScan.field over the payload [start, end).
   bool field(TableWireReader p, _MF f, int start, int end) {
     if (f.mode == 0) return true;
+    if (f.mode == 3) return text(end-start);
     final r = TableWireReader.sub(p, start, end);
     if (f.mode == 2) return record(r, f.child);
     if (!r.has(2)) return true;
@@ -406,7 +471,7 @@ final class _ExtentScan {
       at = (at + f.align - 1) & -f.align;
       at += count * f.size;
     }
-    if (kind != 13 && kind != 15) return true;
+    if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
     // a count above 2^63 reads negative here; Go's loop runs on to the end of
     // the body, as this one does
     for (var i = 0; (count < 0 || i < count) && r.has(1); i++) {
@@ -417,7 +482,8 @@ final class _ExtentScan {
       }
       final b = _body(r);
       if (b == null) return true;
-      if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
+      if(f.mode==4){if(!text(b.$2-b.$1))return false;}
+      else if (f.child >= 0 && !record(TableWireReader.sub(r, b.$1, b.$2), f.child)) return false;
     }
     return true;
   }
@@ -470,7 +536,7 @@ bool _lebValid(Uint8List d, int off, int len) {
 // _textBoundary is where a clamp cuts a payload longer than the bound: the last
 // whole code point that fits (§3).
 int _textBoundary(Uint8List d, int off, int len, int bound) {
-  if (len <= bound) return len;
+  if (bound < 0 || len <= bound) return len;
   var cut = bound;
   while (cut > 0 && (d[off + cut] & 0xC0) == 0x80) {
     cut--;
@@ -489,6 +555,8 @@ final class TableWireReader {
   final List<Uint8List> nodes;
   final Set<int> knownTypes;
   final List<Object?> decoded;
+  final Map<int, Object> stringBlobTokens;
+  final Set<int> namedBlobs;
   TableWireReport report;
   int entryCount = 0;
   bool nodeTableGood = true;
@@ -498,6 +566,13 @@ final class TableWireReader {
   List<int> path = <int>[];
   Object? rootObj;
   int rootType = 0;
+  // owner is the node index (§3.1: 1 the root, k + 2 the record at k) whose
+  // body this reader is reading, and edges holds one (from, to) pair for
+  // every table pointer slot the load stores, shared by every sub-reader:
+  // the graph cyclic() checks once the load is done.
+  int owner = 1;
+  final List<int> edges;
+  final Map<Object, int> nodeIndex;
 
   TableWireReader(this.data, this.limit)
     : pos = 0,
@@ -506,6 +581,10 @@ final class TableWireReader {
       nodes = <Uint8List>[],
       knownTypes = <int>{},
       decoded = <Object?>[],
+      stringBlobTokens = <int, Object>{},
+      namedBlobs = <int>{},
+      edges = <int>[],
+      nodeIndex = Map<Object, int>.identity(),
       report = TableWireReport();
 
   // A sub-reader shares the parent's resolved id table, node records and
@@ -520,6 +599,8 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -528,7 +609,10 @@ final class TableWireReader {
       retain = parent.retain,
       path = parent.path,
       rootObj = parent.rootObj,
-      rootType = parent.rootType;
+      rootType = parent.rootType,
+      owner = parent.owner,
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
   // over reads one node-record body against the parent's numbering. The bytes
   // are the record, not a slice of the file, so the cursor starts at 0 (§3.1).
@@ -541,6 +625,8 @@ final class TableWireReader {
       nodes = parent.nodes,
       knownTypes = parent.knownTypes,
       decoded = parent.decoded,
+      stringBlobTokens = parent.stringBlobTokens,
+      namedBlobs = parent.namedBlobs,
       report = parent.report,
       entryCount = parent.entryCount,
       nodeTableGood = parent.nodeTableGood,
@@ -549,9 +635,12 @@ final class TableWireReader {
       retain = parent.retain,
       path = parent.path,
       rootObj = parent.rootObj,
-      rootType = parent.rootType;
+      rootType = parent.rootType,
+      owner = parent.owner,
+      edges = parent.edges,
+      nodeIndex = parent.nodeIndex;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  bool has(int n) => n >= 0 && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -705,7 +794,10 @@ final class TableWireReader {
   // NEVER CLAMP, the entry is dropped whole and counted one clamped
   // (docs/SPEC-TABLES.md §2.8; internal/tabletext MapKeyFits). keySize is
   // the string bound, or -1 for a key that is not a bounded string.
+  int mapKeyAt = -1;
+
   int mapEntryScan(int keyId, int keyKind, List<int> keyWidens, int keySize) {
+    mapKeyAt = -1;
     final s = TableWireReader.sub(this, pos, limit);
     var kindBad = false;
     var widened = 0;
@@ -718,9 +810,11 @@ final class TableWireReader {
       if (id == null || !s.has(1)) return (kindBad ? 2 : 1) | widened;
       final kind = s.readByte();
       if (id == keyId) {
+        mapKeyAt = s.pos - 1;
         if (kind != keyKind && keyWidens.contains(kind)) {
+          kindBad = false; // the final key occurrence replaces its prior kind
           widened = 4;
-          if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
+          if (!s.skipKind(kind)) return 1 | widened;
           continue;
         }
         kindBad = kind != keyKind;
@@ -770,27 +864,42 @@ final class TableWireReader {
   // A blob record resolves to ONE object however many slots name it (§3.1):
   // the first resolve stores it in decoded, so a save numbers it once again
   // by identity and two distinct records of equal bytes stay two.
-  String? resolveString(int idx) {
+  String? resolveString(int idx, Object owner, String field) {
     final rec = idx - 2;
-    if (rec >= 0 && rec < decoded.length) {
-      final have = decoded[rec];
-      if (have is String) return have;
+    String? value;
+    if (rec >= 0 && rec < decoded.length && decoded[rec] is String) {
+      value = decoded[rec] as String;
+    } else {
+      final b = resolveBlob(idx, _kStringBlobId, stringBlob);
+      if (b != null) {
+        value = utf8.decode(b);
+        decoded[rec] = value;
+      }
     }
-    final b = resolveBlob(idx, _kStringBlobId, stringBlob);
-    if (b == null) return null;
-    final s = utf8.decode(b);
-    decoded[rec] = s;
-    return s;
+    if (value == null) {
+      WireState._stringBlobOrigins[owner]?.remove(field);
+      return null;
+    }
+    if (!namedBlobs.add(idx)) report.blobShared++;
+    final slots = WireState._stringBlobOrigins[owner] ??= <String, ({String value, Object token})>{};
+    slots[field] = (value: value, token: stringBlobTokens.putIfAbsent(rec, Object.new));
+    return value;
   }
 
   Uint8List? resolveBytes(int idx) {
     final rec = idx - 2;
     if (rec >= 0 && rec < decoded.length) {
       final have = decoded[rec];
-      if (have is Uint8List) return have;
+      if (have is Uint8List) {
+        if (!namedBlobs.add(idx)) report.blobShared++;
+        return have;
+      }
     }
     final b = resolveBlob(idx, _kBytesBlobId, bytesBlob);
-    if (b != null) decoded[rec] = b;
+    if (b != null) {
+      decoded[rec] = b;
+      if (!namedBlobs.add(idx)) report.blobShared++;
+    }
     return b;
   }
 
@@ -842,20 +951,18 @@ final class TableWireReader {
     }
     final have = decoded[rec];
     if (have != null) return have;
-    final obj = _newNode(wantType);
-    if (obj == null) {
-      report.kindMismatch++;
-      return null;
+    report.kindMismatch++;
+    return null;
+  }
+
+  void noteEdge(int from, Object? to) {
+    if (to == null) return;
+    final idx = nodeIndex[to];
+    if (idx != null) {
+      edges
+        ..add(from)
+        ..add(idx);
     }
-    decoded[rec] = obj;
-    final sub = TableWireReader.over(nodes[rec], this);
-    // A node record's body is read to its zero reference, and the reference
-    // stops the body: bytes left after it inside the record's own length are
-    // kept and do not damage the node (docs/SPEC-TABLES.md §3.1, "the body is
-    // an ordinary table body"; internal/tablewire/decodenodes.go leaves
-    // records[i].Body after pass two unchecked, unlike a by-value field's L).
-    _loadNodeBody(sub, wantType, obj);
-    return obj;
   }
 
   // open resolves the id table from the END of the wire (§3), then walks the
@@ -1042,13 +1149,56 @@ final class TableWireReader {
       final typeId = nodeTypes[rec];
       if (typeId == _kStringBlobId || typeId == _kBytesBlobId) continue;
       if (!knownTypes.contains(typeId)) continue;
-      if (decoded[rec] != null) continue;
       final obj = _newNode(typeId);
       if (obj == null) continue;
       decoded[rec] = obj;
-      final sub = TableWireReader.over(nodes[rec], this);
-      _loadNodeBody(sub, typeId, obj);
+      nodeIndex[obj] = rec + 2;
     }
+    for (var rec = 0; rec < nodes.length; rec++) {
+      final obj = decoded[rec];
+      if (obj == null) continue;
+      final sub = TableWireReader.over(nodes[rec], this)..owner = rec + 2;
+      _loadNodeBody(sub, nodeTypes[rec], obj);
+    }
+  }
+
+  // cyclic reports whether the pointer graph the load stored has a cycle
+  // (docs/SPEC-TABLES.md §3.1: a cyclic wire is damage, and every read refuses
+  // the whole load). It is Kahn's pass over the node indices: count each
+  // node's in-degree from edges, then repeatedly take a node nothing points at
+  // and drop its out-edges; a node never taken sits on a cycle. Linear in
+  // nodes plus edges, with no recursion, so a diamond chain of shared nodes
+  // costs its node count and not its path count.
+  bool cyclic() {
+    if (edges.isEmpty) return false;
+    final count = nodes.length + 2;
+    final indegree = List<int>.filled(count, 0);
+    final outStart = List<int>.filled(count + 1, 0);
+    for (var i = 0; i < edges.length; i += 2) {
+      indegree[edges[i + 1]]++;
+      outStart[edges[i] + 1]++;
+    }
+    for (var k = 0; k < count; k++) {
+      outStart[k + 1] += outStart[k];
+    }
+    final fill = List<int>.from(outStart);
+    final out = List<int>.filled(edges.length ~/ 2, 0);
+    for (var i = 0; i < edges.length; i += 2) {
+      out[fill[edges[i]]++] = edges[i + 1];
+    }
+    final ready = <int>[];
+    for (var k = 1; k < count; k++) {
+      if (indegree[k] == 0) ready.add(k);
+    }
+    var taken = 0;
+    while (ready.isNotEmpty) {
+      final k = ready.removeLast();
+      taken++;
+      for (var e = outStart[k]; e < outStart[k + 1]; e++) {
+        if (--indegree[out[e]] == 0) ready.add(out[e]);
+      }
+    }
+    return taken != count - 1;
   }
 }
 
@@ -1169,9 +1319,62 @@ final class TableRetain {
   int idUsed = 0;
   int used = 0;
   final List<_RetainRecord> records = <_RetainRecord>[];
+  final Map<Object, List<_RetainRecord>> _byOwner = Map.identity();
+  final Map<Object, Map<String, List<Object>>> _maps = Map.identity();
   TableRetain(this.capacity, this.ids);
+
+  void add(_RetainRecord record) {
+    records.add(record);
+    (_byOwner[record.owner] ??= <_RetainRecord>[]).add(record);
+  }
+
+  void rememberMap(Object owner, String field, Object entry) {
+    final fields = _maps[owner] ??= <String, List<Object>>{};
+    (fields[field] ??= <Object>[]).add(entry);
+  }
+
+  void forgetMap(Object owner, String field) {
+    final entries = _maps[owner]?.remove(field);
+    if (entries != null) {
+      for (final entry in entries) { forget(entry); }
+    }
+  }
+
+  // A replacement supersedes its old body without moving either counter.
+  // Keep byte capacity consumed, as the append-only caller store does.
+  void forget(Object owner) {
+    final pending = <Object>[owner];
+    final seen = Set<Object>.identity();
+    while (pending.isNotEmpty) {
+      final value = pending.removeLast();
+      if (!seen.add(value)) continue;
+      final old = _byOwner.remove(value);
+      if (old != null) {
+        for (final rec in old) { rec.discarded = true; }
+      }
+      final maps = _maps.remove(value);
+      if (maps != null) {
+        for (final entries in maps.values) { pending.addAll(entries); }
+      }
+      switch (value) {
+        case TableMixed v:
+          pending.addAll(v.entities);
+          pending.addAll(v.stats);
+          pending.add(v.gameEvent);
+          break;
+        case TableEvent v:
+          pending.add(v.hit);
+          pending.add(v.chat);
+          pending.add(v.pickup);
+          break;
+        default: break;
+      }
+    }
+  }
   void reset() {
     records.clear();
+    _byOwner.clear();
+    _maps.clear();
     used = 0;
     idUsed = 0;
   }
@@ -1189,6 +1392,8 @@ final class _RetainRecord {
   final int id;
   final int kind;
   final List<int> resolved;
+  bool placed = false;
+  bool discarded = false;
   _RetainRecord(this.owner, this.path, this.id, this.kind, this.resolved);
   int cost() => 9 + 8 * (path.length - 1) + resolved.length;
 }
@@ -1312,7 +1517,7 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
       if (id == null) return null;
       if (!r.has(1)) return null;
       final ak = r.readByte();
-      final sub = _retainResolve(r, ak, depth + 1);
+      final sub = _retainFramed(r, ak, depth);
       if (sub == null) return null;
       return <int>[..._u64le(id), ak, ...sub];
     default:
@@ -1341,8 +1546,12 @@ List<int>? _retainContent(TableWireReader r, int kind, int depth) {
     case 14:
     case 16:
       return _retainArray(r, kind, depth);
-    default:
+    case 15:
+    case 30:
       return _retainResolve(r, kind, depth);
+    default:
+      // The enclosing arm/keyed-slot length already frames scalar content.
+      return _retainRaw(r, r.limit-r.pos);
   }
 }
 
@@ -1475,7 +1684,7 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
       if (ref == 0) return null;
       final ak = c.byte();
       if (ak == null) return null;
-      final sub = _retainEmitPayload(state, ak, c, depth + 1);
+      final sub = _retainEmitFramed(state, ak, c, depth);
       if (sub == null) return null;
       final o = <int>[];
       _lebOut(o, ref);
@@ -1509,8 +1718,11 @@ List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int en
     case 14:
     case 16:
       return _retainEmitArray(state, kind, c, end, depth);
-    default:
+    case 15:
+    case 30:
       return _retainEmitPayload(state, kind, c, depth);
+    default:
+      final out=c.b.sublist(c.at,end);c.at=end;return out;
   }
 }
 
@@ -1569,8 +1781,8 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
 void _retainTail(TableWireWriter w, Object owner) {
   final t = w.state.retain;
   if (t == null) return;
-  for (final rec in t.records) {
-    if (!identical(rec.owner, owner)) continue;
+  for (final rec in t._byOwner[owner] ?? const <_RetainRecord>[]) {
+    rec.placed = true;
     w.state.lost = false;
     final ref = w.state.retainRefFor(rec.id);
     if (ref == 0 || w.state.lost) {
@@ -1645,6 +1857,31 @@ void _loadNodeBody(TableWireReader r, int typeId, Object obj) {
     case _kTypeTableChatEvent: tableChatEventWireLoadBody(r, obj as TableChatEvent, true); break;
     case _kTypeTablePickupEvent: tablePickupEventWireLoadBody(r, obj as TablePickupEvent, true); break;
     case _kTypeTableMixed: tableMixedWireLoadBody(r, obj as TableMixed, true); break;
+  }
+}
+
+void _nodeEdges(TableWireReader r, int owner, int typeId, Object obj) {
+  switch (typeId) {
+    case _kTypeTableEntity: tableEntityEdges(r, owner, obj as TableEntity); break;
+    case _kTypeTableStat: tableStatEdges(r, owner, obj as TableStat); break;
+    case _kTypeTableHitEvent: tableHitEventEdges(r, owner, obj as TableHitEvent); break;
+    case _kTypeTableChatEvent: tableChatEventEdges(r, owner, obj as TableChatEvent); break;
+    case _kTypeTablePickupEvent: tablePickupEventEdges(r, owner, obj as TablePickupEvent); break;
+    case _kTypeTableMixed: tableMixedEdges(r, owner, obj as TableMixed); break;
+  }
+}
+
+void _collectNodeEdges(TableWireReader r) {
+  r.edges.clear();
+  final root = r.rootObj;
+  if (root != null) {
+    r.nodeIndex[root] = 1;
+    _nodeEdges(r, 1, r.rootType, root);
+  }
+  for (var rec = 0; rec < r.nodes.length; rec++) {
+    final obj = r.decoded[rec];
+    if (obj == null) continue;
+    _nodeEdges(r, rec + 2, r.nodeTypes[rec], obj);
   }
 }
 
@@ -1855,6 +2092,7 @@ bool _tableEventArm1(TableWireReader p, TableEvent v, int kind) {
   final b = TableHitEvent();
   tableHitEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.hit);
   v.hit = b;
   return true;
 }
@@ -1863,6 +2101,7 @@ bool _tableEventArm2(TableWireReader p, TableEvent v, int kind) {
   final b = TableChatEvent();
   tableChatEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.chat);
   v.chat = b;
   return true;
 }
@@ -1871,6 +2110,7 @@ bool _tableEventArm3(TableWireReader p, TableEvent v, int kind) {
   final b = TablePickupEvent();
   tablePickupEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.pickup);
   v.pickup = b;
   return true;
 }
@@ -1878,12 +2118,13 @@ bool _tableEventArm3(TableWireReader p, TableEvent v, int kind) {
 bool _tableEventLoadArm(TableWireReader r, TableEvent v) {
   final ref = r.readLeb();
   if (ref == null) { r.report.malformed = true; return false; }
-  if (ref == 0) { v.armTag = 0; return true; }
+  if (ref == 0) { r.retain?.forget(v); v.armTag = 0; return true; }
   final armId = r.refToId[ref];
   if (armId == null || !r.has(1)) { r.report.malformed = true; return false; }
   final kind = r.readByte();
   final n = r.readLeb();
   if (n == null || !r.has(n)) { r.report.malformed = true; return false; }
+  r.retain?.forget(v);
   v.armTag = 0;
   final p = TableWireReader.sub(r, r.pos, r.pos + n);
   switch (armId) {
@@ -1926,6 +2167,20 @@ void _tableEventNumber(WireState s, TableEvent v, Set<Object> open) {
       break;
     case 3:
       tablePickupEventNumber(s, v.pickup, open);
+      break;
+  }
+}
+
+void _tableEventEdges(TableWireReader r, int owner, TableEvent v) {
+  switch (v.armTag) {
+    case 1:
+      tableHitEventEdges(r, owner, v.hit);
+      break;
+    case 2:
+      tableChatEventEdges(r, owner, v.chat);
+      break;
+    case 3:
+      tablePickupEventEdges(r, owner, v.pickup);
       break;
   }
 }
@@ -2158,7 +2413,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.frameTick);
   }
-  if (v.serverTime != 0 || v.serverTime.isNegative) {
+  if (_f32Bits(v.serverTime) != 0) {
     w.putLeb(w.refFor(4343163795393112518));
     w.putByte(10);
     w.putU32(_f32Write(v.serverTime, 'TableMixed.server_time'));
@@ -2202,7 +2457,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
   if (v.gameEvent.armTag != 0) {
     w.putLeb(w.refFor(3329809749115557776));
     w.putByte(15);
-    _tableEventSaveArm(w, v.gameEvent);
+    if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _tableEventSaveArm(w, v.gameEvent); }
   }
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
@@ -2236,22 +2491,22 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putLeb(s.buf.length);
     w.putBytes(s.buf);
   }
-  if (v.aimX != 0 || v.aimX.isNegative) {
+  if (_f32Bits(v.aimX) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
     w.putU32(_f32Write(v.aimX, 'TableMixed.aim_x'));
   }
-  if (v.aimY != 0 || v.aimY.isNegative) {
+  if (_f32Bits(v.aimY) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
     w.putU32(_f32Write(v.aimY, 'TableMixed.aim_y'));
   }
-  if (v.aimZ != 0 || v.aimZ.isNegative) {
+  if (_f32Bits(v.aimZ) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
     w.putU32(_f32Write(v.aimZ, 'TableMixed.aim_z'));
   }
-  if (v.recoil != 0 || v.recoil.isNegative) {
+  if (_f32Bits(v.recoil) != 0) {
     w.putLeb(w.refFor(-7138431908913683369));
     w.putByte(10);
     w.putU32(_f32Write(v.recoil, 'TableMixed.recoil'));
@@ -2271,7 +2526,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(5);
     w.putU64(v.flux);
   }
-  if (v.ping != 0 || v.ping.isNegative) {
+  if (_f32Bits(v.ping) != 0) {
     w.putLeb(w.refFor(-4669986463835551831));
     w.putByte(10);
     w.putU32(_f32Write(v.ping, 'TableMixed.ping'));
@@ -2727,7 +2982,7 @@ void tableEntityWireLoadBody(TableWireReader r, TableEntity v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -2822,7 +3077,7 @@ void tableStatWireLoadBody(TableWireReader r, TableStat v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -2965,7 +3220,7 @@ void tableHitEventWireLoadBody(TableWireReader r, TableHitEvent v, bool nested) 
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3070,7 +3325,7 @@ void tableChatEventWireLoadBody(TableWireReader r, TableChatEvent v, bool nested
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3175,7 +3430,7 @@ void tablePickupEventWireLoadBody(TableWireReader r, TablePickupEvent v, bool ne
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -3567,6 +3822,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           final count = r.readLeb();
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <TableEntity>[];
           var keep = count;
           if (keep < 0 || keep > 8) { keep = 8; r.report.clamped++; }
@@ -3596,6 +3852,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           final count = r.readLeb();
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (r.retain != null) { for (final old in v.stats) { r.retain!.forget(old); } }
           v.stats = <TableStat>[];
           var keep = count;
           if (keep < 0 || keep > 80) { keep = 80; r.report.clamped++; }
@@ -3991,7 +4248,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
               if (r.retain!.used + rec.cost() > r.retain!.capacity) {
                 r.report.retainLost++;
               } else {
-                r.retain!.records.add(rec);
+                r.retain!.add(rec);
                 r.retain!.used += rec.cost();
                 r.report.retained++;
               }
@@ -4029,6 +4286,31 @@ void tableMixedNumber(WireState s, TableMixed v, Set<Object> open) {
   _tableEventNumber(s, v.gameEvent, open);
 }
 
+void tableEntityEdges(TableWireReader r, int owner, TableEntity v) {
+}
+
+void tableStatEdges(TableWireReader r, int owner, TableStat v) {
+}
+
+void tableHitEventEdges(TableWireReader r, int owner, TableHitEvent v) {
+}
+
+void tableChatEventEdges(TableWireReader r, int owner, TableChatEvent v) {
+}
+
+void tablePickupEventEdges(TableWireReader r, int owner, TablePickupEvent v) {
+}
+
+void tableMixedEdges(TableWireReader r, int owner, TableMixed v) {
+  for (final e in v.entities) {
+    tableEntityEdges(r, owner, e);
+  }
+  for (final e in v.stats) {
+    tableStatEdges(r, owner, e);
+  }
+  _tableEventEdges(r, owner, v.gameEvent);
+}
+
 Uint8List tableEntityWireSave(TableEntity v) {
   final state = WireState()..refuseSharedBlob = true;
   state.indexRoot(v);
@@ -4046,20 +4328,40 @@ Uint8List tableEntityWireSave(TableEntity v) {
 
 TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableEntity();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableEntity;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
+  r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.pos = 1;
-  tableEntityWireLoadBody(r, v, false);
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableEntity();
+  try {
+    r.pos = 1;
+    tableEntityWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableEntity();
+  } on _TableWireCountRefusal {
+    r.report.refused = true;
+    r.report._countRefused = true;
+    return TableEntity();
+  }
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableEntity();
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    return TableEntity();
+  }
+  if (r.report.malformed) return TableEntity();
   return v;
 }
 
@@ -4123,9 +4425,8 @@ int tableEntityWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;
@@ -4166,53 +4467,9 @@ int tableEntityWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = TableEntity();
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.stringBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeTableEntity;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  r.scanNodeTable();
-  r.pos = 1;
-  tableEntityWireLoadBody(r, v, false);
-  if (r.report.nonFiniteFloat.isNotEmpty) {
-    retain.reset();
-    return TableEntity();
-  }
-  return v;
-}
-
-Uint8List tableEntityWireSaveRetain(TableEntity v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  tableEntityNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  tableEntityWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
-}
-
-int tableEntityWireMeasureRetain(TableEntity v, TableRetain retain) {
-  final report = TableWireReport();
-  return tableEntityWireSaveRetain(v, retain, report).length;
-}
+const String tableEntityWireLoadRetain = "TableEntity: retention requires a variable root and its region directory";
+const String tableEntityWireMeasureRetain = "TableEntity: retention requires a variable root and its region directory";
+const String tableEntityWireSaveRetain = "TableEntity: retention requires a variable root and its region directory";
 
 Uint8List tableStatWireSave(TableStat v) {
   final state = WireState()..refuseSharedBlob = true;
@@ -4231,20 +4488,40 @@ Uint8List tableStatWireSave(TableStat v) {
 
 TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableStat();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableStat;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
+  r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.pos = 1;
-  tableStatWireLoadBody(r, v, false);
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableStat();
+  try {
+    r.pos = 1;
+    tableStatWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableStat();
+  } on _TableWireCountRefusal {
+    r.report.refused = true;
+    r.report._countRefused = true;
+    return TableStat();
+  }
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableStat();
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    return TableStat();
+  }
+  if (r.report.malformed) return TableStat();
   return v;
 }
 
@@ -4296,9 +4573,8 @@ int tableStatWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;
@@ -4339,53 +4615,9 @@ int tableStatWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = TableStat();
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.stringBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeTableStat;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  r.scanNodeTable();
-  r.pos = 1;
-  tableStatWireLoadBody(r, v, false);
-  if (r.report.nonFiniteFloat.isNotEmpty) {
-    retain.reset();
-    return TableStat();
-  }
-  return v;
-}
-
-Uint8List tableStatWireSaveRetain(TableStat v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  tableStatNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  tableStatWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
-}
-
-int tableStatWireMeasureRetain(TableStat v, TableRetain retain) {
-  final report = TableWireReport();
-  return tableStatWireSaveRetain(v, retain, report).length;
-}
+const String tableStatWireLoadRetain = "TableStat: retention requires a variable root and its region directory";
+const String tableStatWireMeasureRetain = "TableStat: retention requires a variable root and its region directory";
+const String tableStatWireSaveRetain = "TableStat: retention requires a variable root and its region directory";
 
 Uint8List tableMixedWireSave(TableMixed v) {
   final state = WireState()..refuseSharedBlob = true;
@@ -4404,20 +4636,40 @@ Uint8List tableMixedWireSave(TableMixed v) {
 
 TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   final v = TableMixed();
+  report ??= TableWireReport();
+  if (report.integrityMismatch) report.malformed = false;
+  report.integrityMismatch = false;
   final r = TableWireReader(data, data.length);
   r.stringBlob = false;
   r.bytesBlob = false;
   r.path = [1];
   r.rootObj = v;
   r.rootType = _kTypeTableMixed;
-  if (report != null) r.report = report;
+  r.report = report;
   r.report.nonFiniteFloat = '';
+  r.report._countRefused = false;
+  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
+  r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
-  r.pos = 1;
-  tableMixedWireLoadBody(r, v, false);
-  if (r.report.nonFiniteFloat.isNotEmpty) return TableMixed();
+  try {
+    r.pos = 1;
+    tableMixedWireLoadBody(r, v, false);
+  } on _TableMissingRequired {
+    return TableMixed();
+  } on _TableWireCountRefusal {
+    r.report.refused = true;
+    r.report._countRefused = true;
+    return TableMixed();
+  }
+  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) return TableMixed();
+  _collectNodeEdges(r);
+  if (r.cyclic()) {
+    r.report.malformed = true;
+    return TableMixed();
+  }
+  if (r.report.malformed) return TableMixed();
   return v;
 }
 
@@ -4540,9 +4792,8 @@ int tableMixedWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;
@@ -4583,54 +4834,76 @@ int tableMixedWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = TableMixed();
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.stringBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeTableMixed;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  r.scanNodeTable();
-  r.pos = 1;
-  tableMixedWireLoadBody(r, v, false);
-  if (r.report.nonFiniteFloat.isNotEmpty) {
-    retain.reset();
-    return TableMixed();
+const String tableMixedWireLoadRetain = "TableMixed: retention requires a variable root and its region directory";
+const String tableMixedWireMeasureRetain = "TableMixed: retention requires a variable root and its region directory";
+const String tableMixedWireSaveRetain = "TableMixed: retention requires a variable root and its region directory";
+
+
+int? _timestampNanos(String s) {
+  int digits(int at,int count) {
+    if(at<0||at+count>s.length)return -1;
+    var value=0;
+    for(var i=at;i<at+count;i++){final c=s.codeUnitAt(i)-48;if(c<0||c>9)return -1;value=value*10+c;}
+    return value;
   }
-  return v;
+  if(s.length<20||s[4]!='-'||s[7]!='-'||(s[10]!='T'&&s[10]!='t')||s[13]!=':'||s[16]!=':')return null;
+  final y=digits(0,4),m=digits(5,2),d=digits(8,2),h=digits(11,2),minute=digits(14,2),sec=digits(17,2);
+  if(y<1||m<1||m>12||d<1||d>31||h<0||h>23||minute<0||minute>59||sec<0||sec>59)return null;
+  final date=DateTime.utc(y,m,d,h,minute,sec);
+  if(date.year!=y||date.month!=m||date.day!=d)return null;
+  var at=19,fraction=0,count=0;
+  if(s[at]=='.'){
+    at++;final start=at;
+    while(at<s.length){final c=s.codeUnitAt(at)-48;if(c<0||c>9)break;if(count<9){fraction=fraction*10+c;count++;}at++;}
+    if(at==start)return null;
+  }
+  while(count<9){fraction*=10;count++;}
+  var offset=0;
+  if(at==s.length-1&&(s[at]=='Z'||s[at]=='z')){at++;}
+  else if(at==s.length-6&&(s[at]=='+'||s[at]=='-')&&s[at+3]==':'){
+    final oh=digits(at+1,2),om=digits(at+4,2);
+    if(oh<0||oh>23||om<0||om>59)return null;
+    offset=(oh*3600+om*60)*(s[at]=='-'?-1:1);at+=6;
+  }else{return null;}
+  if(at!=s.length)return null;
+  final seconds=date.microsecondsSinceEpoch~/1000000-offset;
+  final value=BigInt.from(seconds)*BigInt.from(1000000000)+BigInt.from(fraction);
+  if(value<-(BigInt.one<<63)||value>(BigInt.one<<63)-BigInt.one)return null;
+  return value.toInt();
 }
 
-Uint8List tableMixedWireSaveRetain(TableMixed v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  tableMixedNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  tableMixedWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
+int _timestampField(dynamic value,TableTextReport report,[int previous=0]){
+  if(value is! String){report.kindMismatch++;return previous;}
+  final nanos=_timestampNanos(value);
+  if(nanos==null)throw const FormatException('timestamp_not_rfc3339');
+  return nanos;
 }
 
-int tableMixedWireMeasureRetain(TableMixed v, TableRetain retain) {
-  final report = TableWireReport();
-  return tableMixedWireSaveRetain(v, retain, report).length;
+String _timestampText(int nanos){
+  var seconds=nanos~/1000000000;final fraction=nanos%1000000000;
+  if(nanos<0&&fraction!=0)seconds--;
+  final date=DateTime.fromMicrosecondsSinceEpoch(seconds*1000000,isUtc:true);
+  final text=date.toIso8601String().substring(0,19);
+  if(fraction==0)return '${text}Z';
+  var digits=fraction.toString().padLeft(9,'0');
+  while(digits.endsWith('0')){digits=digits.substring(0,digits.length-1);}
+  return '$text.${digits}Z';
 }
 
+List<T> _jsonTextList<T>(dynamic val,TableTextReport r,int bound,String field,T Function(dynamic) read,int total,int Function(T) length,[List<T>? fallback]) {
+ if(val is! List){r.kindMismatch++;return fallback??<T>[];}
+ final before=r.clamped;
+ final out=<T>[];
+ var spent=0;
+ for(var i=0;i<val.length;i++){
+  if(bound>=0&&i>=bound){r.clamped+=val.length-i;break;}
+  final e=read(val[i]);
+  if(total>0){spent+=length(e);if(spent>total){r.clamped++;break;}}
+  out.add(e);
+ }
+ if(r.clamped!=before&&r.clampedField.isEmpty)r.clampedField=field;
+ return out;
+}
 // ---- the JSON text form (docs/SPEC-TABLES.md §16) ----
 
 // TableTextReport is a tolerant text read's report (§16.3): the three events
@@ -4640,8 +4913,10 @@ final class TableTextReport {
   int unknown = 0;
   int kindMismatch = 0;
   int clamped = 0;
+  String clampedField = '';
   int duplicate = 0;
-  final Map<String, int> duplicateKeys = <String, int>{};
+  int missingRequired = 0;
+  String missingFields = '';
   final Set<int> textLabels = <int>{};
 }
 
@@ -4688,7 +4963,7 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
-      b.write(String.fromCharCode(rune));
+      b.write(String.fromCharCode(rune >= 0xD800 && rune <= 0xDFFF ? 0xFFFD : rune));
     }
   }
   b.write('"');
@@ -4713,18 +4988,22 @@ String _jsonEnum(int v, String Function(int) name, String where) {
 // the read only SKIPS (an unknown key's value) never reaches here.
 String _jsonText(String s) {
   if (s.contains('\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');
-  return s;
+  // Lone or inverted JSON surrogate escapes normalize until the deferred
+  // string_lone_surrogate card lands (SPEC §16.3).
+  if (_wideValid(s.codeUnits)) return s;
+  return String.fromCharCodes(s.runes.map((r) => r >= 0xD800 && r <= 0xDFFF ? 0xFFFD : r));
 }
 
 // _jsonStringField reads one string(N) field (§16.2): a non-string is a kind
 // mismatch; a string past N is clamped at a CODE POINT boundary and counted,
 // never cut through a multi-byte character (§16.3).
-String _jsonStringField(dynamic val, int bound, TableTextReport r) {
+String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
     r.kindMismatch++;
-    return '';
+    return def;
   }
-  if (utf8.encode(_jsonText(val)).length <= bound) return val;
+  val = _jsonText(val);
+  if (utf8.encode(val).length <= bound || bound < 0) return val;
   final kept = StringBuffer();
   var used = 0;
   for (final rune in val.runes) {
@@ -4739,7 +5018,7 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r) {
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
 // float, placed and range-clamped; anything else is a kind mismatch.
-int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false]) {
+int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
   int clamp(int v) {
     if (unsigned) {
       if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; r.clamped++; }
@@ -4771,7 +5050,7 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     return clamp(val.d.toInt());
   }
   r.kindMismatch++;
-  return 0;
+  return def;
 }
 
 // _jsonFloat spells a float at the shortest precision that reads back the same
@@ -4942,20 +5221,26 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
   body(sh.define(node));
 }
 
-Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() make, void Function(Object obj, Map<String, dynamic> m) fill) {
+Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() make, void Function(Object obj, List<MapEntry<String, dynamic>> m) fill, [Object? def]) {
   if (val == null) return null;
-  if (val is! Map) {
+  final entries = _jsonEntries(val);
+  if (entries == null) {
     r.kindMismatch++;
-    return null;
+    return def;
   }
-  final obj = Map<String, dynamic>.from(val);
-  if (obj.containsKey('&node')) {
-    if (obj.keys.first != '&node') throw const FormatException('node label is not first');
-    final raw = obj['&node'];
+  var hasNode = false;
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i].key == '&node') {
+      if (i != 0) throw const FormatException('node label is not first');
+      hasNode = true;
+    }
+  }
+  if (hasNode) {
+    final raw = entries.first.value;
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
-    if (obj.length == 1) {
+    if (entries.length == 1) {
       final have = sh.defined[raw];
       if (have == null) {
         if (!sh.pending.contains(raw) && r.textLabels.contains(raw)) return null;
@@ -4968,38 +5253,130 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (have != null) throw const FormatException('node label defined twice');
     final made = make();
     sh.pending.add(raw);
-    fill(made, obj);
+    fill(made, entries);
     sh.pending.remove(raw);
     sh.defined[raw] = made;
     return made;
   }
   final made = make();
-  fill(made, obj);
+  fill(made, entries);
   return made;
+}
+
+int _cmpDecimalToMidpoint(String token, BigInt n, int e2) {
+  var i = 0;
+  if (i < token.length && (token[i] == '-' || token[i] == '+')) i++;
+  final intDigits = StringBuffer();
+  final fracDigits = StringBuffer();
+  while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+    intDigits.write(token[i++]);
+  }
+  if (i < token.length && token[i] == '.') {
+    i++;
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      fracDigits.write(token[i++]);
+    }
+  }
+  var exp = 0;
+  if (i < token.length && (token[i] == 'e' || token[i] == 'E')) {
+    i++;
+    var neg = false;
+    if (i < token.length && (token[i] == '-' || token[i] == '+')) neg = token[i++] == '-';
+    while (i < token.length && token.codeUnitAt(i) >= 0x30 && token.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (token.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (neg) exp = -exp;
+  }
+  var digits = intDigits.toString() + fracDigits.toString();
+  var point = intDigits.length + exp;
+  while (digits.isNotEmpty && digits[0] == '0') {
+    digits = digits.substring(1);
+    point--;
+  }
+  while (digits.isNotEmpty && digits[digits.length - 1] == '0') {
+    digits = digits.substring(0, digits.length - 1);
+  }
+  if (digits.isEmpty) return -1;
+  final e10 = point - digits.length;
+  var lhs = BigInt.parse(digits);
+  var rhs = n;
+  final ten = BigInt.from(10);
+  if (e10 >= 0) {
+    lhs *= ten.pow(e10);
+  } else {
+    rhs *= ten.pow(-e10);
+  }
+  if (e2 >= 0) {
+    rhs <<= e2;
+  } else {
+    lhs <<= -e2;
+  }
+  return lhs.compareTo(rhs);
+}
+
+double? _narrowF32(double d, String token) {
+  if (d == 0.0) return d;
+  final bd = ByteData(8)..setFloat64(0, d.abs(), Endian.big);
+  final hi = bd.getUint32(0, Endian.big);
+  final lo = bd.getUint32(4, Endian.big);
+  final biased = (hi >> 20) & 0x7FF;
+  if (biased == 0) return d.isNegative ? -0.0 : 0.0;
+  var e2 = biased - 1023;
+  if (e2 > 127) return null;
+  final mant = (BigInt.from(hi & 0xFFFFF) << 32) | BigInt.from(lo);
+  final n = (BigInt.one << 52) | mant;
+  var s = 29;
+  final sub = e2 < -126;
+  if (sub) s = -e2 - 97;
+  if (s > 53) return d.isNegative ? -0.0 : 0.0;
+  var q = (n >> s).toInt();
+  final rem = n & ((BigInt.one << s) - BigInt.one);
+  final half = BigInt.one << (s - 1);
+  var up = rem > half;
+  if (rem == half) {
+    final cmp = _cmpDecimalToMidpoint(token, n, e2 - 52);
+    up = cmp > 0 || (cmp == 0 && (q & 1) != 0);
+  }
+  if (up) q++;
+  int bits32;
+  if (sub) {
+    bits32 = q == 0x800000 ? 0x00800000 : (q & 0x007FFFFF);
+  } else {
+    if (q >= 0x1000000) {
+      q >>= 1;
+      e2++;
+    }
+    if (e2 > 127) return null;
+    bits32 = ((e2 + 127) << 23) | (q & 0x007FFFFF);
+  }
+  if (d.isNegative) bits32 |= 0x80000000;
+  final out = ByteData(4)..setUint32(0, bits32, Endian.big);
+  return out.getFloat32(0, Endian.big);
 }
 
 // _jsonFloatField reads one float field (§16.2): a number, placed; anything
 // else is a kind mismatch.
-double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false]) {
+double _jsonFloatField(dynamic val, TableTextReport r, [bool single = false, double def = 0.0]) {
   double? d;
-  if (val is num) d = val.toDouble();
-  if (val is _JNum) d = val.d;
-  if (val is String) {
-    d = double.tryParse(val);
+  var token = '';
+  if (val is int) {
+    d = val.toDouble();
+    token = val.toString();
+  } else if (val is _JNum) {
+    d = val.d;
+    token = val.token;
+  } else if (val is num) {
+    d = val.toDouble();
+    token = val.toString();
   }
   if (d != null && d.isFinite) {
     if (!single) return d;
-    // The field's storage encoder rounds; do not round a value on the read
-    // path before the caller can apply its own range and shape checks.
-    if (d.abs() < 3.4028235677973366e38) return d;
-    if (val is _JNum && !val.token.contains('.') && !val.token.contains('e') && !val.token.contains('E')) {
-      final integer = BigInt.tryParse(val.token);
-      final edge = BigInt.parse('340282356779733661637539395458142568448');
-      if (integer != null && integer.abs() < edge) return d;
-    }
+    final narrowed = _narrowF32(d, token);
+    if (narrowed != null) return narrowed;
   }
   r.kindMismatch++;
-  return 0.0;
+  return def;
 }
 // §16.2: comments and trailing commas are layout, not values. The
 // duplicate count is taken before jsonDecode folds an object's repeated key.
@@ -5092,10 +5469,6 @@ String _jsonPrepare(String text, TableTextReport r) {
     while (j < clean.length && clean[j] <= 0x20) j++;
     if (j >= clean.length || clean[j] != 0x3a || stack.isEmpty || stack.last == null) continue;
     final key = jsonDecode(result.substring(begin, i + 1)) as String;
-    if (!stack.last!.add(key)) {
-      r.duplicate++;
-      r.duplicateKeys[key] = (r.duplicateKeys[key] ?? 0) + 1;
-    }
     if (key == '&node') {
       var at = j + 1;
       while (at < clean.length && clean[at] <= 0x20) at++;
@@ -5117,6 +5490,21 @@ final class _JNum {
   final String token;
   final double d;
   _JNum(this.token) : d = double.parse(token);
+}
+
+final class _JObj {
+  final List<MapEntry<String, dynamic>> entries = <MapEntry<String, dynamic>>[];
+}
+
+List<MapEntry<String, dynamic>>? _jsonEntries(dynamic val) {
+  if (val is _JObj) return val.entries;
+  if (val is List<MapEntry<String, dynamic>>) return val;
+  if (val is Map) {
+    return val.entries
+        .map((e) => MapEntry<String, dynamic>(e.key as String, e.value))
+        .toList();
+  }
+  return null;
 }
 
 // _jsonDecodeExact is JSON decoding that keeps every number's token
@@ -5155,7 +5543,7 @@ final class _JParse {
     final c = s.codeUnitAt(i);
     if (c == 0x7B) {
       i++;
-      final m = <String, dynamic>{};
+      final m = _JObj();
       ws();
       if (i < s.length && s.codeUnitAt(i) == 0x7D) {
         i++;
@@ -5167,7 +5555,7 @@ final class _JParse {
         ws();
         expect(0x3A);
         ws();
-        m[k] = value(depth + 1);
+        m.entries.add(MapEntry<String, dynamic>(k, value(depth + 1)));
         ws();
         if (i < s.length && s.codeUnitAt(i) == 0x2C) {
           i++;
@@ -5394,13 +5782,13 @@ BigInt _jsonWideField(dynamic val, TableTextReport r, int frac, bool signed, Big
   return raw;
 }
 
-bool _jsonBoolField(dynamic val, TableTextReport r) {
+bool _jsonBoolField(dynamic val, TableTextReport r, [bool def = false]) {
   if (val is bool) return val;
   r.kindMismatch++;
-  return false;
+  return def;
 }
 
-String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
+String _jsonBytesField(dynamic val, TableTextReport r, int bound, [String def = '']) {
   if (val is String) {
     try {
       final b = base64Decode(base64.normalize(val));
@@ -5410,56 +5798,58 @@ String _jsonBytesField(dynamic val, TableTextReport r, int bound) {
       }
       return latin1.decode(b);
     } on FormatException {
-      // falls through to the mismatch below
+      r.kindMismatch++;
+      return '';
     }
   }
   r.kindMismatch++;
-  return '';
+  return def;
 }
 
-String? _jsonStringBlob(dynamic val, TableTextReport r) {
+String? _jsonStringBlob(dynamic val, TableTextReport r, [String? def]) {
   if (val == null) return null;
   if (val is String) return _jsonText(val);
   r.kindMismatch++;
-  return null;
+  return def;
 }
 
-Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r) {
+Uint8List? _jsonBytesBlob(dynamic val, TableTextReport r, [Uint8List? def]) {
   if (val == null) return null;
   if (val is String) {
     try {
       return base64Decode(base64.normalize(val));
     } on FormatException {
-      // falls through to the mismatch below
+      r.kindMismatch++;
+      return null;
     }
   }
   r.kindMismatch++;
-  return null;
+  return def;
 }
 
 // _jsonWStringField reads wide text (docs/SPEC-TABLES.md §16.2): a string,
 // clamped at its bound in CODE UNITS and never through a surrogate pair.
-String _jsonWStringField(dynamic val, int bound, TableTextReport r) {
+String _jsonWStringField(dynamic val, int bound, TableTextReport r, [String def = '']) {
   if (val is! String) {
     r.kindMismatch++;
-    return '';
+    return def;
   }
-  if (_jsonText(val).length <= bound) return val;
+  val = _jsonText(val);
+  if (val.length <= bound) return val;
   var keep = bound;
-  if (keep > 0) {
-    final u = val.codeUnitAt(keep - 1);
-    if (u >= 0xD800 && u <= 0xDBFF) keep--;
+  if (keep > 0 && (val.codeUnitAt(keep - 1) & 0xFC00) == 0xD800 && (val.codeUnitAt(keep) & 0xFC00) == 0xDC00) {
+    keep--;
   }
   r.clamped++;
   return val.substring(0, keep);
 }
 
-List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f) {
-  final out = <T>[];
+List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynamic) f, [List<T>? fallback]) {
   if (val is! List) {
     r.kindMismatch++;
-    return out;
+    return fallback ?? <T>[];
   }
+  final out = <T>[];
   for (final item in val) {
     if (bound >= 0 && out.length >= bound) {
       r.clamped += val.length - out.length;
@@ -5470,60 +5860,165 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
-List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic) f) {
-  final out = List<T>.generate(n, (_) => def());
+List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.kindMismatch++;
-    return out;
+    return fallback ?? List<T>.generate(n, (_) => def());
   }
+  final out = List<T>.generate(n, (_) => def());
   for (var i = 0; i < val.length; i++) {
     if (i >= n) {
       r.clamped += val.length - i;
       break;
     }
-    out[i] = f(val[i]);
+    out[i] = f(val[i], out[i]);
   }
   return out;
 }
 
-List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, Map<String, int> slots, T Function(dynamic) f) {
-  final out = List<T>.generate(n, (_) => def());
-  if (val is! Map) {
+List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, Map<String, int> slots, T Function(dynamic, T) f, [List<T>? fallback]) {
+  final entries = _jsonEntries(val);
+  if (entries == null) {
     r.kindMismatch++;
-    return out;
+    return fallback ?? List<T>.generate(n, (_) => def());
   }
-  for (final entry in val.entries) {
+  final out = List<T>.generate(n, (_) => def());
+  final seen = <int>{};
+  for (final entry in entries) {
     final slot = slots[entry.key];
     if (slot == null) {
-      final extra = r.duplicateKeys.remove(entry.key) ?? 0;
-      r.unknown += 1 + extra;
-      r.duplicate -= extra;
+      r.unknown++;
       continue;
     }
-    out[slot] = f(entry.value);
+    if (!seen.add(slot)) r.duplicate++;
+    out[slot] = f(entry.value, out[slot]);
   }
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, T Function(String, dynamic) f) {
+List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+  final entries = _jsonEntries(val);
+  if (entries == null) {
+    r.kindMismatch++;
+    return fallback ?? <T>[];
+  }
   final out = <T>[];
-  if (val is! Map) {
-    r.kindMismatch++;
-    return out;
+  final seen = <Object, int>{};
+  for (final entry in entries) {
+    final item = f(entry.key, entry.value);
+    if (item == null) continue;
+    final k = keyOf(item);
+    final at = seen[k];
+    if (at != null) {
+      r.duplicate++;
+      out[at] = item;
+    } else {
+      seen[k] = out.length;
+      out.add(item);
+    }
   }
-  for (final entry in val.entries) {
-    out.add(f(entry.key as String, entry.value));
-  }
-  return out;
+  return _stableSorted(out, cmp);
 }
 
-int _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
-  final v = int.tryParse(k);
-  if (v == null) {
-    r.kindMismatch++;
-    return 0;
+String? _jsonStringKey(String k, int bound, TableTextReport r) {
+  k = _jsonText(k);
+  final len = utf8.encode(k).length;
+  if (bound >= 0 && (len > bound || len > 255)) {
+    r.clamped++;
+    return null;
   }
-  return _jsonIntField(v, r, lo, hi, unsigned);
+  return k;
+}
+
+int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
+  _jsonText(k);
+  if (utf8.encode(k).length > 255) {
+    r.kindMismatch++;
+    return null;
+  }
+  var i = 0;
+  var negative = false;
+  if (i < k.length && k.codeUnitAt(i) == 0x2d) {
+    negative = true;
+    i++;
+  }
+  if (i >= k.length) throw const FormatException('invalid integer map key');
+  final intStart = i;
+  final c0 = k.codeUnitAt(i);
+  if (c0 == 0x30) {
+    i++;
+  } else if (c0 >= 0x31 && c0 <= 0x39) {
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+  } else {
+    throw const FormatException('invalid integer map key');
+  }
+  final intDigits = k.substring(intStart, i);
+  var fracDigits = '';
+  if (i < k.length && k.codeUnitAt(i) == 0x2e) {
+    i++;
+    final fracStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) i++;
+    if (i == fracStart) throw const FormatException('invalid integer map key');
+    fracDigits = k.substring(fracStart, i);
+  }
+  var exp = 0;
+  if (i < k.length && (k.codeUnitAt(i) == 0x65 || k.codeUnitAt(i) == 0x45)) {
+    i++;
+    var expNeg = false;
+    if (i < k.length && (k.codeUnitAt(i) == 0x2b || k.codeUnitAt(i) == 0x2d)) {
+      expNeg = k.codeUnitAt(i) == 0x2d;
+      i++;
+    }
+    final expStart = i;
+    while (i < k.length && k.codeUnitAt(i) >= 0x30 && k.codeUnitAt(i) <= 0x39) {
+      if (exp < 100000) exp = exp * 10 + (k.codeUnitAt(i) - 0x30);
+      i++;
+    }
+    if (i == expStart) throw const FormatException('invalid integer map key');
+    if (expNeg) exp = -exp;
+  }
+  if (i != k.length) throw const FormatException('invalid integer map key');
+  var digits = intDigits + fracDigits;
+  var point = intDigits.length + exp;
+  while (digits.isNotEmpty && digits.codeUnitAt(0) == 0x30) {
+    digits = digits.substring(1);
+    point--;
+  }
+  while (digits.isNotEmpty && digits.codeUnitAt(digits.length - 1) == 0x30) {
+    digits = digits.substring(0, digits.length - 1);
+  }
+  BigInt mag;
+  if (digits.isEmpty) {
+    mag = BigInt.zero;
+    negative = false;
+  } else if (point < digits.length || point > 20) {
+    r.kindMismatch++;
+    return null;
+  } else {
+    mag = BigInt.parse(digits) * BigInt.from(10).pow(point - digits.length);
+  }
+  if (unsigned) {
+    if (negative) {
+      r.kindMismatch++;
+      return null;
+    }
+    final minU = lo != null ? BigInt.from(lo).toUnsigned(64) : BigInt.zero;
+    final maxU = hi != null ? BigInt.from(hi).toUnsigned(64) : (BigInt.one << 64) - BigInt.one;
+    if (mag < minU || mag > maxU) {
+      r.kindMismatch++;
+      return null;
+    }
+    final signed = mag > BigInt.from(9223372036854775807) ? mag - (BigInt.one << 64) : mag;
+    return signed.toInt();
+  }
+  final val = negative ? -mag : mag;
+  final minS = lo != null ? BigInt.from(lo) : -(BigInt.one << 63);
+  final maxS = hi != null ? BigInt.from(hi) : (BigInt.one << 63) - BigInt.one;
+  if (val < minS || val > maxS) {
+    r.kindMismatch++;
+    return null;
+  }
+  return val.toInt();
 }
 
 String tableWeaponName(int v) {
@@ -5548,8 +6043,8 @@ String tableWeaponName(int v) {
   return '';
 }
 
-TableWeapon tableWeaponFromName(dynamic val, TableTextReport r) {
-  if (val is! String) { r.kindMismatch++; return TableWeapon.none; }
+TableWeapon tableWeaponFromName(dynamic val, TableTextReport r, [TableWeapon? def]) {
+  if (val is! String) { r.kindMismatch++; return def ?? TableWeapon.none; }
   switch (val) {
     case "None": return TableWeapon.none;
     case "Fists": return TableWeapon.fists;
@@ -5589,8 +6084,8 @@ void _tableDamageToJson(_JOut out, int bits, int depth) {
   out.raw(']');
 }
 
-int _tableDamageFromJson(dynamic val, TableTextReport r) {
-  if (val is! List) { r.kindMismatch++; return 0; }
+int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
+  if (val is! List) { r.kindMismatch++; return def; }
   var bits = 0;
   for (final item in val) {
     switch (item) {
@@ -5644,22 +6139,35 @@ void _tableEventToJson(_JOut out, TableEvent v, int depth, _Share sh) {
   throw StateError('union TableEvent: tag ${v.armTag} names no arm — the writer refuses it (docs/SPEC-TABLES.md §5)');
 }
 
-TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh) {
+TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [TableEvent? def]) {
+  final entries = _jsonEntries(val);
+  if (entries == null) { r.kindMismatch++; return def ?? TableEvent(); }
   final v = TableEvent();
-  if (val is! Map) { r.kindMismatch++; return v; }
-  if (val.isEmpty) return v;
-  if (val.length != 1) throw const FormatException('union has two keys');
-  final item = val.values.first;
-  switch (val.keys.first) {
+  if (entries.isEmpty) return v;
+  if (entries.length != 1) throw const FormatException('union has two keys');
+  final item = entries.first.value;
+  switch (entries.first.key) {
     case "hit":
-      v.armTag = 1;
-      v.hit = _tableHitEventFromJsonValue(item, r, sh);
+      if (_jsonEntries(item) != null) {
+        v.armTag = 1;
+        v.hit = _tableHitEventFromJsonValue(item, r, sh, v.hit);
+      } else {
+        r.kindMismatch++;
+      }
     case "chat":
-      v.armTag = 2;
-      v.chat = _tableChatEventFromJsonValue(item, r, sh);
+      if (_jsonEntries(item) != null) {
+        v.armTag = 2;
+        v.chat = _tableChatEventFromJsonValue(item, r, sh, v.chat);
+      } else {
+        r.kindMismatch++;
+      }
     case "pickup":
-      v.armTag = 3;
-      v.pickup = _tablePickupEventFromJsonValue(item, r, sh);
+      if (_jsonEntries(item) != null) {
+        v.armTag = 3;
+        v.pickup = _tablePickupEventFromJsonValue(item, r, sh, v.pickup);
+      } else {
+        r.kindMismatch++;
+      }
     default:
       r.unknown++;
   }
@@ -5680,76 +6188,64 @@ void _tableEventCount(_Share sh, TableEvent v) {
   }
 }
 
-TableEntity _tableEntityFromJsonValue(dynamic val, TableTextReport r, _Share sh) {
-  final v = TableEntity();
-  if (val is Map<String, dynamic>) {
+TableEntity _tableEntityFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableEntity? def]) {
+  if (_jsonEntries(val) != null) {
+    final v = TableEntity();
     tableEntityFromJsonFields(v, val, r, sh);
-  } else if (val is Map) {
-    tableEntityFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);
-  } else {
-    r.kindMismatch++;
+    return v;
   }
-  return v;
+  r.kindMismatch++;
+  return def ?? TableEntity();
 }
 
-TableStat _tableStatFromJsonValue(dynamic val, TableTextReport r, _Share sh) {
-  final v = TableStat();
-  if (val is Map<String, dynamic>) {
+TableStat _tableStatFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableStat? def]) {
+  if (_jsonEntries(val) != null) {
+    final v = TableStat();
     tableStatFromJsonFields(v, val, r, sh);
-  } else if (val is Map) {
-    tableStatFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);
-  } else {
-    r.kindMismatch++;
+    return v;
   }
-  return v;
+  r.kindMismatch++;
+  return def ?? TableStat();
 }
 
-TableHitEvent _tableHitEventFromJsonValue(dynamic val, TableTextReport r, _Share sh) {
-  final v = TableHitEvent();
-  if (val is Map<String, dynamic>) {
+TableHitEvent _tableHitEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableHitEvent? def]) {
+  if (_jsonEntries(val) != null) {
+    final v = TableHitEvent();
     tableHitEventFromJsonFields(v, val, r, sh);
-  } else if (val is Map) {
-    tableHitEventFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);
-  } else {
-    r.kindMismatch++;
+    return v;
   }
-  return v;
+  r.kindMismatch++;
+  return def ?? TableHitEvent();
 }
 
-TableChatEvent _tableChatEventFromJsonValue(dynamic val, TableTextReport r, _Share sh) {
-  final v = TableChatEvent();
-  if (val is Map<String, dynamic>) {
+TableChatEvent _tableChatEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableChatEvent? def]) {
+  if (_jsonEntries(val) != null) {
+    final v = TableChatEvent();
     tableChatEventFromJsonFields(v, val, r, sh);
-  } else if (val is Map) {
-    tableChatEventFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);
-  } else {
-    r.kindMismatch++;
+    return v;
   }
-  return v;
+  r.kindMismatch++;
+  return def ?? TableChatEvent();
 }
 
-TablePickupEvent _tablePickupEventFromJsonValue(dynamic val, TableTextReport r, _Share sh) {
-  final v = TablePickupEvent();
-  if (val is Map<String, dynamic>) {
+TablePickupEvent _tablePickupEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TablePickupEvent? def]) {
+  if (_jsonEntries(val) != null) {
+    final v = TablePickupEvent();
     tablePickupEventFromJsonFields(v, val, r, sh);
-  } else if (val is Map) {
-    tablePickupEventFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);
-  } else {
-    r.kindMismatch++;
+    return v;
   }
-  return v;
+  r.kindMismatch++;
+  return def ?? TablePickupEvent();
 }
 
-TableMixed _tableMixedFromJsonValue(dynamic val, TableTextReport r, _Share sh) {
-  final v = TableMixed();
-  if (val is Map<String, dynamic>) {
+TableMixed _tableMixedFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableMixed? def]) {
+  if (_jsonEntries(val) != null) {
+    final v = TableMixed();
     tableMixedFromJsonFields(v, val, r, sh);
-  } else if (val is Map) {
-    tableMixedFromJsonFields(v, Map<String, dynamic>.from(val), r, sh);
-  } else {
-    r.kindMismatch++;
+    return v;
   }
-  return v;
+  r.kindMismatch++;
+  return def ?? TableMixed();
 }
 
 void tableEntityCount(_Share sh, TableEntity v) {
@@ -5852,8 +6348,11 @@ void tableEntityToJsonBody(_JOut out, TableEntity v, int depth, _Share sh, [int?
   out.raw('}');
 }
 
-void tableEntityFromJsonFields(TableEntity v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {
-  for (final entry in obj.entries) {
+void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+  final entries = _jsonEntries(obj);
+  if (entries == null) return;
+  final seen = <String>{};
+  for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
     switch (key) {
@@ -5861,45 +6360,59 @@ void tableEntityFromJsonFields(TableEntity v, Map<String, dynamic> obj, TableTex
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "entity_id":
-        v.entityId = _jsonIntField(val, r, null, 4095, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.entityId = _jsonIntField(val, r, null, 4095, true, v.entityId);
         break;
       case "pos_x":
-        v.posX = _jsonIntField(val, r, -16383, 16383, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.posX = _jsonIntField(val, r, -16383, 16383, false, v.posX);
         break;
       case "pos_y":
-        v.posY = _jsonIntField(val, r, -16383, 16383, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.posY = _jsonIntField(val, r, -16383, 16383, false, v.posY);
         break;
       case "pos_z":
-        v.posZ = _jsonIntField(val, r, -16383, 16383, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.posZ = _jsonIntField(val, r, -16383, 16383, false, v.posZ);
         break;
       case "yaw":
-        v.yaw = _jsonIntField(val, r, null, 511, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.yaw = _jsonIntField(val, r, null, 511, true, v.yaw);
         break;
       case "pitch":
-        v.pitch = _jsonIntField(val, r, null, 511, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.pitch = _jsonIntField(val, r, null, 511, true, v.pitch);
         break;
       case "vel_x":
-        v.velX = _jsonIntField(val, r, -2048, 2047, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.velX = _jsonIntField(val, r, -2048, 2047, false, v.velX);
         break;
       case "vel_y":
-        v.velY = _jsonIntField(val, r, -2048, 2047, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.velY = _jsonIntField(val, r, -2048, 2047, false, v.velY);
         break;
       case "vel_z":
-        v.velZ = _jsonIntField(val, r, -2048, 2047, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.velZ = _jsonIntField(val, r, -2048, 2047, false, v.velZ);
         break;
       case "health":
-        v.health = _jsonIntField(val, r, 0, 1000, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.health = _jsonIntField(val, r, 0, 1000, false, v.health);
         break;
       case "weapon":
-        v.weapon = tableWeaponFromName(val, r);
+        if (!seen.add(key)) r.duplicate++;
+        v.weapon = tableWeaponFromName(val, r, v.weapon);
         break;
       case "damage":
-        v.damage = _tableDamageFromJson(val, r);
+        if (!seen.add(key)) r.duplicate++;
+        v.damage = _tableDamageFromJson(val, r, v.damage);
         break;
       case "moving":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.moving = val; } else { r.kindMismatch++; }
         break;
       case "firing":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.firing = val; } else { r.kindMismatch++; }
         break;
       default:
@@ -5936,8 +6449,11 @@ void tableStatToJsonBody(_JOut out, TableStat v, int depth, _Share sh, [int? lab
   out.raw('}');
 }
 
-void tableStatFromJsonFields(TableStat v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {
-  for (final entry in obj.entries) {
+void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+  final entries = _jsonEntries(obj);
+  if (entries == null) return;
+  final seen = <String>{};
+  for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
     switch (key) {
@@ -5945,10 +6461,12 @@ void tableStatFromJsonFields(TableStat v, Map<String, dynamic> obj, TableTextRep
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "stat_id":
-        v.statId = _jsonIntField(val, r, null, 255, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.statId = _jsonIntField(val, r, null, 255, true, v.statId);
         break;
       case "delta":
-        v.delta = _jsonIntField(val, r, -512, 511, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.delta = _jsonIntField(val, r, -512, 511, false, v.delta);
         break;
       default:
         r.unknown++;
@@ -5996,8 +6514,11 @@ void tableHitEventToJsonBody(_JOut out, TableHitEvent v, int depth, _Share sh, [
   out.raw('}');
 }
 
-void tableHitEventFromJsonFields(TableHitEvent v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {
-  for (final entry in obj.entries) {
+void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+  final entries = _jsonEntries(obj);
+  if (entries == null) return;
+  final seen = <String>{};
+  for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
     switch (key) {
@@ -6005,15 +6526,19 @@ void tableHitEventFromJsonFields(TableHitEvent v, Map<String, dynamic> obj, Tabl
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "target_id":
-        v.targetId = _jsonIntField(val, r, null, 4095, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.targetId = _jsonIntField(val, r, null, 4095, true, v.targetId);
         break;
       case "damage":
-        v.damage = _jsonIntField(val, r, 0, 4095, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.damage = _jsonIntField(val, r, 0, 4095, false, v.damage);
         break;
       case "hit_kind":
-        v.hitKind = _jsonIntField(val, r, 0, 7, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.hitKind = _jsonIntField(val, r, 0, 7, false, v.hitKind);
         break;
       case "crit":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.crit = val; } else { r.kindMismatch++; }
         break;
       default:
@@ -6050,8 +6575,11 @@ void tableChatEventToJsonBody(_JOut out, TableChatEvent v, int depth, _Share sh,
   out.raw('}');
 }
 
-void tableChatEventFromJsonFields(TableChatEvent v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {
-  for (final entry in obj.entries) {
+void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+  final entries = _jsonEntries(obj);
+  if (entries == null) return;
+  final seen = <String>{};
+  for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
     switch (key) {
@@ -6059,10 +6587,12 @@ void tableChatEventFromJsonFields(TableChatEvent v, Map<String, dynamic> obj, Ta
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "channel":
-        v.channel = _jsonIntField(val, r, 0, 3, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.channel = _jsonIntField(val, r, 0, 3, false, v.channel);
         break;
       case "speaker":
-        v.speaker = _jsonIntField(val, r, null, 4095, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.speaker = _jsonIntField(val, r, null, 4095, true, v.speaker);
         break;
       default:
         r.unknown++;
@@ -6098,8 +6628,11 @@ void tablePickupEventToJsonBody(_JOut out, TablePickupEvent v, int depth, _Share
   out.raw('}');
 }
 
-void tablePickupEventFromJsonFields(TablePickupEvent v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {
-  for (final entry in obj.entries) {
+void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+  final entries = _jsonEntries(obj);
+  if (entries == null) return;
+  final seen = <String>{};
+  for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
     switch (key) {
@@ -6107,10 +6640,12 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, Map<String, dynamic> obj
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "item_id":
-        v.itemId = _jsonIntField(val, r, null, 1023, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.itemId = _jsonIntField(val, r, null, 1023, true, v.itemId);
         break;
       case "amount":
-        v.amount = _jsonIntField(val, r, 0, 255, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.amount = _jsonIntField(val, r, 0, 255, false, v.amount);
         break;
       default:
         r.unknown++;
@@ -6344,8 +6879,11 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw('}');
 }
 
-void tableMixedFromJsonFields(TableMixed v, Map<String, dynamic> obj, TableTextReport r, _Share sh, [bool pointer = false]) {
-  for (final entry in obj.entries) {
+void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+  final entries = _jsonEntries(obj);
+  if (entries == null) return;
+  final seen = <String>{};
+  for (final entry in entries) {
     final key = entry.key;
     final val = entry.value;
     switch (key) {
@@ -6353,120 +6891,140 @@ void tableMixedFromJsonFields(TableMixed v, Map<String, dynamic> obj, TableTextR
         if (!pointer) throw const FormatException('label outside pointer');
         break;
       case "protocol_magic":
-        v.protocolMagic = _jsonIntField(val, r, 0, 65535, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.protocolMagic = _jsonIntField(val, r, 0, 65535, true, v.protocolMagic);
         break;
       case "sequence":
-        v.sequence = _jsonIntField(val, r, null, 65535, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.sequence = _jsonIntField(val, r, null, 65535, true, v.sequence);
         break;
       case "ack_sequence":
-        v.ackSequence = _jsonIntField(val, r, 0, 65535, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.ackSequence = _jsonIntField(val, r, 0, 65535, false, v.ackSequence);
         break;
       case "ack_bits":
-        v.ackBits = _jsonIntField(val, r, null, 4294967295, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.ackBits = _jsonIntField(val, r, null, 4294967295, true, v.ackBits);
         break;
       case "session_id":
-        v.sessionId = _jsonIntField(val, r, null, null, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.sessionId = _jsonIntField(val, r, null, null, true, v.sessionId);
         break;
       case "client_id":
-        v.clientId = _jsonIntField(val, r, 0, 4294967295, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.clientId = _jsonIntField(val, r, 0, 4294967295, true, v.clientId);
         break;
       case "nonce":
-        v.nonce = _jsonIntField(val, r, 1, 9223372036854775807, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.nonce = _jsonIntField(val, r, 1, 9223372036854775807, true, v.nonce);
         break;
       case "world_time":
-        v.worldTime = _jsonIntField(val, r, -1000000000000, 1000000000000, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.worldTime = _jsonIntField(val, r, -1000000000000, 1000000000000, false, v.worldTime);
         break;
       case "frame_tick":
-        v.frameTick = _jsonIntField(val, r, null, 281474976710655, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.frameTick = _jsonIntField(val, r, null, 281474976710655, true, v.frameTick);
         break;
       case "server_time":
-        v.serverTime = _jsonFloatField(val, r, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.serverTime = _jsonFloatField(val, r, true, v.serverTime);
         break;
       case "entities":
+        if (!seen.add(key)) r.duplicate++;
         if (val is! List) { r.kindMismatch++; break; }
         v.entities = <TableEntity>[];
         for (var index = 0; index < val.length; index++) {
           if (v.entities.length >= 8) { r.clamped += val.length - index; break; }
           final item = val[index];
-          if (item is Map<String, dynamic>) {
-            final e = TableEntity();
+          final e = TableEntity();
+          if (_jsonEntries(item) != null) {
             tableEntityFromJsonFields(e, item, r, sh);
-            v.entities.add(e);
-          } else if (item is Map) {
-            final e = TableEntity();
-            tableEntityFromJsonFields(e, Map<String, dynamic>.from(item), r, sh);
-            v.entities.add(e);
           } else {
             r.kindMismatch++;
           }
+          v.entities.add(e);
         }
         break;
       case "stats":
+        if (!seen.add(key)) r.duplicate++;
         if (val is! List) { r.kindMismatch++; break; }
         v.stats = <TableStat>[];
         for (var index = 0; index < val.length; index++) {
           if (v.stats.length >= 80) { r.clamped += val.length - index; break; }
           final item = val[index];
-          if (item is Map<String, dynamic>) {
-            final e = TableStat();
+          final e = TableStat();
+          if (_jsonEntries(item) != null) {
             tableStatFromJsonFields(e, item, r, sh);
-            v.stats.add(e);
-          } else if (item is Map) {
-            final e = TableStat();
-            tableStatFromJsonFields(e, Map<String, dynamic>.from(item), r, sh);
-            v.stats.add(e);
           } else {
             r.kindMismatch++;
           }
+          v.stats.add(e);
         }
         break;
       case "game_event":
-        v.gameEvent = _tableEventFromJson(val, r, sh);
+        if (!seen.add(key)) r.duplicate++;
+        v.gameEvent = _tableEventFromJson(val, r, sh, v.gameEvent);
         break;
       case "loadout":
-        v.loadout = _jsonFixed<int>(val, r, 4, () => 0, (i1) => _jsonIntField(i1, r, null, null, true));
+        if (!seen.add(key)) r.duplicate++;
+        v.loadout = _jsonFixed<int>(val, r, 4, () => 0, (i1, p1) => _jsonIntField(i1, r, 0, 255, true, p1), v.loadout);
         break;
       case "player_name":
-        v.playerName = _jsonStringField(val, 15, r);
+        if (!seen.add(key)) r.duplicate++;
+        v.playerName = _jsonStringField(val, 15, r, v.playerName);
         break;
       case "payload":
-        v.payload = _jsonBytesField(val, r, 16);
+        if (!seen.add(key)) r.duplicate++;
+        v.payload = _jsonBytesField(val, r, 16, v.payload);
         break;
       case "aim_x":
-        v.aimX = _jsonFloatField(val, r, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.aimX = _jsonFloatField(val, r, true, v.aimX);
         break;
       case "aim_y":
-        v.aimY = _jsonFloatField(val, r, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.aimY = _jsonFloatField(val, r, true, v.aimY);
         break;
       case "aim_z":
-        v.aimZ = _jsonFloatField(val, r, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.aimZ = _jsonFloatField(val, r, true, v.aimZ);
         break;
       case "recoil":
-        v.recoil = _jsonFloatField(val, r, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.recoil = _jsonFloatField(val, r, true, v.recoil);
         break;
       case "drift":
-        v.drift = _jsonFloatField(val, r, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.drift = _jsonFloatField(val, r, false, v.drift);
         break;
       case "wide_key":
-        v.wideKey = _jsonIntField(val, r, null, null, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.wideKey = _jsonIntField(val, r, null, null, true, v.wideKey);
         break;
       case "flux":
-        v.flux = _jsonIntField(val, r, -1000000000000000000, 1000000000000000000, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.flux = _jsonIntField(val, r, -1000000000000000000, 1000000000000000000, false, v.flux);
         break;
       case "ping":
-        v.ping = _jsonFloatField(val, r, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.ping = _jsonFloatField(val, r, true, v.ping);
         break;
       case "crc_hint":
-        v.crcHint = _jsonIntField(val, r, null, 16777215, true);
+        if (!seen.add(key)) r.duplicate++;
+        v.crcHint = _jsonIntField(val, r, null, 16777215, true, v.crcHint);
         break;
       case "has_extra":
+        if (!seen.add(key)) r.duplicate++;
         if (val is bool) { v.hasExtra = val; } else { r.kindMismatch++; }
         break;
       case "extra":
-        v.extra = _jsonIntField(val, r, 0, 255, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.extra = _jsonIntField(val, r, 0, 255, false, v.extra);
         break;
       case "idle_ticks":
-        v.idleTicks = _jsonIntField(val, r, 0, 15, false);
+        if (!seen.add(key)) r.duplicate++;
+        v.idleTicks = _jsonIntField(val, r, 0, 15, false, v.idleTicks);
         break;
       default:
         r.unknown++;
@@ -6485,12 +7043,12 @@ String tableEntityToJson(TableEntity v) {
 
 TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableEntity();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
-  if (root is Map<String, dynamic>) {
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
+  if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
-  } else if (root is Map) {
-    tableEntityFromJsonFields(v, Map<String, dynamic>.from(root), r, _Share());
   }
   return v;
 }
@@ -6506,12 +7064,12 @@ String tableStatToJson(TableStat v) {
 
 TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableStat();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
-  if (root is Map<String, dynamic>) {
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
+  if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
-  } else if (root is Map) {
-    tableStatFromJsonFields(v, Map<String, dynamic>.from(root), r, _Share());
   }
   return v;
 }
@@ -6527,12 +7085,12 @@ String tableMixedToJson(TableMixed v) {
 
 TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   final r = report ?? TableTextReport();
+  r.missingFields = '';
   final v = TableMixed();
   final root = _jsonDecodeExact(_jsonPrepare(text, r));
-  if (root is Map<String, dynamic>) {
+  if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
+  if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
-  } else if (root is Map) {
-    tableMixedFromJsonFields(v, Map<String, dynamic>.from(root), r, _Share());
   }
   return v;
 }

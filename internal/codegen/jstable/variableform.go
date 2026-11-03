@@ -135,8 +135,13 @@ func variableEmit(u *ir.Unit) map[string][]byte {
 	g.pf("// default, and a kind mismatch is reported (§4).\n")
 	g.pf("\n")
 	g.emitRuntime()
+	if len(ir.TableIntegrityTables(u)) > 0 {
+		g.pf("%s", jsIntegrityRuntime)
+	}
 	g.emitRetainRuntime()
 	g.pf("%s", jsVariableCodecRuntime)
+	// The generic codec refers to these helpers even in units without text lists.
+	g.pf("%s", jsTextListRuntime)
 	g.pf("%s", jsVariableArmsRuntime)
 	// THE ONE TEXT WALK (docs/PORTING.md M9): the text form and the four
 	// constructs' text arms, between markers `make tables-js-json-walk`
@@ -245,6 +250,9 @@ export class TableVariableReport {
     this.clamped = 0;
     this.widened = 0;
     this.duplicate = 0;
+    this.missingRequired = 0;
+    // Extra successful namings of one blob record on a tolerant read (§2.5).
+    this.blobShared = 0;
     this.retained = 0;
     this.retainLost = 0;
     // the first float a read found to be a NaN or an infinity, <Table>.<field>
@@ -735,35 +743,26 @@ type guardStep struct {
 	Want bool
 }
 
+// Guard is a diagnostic spelling of the full conjunction. Walk the branch
+// tree instead of treating that spelling as a field name (SPEC-TABLES §2.3).
 func structGuards(st *ir.Struct) map[string][]guardStep {
 	out := map[string][]guardStep{}
-	for _, f := range st.Fields {
-		if f.Guard == "" {
-			continue
-		}
-		var chain []guardStep
-		cur := f.Guard
-		for cur != "" {
-			want := true
-			if strings.HasPrefix(cur, "!") {
-				want = false
-				cur = cur[1:]
-			}
-			chain = append([]guardStep{{Name: cur, Want: want}}, chain...)
-			var gf *ir.Field
-			for _, cand := range st.Fields {
-				if cand.Name == cur {
-					gf = cand
-					break
+	var walk func([]ir.Item, []guardStep)
+	walk = func(items []ir.Item, terms []guardStep) {
+		for _, item := range items {
+			switch item := item.(type) {
+			case *ir.FieldItem:
+				if len(terms) > 0 {
+					out[item.F.Name] = append([]guardStep(nil), terms...)
 				}
+			case *ir.Branch:
+				positive := !item.Neg
+				walk(item.Then, append(terms[:len(terms):len(terms)], guardStep{item.Cond, positive}))
+				walk(item.Else, append(terms[:len(terms):len(terms)], guardStep{item.Cond, !positive}))
 			}
-			if gf == nil {
-				break
-			}
-			cur = gf.Guard
 		}
-		out[f.Name] = chain
 	}
+	walk(st.Items, nil)
 	return out
 }
 
@@ -897,6 +896,12 @@ func (g *variableGen) emitCodecs(closure []*ir.Struct) {
 		g.pf("    make: () => new %s(),\n", st.Name)
 		g.pf("    typeId: %s,\n", jsId(ir.TableWireId(st.WireName())))
 		g.pf("    variable: %v,\n", g.variable[st.Name])
+		if st.Integrity != "" {
+			g.pf("    integrity: { sum: TableIntegritySum, holds: TableIntegrityHolds },\n")
+		}
+		if st.JsonArray {
+			g.pf("    jsonArray: true,\n")
+		}
 		layout := ir.RecordLayout(g.unit, st)
 		g.pf("    sz: %d, al: %d,\n", layout.Size, layout.Align)
 		// a map's generated entry (§2.8): its key's widening is the MAP's one
@@ -944,6 +949,9 @@ func (g *variableGen) fieldDescNamed(f *ir.Field, prop string, ordinal int, guar
 	if !strings.HasPrefix(tail, intShapePrefix) {
 		fmt.Fprintf(&b, "k: %d, ", ir.TableWireFieldKind(f))
 	}
+	if f.Required {
+		b.WriteString("req: true, ")
+	}
 	if f.Type.Optional {
 		b.WriteString("opt: true, ")
 	}
@@ -966,9 +974,13 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.IsMap():
 		// kind 14 over element kind 13, an array of the generated entry (§2.8)
 		key := ir.MapKeyField(f)
+		keyBound := key.Type.Size
+		if key.Type.TextUnbounded() {
+			keyBound = -1
+		}
 		ml := ir.RecordLayout(g.unit, f.MapEntry)
 		fmt.Fprintf(&b, "s: \"map\", js: \"o\", t: %s, ks: %v, kb: %d, esz: %d, eal: %d }",
-			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, key.Type.Size, ml.Size, ml.Align)
+			jsStr(f.MapEntry.Name), key.Type.Kind == ir.TString, keyBound, ml.Size, ml.Align)
 	case f.KeyEnum != "":
 		// kind 16: (key reference, L, element) per present slot (§2.4, §3.2)
 		fmt.Fprintf(&b, "s: \"keyed\", js: \"o\", ek: %d, slots: %s, e: %s }",
@@ -977,6 +989,9 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		fmt.Fprintf(&b, "s: \"union\", js: \"o\", un: %s }", jsStr(unionOf(f).Name))
 	case f.Array != ir.ArrayNone:
 		lsize, lalign := ir.ListElementLayout(g.unit, f)
+		if f.IsTextList() {
+			fmt.Fprintf(&b, "tl: true, plain: %v, total: %d, ", ir.TextListPlain(f), f.TextTotal)
+		}
 		fmt.Fprintf(&b, "s: \"arr\", js: \"a\", list: %v, fixed: %v, bound: %d, ek: %d, esz: %d, eal: %d, e: %s }",
 			f.Array == ir.ArrayList, f.Array == ir.ArrayFixed, f.ArrayBound, ir.TableWireElemKind(f), lsize, lalign, g.keyedElemDesc(f))
 	case f.Type.Pointer && f.Type.Blob() && f.Type.Kind == ir.TString:
@@ -991,9 +1006,14 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
 			flagsVariants(flagsOf(f)), intDefault(f))
 	case tableOf(f) != nil:
-		fmt.Fprintf(&b, "s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+		fmt.Fprintf(&b, "s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
-		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", f.Type.Size, jsStr(string(f.DefBytes)))
+		bound := f.Type.Size
+		if f.Type.TextUnbounded() {
+			bound = -1
+			b.WriteString("ub: true, ")
+		}
+		fmt.Fprintf(&b, "s: \"str\", js: \"s\", bound: %d, def: %s }", bound, jsStr(string(f.DefBytes)))
 	case f.Type.Kind == ir.TWString:
 		// kind 33 (docs/SPEC-TABLES.md §3; SPEC.md §4.12): the bound is N CODE
 		// UNITS, and the empty text is the default an absent field reads
@@ -1010,7 +1030,7 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		fmt.Fprintf(&b, "s: \"float\", js: \"n\", %s, def: %s }", g.floatProps(f), floatDefault(f))
 	default:
-		fmt.Fprintf(&b, "s: \"int\", js: \"n\", %s, def: %s }", intProps(f), intDefault(f))
+		fmt.Fprintf(&b, "s: \"int\", js: %q, %s, def: %s }", integerJSONShape(f), intProps(f), intDefault(f))
 	}
 	return b.String()
 }
@@ -1030,13 +1050,29 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
 			flagsVariants(flagsOf(f)))
 	case tableOf(f) != nil:
-		return fmt.Sprintf("{ s: \"tab\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
+		return fmt.Sprintf("{ s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TBool:
 		return "{ s: \"bool\", js: \"b\" }"
 	case f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64:
 		return fmt.Sprintf("{ s: \"float\", js: \"n\", %s }", g.floatProps(f))
 	}
-	return fmt.Sprintf("{ s: \"int\", js: \"n\", %s }", intProps(f))
+	return fmt.Sprintf("{ s: \"int\", js: %q, %s }", integerJSONShape(f), intProps(f))
+}
+
+func integerJSONShape(f *ir.Field) string {
+	if f.Type.Timestamp {
+		return "s"
+	}
+	return "n"
+}
+
+// Array-root tables keep their array shape when held by value, including
+// inside another array or a generated map entry (§16.10).
+func tableJSONShape(st *ir.Struct) string {
+	if st.JsonArray {
+		return "a"
+	}
+	return "o"
 }
 
 // enumVariants renders an enum's variants as [name, wire id] pairs: identity
@@ -1091,7 +1127,11 @@ func intProps(f *ir.Field) string {
 		dlo = big.NewInt(0)
 		dhi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(storage*8)), big.NewInt(1))
 	}
-	return fmt.Sprintf("k: %d, big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, frac: %d, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
+	stamp := ""
+	if f.Type.Timestamp {
+		stamp = "ts: " + jsStr(f.Name) + ", "
+	}
+	return stamp + fmt.Sprintf("k: %d, big: %v, kw: %d, lo: %s, hi: %s, bits: %d, bmax: %s, frac: %d, tlo: %s, thi: %s, dlo: %sn, dhi: %sn",
 		kind, isBig, ir.TableKindWidth(kind), lo, hi, bits, bmax, f.Type.FracBits, tlo, thi, dlo.String(), dhi.String())
 }
 
@@ -1121,12 +1161,14 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
 	g.pf("  return TableVariableLoad(%s, bytes, report, null);\n", c)
 	g.pf("}\n\n")
-	g.pf("export function %sToJson(v) {\n", st.Name)
-	g.pf("  return TableVariableToJson(%s, v);\n", c)
-	g.pf("}\n\n")
-	g.pf("export function %sFromJson(text, report) {\n", st.Name)
-	g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
-	g.pf("}\n\n")
+	if st.CarriesForm("json") {
+		g.pf("export function %sToJson(v) {\n", st.Name)
+		g.pf("  return TableVariableToJson(%s, v);\n", c)
+		g.pf("}\n\n")
+		g.pf("export function %sFromJson(text, report) {\n", st.Name)
+		g.pf("  return TableVariableFromJson(%s, text, report);\n", c)
+		g.pf("}\n\n")
+	}
 	g.emitRootLoadMeasure(st)
 }
 
@@ -1148,6 +1190,9 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 		refused = fmt.Sprintf("%d", rootSize+16)
 	}
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	if st.Integrity != "" {
+		g.pf("  if (bytes.length > 0 && bytes[0] === 1) { if (!TableIntegrityHolds(bytes, 1)) { return -1; } bytes = bytes.subarray(0, bytes.length - 4); }\n")
+	}
 	g.pf("  if (bytes.length < 9) { return %s; }\n", refused)
 	g.pf("  if (bytes[0] !== TableVariableForm) { return %s; }\n", refused)
 	g.pf("  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);\n")

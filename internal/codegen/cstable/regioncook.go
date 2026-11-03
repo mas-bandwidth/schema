@@ -2,7 +2,7 @@ package cstable
 
 func (g *tableGen) emitRegionCookSurface(names []string) {
 	for _, n := range names {
-		if g.unit.Tables[n].IsMapEntry() {
+		if g.unit.Tables[n].IsMapEntry() || !g.unit.Tables[n].CarriesForm("cook") {
 			continue
 		}
 		g.pf("public static long %sCookMeasure(IntPtr region, TableAllocator allocator = default) { return TableWire.CookRegion(region, %sTableType(), IntPtr.Zero, 0, TableByteOrder.Little, true, allocator); }\n", n, n)
@@ -36,12 +36,13 @@ const tableRegionCookSource = `
     { foreach (TableFieldInfo f in type.Fields) { if (!RegionExtentSize(value, f, ref at)) { return false; } } return true; }
     static bool RegionExtentSize(NativeValue value, TableFieldInfo f, ref long at)
     {
+        if(f.Unbounded){int length=value.Count(f);if(length>0){at=Align(at,8)+Align(9L+length,8);}return true;}
         int n = f.IsArray ? RegionCount(value, f) : 1;
         if (n < 0 || f.IsArray && n > f.ArrayBound) { return false; }
         if (f.Dynamic) { at = checked(Align(at, f.StorageAlign) + (long)n * f.NativeElementSize); }
         for (int i = 0; i < n; i++)
         {
-            if (f.Kind == 13) { if (!RegionExtentSize(value.Child(f, i), f.Table, ref at)) { return false; } }
+            if (f.Kind == 13 || f.TextList) { if (!RegionExtentSize(value.Child(f, i), f.Table, ref at)) { return false; } }
             else if (f.Kind == 15)
             {
                 NativeValue union = value.Child(f, i); ulong tag = union.Tag(f);
@@ -61,7 +62,13 @@ const tableRegionCookSource = `
         int live = f.Counted ? value.Count(f) : f.IsArray ? f.ArrayBound : 1;
         if (live < 0 || f.Counted && live > f.ArrayBound) { return false; }
         if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
-        if (f.Kind == 12) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
+        if(f.Unbounded)
+        {
+            if(live==0){w.Put(at,0,8);return true;}
+            extent=Align(extent,8);long start=extentAt+extent;extent+=Align(9L+live,8);
+            w.Put(at,unchecked((ulong)(start-at)),8);w.Put(start,(uint)live,4);w.Raw(start+8,value.Buffer(f).Slice(0,live));return true;
+        }
+        if (f.Kind == 12 && !f.TextList) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
         if (f.Kind == 33) { for (int i = 0; i < live; i++) { w.Put(at + i * 2L, value.Chars(f)[i], 2); } return true; }
         if (f.GetBuffer != null) { w.Raw(at, value.Buffer(f).Slice(0, live)); return true; }
         int count = f.IsArray ? f.Dynamic ? live : f.ArrayBound : 1;
@@ -93,7 +100,7 @@ const tableRegionCookSource = `
             }
             w.Put(at, unchecked((ulong)offset), 8); return true;
         }
-        if (f.Kind == 13) { return RegionPackRecord(ref w, at, value.Child(f, index), f.Table, extentAt, ref extent); }
+        if (f.Kind == 13 || f.TextList) { return RegionPackRecord(ref w, at, value.Child(f, index), f.Table, extentAt, ref extent); }
         if (f.Kind == 15)
         {
             NativeValue union = value.Child(f, index); ulong tag = union.Tag(f);

@@ -13,7 +13,7 @@ package javatable
 //      oracle's exact unknown, kindMismatch, widened and clamped counts;
 //   4. the batch's refusals (`no_vocabulary`, `batch_too_large` on measure,
 //      save and read — closing `java/F9` — and `newer_form`) and its damage
-//      rules (damage in body two delivers body one, bytes after pad, short
+//      rules (damage in body two delivers no body, bytes after pad, short
 //      buffer, unknown field skipped, quantized index at/above count).
 
 import (
@@ -747,7 +747,8 @@ const messageBatchRefusalsMain = `
             say("newer_form", all, "a foreign form byte was not refused as newer_form");
         }
         {
-            // "DAMAGE INSIDE BODY k DELIVERS BODIES 1 TO k - 1."
+            // "DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH" (§3.3, §4):
+            // no body is delivered, the one before the damage included.
             final int bits = vocab.refBits;
             final byte[] forged = new byte[] { 2, 2, 0, 0, 0, 0 };
             final long ones = (1L << bits) - 1L;
@@ -758,7 +759,7 @@ const messageBatchRefusalsMain = `
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value(), new RootFixed.Value(), new RootFixed.Value() };
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final int count = RootMessage.loadMessages(values, values.length, vocab, forged, rep);
-            say("damage_in_body_two", count == 1 && rep.malformed && !rep.refused,
+            say("damage_in_body_two", count == 0 && rep.malformed && !rep.refused,
                 "count=" + count + " malformed=" + rep.malformed + " refused=" + rep.refused);
         }
         {
@@ -767,7 +768,7 @@ const messageBatchRefusalsMain = `
             final RootFixed.Value[] values = new RootFixed.Value[] { new RootFixed.Value() };
             final TableVocabulary.Report rep = new TableVocabulary.Report();
             final int count = RootMessage.loadMessages(values, values.length, vocab, padded, rep);
-            say("bytes_after_pad", count == 1 && rep.malformed && !rep.refused,
+            say("bytes_after_pad", count == 0 && rep.malformed && !rep.refused,
                 "count=" + count + " malformed=" + rep.malformed + " refused=" + rep.refused);
         }
         {

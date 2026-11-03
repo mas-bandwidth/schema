@@ -19,6 +19,11 @@ func MessageSpots(m *tabletext.Model, root *ir.Struct, data []byte, v *Vocabular
 	if len(data) < 2 || data[0] != ir.TableWireMessageForm || v == nil || !v.announced || messageRoot(m, root) != nil {
 		return nil
 	}
+	var valid bool
+	data, valid = messageIntegrityBody(root, data)
+	if !valid {
+		return nil
+	}
 	r := newBitReader(data[1:])
 	raw, ok := r.get(8)
 	if !ok {

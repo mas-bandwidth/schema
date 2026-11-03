@@ -1,0 +1,8 @@
+package probe
+enum Slot { Alpha, Beta }
+table Node { known int32 }
+table Item { known int32
+ peer *Node }
+union Choice { item Item
+ plain int32 }
+table Root { entry [2]Choice }

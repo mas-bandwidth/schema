@@ -1,0 +1,2 @@
+# carried findings: name	slug	input	one line
+# every line is a FIX-CARD the c port owes; the runner fails if one goes green (tools/hostilecorpusexec, test/c-hostile)

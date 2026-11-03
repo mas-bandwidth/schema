@@ -23,6 +23,7 @@
 // arm is the variable form's; a form-2 message has no retaining codec (§6.6).
 
 mod backenddemo;
+mod featurewitnesses;
 mod blobdemo;
 mod graphdemo;
 mod listdemo;
@@ -50,6 +51,7 @@ mod tblw2;
 mod vocab9demo;
 mod vocabdemo;
 mod widedemo;
+mod widelist;
 
 use std::io::{self, Read, Write};
 
@@ -185,6 +187,8 @@ fn drive_message(unit: &str, root: &str, wire: &[u8]) -> Option<Reply> {
 /// ROOTS is every (unit, root) this driver answers, in the order `drive`
 /// matches them.
 const ROOTS: &[(&str, &str)] = &[
+    ("featurewitnesses", "Root"),
+    ("featurewitnesses", "ArrayRoot"),
     ("backenddemo", "LoginRequest"),
     ("backenddemo", "MatchResult"),
     ("backenddemo", "StorePurchase"),
@@ -238,6 +242,7 @@ const ROOTS: &[(&str, &str)] = &[
     ("vocabdemo", "Wide00"),
     ("vocabdemo", "Wide09"),
     ("widedemo", "Caption"),
+    ("widelist", "Wide"),
     ("widedemo", "Stamp"),
 ];
 
@@ -288,6 +293,9 @@ fn drive(unit: &str, root: &str, wire: &[u8], retain: bool) -> Option<Reply> {
         ("listdemo", "Save") => arm!(listdemo, save_load, save_load_retain, save_save, save_save_checked, save_save_retain, save_load_measure, wire, retain),
         ("listdemo", "Sheet") => arm!(listdemo, sheet_load, sheet_load_retain, sheet_save, sheet_save_checked, sheet_save_retain, sheet_load_measure, wire, retain),
         ("listdemo", "Unbounded") => arm!(listdemo, unbounded_load, unbounded_load_retain, unbounded_save, unbounded_save_checked, unbounded_save_retain, unbounded_load_measure, wire, retain),
+        ("featurewitnesses", "Root") => arm!(featurewitnesses, root_load, root_load_retain, root_save, root_save_checked, root_save_retain, root_load_measure, wire, retain),
+        ("featurewitnesses", "ArrayRoot") => arm!(featurewitnesses, array_root_load, array_root_load_retain, array_root_save, array_root_save_checked, array_root_save_retain, array_root_load_measure, wire, retain),
+        ("widelist", "Wide") => arm!(widelist, wide_load, wide_load_retain, wide_save, wide_save_checked, wide_save_retain, wide_load_measure, wire, retain),
         ("mapdemo", "Cells") => arm!(mapdemo, cells_load, cells_load_retain, cells_save, cells_save_checked, cells_save_retain, cells_load_measure, wire, retain),
         ("mapdemo", "Chunks") => arm!(mapdemo, chunks_load, chunks_load_retain, chunks_save, chunks_save_checked, chunks_save_retain, chunks_load_measure, wire, retain),
         ("mapdemo", "Crews") => arm!(mapdemo, crews_load, crews_load_retain, crews_save, crews_save_checked, crews_save_retain, crews_load_measure, wire, retain),

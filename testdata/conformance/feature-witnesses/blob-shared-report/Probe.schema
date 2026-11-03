@@ -1,0 +1,7 @@
+package probe
+table Root {
+ a *string
+ b *string
+ c *bytes
+ d *bytes
+}

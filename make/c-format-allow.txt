@@ -275,6 +275,10 @@ build/tables-generated-c/wide/CaptionTable.h
 build/tables-generated-c/wide/WideTextTable.h
 build/tables-generated-c/wide/WideView.c
 build/tables-generated-c/wide/WideView.h
+build/tables-generated-c/widelist/WidelistdemoView.c
+build/tables-generated-c/widelist/WidelistdemoView.h
+build/tables-generated-c/widelist/WidesTable.c
+build/tables-generated-c/widelist/WidesTable.h
 generated/bench/c/BenchView.c
 generated/bench/c/BenchView.h
 generated/bench/c/RealworldView.c

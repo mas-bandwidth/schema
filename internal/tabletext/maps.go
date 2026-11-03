@@ -34,6 +34,26 @@ func MapKeyOf(f *ir.Field, entry *Instance) MapKey {
 	return MapKey{U: cell.U, I: cell.I}
 }
 
+// mapKeyIdentity is a map key as a comparable value: two keys have the same
+// identity exactly when MapKeyOrder orders them equal (the bytes for a string
+// key, the signed value for a signed integer key, the unsigned value
+// otherwise).
+type mapKeyIdentity struct {
+	str string
+	n   uint64
+}
+
+func identityOf(f *ir.Field, k MapKey) mapKeyIdentity {
+	if MapKeyIsString(f) {
+		return mapKeyIdentity{str: string(k.Str)}
+	}
+	key := ir.MapKeyField(f)
+	if key.Type.Kind == ir.TInt && key.Type.Signed {
+		return mapKeyIdentity{n: uint64(k.I)}
+	}
+	return mapKeyIdentity{n: k.U}
+}
+
 // MapKeyOrder is the comparison the sort and the reader's ascending check both
 // use: byte-wise over the common prefix and then by length for a string key,
 // and the numeric order for an integer one — signed where the declaration is.
@@ -66,9 +86,10 @@ func (m *Model) NewMapEntry(f *ir.Field) *Instance { return m.New(f.MapEntry) }
 // MapKeyFits is the reader's bound on a key, and KEYS NEVER CLAMP: a key past
 // the declaration's capacity drops its whole entry and counts `clamped`, one
 // per entry (docs/SPEC-TABLES.md §2.8), because a clamped key would merge two
-// entries into one identity.
+// entries into one identity. An unbounded key has no declaration-side length
+// limit (section 2.13.1); framing and text validity are checked by the reader.
 func MapKeyFits(f *ir.Field, key MapKey) bool {
-	if !MapKeyIsString(f) {
+	if !MapKeyIsString(f) || ir.MapKeyUnbounded(f) {
 		return true
 	}
 	return len(key.Str) <= int(ir.MapKeyField(f).Type.Size)

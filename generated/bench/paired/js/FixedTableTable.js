@@ -558,10 +558,15 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
         TableMessageRefuse(report, "non_finite_float: " + report.NonFiniteFloat);
         return -1;
       }
-      return i;
+      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):
+      // the count says 0 and every body the walk touched goes back to its
+      // declared defaults.
+      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
+      return 0;
     }
   }
-  if (!tableMessageBatchClose(r)) { return count; }
+  // damage after the last body discards the batch too (§4)
+  if (!tableMessageBatchClose(r)) { for (let j = 0; j < count; j++) { InitFixedTable(values[j]); } return 0; }
   return count;
 }
 

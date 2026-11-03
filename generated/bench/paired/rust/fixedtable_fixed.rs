@@ -346,7 +346,33 @@ pub fn fixed_table_fixed_save(values: &[FixedTableRow], buffer: &mut [u8]) -> Op
 /// The plan's storage is the CALLER's, declared by capacity: this codec never
 /// allocates, and a layout whose plan does not fit is a refusal by name.
 /// Returns the records read, or None on a refusal `report` names.
+///
+/// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that
+/// meets damage anywhere answers None with `malformed` set, and every record
+/// in `values` goes back to its declared defaults, so nothing the read
+/// decoded before or after the damage is a value to use.
 pub fn fixed_table_fixed_load(
+    values: &mut [FixedTableRow],
+    data: &[u8],
+    plan: &mut [TableFixedEntry],
+    remap: &mut [u16],
+    report: &mut TableFixedReport,
+) -> Option<usize> {
+    let malformed_before = report.malformed;
+    report.malformed = false;
+    let read = fixed_table_fixed_load_records(values, data, plan, remap, report);
+    let damaged = report.malformed;
+    report.malformed |= malformed_before;
+    if damaged {
+        for value in values.iter_mut() {
+            fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+        }
+        return None;
+    }
+    read
+}
+
+fn fixed_table_fixed_load_records(
     values: &mut [FixedTableRow],
     data: &[u8],
     plan: &mut [TableFixedEntry],
@@ -452,9 +478,15 @@ pub fn fixed_table_fixed_load(
     let hole_n = table_fixed_holes(entries, &mut cover, &mut hole_buf);
     let holes = &hole_buf[..hole_n];
     let mut image = [0u8; FIXED_TABLE_FIXED_BODY_BYTES];
+    let (clamped_before, widened_before) = (report.clamped, report.widened);
     for k in 0..n {
         let record = &rest[k * record_bytes..(k + 1) * record_bytes];
         if u64::from_le_bytes(record[..8].try_into().expect("eight bytes")) != hash {
+            for value in values.iter_mut().take(k) {
+                fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+            }
+            report.clamped = clamped_before;
+            report.widened = widened_before;
             return report.refuse(TableFixedReason::NoBlock);
         }
         for h in holes {
@@ -474,6 +506,8 @@ pub fn fixed_table_fixed_load(
             for value in values.iter_mut().take(k + 1) {
                 fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
             }
+            report.clamped = clamped_before;
+            report.widened = widened_before;
             return report.refuse_non_finite(why);
         }
         // AND THE BOUND THE LOOP DOES NOT HOLD, straight-line over the
@@ -488,6 +522,11 @@ pub fn fixed_table_fixed_load(
             // having no `L` to continue past. REFUSE is total, so the refusal
             // is taken before any counter is added.
             if damaged != 0 {
+                for value in values.iter_mut().take(k + 1) {
+                    fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
+                }
+                report.clamped = clamped_before;
+                report.widened = widened_before;
                 return report.refuse(TableFixedReason::TextIllFormed);
             }
             report.clamped += clamped as u32;

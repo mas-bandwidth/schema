@@ -209,7 +209,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		g.pf("%s %s=lo!=0; }\n", ind, dst)
 		return
 	}
-	signed := ir.TableKindSigned(kind)
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	typ := "uint64_t"
 	if signed {
 		typ = "int64_t"
@@ -385,7 +385,11 @@ func (g *tableGen) emitFixedMessageRead(st *ir.Struct) {
 	// name, unchanged, and the plain name wraps it below.
 	g.pf("/* %s is the TOLERANT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */\n", g.api(st.Name, "load_messages_tolerant"))
 	g.pf("static SCHEMA_UNUSED int %s(%s * values,int64_t * count,const TableVocabulary * vocabulary,const uint8_t * buffer,int64_t bytes,TableReport * report)\n{\n", g.api(st.Name, "load_messages_tolerant"), st.Name)
-	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
+	g.pf(" TableReport ignored={0};TableMessageReader r;int64_t capacity,bodies,i;int32_t non_finite_before;int ok;if(report==NULL)report=&ignored;\n if(values==NULL||count==NULL){report->malformed=1;return 0;}capacity=*count;*count=0;\n")
+	if st.Integrity != "" {
+		g.pf(" if(bytes<1||buffer==NULL){report->malformed=1;return 0;}\n if(buffer[0]!=2){report->refused=1;report->reason=SCHEMA_TABLE_NEWER_FORM;return 0;}\n if(bytes<6||!schema_table_integrity_holds_(buffer,bytes)){report->malformed=1;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return 0;}\n bytes-=4;\n")
+	}
+	g.pf(" bodies=table_message_open(&r,vocabulary,buffer,bytes,report);if(bodies<0)return 0;\n if(bodies>capacity){*count=bodies;report->refused=1;report->reason=SCHEMA_TABLE_BATCH_TOO_LARGE;return 0;}\n non_finite_before=report->non_finite_floats;\n for(i=0;i<bodies;i++){if(!%s(&r,values+i))break;(*count)++;}ok=i==bodies&&table_message_close(&r);\n /* a NaN or an infinity refuses the whole batch, the tolerant read too: count 0 and every value it wrote reset (§3.3) */\n if(table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n /* damage anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */\n if(!ok){for(i=0;i<bodies;i++)%s(values+i);*count=0;return 0;}\n return ok;\n}\n", g.api(st.Name, "load_message_body"), g.api(st.Name, "reset"), g.api(st.Name, "reset"))
 	g.pf("/* The PLAIN %s IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): ok is 0 for whatever the strict read refuses, the report this read's own and its refuse_reason set. Whether the strict rule refused or the batch was damaged, count is 0 and every value is reset (§3.3, §4). */\n", g.api(st.Name, "load_messages"))
 	g.pf("static SCHEMA_UNUSED int %s( %s * values, int64_t * count, const TableVocabulary * vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", g.api(st.Name, "load_messages"), st.Name)
 	g.pf("    TableReport ignored;\n    int64_t i;\n    int ok;\n    if ( report == NULL ) report = &ignored;\n    /* this read's report, not the caller's last one */\n    memset( report, 0, sizeof( *report ) );\n")

@@ -1,0 +1,102 @@
+#!/bin/sh
+# Actual Dart adapter claims plus narrowly planted byte/reader boundary controls.
+set -eu
+mode=${1:-positive}
+dart=${2:-dart}
+case "$mode" in positive|replacement|reader) ;; *) echo "unknown mode: $mode" >&2; exit 2 ;; esac
+root=$(pwd)
+source=test/conformance/dart/main.dart
+out=build/dart-text-boundary/$mode
+rm -rf "$out"
+mkdir -p "$out"
+binary="$root/build/conformance-dart"
+
+private_driver() {
+    variant=$1
+    target="$out/$variant"
+    mkdir -p "$target/tree/test/conformance/dart"
+    ln -s "$root/build" "$target/tree/build"
+    main="$target/tree/test/conformance/dart/main.dart"
+    case "$variant" in
+      replacement)
+        anchor='    return utf8.decode(bytes, allowMalformed: false);'
+        matches=$(grep -Fxc "$anchor" "$source" || true)
+        [ "$matches" = 1 ] || { echo "decoder anchor matched $matches times, want 1" >&2; exit 1; }
+        sed 's/return utf8.decode(bytes, allowMalformed: false);/return utf8.decode(bytes, allowMalformed: true);/' "$source" > "$main"
+        ;;
+      reader)
+        anchor='        tabledemo.rootConfigFromJson(text, r);'
+        matches=$(grep -Fxc "$anchor" "$source" || true)
+        [ "$matches" = 1 ] || { echo "reader anchor matched $matches times, want 1" >&2; exit 1; }
+        sed "s/tabledemo.rootConfigFromJson(text, r);/tabledemo.rootConfigFromJson(text, r); throw StateError('text-boundary-reader-control');/" "$source" > "$main"
+        ;;
+      bom-preserve)
+        # Restore the decoded leading mark solely for this private control.
+        sed 's/return utf8.decode(bytes, allowMalformed: false);/return (bytes.length >= 3 \&\& bytes[0] == 0xEF \&\& bytes[1] == 0xBB \&\& bytes[2] == 0xBF ? String.fromCharCode(0xFEFF) : "") + utf8.decode(bytes, allowMalformed: false);/' "$source" > "$main"
+        ;;
+    esac
+    if cmp -s "$source" "$main"; then echo "$variant changed nothing" >&2; exit 1; fi
+    "$dart" compile exe -o "$target/driver" "$main" > "$target/compile.log" 2>&1 || { cat "$target/compile.log"; exit 1; }
+    binary="$root/$target/driver"
+}
+
+if [ "$mode" != positive ]; then private_driver "$mode"; fi
+if [ "$mode" = reader ]; then
+    mkdir -p "$out/input" "$out/answers"
+    printf '{}\n' > "$out/input/RootConfig.json"
+    printf 'json-hostile reader tabledemo RootConfig %s/input refused\n' "$out" > "$out/manifest"
+    if "$binary" "$out/manifest" json-hostile "$out/answers" > "$out/log" 2>&1; then
+        cat "$out/log"; echo 'unexpected reader exception was masked' >&2; exit 1
+    fi
+    grep -q 'text-boundary-reader-control' "$out/log"
+    [ ! -e "$out/answers/reader" ] || { echo 'unexpected reader exception wrote a refusal' >&2; exit 1; }
+    echo 'Dart unexpected-reader-error control: StateError stays fatal'
+    exit 0
+fi
+
+cat > "$out/driver" <<WRAP
+#!/bin/sh
+if [ "\$2" = list ]; then printf '%s\n' json-read json-write json-hostile; exit 0; fi
+exec "$binary" "\$@"
+WRAP
+chmod +x "$out/driver"
+printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers"
+rc=0
+build/conformance-harness run --claims --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
+if [ "$mode" = replacement ]; then
+    [ "$rc" -ne 0 ] || { cat "$out/log"; echo 'replacement decoding stayed green' >&2; exit 1; }
+    grep -q 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
+    if grep '^  dart / ' "$out/log" | grep -v 'dart / json-hostile: str-illformed-at-bound:'; then
+        cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
+    fi
+    grep -Eq '^json-read +pass ' "$out/log"
+    grep -Eq '^json-write +pass ' "$out/log"
+    grep 'dart / json-hostile: str-illformed-at-bound:' "$out/log"
+    echo 'Dart replacement-decoder control: only invalid UTF-8 fails; read/write remain green'
+    exit 0
+fi
+rows=$(grep -c '^json-hostile ' testdata/conformance/tables/MANIFEST.txt)
+if [ "$rc" -ne 0 ] || ! grep -Eq "^json-hostile +pass $rows/$rows *\$" "$out/log"; then
+    cat "$out/log"; echo 'Dart strict text boundary claims failed' >&2; exit 1
+fi
+grep -E '^json-(read|write|hostile) ' "$out/log"
+
+# The corresponding Go test checks these exact bytes on tabledemo.RootConfig.
+mkdir -p "$out/bom/plain" "$out/bom/leading-bom" "$out/bom/double-bom" "$out/bom/space-bom" "$out/bom/cut-bom" "$out/bom/answers"
+printf '{}\n' > "$out/bom/plain/RootConfig.json"
+printf '\357\273\277{}\n' > "$out/bom/leading-bom/RootConfig.json"
+printf '\357\273\277\357\273\277{}\n' > "$out/bom/double-bom/RootConfig.json"
+printf ' \357\273\277{}\n' > "$out/bom/space-bom/RootConfig.json"
+printf '\357\273{}\n' > "$out/bom/cut-bom/RootConfig.json"
+: > "$out/bom/manifest"
+for name in plain leading-bom double-bom space-bom cut-bom; do
+    printf 'json-hostile %s tabledemo RootConfig %s/bom/%s refused\n' "$name" "$out" "$name" >> "$out/bom/manifest"
+done
+"$binary" "$out/bom/manifest" json-hostile "$out/bom/answers"
+for name in plain leading-bom; do grep -qx '0,0,0,0,0,false,read' "$out/bom/answers/$name"; done
+for name in double-bom space-bom cut-bom; do grep -qx 'refused' "$out/bom/answers/$name"; done
+private_driver bom-preserve
+mkdir -p "$out/bom/retained"
+"$binary" "$out/bom/manifest" json-hostile "$out/bom/retained"
+grep -qx 'refused' "$out/bom/retained/leading-bom"
+echo 'Dart BOM control: exactly one leading mark is skipped; preserving it changes the generated reader result'

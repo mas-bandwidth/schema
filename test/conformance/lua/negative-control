@@ -8,9 +8,9 @@
 # required red on the named surface with its neighbours green. No tracked
 # file is written, so an interrupt leaves no sabotaged tree.
 #
-#   report  load.lua counts every unknown field twice: the two surfaces that
-#           print the load's report red (`lua / report`, and `lua / retain`,
-#           whose answer carries the same counters) and nothing else; `wire`,
+#   report  load.lua counts every unknown field twice: the three surfaces that
+#           print the load's counters red (`lua / report`, `lua / framing`,
+#           and `lua / retain`) and nothing else; `wire`,
 #           `json-read` and `retain-save` green (the sabotage moves no byte).
 #   walk    json.lua's field-key match never matches the first declared
 #           field: the text READER's two surfaces red (`lua / json-read`, and
@@ -77,7 +77,7 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
 fi
 red=$(grep -oE '^ *lua / [a-z-]+' "$out/log" | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')
 case "$mode" in
-report) want="report retain " ; green="wire json-read retain-save" ;;
+report) want="framing report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 esac

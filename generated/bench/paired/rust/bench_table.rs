@@ -781,12 +781,99 @@ fn variable_record_save(type_id: u64, node: &Rc<dyn Any>, out: &mut Vec<u8>, ids
     out.push(0); // the record body's zero reference
 }
 
-/// Decode record k of the numbering into its table, ONCE (docs/SPEC-TABLES.md
-/// §3.1): every later slot naming it shares the one node. A record that names
-/// itself while its own body decodes is a cycle no writer produces and this
-/// storage cannot hold: that slot reads null and one malformed counts. On a
-/// retaining load an unknown field inside a node body counts retain_lost: the
-/// store carries no path into a node (§6.6).
+#[doc(hidden)]
+impl MixedChatEvent {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedEntity {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedHitEvent {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedPickupEvent {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[doc(hidden)]
+impl MixedStat {
+    #[allow(dead_code, unused_variables)]
+    pub fn __table_edges(&self, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    }
+
+    #[allow(dead_code, unused_variables, clippy::too_many_arguments)]
+    pub fn __table_link(&mut self, wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, report: &mut TableReport) {
+    }
+}
+
+#[allow(dead_code, unused_variables, clippy::match_single_binding)]
+fn variable_node_stub_alloc(type_id: u64) -> Option<Rc<dyn Any>> {
+    match type_id {
+        _ => None,
+    }
+}
+
+#[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
+fn variable_node_decode(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {
+    let (type_id, start, end) = nodes.recs[k];
+    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };
+    let retaining = nodes.retaining;
+    let node: Option<Rc<dyn Any>> = match type_id {
+        _ => None,
+    };
+    if let Some(n) = &node { retain_bind_node(&mut sink, n); }
+    nodes.decoded[k] = node;
+    nodes.retained.extend_from_slice(&sink.bytes);
+}
+
+#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]
+fn variable_node_edges(type_id: u64, node: &Rc<dyn Any>, nodes: &TableNodeReader, out: &mut Vec<usize>) {
+    match type_id {
+        _ => {}
+    }
+}
+
+#[allow(dead_code, unused_variables, clippy::match_single_binding, clippy::single_match)]
+fn variable_node_link_record(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) {
+    let Some(raw) = nodes.decoded[k].take() else { return; };
+    let type_id = nodes.recs[k].0;
+    match type_id {
+        _ => {}
+    }
+}
+
+/// Finalize record k of the numbering into its shared Rc (docs/SPEC-TABLES.md
+/// §3.1): every later slot naming it shares the one node.
 #[allow(dead_code, unused_variables, unused_mut, clippy::match_single_binding)]
 fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k: usize, report: &mut TableReport) -> Option<Rc<dyn Any>> {
     match &nodes.slots[k] {
@@ -795,16 +882,9 @@ fn variable_node_build(wire: &[u8], ids: &[u64], nodes: &mut TableNodeReader, k:
         TableNodeSlot::Building => { report.cycle_on_save = true; return None; }
         _ => return None,
     }
-    let (type_id, start, end) = nodes.recs[k];
-    nodes.slots[k] = TableNodeSlot::Building;
-    let mut sink = TableRetain { bytes: Vec::with_capacity(nodes.retain_capacity), ids: Vec::new() };
-    let retaining = nodes.retaining;
-    let node: Option<Rc<dyn Any>> = match type_id {
-        _ => None,
-    };
+    let (type_id, _, _) = nodes.recs[k];
+    let node = nodes.decoded[k].take();
     nodes.slots[k] = match &node { Some(n) => TableNodeSlot::Built(type_id, n.clone()), None => TableNodeSlot::Null };
-    if let Some(n) = &node { retain_bind_node(&mut sink, n); }
-    nodes.retained.extend_from_slice(&sink.bytes);
     node
 }
 
@@ -1079,8 +1159,8 @@ pub fn mixed_stat_json_write(v: &MixedStat, w: &mut Jw, depth: usize, label: u64
 #[allow(dead_code)]
 pub fn mixed_chat_event_json_read(jr: &mut Jr, v: &mut MixedChatEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_chat_event_json_fields(jr, v, None);
@@ -1099,7 +1179,9 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1135,11 +1217,13 @@ pub fn mixed_chat_event_json_fields(jr: &mut Jr, v: &mut MixedChatEvent, first: 
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1152,7 +1236,11 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedChatEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedChatEvent::default();
+                let _ = mixed_chat_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1191,8 +1279,8 @@ pub fn mixed_chat_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedChatEvent>> {
 #[allow(dead_code)]
 pub fn mixed_entity_json_read(jr: &mut Jr, v: &mut MixedEntity) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_entity_json_fields(jr, v, None);
@@ -1211,7 +1299,9 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1376,11 +1466,13 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1393,7 +1485,11 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedEntity::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedEntity::default();
+                let _ = mixed_entity_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1432,8 +1528,8 @@ pub fn mixed_entity_json_ptr(jr: &mut Jr) -> Option<Rc<MixedEntity>> {
 #[allow(dead_code)]
 pub fn mixed_hit_event_json_read(jr: &mut Jr, v: &mut MixedHitEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_hit_event_json_fields(jr, v, None);
@@ -1452,7 +1548,9 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1504,11 +1602,13 @@ pub fn mixed_hit_event_json_fields(jr: &mut Jr, v: &mut MixedHitEvent, first: Op
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1521,7 +1621,11 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedHitEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedHitEvent::default();
+                let _ = mixed_hit_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1560,8 +1664,8 @@ pub fn mixed_hit_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedHitEvent>> {
 #[allow(dead_code)]
 pub fn mixed_pickup_event_json_read(jr: &mut Jr, v: &mut MixedPickupEvent) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_pickup_event_json_fields(jr, v, None);
@@ -1580,7 +1684,9 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1616,11 +1722,13 @@ pub fn mixed_pickup_event_json_fields(jr: &mut Jr, v: &mut MixedPickupEvent, fir
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1633,7 +1741,11 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedPickupEvent::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedPickupEvent::default();
+                let _ = mixed_pickup_event_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;
@@ -1672,8 +1784,8 @@ pub fn mixed_pickup_event_json_ptr(jr: &mut Jr) -> Option<Rc<MixedPickupEvent>> 
 #[allow(dead_code)]
 pub fn mixed_stat_json_read(jr: &mut Jr, v: &mut MixedStat) {
     jr.space();
-    if jr.peek() != b'{' { jr.malformed = true; return; }
     if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return; }
+    if jr.peek() != b'{' { jr.malformed = true; return; }
     jr.p += 1;
     jr.depth += 1;
     let _ = mixed_stat_json_fields(jr, v, None);
@@ -1692,7 +1804,9 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
             Some(k) => k,
             None => {
                 jr.space();
-                if jr.peek() == b'}' { jr.p += 1; return n; }
+                if jr.peek() == b'}' {
+                    jr.p += 1; return n;
+                }
                 let Some(k) = jr.read_string() else { jr.malformed = true; return n; };
                 jr.space();
                 if jr.peek() != b':' { jr.malformed = true; return n; }
@@ -1728,11 +1842,13 @@ pub fn mixed_stat_json_fields(jr: &mut Jr, v: &mut MixedStat, first: Option<Stri
                 jr.skip_value();
             }
         }
-        if jr.malformed { return n; }
+        if jr.malformed || jr.missing_required != 0 { return n; }
         jr.space();
         let c = jr.peek();
         if c == b',' { jr.p += 1; continue; }
-        if c == b'}' { jr.p += 1; return n; }
+        if c == b'}' {
+            jr.p += 1; return n;
+        }
         jr.malformed = true;
         return n;
     }
@@ -1745,7 +1861,11 @@ pub fn mixed_stat_json_ptr(jr: &mut Jr) -> Option<Rc<MixedStat>> {
         b'{' => {
             if jr.depth > JSON_DEPTH_CAP { jr.malformed = true; return None; }
             jr.p += 1;
-            if jr.peek() == b'}' { jr.p += 1; return Some(Rc::new(MixedStat::default())); }
+            if jr.peek() == b'}' {
+                let mut v = MixedStat::default();
+                let _ = mixed_stat_json_fields(jr, &mut v, None);
+                return Some(Rc::new(v));
+            }
             let Some(key) = jr.read_string() else { jr.malformed = true; return None; };
             if jr.peek() != b':' { jr.malformed = true; return None; }
             jr.p += 1;

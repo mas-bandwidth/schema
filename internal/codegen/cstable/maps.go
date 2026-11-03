@@ -27,7 +27,7 @@ const tableMapWireSource = `
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
-            if (kind != k.Kind && Widen(kind, k.Kind)) { widened = true; }
+            if (kind != k.Kind && Widen(kind, k.Kind)) { mismatch = false; widened = true; }
             else
             {
                 mismatch = kind != k.Kind;
@@ -53,6 +53,7 @@ const tableMapWireSource = `
         if (!header.Var(out ulong count)) { Damage(report); return true; }
         a.Offset = Math.Min(a.Buffer.Length, header.Offset);
         if (kind != 13) { report.KindMismatch++; return true; }
+        if (count > int.MaxValue) { return CollectionCap(report); }
         f.ResetField(value);
         int landed = 0; bool widened = false; MapKey last = default;
         TableFieldInfo keyField = f.Table.Fields[0];
@@ -70,6 +71,7 @@ const tableMapWireSource = `
             f.EnsureCount(value, slot + 1);
             object entry = f.Table.Create(); f.SetChild(value, slot, entry);
             ReadBody(ref body, entry, f.Table, report, true);
+            if (CountRefused(report)) { return false; }
             if (order == 0) { report.Duplicate++; }
             else { last = KeyOf(entry, keyField); landed++; }
         }
@@ -106,13 +108,22 @@ const tableMapJsonSource = `
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
+        string mapField = input.TextField;
+        Span<byte> spelling = stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
             if (c == '}') { input.Pos++; return true; }
-            Span<byte> spelling = stackalloc byte[MaxKey];
             int beforeClamp = input.Report.Clamped;
-            if (!ScanString(text, ref input, spelling, true, out int used)) { return false; }
+            input.TextField = mapField;
+            scoped ReadOnlySpan<byte> actual; int used;
+            if(key.Unbounded)
+            {
+                if(!DecodedStringBody(text,ref input,out actual)){return false;}
+                if(!TableWire.TextValid(actual)){return RefuseText(ref input,"text_holds_zero");}
+                used=actual.Length;
+            }
+            else {if (!ScanString(text, ref input, spelling, true, out used, stored: true)) { return false; } actual=spelling.Slice(0,used);}
             bool over = input.Report.Clamped != beforeClamp;
             input.Report.Clamped = beforeClamp;
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -122,13 +133,13 @@ const tableMapJsonSource = `
             if (key.Kind == 12)
             {
                 if (over || used > key.ArrayBound) { input.Report.Clamped++; drop = true; }
-                else { spelling.Slice(0, used).CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
+                else { if(key.Unbounded){key.EnsureCount(entry,used);} actual.CopyTo(key.GetBuffer(entry)); key.SetCount(entry, used); }
             }
             else if (over) { input.Report.KindMismatch++; drop = true; }
             else
             {
                 In probe = new In { Report = new TableReport() };
-                ReadOnlySpan<byte> token = spelling.Slice(0, used);
+                ReadOnlySpan<byte> token = actual;
                 Space(token, ref probe);
                 if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
                 { input.Bad = true; return false; }
@@ -137,9 +148,25 @@ const tableMapJsonSource = `
             if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
             else
             {
-                if (field.Kind == 17 && !field.IsArray && ValueShape(text, ref input) == 'z')
-                { if (!Literal(text, ref input, "null")) { return false; } }
-                else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                char shape = ValueShape(text, ref input);
+                if ((field.Optional || field.Kind == 17 && !field.IsArray) && shape == 'z')
+                {
+                    if (!Literal(text, ref input, "null")) { return false; }
+                    field.ResetField(entry);
+                    if (field.Optional) { field.SetPresent(entry, false); }
+                }
+                else
+                {
+                    // A key names a present optional value even when the
+                    // value's shape is wrong; the new entry keeps its default.
+                    if (field.Optional) { field.SetPresent(entry, true); }
+                    if (shape != Shape(field))
+                    {
+                        input.Report.KindMismatch++;
+                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    }
+                    else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                }
                 int at = 0;
                 while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
                 if (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) == 0)

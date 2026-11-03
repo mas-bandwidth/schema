@@ -26,8 +26,8 @@ fixed table T
 }
 `)
 	for _, want := range []string{
-		// the reason, appended to the C# enum (its order is its own)
-		"layout_record_too_large, non_finite_float }",
+		// The finite reason remains an enum member when later reasons are added.
+		", non_finite_float,",
 		// the descriptor names the field for the refusal
 		`NonFiniteField = "T.v", NonFiniteReason = "non_finite_float: T.v"`,
 		// elision compares BITS, so -0 rides under +0 and +0 under 1.5's bits

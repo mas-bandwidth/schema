@@ -318,6 +318,7 @@ static SCHEMA_UNUSED int bench_table_json_is_enum( const bench_table_field_info_
 
 static SCHEMA_UNUSED char bench_table_json_shape( const bench_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 'a'; }
     if ( f->kind == 12 || f->kind == 33 ) { return 's'; }           /* string */
     if ( bench_table_json_is_bytes( f ) ) { return 's'; }   /* bytes: base64 */
     if ( bench_table_json_is_keyed( f ) ) { return 'o'; }   /* an object keyed by variant NAME */
@@ -325,9 +326,11 @@ static SCHEMA_UNUSED char bench_table_json_shape( const bench_table_field_info_t
     if ( f->is_array ) { return 'a'; }
     if ( f->arms != NULL ) { return 'o'; }         /* union: an object with ONE key */
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }           /* nested table or type */
     if ( bench_table_json_is_enum( f ) ) { return 's'; }
     if ( bench_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -335,11 +338,14 @@ static SCHEMA_UNUSED char bench_table_json_shape( const bench_table_field_info_t
 /* the ELEMENT shape of an array field — the same classifier one level down */
 static SCHEMA_UNUSED char bench_table_json_element_shape( const bench_table_field_info_t * f )
 {
+    if ( f->text_list != 0 ) { return 's'; }
     if ( f->arms != NULL ) { return 'o'; }
     if ( f->kind == 17 ) { return f->table == NULL ? 's' : 'o'; }
+    if ( f->kind == 13 && f->table != NULL && f->table->json_array ) { return 'a'; }
     if ( f->kind == 13 ) { return 'o'; }
     if ( bench_table_json_is_enum( f ) ) { return 's'; }
     if ( bench_table_json_is_flags( f ) ) { return 'a'; }
+    if ( f->kind == 36 ) { return 's'; }
     if ( f->kind == 1 ) { return 'b'; }
     return 'n';
 }
@@ -714,6 +720,57 @@ static SCHEMA_UNUSED int bench_table_json_write_float( bench_table_json_out_t * 
     return 1;
 }
 
+static SCHEMA_UNUSED void schema_bench_table_json_civil_from_days_( int64_t z, int * year, int * month, int * day )
+{
+    int64_t era, doe, yoe, y, doy, mp, d, m;
+    z += 719468;
+    era = ( z >= 0 ? z : z - 146096 ) / 146097;
+    doe = z - era * 146097;
+    yoe = ( doe - doe / 1460 + doe / 36524 - doe / 146096 ) / 365;
+    y = yoe + era * 400;
+    doy = doe - ( 365 * yoe + yoe / 4 - yoe / 100 );
+    mp = ( 5 * doy + 2 ) / 153;
+    d = doy - ( 153 * mp + 2 ) / 5 + 1;
+    m = mp < 10 ? mp + 3 : mp - 9;
+    *year = (int) ( y + ( m <= 2 ? 1 : 0 ) );
+    *month = (int) m;
+    *day = (int) d;
+}
+
+static SCHEMA_UNUSED int schema_bench_table_json_write_timestamp_( bench_table_json_out_t * out, const void * storage )
+{
+    int64_t nanos = 0, seconds, fraction, days, second_of_day;
+    int year = 0, month = 0, day = 0, hour, minute, second, length;
+    char text[48];
+    memcpy( &nanos, storage, sizeof( nanos ) );
+    seconds = nanos / 1000000000;
+    fraction = nanos % 1000000000;
+    if ( fraction < 0 ) { fraction += 1000000000; seconds -= 1; }
+    days = seconds / 86400;
+    second_of_day = seconds % 86400;
+    if ( second_of_day < 0 ) { second_of_day += 86400; days -= 1; }
+    schema_bench_table_json_civil_from_days_( days, &year, &month, &day );
+    hour = (int) ( second_of_day / 3600 );
+    minute = (int) ( ( second_of_day / 60 ) % 60 );
+    second = (int) ( second_of_day % 60 );
+    length = snprintf( text, sizeof( text ), "%04d-%02d-%02dT%02d:%02d:%02d", year, month, day, hour, minute, second );
+    if ( length <= 0 || length >= (int) sizeof( text ) ) { return 0; }
+    bench_table_json_put( out, '"' );
+    bench_table_json_raw( out, text, length );
+    if ( fraction != 0 )
+    {
+        char digits[32];
+        int placed = 9;
+        snprintf( digits, sizeof( digits ), "%09lld", (long long) fraction );
+        while ( placed > 1 && digits[placed - 1] == '0' ) { placed--; }
+        bench_table_json_put( out, '.' );
+        bench_table_json_raw( out, digits, placed );
+    }
+    bench_table_json_put( out, 'Z' );
+    bench_table_json_put( out, '"' );
+    return 1;
+}
+
 static SCHEMA_UNUSED int bench_table_json_write_value( bench_table_json_out_t * out, const void * base, const bench_table_type_info_t * info, int32_t depth );
 
 /* one scalar, at one storage address: a nested object, a union, a
@@ -731,8 +788,46 @@ static SCHEMA_UNUSED int bench_table_json_write_pointer( bench_table_json_out_t 
 static SCHEMA_UNUSED int bench_table_json_write_pointer( bench_table_json_out_t * out, const void * slot, const bench_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_bench_table_json_write_unbounded_text_( bench_table_json_out_t * out, const void * slot );
+#endif
+static SCHEMA_UNUSED int schema_bench_table_json_write_text_element_( bench_table_json_out_t * out, const void * p, const bench_table_field_info_t * f )
+{
+    const bench_table_field_info_t * v = &f->table->fields[0];
+    int32_t n;
+    if ( f->text_list == 2 && bench_table_json_get_raw( (const uint8_t *) p + v->present_offset, 1 ) == 0 )
+    {
+        bench_table_json_raw( out, "null", 4 );
+        return 1;
+    }
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+    if ( !v->counted ) { return schema_bench_table_json_write_unbounded_text_( out, (const uint8_t *) p + v->offset ); }
+#endif
+    n = bench_table_json_count( p, v );
+    if ( n < 0 || n > v->array_bound ) { return 0; }
+    bench_table_json_write_string( out, (const char *) p + v->offset, n );
+    return 1;
+}
+
+static SCHEMA_UNUSED int64_t schema_bench_table_json_text_bytes_( const void * p, int32_t count, const bench_table_field_info_t * f )
+{
+    const bench_table_field_info_t * v = &f->table->fields[0];
+    int64_t spent = 0;
+    int32_t i;
+    for ( i = 0; i < count; i++ )
+    {
+        const uint8_t * e = (const uint8_t *) p + (int64_t) i * f->elem_size;
+        int32_t n;
+        if ( f->text_list == 2 && bench_table_json_get_raw( e + v->present_offset, 1 ) == 0 ) { continue; }
+        n = bench_table_json_count( e, v );
+        if ( n > 0 ) { spent += (int64_t) n; }
+    }
+    return spent;
+}
+
 static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t * out, const void * storage, const bench_table_field_info_t * f, int32_t depth )
 {
+    if ( f->text_list != 0 ) { return schema_bench_table_json_write_text_element_( out, storage, f ); }
     if ( f->kind == 17 ) { return bench_table_json_write_pointer(out,storage,f,depth); }
     if ( f->arms != NULL )
     {
@@ -834,6 +929,8 @@ static SCHEMA_UNUSED int bench_table_json_write_scalar( bench_table_json_out_t *
             memcpy( &v, storage, sizeof( v ) );
             return bench_table_json_write_float( out, v, 0 );
         }
+        case 36:
+            return schema_bench_table_json_write_timestamp_( out, storage );
         case 2: case 3: case 4: case 5:
             bench_table_json_write_signed( out, bench_table_json_get_signed( storage, f->elem_size ) );
             return 1;
@@ -855,8 +952,11 @@ static SCHEMA_UNUSED int bench_table_json_write_field( bench_table_json_out_t * 
     if ( f->kind == 33 ) {
         bench_table_json_write_w_string( out, (const uint16_t *)(const void *)storage, bench_table_json_count( base, f ) ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_bench_table_json_write_unbounded_text_( out, storage ); }
+#endif
         bench_table_json_write_string( out, (const char *) storage, bench_table_json_count( base, f ) );
         return 1;
     }
@@ -897,6 +997,10 @@ static SCHEMA_UNUSED int bench_table_json_write_field( bench_table_json_out_t * 
     {
         int32_t count = bench_table_json_count( base, f );
         int32_t i;
+        if ( f->text_total > 0 && schema_bench_table_json_text_bytes_( storage, count, f ) > f->text_total )
+        {
+            return 0;
+        }
         if ( count == 0 )
         {
             bench_table_json_raw( out, "[]", 2 );
@@ -952,6 +1056,7 @@ static SCHEMA_UNUSED int bench_table_json_write_fields( bench_table_json_out_t *
 static SCHEMA_UNUSED int bench_table_json_write_value( bench_table_json_out_t * out, const void * base, const bench_table_type_info_t * info, int32_t depth )
 {
     int any = 0;
+    if ( info->json_array && info->num_fields == 1 ) { return bench_table_json_write_field( out, base, &info->fields[0], depth ); }
     if ( !bench_table_json_write_fields(out,base,info,depth,&any) ) { return 0; }
     if ( !any ) { bench_table_json_raw(out,"{}",2); return 1; }
     bench_table_json_line(out,depth); bench_table_json_put(out,'}'); return 1;
@@ -1226,10 +1331,10 @@ static SCHEMA_UNUSED int bench_table_json_scan_string_as( bench_table_json_in_t 
         if ( !bench_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
         if ( unit_length == 0 ) { break; }
         if ( text && unit[0] == 0 ) { in->bad = 1; return 0; } /* text_holds_zero (§16.3) */
-        if ( out == NULL ) { placed += unit_length; }
+        if ( out == NULL ) { if ( placed > INT32_MAX - unit_length ) { in->bad = 1; return 0; } placed += unit_length; }
         else
         {
-            if ( !clamped && placed + unit_length <= capacity )
+            if ( !clamped && placed <= capacity - unit_length )
             {
                 memcpy( out + placed, unit, (size_t) unit_length );
                 placed += unit_length;
@@ -1310,9 +1415,10 @@ static SCHEMA_UNUSED int bench_table_json_scan_w_string( bench_table_json_in_t *
         }
         if ( out == NULL )
         {
+            if ( placed > INT32_MAX - units_length ) { in->bad = 1; return 0; }
             placed += units_length;
         }
-        else if ( !clamped && placed + units_length <= capacity )
+        else if ( !clamped && placed <= capacity - units_length )
         {
             for ( int32_t i = 0; i < units_length; i++ ) { out[placed + i] = units[i]; }
             placed += units_length;
@@ -1782,11 +1888,186 @@ static SCHEMA_UNUSED int bench_table_json_read_list(bench_table_json_in_t * in,v
 static SCHEMA_UNUSED int bench_table_json_read_map(bench_table_json_in_t * in,void * storage,const bench_table_field_info_t * f,int32_t depth);
 #endif
 #endif
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_bench_table_json_read_unbounded_text_( bench_table_json_in_t * in, void * slot );
+#endif
+static SCHEMA_UNUSED int schema_bench_table_json_timestamp_digit_( char c )
+{
+    return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
+}
+
+static SCHEMA_UNUSED int schema_bench_table_json_timestamp_leap_( int year )
+{
+    return year % 4 == 0 && ( year % 100 != 0 || year % 400 == 0 );
+}
+
+static SCHEMA_UNUSED int schema_bench_table_json_timestamp_month_days_( int year, int month )
+{
+    switch ( month )
+    {
+        case 1: case 3: case 5: case 7: case 8: case 10: case 12: return 31;
+        case 4: case 6: case 9: case 11: return 30;
+        case 2: return schema_bench_table_json_timestamp_leap_( year ) ? 29 : 28;
+    }
+    return 0;
+}
+
+static SCHEMA_UNUSED int64_t schema_bench_table_json_timestamp_days_( int year, int month, int day )
+{
+    int64_t y = (int64_t) year;
+    const int64_t m = (int64_t) month;
+    int64_t era, year_of_era, month_of_year, day_of_year, day_of_era;
+    if ( m <= 2 ) { y--; }
+    era = y / 400;
+    if ( y < 0 && y % 400 != 0 ) { era--; }
+    year_of_era = y - era * 400;
+    month_of_year = m + 9;
+    if ( m > 2 ) { month_of_year = m - 3; }
+    day_of_year = ( 153 * month_of_year + 2 ) / 5 + (int64_t) day - 1;
+    day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    return era * 146097 + day_of_era - 719468;
+}
+
+static SCHEMA_UNUSED int schema_bench_table_json_timestamp_parse_( bench_table_json_in_t * in, int64_t * out )
+{
+    int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+    int index = 0, digits = 0, offset_sign = 0, offset_hour = 0, offset_minute = 0, phase = 0;
+    int64_t fraction = 0, offset, seconds;
+    const int64_t min_second = -9223372037LL;
+    const int64_t max_second = 9223372036LL;
+    const int64_t min_nanos = 145224192LL;
+    const int64_t max_nanos = 854775807LL;
+    uint64_t total;
+    if ( bench_table_json_peek( in ) != '"' ) { in->bad = 1; return 0; }
+    in->pos++;
+    for ( ;; )
+    {
+        char unit[4];
+        int32_t unit_length = 0;
+        char c;
+        if ( !bench_table_json_scan_unit( in, unit, &unit_length ) ) { return 0; }
+        if ( unit_length == 0 ) { break; }
+        if ( unit_length != 1 ) { return 0; }
+        c = unit[0];
+        if ( phase == 0 )
+        {
+            const int digit = schema_bench_table_json_timestamp_digit_( c );
+            if ( index == 4 || index == 7 ) { if ( c != '-' ) { return 0; } }
+            else if ( index == 10 ) { if ( c != 'T' && c != 't' ) { return 0; } }
+            else if ( index == 13 || index == 16 ) { if ( c != ':' ) { return 0; } }
+            else
+            {
+                if ( digit < 0 ) { return 0; }
+                if ( index < 4 ) { year = year * 10 + digit; }
+                else if ( index < 7 ) { month = month * 10 + digit; }
+                else if ( index < 10 ) { day = day * 10 + digit; }
+                else if ( index < 13 ) { hour = hour * 10 + digit; }
+                else if ( index < 16 ) { minute = minute * 10 + digit; }
+                else { second = second * 10 + digit; }
+            }
+            index++;
+            if ( index == 19 ) { phase = 1; }
+            continue;
+        }
+        if ( phase == 1 )
+        {
+            if ( c == '.' ) { phase = 2; continue; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 2 )
+        {
+            const int digit = schema_bench_table_json_timestamp_digit_( c );
+            if ( digit >= 0 )
+            {
+                if ( digits < 9 ) { fraction = fraction * 10 + digit; }
+                digits++;
+                continue;
+            }
+            if ( digits == 0 ) { return 0; }
+            if ( c == 'Z' || c == 'z' ) { phase = 10; continue; }
+            if ( c == '+' || c == '-' ) { offset_sign = c == '-' ? -1 : 1; phase = 4; continue; }
+            return 0;
+        }
+        if ( phase == 4 )
+        {
+            const int digit = schema_bench_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour = digit * 10;
+            phase = 5;
+            continue;
+        }
+        if ( phase == 5 )
+        {
+            const int digit = schema_bench_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_hour += digit;
+            phase = 6;
+            continue;
+        }
+        if ( phase == 6 ) { if ( c != ':' ) { return 0; } phase = 7; continue; }
+        if ( phase == 7 )
+        {
+            const int digit = schema_bench_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute = digit * 10;
+            phase = 8;
+            continue;
+        }
+        if ( phase == 8 )
+        {
+            const int digit = schema_bench_table_json_timestamp_digit_( c );
+            if ( digit < 0 ) { return 0; }
+            offset_minute += digit;
+            phase = 10;
+            continue;
+        }
+        return 0;
+    }
+    if ( phase != 10 ) { return 0; }
+    if ( month < 1 || month > 12 ) { return 0; }
+    if ( day < 1 || day > schema_bench_table_json_timestamp_month_days_( year, month ) ) { return 0; }
+    if ( hour > 23 || minute > 59 || second > 59 ) { return 0; }
+    if ( offset_sign != 0 && ( offset_hour > 23 || offset_minute > 59 ) ) { return 0; }
+    for ( ; digits < 9; digits++ ) { fraction *= 10; }
+    offset = offset_sign == 0 ? 0 : (int64_t) offset_sign * ( (int64_t) offset_hour * 3600 + (int64_t) offset_minute * 60 );
+    seconds = schema_bench_table_json_timestamp_days_( year, month, day ) * 86400 +
+        (int64_t) hour * 3600 + (int64_t) minute * 60 + (int64_t) second - offset;
+    if ( seconds < min_second || seconds > max_second ) { return 0; }
+    if ( seconds == min_second && fraction < min_nanos ) { return 0; }
+    if ( seconds == max_second && fraction > max_nanos ) { return 0; }
+    total = (uint64_t) seconds * 1000000000ULL + (uint64_t) fraction;
+    *out = (int64_t) total;
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_bench_table_json_read_text_element_( bench_table_json_in_t * in, void * p, const bench_table_field_info_t * f, int32_t depth )
+{
+    const bench_table_type_info_t * t = f->table;
+    const bench_table_field_info_t * v = &t->fields[0];
+    t->reset( p );
+    if ( bench_table_json_value_shape( in ) == 'z' ) { return bench_table_json_literal( in, "null" ); }
+    if ( !bench_table_json_read_field( in, p, v, depth ) ) { return 0; }
+    if ( f->text_list == 2 ) { bench_table_json_set_raw( (uint8_t *) p + v->present_offset, 1, 1 ); }
+    return 1;
+}
+
+static SCHEMA_UNUSED int schema_bench_table_json_text_total_keep_( bench_table_json_in_t * in, void * p, const bench_table_field_info_t * f, int64_t * spent )
+{
+    *spent += schema_bench_table_json_text_bytes_( p, 1, f );
+    if ( *spent <= f->text_total ) { return 1; }
+    f->table->reset( p );
+    in->report->clamped++;
+    return 0;
+}
+
 static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
 {
     char token[BENCH_K_TABLE_JSON_MAX_NUMBER];
     int32_t length = 0;
     int integral = 0;
+    if ( f->text_list != 0 ) { return schema_bench_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
         if ( bench_table_json_value_shape(in) == 'z' ) { bench_table_json_set_raw(storage,f->elem_size,0); return bench_table_json_literal(in,"null"); }
@@ -1924,6 +2205,13 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         bench_table_json_set_raw( storage, f->elem_size, 0 );
         return 1;
     }
+    if ( f->kind == 36 )
+    {
+        int64_t nanos = 0;
+        if ( !schema_bench_table_json_timestamp_parse_( in, &nanos ) ) { in->bad = 1; return 0; }
+        bench_table_json_set_raw( storage, f->elem_size, (uint64_t) nanos );
+        return 1;
+    }
     if ( !bench_table_json_scan_number( in, token, BENCH_K_TABLE_JSON_MAX_NUMBER, &length, &integral ) )
     {
         in->bad = 1;
@@ -2013,9 +2301,12 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         ((uint16_t *)(void *)storage)[length] = 0;
         bench_table_json_set_count( base, f, length ); return 1;
     }
-    if ( f->kind == 12 )
+    if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_bench_table_json_read_unbounded_text_( in, storage ); }
+#endif
         if ( !bench_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
         bench_table_json_set_count( base, f, length );
@@ -2188,7 +2479,9 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         char shape;
         if ( bench_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
-        if ( f->kind == 13 )
+        int64_t spent = 0;
+        int full = 0;
+        if ( f->kind == 13 || f->text_list != 0 )
         {
             int32_t i;
             for ( i = 0; i < f->array_bound; i++ )
@@ -2207,14 +2500,18 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
             char c = bench_table_json_peek( in );
             if ( c == ']' ) { in->pos++; break; }
             if ( c == 0 ) { in->bad = 1; return 0; }
-            if ( placed >= f->array_bound )
+            if ( full )
+            {
+                if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            }
+            else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
             }
-            else if ( bench_table_json_value_shape( in ) != shape && !(f->kind == 17 && bench_table_json_value_shape(in) == 'z') )
+            else if ( bench_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && bench_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
                 if ( !bench_table_json_skip_value( in, depth + 1 ) ) { return 0; }
@@ -2222,8 +2519,16 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
             }
             else
             {
-                if ( !bench_table_json_read_scalar( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return 0; }
-                placed++;
+                uint8_t * elem = storage + (int64_t) placed * f->elem_size;
+                if ( !bench_table_json_read_scalar( in, elem, f, depth + 1 ) ) { return 0; }
+                if ( f->text_total > 0 && !schema_bench_table_json_text_total_keep_( in, elem, f, &spent ) )
+                {
+                    full = 1;
+                }
+                else
+                {
+                    placed++;
+                }
             }
             c = bench_table_json_peek( in );
             if ( c == ',' ) { in->pos++; continue; }
@@ -2243,6 +2548,23 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
    counted, a repeated key is last-wins and counted. The instance is already
    at its declared defaults when this is entered, so a key the text never
    mentions keeps the default an absent field takes on the wire (§4). */
+static SCHEMA_UNUSED int schema_bench_table_json_require_seen_( bench_table_json_in_t * in, const void * base, const bench_table_type_info_t * info, const uint64_t * seen )
+{
+    int32_t i;
+    for ( i = 0; i < info->num_fields && i < 512; i++ )
+    {
+        const bench_table_field_info_t * f = &info->fields[i];
+        if ( !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !bench_table_json_guard_holds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( (uint64_t) 1 << ( i & 63 ) ) ) == 0 )
+        {
+            in->report->missing_required++;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth, const char * first_key )
 {
     /* duplicate tracking, bounded and allocation-free: a table with more
@@ -2260,7 +2582,7 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
         else
         {
             c = bench_table_json_peek(in);
-            if ( c == '}' ) { in->pos++; return 1; }
+            if ( c == '}' ) { in->pos++; return schema_bench_table_json_require_seen_( in, base, info, seen ); }
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( !bench_table_json_scan_string(in,key,BENCH_K_TABLE_JSON_MAX_KEY-1,&key_length) ) { return 0; }
             key[key_length] = 0;
@@ -2304,8 +2626,11 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
             {
                 if ( !bench_table_json_literal( in, "null" ) ) { return 0; }
                 /* absent, and back at its defaults: a repeated key whose last
-                   occurrence is null must not leave an earlier value standing */
-                if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
+                   occurrence is null must not leave an earlier value standing.
+                   A MAP'S DEFAULT IS ITS EMPTY SIXTEEN-BYTE SLOT, never the
+                   ENTRY table its descriptor names (docs/SPEC-TABLES.md §2.8, §16.2). */
+                if ( f->sequence == 2 ) { memset( (uint8_t *) base + f->offset, 0, 16 ); }
+                else if ( f->table != NULL ) { f->table->reset( (uint8_t *) base + f->offset ); }
                 else { memset( (uint8_t *) base + f->offset, 0, (size_t) f->elem_size ); }
                 bench_table_json_set_raw( (uint8_t *) base + f->present_offset, 1, 0 );
             }
@@ -2329,7 +2654,7 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
         }
         c = bench_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; } /* a trailing comma is accepted */
-        if ( c == '}' ) { in->pos++; return 1; }
+        if ( c == '}' ) { in->pos++; return schema_bench_table_json_require_seen_( in, base, info, seen ); }
         in->bad = 1;
         return 0;
     }
@@ -2339,7 +2664,13 @@ static SCHEMA_UNUSED int bench_table_json_read_table_keys( bench_table_json_in_t
 
 static SCHEMA_UNUSED int bench_table_json_read_table( bench_table_json_in_t * in, void * base, const bench_table_type_info_t * info, int32_t depth )
 {
-    if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH || bench_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
+    if ( depth > BENCH_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
+    if ( info->json_array && info->num_fields == 1 )
+    {
+        if ( bench_table_json_peek(in) != '[' ) { in->bad = 1; return 0; }
+        return bench_table_json_read_field( in, base, &info->fields[0], depth );
+    }
+    if ( bench_table_json_peek(in) != '{' ) { in->bad = 1; return 0; }
     in->pos++;
     return bench_table_json_read_table_keys(in,base,info,depth,NULL);
 }
@@ -2349,6 +2680,7 @@ static SCHEMA_UNUSED int bench_table_json_read( void * value, const bench_table_
     bench_table_report_t ignored;
     bench_table_json_in_t in;
     int ok;
+    int32_t missing_before;
     memset( &ignored, 0, sizeof( ignored ) );
     in.text = text;
     in.size = bytes;
@@ -2362,6 +2694,8 @@ static SCHEMA_UNUSED int bench_table_json_read( void * value, const bench_table_
         in.report->malformed = 1;
         return 0;
     }
+    if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    missing_before = in.report->missing_required;
     ok = bench_table_json_read_table( &in, value, info, 0 );
     if ( ok )
     {
@@ -2370,7 +2704,7 @@ static SCHEMA_UNUSED int bench_table_json_read( void * value, const bench_table_
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = 1;
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = 1; }
         return 0;
     }
     return 1;
@@ -2429,53 +2763,53 @@ static const bench_table_variant_info_t schema_bench_mixed_entity_damage_variant
     { "Downed", 0 },
 };
 static const bench_table_field_info_t schema_bench_mixed_entity_fields_[] = {
-    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, entity_id ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pos_x ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pos_y ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pos_z ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, yaw ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pitch ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, vel_x ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, vel_y ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, vel_z ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, health ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "weapon", "weapon", "MixedWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, weapon ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 15, schema_bench_mixed_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "damage", "damage", "MixedDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, damage ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 7, schema_bench_mixed_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, moving ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, firing ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, entity_id ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pos_x ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pos_y ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pos_z ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, yaw ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, pitch ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, vel_x ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, vel_y ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, vel_z ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, health ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "weapon", "weapon", "MixedWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, weapon ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 15, schema_bench_mixed_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "damage", "damage", "MixedDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, damage ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 7, schema_bench_mixed_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, moving ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_entity_t, firing ), (uint32_t) sizeof( ( (bench_mixed_entity_t *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_mixed_entity_info_ = { "MixedEntity", (uint32_t) sizeof( bench_mixed_entity_t ), 14, schema_bench_mixed_entity_fields_, schema_bench_mixed_entity_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL };
+const bench_table_type_info_t schema_bench_mixed_entity_info_ = { "MixedEntity", (uint32_t) sizeof( bench_mixed_entity_t ), 14, schema_bench_mixed_entity_fields_, schema_bench_mixed_entity_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const bench_table_field_info_t schema_bench_mixed_stat_fields_[] = {
-    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_stat_t, stat_id ), (uint32_t) sizeof( ( (bench_mixed_stat_t *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_stat_t, delta ), (uint32_t) sizeof( ( (bench_mixed_stat_t *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_stat_t, stat_id ), (uint32_t) sizeof( ( (bench_mixed_stat_t *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_stat_t, delta ), (uint32_t) sizeof( ( (bench_mixed_stat_t *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_mixed_stat_info_ = { "MixedStat", (uint32_t) sizeof( bench_mixed_stat_t ), 2, schema_bench_mixed_stat_fields_, schema_bench_mixed_stat_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL };
+const bench_table_type_info_t schema_bench_mixed_stat_info_ = { "MixedStat", (uint32_t) sizeof( bench_mixed_stat_t ), 2, schema_bench_mixed_stat_fields_, schema_bench_mixed_stat_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const bench_table_field_info_t schema_bench_mixed_hit_event_fields_[] = {
-    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, target_id ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, damage ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, hit_kind ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, crit ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, target_id ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, damage ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, hit_kind ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_hit_event_t, crit ), (uint32_t) sizeof( ( (bench_mixed_hit_event_t *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_mixed_hit_event_info_ = { "MixedHitEvent", (uint32_t) sizeof( bench_mixed_hit_event_t ), 4, schema_bench_mixed_hit_event_fields_, schema_bench_mixed_hit_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL };
+const bench_table_type_info_t schema_bench_mixed_hit_event_info_ = { "MixedHitEvent", (uint32_t) sizeof( bench_mixed_hit_event_t ), 4, schema_bench_mixed_hit_event_fields_, schema_bench_mixed_hit_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const bench_table_field_info_t schema_bench_mixed_chat_event_fields_[] = {
-    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_chat_event_t, channel ), (uint32_t) sizeof( ( (bench_mixed_chat_event_t *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_chat_event_t, speaker ), (uint32_t) sizeof( ( (bench_mixed_chat_event_t *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_chat_event_t, channel ), (uint32_t) sizeof( ( (bench_mixed_chat_event_t *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_chat_event_t, speaker ), (uint32_t) sizeof( ( (bench_mixed_chat_event_t *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_mixed_chat_event_info_ = { "MixedChatEvent", (uint32_t) sizeof( bench_mixed_chat_event_t ), 2, schema_bench_mixed_chat_event_fields_, schema_bench_mixed_chat_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL };
+const bench_table_type_info_t schema_bench_mixed_chat_event_info_ = { "MixedChatEvent", (uint32_t) sizeof( bench_mixed_chat_event_t ), 2, schema_bench_mixed_chat_event_fields_, schema_bench_mixed_chat_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const bench_table_field_info_t schema_bench_mixed_pickup_event_fields_[] = {
-    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_pickup_event_t, item_id ), (uint32_t) sizeof( ( (bench_mixed_pickup_event_t *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_pickup_event_t, amount ), (uint32_t) sizeof( ( (bench_mixed_pickup_event_t *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_pickup_event_t, item_id ), (uint32_t) sizeof( ( (bench_mixed_pickup_event_t *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_mixed_pickup_event_t, amount ), (uint32_t) sizeof( ( (bench_mixed_pickup_event_t *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_mixed_pickup_event_info_ = { "MixedPickupEvent", (uint32_t) sizeof( bench_mixed_pickup_event_t ), 2, schema_bench_mixed_pickup_event_fields_, schema_bench_mixed_pickup_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL };
+const bench_table_type_info_t schema_bench_mixed_pickup_event_info_ = { "MixedPickupEvent", (uint32_t) sizeof( bench_mixed_pickup_event_t ), 2, schema_bench_mixed_pickup_event_fields_, schema_bench_mixed_pickup_event_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const bench_table_wide_range_t schema_bench_bench_mixed_server_time_range_ = { { 0ull, 0ull }, { 16776960ull, 0ull } };
 static const bench_table_variant_info_t schema_bench_bench_mixed_game_event_variants_[] = {
@@ -2495,36 +2829,36 @@ static const bench_table_wide_range_t schema_bench_bench_mixed_wide_key_range_ =
 static const bench_table_wide_range_t schema_bench_bench_mixed_flux_range_ = { { 0ull, 18446744004990074880ull }, { 0ull, 68719476736ull } };
 static const bench_table_wide_range_t schema_bench_bench_mixed_ping_range_ = { { 0ull, 0ull }, { 64000ull, 0ull } };
 static const bench_table_field_info_t schema_bench_bench_mixed_fields_[] = {
-    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, sequence ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ack_sequence ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ack_bits ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, session_id ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, client_id ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, nonce ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, world_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, frame_tick ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "server_time", "server_time", "fixed(24, 8)", 0x3c460475f9be69c6ull, 22, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, server_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, &schema_bench_bench_mixed_server_time_range_, 8, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "entities", "entities", "MixedEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 8, (uint32_t) offsetof( bench_bench_mixed_t, entities ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( bench_bench_mixed_t, entities_count ), 0xffffffffu, &schema_bench_mixed_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "stats", "stats", "MixedStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 80, (uint32_t) offsetof( bench_bench_mixed_t, stats ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( bench_bench_mixed_t, stats_count ), 0xffffffffu, &schema_bench_mixed_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "game_event", "game_event", "MixedEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, game_event ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_bench_bench_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_bench_bench_mixed_game_event_union_, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 4, (uint32_t) offsetof( bench_bench_mixed_t, loadout ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 15, (uint32_t) offsetof( bench_bench_mixed_t, player_name ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->player_name ), (uint32_t) offsetof( bench_bench_mixed_t, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 16, (uint32_t) offsetof( bench_bench_mixed_t, payload ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->payload[0] ), (uint32_t) offsetof( bench_bench_mixed_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, aim_x ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, aim_y ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, aim_z ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, recoil ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, drift ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "wide_key", "wide_key", "uint128", 0xa3348580461faf16ull, 19, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, wide_key ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, &schema_bench_bench_mixed_wide_key_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, flux ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.2676506002282294e+30, 1.2676506002282294e+30, &schema_bench_bench_mixed_flux_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "ping", "ping", "ufixed(8, 8)", 0xbf30e00dc53307a9ull, 26, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ping ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, &schema_bench_bench_mixed_ping_range_, 8, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, crc_hint ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, has_extra ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, extra ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
-    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, idle_ticks ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, NULL },
+    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, sequence ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ack_sequence ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ack_bits ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, session_id ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, client_id ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, nonce ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.8446744073709552e+19, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, world_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, frame_tick ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "server_time", "server_time", "fixed(24, 8)", 0x3c460475f9be69c6ull, 22, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, server_time ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, &schema_bench_bench_mixed_server_time_range_, 8, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "entities", "entities", "MixedEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, (uint32_t) offsetof( bench_bench_mixed_t, entities ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( bench_bench_mixed_t, entities_count ), 0xffffffffu, &schema_bench_mixed_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "stats", "stats", "MixedStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 0, 80, (uint32_t) offsetof( bench_bench_mixed_t, stats ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( bench_bench_mixed_t, stats_count ), 0xffffffffu, &schema_bench_mixed_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "game_event", "game_event", "MixedEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, game_event ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_bench_bench_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_bench_bench_mixed_game_event_union_, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 0, 4, (uint32_t) offsetof( bench_bench_mixed_t, loadout ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( bench_bench_mixed_t, player_name ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->player_name ), (uint32_t) offsetof( bench_bench_mixed_t, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 0, 16, (uint32_t) offsetof( bench_bench_mixed_t, payload ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->payload[0] ), (uint32_t) offsetof( bench_bench_mixed_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, aim_x ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, aim_y ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, aim_z ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, recoil ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, drift ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "wide_key", "wide_key", "uint128", 0xa3348580461faf16ull, 19, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, wide_key ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, &schema_bench_bench_mixed_wide_key_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, flux ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.2676506002282294e+30, 1.2676506002282294e+30, &schema_bench_bench_mixed_flux_range_, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ping", "ping", "ufixed(8, 8)", 0xbf30e00dc53307a9ull, 26, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, ping ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, &schema_bench_bench_mixed_ping_range_, 8, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, crc_hint ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, has_extra ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, extra ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( bench_bench_mixed_t, idle_ticks ), (uint32_t) sizeof( ( (bench_bench_mixed_t *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCH_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const bench_table_type_info_t schema_bench_bench_mixed_info_ = { "BenchMixed", (uint32_t) sizeof( bench_bench_mixed_t ), 27, schema_bench_bench_mixed_fields_, schema_bench_bench_mixed_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL };
+const bench_table_type_info_t schema_bench_bench_mixed_info_ = { "BenchMixed", (uint32_t) sizeof( bench_bench_mixed_t ), 27, schema_bench_bench_mixed_fields_, schema_bench_bench_mixed_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_bench_mixed_entity_from_json_( bench_mixed_entity_t * value, const char * text, int64_t bytes, bench_table_report_t * report )
 {

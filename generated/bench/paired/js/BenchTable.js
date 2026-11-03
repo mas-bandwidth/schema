@@ -27,7 +27,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { BenchMixed, InitBenchMixed } from "./Bench.js";
+import { BenchMixed, InitBenchMixed, InitMixedChatEvent, InitMixedEntity, InitMixedHitEvent, InitMixedPickupEvent, InitMixedStat } from "./Bench.js";
 
 
 // ---------------------------------------------------------------------------
@@ -148,6 +148,7 @@ export const TableFixedRefusal = Object.freeze({
   // destination write, as it refuses an ill-formed text, and every writer
   // refuses one (the save answers -1).
   NonFiniteFloat: 18,
+  IntegrityMismatch: 19,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -172,6 +173,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LayoutUnsupported: return "layout_unsupported";
     case TableFixedRefusal.TextIllFormed: return "text_ill_formed";
     case TableFixedRefusal.NonFiniteFloat: return "non_finite_float";
+    case TableFixedRefusal.IntegrityMismatch: return "integrity_mismatch";
     default: return "???";
   }
 }
@@ -244,9 +246,9 @@ export class TableFixedPlan {
     this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
-    // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
-    // (guard, arg, argw) link per enclosing union, pushed on the way into an
-    // arm and popped on the way out; chainAt is where it was laid in the pool,
+    // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
+    // (guard, arg, argw) link per enclosing union arm or optional payload.
+    // Optional links use arg = -1 for nonzero presence; chainAt is its pool offset,
     // once per arm, or -1. Sized once for the layout's 64.
     this.chain = new Int32Array(65 * 3);
     this.chainLen = 0;
@@ -399,8 +401,11 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     const guard = e[b + TableFixedLaneGuard];
     // an entry belonging to an ARM runs only under its own tag, compared at
     // ArgW bytes, never as a prefix
-    if (guard !== TableFixedNoGuard &&
-        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
+    // A negative expected tag is an optional presence guard: any nonzero
+    // byte is present. Union guards retain their exact ordinal comparison.
+    const expected = e[b + TableFixedLaneArg];
+    if (guard !== TableFixedNoGuard && (expected === -1 ? src[srcAt + guard] === 0 :
+        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (expected >>> 0))) {
       continue;
     }
     // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
@@ -409,7 +414,9 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     if (links > 1) {
       let holds = true;
       for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
-        if (TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (remap[at + 1] >>> 0)) { holds = false; break; }
+        const expected = remap[at + 1];
+        if (expected === -1 ? src[srcAt + remap[at]] === 0 :
+            TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (expected >>> 0)) { holds = false; break; }
       }
       if (!holds) { continue; }
     }
@@ -540,7 +547,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       case TableFixedOpConst: {
         const v = e[b + TableFixedLaneAux];
         for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
-        // AN UNGUARDED None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
+        // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
         // that set lands None (already written just above) and COUNTS, so the
         // compiled plan counts it exactly as the identity plan's decode bound
         // does and the SAME forged bytes land the SAME clamped == 1 on either
@@ -549,7 +556,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // record bound at all, so the entry that reads a record byte carries
         // its own.
         const arms = e[b + TableFixedLaneMeta] & 0xff;
-        if (v === 0 && arms !== 0 && guard === TableFixedNoGuard && s + size <= src.length) {
+        if (v === 0 && arms !== 0 && s + size <= src.length) {
           let raw = 0;
           for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
           if (raw > arms) { report.clamped++; }
@@ -973,8 +980,8 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   e[b + TableFixedLaneArgW] = w;
   e[b + TableFixedLaneGuards] = 0;
   e[b + TableFixedLaneGuardCount] = 0;
-  // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY enclosing
-  // tag. Its guard lane is the chain's innermost link, and a chain past one is
+  // THE GUARD CHAIN (§4.1): an entry answers to EVERY enclosing union tag
+  // and presence flag. Its guard lane is the innermost link; a chain past one is
   // laid into the pool, once per arm, as offset+count.
   if (guard !== TableFixedNoGuard && plan.chainLen > 0) {
     const c = plan.chain;
@@ -1118,9 +1125,22 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
     return;
   }
   switch (myKind) {
-    case 35: { // the OPTIONAL wrapper: the present byte, then the payload whole
+    case 35: { // the OPTIONAL wrapper: payload ops run only when present
       TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);
-      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, guard, arg, report);
+      if (plan.chainLen >= 65) { plan.overflow = true; return; }
+      const savedAt = plan.chainAt;
+      const savedArgw = plan.argw;
+      const l = plan.chainLen * 3;
+      plan.chain[l] = theirAt;
+      plan.chain[l + 1] = -1; // any nonzero presence byte, not ordinal 1
+      plan.chain[l + 2] = 1;
+      plan.chainLen++;
+      plan.chainAt = -1;
+      plan.argw = 1;
+      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, theirAt, -1, report);
+      plan.chainLen--;
+      plan.chainAt = savedAt;
+      plan.argw = savedArgw;
       break;
     }
     case 13: { // a nested table: match its fields
@@ -1605,7 +1625,7 @@ function TableMessageKindBytes(kind) {
     case 1: case 2: case 6: case 20: case 25: return 1;
     case 3: case 7: case 21: case 26: return 2;
     case 4: case 8: case 10: case 22: case 27: return 4;
-    case 5: case 9: case 11: case 23: case 28: return 8;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 8;
     case 18: case 19: case 24: case 29: return 16;
   }
   return 0;
@@ -1625,7 +1645,7 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 33; }
+function TableMessageKnownKind(k) { return k <= 33 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -1633,7 +1653,7 @@ function TableMessageKindBits(k) {
     case 2: case 6: case 20: case 25: return 8;
     case 3: case 7: case 21: case 26: return 16;
     case 4: case 8: case 10: case 22: case 27: return 32;
-    case 5: case 9: case 11: case 23: case 28: return 64;
+    case 5: case 9: case 11: case 23: case 28: case 36: return 64;
     case 18: case 19: case 24: case 29: return 128;
   }
   return -1;
@@ -1924,6 +1944,38 @@ function tableMessageCountBits(s) {
   let bits = 0;
   while (n !== 0) { bits++; n = Math.floor(n / 2); }
   return bits;
+}
+export function tableMessageUtf8Valid(bytes, at, len) {
+  for (let i = 0; i < len;) {
+    const b0 = bytes[at + i];
+    if (b0 === 0) { return false; }
+    if (b0 < 0x80) { i += 1; continue; }
+    let need, cp;
+    if ((b0 & 0xe0) === 0xc0) { need = 1; cp = b0 & 0x1f; }
+    else if ((b0 & 0xf0) === 0xe0) { need = 2; cp = b0 & 0x0f; }
+    else if ((b0 & 0xf8) === 0xf0) { need = 3; cp = b0 & 0x07; }
+    else { return false; }
+    if (i + 1 + need > len) { return false; }
+    for (let k = 1; k <= need; k++) {
+      const b = bytes[at + i + k];
+      if ((b & 0xc0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3f);
+    }
+    const min = need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { return false; }
+    i += 1 + need;
+  }
+  return true;
+}
+export function tableMessageUtf8Clamp(bytes, at, bound) {
+  let i = 0;
+  while (i < bound) {
+    const b0 = bytes[at + i];
+    const step = b0 < 0x80 ? 1 : (b0 & 0xe0) === 0xc0 ? 2 : (b0 & 0xf0) === 0xe0 ? 3 : 4;
+    if (i + step > bound) { break; }
+    i += step;
+  }
+  return i;
 }
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
@@ -2243,7 +2295,7 @@ export function BenchMixedFixedWriteBody(view, at, value) {
   view.setInt32(at + 1232, value.idleTicks, true);
 }
 
-// BenchMixed's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).
+// BenchMixed's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
 export function BenchMixedFixedCheckBody(value) {
   if (!Number.isFinite(Math.fround(value.aimX))) { return false; }
   if (!Number.isFinite(Math.fround(value.aimY))) { return false; }
@@ -2437,7 +2489,7 @@ export function FixedTableFixedWriteBody(view, at, value) {
   BenchMixedFixedWriteBody(view, at, value.value);
 }
 
-// FixedTable's floats, every one finite or the save refuses (docs/SPEC-TABLES.md §3.3).
+// FixedTable's writer preflight: finite floats and required ranges (docs/SPEC-TABLES.md §2.3, §3.3).
 export function FixedTableFixedCheckBody(value) {
   if (!BenchMixedFixedCheckBody(value.value)) { return false; }
   return true;
@@ -2711,6 +2763,7 @@ export function MixedEntitySaveMessageBody(w, value) {
 }
 
 export function MixedEntityLoadMessageBody(r, value) {
+  InitMixedEntity(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -2880,6 +2933,7 @@ export function MixedStatSaveMessageBody(w, value) {
 }
 
 export function MixedStatLoadMessageBody(r, value) {
+  InitMixedStat(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -2938,6 +2992,7 @@ export function MixedHitEventSaveMessageBody(w, value) {
 }
 
 export function MixedHitEventLoadMessageBody(r, value) {
+  InitMixedHitEvent(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3002,6 +3057,7 @@ export function MixedChatEventSaveMessageBody(w, value) {
 }
 
 export function MixedChatEventLoadMessageBody(r, value) {
+  InitMixedChatEvent(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3052,6 +3108,7 @@ export function MixedPickupEventSaveMessageBody(w, value) {
 }
 
 export function MixedPickupEventLoadMessageBody(r, value) {
+  InitMixedPickupEvent(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3242,6 +3299,7 @@ export function BenchMixedSaveMessageBody(w, value) {
 }
 
 export function BenchMixedLoadMessageBody(r, value) {
+  InitBenchMixed(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3433,8 +3491,10 @@ export function BenchMixedLoadMessageBody(r, value) {
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }
           const start = r.Bits.Offset >> 3;
           if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }
-          let kept = Number(n);
-          if (kept > 15) { kept = 15; r.Report.Clamped++; }
+          const rawLen = Number(n);
+          if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Malformed = true; return false; }
+          let kept = rawLen;
+          if (kept > 15) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, 15); r.Report.Clamped++; }
           value.playerName.fill(0);
           for (let i = 0; i < kept; i++) { value.playerName[i] = r.Bits.Buffer[start + i]; }
           value.playerNameLength = kept;
@@ -3583,6 +3643,7 @@ export function FixedTableSaveMessageBody(w, value) {
 }
 
 export function FixedTableLoadMessageBody(r, value) {
+  InitFixedTable(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }

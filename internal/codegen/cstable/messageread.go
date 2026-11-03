@@ -268,10 +268,16 @@ const tableMessageReadSource = `
     public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
     {
         count = 0; report.NonFiniteFloat = null;
+        if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
+        {
+            if (bytes.Length < 6 || !IntegrityRead(ref bytes)) { return IntegrityDamage(report); }
+        }
         int total = MessageCount(bytes, vocabulary, report);
         if (report.Refused) { return Finish(report, Verdict.Refused); }
         if (total == 0) { return Finish(report, Verdict.Damaged); }
         if (total > values.Length) { count = total; return Refuse(report, "batch_too_large"); }
+        bool malformedBefore = report.Malformed;
+        report.Malformed = false;
         BitReader r = new BitReader(bytes); r.At = 16;
         for (; count < total; count++)
         {
@@ -281,10 +287,20 @@ const tableMessageReadSource = `
             // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
             // §3.3), outranking damage met after it: no body is delivered.
             if (NonFiniteRefused(report))
-            { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-            if (!good) { Damage(report); return Finish(report, Verdict.Damaged); }
+            { report.Malformed |= malformedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
+            if (!good || report.Malformed) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
         }
-        if (!r.Align() || r.At != r.End) { Damage(report); return Finish(report, Verdict.Damaged); }
+        if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
+        report.Malformed = malformedBefore;
         return Finish(report, Verdict.Ok);
+    }
+    // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
+    // the read touched goes back to its declared defaults and the count is zero,
+    // so nothing decoded before the damage is a value to use.
+    static Verdict DiscardBatch(object[] values, TableTypeInfo type, TableReport report, ref int count, int last)
+    {
+        for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
+        count = 0;
+        return Finish(report, Verdict.Damaged);
     }
 `

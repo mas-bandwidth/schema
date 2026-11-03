@@ -16,17 +16,20 @@ public final class BenchBitsRetain {
     // loss, never retained silently.
     public static BenchBitsVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return BenchBitsVariable.load(data, report);
         }
         int[] path = new int[128];
+        retain.used = 0;
+        retain.idUsed = 0;
+        retain.nodeKeys.clear();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
             return null;
         }
-        retain.used = 0;
-        retain.idUsed = 0;
-        retain.nodeKeys.clear();
         BenchBitsVariable.Value v = new BenchBitsVariable.Value();
         report.rootTypeId = BenchBitsVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
@@ -63,6 +66,9 @@ public final class BenchBitsRetain {
         }
         readFieldsRetain(r, v, nt, retain, report, path, 0);
         if (report.refused) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
         TableVariable.Measure measure = new TableVariable.Measure();
@@ -71,15 +77,37 @@ public final class BenchBitsRetain {
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
             }
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
             return null;
         }
+        nt.from = 1;
         BenchBitsVariable.resolveNodes(v, nt, report);
         if (nt.recs != null && !nt.bad) {
-            for (TableVariable.NodeRecord rec : nt.recs) {
-                if (rec.table != null)
+            for (int i = 0; i < nt.recs.length; i++) {
+                TableVariable.NodeRecord rec = nt.recs[i];
+                if (rec.table != null) {
+                    nt.from = i + 2;
                     BenchBitsVariable.resolveNodePointers(
                             rec.table, rec.typeId, nt, v, BenchBitsVariable.TYPE_ID, report);
+                }
             }
+        }
+        // DAMAGE DISCARDS THE WHOLE RETAINING LOAD (§4, §6.6)
+        if (report.malformed) {
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
+        }
+        // a pointer naming an OPEN node is a cycle no writer produces (§3.1)
+        if (TableVariable.cyclic(nt)) {
+            report.malformed = true;
+            retain.used = 0;
+            retain.idUsed = 0;
+            retain.nodeKeys.clear();
+            return null;
         }
         return v;
     }
@@ -248,6 +276,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b7 & 0xffffffffL) > 127L) {
+                        v.b7 = (int) 127L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -269,6 +301,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b13 & 0xffffffffL) > 8191L) {
+                        v.b13 = (int) 8191L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -300,6 +336,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b23 & 0xffffffffL) > 8388607L) {
+                        v.b23 = (int) 8388607L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -313,6 +353,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b3 & 0xffffffffL) > 7L) {
+                        v.b3 = (int) 7L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -344,6 +388,10 @@ public final class BenchBitsRetain {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail && ((long) v.b32 & 0xffffffffL) > 4294967295L) {
+                        v.b32 = (int) 4294967295L;
+                        report.clamped++;
+                    }
                 } else {
                     r.skip(kind);
                     report.kindMismatch++;
@@ -365,6 +413,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b11 & 0xffffffffL) > 2047L) {
+                        v.b11 = (int) 2047L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -395,6 +447,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && ((long) v.b19 & 0xffffffffL) > 524287L) {
+                        v.b19 = (int) 524287L;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);
@@ -433,6 +489,10 @@ public final class BenchBitsRetain {
                             report.malformed = true;
                             r.fail = true;
                         }
+                    }
+                    if (!r.fail && Long.compareUnsigned(v.b48, 0xffffffffffffL) > 0) {
+                        v.b48 = 0xffffffffffffL;
+                        report.clamped++;
                     }
                 } else {
                     r.skip(kind);

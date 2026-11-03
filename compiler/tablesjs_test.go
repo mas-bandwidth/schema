@@ -221,18 +221,20 @@ func TestJsModuleScopeScanSeesEveryConvention(t *testing.T) {
 // self-maintaining: a port that adds a module-scope name and forgets to claim
 // it fails here, whatever the name looks like.
 func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
-	files, err := New().Generate(unitFromSource(t, runtimeSrc), "js", Options{})
+	source := runtimeSrc + "\ntable VariableNameProbe | integrity = \"crc32c\" { payload *bytes\n text *string }\n"
+	files, err := New().Generate(unitFromSource(t, source), "js", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	declared := map[string]bool{}
-	for _, name := range []string{"Point", "Kind", "Probe", "Config", "Keyed"} {
+	for _, name := range []string{"Point", "Kind", "Probe", "Config", "Keyed", "VariableNameProbe"} {
 		declared[name] = true
 	}
 	emitted := map[string]bool{}
 	for name, data := range files {
 		if !strings.HasSuffix(name, "Table.js") && !strings.HasSuffix(name, "Block.js") &&
-			!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "View.js") {
+			!strings.HasSuffix(name, "Cook.js") && !strings.HasSuffix(name, "View.js") &&
+			!strings.HasSuffix(name, "Variable.js") {
 			continue // the packet emitter's own modules are its own gate's business
 		}
 		for _, spelled := range jsModuleScopeNames(string(data)) {
@@ -258,7 +260,7 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 			// the SAME unit plus one declaration of the emitted name: every
 			// claim the unit's own declarations make is in force, which is what
 			// makes a name-first spelling like ConfigMeasure testable at all
-			if errs := checkErrors(t, runtimeSrc+"\ntype "+name+"\n{\n    y int32\n}\n"); len(errs) == 0 {
+			if errs := checkErrors(t, source+"\ntype "+name+"\n{\n    y int32\n}\n"); len(errs) == 0 {
 				t.Fatalf("the JavaScript table emitter binds %s at module scope and a declaration of that "+
 					"name was accepted — the generated module would carry two bindings for it. Claim it: a "+
 					"unit-level runtime name goes in internal/tablenames, a per-declaration one in "+
@@ -270,5 +272,12 @@ func TestJsTableModuleScopeNamesAreClaimed(t *testing.T) {
 		if !emitted[name] {
 			t.Errorf("internal/tablenames says the JS backend defines %s, but nothing in the emitted JS names it", name)
 		}
+	}
+}
+
+// A packet-only unit emits no package-derived variable registry.
+func TestJsVariableRegistryNameRemainsFreeWithoutTables(t *testing.T) {
+	if errs := checkErrors(t, "package probe\ntype ProbeUnitRegistry { x int32 }\n"); len(errs) != 0 {
+		t.Fatalf("table-free registry name was reserved: %v", errs)
 	}
 }

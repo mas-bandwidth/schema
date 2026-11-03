@@ -61,8 +61,11 @@ type wireFuzzOptions struct {
 	// (§3.3).
 	retain  bool
 	builder bool // mutable file reads have no region preflight
-	failed  string
-	vectors string
+	// mixedBuilder preserves the full roster and uses the mutable oracle only
+	// for variable-class file roots; fixed roots and messages keep their oracle.
+	mixedBuilder bool
+	failed       string
+	vectors      string
 	// finiteOwed names the docs/roadmap.sexp card that owes this leg the
 	// finite float rule (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27): until
 	// that card lands, a mutant the oracle refuses as non_finite_float is
@@ -253,6 +256,9 @@ type oracleAnswer struct {
 	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, tolerant
 	// and strict, so the whole of what a leg owes is the refusal itself.
 	nonFinite bool
+	// required distinguishes a semantic refusal from malformed wire. The pipe
+	// carries its refusal verdict; native regressions pin its counter and names.
+	required bool
 }
 
 func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
@@ -324,6 +330,11 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	ok, derr := decode()
 	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
 		ans.nonFinite = true
+		return ans, nil
+	}
+	if _, refused := errors.AsType[*tabletext.MissingRequired](derr); refused {
+		ans.required, ans.encFail, ans.builderStopped = true, true, r.builder
+		ans.report = Counts{Refused: true}
 		return ans, nil
 	}
 	if r.builder {
@@ -574,6 +585,12 @@ func (l *wireLeg) kill() {
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
+	if ans.required {
+		if !reply.report.Refused || reply.report.Malformed {
+			return "the oracle refuses missing required fields; the leg must report refusal without malformed wire"
+		}
+		return ""
+	}
 	if ans.nonFinite {
 		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
 		// §3.3), and the refusal is the answer: a leg says so with the
@@ -745,6 +762,9 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 			}
 			r.builder = true
 		}
+		if opts.mixedBuilder && r.variable && !message {
+			r.builder = true
+		}
 		if opts.retain {
 			// THE RETENTION ARM'S ROSTER IS THE VARIABLE-CLASS FILE ROOTS AND
 			// NOTHING ELSE (docs/SPEC-TABLES.md §6.6, §3.3).
@@ -826,10 +846,13 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 			return nil, nil, nil, 0, err
 		}
 		for _, v := range vecs {
+			before := len(seeds)
 			if err := addFormSeed(v.name, v.unit, v.root, v.file, v.message); err != nil {
 				return nil, nil, nil, 0, err
 			}
-			seeds[len(seeds)-1].vector = true
+			if len(seeds) > before {
+				seeds[len(seeds)-1].vector = true
+			}
 		}
 	}
 	if len(seeds) == 0 {
@@ -839,6 +862,9 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 }
 
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
+	if opts.builder && opts.mixedBuilder {
+		return fmt.Errorf("--builder and --mixed-builder are mutually exclusive profiles")
+	}
 	if opts.builder && opts.message {
 		return fmt.Errorf("--builder is a file arm: the message form has no builder load")
 	}
@@ -1013,6 +1039,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.builder {
 		arm = "wire-fuzz-builder"
 	}
+	if opts.mixedBuilder {
+		arm = "wire-fuzz-mixed-builder"
+	}
 	if opts.retain {
 		arm += " retain"
 	}
@@ -1059,6 +1088,9 @@ func wireFailure(opts wireFuzzOptions, mut *wireMutant, passed int, verdict, det
 	form := ""
 	if opts.builder {
 		form = " --builder"
+	}
+	if opts.mixedBuilder {
+		form = " --mixed-builder"
 	}
 	if opts.retain {
 		form += " --retain"

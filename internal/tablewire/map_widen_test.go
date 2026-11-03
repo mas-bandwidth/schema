@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 	"testing"
 )
 
@@ -64,5 +65,46 @@ func TestSkippedMapRepeatPreservesEarlierValue(t *testing.T) {
 		if err != nil || !bytes.Equal(encoded, want) {
 			t.Fatalf("repeat %x: the value is %x, want %x (%+v %v)", repeat, encoded, want, report, err)
 		}
+	}
+}
+
+// A repeated key selects its final occurrence, including a later widening kind
+// (SPEC-TABLES 2.8). A stale mismatch must not empty an otherwise valid map.
+func TestMapRepeatedKeyLastKindWins(t *testing.T) {
+	m := listModel(t, "package probe\ntable Root { entries map[uint32]int32 }\n")
+	for _, tc := range []struct {
+		name            string
+		keys            []byte
+		count, mismatch int
+	}{
+		{"bad_then_widened", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 7}, 1, 1},
+		{"widened_then_bad", []byte{2, 6, 7, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0}, 0, 1},
+		{"bad_then_exact", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 8, 7, 0, 0, 0}, 1, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := append(append([]byte(nil), tc.keys...), 0)
+			payload := append([]byte{13, 1, byte(len(entry))}, entry...)
+			wire := append([]byte{1, 1, 14, byte(len(payload))}, payload...)
+			wire = append(wire, 0)
+			wire = binary.LittleEndian.AppendUint64(wire, ir.TableFieldWireId(m.Lookup("Root").Fields[0]))
+			wire = binary.LittleEndian.AppendUint64(wire, ir.MapKeyWireId)
+			wire = binary.LittleEndian.AppendUint64(wire, 2)
+			for _, region := range []bool{false, true} {
+				v := m.New(m.Lookup("Root"))
+				var report tabletext.Report
+				decode := tablewire.Decode
+				if region {
+					decode = tablewire.DecodeRegion
+				}
+				ok, err := decode(m, v, wire, &report)
+				field, _ := v.FieldByKey("entries")
+				if !ok || err != nil || report.Malformed || len(field.Entries) != tc.count || report.KindMismatch != tc.mismatch {
+					t.Fatalf("region=%v count=%d report=%+v ok=%v err=%v", region, len(field.Entries), report, ok, err)
+				}
+				if tc.count != 0 && tabletext.MapKeyOf(field.Def, field.Entries[0].Tab).U != 7 {
+					t.Fatal("last key value was not kept")
+				}
+			}
+		})
 	}
 }

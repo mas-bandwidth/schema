@@ -24,11 +24,19 @@
 // a contract it cannot hold.
 package ctable
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 // tableArenaRuntime is the variable-length runtime, guarded per package like
 // tablePrimitives so one definition survives any include order.
-func tableArenaRuntime(pkg string) string {
+func tableArenaRuntime(u *ir.Unit) string {
+	pkg := u.Package
+	align := ir.TableRegionAlign(u)
+	alignComment := fmt.Sprintf("every node starts %d-aligned", align)
 	guard := "SCHEMA_" + strings.ToUpper(pkg) + "_TABLE_ARENA"
 	return `#ifndef ` + guard + `
 #define ` + guard + `
@@ -45,7 +53,7 @@ func tableArenaRuntime(pkg string) string {
 #define kTableSegmentMask ( kTableSegmentSize - 1u )
 #define kTableMaxSegments ( 1u << ( 32 - kTableSegmentBits ) ) /* 1024 -> 4 GiB */
 #define kTableSlabBytes   ( 64u * 1024u )          /* one atomic per slab */
-#define kTableAlign       8                        /* every node starts 8-aligned */
+#define kTableAlign       ` + fmt.Sprint(align) + strings.Repeat(" ", 25-len(fmt.Sprint(align))) + `/* ` + alignComment + ` */
 #define kTableAllocFailed 0xFFFFFFFFu
 
 /* The pointer-chain depth cap. It bounds recursion on every walk — measure,

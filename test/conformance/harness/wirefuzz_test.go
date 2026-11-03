@@ -181,3 +181,25 @@ func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 		t.Fatal("a leg that landed a non-finite float did not diverge")
 	}
 }
+
+// Permanent seed2 map_pairs differential: the repeated widened key retains
+// its entry; the unknown node-table ID and the earlier incompatible key value
+// still report their own events. SPEC-TABLES 2.8 uses the final key occurrence.
+func TestFileFuzzRepeatedKeyWidenKeepsMap(t *testing.T) {
+	_, _, units := corpus(t)
+	root, err := newWireRoot(units, "mapdemo", "Pairs", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile("testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, err := root.oracle(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if answer.report != (Counts{Unknown: 2, KindMismatch: 1, Widened: 1}) || answer.bytes != 88 {
+		t.Fatalf("final widened key: %+v", answer)
+	}
+}

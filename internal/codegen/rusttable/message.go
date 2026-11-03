@@ -500,7 +500,7 @@ fn bits_required(count: usize) -> u32 {
 }
 
 fn known_kind(kind: u8) -> bool {
-    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind)
+    kind == 0 || (1..=17).contains(&kind) || (18..=29).contains(&kind) || (30..=33).contains(&kind) || kind == 36
 }
 
 fn integer_kind(kind: u8) -> bool {
@@ -698,7 +698,7 @@ fn skip_field(bytes: &[u8], at: &mut usize, kind: u8) -> bool {
         1 | 2 | 6 | 20 | 25 => skip_width(bytes, at, 1),
         3 | 7 | 21 | 26 => skip_width(bytes, at, 2),
         4 | 8 | 10 | 22 | 27 => skip_width(bytes, at, 4),
-        5 | 9 | 11 | 23 | 28 => skip_width(bytes, at, 8),
+        5 | 9 | 11 | 23 | 28 | 36 => skip_width(bytes, at, 8),
         18 | 19 | 24 | 29 => skip_width(bytes, at, 16),
         // a NODE INDEX (§3.1) and an ENUM's variant reference: one LEB128 and
         // stop
@@ -796,6 +796,10 @@ pub enum TableReason {
     /// the same rule as the packet wire's, SPEC.md §4.3): every read refuses one, the tolerant read included, and every writer
     /// refuses to emit one. The report names the field in non_finite_float.
     NonFiniteFloat,
+    JsonRootNotArray,
+    TimestampNotRfc3339,
+    IntegrityMismatch,
+    MissingRequired,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -831,6 +835,10 @@ impl TableReason {
             TableReason::AllocationFailed => "allocation_failed",
             TableReason::WireDamaged => "wire_damaged",
             TableReason::NonFiniteFloat => "non_finite_float",
+            TableReason::JsonRootNotArray => "json_root_not_array",
+            TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
+            TableReason::IntegrityMismatch => "integrity_mismatch",
+            TableReason::MissingRequired => "missing_required",
         }
     }
 }
@@ -847,16 +855,18 @@ impl TableReason {
 /// §4's events: the form byte this reader does not carry (§3), or one of the
 /// message form's refusals BY NAME, whose reason the message form records
 /// (nothing is decoded, no counter moves, and malformed does not fire, §3.3).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct TableReport {
     pub unknown: u64,
     pub kind_mismatch: u64,
     pub widened: u64,
     pub clamped: u64,
+    pub clamped_field: &'static str,
     pub duplicate: u64,
     pub malformed: bool,
     pub refused: bool,
-    /// Pointer cycles remain readable but cannot be serialized by the builder (§3.1).
+    /// The read met a pointer naming an OPEN node, a cycle no writer produces
+    /// (§3.1): the load refuses whole, and a builder save refuses it as data_cycle.
     pub cycle_on_save: bool,
     /// A BLOB NAMED FROM TWO SLOTS (docs/SPEC-TABLES.md §2.5): the tolerant
     /// read keeps the one node and counts each extra naming here; every writer
@@ -882,9 +892,20 @@ pub struct TableReport {
     /// and non_finite_float_id is the id the reader cannot name.
     pub non_finite_float: &'static str,
     pub non_finite_float_id: Option<u64>,
+    /// A named text-form diagnostic, empty after a clean read.
+    pub text_error: &'static str,
+    /// Bodies refused because an active required field was absent (§4).
+    pub missing_required: u64,
+    /// The current refusal's names, in field declaration order.
+    pub missing_required_fields: String,
 }
 
 impl TableReport {
+    pub fn missing_required_reason(&self) -> Option<String> {
+        if self.missing_required_fields.is_empty() { None }
+        else { Some(format!("missing_required: {}", self.missing_required_fields)) }
+    }
+
     pub fn refuse(&mut self, reason: TableReason) -> bool {
         self.malformed = false;
         self.refused = true;

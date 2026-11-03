@@ -72,7 +72,7 @@ public final class Driver {
   for(int which=0;which<2;which++){
    TableVariable.Report report=new TableVariable.Report();
    RootVariable.Value v=RootVariable.load(frame(which==0?new String[]{"a","b"}:new String[]{"b","a"},false,which==0,false),report);
-   check(v!=null&&report.malformed&&!report.refused&&v.entries.size()==1&&v.tail==17,"slack or descending key must retain only ascending prefix and continue parent");
+   check(v==null&&report.malformed&&!report.refused,"slack or descending key discards the whole load");
   }
   TableRetain retain=new TableRetain(4096,128);TableVariable.Report report=new TableVariable.Report();
   RootVariable.Value v=RootRetain.loadRetain(frame(new String[]{"a","a"},true,false,false),retain,report);
@@ -85,7 +85,7 @@ public final class Driver {
   check(loaded!=null&&again.unknown==1&&loaded.entries.get(0).value==1,"skipped repeat keeps unknown on resave");
   report=new TableVariable.Report();v=RootVariable.fromJson("{\"entries\":{\"a\":7,\"a\":8},\"tail\":17}".getBytes(java.nio.charset.StandardCharsets.UTF_8),report);
   check(v!=null&&!report.malformed&&report.duplicate==1&&v.entries.size()==1&&v.entries.get(0).value==8,"JSON duplicates are last-wins");
-  System.out.println("map slack, descending prefix, duplicate replacement, skipped repeat retention and JSON duplicates pass");
+  System.out.println("map damage discard, duplicate replacement, skipped repeat retention and JSON duplicates pass");
  }
 }`)
 }

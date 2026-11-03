@@ -54,7 +54,7 @@ int main( void )
     fixed_fx1_form_headers( g_buffer, n );
     fixed_skip( "fixed_fx2_read_fx1 (the PLAN PATH: FX2 compiling FX1's layout at run time)", LineageHarness ); /* fixed_fx2_read_fx1( g_buffer, n ); */
     fixed_skip( "fixed_fx2_plan_cache (the caller-supplied plan cache: the plans are static now, §5.8 row 3)", LineageHarness ); /* fixed_fx2_plan_cache( g_buffer, n ); */
-    fixed_skip( "fixed_fx2_bytes_row_control (a control on the compiled read of a stranger's layout)", LineageHarness ); /* fixed_fx2_bytes_row_control( g_buffer, n ); */
+    fixed_fx2_bytes_row_control( g_buffer, n );
     fixed_fx1_slack();
 
     n = fixed_fx2_write( g_buffer, BufferBytes );

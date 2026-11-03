@@ -187,6 +187,14 @@ func (p *packer) tableDir(inst *tabletext.Instance, dir string, entries []os.Dir
 		}
 		p.readFieldText(fv, path, text)
 	}
+	var required tabletext.Report
+	if !required.RequireSeen(inst, func(i int) bool {
+		_, seen := claimed[ir.TableFieldJsonKey(inst.Fields[i].Def)]
+		return seen
+	}) {
+		p.report.Add(required)
+		p.refusef("%s: %s (docs/SPEC-TABLES.md §17.3)", dir, required.Reason)
+	}
 }
 
 // fieldDir reads a `<field>/` directory, whose meaning is the field's own
@@ -255,9 +263,9 @@ func (p *packer) keyedDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 			continue
 		}
 		var r tabletext.Report
-		p.m.ReadElement(fv, slot, text, &r)
+		readOK := p.m.ReadElement(fv, slot, text, &r)
 		p.report.Add(r)
-		if r.Malformed {
+		if !readOK || r.Malformed {
 			// the read's named reason, when it has one, is the refusal's
 			// (docs/SPEC-TABLES.md §17.4); without one the generic wording stands
 			if r.Reason != "" {
@@ -273,10 +281,15 @@ func (p *packer) keyedDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry) {
 	f := fv.Def
 	placed := 0
+	var spent int64
+	full := false
 	for _, e := range entries {
 		path := filepath.Join(dir, e.Name())
 		if _, ok := entryKey(e); !ok || e.IsDir() {
 			p.refusef("%s: an array's directory holds `.json` element files and nothing else (docs/SPEC-TABLES.md §17.1)", path)
+			continue
+		}
+		if full {
 			continue
 		}
 		if placed >= int(f.ArrayBound) {
@@ -291,9 +304,9 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 			continue
 		}
 		var r tabletext.Report
-		p.m.ReadElement(fv, placed, text, &r)
+		readOK := p.m.ReadElement(fv, placed, text, &r)
 		p.report.Add(r)
-		if r.Malformed {
+		if !readOK || r.Malformed {
 			// the read's named reason, when it has one, is the refusal's
 			// (docs/SPEC-TABLES.md §17.4); without one the generic wording stands
 			if r.Reason != "" {
@@ -301,6 +314,10 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 			} else {
 				p.refusef("%s: not one JSON value for an element of %q (docs/SPEC-TABLES.md §17.3)", path, ir.TableFieldJsonKey(f))
 			}
+		}
+		if !p.m.KeepTextTotal(fv, placed, &spent, p.report) {
+			full = true
+			continue
 		}
 		placed++
 	}
@@ -311,9 +328,9 @@ func (p *packer) arrayDir(fv *tabletext.Field, dir string, entries []os.DirEntry
 
 func (p *packer) readTableText(inst *tabletext.Instance, path string, text []byte) {
 	var r tabletext.Report
-	p.m.Read(inst, text, &r)
+	readOK := p.m.Read(inst, text, &r)
 	p.report.Add(r)
-	if r.Malformed {
+	if !readOK || r.Malformed {
 		// a read that named its rule refuses by that name; the generic
 		// wording stands only when the text names no rule (docs/SPEC-TABLES.md §17.4)
 		if r.Reason != "" {
@@ -326,9 +343,9 @@ func (p *packer) readTableText(inst *tabletext.Instance, path string, text []byt
 
 func (p *packer) readFieldText(fv *tabletext.Field, path string, text []byte) {
 	var r tabletext.Report
-	p.m.ReadValue(fv, text, &r)
+	readOK := p.m.ReadValue(fv, text, &r)
 	p.report.Add(r)
-	if r.Malformed {
+	if !readOK || r.Malformed {
 		// a read that named its rule refuses by that name; the generic
 		// wording stands only when the text names no rule (docs/SPEC-TABLES.md §17.4)
 		if r.Reason != "" {

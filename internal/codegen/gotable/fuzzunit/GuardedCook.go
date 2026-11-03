@@ -893,7 +893,7 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 		align = max(align, alignment)
 		data = (data + alignment - 1) & -alignment
 		e.offset = data
-		w.at = 64 + data + size
+		w.at = 64 + data + ((size + alignment - 1) & -alignment)
 		if e.info != nil && !w.record(e.node, e.info, 64+data, true) {
 			return -1, TableRefuseInvalidValue
 		}
@@ -914,7 +914,8 @@ func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, or
 		e := &n.entries[i]
 		at := 64 + e.offset
 		if e.info != nil {
-			w.at = at + int64(e.info.CookSize)
+			nodeAlign := int64(e.info.CookAlign)
+			w.at = at + ((int64(e.info.CookSize) + nodeAlign - 1) & -nodeAlign)
 			if !w.record(e.node, e.info, at, true) {
 				return -1, TableRefuseInvalidValue
 			}

@@ -121,11 +121,23 @@ This work is on main: sprint/schema-vt-core landed on main, and the Go core (spr
 
 ## Variable tables
 
-Variable tables are the table wire's variable class: pointers and the flat node table, maps, unbounded arrays, blobs, union arms of any field type, retain-unknown, the text, block, cook and message forms, and the reflection that walks them. C++ is the reference; C, C# and Go carry the whole class.
+Progress checkpoint: 2026-11-02. Completed work is landing incrementally in main through PR #2660 and PR #2666. This roadmap records the current implementation and known gaps; unfinished work no longer holds completed changes on branches. The original nine languages and the newly added Goose leg are the completion targets; Goose still needs its remaining variable-table work and full acceptance.
 
-Rust, Java, JavaScript, Dart and Elixir carry the card constructs (the subset the sprint's card record uses) and refuse the rest by name. A cell is ✅ only when the whole row is carried and its tests pass on this branch, so a card-constructs-only port stays ❌ until the rest of the row lands; each ❌ cell's source data says what exists and what is missing.
+Registration now covers all 11 active constructs in C, C#, Go, Rust, Java, JavaScript, Dart and Elixir. The C++ public registry now lists 8/11, including required fields, forms and integrity. Text lists, total text limits, unbounded text and full nightly acceptance remain open. These counts describe compiler declarations, not percentages of full Schema completion.
 
-A leg that is red at the branch head holds its cells ❌ even where the row's tests exist: the source data names the one task that holds them, so one fix card turns them green together.
+Landed: required-field, forms, integrity and text-list implementation across the ports; stronger ordinary-positive-unit coverage; populated feature witnesses; pointer-target and root-closure regressions; neutral repeated-key widening and message-integrity repairs; Rust nested-reader refusal repair; JavaScript helper emission and blob accounting; Dart string identity and retained-record accounting; Elixir measurement, pointer and root-closure repairs. Shared failing inputs stay in the corpus.
+
+C/C++/Go update: C has completed all 11 active constructs, populated feature witnesses, text-form/report coverage and the full 25-phase nightly at 243d391180030ee2a75fc490e33f33301cd95cf6. Go has completed its full 25-phase nightly at 3bab349e71d7c526a6f016f3ba601235d5d000d1. Receipts are in docs/validation/2026-11-02-c-nightly.json and docs/validation/2026-11-02-go-nightly.json. C++ construct registration and full acceptance remain open.
+
+C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. The full-roster region driver and separate mutable-builder driver are now aligned with their reader contracts. Full uncapped nightly acceptance passed all 26 phases at 16dcb340f64d1d2f499334ec8e4cc1d72ed1f9c6; the frozen-source receipt is docs/validation/2026-11-02-cs-nightly.json.
+
+Rust update: the full uncapped fleet nightly passed all 24 required phases at 8bb3969aa3d3ac6044253c347525216be19606c9: 11 registered constructs, 365 native table passes with no skips/failures, all six full fuzz runs, and working negative controls. The reproducible receipt and log hashes are in docs/validation/2026-11-02-rust-nightly.json.
+
+Java update: the full uncapped fleet nightly passed all 23 required phases at 68d1eaf82e176197e0b97570b595360903ba1a09: 11 registered constructs, 547 native table passes with no skips/failures, all six full fuzz runs, and working negative controls. The reproducible receipt and log hashes are in docs/validation/2026-11-02-java-nightly.json. JavaScript update: all 14 previously absent message-form seeds are bound, message bodies reset before reading, and UTF-8/UTF-16 content and clamp boundaries are validated. Full uncapped nightly acceptance passed all 23 phases at 846afa7881311fcc8fe32eeda4e354e1527cc572: 490 native table passes with no skips/failures, three plain and three retaining seeds with 100000 random mutants each, zero absent seeds and divergences, and working negative controls. The frozen-source receipt is docs/validation/2026-11-02-js-nightly.json. Current-main integration additionally passed native checks, full-roster seed-1 fuzzing, controls and managed generation.
+
+Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Cursor and node-table length checks now validate remaining extent before addition; the three original overflow inputs are in the shared corpus and pass native JIT/AOT regression tests. The full-roster mixed mutable-reader profile and native second-arm lineage replacement are integrated. Cook-open cursor handling and guarded cook-write support are qualified by native JIT/AOT tests and all five cook conformance surfaces, with no absent cases. Superseded inline and array retention records are discarded on replacement, explicit fixed-root retaining APIs emit named non-callable refusals, and full uncapped nightly acceptance passed all 25 phases at b469caa0f1ed10f5c11c799064d2efca4bcad666 (plus bounded 75d605f4be110a749681c7264dde80269821f73e fixed-root refusal provenance); the frozen-source receipt is docs/validation/2026-11-02-dart-nightly.json. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage. Enum collection references outside the ID table now report malformed, with 21-case native coverage and an exact shared regression input. Unknown enum collection/arm losses and retaining union-array traversal are repaired, with native plain/retain matrices, nested-record save coverage and a shared foreign-enum regression input. Full nightly acceptance remains open. Additional qualified Elixir repairs preserve retained union arms and untouched array slots, resolve blob ownership from surviving fields, widen keyed elements at their incoming width, and refuse public retention on fixed roots. Native conformance now builds its driver first. Full Elixir nightly acceptance remains open.
+
+Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. C, C#, Go, Rust, Java, JavaScript and Dart full-roster nightly acceptance are complete at their recorded revisions; C++ and Elixir acceptance remain open. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
 
 <!-- nova-work:variable-tables:start -->
 
@@ -134,23 +146,23 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | fixed class on the table wire | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | optional fields ?T | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | enum-keyed arrays [E]T | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| text form: JSON in and out of a table | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| reflection descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| text form: JSON in and out of a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| reflection descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | block form, read side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| build version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| build version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | variable class (pointers, the flat node table) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | text form, variable class | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | block form, build side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | fixed-point and 128-bit scalars on the table wire | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | unions whose arms are tables | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of pointers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of unions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | optional arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| the wire fuzzer gate | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| the wire fuzzer gate | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | maps | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | union arms of any field type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | string, bytes and flags defaults, and renaming a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -159,12 +171,12 @@ A leg that is red at the branch head holds its cells ❌ even where the row's te
 | wstring(N) on the table wire (#522) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | unbounded arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | the message form (form byte 2, a bitpacked body) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| retain-unknown | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| retain-unknown | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 100% | 93% | 100% | 100% | 100% | 90% | 100% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 93% | 84% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 

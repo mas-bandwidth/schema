@@ -125,6 +125,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
 	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema
 	$(1) generate --lang cs --out $(2)/lists tables/lists
+	$(1) generate --lang cs --out $(2)/widelist tables/widelist
 	$(1) generate --lang cs --out $(2)/maps tables/maps
 	$(1) generate --lang cs --out $(2)/stream tables/stream
 	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema
@@ -141,9 +142,10 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema
 	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema
 	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
+	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema examples-wide/Caption.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -450,6 +452,33 @@ conformance-cs-absent-negative-control: build-conformance-cs build/conformance-h
 
 test-cs: conformance-cs-absent
 
+# THE FRAMING SURFACE, its C# leg (docs/LAYERS/1-framing.md): the C# driver
+# answers every framing row and passes it, none absent
+# (test/conformance/framing/gate). Its negative control builds the driver
+# against a copy of the generated C# tree with the id table's 4096-entry cap
+# (§3, rule F6) taken out of the file read, and requires the framing surface to
+# go RED on frame_entries_4097.
+CS_FRAMING_CONTROL := build/conformance-cs-framing-control
+.PHONY: conformance-cs-framing conformance-negative-control-cs-framing
+conformance-cs-framing: build-conformance-cs build/conformance-harness
+	sh test/conformance/framing/gate cs "$(DOTNET) $(CURDIR)/test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll" build/conformance-cs-framing
+conformance-negative-control-cs-framing: build-conformance-cs build/conformance-harness
+	@rm -rf $(CS_FRAMING_CONTROL) && mkdir -p $(CS_FRAMING_CONTROL)
+	@cp -R build/tables-generated-cs $(CS_FRAMING_CONTROL)/generated
+	@files=$$(grep -rlF 'if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }' $(CS_FRAMING_CONTROL)/generated); \
+		[ -n "$$files" ] || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage matches no generated line"; exit 1; }; \
+		perl -pi -e 's/\Qif (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }\E/if (false) { \/* SABOTAGED: no id-table cap *\/ }/g' $$files
+	@grep -rqF 'SABOTAGED: no id-table cap' $(CS_FRAMING_CONTROL)/generated || { echo "NEGATIVE CONTROL: the 4096-entry cap sabotage did not apply"; exit 1; }
+	@perl -pi -e 's/\Qif (mark == 1) { return true; }\E/if (mark == 1 && n < 0) { return true; \/* SABOTAGED: no cycle check *\/ }/g' $(CS_FRAMING_CONTROL)/generated/pointers/*.cs
+	@grep -rqF 'SABOTAGED: no cycle check' $(CS_FRAMING_CONTROL)/generated/pointers || { echo "NEGATIVE CONTROL: the cycle sabotage did not apply"; exit 1; }
+	@$(DOTNET) build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated \
+		-p:CardsGeneratedDir=$(CURDIR)/$(CS_FRAMING_CONTROL)/generated/cards -p:BaseIntermediateOutputPath=$(CURDIR)/$(CS_FRAMING_CONTROL)/obj/ \
+		-o $(CS_FRAMING_CONTROL)/checker > $(CS_FRAMING_CONTROL)/build.log 2>&1 || \
+		{ cat $(CS_FRAMING_CONTROL)/build.log; echo "NEGATIVE CONTROL: the sabotaged driver does not compile"; exit 1; }
+	sh test/conformance/framing/gate cs "$(DOTNET) $(CURDIR)/$(CS_FRAMING_CONTROL)/checker/schemaconformance.dll" \
+		$(CS_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
+test-cs: conformance-cs-framing
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
@@ -597,6 +626,24 @@ tables-cs-leg-map-order-negative-control: bin/schema
 tables-cs-leg-region-blob-shared-negative-control: bin/schema
 	$(call cs_leg_sabotage,region-blob-shared,regionwrite.go,table-cs-region-blob-shared,FAILED: blob_shared native region writer refuses the shared blob)
 
+# DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4), one control per C#
+# load entry point that holds the discard: the managed load, the native region
+# load (the retaining load is derived from it), and the builder load. Each takes
+# that discard out, and the leg's TestDamageDiscardsTheWholeLoad must go red on
+# the body damaged inside a nested body, which the walk otherwise reads past.
+.PHONY: tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control \
+	tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
+tables-cs-leg-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,discard,wire.go,table-cs-discard,FAILED: damage discards the whole load: nested (fixed|variable): managed load answered true on damage)
+tables-cs-leg-region-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-discard,region.go,table-cs-region-discard,FAILED: damage discards the whole load: nested variable: (region|retaining) load handed back a root on damage)
+tables-cs-leg-builder-discard-negative-control: bin/schema
+	$(call cs_leg_sabotage,builder-discard,builderload.go,table-cs-builder-discard,FAILED: damage discards the whole load: nested variable: builder load answered true on damage)
+tables-cs-leg-cycle-negative-control: bin/schema
+	$(call cs_leg_sabotage,cycle,variable.go,table-cs-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: managed load answers false)
+tables-cs-leg-region-cycle-negative-control: bin/schema
+	$(call cs_leg_sabotage,region-cycle,regiongraph.go,table-cs-region-cycle,FAILED: damage discards the whole load: (node_cycle_|cycle_)[a-z_]+: (region|retaining|builder) load)
+
 # THE C# PER-PATH ALLOCATION GATE (docs/PORTING.md I1, docs/SPEC-TABLES.md
 # "What allocates, and what never does"). C# joins Go's testing.AllocsPerRun
 # and Java's getCurrentThreadAllocatedBytes with the runtime's own per-thread
@@ -700,7 +747,7 @@ tables-cs-fixed-t13:
 
 .PHONY: tables-cs-fixed-t18
 tables-cs-fixed-t18:
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmapCSharpT18UnionArms'
+	DOTNET="$(DOTNET)" SERIALIZE_CS="$(abspath $(SERIALIZE_CS))" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout=0 -v -run 'TestFixedRoadmapCSharpT18UnionArms'
 	@echo 'tables C# fixed-t18: direct and payload-free union arms round-trip, tag-only arm storage'
 
 test-cs: tables-cs-fixed-t18
@@ -719,8 +766,8 @@ test-cs: tables-cs-fixed-rows
 .PHONY: tables-cs-json-differential tables-cs-json-differential-negative-control
 tables-cs-json-differential:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential \
-		'TestCsTextDifferential' \
-		./internal/codegen/cstable -run '^TestCsTextDifferential$$' -count=1 -timeout 600s
+		'TestCsTextDifferential TestJsonLeadingBOMBoundaryCS' \
+		./internal/codegen/cstable -run '^(TestCsTextDifferential|TestJsonLeadingBOMBoundaryCS)$$' -count=1 -timeout 600s
 	@grep -h 'cs text differential: ' build/slowgate/tables-cs-json-differential.log | sed 's/^ *//'
 tables-cs-json-differential-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 sh test/slowgate/proof tables-cs-json-differential-negative-control \
@@ -742,12 +789,9 @@ tables-cs-fixed-roadmap:
 # t01's framing rows read the C++ reference's bytes; under
 # SCHEMA_REQUIRE_CORPUS=1 a missing corpus is a failure, not a skip. The
 # -run pattern is pinned by TestCsFixedRowsTargetCoversEveryRoadmapTest: any
-# row added later without being named here goes red. Owed-gap skips that stay
-# skips (not toolchain absences) are cs/W16, cs/R28 (fixedroadmap_t07_test.go),
-# message_graph_tree and connection_retain_conn/connection_graph_conn (no leg
-# links the sibling ../serialize.cs runtime yet; messageform_held_test.go);
-# -v keeps every skip in this target's log, and they are named in the pull
-# request.
+# row added later without being named here goes red. The graph connection
+# links the actual packet runtime and verifies its pinned announcement bytes;
+# a missing runtime is a failure. Verbose output retains every native verdict.
 .PHONY: tables-cs-fixed-rows
 tables-cs-fixed-rows: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 600s -v -run 'TestFixedRoadmap(T01Framing|T02Plans|CSharpT03PlansVersions|CSharpT04Versions|CSharpT05Evolution|CSharpT06Bounds|CSharpT07Writes|CSharpT08ConformanceIntegers|CSharpT09FloatsUnions|CSharpT10Optionals|CSharpT12PlansVersions|CSharpT13SecondLayoutForAHeldHash|CSharpT14CompressedFloats|CSharpT15GuardChain|CSharpT18ExactCounters|CSharpT18UnionArms)|TestMessageFormHeldCSharp'
@@ -821,7 +865,10 @@ tables-cs-release:
 	$(MAKE) tables-cs-leg-keyed-negative-control tables-cs-leg-identity-negative-control tables-cs-leg-allocator-negative-control
 	$(MAKE) tables-cs-leg-label-negative-control tables-cs-leg-blob-span-negative-control tables-cs-leg-map-order-negative-control
 	$(MAKE) tables-cs-leg-region-blob-shared-negative-control conformance-cs-absent-negative-control
+	$(MAKE) tables-cs-leg-discard-negative-control tables-cs-leg-region-discard-negative-control tables-cs-leg-builder-discard-negative-control
+	$(MAKE) tables-cs-leg-cycle-negative-control tables-cs-leg-region-cycle-negative-control
 	$(MAKE) tables-cook-open-cs-order-negative-control tables-cs-usage-negative-control tables-cs-byte-order-negative-control
+	$(MAKE) conformance-negative-control-cs-framing
 
 # J5 (docs/PORTING.md) — THE BENCH LEG'S GOLDEN GATE RUNS BEFORE THE CLOCK.
 # The C# table leg's `--gate` verb round-trips all 64 corpus variants and

@@ -59,9 +59,9 @@ static SCHEMA_UNUSED int64_t table_cook_layout(TableNumbering * n,int64_t * alig
         int64_t size=type->size, node_align=type->alignment;
         if(type->blob) { size=8+(int64_t)((const TableBlob *)entry->value)->length+(type->blob==2); }
         else if(type->has_extent) {
-            int64_t extent=0;
-            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TableByteOrder_Little) || size>INT64_MAX-7) { return -1; }
-            size=(size+7)&~INT64_C(7); if(extent>INT64_MAX-size) { return -1; } size+=extent;
+            int64_t extent=0, extent_align=node_align>8 ? node_align : 8;
+            if(!type->cook_extent(n,entry->value,NULL,NULL,&extent,TableByteOrder_Little) || size>INT64_MAX-(extent_align-1)) { return -1; }
+            size=(size+extent_align-1)&~(extent_align-1); if(extent>INT64_MAX-size) { return -1; } size+=extent;
         }
         if(node_align<1 || total>INT64_MAX-(node_align-1)) { return -1; }
         total=(total+node_align-1)&~(node_align-1);
@@ -92,7 +92,7 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
             int64_t extent=0;
             if(!entry->type->cook_body(&n,at,entry->value,order)) { goto done; }
             if(entry->type->has_extent) {
-                int64_t expected=0,record=(entry->type->size+7)&~INT64_C(7);
+                int64_t expected=0,extent_align=entry->type->alignment>8 ? entry->type->alignment : 8,record=(entry->type->size+extent_align-1)&~(extent_align-1);
                 if(!entry->type->cook_extent(&n,entry->value,NULL,NULL,&expected,order) ||
                    !entry->type->cook_extent(&n,entry->value,at,at+record,&extent,order) || extent!=expected) { goto done; }
             }
@@ -105,6 +105,25 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
 done:
     table_number_dispose(&n); return result;
 }
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_table_cook_text_(TableNumbering * n,const TableRef * src,uint8_t * slot,uint8_t * extent,int64_t * at,int order)
+{
+    int32_t len=0; int64_t bytes; const char * text;
+    if(src->value==0) { return 1; }
+    text=schema_table_text_at_(n->ctx,src,&len);
+    if(len<0) { return 0; }
+    if(len==0) { return 1; }
+    bytes=table_blob_storage((int64_t)len,1);
+    if(bytes<0 || !table_extent_reserve(at,1,bytes,8)) { return 0; }
+    if(slot!=NULL && extent!=NULL) {
+        uint8_t * raw=extent+*at-bytes;
+        table_cook_put(slot,(uint64_t)(raw-slot),8,order);
+        table_cook_put(raw,(uint32_t)len,4,order);
+        table_cook_bytes(raw+8,text,len,len);
+    }
+    return 1;
+}
+#endif
 #endif
 `
 
@@ -113,7 +132,7 @@ func (g *tableGen) hasCookExtent(st *ir.Struct) bool {
 	return slices.ContainsFunc(st.Fields, g.cookFieldExtent)
 }
 func (g *tableGen) cookFieldExtent(f *ir.Field) bool {
-	if f.IsList() || f.IsMap() {
+	if f.IsList() || f.IsMap() || f.Type.TextUnbounded() {
 		return true
 	}
 	if f.Type.Pointer {
@@ -132,10 +151,10 @@ func (g *tableGen) cookFieldExtent(f *ir.Field) bool {
 	return false
 }
 func (g *tableGen) cookBodySignature(st *ir.Struct) string {
-	return fmt.Sprintf("static SCHEMA_UNUSED int %s(struct TableNumbering * n,uint8_t * at,const void * storage,int order)", g.sym(st.Name, "cook_body"))
+	return fmt.Sprintf("static SCHEMA_UNUSED int %s(struct TableNumbering * n,uint8_t * at,const void * storage,int order)", g.sym(st.Name, "body_pack"))
 }
 func (g *tableGen) cookExtentSignature(st *ir.Struct) string {
-	return fmt.Sprintf("static SCHEMA_UNUSED int %s(TableNumbering * n,const void * storage,uint8_t * record,uint8_t * extent,int64_t * at,int order)", g.sym(st.Name, "cook_extent"))
+	return fmt.Sprintf("static SCHEMA_UNUSED int %s(TableNumbering * n,const void * storage,uint8_t * record,uint8_t * extent,int64_t * at,int order)", g.sym(st.Name, "extent_pack"))
 }
 func (g *tableGen) emitCookWriteDeclarations(members []*ir.Struct) {
 	for _, st := range members {
@@ -156,12 +175,13 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 		if g.hasCookExtent(st) {
 			g.pf("%s\n{\n    const %s * value=(const %s *)storage;\n    (void)n; (void)value; (void)record; (void)extent; (void)at; (void)order;\n", g.cookExtentSignature(st), st.Name, st.Name)
 			step = 0
+			guards := tableGuardExprs(st)
 			for _, fl := range ir.RecordLayout(g.unit, st).Fields {
-				g.cookExtentField(fl.Field, "value->"+fl.Field.Name, fmt.Sprintf("(record!=NULL ? record+%d : NULL)", fl.Offset), "    ", &step)
+				g.cookExtentField(fl.Field, guards[fl.Field.Name], "value->"+fl.Field.Name, fmt.Sprintf("(record!=NULL ? record+%d : NULL)", fl.Offset), "    ", &step)
 			}
 			g.pf("    return 1;\n}\n")
 		}
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 			continue
 		}
 		if g.isVar(st.Name) {
@@ -173,9 +193,6 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 }
 
 func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind string, step *int) {
-	if f.IsMap() || f.IsList() {
-		return
-	} // zero until the extent writer places the array
 	pieces := ir.FieldPieces(g.unit, f, offset)
 	if len(pieces) == 0 {
 		return
@@ -183,6 +200,9 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	if f.Type.Optional {
 		g.pf("%stable_cook_put(%s+%d,%s_present ? 1 : 0,1,order);\n", ind, at, pieces[len(pieces)-1].Offset-offset, src)
 	}
+	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
+		return
+	} // zero until the extent writer places the array
 	if f.Array != ir.ArrayNone {
 		*step++
 		i := fmt.Sprintf("cook_i%d", *step)
@@ -236,7 +256,7 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 		case *ir.Flags:
 			g.pf("%stable_cook_put(%s,(uint64_t)%s,8,order);\n", ind, at, src)
 		case *ir.Struct:
-			g.pf("%sif(!%s(n,%s,&%s,order)) { return 0; }\n", ind, g.sym(ref.Name, "cook_body"), at, src)
+			g.pf("%sif(!%s(n,%s,&%s,order)) { return 0; }\n", ind, g.sym(ref.Name, "body_pack"), at, src)
 		case *ir.Union:
 			_, _, tag, offset := ir.UnionLayout(g.unit, ref)
 			g.pf("%stable_cook_put(%s,(uint64_t)%s.type,%d,order);\n%sswitch(%s.type) {\n", ind, at, src, tag, ind, src)
@@ -252,20 +272,37 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	}
 }
 
-func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int) {
+func (g *tableGen) cookExtentField(f *ir.Field, guard, src, dst, ind string, step *int) {
 	if !g.cookFieldExtent(f) {
 		return
 	}
 	*step++
 	label := fmt.Sprintf("cook_extent%d", *step)
-	g.pf("%suint8_t * %s_slot=%s;\n", ind, label, dst)
+	cond := guard
+	if f.Type.Optional {
+		present := src + "_present"
+		if cond == "" {
+			cond = present
+		} else {
+			cond = "(" + cond + ") && " + present
+		}
+	}
+	if cond != "" {
+		g.pf("%sint64_t %s_unreached=0; int64_t * %s_unreached_at=at;\n", ind, label, label)
+		g.pf("%suint8_t * %s_slot=(%s) ? %s : NULL;\n", ind, label, cond, dst)
+		g.pf("%sif(!(%s)) { at=&%s_unreached; }\n", ind, cond, label)
+	} else {
+		g.pf("%suint8_t * %s_slot=%s;\n", ind, label, dst)
+	}
 	dst = label + "_slot"
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("%sif(!schema_table_cook_text_(n,&%s,%s,extent,at,order)) { return 0; }\n", ind, src, dst)
 	case f.IsList() || f.IsMap():
 		typ := g.sequenceType(f)
 		elem := sequenceElement(f)
 		g.pf("%s{ TableSequenceCursor %s=%s; int32_t %s_i; uint8_t * %s_array;\n", ind, label, g.sequenceCursor(f, "n", src), label, label)
-		g.pf("%s  if(!%s.ok || !table_extent_reserve(at,%s.count,sizeof(%s),SCHEMA_TABLE_ALIGNOF(%s))) { return 0; }\n", ind, label, src, typ, typ)
+		g.pf("%s  if(!%s.ok || !table_extent_reserve(at,%s.count,sizeof(%s),%d)) { return 0; }\n", ind, label, src, typ, g.sequenceAlign(f))
 		g.pf("%s  %s_array=%s!=NULL ? extent+*at-(int64_t)%s.count*sizeof(%s) : NULL;\n", ind, label, dst, src, typ)
 		g.pf("%s  if(%s_array!=NULL) { table_cook_put(%s,%s.count ? (uint64_t)(%s_array-(%s)) : 0,8,order); table_cook_put(%s+8,(uint32_t)%s.count,4,order); }\n", ind, label, dst, src, label, dst, dst, src)
 		g.pf("%s  for(%s_i=0;%s_i<%s.count;%s_i++) {\n", ind, label, label, src, label)
@@ -274,7 +311,7 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 		g.pf("%s    if(%s_array!=NULL) {\n", ind, label)
 		g.cookField(elem, "(*"+label+"_in)", out, 0, ind+"        ", step)
 		g.pf("%s    }\n", ind)
-		g.cookExtentField(elem, "(*"+label+"_in)", out, ind+"    ", step)
+		g.cookExtentField(elem, "", "(*"+label+"_in)", out, ind+"    ", step)
 		g.pf("%s  }\n%s}\n", ind, ind)
 	case f.Array != ir.ArrayNone:
 		count := fmt.Sprint(f.ArrayBound)
@@ -285,42 +322,45 @@ func (g *tableGen) cookExtentField(f *ir.Field, src, dst, ind string, step *int)
 		pieces := ir.FieldPieces(g.unit, f, 0)
 		stride := pieces[0].Size / f.ArrayBound
 		g.pf("%s{ int32_t %s; for(%s=0;%s<%s && %s<%d;%s++) {\n", ind, label, label, label, count, label, f.ArrayBound, label)
-		g.cookExtentField(elem, src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
+		g.cookExtentField(elem, "", src+"["+label+"]", fmt.Sprintf("(%s!=NULL ? %s+%s*%d : NULL)", dst, dst, label, stride), ind+"    ", step)
 		g.pf("%s}\n", ind)
 		if f.Array == ir.ArrayCounted {
 			// A hidden container has no place in the region. Measure that
 			// slot independently and refuse even when its shape is invalid.
 			g.pf("%sfor(;%s<%d;%s++) { int64_t %s_hidden=0; int64_t * %s_saved_at=at; at=&%s_hidden;\n", ind, label, f.ArrayBound, label, label, label, label)
-			g.cookExtentField(elem, src+"["+label+"]", "((uint8_t *)NULL)", ind+"    ", step)
+			g.cookExtentField(elem, "", src+"["+label+"]", "((uint8_t *)NULL)", ind+"    ", step)
 			g.pf("%s    at=%s_saved_at; if(%s_hidden!=0) { return 0; }\n%s}\n", ind, label, label, ind)
 		}
 		g.pf("%s}\n", ind)
 	default:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
-			g.pf("%sif(!%s(n,&%s,%s,extent,at,order)) { return 0; }\n", ind, g.sym(ref.Name, "cook_extent"), src, dst)
+			g.pf("%sif(!%s(n,&%s,%s,extent,at,order)) { return 0; }\n", ind, g.sym(ref.Name, "extent_pack"), src, dst)
 		case *ir.Union:
 			_, _, _, offset := ir.UnionLayout(g.unit, ref)
 			g.pf("%sswitch(%s.type) {\n", ind, src)
 			for _, v := range ref.Variants {
 				if !v.Void() && g.cookFieldExtent(v.F) {
 					g.pf("%scase %s: {\n", ind, enumConst(ref.Name+"Type", v.Name))
-					g.cookExtentField(v.F, armValue(src, v), fmt.Sprintf("(%s!=NULL ? %s+%d : NULL)", dst, dst, offset), ind+"    ", step)
+					g.cookExtentField(v.F, "", armValue(src, v), fmt.Sprintf("(%s!=NULL ? %s+%d : NULL)", dst, dst, offset), ind+"    ", step)
 					g.pf("%s    break; }\n", ind)
 				}
 			}
 			g.pf("%sdefault: break;\n%s}\n", ind, ind)
 		}
 	}
+	if cond != "" {
+		g.pf("%sif(!(%s)) { at=%s_unreached_at; if(%s_unreached!=0) { return 0; } }\n", ind, cond, label, label)
+	}
 }
 
 func (g *tableGen) emitCookFixedRoot(st *ir.Struct) {
 	ml := ir.RecordLayout(g.unit, st)
-	align := ir.RegionAlignOf(ml.Align)
+	align := ir.RegionAlignOf(ir.CookNodeAlign(g.unit, st))
 	bytes := cookAlignUp(ml.Size, align)
 	need := 64 + bytes + 16
 	g.pf("static SCHEMA_UNUSED int64_t %s(const %s * value) { (void)value; return %d; }\n", g.api(st.Name, "cook_measure"), st.Name, need)
-	g.pf("static SCHEMA_UNUSED int %s(const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{\n    uint8_t * raw=(uint8_t *)output;\n    if(value==NULL || raw==NULL || capacity<%d) { return 0; }\n    memset(raw,0,%d);\n    if(!%s(NULL,raw+64,value,order)) { memset(raw,0,%d); return 0; } /* a NaN or an infinity writes no cook (§3.3) */\n", g.api(st.Name, "cook"), st.Name, need, need, g.sym(st.Name, "cook_body"), need)
+	g.pf("static SCHEMA_UNUSED int %s(const %s * value,void * output,uint64_t capacity,TableByteOrder order)\n{\n    uint8_t * raw=(uint8_t *)output;\n    if(value==NULL || raw==NULL || capacity<%d) { return 0; }\n    memset(raw,0,%d);\n    if(!%s(NULL,raw+64,value,order)) { memset(raw,0,%d); return 0; } /* a NaN or an infinity writes no cook (§3.3) */\n", g.api(st.Name, "cook"), st.Name, need, need, g.sym(st.Name, "body_pack"), need)
 	g.pf("    table_cook_put(raw+%d,UINT64_C(0x%016x),8,order);\n    table_cook_header(raw,%s,%d,1,%d,order); return 1;\n}\n", 64+bytes+8, ir.TableWireId(st.WireName()), buildVersionName(g.unit.Package), bytes, align)
 }
 func (g *tableGen) emitCookVariableRoot(st *ir.Struct) {

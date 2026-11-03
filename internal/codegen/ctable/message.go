@@ -43,7 +43,7 @@ func messageClosure(u *ir.Unit) (structs, unions map[string]bool) {
 		}
 	}
 	for name := range ir.TableClosure(u) {
-		if st := u.Tables[name]; st != nil && st.FixedDeclared {
+		if st := u.Tables[name]; st != nil && st.FixedDeclared && !st.IsMapEntry() {
 			walk(st)
 		}
 	}
@@ -174,7 +174,7 @@ static SCHEMA_UNUSED int table_message_leb(const uint8_t * in,int64_t size,int64
 }
 static SCHEMA_UNUSED int64_t table_message_value_bits(uint8_t kind,uint8_t packing,int64_t bits)
 {
- if(kind==1)return 1;if(kind==11)return 64;if(kind==10)return packing==2?bits:32;
+ if(kind==1)return 1;if(kind==11||kind==36)return 64;if(kind==10)return packing==2?bits:32;
  if(table_message_integer_kind(kind)||table_message_fixed_kind(kind))return packing==1?bits:table_message_kind_bits(kind);
  return -1;
 }
@@ -302,7 +302,7 @@ static SCHEMA_UNUSED int64_t table_message_kind_bits( uint8_t kind )
         case 2: case 6: case 20: case 25: return 8;
         case 3: case 7: case 21: case 26: return 16;
         case 4: case 8: case 22: case 27: return 32;
-        case 5: case 9: case 23: case 28: return 64;
+        case 5: case 9: case 23: case 28: case 36: return 64;
         default: return 128;
     }
 }
@@ -368,7 +368,7 @@ static SCHEMA_UNUSED int table_message_fixed_kind( uint8_t kind ) { return kind 
 
 static SCHEMA_UNUSED int table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 );
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 33 ) || kind == 36;
 }
 
 `

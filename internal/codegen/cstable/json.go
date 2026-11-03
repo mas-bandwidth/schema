@@ -37,7 +37,7 @@ import "github.com/mas-bandwidth/schema/v2/ir"
 // (docs/SPEC-TABLES.md §11), so the variable class's refusal is already made and
 // this emission has no second one to make.
 func (g *tableGen) emitJsonSurface(st *ir.Struct) {
-	if st.IsMapEntry() {
+	if st.IsMapEntry() || !st.CarriesForm("json") || !anyTableForm(g.unit, "json") {
 		return
 	}
 	g.pf("// %s in and out of a JSON text — one instance, one text, the generic\n", st.Name)
@@ -200,12 +200,14 @@ public static class TableJson
     {
         if (f.Map) { return 'o'; }
         if (f.Kind == 17 && !f.IsArray) { return f.BlobKind != 0 ? 's' : 'o'; }
+        if (f.TextList) { return 'a'; }
         if (f.Kind == 12 || f.Kind == 33) { return 's'; }          // string
         if (IsBytes(f)) { return 's'; }            // bytes: base64
         if (IsKeyed(f)) { return 'o'; }            // an object keyed by variant NAME
         if (f.IsArray) { return 'a'; }
+        if (f.Kind == 36) { return 's'; }
         if (f.Arms != null) { return 'o'; }        // union: an object with ONE key
-        if (f.Kind == 13) { return 'o'; }          // nested table or type
+        if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; } // nested table or type
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
@@ -215,8 +217,11 @@ public static class TableJson
     // the ELEMENT shape of an array field — the same classifier one level down
     static char ElementShape(TableFieldInfo f)
     {
+        if (f.TextList) { return 's'; }
+        if (f.Kind == 36) { return 's'; }
         if (f.Kind == 17) { return f.BlobKind != 0 ? 's' : 'o'; }
-        if (f.Kind == 13 || f.Kind == 15) { return 'o'; }
+        if (f.Kind == 13) { return f.Table.JsonArray ? 'a' : 'o'; }
+        if (f.Kind == 15) { return 'o'; }
         if (IsEnum(f)) { return 's'; }
         if (IsFlags(f)) { return 'a'; }
         if (f.Kind == 1) { return 'b'; }
@@ -618,6 +623,14 @@ public static class TableJson
     // (owner, field, index) is the same thing said in this language.
     static bool WriteScalar(ref Out o, object owner, TableFieldInfo f, int index, int depth)
     {
+        if (f.TextList)
+        {
+            object child=f.GetChild(owner,index);TableFieldInfo text=f.Table.Fields[0];
+            if(text.Optional&&!text.GetPresent(child)){o.Text("null");return true;}
+            return WriteField(ref o,child,text,depth);
+        }
+        if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(owner, index))) { return false; }
+        if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(owner, index))) { return false; }
         if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
         if (f.Arms != null)
         {
@@ -699,6 +712,8 @@ public static class TableJson
         if (f.GetWide != null) { WriteWide(ref o, f.GetWide(owner, index), f); return true; }
         switch (f.Kind)
         {
+            case 36:
+                return WriteTimestamp(ref o, unchecked((long)f.GetRaw(owner, index)));
             case 1:
                 o.Text(f.GetRaw(owner, index) != 0 ? "true" : "false");
                 return true;
@@ -720,13 +735,15 @@ public static class TableJson
 
     static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
     {
+        if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
         if (f.Map) { return WriteMap(ref o, value, f, depth); }
         if (f.Kind == 33)
         {
             WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
         }
-        if (f.Kind == 12)
+        if (f.Kind == 12 && !f.TextList)
         {
+            if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
             WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
             return true;
         }
@@ -792,6 +809,7 @@ public static class TableJson
     static bool WriteValue(ref Out o, object value, TableTypeInfo info, int depth, bool definition = false)
     {
         if (depth > MaxDepth) { return false; }
+        if (info.JsonArray) { return info.NumFields == 1 && WriteField(ref o, value, info.Fields[0], depth); }
         bool any = definition;
         bool wrote = false;
         for (int i = 0; i < info.NumFields; i++)
@@ -832,13 +850,14 @@ public static class TableJson
     // cursor, the report and the malformed flag, and the TEXT rides beside it
     // as its own ReadOnlySpan parameter. Nothing is copied and nothing is
     // allocated; the span stays the caller's bytes the whole way down.
-` + tableVariableJsonSource + tableMapJsonSource + `
+` + tableVariableJsonSource + tableMapJsonSource + tableTimestampJsonSource + `
     public struct In
     {
         public System.Collections.Generic.Dictionary<ulong, Label> Labels;
         public int Pos;
         public TableReport Report;
-        public bool Bad; // the text is not JSON: the walk stops and keeps what it placed
+        public bool Bad; // the text is not JSON: the whole read is discarded
+        internal string TextField;
     }
 
     static void Space(ReadOnlySpan<byte> text, ref In input)
@@ -952,17 +971,23 @@ public static class TableJson
     // fatal, exactly as it is on the wire (§4). keep false scans past a
     // string without keeping it, and counts no clamp for what it dropped —
     // C++'s NULL destination.
-    static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length)
-    { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length); }
-    // The body of a bytes field's base64 string, as the JSON layer reads it
+    static bool ScanString(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, bool keep, out int length, bool stored = false)
+    { return ScanText(text, ref input, destination, Span<char>.Empty, false, keep, out length, stored: stored); }
+    static bool RefuseText(ref In input, string reason)
+    {
+        input.Bad = true;
+        input.Report.Reason = reason + ": " + (input.TextField ?? "<root>");
+        return false;
+    }
+    // A decoded string body for the base64 and timestamp readers
     // (docs/SPEC-TABLES.md §16.2): the JSON layer decides FIRST, so a raw byte
     // below 0x20, a backslash that begins no escape, a byte that is not UTF-8
     // (string_not_utf8, §16.3; never replaced by U+FFFD here) and a text that
     // ends inside the string each make the read malformed. A body of plain
     // ASCII is its own decoding and is read in place; any other body is
     // decoded once, so an escape spells what it spells and the base64 grammar
-    // judges the decoded string, as the Go reader does.
-    static bool Base64Body(ReadOnlySpan<byte> text, ref In input, out ReadOnlySpan<byte> body)
+    // or timestamp grammar judges the decoded string, as the Go reader does.
+    static bool DecodedStringBody(ReadOnlySpan<byte> text, scoped ref In input, out ReadOnlySpan<byte> body)
     {
         body = ReadOnlySpan<byte>.Empty;
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -980,7 +1005,7 @@ public static class TableJson
             {
                 plain = false;
                 int want = c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
-                if (want == 0 || want > text.Length - at || !TableWire.TextValid(text.Slice(at, want))) { input.Bad = true; return false; }
+                if (want == 0 || want > text.Length - at || !TableWire.TextValid(text.Slice(at, want))) { return RefuseText(ref input, "string_not_utf8"); }
                 at += want; continue;
             }
             at++;
@@ -998,7 +1023,7 @@ public static class TableJson
         body = new ReadOnlySpan<byte>(decoded, 0, used);
         return true;
     }
-    static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false)
+    static bool ScanText(ReadOnlySpan<byte> text, ref In input, Span<byte> destination, Span<char> chars, bool wide, bool keep, out int length, bool measure = false, bool stored = false)
     {
         length = 0;
         if (Peek(text, ref input) != '"') { input.Bad = true; return false; }
@@ -1065,8 +1090,8 @@ public static class TableJson
             }
             else
             {
-                // Decode a complete scalar, replacing ill-formed UTF-8 before
-                // applying the destination bound (the text form's U+FFFD rule).
+                // The read refuses invalid UTF-8 before any clamp. Replacement
+                // is only the writer's rule for storage built in code (§16.3).
                 int want = c < 0x80 ? 1 : c >= 0xc2 && c <= 0xdf ? 2 : c >= 0xe0 && c <= 0xef ? 3 : c >= 0xf0 && c <= 0xf4 ? 4 : 0;
                 if (want != 0 && want <= text.Length - input.Pos && TableWire.TextValid(text.Slice(input.Pos, want)))
                 {
@@ -1075,10 +1100,12 @@ public static class TableJson
                 }
                 else
                 {
-                    input.Pos++;
-                    unitLength = EncodeUtf8(0xfffd, unit);
+                    return RefuseText(ref input, "string_not_utf8");
                 }
             }
+            // Only stored text rejects NUL; skipped values and object field
+            // names still accept that escape. Map keys opt in before length checks.
+            if (stored && unitLength == 1 && unit[0] == 0) { return RefuseText(ref input, "text_holds_zero"); }
             if (measure)
             {
                 if (placed > int.MaxValue - unitLength) { input.Bad = true; return false; }
@@ -1252,6 +1279,7 @@ public static class TableJson
         if (depth > MaxDepth) { input.Bad = true; return false; }
         input.Pos++; // the opening bracket
         bool first = true;
+        Span<byte> key = stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
@@ -1259,7 +1287,6 @@ public static class TableJson
             if (c == 0) { input.Bad = true; return false; }
             if (close == '}')
             {
-                Span<byte> key = stackalloc byte[MaxKey];
                 if (!ScanString(text, ref input, key, true, out int used)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
@@ -1340,6 +1367,15 @@ public static class TableJson
     // place one scalar at one storage slot
     static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
+        if(f.TextList)
+        {
+            object child=f.GetChild(owner,index);TableFieldInfo field=f.Table.Fields[0];f.Table.Reset(child);
+            if(field.Optional&&ValueShape(text,ref input)=='z'){return Literal(text,ref input,"null");}
+            if(field.Optional){field.SetPresent(child,true);}
+            int before=input.Report.Clamped;bool good=ReadField(text,ref input,child,field,depth);
+            if(input.Report.Clamped!=before){TableWire.TextClamp(input.Report,f);}return good;
+        }
+        if (f.Kind == 36) { return ReadTimestamp(text, ref input, owner, f, index); }
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
         if (f.Arms != null)
         {
@@ -1431,6 +1467,7 @@ public static class TableJson
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
             ulong bits = 0;
+            Span<byte> name = stackalloc byte[MaxKey];
             for (; ; )
             {
                 byte c = Peek(text, ref input);
@@ -1443,7 +1480,6 @@ public static class TableJson
                 }
                 else
                 {
-                    Span<byte> name = stackalloc byte[MaxKey];
                     int nameLength;
                     if (!ScanString(text, ref input, name, true, out nameLength)) { return false; }
                     bool found = false;
@@ -1564,15 +1600,10 @@ public static class TableJson
             }
         }
         if (saturated) { input.Report.Clamped++; }
-        // an unsigned magnitude past long.MaxValue rides as a negative long —
-        // that is the storage's own image of it and not a negative number, so
-        // the range sees the magnitude the same scale the reference's does
-        double valueScale = isSigned ? (double)value2 : (double)(ulong)value2;
-        if (f.HasRange)
-        {
-            if (valueScale < f.RangeMin) { value2 = (long)f.RangeMin; input.Report.Clamped++; }
-            else if (valueScale > f.RangeMax) { value2 = (long)f.RangeMax; input.Report.Clamped++; }
-        }
+        // Exact typed bounds preserve integers above 2^53 and unsigned values
+        // above Int64.MaxValue. The field's storage-width clamp follows this.
+        if (f.ClampJsonInteger != null)
+        { value2 = unchecked((long)f.ClampJsonInteger(unchecked((ulong)value2), input.Report)); }
         // the field's own storage width is the last bound: a value past it
         // clamps rather than wrapping, which is what the wire does too
         if (f.ElemWidth < 8)
@@ -1616,7 +1647,7 @@ public static class TableJson
         if (f.Dynamic) { f.ResetField(value); return; }
         for (int i = 0; i < f.ArrayBound; i++)
         {
-            if (f.Kind == 13) { f.Table.Reset(f.GetChild(value, i)); }
+            if (f.Kind == 13 || f.TextList) { f.Table.Reset(f.GetChild(value, i)); }
             else if (f.Kind == 15)
             {
                 // TableJson cannot see the wire reader's ResetUnion (sibling
@@ -1647,24 +1678,30 @@ public static class TableJson
         if (f.Map) { return ReadMap(text, ref input, value, f, depth); }
         if (f.Kind == 33)
         {
-            if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used)) { return false; }
+            if (!ScanText(text, ref input, Span<byte>.Empty, f.GetChars(value), true, true, out int used, stored: true)) { return false; }
             f.SetCount(value, used); return true;
         }
-        if (f.Kind == 12)
+        if (f.Unbounded)
+        {
+            if(!DecodedStringBody(text,ref input,out ReadOnlySpan<byte> body)){return false;}
+            if(!TableWire.TextValid(body)){return RefuseText(ref input,"text_holds_zero");}
+            f.EnsureCount(value,body.Length);body.CopyTo(f.GetBuffer(value));f.SetCount(value,body.Length);return true;
+        }
+        if (f.Kind == 12 && !f.TextList)
         {
             byte[] storage = f.GetBuffer(value);
             int length;
-            if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length)) { return false; }
+            if (!ScanString(text, ref input, new Span<byte>(storage, 0, f.ArrayBound), true, out length, stored: true)) { return false; }
             PutCount(value, f, length);
             return true;
         }
         if (IsBytes(f))
         {
-            // The JSON layer reads the string first (Base64Body); the base64
+            // The JSON layer reads the string first (DecodedStringBody); the base64
             // grammar then judges what it spells. Validate the stream and its
             // padding before touching storage, so a malformed body leaves the
             // declared default.
-            if (!Base64Body(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
+            if (!DecodedStringBody(text, ref input, out ReadOnlySpan<byte> body)) { return false; }
             int symbols = 0;
             int pad = 0;
             bool malformed = false;
@@ -1733,17 +1770,17 @@ public static class TableJson
             char shape = ElementShape(f);
             // A KEYED OBJECT'S KEYS ARE KEYS: a variant named twice is a
             // duplicate key like any other, last-wins and counted (§16.2).
-            // Tracked the way a table's own field keys are — a bounded,
-            // allocation-free bitmask; a vocabulary wider than this still
-            // reads, its repeats simply stop being counted.
-            Span<ulong> seen = stackalloc ulong[8];
+            // The schema fixes the vocabulary size. Small schemas use the
+            // stack; larger ones still count every duplicate exactly.
+            int words = (f.ArrayBound + 63) / 64;
+            Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
             seen.Clear();
+            Span<byte> key = stackalloc byte[MaxKey];
             for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == '}') { input.Pos++; break; }
                 if (c == 0) { input.Bad = true; return false; }
-                Span<byte> key = stackalloc byte[MaxKey];
                 int keyLength;
                 if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -1757,7 +1794,7 @@ public static class TableJson
                     if (!KeyedSlotValid(f, v)) { continue; }
                     if (Same(key.Slice(0, keyLength), f.KeyName(KeyedSlotKey(v)))) { slot = v; break; }
                 }
-                if (slot >= 0 && slot < 512)
+                if (slot >= 0)
                 {
                     ulong bit = 1ul << (slot & 63);
                     if ((seen[slot >> 6] & bit) != 0) { input.Report.Duplicate++; }
@@ -1797,21 +1834,22 @@ public static class TableJson
             // re-establishment a nested table and a union arm already get.
             ResetSlots(value, f);
             PutCount(value, f, 0);
-            int placed = 0;
+            int placed = 0; long textSpent = 0; bool textFull = false;
             char shape = ElementShape(f);
             for (; ; )
             {
                 byte c = Peek(text, ref input);
                 if (c == ']') { input.Pos++; break; }
                 if (c == 0) { input.Bad = true; return false; }
-                if (placed >= f.ArrayBound)
+                if (textFull) { if (!SkipValue(text,ref input,depth+1)) { return false; } }
+                else if (placed >= f.ArrayBound)
                 {
                     // more elements than the reader's bound: the bounded prefix
                     // is kept and the excess counts, the wire's rule (§4)
-                    input.Report.Clamped++;
+                    input.Report.Clamped++; TableWire.TextClamp(input.Report,f);
                     if (!SkipValue(text, ref input, depth + 1)) { return false; }
                 }
-                else if (ValueShape(text, ref input) != shape && !(f.Kind == 17 && ValueShape(text, ref input) == 'z'))
+                else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                 {
                     if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                     input.Report.KindMismatch++;
@@ -1822,7 +1860,12 @@ public static class TableJson
                 {
                     if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                     if (!ReadScalar(text, ref input, value, f, placed, depth + 1)) { return false; }
-                    placed++;
+                    if(f.TextTotal>0){
+                        object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
+                        int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
+                        if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;}
+                    }
+                    if(!textFull){placed++;}
                 }
                 c = Peek(text, ref input);
                 if (c == ',') { input.Pos++; continue; }
@@ -1845,17 +1888,27 @@ public static class TableJson
     static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
     {
         if (depth > MaxDepth) { input.Bad = true; return false; }
+        if (info.JsonArray)
+        {
+            if (info.NumFields != 1 || Peek(text, ref input) != '[')
+            {
+                input.Report.Reason ??= "json_root_not_array: " + info.Name;
+                input.Bad = true; return false;
+            }
+            return ReadField(text, ref input, value, info.Fields[0], depth);
+        }
         if (!opened) { if (Peek(text, ref input) != '{') { input.Bad = true; return false; } input.Pos++; }
-        // duplicate tracking, bounded and allocation-free: a table with more
-        // fields than this still reads, its repeats simply stop being counted
-        Span<ulong> seen = stackalloc ulong[8];
+        // The descriptor fixes this size; input cannot grow it. Keep common
+        // tables on the stack, and track every field even beyond 512.
+        int words = (info.NumFields + 63) / 64;
+        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
         seen.Clear();
+        Span<byte> key = stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == '}') { input.Pos++; return true; }
+            if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
             if (c == 0) { input.Bad = true; return false; }
-            Span<byte> key = stackalloc byte[MaxKey];
             int keyLength;
             if (!ScanString(text, ref input, key, true, out keyLength)) { return false; }
             if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -1882,7 +1935,8 @@ public static class TableJson
             else
             {
                 TableFieldInfo f = info.Fields[index];
-                if (index < 512)
+                input.TextField = info.Name + "." + f.Name;
+                if (index < info.NumFields)
                 {
                     ulong bit = 1ul << (index & 63);
                     if ((seen[index >> 6] & bit) != 0) { input.Report.Duplicate++; }
@@ -1923,7 +1977,7 @@ public static class TableJson
             }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
-            if (c == '}') { input.Pos++; return true; }
+            if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
             input.Bad = true;
             return false;
         }
@@ -1934,10 +1988,12 @@ public static class TableJson
     public static bool Read(object value, TableTypeInfo info, ReadOnlySpan<byte> text, TableReport report)
     {
         In input = new In();
-        input.Pos = 0;
+        // The dialect accepts a single UTF-8 BOM only at byte offset 0 (§16.2, §16.12).
+        input.Pos = text.Length >= 3 && text[0] == 0xEF && text[1] == 0xBB && text[2] == 0xBF ? 3 : 0;
         // a caller with no report is off the read path this section prices: it
         // gets one rather than a branch on every counter
         input.Report = report != null ? report : new TableReport();
+        input.Report.Reason = null; input.Report.Refused = false;
         input.Bad = false;
         if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
         info.Reset(value);
@@ -1954,9 +2010,13 @@ public static class TableJson
             Space(text, ref input);
             if (input.Pos != text.Length) { input.Bad = true; }
         }
+        if (input.Report.Refused) { info.Reset(value); return false; }
         if (input.Bad || !ok)
         {
+            // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): nothing
+            // the walk placed before the damage is handed back.
             input.Report.Malformed = true;
+            info.Reset(value);
             return false;
         }
         return true;

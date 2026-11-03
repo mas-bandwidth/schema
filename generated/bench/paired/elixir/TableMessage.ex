@@ -336,7 +336,7 @@ defmodule Bench.TableMessage do
       kind in [4, 8, 10, 22, 27] ->
         take(4, bin)
 
-      kind in [5, 9, 11, 23, 28] ->
+      kind in [5, 9, 11, 23, 28, 36] ->
         take(8, bin)
 
       kind in [18, 19, 24, 29] ->
@@ -506,7 +506,7 @@ defmodule Bench.TableMessage do
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: kind >= 0 and kind <= 33
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 33) or kind == 36
 
   defp kind_bits(kind) do
     case kind do
@@ -533,6 +533,7 @@ defmodule Bench.TableMessage do
       27 -> 32
       28 -> 64
       29 -> 128
+      36 -> 64
       _ -> 0
     end
   end
@@ -875,7 +876,7 @@ defmodule Bench.TableMessage do
   defp encode_value(_vocab, 1, _shape, _elem, value, acc), do: {:ok, put_bits(acc, value, 1)}
 
   defp encode_value(_vocab, kind, shape, _elem, value, acc)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
        do: {:ok, encode_scalar(kind, shape, value, acc)}
 
   defp encode_value(_vocab, 10, shape, _elem, value, acc), do: encode_float(shape, value, acc)
@@ -1018,7 +1019,7 @@ defmodule Bench.TableMessage do
   defp read_value(_vocab, 1, _shape, _elem, r), do: get_bits(r, 1)
 
   defp read_value(_vocab, kind, shape, _elem, r)
-       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+       when kind in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 36],
        do: read_scalar(kind, shape, r)
 
   defp read_value(_vocab, 10, shape, _elem, r), do: read_float(shape, r)
@@ -1179,7 +1180,7 @@ defmodule Bench.TableMessage do
 
   defp scalar_value(_kind, %{packing: 1, base: base}, raw), do: base + raw
 
-  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18],
+  defp scalar_value(kind, _shape, raw) when kind in [2, 3, 4, 5, 18, 36],
     do: sign_extend(raw, kind_bits(kind))
 
   defp scalar_value(_kind, _shape, raw), do: raw

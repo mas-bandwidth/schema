@@ -49,6 +49,13 @@
 # Wire files are REFERENCED where they already live rather than copied: the
 # table-wire goldens are the same files test/tables/main.cpp pins.
 
+# Required-construct witnesses are populated and pinned by the generated Go
+# runtime. They are ordinary instances, so every native language driver must
+# read and write the same canonical bytes; no feature-only side pass can win.
+unit featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+instance feature_full featurewitnesses Root testdata/conformance/feature-witnesses/full/Root.bin
+instance feature_array_root featurewitnesses ArrayRoot testdata/conformance/feature-witnesses/full/ArrayRoot.bin
+
 unit tabledemo tables/examples
 unit tblv1     test/tables/V1.schema
 unit tblv2     test/tables/V2.schema
@@ -264,8 +271,8 @@ report p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
 # Feed bodies with one `parts` field each and no node table. The element kind
 # 8 where the reader declares 17 is a kind mismatch and the field stays empty;
 # five slots against a bound of four keep the prefix and count clamped; a slot
-# naming index 7 where no node exists is malformed and THAT slot reads null,
-# the array kept at its count. The bytes are the reference leg's, built from
+# naming index 7 where no node exists is malformed and discards the whole
+# load. The bytes are the reference leg's, built from
 # §3's grammar and pinned by test/tables/main.cpp like every other golden.
 report parts_elem_kind          streamdemo Feed testdata/wire/tables/parts_elem_kind.bin
 report parts_count_past_bound   streamdemo Feed testdata/wire/tables/parts_count_past_bound.bin
@@ -718,9 +725,9 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # str-illformed-at-bound: the ill-formed 0xFF byte is REFUSED BY NAME at the
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
-# HELD FIRST IN GO (§16.3): Go, C, Rust, Java, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry the rule,
+# HELD FIRST IN GO (§16.3): Go, C, C++, Rust, C#, JavaScript, Dart, Java, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry the rule,
 # every other port keeps the counters it answered before the ruling until its port.
-json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,rust,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,1,0,false,read
+json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,1,0,false,read
 json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
 json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
@@ -730,20 +737,20 @@ json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conform
 # reads clean. The ports that carry the str-zero-escape rows below carry this
 # refusal; every other port stores the zero as text and keeps the counters its
 # reader gives until its port.
-json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded          tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded           refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-byte-bounded-nested   tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-byte-bounded-nested    refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
 # THE ZERO RULE IN THE TEXT (§16.3): "A JSON string the read would PLACE in text
 # storage ... and that decodes to U+0000 ... refuses the read: FromJson returns
 # false, the report is Malformed, and Reason reads text_holds_zero:
 # <Table>.<field> for the innermost field that held it." A string the read only
 # SKIPS — the value of an unknown key — "stores nothing and is not this event".
-# Held first in Go, carried by C, Rust, Dart, Java, moo, Lobster, Squirrel, Lua and Luau: the two refusals carry the standard's verdict, and every
+# Held first in Go, carried by C, C++, Rust, C#, JavaScript, Dart, Java, moo, Lobster, Squirrel, Lua and Luau: the two refusals carry the standard's verdict, and every
 # other port keeps the counters its reader gives (it stores the zero as text),
 # 0,0,0,0,0,false,read, until its port. The map-key row uses the existing
 # `mapdemo` unit's Text root, whose names field is map[string(8)]string(16);
 # tabledemo's RootConfig has no string-keyed map.
-json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
-json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,rust,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-value        tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-zero-escape-value         refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
+json-hostile str-zero-escape-map-key      mapdemo Text          testdata/conformance/tables/json-hostile/str-zero-escape-map-key       refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,0,0,false,read
 # A duplicate KEY in a map is last-wins and counted (§2.8): listdemo's Army
 # root carries a roster map, so this row exercises the readMap duplicate counter.
 json-hostile list-map-dup-key              listdemo Army          testdata/conformance/tables/json-hostile/list-map-dup-key             0,0,0,0,1,false,read
@@ -1077,6 +1084,35 @@ instance map_spans mapdemo Spans testdata/wire/tables/map_spans.bin
 instance map_text mapdemo Text testdata/wire/tables/map_text.bin
 instance map_trails mapdemo Trails testdata/wire/tables/map_trails.bin
 instance map_runs mapdemo Runs testdata/wire/tables/map_runs.bin
+
+# THE COOK WRITE SIDE OVER MAPS AND LISTS (docs/SPEC-TABLES.md §2.8, §2.9,
+# §7.6): a map's generated `{ key, value }` entries and a list's elements ride
+# in the HOLDER'S node extent after the record's storage, PRE-ORDER, a map's
+# entries in ascending key order. `schema cook` writes these and every leg's
+# writer is held to them, byte for byte, in both byte orders.
+cook-write map_cells            testdata/conformance/tables/cook-write/map_cells.cook testdata/conformance/tables/cook-write/map_cells-be.cook
+cook-write map_chunks           testdata/conformance/tables/cook-write/map_chunks.cook testdata/conformance/tables/cook-write/map_chunks-be.cook
+cook-write map_crews            testdata/conformance/tables/cook-write/map_crews.cook testdata/conformance/tables/cook-write/map_crews-be.cook
+cook-write map_depth            testdata/conformance/tables/cook-write/map_depth.cook testdata/conformance/tables/cook-write/map_depth-be.cook
+cook-write map_docs             testdata/conformance/tables/cook-write/map_docs.cook testdata/conformance/tables/cook-write/map_docs-be.cook
+cook-write map_empty            testdata/conformance/tables/cook-write/map_empty.cook testdata/conformance/tables/cook-write/map_empty-be.cook
+cook-write map_full             testdata/conformance/tables/cook-write/map_full.cook testdata/conformance/tables/cook-write/map_full-be.cook
+cook-write map_pairs            testdata/conformance/tables/cook-write/map_pairs.cook testdata/conformance/tables/cook-write/map_pairs-be.cook
+cook-write map_slots            testdata/conformance/tables/cook-write/map_slots.cook testdata/conformance/tables/cook-write/map_slots-be.cook
+cook-write map_spans            testdata/conformance/tables/cook-write/map_spans.cook testdata/conformance/tables/cook-write/map_spans-be.cook
+cook-write map_text             testdata/conformance/tables/cook-write/map_text.cook testdata/conformance/tables/cook-write/map_text-be.cook
+cook-write map_trails           testdata/conformance/tables/cook-write/map_trails.cook testdata/conformance/tables/cook-write/map_trails-be.cook
+cook-write map_runs             testdata/conformance/tables/cook-write/map_runs.cook testdata/conformance/tables/cook-write/map_runs-be.cook
+cook-write list_tables          testdata/conformance/tables/cook-write/list_tables.cook testdata/conformance/tables/cook-write/list_tables-be.cook
+cook-write list_scalars         testdata/conformance/tables/cook-write/list_scalars.cook testdata/conformance/tables/cook-write/list_scalars-be.cook
+cook-write list_empty           testdata/conformance/tables/cook-write/list_empty.cook testdata/conformance/tables/cook-write/list_empty-be.cook
+cook-write list_erased          testdata/conformance/tables/cook-write/list_erased.cook testdata/conformance/tables/cook-write/list_erased-be.cook
+cook-write list_mixed           testdata/conformance/tables/cook-write/list_mixed.cook testdata/conformance/tables/cook-write/list_mixed-be.cook
+cook-write list_shared          testdata/conformance/tables/cook-write/list_shared.cook testdata/conformance/tables/cook-write/list_shared-be.cook
+cook-write list_before_pointer  testdata/conformance/tables/cook-write/list_before_pointer.cook testdata/conformance/tables/cook-write/list_before_pointer-be.cook
+cook-write list_nested          testdata/conformance/tables/cook-write/list_nested.cook testdata/conformance/tables/cook-write/list_nested-be.cook
+cook-write list_of_maps         testdata/conformance/tables/cook-write/list_of_maps.cook testdata/conformance/tables/cook-write/list_of_maps-be.cook
+cook-write list_migrates        testdata/conformance/tables/cook-write/list_migrates.cook testdata/conformance/tables/cook-write/list_migrates-be.cook
 report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
 # the C collections differential's mutant 235: map_depth with its root's first
 # field header bumped to another kind. A known id under a changed kind is
@@ -1193,3 +1229,21 @@ framing node_table_twice                      graphdemo ListNode testdata/wire/t
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing             tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin             malformed            -
 framing nested_damage_midway                  tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin                  malformed            -
+# T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; Glenn,
+# 2026-10-31); a chain, and a diamond chain of 82 SHARED nodes and 2^40 paths
+# that a reader must load in linear time, are legal.
+framing node_cycle_self                       graphdemo ListNode testdata/wire/tables/framing/node_cycle_self.bin              malformed            -
+framing node_cycle_to_root                    graphdemo ListNode testdata/wire/tables/framing/node_cycle_to_root.bin           malformed            -
+framing node_cycle_mid                        graphdemo ListNode testdata/wire/tables/framing/node_cycle_mid.bin               malformed            -
+framing node_diamond_chain                    graphdemo Scene    testdata/wire/tables/framing/node_diamond_chain.bin           0,0,0,0,0,false,read testdata/conformance/tables/framing/scene_diamond_chain.json
+framing node_chain_two                        graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
+
+# THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
+# RULES): a 128-bit list element in holders aligned eight, its own unit so no
+# other unit's build version or vocabulary moves. The root's storage is eight
+# modulo sixteen, so its extent begins at sizeof rounded to sixteen; an odd
+# count of eight-byte tags ends its extent at eight modulo sixteen, so the
+# pointed-at holder that follows lands there unless its node aligns to sixteen.
+unit widelist tables/widelist
+instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
+cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook

@@ -1,0 +1,1 @@
+These three independent wire pins are the existing generated-Go and native C++ optional-map presence contract in compiler/cppmappresence_test.go (cppMapPresenceGoldens). The neutral oracle must preserve absent, present-empty, and populated maps, not regenerate the expected bytes from its own encoder. internal/tablewire/TestOptionalMapPresenceCorpus executes these fixtures.

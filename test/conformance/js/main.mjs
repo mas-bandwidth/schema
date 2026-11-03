@@ -43,6 +43,19 @@ if (process.argv[2] !== "wire-fuzz") {
   graphCook = await load("pointers/GraphCook.js");
 }
 
+// JSON is a byte protocol at the file boundary. Replacement decoding would
+// hide malformed input from the generated string-based reader.
+const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+function readJsonTextFile(path) {
+  const bytes = readFileSync(path);
+  try {
+    return jsonUTF8.decode(bytes);
+  } catch (error) {
+    if (error instanceof TypeError && error.code === "ERR_ENCODING_INVALID_ENCODED_DATA") { return null; }
+    throw error;
+  }
+}
+
 // ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
 function readManifest(path) {
@@ -639,6 +652,8 @@ async function surfaceMessage(lines, outDir) {
 // instance and report pairs less a named uncarried set (empty today), and
 // TestWireRowsConformanceJavaScript (internal/codegen/jstable) holds it there.
 const wireRows = [
+  ["featurewitnesses", "Root", "features/FeaturewitnessesVariable.js"],
+  ["featurewitnesses", "ArrayRoot", "features/FeaturewitnessesVariable.js"],
   ["tabledemo", "RootConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "ProfileConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "LoadoutConfig", "examples/TabledemoVariable.js"],
@@ -693,6 +708,9 @@ const wireRows = [
   ["listdemo", "Save", "lists/ListdemoVariable.js"],
   ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
   ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  // the extent's alignment is its arrays' (§2.8, §6.2): 128-bit elements in
+  // holders aligned eight, the widelist unit
+  ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
   // the message roots on the file form (§3.3): the backend unit's three and
   // the wide-vocabulary units' roots on both sides of the one-byte boundary
   ["backenddemo", "LoginRequest", "backend/BackenddemoVariable.js"],
@@ -821,6 +839,7 @@ async function codecOf(unit, root, path) {
 // answer `<case>.absent`, which the matrix counts as the row of work that is
 // left, never as a pass.
 const textUnits = {
+  featurewitnesses: "features/FeaturewitnessesVariable.js",
   tabledemo: "examples/TabledemoVariable.js",
   graphdemo: "pointers/GraphdemoVariable.js",
   blobdemo: "blobs/BlobdemoVariable.js",
@@ -840,6 +859,7 @@ const textUnits = {
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
   widedemo: "wide/WideVariable.js",
   listdemo: "lists/ListdemoVariable.js",
+  widelist: "widelist/WidelistdemoVariable.js",
 };
 
 async function textCodec(unit, root) {
@@ -927,7 +947,9 @@ async function surfaceJsonRead(lines, outDir) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.fromJson(readFileSync(join("testdata/conformance/tables/json", f[1] + ".json"), "utf8"), r);
+    const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
+    if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
+    const v = codec.fromJson(text, r);
     if (r.malformed) { fail(f[1] + ": FromJson refused the text"); }
     const saved = codec.save(v);
     if (saved === null) { fail(f[1] + ": save refused the value"); }
@@ -956,7 +978,9 @@ async function surfaceJsonHostile(lines, outDir) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const v = codec.fromJson(readFileSync(join(f[4], f[3] + ".json"), "utf8"), r);
+    const text = readJsonTextFile(join(f[4], f[3] + ".json"));
+    if (text === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
+    const v = codec.fromJson(text, r);
     const verdict = v === null || v === undefined || r.malformed || r.refused
       ? "refused"
       : [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",");
@@ -987,6 +1011,27 @@ const cookWriteRows = [
   ["streamdemo", "Feed", "stream/StreamdemoVariable.js"],
   ["blobdemo", "Catalog", "blobs/BlobdemoVariable.js"],
   ["scalars", "SimState", "scalars/ScalardemoVariable.js"],
+  // maps and lists (docs/PORTING.md M19): the holder's sixteen bytes, the
+  // entries and elements in its node extent, pre-order
+  ["mapdemo", "Cells", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Chunks", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Crews", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Depth", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Docs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Fleet", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Pairs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Runs", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Slots", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Spans", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Text", "maps/MapdemoVariable.js"],
+  ["mapdemo", "Trails", "maps/MapdemoVariable.js"],
+  ["listdemo", "Album", "lists/ListdemoVariable.js"],
+  ["listdemo", "Army", "lists/ListdemoVariable.js"],
+  ["listdemo", "Mixed", "lists/ListdemoVariable.js"],
+  ["listdemo", "Save", "lists/ListdemoVariable.js"],
+  ["listdemo", "Sheet", "lists/ListdemoVariable.js"],
+  ["listdemo", "Unbounded", "lists/ListdemoVariable.js"],
+  ["widelist", "Wide", "widelist/WidelistdemoVariable.js"],
 ];
 
 function cookWriteAbsent(outDir, name) {
@@ -1143,6 +1188,68 @@ async function wireFuzz() {
         roster[i] = { ...codec, retain: retain === 1 };
         known[i] = 1;
       }
+    } else if (form === 2 && retain === 0) {
+      const row = messageRow(unit, root);
+      if (row !== null) {
+        if (!existsSync(resolve(generated, row[2])) || !existsSync(resolve(generated, row[3]))) {
+          fail(unit + "." + root + ": the message wire-fuzz module is missing");
+        }
+        const runtime = await load(row[2]);
+        const m = await load(row[3]);
+        const loadMessages = m[root + "LoadMessages"];
+        const measureMessages = m[root + "MeasureMessages"];
+        const saveMessages = m[root + "SaveMessages"];
+        const initRoot = runtime["Init" + root];
+        const RootClass = runtime[root];
+        if (typeof loadMessages !== "function" || typeof measureMessages !== "function" ||
+            typeof saveMessages !== "function" || typeof initRoot !== "function" ||
+            typeof RootClass !== "function") {
+          fail(unit + "." + root + ": the message wire surface is missing from " + row[3]);
+        }
+        const vocabulary = new runtime.TableVocabulary();
+        vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
+        if (!runtime.AnnounceRead(vocabulary, runtime.TableMessageAnnouncement, {})) {
+          fail(unit + "." + root + ": own announcement was refused");
+        }
+        const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new RootClass());
+        const single = [values[0]];
+        roster[i] = {
+          message: true,
+          run(wire) {
+            for (let j = 0; j < values.length; j++) { initRoot(values[j]); }
+            const rep = {};
+            const n = loadMessages(values, vocabulary, wire, rep);
+            const refused = rep.Verdict === runtime.TableMessageOpenRefused || Boolean(rep.NonFiniteFloat);
+            const malformed = Boolean(rep.Malformed) || (n < 1 && !refused);
+            let saved = null;
+            const ignored = {};
+            const size = measureMessages(single, ignored);
+            if (size >= 0) {
+              const out = new Uint8Array(size);
+              if (saveMessages(single, out, ignored) === size) {
+                saved = out;
+              }
+            }
+            return {
+              loaded: true,
+              saved,
+              report: {
+                reason: rep.Reason ?? "",
+                unknown: rep.Unknown | 0,
+                kindMismatch: rep.KindMismatch | 0,
+                widened: rep.Widened | 0,
+                clamped: rep.Clamped | 0,
+                duplicate: 0,
+                malformed,
+                refused,
+                retained: 0,
+                retainLost: 0,
+              },
+            };
+          },
+        };
+        known[i] = 1;
+      }
     }
   }
   writeSync(1, known);
@@ -1159,34 +1266,41 @@ async function wireFuzz() {
 
     let loaded = false, measure = -1, saved = null;
     const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
-    if (codec !== null) {
+    if (codec !== null && codec.message) {
+      const res = codec.run(wire);
+      loaded = res.loaded;
+      saved = res.saved;
+      Object.assign(report, res.report);
+    } else if (codec !== null) {
       measure = codec.loadMeasure(wire);
-      if (measure >= 0) {
-        const rep = codec.report();
-        let card = null;
-        if (codec.retain) {
-          const retainStore = codec.retainStore();
-          card = codec.loadRetain(wire, retainStore, rep);
-          loaded = card !== null;
-          if (loaded) {
-            saved = codec.saveRetain(card, retainStore, rep);
-          }
-        } else {
-          card = codec.load(wire, rep);
-          loaded = card !== null;
-          if (loaded) { saved = codec.save(card); }
+      // Measurement and loading are independent observations; even an
+      // unframed file must reach Load so its damage report is preserved.
+      const rep = codec.report();
+      let card = null;
+      if (codec.retain) {
+        const retainStore = codec.retainStore();
+        card = codec.loadRetain(wire, retainStore, rep);
+        loaded = card !== null;
+        if (loaded) {
+          saved = codec.saveRetain(card, retainStore, rep);
         }
-        report.unknown = rep.unknown;
-        report.kindMismatch = rep.kindMismatch;
-        report.widened = rep.widened;
-        report.clamped = rep.clamped;
-        report.duplicate = rep.duplicate;
-        report.malformed = rep.malformed;
-        report.refused = rep.refused;
-        report.retained = rep.retained;
-        report.retainLost = rep.retainLost;
-        report.reason = rep.reason;
+      } else {
+        card = codec.load(wire, rep);
+        loaded = card !== null;
+        if (loaded) { saved = codec.save(card); }
       }
+      report.unknown = rep.unknown;
+      report.kindMismatch = rep.kindMismatch;
+      report.widened = rep.widened;
+      report.clamped = rep.clamped;
+      report.duplicate = rep.duplicate;
+      report.malformed = rep.malformed;
+      // Storage-cap rejection is an out-of-band builder failure, not a
+      // wire-form refusal in the shared report protocol.
+      report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
+      report.retained = rep.retained;
+      report.retainLost = rep.retainLost;
+      report.reason = rep.reason;
     }
 
     // EVERY REPLY IS FLUSHED BEFORE THE NEXT MUTANT IS READ

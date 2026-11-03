@@ -34,7 +34,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
@@ -93,7 +92,7 @@ func gooseMsgUnitDir(t *testing.T, dir string) *ir.Unit {
 	if err != nil || len(paths) == 0 {
 		t.Fatalf("unit %s has no schema files: %v", dir, err)
 	}
-	u, err := compiler.New().Load(paths)
+	u, err := loadSchemaPaths(paths)
 	if err != nil {
 		t.Fatalf("load %s: %v", dir, err)
 	}
@@ -719,7 +718,7 @@ func TestGooseMessageFormCarriesEveryShape(t *testing.T) {
 	if err := os.WriteFile(path, []byte(gooseMsgShapes), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	u, err := compiler.New().Load([]string{path})
+	u, err := loadSchemaPaths([]string{path})
 	if err != nil {
 		t.Fatalf("load the shapes schema: %v", err)
 	}

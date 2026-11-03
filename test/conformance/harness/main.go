@@ -10,6 +10,8 @@
 //	harness run                   run every registered driver, print the matrix
 //	harness matrix                print the CI matrix the registry implies
 //	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
+//	harness cross-read            the C++ reference reads what one leg wrote (the nightly)
+//	harness coverage              the nightly's coverage table, from its rows
 //
 // Flags are the same for both so a Makefile line reads the same way; see usage.
 package main
@@ -56,7 +58,24 @@ func usage() {
 
   matrix     print the CI matrix as JSON: one row per registered driver, from
              test/conformance/<lang>/ci.json (README.md, "Registering a
-             language").
+             language"). --ports leaves the reference leg out.
+
+  cross-read the nightly's second direction (README.md, "The nightly"): the
+             C++ reference loads every answer --lang left under --writes
+             (a copy of build/conformance/out/<lang>) on the surfaces that
+             write a form it reads back, must accept each and re-save it
+             byte-identical, and each must equal C++'s own canonical write.
+             --coverage writes its rows. Exits nonzero on any failure.
+
+  coverage   read every coverage row under --in and print the nightly's
+             coverage table. --require-original-nine requires full feature
+             support, runtime acceptance receipts and completed roadmap tasks.
+
+  implementation
+             require every registered Schema construct, a positive corpus
+             witness in a reachable root, and successful code generation.
+             --lang checks one original-nine language; unset checks all nine.
+             This prerequisite does not replace native runtime acceptance.
 
   wire-fuzz  mutate every pinned wire in the corpus, feed each mutant to one
              language's leg on a pipe (--driver) and to the compiler's own
@@ -64,6 +83,12 @@ func usage() {
              a LoadMeasure inside the framing's bound, for every mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
+  cook-differential
+             cook every cook-write row's wire with the tool's engine and
+             with the C++ reference driver (--driver, default its committed
+             leg), in both byte orders, and require the same bytes; the
+             committed cook-write files are not read (docs/SPEC-TABLES.md
+             §2.8, §2.9, §7.6).
 
 flags:
   --manifest <path>   the conformance manifest
@@ -78,9 +103,21 @@ flags:
                       separated, each printed by name; the Makefile fills it
                       from SCHEMA_SKIP_LEGS and the reference leg is refused
                       (run only)
+  --claims            fail a case the leg CLAIMS and answers ABSENT: its unit
+                      uses a construct the leg's target registers as carried
+                      (compiler/carries_<target>.go); build the harness with
+                      every schema_leg_<lang> tag (run only)
+  --coverage <path>   write the run's coverage rows as JSON (run, cross-read)
+  --lang <lang>       the leg whose writes are re-read (cross-read only)
+  --writes <dir>      that leg's answers, <surface>/<case> (cross-read only)
+  --in <dir>          where the coverage rows are (coverage only)
+  --require-original-nine
+                      require complete original-nine coverage and fixed forms
+  --ports             leave the reference leg out of the matrix (matrix only)
   --results <path>    write every case's verdict as JSON, the input of
                       "go run ./tools/matrix proof" (run only)
-  --driver <cmd>      the leg to fuzz (wire-fuzz only)
+  --driver <cmd>      the leg to fuzz (wire-fuzz), or the reference driver
+                      (cook-differential)
   --seed <S> --n <N>  the random pass (wire-fuzz only)
   --replay <file> --unit <key> --root <table> [--message]
                       run one saved mutant alone (wire-fuzz only)
@@ -111,6 +148,7 @@ func main() {
 	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
 	message := fs.Bool("message", false, "replay the mutant as a MESSAGE against the unit's announced table (docs/SPEC-TABLES.md §3.3; wire-fuzz only)")
 	builder := fs.Bool("builder", false, "compare mutable builder completion, reports and successful saved values (wire-fuzz only)")
+	mixedBuilder := fs.Bool("mixed-builder", false, "full roster: mutable oracle for variable file roots, existing fixed/message oracles (wire-fuzz only)")
 	retain := fs.Bool("retain", false, "run the RETENTION ARM: both engines' retaining paths over the variable-class file roots (docs/SPEC-TABLES.md §6.6; wire-fuzz only)")
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
@@ -118,16 +156,37 @@ func main() {
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
 	require := fs.String("require", "", "comma-separated required card surfaces, default all nine (cards only)")
+	claims := fs.Bool("claims", false, "fail a claimed case answered ABSENT (run only)")
+	coverage := fs.String("coverage", "", "write coverage rows as JSON (run, cross-read)")
+	lang := fs.String("lang", "", "the original-nine language (implementation), or writes to re-read (cross-read)")
+	writes := fs.String("writes", "", "that leg's answers (cross-read only)")
+	in := fs.String("in", "", "where the coverage rows are (coverage only)")
+	requireNine := fs.Bool("require-original-nine", false, "require original-nine completion (coverage only)")
+	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
 
+	if *requireNine && command != "coverage" {
+		fatalf("--require-original-nine is only valid with coverage, the unified full-implementation gate")
+	}
+
 	if command == "matrix" {
-		out, err := matrix(*drivers)
+		out, err := matrix(*drivers, *ports)
 		if err != nil {
 			fatalf("%v", err)
 		}
 		fmt.Println(string(out))
+		return
+	}
+
+	if command == "coverage" {
+		if *in == "" {
+			fatalf("coverage: --in names no directory")
+		}
+		if err := coverageReport(os.Stdout, *in, *manifest, *jsonDir, *reports, *requireNine); err != nil {
+			fatalf("%v", err)
+		}
 		return
 	}
 
@@ -175,6 +234,10 @@ func main() {
 	}
 
 	switch command {
+	case "implementation":
+		if err := implementationReport(os.Stdout, m, *lang); err != nil {
+			fatalf("%v", err)
+		}
 	case "generate":
 		if err := generate(m, *jsonDir, *reports); err != nil {
 			fatalf("%v", err)
@@ -184,13 +247,59 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "wire-fuzz":
-		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, finiteOwed: *finiteOwed}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {
 			fatalf("%v", err)
 		}
-	case "run":
-		ok, err := runResults(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, *resultsOut)
+	case "cook-differential":
+		ok, err := cookDifferential(os.Stdout, m, *manifest, *driver, *work)
 		if err != nil {
 			fatalf("%v", err)
+		}
+		if !ok {
+			os.Exit(1)
+		}
+	case "run":
+		var opts runOptions
+		var rows []coverageRow
+		if *coverage != "" {
+			opts.coverage = &rows
+		}
+		if *claims || *coverage != "" {
+			set, err := claimsFor(m, *drivers, *only, *claims)
+			if err != nil {
+				fatalf("%v", err)
+			}
+			opts.claims = set
+		}
+		opts.results = *resultsOut
+		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if *coverage != "" {
+			if err := writeCoverage(*coverage, rows); err != nil {
+				fatalf("%v", err)
+			}
+		}
+		if !ok {
+			os.Exit(1)
+		}
+	case "cross-read":
+		if *lang == "" || *writes == "" {
+			fatalf("cross-read: --lang and --writes name the leg and its answers")
+		}
+		set, err := buildClaims(m, nil)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		rows, ok, err := crossRead(os.Stdout, m, *reports, *drivers, *work, *lang, *writes, set)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if *coverage != "" {
+			if err := writeCoverage(*coverage, rows); err != nil {
+				fatalf("%v", err)
+			}
 		}
 		if !ok {
 			os.Exit(1)
@@ -202,12 +311,14 @@ func main() {
 
 // repoRelative keeps every path in the data and in a driver's argv relative to
 // the repository root, because a golden that carries an absolute path is a
-// golden that only passes on one machine.
+// golden that only passes on one machine. Paths outside the working tree remain
+// absolute: walking upward from a logical cwd can cross symlinks differently
+// from the child driver that opens the path.
 func repoRelative(path string) string {
 	if filepath.IsAbs(path) {
 		if wd, err := os.Getwd(); err == nil {
-			if rel, err := filepath.Rel(wd, path); err == nil {
-				return rel
+			if rel, err := filepath.Rel(wd, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return filepath.ToSlash(rel)
 			}
 		}
 	}
@@ -231,4 +342,30 @@ func indent(text string, by string) string {
 		lines[i] = by + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// claimsFor builds the claim for the legs a run exercises. enforcing is
+// --claims: without it the set only classes the coverage rows, and a leg with
+// no carries registration in this build is not an error.
+func claimsFor(m *Manifest, driversPath, only string, enforcing bool) (*claimSet, error) {
+	drivers, _, err := loadDrivers(driversPath)
+	if err != nil {
+		return nil, err
+	}
+	var langs []string
+	for _, d := range drivers {
+		if only != "" && d.lang != only {
+			continue
+		}
+		langs = append(langs, d.lang)
+	}
+	if !enforcing {
+		set, err := buildClaims(m, nil)
+		if err != nil {
+			return nil, err
+		}
+		set.carried = map[string]map[string]bool{} // classes only: nothing is claimed
+		return set, nil
+	}
+	return buildClaims(m, langs)
 }

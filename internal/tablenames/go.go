@@ -5,6 +5,10 @@ const Go Backend = 1 << 3
 
 func init() {
 	define(Go,
+		Name{Name: "tableCycleCheck", What: "linear stored-graph cycle validation"},
+		Name{Name: "tableCycleEdges", What: "linear stored-graph cycle validation"},
+		Name{Name: "tableCycleType", What: "linear stored-graph cycle validation"},
+		Name{Name: "tableCycleValueEdges", What: "linear stored-graph cycle validation"},
 		Name{Name: "TableRefuseReason", What: "typed file and accelerator refusal errors"},
 		Name{Name: "TableBuildVersionMismatch", What: "the typed error a strict build-version refusal carries, with the endpoint's version and this unit's own (§3.3)"},
 		Name{Name: "TableRefuseOk", What: "typed file and accelerator refusal errors"},

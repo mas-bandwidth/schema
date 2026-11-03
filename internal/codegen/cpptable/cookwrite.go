@@ -75,8 +75,16 @@ inline void table_cook_put( uint8_t * at, uint64_t value, int32_t width, TableBy
 // order, exactly as a u64 is one lane of eight (docs/SPEC-TABLES.md §7.2).
 inline void table_cook_put128( uint8_t * at, uint64_t lo, uint64_t hi, TableByteOrder order )
 {
-    if ( order == TableByteOrder::Little ) { table_cook_put( at, lo, 8, order ); table_cook_put( at + 8, hi, 8, order ); }
-    else { table_cook_put( at, hi, 8, order ); table_cook_put( at + 8, lo, 8, order ); }
+    if ( order == TableByteOrder::Little )
+    {
+        table_cook_put( at, lo, 8, order );
+        table_cook_put( at + 8, hi, 8, order );
+    }
+    else
+    {
+        table_cook_put( at, hi, 8, order );
+        table_cook_put( at + 8, lo, 8, order );
+    }
 }
 
 // A buffer piece: the USED bytes and nothing else. The tail is already zero —
@@ -151,7 +159,11 @@ struct TableCookRegion
 // rather than written as a delta to nowhere.
 inline bool table_cook_ref( const TableCookRegion & region, uint8_t * at, const void * pointee, TableByteOrder order )
 {
-    if ( pointee == NULL ) { table_cook_put( at, 0, 8, order ); return true; }
+    if ( pointee == NULL )
+    {
+        table_cook_put( at, 0, 8, order );
+        return true;
+    }
     uint64_t index = 0;
     if ( !TableNumberingIndex( *region.numbering, pointee, index ) ) { return false; }
     if ( index == 0 || index > (uint64_t) region.count ) { return false; }
@@ -201,7 +213,7 @@ func cookElementBytes(u *ir.Unit, f *ir.Field) int64 {
 // record also refuses a reference the numbering did not carry.
 func (g *tableGen) cookBodySignature(st *ir.Struct) string {
 	if g.isVar(st.Name) {
-		return fmt.Sprintf("template <typename Ctx> inline bool %sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
+		return fmt.Sprintf("template <typename Ctx>\ninline bool %[1]sCookBody( const Ctx & ctx, const TableCookRegion & region, uint8_t * at, const %[2]s & value, TableByteOrder order )", st.Name, st.Name)
 	}
 	return fmt.Sprintf("inline bool %sCookBody( uint8_t * at, const %s & value, TableByteOrder order )", st.Name, st.Name)
 }
@@ -237,7 +249,7 @@ func (g *tableGen) emitCookWriteSurface(members []*ir.Struct) {
 	g.emitCookExtentSurface(members)
 
 	for _, st := range bodies {
-		if !st.IsTable || st.IsMapEntry() {
+		if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 			// a `type` is no root, and a map's generated ENTRY is §2.8's one
 			// exception to "a root is any table" — its cook BODY is emitted
 			// above, and that is the whole of what it carries
@@ -260,13 +272,13 @@ func (g *tableGen) emitCookWriteBody(st *ir.Struct) {
 	g.pf("%s\n{\n", g.cookBodySignature(st))
 	if len(ml.Fields) == 0 {
 		if variable {
-			g.pf("    (void) ctx; (void) region; (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+			g.pf("    (void) ctx;\n    (void) region;\n    (void) at;\n    (void) value;\n    (void) order; // a record with no field writes nothing\n")
 		} else {
-			g.pf("    (void) at; (void) value; (void) order; // a record with no field writes nothing\n")
+			g.pf("    (void) at;\n    (void) value;\n    (void) order; // a record with no field writes nothing\n")
 		}
 	}
 	if variable && len(ml.Fields) > 0 && g.noCookRefs(st) {
-		g.pf("    (void) ctx; (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure\n")
+		g.pf("    (void) ctx;\n    (void) region; // no reference resolves in this body: a list's and a map's slots are the extent writer's, and the class was decided elsewhere in the closure\n")
 	}
 	if len(ml.Fields) > 0 && onlyExtentFields(st) {
 		// every field is a LIST or a MAP, whose slot the extent writer fills:
@@ -403,7 +415,7 @@ func (g *tableGen) emitCookWriteElement(f *ir.Field, at, value, indent, sfx stri
 		// a fixed field's slot holds its RAW scaled integer, the same bytes
 		// the storage holds; the 128-bit widths go as two lanes
 		if t.Width == 128 {
-			g.pf("%s{ serialize::uint128_t raw_v = serialize::uint128_t( %s ); table_cook_put128( %s, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order ); }\n", indent, value, at)
+			g.pf("%[1]s{\n%[1]s    serialize::uint128_t raw_v = serialize::uint128_t( %[2]s );\n%[1]s    table_cook_put128( %[3]s, uint64_t( raw_v ), uint64_t( raw_v >> 64 ), order );\n%[1]s}\n", indent, value, at)
 			return
 		}
 		g.pf("%stable_cook_put( %s, (uint64_t) %s, %d, order );\n", indent, at, value, int64(t.Width)/8)
@@ -571,9 +583,9 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 	g.pf("    region.numbering = &numbering;\n")
 	g.pf("    region.count = numbering.count + 1;\n")
 	if g.anyExtent && g.hasExtent(st) {
-		g.pf("    const int64_t root_extent = %sExtent( ctx, root );\n", n)
+		g.pf("    const int64_t root_extent = %sExtent<Ctx, true>( ctx, root );\n", n)
 		g.pf("    if ( root_extent < 0 ) { return false; }\n")
-		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", cookAlignUp(ml.Size, ir.RegionAlignFloor))
+		g.pf("    int64_t offset = %d + root_extent; // the root at zero, its extent behind it\n", ir.CookExtentStart(g.unit, st))
 	} else {
 		if g.anyExtent {
 			g.pf("    (void) root;\n")
@@ -585,7 +597,7 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 		}
 		g.pf("    int64_t offset = %d; // the root, at zero\n", ml.Size)
 	}
-	g.pf("    int64_t align = %d;\n", ir.RegionAlignOf(ml.Align))
+	g.pf("    int64_t align = %d;\n", ir.RegionAlignOf(ir.CookNodeAlign(g.unit, st)))
 	g.pf("    if ( region.offsets != NULL ) { region.offsets[0] = 0; }\n")
 	g.pf("    for ( int64_t k = 0; k < numbering.count; k++ )\n    {\n")
 	if nodeDispatchEmpty(reachable, blobs) {
@@ -600,8 +612,12 @@ func (g *tableGen) emitCookWriteVariableRoot(st *ir.Struct) {
 			tl := ir.RecordLayout(g.unit, t)
 			if g.anyExtent && g.hasExtent(t) {
 				g.pf("            case 0x%016xull: // %s\n", ir.TableWireId(t.WireName()), t.Name)
-				g.emitCookNodeBytes(t, "                ", fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
-				g.pf("                break;\n")
+				ind := "                "
+				if g.hasExtent(t) {
+					ind = "            "
+				}
+				g.emitCookNodeBytes(t, ind, fmt.Sprintf("*(const %s *) numbering.entries[k].node", t.Name), "return false;")
+				g.pf("%sbreak;\n", ind)
 				continue
 			}
 			g.pf("            case 0x%016xull: size = %d; node_align = %d; break; // %s\n", ir.TableWireId(t.WireName()), tl.Size, tl.Align, t.Name)

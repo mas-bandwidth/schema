@@ -22,6 +22,9 @@ import (
 	"vocab9demo"
 	"vocabdemo"
 	widedemo "widedemo"
+	"widelistdemo"
+
+	"featurewitnesses"
 
 	"tbla1"
 	"tbla2"
@@ -354,6 +357,54 @@ var codecTable = []codec{
 	}, mapdemo.EdgeRowToJSONMeasure, mapdemo.EdgeRowToJSON, mapdemo.EdgeRowCookMeasure, mapdemo.EdgeRowCookFrom, func(r *mapdemo.TableReport) report {
 		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == mapdemo.TableOpenRefused || r.NonFiniteFloat != ""}
 	}),
+	regionRow("widelist", "Wide", widelistdemo.WideLoadMeasure, widelistdemo.WideLoadTolerant, widelistdemo.WideMeasure, widelistdemo.WideSave,
+		func(text []byte, r *widelistdemo.TableReport) (*widelistdemo.Wide, []byte, bool) {
+			var b widelistdemo.WideBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := widelistdemo.WideFromJSONTolerant(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, widelistdemo.WideToJSONMeasure, widelistdemo.WideToJSON, widelistdemo.WideCookMeasure, widelistdemo.WideCookFrom,
+		func(r *widelistdemo.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widelistdemo.TableOpenRefused || r.NonFiniteFloat != ""}
+		}),
+	regionRow("featurewitnesses", "Root", featurewitnesses.RootLoadMeasure, featurewitnesses.RootLoadTolerant, featurewitnesses.RootMeasure, featurewitnesses.RootSave,
+		func(text []byte, r *featurewitnesses.TableReport) (*featurewitnesses.Root, []byte, bool) {
+			var b featurewitnesses.RootBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := featurewitnesses.RootFromJSONTolerant(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, featurewitnesses.RootToJSONMeasure, featurewitnesses.RootToJSON, featurewitnesses.RootCookMeasure, featurewitnesses.RootCookFrom,
+		func(r *featurewitnesses.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == featurewitnesses.TableOpenRefused || r.NonFiniteFloat != ""}
+		}),
+	regionRow("featurewitnesses", "ArrayRoot", featurewitnesses.ArrayRootLoadMeasure, featurewitnesses.ArrayRootLoadTolerant, featurewitnesses.ArrayRootMeasure, featurewitnesses.ArrayRootSave,
+		func(text []byte, r *featurewitnesses.TableReport) (*featurewitnesses.ArrayRoot, []byte, bool) {
+			var b featurewitnesses.ArrayRootBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := featurewitnesses.ArrayRootFromJSONTolerant(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, featurewitnesses.ArrayRootToJSONMeasure, featurewitnesses.ArrayRootToJSON, featurewitnesses.ArrayRootCookMeasure, featurewitnesses.ArrayRootCookFrom,
+		func(r *featurewitnesses.TableReport) report {
+			return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == featurewitnesses.TableOpenRefused || r.NonFiniteFloat != ""}
+		}),
 	regionRow("listdemo", "Sheet", listdemo.SheetLoadMeasure, listdemo.SheetLoadTolerant, listdemo.SheetMeasure, listdemo.SheetSave, func(text []byte, r *listdemo.TableReport) (*listdemo.Sheet, []byte, bool) {
 		var b listdemo.SheetBuilder
 		if !b.Init() {

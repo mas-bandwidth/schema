@@ -368,7 +368,7 @@ export function WriteProbeSample(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.bigDelta;
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.bigDelta);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
@@ -1286,7 +1286,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  BIGINT_SCRATCH.value = value.int64Full;
+  BIGINT_SCRATCH.value = BigInt.asUintN(64, value.int64Full);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }

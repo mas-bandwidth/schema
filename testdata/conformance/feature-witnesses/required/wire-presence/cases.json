@@ -1,0 +1,371 @@
+[
+  {
+    "Name": "shared_missing",
+    "Root": "Root",
+    "Hex": "01000000000000000000",
+    "Missing": "b, c",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_missing-b",
+    "Root": "Root",
+    "Hex": "0101040900000000f2ef01864cde63af0100000000000000",
+    "Missing": "b",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_zero",
+    "Root": "Root",
+    "Hex": "0101040000000002040000000000a5f101864cdf63aff2ef01864cde63af0200000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_populated",
+    "Root": "Root",
+    "Hex": "01010403000000020407000000030409000000008cec01864cdc63afa5f101864cdf63aff2ef01864cde63af0300000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "scalar_widen",
+    "Root": "RequiredValue",
+    "Hex": "0101020002030000008cec01864cdc63afa5f101864cdf63af0200000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 2
+  },
+  {
+    "Name": "scalar_wrong_kind",
+    "Root": "RequiredValue",
+    "Hex": "01010c0178020400000000008cec01864cdc63afa5f101864cdf63af0200000000000000",
+    "Missing": "a",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "unknown_before_missing",
+    "Root": "Root",
+    "Hex": "0101044d000000005630b3ead46180d80100000000000000",
+    "Missing": "b, c",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredArray_missing",
+    "Root": "RequiredArray",
+    "Hex": "01000000000000000000",
+    "Missing": "values",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredArray_inert",
+    "Root": "RequiredArray",
+    "Hex": "01010e0000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredArray_empty",
+    "Root": "RequiredArray",
+    "Hex": "01010e02040000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredArray_wrong_element",
+    "Root": "RequiredArray",
+    "Hex": "01010e020c0000fb674d1acf7b27210100000000000000",
+    "Missing": "values",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredArray_compatible_then_wrong",
+    "Root": "RequiredArray",
+    "Hex": "01010e020400010e020c0000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredMap_missing",
+    "Root": "RequiredMap",
+    "Hex": "01000000000000000000",
+    "Missing": "values",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredMap_inert",
+    "Root": "RequiredMap",
+    "Hex": "01010e0000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredMap_empty",
+    "Root": "RequiredMap",
+    "Hex": "01010e020d0000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredMap_wrong_element",
+    "Root": "RequiredMap",
+    "Hex": "01010e020c0000fb674d1acf7b27210100000000000000",
+    "Missing": "values",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredMap_compatible_then_wrong",
+    "Root": "RequiredMap",
+    "Hex": "01010e020d00010e020c0000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredKeyed_missing",
+    "Root": "RequiredKeyed",
+    "Hex": "01000000000000000000",
+    "Missing": "values",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredKeyed_inert",
+    "Root": "RequiredKeyed",
+    "Hex": "0101100000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredKeyed_empty",
+    "Root": "RequiredKeyed",
+    "Hex": "01011002040000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredKeyed_wrong_element",
+    "Root": "RequiredKeyed",
+    "Hex": "010110020c0000fb674d1acf7b27210100000000000000",
+    "Missing": "values",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "RequiredKeyed_compatible_then_wrong",
+    "Root": "RequiredKeyed",
+    "Hex": "0101100204000110020c0000fb674d1acf7b27210100000000000000",
+    "Missing": "",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "map_wrong_key",
+    "Root": "RequiredMap",
+    "Hex": "01010e070d0104021e000000fb674d1acf7b2721ec105b36194ac93d0200000000000000",
+    "Missing": "values",
+    "KindMismatch": 1,
+    "Widened": 0
+  },
+  {
+    "Name": "union_unknown_arm",
+    "Root": "RequiredUnion",
+    "Hex": "01010f0204040000000000ea0ce83094fde47c188deaeb876aa03c0200000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "union_none",
+    "Root": "RequiredUnion",
+    "Hex": "01010f0000ea0ce83094fde47c0100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "body",
+    "Root": "Outer",
+    "Hex": "01010d0100008792885f8f064c2d0100000000000000",
+    "Missing": "id",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "list",
+    "Root": "Sequence",
+    "Hex": "01010e040d01010000b2f23c8c065d726b0100000000000000",
+    "Missing": "id",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "map",
+    "Root": "Mapping",
+    "Hex": "01010e0b0d0108020601030d010000006f2c414fbf84783eec105b36194ac93dea0ce83094fde47c0300000000000000",
+    "Missing": "id",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "pointer",
+    "Root": "Graph",
+    "Hex": "01011102020c0401030100009d48002576342462ffffffffffffffffe7e49dd1f5ed0bed0300000000000000",
+    "Missing": "id",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "active_guard",
+    "Root": "Guarded",
+    "Hex": "0101010102010100d41b5e8f67ede6308792885f8f064c2d0200000000000000",
+    "Missing": "req",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "inactive_outer",
+    "Root": "Guarded",
+    "Hex": "01010101008792885f8f064c2d0100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "slot513_missing",
+    "Root": "Many",
+    "Hex": "01000000000000000000",
+    "Missing": "last",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "slot513_present",
+    "Root": "Many",
+    "Hex": "0101040000000000d9475890add256040100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_0",
+    "Root": "R",
+    "Hex": "01000000000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_1",
+    "Root": "R",
+    "Hex": "0101010102010103040000000000d41b5e8f67ede6308792885f8f064c2d90b78179197a3fb50300000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_2",
+    "Root": "R",
+    "Hex": "0101010102040000000000d41b5e8f67ede630fa9a58b50759b3080200000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_3",
+    "Root": "R",
+    "Hex": "0101010102010103040700000000d41b5e8f67ede6308792885f8f064c2d90b78179197a3fb50300000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_4",
+    "Root": "R",
+    "Hex": "0101010102040900000000d41b5e8f67ede630fa9a58b50759b3080200000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_5",
+    "Root": "R",
+    "Hex": "0101010102010100d41b5e8f67ede6308792885f8f064c2d0200000000000000",
+    "Missing": "yes",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_6",
+    "Root": "R",
+    "Hex": "0101010100d41b5e8f67ede6300100000000000000",
+    "Missing": "no",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_7",
+    "Root": "N",
+    "Hex": "010104070000000090b78179197a3fb50100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_8",
+    "Root": "N",
+    "Hex": "01010101020409000000008792885f8f064c2dfa9a58b50759b3080200000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_9",
+    "Root": "N",
+    "Hex": "0101010100d41b5e8f67ede6300100000000000000",
+    "Missing": "",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_10",
+    "Root": "N",
+    "Hex": "01000000000000000000",
+    "Missing": "yes",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "shared_guard_11",
+    "Root": "N",
+    "Hex": "01010101008792885f8f064c2d0100000000000000",
+    "Missing": "no",
+    "KindMismatch": 0,
+    "Widened": 0
+  },
+  {
+    "Name": "damage_before_missing",
+    "Root": "Damage",
+    "Hex": "01010c01ff00a5f101864cdf63af0100000000000000",
+    "Missing": "c",
+    "KindMismatch": 0,
+    "Widened": 0,
+    "Malformed": true
+  }
+]

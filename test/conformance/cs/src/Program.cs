@@ -178,6 +178,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
     }
+    static Report Copy(Widelistdemo.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
+    }
     static Report Copy(Mapdemo.TableReport r)
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
@@ -214,8 +218,20 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
     }
+    static Report Copy(Featurewitnesses.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, KindMismatch = r.KindMismatch, Widened = r.Widened, Refused = r.Refused, Clamped = r.Clamped, Duplicate = r.Duplicate, Malformed = r.Malformed, BlobShared = r.BlobShared };
+    }
     static readonly List<Codec> codecs = new List<Codec>
     {
+        Row<Featurewitnesses.Root, Featurewitnesses.TableReport>("featurewitnesses", "Root", () => new Featurewitnesses.TableReport(), Copy,
+            Featurewitnesses.Schema.RootLoad, Featurewitnesses.Schema.RootMeasure, Featurewitnesses.Schema.RootSave,
+            Featurewitnesses.Schema.RootFromJson, Featurewitnesses.Schema.RootToJsonMeasure, Featurewitnesses.Schema.RootToJson, Featurewitnesses.Schema.RootLoadMeasure),
+
+        Row<Featurewitnesses.ArrayRoot, Featurewitnesses.TableReport>("featurewitnesses", "ArrayRoot", () => new Featurewitnesses.TableReport(), Copy,
+            Featurewitnesses.Schema.ArrayRootLoad, Featurewitnesses.Schema.ArrayRootMeasure, Featurewitnesses.Schema.ArrayRootSave,
+            Featurewitnesses.Schema.ArrayRootFromJson, Featurewitnesses.Schema.ArrayRootToJsonMeasure, Featurewitnesses.Schema.ArrayRootToJson, Featurewitnesses.Schema.ArrayRootLoadMeasure),
+
         // THE CARDS UNIT (tables/cards, docs/SPEC-TABLES.md §2): the sprint's own
         // variable-table record, compiled from build/tables-generated-cs/cards so
         // cards-cs-wire-fuzz and cards-cs-retain-fuzz hold the C# Card codec to
@@ -304,6 +320,9 @@ static partial class Program
         Row<Mapdemo.Fleet, Mapdemo.TableReport>("mapdemo", "Fleet", () => new Mapdemo.TableReport(), Copy,
             Mapdemo.Schema.FleetLoad, Mapdemo.Schema.FleetMeasure, Mapdemo.Schema.FleetSave,
             Mapdemo.Schema.FleetFromJson, Mapdemo.Schema.FleetToJsonMeasure, Mapdemo.Schema.FleetToJson, Mapdemo.Schema.FleetLoadMeasure),
+        Row<Widelistdemo.Wide, Widelistdemo.TableReport>("widelist", "Wide", () => new Widelistdemo.TableReport(), Copy,
+            Widelistdemo.Schema.WideLoad, Widelistdemo.Schema.WideMeasure, Widelistdemo.Schema.WideSave,
+            Widelistdemo.Schema.WideFromJson, Widelistdemo.Schema.WideToJsonMeasure, Widelistdemo.Schema.WideToJson, Widelistdemo.Schema.WideLoadMeasure),
         Row<Listdemo.Unbounded, Listdemo.TableReport>("listdemo", "Unbounded", () => new Listdemo.TableReport(), Copy,
             Listdemo.Schema.UnboundedLoad, Listdemo.Schema.UnboundedMeasure, Listdemo.Schema.UnboundedSave,
             Listdemo.Schema.UnboundedFromJson, Listdemo.Schema.UnboundedToJsonMeasure, Listdemo.Schema.UnboundedToJson, Listdemo.Schema.UnboundedLoadMeasure),
@@ -331,6 +350,12 @@ static partial class Program
         Row<Listdemo.Save, Listdemo.TableReport>("listdemo", "Save", () => new Listdemo.TableReport(), Copy,
             Listdemo.Schema.SaveLoad, Listdemo.Schema.SaveMeasure, Listdemo.Schema.SaveSave,
             Listdemo.Schema.SaveFromJson, Listdemo.Schema.SaveToJsonMeasure, Listdemo.Schema.SaveToJson, Listdemo.Schema.SaveLoadMeasure),
+        Row<Listdemo.Squad, Listdemo.TableReport>("listdemo", "Squad", () => new Listdemo.TableReport(), Copy,
+            Listdemo.Schema.SquadLoad, Listdemo.Schema.SquadMeasure, Listdemo.Schema.SquadSave,
+            Listdemo.Schema.SquadFromJson, Listdemo.Schema.SquadToJsonMeasure, Listdemo.Schema.SquadToJson),
+        Row<Listdemo.Bounded, Listdemo.TableReport>("listdemo", "Bounded", () => new Listdemo.TableReport(), Copy,
+            Listdemo.Schema.BoundedLoad, Listdemo.Schema.BoundedMeasure, Listdemo.Schema.BoundedSave,
+            Listdemo.Schema.BoundedFromJson, Listdemo.Schema.BoundedToJsonMeasure, Listdemo.Schema.BoundedToJson),
         Row<Tblw2.Ship, Tblw2.TableReport>("tblw2", "Ship", () => new Tblw2.TableReport(), Copy,
             Tblw2.Schema.ShipLoad, Tblw2.Schema.ShipMeasure, Tblw2.Schema.ShipSave,
             Tblw2.Schema.ShipFromJson, Tblw2.Schema.ShipToJsonMeasure, Tblw2.Schema.ShipToJson),
@@ -358,6 +383,9 @@ static partial class Program
         Row<Graphdemo.Scene, Graphdemo.TableReport>("graphdemo", "Scene", () => new Graphdemo.TableReport(), Copy,
             Graphdemo.Schema.SceneLoad, Graphdemo.Schema.SceneMeasure, Graphdemo.Schema.SceneSave,
             Graphdemo.Schema.SceneFromJson, Graphdemo.Schema.SceneToJsonMeasure, Graphdemo.Schema.SceneToJson, Graphdemo.Schema.SceneLoadMeasure),
+        Row<Graphdemo.ListNode, Graphdemo.TableReport>("graphdemo", "ListNode", () => new Graphdemo.TableReport(), Copy,
+            Graphdemo.Schema.ListNodeLoad, Graphdemo.Schema.ListNodeMeasure, Graphdemo.Schema.ListNodeSave,
+            Graphdemo.Schema.ListNodeFromJson, Graphdemo.Schema.ListNodeToJsonMeasure, Graphdemo.Schema.ListNodeToJson),
         Row<Wide.Stamp, Wide.TableReport>("widedemo", "Stamp", () => new Wide.TableReport(), Copy,
             Wide.Schema.StampLoad, Wide.Schema.StampMeasure, Wide.Schema.StampSave,
             Wide.Schema.StampFromJson, Wide.Schema.StampToJsonMeasure, Wide.Schema.StampToJson),
@@ -792,6 +820,95 @@ static partial class Program
             File.WriteAllText(Path.Combine(outDir, f[1]), text);
         }
         return 0;
+    }
+
+    // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
+    // `report` surface prints it, then the §16 text of the value the read left,
+    // unless the row says `no-value` or the read did not load. A derived line is
+    // `framing <case> <unit> <root> <wire> [no-value]`. Damaged input is
+    // discarded whole (docs/SPEC-TABLES.md §4), so a damaged row owes the
+    // report line alone.
+    static int SurfaceFraming(string outDir)
+    {
+        foreach (string[] f in Kind("framing"))
+        {
+            bool noValue = f.Length > 5 && f[5] == "no-value";
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null)
+            {
+                SpillAbsent(outDir, f[1]);
+                continue;
+            }
+            byte[] wire = File.ReadAllBytes(f[4]);
+            Report report = new Report();
+            object value = codec.Load(wire, report);
+            bool malformed = report.Malformed || (value == null && !report.Refused);
+            string head = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
+                          report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
+            // THE NATIVE LOADS answer the same row: the region load and the
+            // builder load must refuse exactly what the managed load refuses,
+            // so a disagreement is written into the answer and the row fails
+            string native = NativeFramingDisagrees(f[2], f[3], wire, malformed);
+            if (native != null) { head = native + "\n" + head; }
+            byte[] answer = System.Text.Encoding.ASCII.GetBytes(head);
+            if (value != null && !report.Refused && !noValue)
+            {
+                long size = codec.ToJsonMeasure(value);
+                if (size < 0)
+                {
+                    if (f[0] == "framing") { File.WriteAllBytes(Path.Combine(outDir, f[1]), answer); continue; }
+                    Console.Error.WriteLine("driver: " + f[1] + " holds a value ToJson refuses");
+                    return 1;
+                }
+                byte[] text = new byte[size];
+                if (codec.ToJson(value, text) != size)
+                {
+                    Console.Error.WriteLine("driver: " + f[1] + " writes a text its measure did not name");
+                    return 1;
+                }
+                byte[] both = new byte[answer.Length + text.Length];
+                answer.CopyTo(both, 0);
+                text.CopyTo(both, answer.Length);
+                answer = both;
+            }
+            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
+        }
+        return 0;
+    }
+
+    // The region and builder loads of the pointered framing roots: null when
+    // both agree with the managed load on whether the bytes are damage.
+    static unsafe string NativeFramingDisagrees(string unit, string root, byte[] wire, bool malformed)
+    {
+        bool regionRefused, builderRefused;
+        if (unit == "graphdemo" && root == "ListNode")
+        {
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.ListNodeLoadMeasure, (data, need, bytes, r) => (IntPtr)Graphdemo.Schema.ListNodeLoad(data, need, bytes, r));
+            using var builder = new Graphdemo.ListNodeBuilder();
+            builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
+        }
+        else if (unit == "graphdemo" && root == "Scene")
+        {
+            regionRefused = NativeRegionRefuses(wire, Graphdemo.Schema.SceneLoadMeasure, (data, need, bytes, r) => (IntPtr)Graphdemo.Schema.SceneLoad(data, need, bytes, r));
+            using var builder = new Graphdemo.SceneBuilder();
+            builderRefused = !builder.Load(wire, new Graphdemo.TableReport());
+        }
+        else { return null; }
+        if (malformed && !regionRefused) { return "native: the region load read damaged bytes"; }
+        if (malformed && !builderRefused) { return "native: the builder load read damaged bytes"; }
+        if (!malformed && regionRefused) { return "native: the region load refused clean bytes"; }
+        if (!malformed && builderRefused) { return "native: the builder load refused clean bytes"; }
+        return null;
+    }
+    delegate IntPtr NativeRegionLoad(IntPtr data, long need, byte[] bytes, Graphdemo.TableReport report);
+    delegate long NativeRegionMeasure(ReadOnlySpan<byte> bytes);
+    static unsafe bool NativeRegionRefuses(byte[] wire, NativeRegionMeasure measure, NativeRegionLoad load)
+    {
+        long need = measure(wire);
+        if (need < 0) { return true; }
+        byte* data = (byte*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc(checked((nuint)(need + 64)), 64);
+        try { return load((IntPtr)data, need, wire, new Graphdemo.TableReport()) == IntPtr.Zero; }
+        finally { System.Runtime.InteropServices.NativeMemory.AlignedFree(data); }
     }
 
     // A block's base is 64-byte aligned by construction (§19.1) and `extent` is
@@ -1400,6 +1517,16 @@ static partial class Program
             Codec c = Find("mapdemo", "Fleet");
             c.CookMeasure = value => Mapdemo.Schema.FleetCookMeasure((Mapdemo.Fleet)value);
             c.Cook = (value, bytes, big) => Mapdemo.Schema.FleetCook((Mapdemo.Fleet)value, bytes, big ? Mapdemo.TableByteOrder.Big : Mapdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("widelist", "Wide");
+            c.CookMeasure = value => Widelistdemo.Schema.WideCookMeasure((Widelistdemo.Wide)value);
+            c.Cook = (value, bytes, big) => Widelistdemo.Schema.WideCook((Widelistdemo.Wide)value, bytes, big ? Widelistdemo.TableByteOrder.Big : Widelistdemo.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("listdemo", "Unbounded");
+            c.CookMeasure = value => Listdemo.Schema.UnboundedCookMeasure((Listdemo.Unbounded)value);
+            c.Cook = (value, bytes, big) => Listdemo.Schema.UnboundedCook((Listdemo.Unbounded)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
         }
         {
             Codec c = Find("listdemo", "Album");
@@ -2135,9 +2262,9 @@ static partial class Program
             Report report = new Report();
             bool message = forms[index] == 2;
             long need = message || codec.LoadMeasure == null ? -1 : codec.LoadMeasure(bytes);
-            builderLoaded = null;
+            builderLoaded = null; regionLoaded = null;
             object value = message ? codec.MessageLoad(codec.Announcement, bytes, report) : codec.PartialLoad(bytes, report);
-            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : message || codec.LoadMeasure == null || need >= 0;
+            bool loaded = builder ? (builderLoaded ?? throw new InvalidOperationException("builder codec did not report completion")) : regionLoaded ?? (message || codec.LoadMeasure == null || need >= 0);
             output.Write((byte)(loaded ? 1 : 0));
             output.Write(report.Unknown); output.Write(report.KindMismatch); output.Write(report.Widened);
             output.Write(report.Clamped); output.Write(report.Duplicate);
@@ -2158,7 +2285,7 @@ static partial class Program
         RegisterNativeCooks();
         if(args.Length==1 && args[0]=="wire-fuzz-builder") { RegisterBuilders(); return WireFuzz(true); }
         if(args.Length==1 && args[0]=="wire-fuzz-region") { RegisterRegions(); return WireFuzz(); }
-        if (args.Length == 1 && args[0] == "wire-fuzz") { return WireFuzz(); }
+        if (args.Length == 1 && args[0] == "wire-fuzz") { RegisterRegions(); return WireFuzz(); }
         if (args.Length < 2)
         {
             Console.Error.WriteLine("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -2170,7 +2297,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\ncook-write\nreport\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\n");
+            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2187,6 +2314,7 @@ static partial class Program
             case "message": return SurfaceMessage(outDir);
             case "cook-write": return SurfaceCookWrite(outDir);
             case "report": return SurfaceReport(outDir);
+            case "framing": return SurfaceFraming(outDir);
             case "json-read": return SurfaceJsonRead(outDir);
             case "json-write": return SurfaceJsonWrite(outDir);
             case "json-hostile": return SurfaceJsonHostile(outDir);

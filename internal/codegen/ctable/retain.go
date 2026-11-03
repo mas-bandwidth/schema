@@ -119,7 +119,7 @@ static SCHEMA_UNUSED const void * table_retain_at(const TableRetain * retain,con
 static SCHEMA_UNUSED int table_retain_under(const TableRetain * retain,const uint8_t * record,const TableRetainPath * path,int field,uint32_t ordinal)
 {
  uint32_t depth=table_retain_u32(record+8);int32_t i;const uint8_t * steps=record+SCHEMA_TABLE_RETAIN_HEADER;
- if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||table_retain_at(retain,record)!=path->at)return 0;
+ if(path->depth<0||path->depth>SCHEMA_TABLE_RETAIN_DEPTH_MAX||(path->node?table_retain_u32(record+4)!=path->node:table_retain_at(retain,record)!=path->at))return 0;
  if(depth<(uint32_t)path->depth||(field&&depth==(uint32_t)path->depth))return 0;
  for(i=0;i<path->depth;i++)if(table_retain_u32(steps+8*i)!=path->steps[i].ordinal||table_retain_u32(steps+8*i+4)!=path->steps[i].index)return 0;
  return !field||table_retain_u32(steps+8*path->depth)==ordinal;
@@ -189,7 +189,7 @@ static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,
  }return r->offset==end;
 }
 static SCHEMA_UNUSED int table_retain_width(uint8_t kind)
-{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
+{switch(kind){case 1:case 2:case 6:case 20:case 25:return 1;case 3:case 7:case 21:case 26:return 2;case 4:case 8:case 10:case 22:case 27:return 4;case 5:case 9:case 11:case 23:case 28:case 36:return 8;case 18:case 19:case 24:case 29:return 16;default:return 0;}}
 static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn * s,uint8_t kind,int32_t depth)
 {
  TableReader * r=&s->input;uint64_t length;int width=table_retain_width(kind);

@@ -17,11 +17,11 @@ import (
 // compiler/target_squirrel_*.go files register; every other target
 // carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":    {carryOptionalVariableClosure},
-	"cs":   {carryOptionalVariableClosure},
-	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
+	"c":    {carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
+	"cs":   {carryUnboundedText, carryRequired, carryTimestamp, carryForms, carryIntegrity, carryTextList, carryTextListTotal, carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot},
+	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap, carryForms, carryIntegrity, carryRequired},
 	"dart": {carryOptionalVariableClosure},
-	"java": {carryOptionalVariableClosure},
+	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
 	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
 	// moo (behind schema_leg_moo; compiler/carries_moo.go): each proven by
 	// internal/codegen/mootable's TestMooTableConstructsMatchTheGoEngine
@@ -116,6 +116,12 @@ func TestEachTargetDeclaresWhatItCarries(t *testing.T) {
 	for _, tc := range carriesTable(cases) {
 		t.Run(tc.construct, func(t *testing.T) {
 			u := unitFromSource(t, tc.schema)
+			// THE QUERY THE CONFORMANCE HARNESS CLAIMS BY names the same
+			// construct the refusal below does (test/conformance/README.md,
+			// "The nightly")
+			if uses := UnitConstructs(u); !slices.Contains(uses, tc.construct) {
+				t.Errorf("UnitConstructs = %v, does not name %q", uses, tc.construct)
+			}
 			for _, target := range targets {
 				files, err := c.Generate(u, target, Options{"runtime": "standalone"})
 				if carries(target, tc.construct) {
@@ -179,4 +185,29 @@ func panics(fn func()) (did bool) {
 	defer func() { did = recover() != nil }()
 	fn()
 	return false
+}
+
+// TestCarriedQueries holds the exported reads to the registry: Carried answers
+// a registration exactly, a target with none says so rather than reading as
+// "carries nothing", and a unit holding no registered construct names none.
+func TestCarriedQueries(t *testing.T) {
+	t.Parallel()
+	if got := CarryConstructs(); !slices.Equal(got, carryConstructs) {
+		t.Errorf("CarryConstructs = %v, want %v", got, carryConstructs)
+	}
+	got, ok := Carried("go")
+	if !ok || !slices.Equal(got, carryConstructs) {
+		t.Errorf("Carried(go) = %v, %v; want every construct", got, ok)
+	}
+	got, ok = Carried("cpp")
+	if !ok || !slices.Equal(got, []string{carryTimestamp, carryRequired, carryForms, carryIntegrity, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap}) {
+		t.Errorf("Carried(cpp) = %v, %v", got, ok)
+	}
+	if got, ok := Carried("carry-test-unregistered"); ok || got != nil {
+		t.Errorf("Carried(unregistered) = %v, %v; want no registration", got, ok)
+	}
+	plain := unitFromSource(t, "package probe\ntable Plain\n{\n    x int32\n}\n")
+	if uses := UnitConstructs(plain); len(uses) != 0 {
+		t.Errorf("UnitConstructs(plain) = %v, want none", uses)
+	}
 }
