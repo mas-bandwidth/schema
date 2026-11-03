@@ -119,7 +119,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		view.Import(f.Base + "Table")
 	}
 	view.Pf("def UnitView() -> schema_rt.UnitView:\n    return schema_rt.unit_view()\n")
-	out[u.Package+"View.lobster"] = view.Assemble()
+	out[u.Package+"View.lobster"] = []byte(strings.Replace(string(view.Assemble()),
+		fmt.Sprintf("from %s.schema.", u.Files[0].Base),
+		fmt.Sprintf("from package %s (all schema files).", u.Package), 1))
 	if len(u.Tables) == 0 {
 		// Reflection is opt-in. Include only the transitive runtime imports
 		// needed by the descriptor modules, not unrelated table codecs.

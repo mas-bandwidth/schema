@@ -128,6 +128,9 @@ imports; a consumer opts into reflection by importing the view module.
 The extra output is part of generation, so runtime module file names are
 reserved in table-free units as well as table units. A schema basename that
 collides with `<package>View.lobster` is refused before output is written.
+Generated `UnitView`, `<Name>Descriptor`, and enum-keyed `Slot`/`At`/`Each`
+accessor names are also claimed before emission; conflicting declarations
+or fields must be renamed.
 `TestLobsterUnitViewIncludesUnreachedFiles` checks table-free and mixed units,
 all six sets, and a missing constant-module import as its negative control.
 
