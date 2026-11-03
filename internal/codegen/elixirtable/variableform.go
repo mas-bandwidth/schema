@@ -290,7 +290,8 @@ var armVoidLines = []struct {
 	text  string
 	count int
 }{
-	{"      %{t: :void} -> acc\n", 2},
+	{"      %{t: :void} -> acc\n", 1},
+	{"      {:ok, %{t: :void}} -> acc\n", 1},
 	{"        %{t: :void} -> \"null\"\n", 1},
 	{"      {:ok, %{t: :void}} ->\n        if input == nil,\n          do: {{name, nil}, report},\n          else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}\n\n", 1},
 }
@@ -420,7 +421,7 @@ func withOnlyVoidArms(runtime string) string {
 // Elixir's type checker proves always raises; such a unit is emitted without
 // them.
 var unionFamilies = []string{"collect_union_nodes", "arm_header", "arm_content", "arm_node_key",
-	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm", "arm_extent", "union_elements_extent"}
+	"read_arm", "read_arm_payload", "arm_framing_damaged?", "retyped_arm", "json_arm", "json_read_arm", "arm_extent", "union_elements_extent", "written_arm"}
 
 var unionClauses = []string{
 	"  defp field_extent(%{t: :union,",
@@ -435,6 +436,8 @@ var unionClauses = []string{
 	"  defp json_list_elem(%{elem_kind: 15}",
 	"  defp json_read_field(%{t: :union}",
 	"  defp json_read_list_elem(%{elem_kind: 15}",
+	"  defp written_value(%{t: :union}",
+	"  defp written_element(%{elem_kind: 15}",
 }
 
 const unionNodeBranch = "          :union ->\n            collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
@@ -803,9 +806,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp collect_union_nodes(_union, nil, acc), do: acc
 
   defp collect_union_nodes(union, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      %{t: :void} -> acc
-      a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, %{t: :void}} -> acc
+      {:ok, a} -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)
+      # an arm the union does not declare refuses the save (docs/SPEC.md §5.1)
+      :error -> throw(:invalid_value)
     end
   end
 
@@ -3144,11 +3149,105 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       end
 
+      if field_active?(f, desc, value) do
+        written_value(f, Map.get(value, f.name, f.default))
+      end
+
       if Map.get(f, :required, false) and field_active?(f, desc, value) do
         required_value(f, Map.get(value, f.name, f.default))
       end
     end)
   end
+
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1): a value its declared type cannot
+  # hold refuses the save as invalid_value, in every build, before a byte is
+  # written. A ranged integer off its min or max, an integer wider than its
+  # bits(N) or its storage, an array count past its bound (a [N]T included,
+  # which is never cut), a string, bytes or wstring past its N, an enum name
+  # outside its set and a union arm outside its arms each refuse; a nested
+  # table's fields are checked where save_fields reaches it. Absence (nil) is
+  # the field's default or None and is always lawful.
+  defp written_value(_f, nil), do: :ok
+
+  defp written_value(%{t: :int} = f, v) do
+    if Map.has_key?(f, :min) and is_integer(v) and (v < f.min or v > f.max),
+      do: throw(:invalid_value)
+
+    required_integer(v, Map.get(f, :bits, f.width * 8), f.signed)
+  end
+
+  defp written_value(%{t: :enum} = f, v) do
+    if v != "None" and not Map.has_key?(f.by_name, v), do: throw(:invalid_value)
+  end
+
+  defp written_value(%{t: :union} = f, v), do: written_arm(f.elem, v)
+
+  defp written_value(%{t: t} = f, v) when t in [:string, :bytes] do
+    if not is_binary(v) or (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
+      do: throw(:invalid_value)
+  end
+
+  defp written_value(%{t: :wstring} = f, v) do
+    units = if is_binary(v), do: utf16(v), else: nil
+    if not is_binary(units) or div(byte_size(units), 2) > f.size, do: throw(:invalid_value)
+  end
+
+  defp written_value(%{t: :list} = f, elements) do
+    if not is_list(elements), do: throw(:invalid_value)
+    bound = Map.get(f, :array_bound, 0)
+    if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
+
+    if not Map.get(f, :text_list, false),
+      do: Enum.each(elements, &written_element(f, &1))
+  end
+
+  defp written_value(%{t: :keyed} = f, slots) do
+    if not is_map(slots), do: throw(:invalid_value)
+
+    Enum.each(f.key_names, fn name ->
+      written_value(f.item, Map.get(slots, name, f.item.default))
+    end)
+  end
+
+  defp written_value(_f, _v), do: :ok
+
+  # one union value: None, or an arm the union declares holding a payload the
+  # arm's type can hold
+  defp written_arm(union, {arm, payload}) do
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, a} -> written_value(a, payload)
+      :error -> throw(:invalid_value)
+    end
+  end
+
+  defp written_arm(_union, _other), do: throw(:invalid_value)
+
+  # one element of an array: an integer inside its declared range and its
+  # storage, an enum name in its set, a union arm in its arms, a bounded
+  # string inside its N
+  defp written_element(_f, nil), do: :ok
+
+  defp written_element(%{elem_kind: k} = f, e)
+       when k in [2, 3, 4, 5, 6, 7, 8, 9, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29] do
+    if Map.has_key?(f, :elem_min) and is_integer(e) and (e < f.elem_min or e > f.elem_max),
+      do: throw(:invalid_value)
+
+    bits = Map.get(f, :elem_bits, kind_width(k) * 8)
+    required_integer(e, bits, k in [2, 3, 4, 5, 18, 20, 21, 22, 23, 24])
+  end
+
+  defp written_element(%{elem_kind: 30} = f, e) do
+    if not Map.has_key?(f.by_name, e), do: throw(:invalid_value)
+  end
+
+  defp written_element(%{elem_kind: 15} = f, e), do: written_arm(f.elem, e)
+
+  defp written_element(%{elem_kind: 12} = f, e) do
+    size = Map.get(f, :size, 0)
+    if not is_binary(e) or (size > 0 and byte_size(e) > size), do: throw(:invalid_value)
+  end
+
+  defp written_element(_f, _e), do: :ok
 
   defp required_value(%{t: :list} = f, values) do
     Enum.each(pad_fixed(f, values), fn v ->
