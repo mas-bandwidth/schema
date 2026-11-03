@@ -844,6 +844,9 @@ int fixedTableFixedLoad(
   return n;
 }
 
+const String fixedTableLoadRetainMessages = "FixedTable: retention requires a variable root and its region directory; the message form is fixed";
+const String fixedTableSaveRetainMessages = "FixedTable: retention requires a variable root and its region directory; the message form is fixed";
+
 // ---- FixedTable, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----
 /// MeasureMessages sizes the buffer for a batch of FixedTable bodies, or -1 with
 /// the reason on the report (docs/SPEC-TABLES.md §3.3).

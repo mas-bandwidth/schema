@@ -5599,6 +5599,9 @@ int tableEntityFixedLoad(
   return n;
 }
 
+const String tableEntityLoadRetainMessages = "TableEntity: retention requires a variable root and its region directory; the message form is fixed";
+const String tableEntitySaveRetainMessages = "TableEntity: retention requires a variable root and its region directory; the message form is fixed";
+
 // ---- TableEntity, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----
 /// MeasureMessages sizes the buffer for a batch of TableEntity bodies, or -1 with
 /// the reason on the report (docs/SPEC-TABLES.md §3.3).
@@ -6049,6 +6052,9 @@ int tableStatFixedLoad(
   report.kindMismatch += censusKind;
   return n;
 }
+
+const String tableStatLoadRetainMessages = "TableStat: retention requires a variable root and its region directory; the message form is fixed";
+const String tableStatSaveRetainMessages = "TableStat: retention requires a variable root and its region directory; the message form is fixed";
 
 // ---- TableStat, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----
 /// MeasureMessages sizes the buffer for a batch of TableStat bodies, or -1 with
@@ -6909,6 +6915,9 @@ int tableMixedFixedLoad(
   report.kindMismatch += censusKind;
   return n;
 }
+
+const String tableMixedLoadRetainMessages = "TableMixed: retention requires a variable root and its region directory; the message form is fixed";
+const String tableMixedSaveRetainMessages = "TableMixed: retention requires a variable root and its region directory; the message form is fixed";
 
 // ---- TableMixed, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----
 /// MeasureMessages sizes the buffer for a batch of TableMixed bodies, or -1 with

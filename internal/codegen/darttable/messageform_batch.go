@@ -111,6 +111,10 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		return
 	}
 	lower := lowerFirst(st.Name)
+	for _, suffix := range []string{"LoadRetainMessages", "SaveRetainMessages"} {
+		g.pf("const String %s%s = %q;\n", lower, suffix, st.Name+": retention requires a variable root and its region directory; the message form is fixed")
+	}
+	g.pf("\n")
 	extra := 0
 	if st.Integrity != "" {
 		extra = 4
