@@ -671,7 +671,7 @@ def main(argv=None):
     # reference's byte oracle, so a clean bench builds it here.
     prerequisites = "bin/schema build/conformance-harness build/fixedform-corpus/.stamp"
     if lang == "cpp":
-        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz"
+        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz dist-luau dist-squirrel"
     if lang == "dart":
         # Native cook-write tests import this corpus directly, before the
         # later AOT driver phase. A clean bench must not depend on that race.

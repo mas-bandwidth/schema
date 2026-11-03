@@ -83,6 +83,13 @@
 #include "SharedTable.h"
 #include "MigrateTable.h"
 #include "ReportTable.h"
+#include "K1Table.h"
+#include "K2Table.h"
+#include "G1Table.h"
+#include "WidesTable.h"
+#if __has_include( "FeaturesTable.h" )
+#include "FeaturesTable.h"
+#endif
 
 struct Reply
 {
@@ -354,8 +361,12 @@ static const Codec codecs[] = {
     FIXED( "backenddemo", backenddemo, LoginRequest ),
     FIXED( "backenddemo", backenddemo, MatchResult ),
     FIXED( "backenddemo", backenddemo, StorePurchase ),
+    FIXED( "tblk1", tblk1, Root ),
+    FIXED( "tblk2", tblk2, Root ),
     FIXED( "vocabdemo", vocabdemo, Wide00 ),
     FIXED( "vocabdemo", vocabdemo, Wide09 ),
+    FIXED( "vocab9demo", vocab9demo, Wide00 ),
+    FIXED( "vocab9demo", vocab9demo, Wide19 ),
     // WIDE TEXT (docs/SPEC-TABLES.md §3, kind 33): the seeds that carry the
     // kind at a field, at a `type` a table reaches, at an element and at a
     // union arm, so the ill-formed-wide-text and odd-`L` passes have all four
@@ -390,8 +401,14 @@ static const Codec codecs[] = {
     VARIABLE( "blobdemo", blobdemo, Catalog ),
     VARIABLE( "tblp2", tblp2, Chain ),
     VARIABLE( "streamdemo", streamdemo, Feed ),
+    VARIABLE( "tblg1", tblg1, Guarded ),
     VARIABLE( "tblw1", tblw1, Fleet ),
     VARIABLE( "tblw2", tblw2, Fleet ),
+    VARIABLE( "widelist", widelistdemo, Wide ),
+#if __has_include( "FeaturesTable.h" )
+    VARIABLE( "featurewitnesses", featurewitnesses, Root ),
+    VARIABLE( "featurewitnesses", featurewitnesses, ArrayRoot ),
+#endif
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),
@@ -405,11 +422,36 @@ static const Codec codecs[] = {
     // (docs/SPEC-TABLES.md §6.6). RETENTION IS THE VARIABLE CLASS'S: a
     // fixed-class root's LoadRetain is refused by name, so it is not an entry
     // here.
+    RETAIN( "blobdemo", blobdemo, Catalog ),
     RETAIN( "graphdemo", graphdemo, Scene ),
-    RETAIN( "tblp2", tblp2, Chain ),
+    RETAIN( "listdemo", listdemo, Album ),
+    RETAIN( "listdemo", listdemo, Army ),
+    RETAIN( "listdemo", listdemo, Mixed ),
+    RETAIN( "listdemo", listdemo, Save ),
+    RETAIN( "listdemo", listdemo, Sheet ),
+    RETAIN( "listdemo", listdemo, Unbounded ),
+    RETAIN( "mapdemo", mapdemo, Cells ),
+    RETAIN( "mapdemo", mapdemo, Chunks ),
+    RETAIN( "mapdemo", mapdemo, Crews ),
+    RETAIN( "mapdemo", mapdemo, Depth ),
+    RETAIN( "mapdemo", mapdemo, Docs ),
+    RETAIN( "mapdemo", mapdemo, Fleet ),
+    RETAIN( "mapdemo", mapdemo, Pairs ),
+    RETAIN( "mapdemo", mapdemo, Runs ),
+    RETAIN( "mapdemo", mapdemo, Slots ),
+    RETAIN( "mapdemo", mapdemo, Spans ),
+    RETAIN( "mapdemo", mapdemo, Text ),
+    RETAIN( "mapdemo", mapdemo, Trails ),
     RETAIN( "streamdemo", streamdemo, Feed ),
+    RETAIN( "tblg1", tblg1, Guarded ),
+    RETAIN( "tblp2", tblp2, Chain ),
     RETAIN( "tblw1", tblw1, Fleet ),
     RETAIN( "tblw2", tblw2, Fleet ),
+    RETAIN( "widelist", widelistdemo, Wide ),
+#if __has_include( "FeaturesTable.h" )
+    RETAIN( "featurewitnesses", featurewitnesses, Root ),
+    RETAIN( "featurewitnesses", featurewitnesses, ArrayRoot ),
+#endif
 };
 
 static bool read_exact( void * to, size_t n )

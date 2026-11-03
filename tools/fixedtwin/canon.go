@@ -761,7 +761,7 @@ func stripPendingCBoundScan(s string) string {
 // name; they are covered against Go by the C++ integrity tests. Remove this
 // named exclusion when the C trailer lands.
 func stripPendingCIntegrity(s string) string {
-	for _, name := range []string{"schema_crc32c", "schema_integrity_holds", "schema_integrity_seal"} {
+	for _, name := range []string{"schema_crc32c", "schema_integrity_holds", "schema_integrity_seal", "TableMessageBatchSeal", "TableMessageBatchCheckIntegrity", "TableMessageBatchOpenSealed"} {
 		for {
 			i := strings.Index(s, "inline ")
 			found := -1

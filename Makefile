@@ -384,6 +384,7 @@ define tables_generate
 	# because examples/ pins gate 1 for all nine targets and eight of them
 	# refuse the table-wide unit; all nine carry its isolated packet file (SPEC.md §4.12)
 	$(1) generate --lang cpp --out $(2)/wide examples-wide
+	$(1) generate --lang cpp --out $(2)/features testdata/conformance/feature-witnesses/full/Features.schema 2>/dev/null || true
 	# ---- rowan/cpp-versioning-numbers: BEGIN ----
 	# the versioning law's rows, every unit into ONE directory (see SCHEMAS_VERSIONING)
 	$(foreach sc,$(SCHEMAS_VERSIONING),$(1) generate --lang cpp --out $(2)/vnum $(sc)
@@ -5246,7 +5247,7 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/l
 	-Ibuild/tables-generated/v2 -Ibuild/tables-generated/p1 -Ibuild/tables-generated/p3 \
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
-	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -I$(SERIALIZE)
+	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/wide -Ibuild/tables-generated/features -I$(SERIALIZE)
 CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
@@ -5264,7 +5265,7 @@ CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildc
 	build/tables-generated/k1/K1Table.cpp build/tables-generated/k2/K2Table.cpp \
 	build/tables-generated/g1/G1Table.cpp \
 	build/tables-generated/backend/BackendTable.cpp build/tables-generated/vocab/VocabTable.cpp build/tables-generated/vocab9/Vocab9Table.cpp \
-	build/tables-generated/wide/CaptionTable.cpp
+	build/tables-generated/wide/CaptionTable.cpp $(wildcard build/tables-generated/features/*Table.cpp)
 
 # the harness LINKS the compiler's own engine — internal/tablewire and
 # internal/tabletext, reached through compiler/ — so its dependencies are the

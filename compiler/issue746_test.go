@@ -66,7 +66,7 @@ int main()
 `
 
 func TestIssue746Base64WriterInt32MaxUBSan(t *testing.T) {
-	if os.Getenv("SCHEMA_CERTIFY_INT32_MAX") != "1" {
+	if os.Getenv("SCHEMA_CERTIFY_INT32_MAX") != "1" && os.Getenv("SCHEMA_SLOW") != "1" {
 		t.Skip("certify tier: set SCHEMA_CERTIFY_INT32_MAX=1 (2 GiB in, ~2.8 GiB out; `make tables-cpp-release` does)")
 	}
 	clang, err := exec.LookPath("clang++")

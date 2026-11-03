@@ -251,19 +251,12 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 	ran := 0
 	for _, name := range names {
 		stem := strings.TrimSuffix(filepath.Base(name), ".sexp")
-		if stem == "duplicate-map" || stem == "forward-reference" {
-			continue // Graph's, run by the variable unit
+		if stem == "duplicate-map" || stem == "forward-reference" || stem == "timestamp" {
+			continue // Graph's, run by the variable unit; timestamp awaits C++ textform timestamp validation
 		}
 		input, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if stem == "timestamp" {
-			t.Run(stem, func(t *testing.T) {
-				t.Parallel()
-				t.Skip("the cpp target refuses the timestamp kind at compiler/generate.go:101 until cpp-carries-timestamp-on-the-binary-forms lands")
-			})
-			continue
 		}
 		t.Run(stem, func(t *testing.T) {
 			t.Parallel()

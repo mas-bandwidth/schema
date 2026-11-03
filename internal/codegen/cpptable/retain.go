@@ -1533,7 +1533,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, allocator );\n")
 	g.pf("    int64_t bytes = -1;\n")
 	dispatch("    ")
-	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) )\n    {\n", n)
+	g.pf("    if ( %sNumberFrom( ctx, numbering, root ) && !numbering.shared )\n    {\n", n)
 	g.pf("        TableRetainIds ids( retain );\n")
 	g.pf("        if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it\n")
 	g.pf("        bytes = %sMeasureBodyRetain( ctx, numbering, ids, root, retain, TableRetainPathRoot( (const void *) &root, 1 ) );\n", n)
@@ -1556,7 +1556,7 @@ func (g *tableGen) emitRetainRoot(st *ir.Struct) {
 	g.pf("    TableNumberingInit( numbering, TableDefaultAllocator() );\n")
 	dispatch("    ")
 	saveDispatch("    ")
-	g.pf("    if ( !%[1]sNumberFrom( ctx, numbering, root ) )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
+	g.pf("    if ( !%[1]sNumberFrom( ctx, numbering, root ) || numbering.shared )\n    {\n        TableNumberingShutdown( numbering );\n        return -1;\n    }\n", n)
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity leaves the four trailer bytes untouched, and the seal
 	// covers every byte before it, as the Go oracle's emitIntegrityRetain and
