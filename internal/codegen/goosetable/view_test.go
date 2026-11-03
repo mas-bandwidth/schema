@@ -122,8 +122,8 @@ func listView(t *testing.T, u *ir.Unit, files map[string][]byte, printer string)
 	return string(gooserun.Run(t, dir, "main.goose", nil))
 }
 
-// firstDifference names the first line two listings disagree about.
-func firstDifference(pin, printed string) string {
+// viewFirstDifference names the first line two listings disagree about.
+func viewFirstDifference(pin, printed string) string {
 	want, got := strings.Split(pin, "\n"), strings.Split(printed, "\n")
 	for i := 0; i < len(want) || i < len(got); i++ {
 		w, g := "", ""
@@ -173,7 +173,7 @@ func TestGooseUnitViewCorpus(t *testing.T) {
 			pin := viewlisting.Listing(u)
 			got := listView(t, u, files, viewPrinter(t, u))
 			if got != pin {
-				t.Errorf("unit view listing differs from internal/viewlisting.\n%s", firstDifference(pin, got))
+				t.Errorf("unit view listing differs from internal/viewlisting.\n%s", viewFirstDifference(pin, got))
 			}
 		})
 	}
@@ -222,7 +222,7 @@ func TestGooseUnitViewNegativeControl(t *testing.T) {
 		if got == pin {
 			t.Fatal("NEGATIVE CONTROL FAILED: the sabotage left the listing equal to the pin")
 		}
-		diff := firstDifference(pin, got)
+		diff := viewFirstDifference(pin, got)
 		if !strings.Contains(diff, expect) {
 			t.Fatalf("NEGATIVE CONTROL FAILED: the gate went red, but not on %q:\n%s", expect, diff)
 		}
