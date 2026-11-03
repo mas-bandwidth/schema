@@ -49,6 +49,16 @@
         "We need to prove this before v3.0.0 not just hope that it's correct and complete."
       ],
       "source": "relayed by Rowan from the live session"
+    },
+    {
+      "id": "per-language-design-proof",
+      "date": "2026-11-02",
+      "quotes": [
+        "Yes, its own design",
+        "Fastest correct implementation per-language.",
+        "Doesn't have to be the same. Goose is a unique language, so it's natural the approach here could be different."
+      ],
+      "source": "Glenn, live in Rowan's session, answering whether Goose may prove cells that Go proves through its plan interpreter and its LoadMeasure (Goose fixed ordinals, union-guards and plan-execution; variable widening's measure half) through its own design: per-table straight-line code and no LoadMeasure. A port proves the same guarantees through its own fastest correct code paths; it is not required to reproduce another port's internal structure. The guarantees are still owed and still proved; this ruling makes nothing not-applicable."
     }
   ]
 }
