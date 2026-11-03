@@ -141,6 +141,16 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 		r := &wireReader{buf: body, report: report, m: m, ids: ids, rt: rt}
 		return r.body(inst), nil
 	}
+	// THE STORAGE CAP IS REFUSED BEFORE ANYTHING IS BUILT (docs/SPEC-TABLES.md
+	// §11): an element or record costs two wire bytes and commands its whole
+	// storage, so a few kilobytes of wire can command terabytes of model. The
+	// read refuses it by name, as the generated region measure does, and the
+	// model's memory stays bounded by the wire.
+	if storageOverCap(m.Unit, inst.Def, body, ids) {
+		report.Refused = true
+		report.Reason = ReasonStorageOverCap
+		return false, &StorageRefusal{}
+	}
 	return decodeVariable(m, inst, body, ids, report, rt, region)
 }
 
