@@ -148,6 +148,7 @@ static std::vector<ManifestRow> g_manifest;     // the rows, in the order writte
 static std::vector<std::string> g_values;       // the row being written
 static std::string g_forged;                    // the pending row's forged= field, if any
 static std::string g_expect;                    // the pending row's expect= field, if any
+static std::string g_row;                       // the pending row's row=, when the file name says more than the row
 
 // `v[0].nested.a` -> `r0.nested.a`, and a subscript that is a LOOP VARIABLE or
 // an enum takes the value the call site hands over, in order, so the path holds
@@ -407,6 +408,13 @@ static void man_finish( const char * file, const char * root, long long records 
     r.root = root;
     r.records = records;
     man_row_and_side( r.file, r.row, r.side );
+    // A forged file whose name tells it from a sibling forge of the same row
+    // (hostile_range_widen_array.bin) still reads that row's pair: g_row names it.
+    if ( !g_row.empty() )
+    {
+        r.row = g_row;
+        g_row.clear();
+    }
     r.forged = g_forged;
     g_forged.clear();
     r.expect = g_expect;
@@ -1037,6 +1045,7 @@ static bool versioning_numbers_files( const char * dir )
         }
         g_expect += ",r0.u=" + man_text( (unsigned long long) back.u ) + ",r0.trail=" + man_text( back.trail )
                   + ",clamped=" + man_text( (long long) r.clamped );
+        g_row = "range_widen";
         man_finish( "hostile_range_widen_array.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen_array.bin", out ) ) { return false; }
     }
@@ -1091,6 +1100,7 @@ static bool versioning_numbers_files( const char * dir )
         g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v )
                  + ",r0.u=" + man_text( (unsigned long long) back.u ) + ",r0.trail=" + man_text( back.trail )
                  + ",clamped=" + man_text( (long long) r.clamped );
+        g_row = "range_widen";
         man_finish( "hostile_range_widen_u64.bin", "RangeWiden", 1 );
         if ( !spill( dir, "hostile_range_widen_u64.bin", out ) ) { return false; }
     }
