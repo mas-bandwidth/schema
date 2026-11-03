@@ -520,14 +520,16 @@ fn jv_put2(out: u8[>..]&, v: i64) {
 // jv_put_stamp writes a count as RFC3339Nano in UTC: a fraction's trailing
 // zeros dropped and the fraction omitted on a whole second.
 fn jv_put_stamp(out: u8[>..]&, nanos: i64) {
+    // remainders are taken as x - (x / d) * d: division truncates toward
+    // zero, and the floor is then made by hand for a negative count
     var secs = nanos / 1000000000;
-    var frac = nanos % 1000000000;
+    var frac = nanos - secs * 1000000000;
     if frac < 0 {
         frac += 1000000000;
         secs -= 1;
     }
     var days = secs / 86400;
-    var rem = secs % 86400;
+    var rem = secs - days * 86400;
     if rem < 0 {
         rem += 86400;
         days -= 1;
