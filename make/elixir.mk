@@ -320,12 +320,16 @@ test-elixir: tables-elixir-json-hostile-dup-negative-control tables-elixir-json-
 #          foreign order: block-reason red; block green.
 #   mapsort (M19) the writer sorts a map's entries DESCENDING: wire red;
 #          report green.
+#   write-refusal (docs/SPEC.md §5.1) the save's ranged-integer check is gone,
+#          so a ranged int off its min or max is written: write-refusal red;
+#          wire green.
 ELIXIR_CONFORMANCE_WALK_SED   := -e 's|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {raw, report}|defp json_read_field(%{t: :bool}, raw, report) when is_boolean(raw), do: {not raw, report}|'
 ELIXIR_CONFORMANCE_SHARED_SED := -e 's|    if Enum.any?(acc, fn n -> node_content(n) == c end) do|    if false and Enum.any?(acc, fn n -> node_content(n) == c end) do|'
 ELIXIR_CONFORMANCE_LABEL_SED  := -e 's|^    if n < 2 do$$|    if true or n < 2 do|'
 ELIXIR_CONFORMANCE_IDS_SED    := -e 's|        {ref, Map.put(ids, id, ref), \[id \| order\]}|        {ref, Map.put(ids, id, ref), order ++ [id]}|'
 ELIXIR_CONFORMANCE_ARM_SED    := -e 's| when byte_size(content) >= l and k == a.arm_kind ->| when byte_size(content) >= l ->|'
 ELIXIR_CONFORMANCE_MAPSORT_SED := -e 's~^    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end)$$~    |> Enum.sort_by(fn {key, _value} -> map_sort_key(f, key) end, :desc)~'
+ELIXIR_CONFORMANCE_WRITE_REFUSAL_SED := -e 's|^    if Map.has_key?(f, :min) and is_integer(v) and (v < f.min or v > f.max),$$|    if false and Map.has_key?(f, :min) and is_integer(v) and (v < f.min or v > f.max),|'
 ELIXIR_CONFORMANCE_ORDER_SED  := -e 's|magic == B.foreign_magic() -> {:error, :foreign_order}|false -> {:error, :foreign_order}|'
 
 # $(call ELIXIR_CONFORMANCE_CONTROL,dir,emitter,sedvar,red surfaces,green surfaces,what)
@@ -348,7 +352,7 @@ endef
 .PHONY: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
 	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
-	conformance-negative-control-elixir-mapsort
+	conformance-negative-control-elixir-mapsort conformance-negative-control-elixir-write-refusal
 conformance-negative-control-elixir-walk: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-walk,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WALK_SED,json-read,json-write wire,a text reader that negates every bool)
 
@@ -370,10 +374,13 @@ conformance-negative-control-elixir-order: build/conformance-harness
 conformance-negative-control-elixir-mapsort: build/conformance-harness
 	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-mapsort,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_MAPSORT_SED,wire,report,a map writer that sorts its entries descending)
 
+conformance-negative-control-elixir-write-refusal: build/conformance-harness
+	$(call ELIXIR_CONFORMANCE_CONTROL,build/elixir-conformance-negative-write-refusal,internal/codegen/elixirtable/variableform.go,ELIXIR_CONFORMANCE_WRITE_REFUSAL_SED,write-refusal,wire,a save that writes a ranged int off its min or max)
+
 test-elixir: conformance-negative-control-elixir-walk conformance-negative-control-elixir-shared \
 	conformance-negative-control-elixir-label conformance-negative-control-elixir-ids \
 	conformance-negative-control-elixir-arm conformance-negative-control-elixir-order \
-	conformance-negative-control-elixir-mapsort
+	conformance-negative-control-elixir-mapsort conformance-negative-control-elixir-write-refusal
 
 .PHONY: build-conformance-elixir
 build-conformance-elixir: build/elixir-tables-ebin/.stamp
