@@ -393,6 +393,8 @@ func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 	lit.flag("table", t.IsTable)
 	lit.flag("fixed", t.FixedDeclared)
 	lit.flag("variable", ir.VariableTables(g.Unit)[t.Name])
+	lit.flag("json_array", t.JsonArray)
+	lit.flag("integrity", t.Integrity == "crc32c")
 	if len(placeable) > 0 {
 		lit.add("place", "_"+t.Name+"Place")
 	}

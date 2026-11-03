@@ -100,9 +100,6 @@ func jsonUncarried(st *ir.Struct) string {
 			return ""
 		}
 		seen[st.Name] = true
-		if st.JsonArray {
-			return st.Name + ": json = \"array\""
-		}
 		for _, f := range st.Fields {
 			if why := visitField(st.Name, f); why != "" {
 				return why
@@ -149,7 +146,7 @@ func jsonCarried(u *ir.Unit) (tables map[string]bool, structs map[string]*ir.Str
 	}
 	for _, f := range u.Files {
 		for _, st := range f.Tables {
-			if jsonUncarried(st) != "" {
+			if !st.CarriesForm("json") || jsonUncarried(st) != "" {
 				continue
 			}
 			tables[st.Name] = true
@@ -220,11 +217,16 @@ func shapeOf(f *ir.Field) byte {
 	case ir.TString, ir.TBytes:
 		return 's'
 	case ir.TNamed:
-		switch t.Ref.(type) {
+		switch r := t.Ref.(type) {
 		case *ir.Enum:
 			return 's'
 		case *ir.Flags:
 			return 'a'
+		case *ir.Struct:
+			if r.JsonArray {
+				return 'a'
+			}
+			return 'o'
 		default:
 			return 'o'
 		}

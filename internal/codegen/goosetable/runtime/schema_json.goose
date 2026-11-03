@@ -1419,6 +1419,16 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
 // table's accessor; shapes[i] is field i's JSON type.
 fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: const u8[:], depth: i64) -> bool {
     if depth > JsonMaxDepth { return json_fail(jr); }
+    if d.json_array && d.fields.len == 1 {
+        if json_peek(jr) != '[' { return json_fail(jr); }
+        if !F(jr, rec, 0, JsonOpRead, depth) {
+            if jr.zero && jr.rep.reason == 0 {
+                jr.rep.reason = JsonReasonHoldsZero;
+            }
+            return false;
+        }
+        return true;
+    }
     if !json_expect(jr, '{') { return false; }
     var seen: u64[8] = [0; 8];
     loop {
@@ -1739,6 +1749,9 @@ fn json_write_union<U, F>(out: u8[>..]&, u: const U&, d: const UnionDesc&, tag: 
 // JsonOpAsk answers whether the key is written, JsonOpWrite writes its value.
 fn json_write_table<T, F>(out: u8[>..]&, rec: const T&, d: const TableDesc&, depth: i64) -> bool {
     if depth > JsonMaxDepth { return false; }
+    if d.json_array && d.fields.len == 1 {
+        return F(out, rec, 0, JsonOpWrite, depth);
+    }
     var any = false;
     var i: i64 = 0;
     while i < d.fields.len {
