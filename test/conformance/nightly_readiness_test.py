@@ -360,7 +360,7 @@ class Contracts(unittest.TestCase):
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),52)
+        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),59)
         for lang, entries in m.RETIRED_NATIVE.items():
             for marker, required in entries.items():
                 with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):
@@ -371,6 +371,13 @@ class Contracts(unittest.TestCase):
                         self.assertTrue(m.native_retirement_errors(marker,lang,required-{missing}))
         self.assertTrue(m.native_retirement_errors("SKIP: unknown future test","go",set()))
         self.assertTrue(m.native_retirement_errors("SKIPPED: owed live ruling","elixir",set()))
+
+    def test_java_retirement_inventory_is_exact(self):
+        main_java = (ROOT/"test/java-fixedform/src/Main.java").read_text()
+        calls = m.re.findall(r'retired\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)', main_java)
+        expected = {f"RETIRED by §5.6: {fn} — {owed}" for fn, owed in calls}
+        self.assertEqual(len(expected), 7)
+        self.assertEqual(set(m.RETIRED_NATIVE["java"]), expected)
 
     def test_go_retirement_without_replacement_is_incomplete(self):
         for name,(reason,required) in m.RETIRED.items():
