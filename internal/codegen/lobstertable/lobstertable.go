@@ -162,7 +162,7 @@ func Refuse(u *ir.Unit) error {
 		bases[strings.ToLower(f.Base)] = true
 	}
 	for _, f := range u.Files {
-		if strings.EqualFold(f.Base, u.Package+"View") || strings.EqualFold(f.Base+"Table", u.Package+"View") {
+		if strings.EqualFold(f.Base, u.Package+"View") {
 			return fmt.Errorf("schema file %s collides with the Lobster unit registry %sView.lobster; rename the file", f.Base, u.Package)
 		}
 		if bases[strings.ToLower(f.Base+"Table")] {

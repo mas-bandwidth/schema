@@ -183,9 +183,12 @@ func TestLobsterRuntimeFileNamesAreClaimed(t *testing.T) {
 }
 
 func TestLobsterUnitViewFileNameIsClaimed(t *testing.T) {
+	t.Parallel()
 	for _, source := range []string{"package probe\ntype Gadget { n int32 }\n", "package probe\ntable Gadget { n int32 }\n"} {
-		if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, "probeView", source), Options{}); err == nil || !strings.Contains(err.Error(), "unit registry") {
-			t.Fatalf("registry file collision: %v", err)
+		for _, base := range []string{"probeView", "PROBEVIEW", "Probeview"} {
+			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, source), Options{}); err == nil || !strings.Contains(err.Error(), "unit registry") {
+				t.Fatalf("registry file collision %s: %v", base, err)
+			}
 		}
 	}
 }
