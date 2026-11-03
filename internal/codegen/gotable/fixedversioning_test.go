@@ -446,7 +446,10 @@ func TestFixedVersioningHash(t *testing.T) {
 	old := filepath.Join(corpus, "old_field_append.bin")
 	fresh := filepath.Join(corpus, "new_field_append.bin")
 
-	src := fmt.Sprintf(`package probe
+	// One probe per case, each a named subtest, so a case that fails or never
+	// runs is visible by name to go test -json and to nightly-readiness.
+	cases := []struct{ name, src string }{
+		{"hash_unknown", `package probe
 
 import ("encoding/binary"; "os"; "testing")
 
@@ -465,6 +468,10 @@ func TestHashUnknown(t *testing.T) {
 		t.Fatalf("hash_unknown: n=%%d %%+v", n, r)
 	}
 }
+`},
+		{"hash_known_bytes_differ", `package probe
+
+import ("os"; "testing")
 
 // hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from the
 // lock's is ONE name, layout_malformed — "a lie about a known version". The
@@ -484,6 +491,10 @@ func TestHashKnownBytesDiffer(t *testing.T) {
 		t.Fatalf("hash_known_bytes_differ: n=%%d %%+v", n, r)
 	}
 }
+`},
+		{"hash_identity", `package probe
+
+import ("os"; "testing")
 
 // hash_identity: the reader's own hash selects the identity plan.
 func TestHashIdentity(t *testing.T) {
@@ -502,10 +513,16 @@ func TestHashIdentity(t *testing.T) {
 		t.Fatalf("the identity plan lost a value: %%+v", back[0])
 	}
 }
-`, old, fresh, table)
-	out, err := runVersionProbe(t, newer, []string{older}, src)
-	if err != nil {
-		t.Fatalf("hash cases: %v\n%s", err, out)
+`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			src := fmt.Sprintf(c.src, old, fresh, table)
+			out, err := runVersionProbe(t, newer, []string{older}, src)
+			if err != nil {
+				t.Fatalf("%s: %v\n%s", c.name, err, out)
+			}
+		})
 	}
 }
 
