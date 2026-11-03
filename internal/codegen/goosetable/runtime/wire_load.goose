@@ -1053,9 +1053,24 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
             } else {
                 make_slots(c, slot, d.bound, eshape);
             }
+            // a text list's total keeps the longest prefix within it: the
+            // element that would carry the sum past it drops with every
+            // element after it, clamped counted once (§2.13)
+            var spent: i64 = 0;
             var i: i64 = 0;
             while (i as! u64) < keep && i < c.vals[slot].count {
                 if !load_element(c, sub, slot, e, d.ek, i, ek) { break; }
+                if d.text_total > 0 {
+                    let es = c.vals[slot].first + i;
+                    let n = text_bytes(c, es);
+                    if n > d.text_total - spent {
+                        if c.retaining { forget_rec(c, es); }
+                        c.vals[es] = LoadVal { shape: eshape, .. };
+                        c.report.clamped += 1;
+                        break;
+                    }
+                    spent += n;
+                }
                 decoded = i + 1;
                 i += 1;
             }
@@ -1078,6 +1093,15 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
     if d.optional { ride(c, slot); }
     r.off = end; // excess elements and slack skip via the length
     return true, true;
+}
+
+// text_bytes is a text list element's byte length: its record's one value,
+// 0 for an absent `?string(M)` element or a record the read did not make.
+fn text_bytes(c: LoadCtx&, es: i64) -> i64 {
+    if !c.vals[es].made { return 0; }
+    let fs = c.vals[es].first;
+    if c.vals[fs].state != ValPresent { return 0; }
+    return c.vals[fs].len;
 }
 
 // load_element decodes element i of an array (§3): THE ELEMENT POSITION's

@@ -110,8 +110,9 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # generates every schema the manifest names for goose, runs
 # test/goose-hostile/runner.goose once per unit over the raw inputs and holds
 # every verdict and reason to the engine's; an accept's value is held by its
-# re-saved wire, which must be the input byte for byte (every accept input is
-# the engine's own encode). The port reads the `wire` carrier today; the
+# re-saved wire, which must be the input byte for byte where the input is the
+# engine's own encode, and otherwise by its canonical text's digest and the
+# engine's encode of that text (make/goose-hostile.sh). The port reads the `wire` carrier today; the
 # text, message and announcement carriers are counted absences until the
 # goose text and message forms land, and test/goose-hostile/known-findings.tsv
 # carries each disagreement by name with the card that owes it.
@@ -139,10 +140,28 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on wire-non-finite-float alone"; exit 1; }
 	@echo "goose hostile-corpus negative control: a load that lands a NaN reds wire-non-finite-float, and only it"
 
+# THE TEXT-LIST TOTAL's control (docs/SPEC-TABLES.md §2.13): the total taken
+# out of the generated load, so a list past it keeps every element; the corpus
+# must go red on wire-text-total-past, and on nothing else.
+.PHONY: schema-goose-runs-hostile-corpus-total-negative-control
+schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@mkdir -p $(GOOSE_FUZZ_DIR)
+	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|' \
+		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-total-plant \
+		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
+		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
+		echo "NEGATIVE CONTROL FAILED: a load that ignores a text list's total left the corpus green"; exit 1; fi
+	@test "$$(grep -c '^FAIL ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log)" = 1 && grep -q '^FAIL wire-text-total-past: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log || { \
+		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
+		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on wire-text-total-past alone"; exit 1; }
+	@echo "goose hostile-corpus total negative control: a load that ignores the total reds wire-text-total-past, and only it"
+
 # test-goose runs both (make/goose.mk) and their controls, which are seconds
 # beside them; the controls run in group goose-wire of the controls leg too.
 test-goose: tables-goose-wire-fuzz schema-goose-runs-hostile-corpus \
-	tables-goose-wire-fuzz-negative-control schema-goose-runs-hostile-corpus-negative-control
+	tables-goose-wire-fuzz-negative-control schema-goose-runs-hostile-corpus-negative-control \
+	schema-goose-runs-hostile-corpus-total-negative-control
 
 # Direct protocol fixtures and runtime controls complement the full retaining
 # differential above (Goose has no caller-region measure).
