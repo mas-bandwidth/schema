@@ -14,8 +14,8 @@ bound, broken framing and a non-finite float each refuse. Evolution along a
 lawful lineage is kept: an unknown field, variant, arm or slot is skipped and
 counted `unknown` (or retained), an absent field takes its default, a widening
 decodes exactly and counts `widened`, and the fixed form selects its plan by
-hash. A read that returns reports the conforming counters `unknown`, `retained`
-and `retain_lost` (and `widened`, diagnostic). Why a read refused is
+hash. A read that returns reports the counters `unknown`, `widened`, `retained` and
+`retain_lost`, ALL per-language diagnostics, never compared. Why a read refused is
 per-language diagnostic detail, never compared, and each language checks in
 its fastest order (§6.5).
 
@@ -57,8 +57,8 @@ in `docs/roadmap.sexp`, one task per layer below.
    JSONTestSuite `y_object_duplicated_key*` files refuse (a dialect row).
 10. **Non-zero slack in a fixed record stays unspecified and is not refused**
     (§3.4): no reader reads it, so no leg can disagree about it.
-11. **Settled after the cold read**: map order and repeats are judged at step 3
-    as the reader decodes the keys, an absent key field at its default; a record
+11. **Settled after the cold reads**: map order and repeats are a
+    declaration-dependent refusal, judged as the reader decodes the keys, an absent key field at its default; a record
     no pointer reaches is damage; a record out of first-visit order is not
     (the numbering is positional); every leg answers `layout_unknown`, and
     `layout_newer` and `count_over_length` are retired.

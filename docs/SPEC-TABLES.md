@@ -1289,15 +1289,14 @@ table Player
   which no table field reaches, and the build version (§20) hashes the cook
   projection, where a required field is laid out, cooked and blocked exactly
   as it is without the marker.
-- **The refusal names only the fields that are missing**, in declaration
-  order, e.g. `missing_required: b`.
+- **The recommended diagnostic names only the fields that are missing**, in
+  declaration order, e.g. `missing_required: b` (§6.5).
 - **The refusal is the RECORD's, at any depth.** A nested table, an array
   element, a map entry or a pointer node whose body lacks a required field
   refuses every body above it: the record is refused, never read as a parent
-  holding a defaulted child, and the reason names the missing field of the
-  body that lacked it. A strict caller gets it by name — `ReadStrict` and
-  `TableReport.Err()` answer the typed `TableMissingRequired`, whose text is
-  the report's reason (§6.5), never a bare `wire_damaged`.
+  holding a defaulted child. The recommended diagnostic names the missing
+  field of the body that lacked it (§6.5); it is not compared across
+  languages.
 - **A `| required` field whose range excludes zero takes NO default.**
   A fresh record's field is the storage zero, which is outside the range, so
   the writer refuses the record until the field is set; a stored record
@@ -5346,12 +5345,9 @@ that instrument goes red.
   one declaration and read under another, and these four beside them: an ENUM
   arm read as an integer arm, a POINTER arm read as an integer arm, a `bytes`
   arm read as a `string` arm, and a kind `17` or kind `30` arm whose `L`
-  disagrees with the byte count of the reference it frames. The first three
-  refuse `kind_mismatch` and the fourth refuses `wire_damaged`. Red if any of
-  them reads.
+  disagrees with the byte count of the reference it frames. All four refuse. Red if any of them reads.
 - **The body terminator.** The fuzzer's terminator pass moves the zero
-  reference inside its own `L`. Red if a leg reads past it, or if it does not
-  report `wire_damaged`.
+  reference inside its own `L`. Red if a leg reads past it, or reads.
 - **Elision, first-use order and byte identity.** Every `instance` of the
   conformance manifest, whose pinned wire is compared byte for byte after a
   save. Red if a writer emits an id no field references, appends an id twice,
@@ -6069,13 +6065,10 @@ with one message passes one and pays a count of eight bits for it.
   count is eight bits and is read before any body, so `LoadMessages` compares it
   to the storage it was handed and refuses before it decodes anything. Nothing
   is decoded, no counter moves and nothing is damage, on the form byte's
-  own precedent. **The refusal reason is `batch_too_large` on both sides**,
-  covering the wire's 256 and the caller's capacity for the reason
-  `vocabulary_too_large` covers two bounds: a caller reads a reason and then
-  reads the two numbers itself. **The reader sets the returned count to the
-  wire's `M` before it returns the refusal**, so the caller holds the number it
-  was short by without parsing a byte of the wire itself, and its recovery is
-  one call again with a capacity at or above that count.
+  own precedent. The recommended diagnostic is `batch_too_large` on both sides, covering the
+  wire's 256 and the caller's capacity. **A refused batch returns a count of
+  `0`**, as every refused batch does; a caller that needs room reads the
+  wire's `M` itself.
 - **DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH** (§4, DAMAGE
   DISCARDS THE WHOLE LOAD). The batch refuses `wire_damaged`, its count is
   `0`, no body of the batch is delivered, and nothing in the caller's storage is a value to use, the bodies
@@ -6369,8 +6362,13 @@ taken in float32 and clamped to `[1, 4294967040]`, and the width
 below), then clamps `(value - min) / delta` to `[0, 1]`, which absorbs only the
 float32 rounding at the ends,
 multiplies by `count` and ROUNDS THAT PRODUCT TO FLOAT32, adds `0.5`, floors,
-and clamps the integer to `count`. A reader takes `index / count` in float32,
-multiplies by `delta` and ROUNDS THAT PRODUCT TO FLOAT32, then adds `min`. **An
+and clamps the integer to `count`. A reader DEQUANTIZES by exactly these float32 operations, in this order, each
+one correctly rounded to float32 (round to nearest, ties to even), with no
+fused multiply-add and no wider intermediate:
+`q := f32(index) / f32(count)`, then `p := q * delta`, then `x := p + min`.
+JavaScript rounds after each operation with `Math.fround`; a C or C++ build
+compiles with `-ffp-contract=off` (SPEC.md §7.2). This is normative: every
+language lands the same float32 bits for one index. **An
 index above `count` on the wire is REJECTED, as the packet wire rejects it, and
 is never reconstructed and clamped.** The width can spell such an index
 whenever `count` is not one less than a power of two, ten bits spelling `1023`
@@ -7371,8 +7369,7 @@ entries announces about 5 KB once.
 
 - **The form byte's rows.** A form-`2` wire read as a FILE, which must REFUSE and
   not decode. A form-`2` batch with no announcement, which must refuse naming the
-  missing vocabulary. Red if either prints a clean read, reports `wire_damaged`, or
-  moves a counter.
+  missing vocabulary. Red if either reads.
 - **The round trip across the forms.** For each of the twelve vectors, loading
   the variable form and saving the message form must reproduce the message form's
   pinned bytes, and the reverse must reproduce the variable form's. Red if one byte
@@ -7425,10 +7422,10 @@ entries announces about 5 KB once.
   (§4.2) with the vocabulary announced: every reference set to `E`, which is the
   last legal slot and must RESOLVE, and to `E + 1` and to the largest the width
   can spell, which are damage. Red if a leg resolves past `E`, refuses `E`, or
-  does not report `wire_damaged` for the bad reference.
+  reads the bad reference.
 - **Damage discards the batch.** A batch of three bodies with damage planted
   inside the SECOND, and the same damage planted inside a NESTED body of the
-  second. Red if a leg does not report `wire_damaged`. Nothing else is compared.
+  second. Red if a leg reads. Nothing else is compared.
 - **The one content rule, and its bound, on a message body.** A `string(N)`
   payload carrying a truncated sequence, one carrying a zero byte and one
   carrying an overlong encoding, each damage, which discards the batch. Beside
@@ -7442,9 +7439,9 @@ entries announces about 5 KB once.
   more. Red if a leg reads either clean.
 - **The batch's four answers.** A `SaveMessages` and a `MeasureMessages` of 257
   bodies, each refusing by name and writing nothing. A `LoadMessages` of a
-  256-body batch into storage for eight, refusing by name with no counter moved
-  and nothing decoded, its returned count reading 0 (§6.5). A three-body batch damaged inside the second,
-  which must report `wire_damaged` and return a count of 0 with no body delivered.
+  256-body batch into storage for eight, refusing with nothing decoded, its returned count reading 0 (§6.5). A
+  three-body batch damaged inside the second, which must refuse and return a
+  count of 0 with no body delivered.
   Red if a leg writes consecutive batches, decodes a body before
   refusing on capacity, leaves the returned count at the caller's capacity,
   or delivers any body of the damaged batch.
@@ -7465,11 +7462,9 @@ entries announces about 5 KB once.
   variant reference names a field-name entry in one row and is above `E` in the
   other. Red if a leg steps over the reference without resolving it.
 - **A ranged offset above the sender's `max`.** A `score` ranged `[0, 100000]`
-  whose seventeen bits spell 130000. Red if a leg reads it, or names any reason
-  but `out_of_range`.
+  whose seventeen bits spell 130000. Red if a leg reads it.
 - **An over-long array of a NON-FIXED-WIDTH element.** A writer's `[..16]` of
-  `string(32)` read by a `[..4]`. Red if a leg reads it, or names any reason but
-  `count_over_bound`.
+  `string(32)` read by a `[..4]`. Red if a leg reads it.
 - **A wide vocabulary.** The `vocabdemo` unit below, whose vocabulary passes 128
   entries so a reference is 8 bits, and a second generated unit sized so a
   reference is 9 bits, with a body naming an entry at each end of the range. Red
@@ -7516,8 +7511,8 @@ entries announces about 5 KB once.
   wrong element kind, each damage, `wire_damaged`, because a failed check says the
   bytes are not an announcement rather than that this peer declined to
   announce. A row carrying an UNKNOWN field beside both,
-  which must set the vocabulary and count one `unknown`. Red if a failed check
-  sets a vocabulary, names another reason, or if the unknown-field
+  which must set the vocabulary. Red if a failed check
+  sets a vocabulary, or if the unknown-field
   row refuses. Beside them a refused announcement whose build version WAS read,
   which must name it.
 - **The two bounds.** An announcement one entry above the entry bound, and one a
@@ -7862,7 +7857,7 @@ validation nobody ever watched fail is a validation nobody has.
   | **A KIND IS USED AS ITS DEFINITION ALLOWS** — the ROOT is a table; an optional wrapper has exactly one child; an array exactly one; an enum-keyed array exactly two, the first an enum; an enum's children are variants; a leaf has none | `layout_kind_invalid` | a kind and a child count that disagree is a tree the child-walk table (above) does not describe, and there is no reading of it to fall back on |
   | **THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES** — starting at entry `0` and following each entry's `child count`, the walk ends on the last entry and not before or after it | `layout_tree_unclosed` | the walk is the whole structure; a tree that runs out of layout is truncated and a layout that outlasts its tree has entries no walk reaches |
   | **THE TOTAL RECORD SIZE DOES NOT OVERFLOW AND IS WITHIN 65536** — no partial sum of a parent's children exceeds it, and neither does the root's own size | `layout_record_too_large` | sizes are `u32` and a record is a value copied whole, so a sum that wraps is a buffer this reader would then read past; and 65536 is what §3.4's size bound below fixes, so a record past it is one this build does not decode however honest the layout is <!-- limit name=fixed_record_bound value=65536 --> |
-  | **NOTHING NESTED PAST THE READER'S WALK BOUND** | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> |
+  | **NOTHING NESTED PAST 64, THE BOUND EVERY READER HOLDS** (normative, not a per-reader choice) | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> |
 
 **THERE IS NO CYCLE RULE, AND THERE CANNOT BE A CYCLE.** A pre-order walk cannot
 express one: **an entry's children ARE THE ENTRIES THAT FOLLOW IT**, so a child's
@@ -8639,9 +8634,7 @@ diagnostic name, which is not normative and is never compared:
   count, index or reference on the form-`1` wire, §3), a kind no reader can
   skip, an array, keyed or map body too short to carry its own header (fewer
   than two bytes: the element kind byte and the count), a count the body
-  cannot cover, a header that crosses its own `L`, a map key equal to or
-  below the one before it (compared as this reader decodes the keys, an
-  absent key field at its default),
+  cannot cover, a header that crosses its own `L`,
   the same field id twice in one body, the same keyed slot twice in
   one keyed body, bytes after a nested union inside its arm's `L`, an arm
   whose `L` does not frame its kind, a bool byte other than `0` or `1`,
@@ -8703,6 +8696,11 @@ diagnostic name, which is not normative and is never compared:
   declared bytes or code units. Nothing is cut at a code point boundary and
   nothing is dropped.
 - **A REQUIRED FIELD ABSENT — `missing_required`** (§2.3).
+- **A MAP KEY EQUAL TO OR BELOW THE ONE BEFORE IT** (recommended diagnostic
+  `wire_damaged`), compared as this reader decodes the keys, an absent key
+  field at its default. It depends on the declaration — a map and a
+  `[..N]Pair` are the same bytes — so it applies only where this reader
+  declares the field a map (§6.5).
 
 **THE READ REPORT: THE VERDICT, AND DIAGNOSTICS.** A
 read that returns a value reports `unknown` (every id this reader
@@ -9793,6 +9791,14 @@ declaration, whether or not a slot the reader knows reaches it, on the region
 read and the builder read alike: a record is in the input, and the input is
 what the read accepts or refuses.
 
+**RESOURCE LIMITS ARE OUTSIDE THE VERDICT CONTRACT.** A refusal that depends on a
+caller's or a leg's own setting — a batch capacity, a plan cap, a vocabulary
+cap, a `text_limit` the caller passes, a retention capacity — is per-language:
+conformance runs every read with every such limit at or above what the input
+needs, and the model (`OneVerdict`) treats the limits as fixed constants. A
+leg's own plan cap is never below what the compiler can emit for a table it
+generates; a plan that would not fit is a GENERATE-time refusal, never a read.
+
 **DETECTION ORDER IS FREE, AND EACH LANGUAGE TAKES ITS FASTEST.** Glenn,
 2026-11-03: "Trying to make both the "failed to read" and the specific details
 of why the read fails, it makes each language have to write exactly the same
@@ -9891,8 +9897,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   limit in that sense — the caller refuses a size it will not pay — and
   nothing in the runtime decides that for it.
 - **A MESSAGE BATCH (form `2`) HAS NOTHING TO AMPLIFY.** Its bodies are fixed
-  tables (§3.3), so a batch loads into the caller's own array of values, at
-  most `min(256, the caller's capacity)` bodies, and commands no region: no
+  tables (§3.3), so a batch loads into the caller's own array of values, up
+  to 256 bodies, and commands no region: no
   wire byte decides an allocation, and there is no `LoadMeasure` for a batch.
 - **`LoadMeasure` AND `LoadMeasureReason` AGREE, within a leg.** Across legs
   only the two implications above hold. Both answer from the
@@ -9956,7 +9962,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `layout_kind_invalid` | a kind this build KNOWS, used in a way its own definition does not allow (§3.4): a root that is not a table, an optional wrapper or an array without exactly one child, an enum-keyed array without exactly two, an enum whose children are not variants, a leaf with children. KEPT: the lock-init parse still reaches it at `fixedruntime.go:957`, `:970`, `:979` and their siblings through the call at `:1681` |
   | `layout_size_mismatch` | an entry's stated constant size is not one its kind admits, or not the one its children account for (§3.4). KEPT: the lock-init parse still reaches it at `fixedruntime.go:952`, `:965`, `:974` and their siblings through the call at `:1681` |
   | `layout_tree_unclosed` | the pre-order child walk does not consume exactly the entries (§3.4): the tree runs out of layout, or the layout outlasts the tree. KEPT: the lock-init parse still reaches it at `fixedruntime.go:896` and `:1106` through the call at `:1681` |
-  | `layout_too_deep` | a nesting depth past what this reader walks (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires. KEPT: the lock-init parse still reaches it at `fixedruntime.go:900` through the call at `:1681` |
+  | `layout_too_deep` | a nesting depth past 64, the bound every reader holds (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires. KEPT: the lock-init parse still reaches it at `fixedruntime.go:900` through the call at `:1681` |
   | `layout_record_too_large` | a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode, and the same number the compiler stops emitting the form at (§3.4, §21.3) |
   | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4, §21.3 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
@@ -10627,9 +10633,8 @@ refusal by name is a compile error rather than an answer a driver writes.
   not the first-use order the moved fields produce.
 - the same region saved TWICE, the two saves byte-identical. Red on any drift,
   which is the idempotence claim.
-- a buffer sized one byte short of the last record, pinning `retained` and
-  `retain_lost` and the read's own evolution counters unmoved. Red if a counter
-  above moves, or if the truncated record is written.
+- a buffer sized one byte short of the last record (a leg's own gate: capacity
+  is per-language). Red if the truncated record is written.
 - a retained field of kind `13` whose inner body names four ids, re-emitted
   into a file whose id table is in a different order, and a retained kind `16`
   field of a SCALAR element kind whose slot keys must resolve all the same.
@@ -10637,11 +10642,10 @@ refusal by name is a compile error rather than an answer a driver writes.
   does and what the resolved form exists to prevent.
 - a retained field whose inner structure is damaged inside sound outer
   framing: the load refuses `wire_damaged`, retention on and off alike, and
-  nothing is saved. Red if either read returns a value, or if the two name
-  different reasons.
+  nothing is saved. Red if either read returns a value.
 - **FIVE ROWS, one per excluded class a wire can carry to the unknown arm**,
-  every row pinning `retain_lost` at one and `retained` unmoved. Red if the
-  class is retained, and red if the counter lands anywhere but one. The
+  every row pinning the saved bytes: the class is not written back. Red if the
+  class is retained. The
   NODE-INDEX class's row is the RECURSIVE shape, which is the widest case it
   has: an unknown outer table holding a nested pointer three bodies down,
   beside an unknown scalar in that same outer field, with the save carrying
@@ -15847,7 +15851,11 @@ exists for. A token with a genuinely fractional value in an integer field
 refuses `kind_mismatch`. A value outside the field's declared or implied
 range refuses `out_of_range` (**Bounds**, below); a float value the field's
 width cannot represent refuses `kind_mismatch`, so an infinity is never
-stored. **A token that is not a JSON number at all** —
+stored. **A float field reads a token by ONE correctly rounded conversion**
+from the token's exact decimal value to the field's width (round to nearest,
+ties to even), never through a wider float first, and it refuses ONLY when
+that conversion rounds to infinity; a token that rounds to a finite value, a
+subnormal or zero included, lands as that value. **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a value. **A token's LENGTH is never the reason it is refused**: a valid
 number is read by its value however many bytes it spans, within the

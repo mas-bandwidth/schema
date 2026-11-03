@@ -1466,9 +1466,13 @@ All compile errors with positions:
   rather than a silent infinity; the checker still carries the NaN arm as
   defense in depth. The derived float32 subtraction and division must also
   remain positive and at most `4294967040`, the runtime's upper clamp; a
-  triple that overflows or requires that clamp is refused. The top step must
-  dequantize to a finite float32 in the reader's own arithmetic,
-  `float32(1 * delta) + min`: every parameter can be finite and that add can
+  triple that overflows or requires that clamp is refused. **The decode is normative**: a reader computes
+  `q := f32(index) / f32(count)`, then `p := q * delta`, then `x := p + min`,
+  each one float32 operation correctly rounded (round to nearest, ties to
+  even), in that order, with no fused multiply-add and no wider intermediate
+  (JavaScript rounds after each with `Math.fround`; C and C++ build with
+  `-ffp-contract=off`, §7.2). The top step must dequantize to a finite float32
+  by that decode, `float32(1 * delta) + min`: every parameter can be finite and that add can
   still round past the largest float32 (`min = 3 * 2^103`, `max` the largest
   float32), and such a triple is refused. A reader still refuses a dequantized
   value that is not finite, as `non_finite_float`, wherever the declaration

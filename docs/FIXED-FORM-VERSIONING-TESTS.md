@@ -30,7 +30,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `field_undeprecate` | `{a,b deprecated}` | — | `{a,b}`: "undeprecated" (one way, bill §12.3) | — | — |
 | `field_modify` | `{a int32}` | — | `{a int64}` is `int_widen`; `{a string(8)}`: "kind changed" | — | — |
 | `enum_append` | `Tier {bronze silver gold}` | `+ platinum` | `{bronze gold silver}`: "variant reordered"; `{bronze silver}`: "variant removed"; `{bronze platinum silver gold}`: "variant inserted mid-list"; `{bronze silver golden}`: "variant renamed without was" | ordinals equal; a gold record reads gold | the hash |
-| `enum_width` | 255 variants | 256 variants (width 1 → 2) | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal WIDENED into width 2, `widened` += 1; a union crossing 255 arms the same, and the guard compares at the tag's width (bill §12.7) | the hash |
+| `enum_width` | 255 variants | 256 variants (width 1 → 2) | a width cannot be set by hand: covered by `enum_append` at the boundary | width 1 ordinal WIDENED into width 2 (the `widened` count is diagnostic, not compared); a union crossing 255 arms the same, and the guard compares at the tag's width (bill §12.7) | the hash |
 | `union_append` | `Pick {a b}` | `+ c` | reordered / removed / inserted / payload changed: four refusals | an `a` record lands a; the tag width equal | the hash |
 | `union_arm_payload_widen` | arm `a: {x}` | arm `a: {x,y}` | arm `a: {}`: "field removed" | x exact, y default | the hash |
 | `flags_append` | `F {a b}` | `F {a b c}` | `{b a}`: "flag moved"; `{a}`: "flag removed" | mask equal | the hash |
@@ -44,14 +44,14 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `wstring_grow` | `wstring(8)` | `wstring(16)` | `wstring(4)` | as string, in code units | the hash |
 | `bytes_grow` | `bytes(8)` | `bytes(16)` | `bytes(4)` | as string | the hash |
 | `text_kind` | `string(8)` | — | `wstring(8)`: "kind changed"; `bytes(8)`: "kind changed" | — | — |
-| `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX), `widened` += 1 | the hash |
+| `int_widen` | `int16` | `int32`, `int64` | `int8`: "narrowed"; `uint16`: "signedness"; `float32`: "ladder" | sign-extended exact (-1, MIN, MAX) (`widened` diagnostic, not compared) | the hash |
 | `uint_widen` | `uint16` | `uint32` | `uint8`; `int16` | zero-extended | the hash |
 | `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the hash |
-| `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, every counter 0 | the hash |
+| `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, written back to the canonical bytes | the hash |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
 | `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes and every counter `0` | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_unknown` |
 | `cfloat_res_coarsen` | `float32 \| min = -1, max = 1, resolution = 0.01` | — | `resolution = 0.1`: "resolution coarsened (0.01 -> 0.1)" | — | — |
-| `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, every counter 0 — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
+| `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, written back to the canonical bytes — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the hash |
 | `fixed_I_grow` | `fixed(8,4)` | `fixed(16,4)` | `fixed(8,8)`: "F changed"; `fixed(4,4)`: "I narrowed (8 -> 4)"; `fixed(12,4)` from `fixed(8,8)`: "F changed" (I + F EQUALS a storage width per SPEC §4.6, so with F held a narrowed I IS a narrowed kind, and the only same-storage move is I against F) | the raw scaled value exact | the hash |
 | `fixed_I_grow_element` | `[4]fixed(12,4)` | `[4]fixed(28,4)` | `[4]fixed(12,4)` from `[4]fixed(28,4)`: "element I narrowed (28 -> 12)" | as the scalar row, per slot | the hash |
