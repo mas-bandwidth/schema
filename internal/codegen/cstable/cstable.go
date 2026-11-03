@@ -253,7 +253,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	out[capitalize(u.Package)+"View.cs"] = generateView(u, closure)
 	out[capitalize(u.Package)+"Region.cs"] = generateRegion(u)
 	common := &tableGen{unit: u}
-	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float, integrity_mismatch }\n")
+	common.tf("public enum TableRefuseReason { ok, not_a_cook, foreign_order, wrong_build_version, reserved_not_zero, bad_alignment, truncated, unaligned_base, bad_layout, unknown_form, count_over_length, count_over_extent_cap, blob_over_size_cap, data_cycle, newer_form, previous_form, message_form_as_file, no_layout, layout_malformed, plan_too_large, batch_too_large, layout_count_mismatch, layout_kind_unknown, layout_kind_invalid, layout_size_mismatch, layout_tree_unclosed, layout_too_deep, layout_record_too_large, non_finite_float, integrity_mismatch, wire_damaged, malformed, clamped, kind_mismatch, blob_shared, missing_required, layout_newer, layout_unsupported, no_vocabulary, second_announcement, vocabulary_too_large }\n")
 	out[capitalize(u.Package)+"Refuse.cs"] = common.assemble()
 	return out, nil
 }
@@ -710,6 +710,67 @@ public sealed class TableReport
     // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
     // #7), the operator's other answer. Zero on every other path.
     public ulong LayoutHash;
+
+    // Clear returns every member to a fresh report's value, so a strict read
+    // decides on its own read alone.
+    public void Clear()
+    {
+        Unknown = 0; KindMismatch = 0; Clamped = 0; Duplicate = 0; Widened = 0;
+        MissingRequired = 0; BlobShared = 0; Retained = 0; RetainLost = 0;
+        Refused = false; Reason = null; ClampedField = null;
+        NonFiniteFloat = null; NonFiniteReason = null;
+        Verdict = default; Malformed = false; LayoutHash = 0;
+    }
+
+    // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+    // error identity"): ok when the strict rule accepts the read this report
+    // describes, else the one reason it refuses. A form byte the read does not
+    // carry is unknown_form whichever form-specific name the tolerant report
+    // holds; then integrity_mismatch, a non-finite float, any damage as
+    // wire_damaged, a missing required field, a refusal by its own name, a
+    // blob named from two slots, clamped, and kind_mismatch, in that order.
+    // unknown, widened, retained and duplicate alone never refuse. Nothing
+    // here allocates.
+    public TableRefuseReason Err()
+    {
+        switch (Reason)
+        {
+            case "newer_form": case "message_form_as_file": case "previous_form": case "unknown_form":
+                return TableRefuseReason.unknown_form;
+            case "integrity_mismatch":
+                return TableRefuseReason.integrity_mismatch;
+        }
+        if (NonFiniteFloat != null) { return TableRefuseReason.non_finite_float; }
+        if (Malformed) { return TableRefuseReason.wire_damaged; }
+        if (MissingRequired > 0) { return TableRefuseReason.missing_required; }
+        if (Refused) { return RefusedReason(Reason); }
+        if (BlobShared > 0) { return TableRefuseReason.blob_shared; }
+        if (Clamped > 0) { return TableRefuseReason.clamped; }
+        if (KindMismatch > 0) { return TableRefuseReason.kind_mismatch; }
+        return TableRefuseReason.ok;
+    }
+
+    // a refusal's own name as its member; a refusal that names nothing this
+    // build declares is a form it does not carry
+    static TableRefuseReason RefusedReason(string reason)
+    {
+        switch (reason)
+        {
+            case "count_over_extent_cap": return TableRefuseReason.count_over_extent_cap;
+            case "count_over_length": return TableRefuseReason.count_over_length;
+            case "blob_over_size_cap": return TableRefuseReason.blob_over_size_cap;
+            case "batch_too_large": return TableRefuseReason.batch_too_large;
+            case "plan_too_large": return TableRefuseReason.plan_too_large;
+            case "no_layout": return TableRefuseReason.no_layout;
+            case "layout_malformed": return TableRefuseReason.layout_malformed;
+            case "layout_newer": return TableRefuseReason.layout_newer;
+            case "layout_unsupported": return TableRefuseReason.layout_unsupported;
+            case "no_vocabulary": return TableRefuseReason.no_vocabulary;
+            case "second_announcement": return TableRefuseReason.second_announcement;
+            case "vocabulary_too_large": return TableRefuseReason.vocabulary_too_large;
+            default: return TableRefuseReason.unknown_form;
+        }
+    }
 }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----

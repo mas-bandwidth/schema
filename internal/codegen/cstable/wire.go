@@ -351,6 +351,18 @@ func (g *tableGen) emitWireSurface(st *ir.Struct) {
 	}
 	g.pf("public static TableWire.Verdict %sLoadVerdict(%s value, ReadOnlySpan<byte> bytes, TableReport report)\n{\n    return TableWire.Load(value, %sTableType(), bytes, report);\n}\n\n", st.Name, st.Name, st.Name)
 	g.pf("public static bool %sLoad(%s value, ReadOnlySpan<byte> bytes, TableReport report)\n{\n    return %sLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;\n}\n\n", st.Name, st.Name, st.Name)
+	g.pf("// %sReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):\n", st.Name)
+	g.pf("// true and the value, or false and the one typed reason TableReport.Err\n")
+	g.pf("// decides, with the value reset. The report is cleared first and holds this\n")
+	g.pf("// read's report. A read that lands nothing and names no reason met damage.\n")
+	g.pf("public static bool %sReadStrict(%s value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)\n{\n", st.Name, st.Name)
+	g.pf("    if (report == null) { report = new TableReport(); }\n    report.Clear();\n")
+	g.pf("    bool ok = %sLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;\n", st.Name)
+	g.pf("    reason = report.Err();\n")
+	g.pf("    if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }\n")
+	g.pf("    if (reason == TableRefuseReason.ok) { return true; }\n")
+	g.pf("    %sTableType().Reset(value);\n", st.Name)
+	g.pf("    return false;\n}\n\n")
 }
 
 // The wire's clamps use integer literals at their actual width, never the
