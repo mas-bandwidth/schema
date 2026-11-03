@@ -7622,6 +7622,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 int64_t arm_payload = 0;
                 arm_payload += 4; // uint32
                 w.header( arm_ref, 8 ); w.putleb( (uint64_t) arm_payload ); // pid
+                schema_assert( value.origin.pid <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( value.origin.pid ) );
                 break;
             }
@@ -7742,6 +7743,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         int64_t arm_payloadu = 0;
                         arm_payloadu += 4; // uint32
                         w.header( arm_refu, 8 ); w.putleb( (uint64_t) arm_payloadu ); // pid
+                        schema_assert( value.origins[elem_i].pid <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
                         w.put32( uint32_t( value.origins[elem_i].pid ) );
                         break;
                     }
@@ -9634,6 +9636,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditSaveBody( TableWriter & w, TableIds & ids, con
                 int64_t arm_payload = 0;
                 arm_payload += 4; // int32
                 w.header( arm_ref, 4 ); w.putleb( (uint64_t) arm_payload ); // tally
+                schema_assert( value.body.tally >= 0 && value.body.tally <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( value.body.tally ) );
                 break;
             }
@@ -11926,6 +11929,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & i
                             int64_t arm_payloadu = 0;
                             arm_payloadu += 4; // int32
                             w.header( arm_refu, 4 ); w.putleb( (uint64_t) arm_payloadu ); // tally
+                            schema_assert( value.pending[elem_i].tally >= 0 && value.pending[elem_i].tally <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
                             w.put32( uint32_t( value.pending[elem_i].tally ) );
                             break;
                         }
@@ -13919,6 +13923,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             int64_t arm_payloada = 0;
                             arm_payloada += 4; // uint32
                             w.header( arm_refa, 8 ); w.putleb( (uint64_t) arm_payloada ); // pid
+                            schema_assert( value.body.origin.pid <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
                             w.put32( uint32_t( value.body.origin.pid ) );
                             break;
                         }
@@ -14278,6 +14283,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     int64_t arm_payloadua = 0;
                                     arm_payloadua += 4; // uint32
                                     w.header( arm_refua, 8 ); w.putleb( (uint64_t) arm_payloadua ); // pid
+                                    schema_assert( value.history[elem_i].origin.pid <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
                                     w.put32( uint32_t( value.history[elem_i].origin.pid ) );
                                     break;
                                 }

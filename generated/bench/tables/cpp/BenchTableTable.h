@@ -6098,51 +6098,61 @@ BENCHTABLE_TABLE_INLINE bool TableEntitySaveBody( TableWriter & w, TableIds & id
     if ( value.entity_id != 0 )
     {
         w.header( ids.ref_at( 11, 0x23fcfd6678e36712ull ), 7 ); // entity_id
+        schema_assert( value.entity_id <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.entity_id ) );
     }
     if ( value.pos_x != 0 )
     {
         w.header( ids.ref_at( 65, 0xcb4b37357667310eull ), 4 ); // pos_x
+        schema_assert( value.pos_x >= -16383 && value.pos_x <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_x ) );
     }
     if ( value.pos_y != 0 )
     {
         w.header( ids.ref_at( 66, 0xcb4b3835766732c1ull ), 4 ); // pos_y
+        schema_assert( value.pos_y >= -16383 && value.pos_y <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_y ) );
     }
     if ( value.pos_z != 0 )
     {
         w.header( ids.ref_at( 64, 0xcb4b353576672da8ull ), 4 ); // pos_z
+        schema_assert( value.pos_z >= -16383 && value.pos_z <= 16383 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.pos_z ) );
     }
     if ( value.yaw != 0 )
     {
         w.header( ids.ref_at( 59, 0xb54d8e19798e16e8ull ), 7 ); // yaw
+        schema_assert( value.yaw <= 511ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.yaw ) );
     }
     if ( value.pitch != 0 )
     {
         w.header( ids.ref_at( 24, 0x53a9f665a90cc1b1ull ), 7 ); // pitch
+        schema_assert( value.pitch <= 511ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.pitch ) );
     }
     if ( value.vel_x != 0 )
     {
         w.header( ids.ref_at( 30, 0x6cede6b6eb60ee67ull ), 4 ); // vel_x
+        schema_assert( value.vel_x >= -2048 && value.vel_x <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_x ) );
     }
     if ( value.vel_y != 0 )
     {
         w.header( ids.ref_at( 29, 0x6cede5b6eb60ecb4ull ), 4 ); // vel_y
+        schema_assert( value.vel_y >= -2048 && value.vel_y <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_y ) );
     }
     if ( value.vel_z != 0 )
     {
         w.header( ids.ref_at( 31, 0x6cede8b6eb60f1cdull ), 4 ); // vel_z
+        schema_assert( value.vel_z >= -2048 && value.vel_z <= 2047 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.vel_z ) );
     }
     if ( value.health != 0 )
     {
         w.header( ids.ref_at( 41, 0x7f69d4b5288ba9cfull ), 4 ); // health
+        schema_assert( value.health >= 0 && value.health <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.health ) );
     }
     if ( value.weapon != TableWeapon::None )
@@ -7724,6 +7734,7 @@ BENCHTABLE_TABLE_INLINE bool TableStatSaveBody( TableWriter & w, TableIds & ids,
     if ( value.delta != 0 )
     {
         w.header( ids.ref_at( 23, 0x52076675ec13a0c1ull ), 4 ); // delta
+        schema_assert( value.delta >= -512 && value.delta <= 511 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.delta ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -8333,6 +8344,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.ack_sequence != 0 )
     {
         w.header( ids.ref_at( 4, 0x0dbe005c56697c3eull ), 4 ); // ack_sequence
+        schema_assert( value.ack_sequence >= 0 && value.ack_sequence <= 65535 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.ack_sequence ) );
     }
     if ( value.ack_bits != 0 )
@@ -8353,16 +8365,19 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.nonce != 1ull )
     {
         w.header( ids.ref_at( 34, 0x73a94c71d60dc0d8ull ), 9 ); // nonce
+        schema_assert( value.nonce >= 1ull && value.nonce <= 9223372036854775807ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.nonce ) );
     }
     if ( value.world_time != 0 )
     {
         w.header( ids.ref_at( 21, 0x3eee6b51be54fc85ull ), 5 ); // world_time
+        schema_assert( value.world_time >= -1000000000000ll && value.world_time <= 1000000000000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.world_time ) );
     }
     if ( value.frame_tick != 0 )
     {
         w.header( ids.ref_at( 39, 0x7bbc035f7b6d0112ull ), 9 ); // frame_tick
+        schema_assert( value.frame_tick <= 281474976710655ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.frame_tick ) );
     }
     if ( value.server_time != 0.0f )
@@ -8554,6 +8569,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.flux != 0 )
     {
         w.header( ids.ref_at( 68, 0xd61bdd7908af2642ull ), 5 ); // flux
+        schema_assert( value.flux >= -1000000000000000000ll && value.flux <= 1000000000000000000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.flux ) );
     }
     if ( value.ping != 0.0f )
@@ -8565,6 +8581,7 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.crc_hint != 0 )
     {
         w.header( ids.ref_at( 25, 0x560d6527ccd8515full ), 8 ); // crc_hint
+        schema_assert( value.crc_hint <= 16777215ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.crc_hint ) );
     }
     if ( value.has_extra != false )
@@ -8575,11 +8592,13 @@ BENCHTABLE_TABLE_INLINE bool TableMixedSaveBody( TableWriter & w, TableIds & ids
     if ( value.extra != 0 )
     {
         w.header( ids.ref_at( 76, 0xfd29ee12a979cb69ull ), 4 ); // extra
+        schema_assert( value.extra >= 0 && value.extra <= 255 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.extra ) );
     }
     if ( value.idle_ticks != 0 )
     {
         w.header( ids.ref_at( 37, 0x78101ac0aa8cbcfeull ), 4 ); // idle_ticks
+        schema_assert( value.idle_ticks >= 0 && value.idle_ticks <= 15 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.idle_ticks ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11566,16 +11585,19 @@ BENCHTABLE_TABLE_INLINE bool TableHitEventSaveBody( TableWriter & w, TableIds & 
     if ( value.target_id != 0 )
     {
         w.header( ids.ref_at( 60, 0xb7bc9ac015a25050ull ), 7 ); // target_id
+        schema_assert( value.target_id <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.target_id ) );
     }
     if ( value.damage != 0 )
     {
         w.header( ids.ref_at( 40, 0x7f6308be8ab37fc0ull ), 4 ); // damage
+        schema_assert( value.damage >= 0 && value.damage <= 4095 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.damage ) );
     }
     if ( value.hit_kind != 0 )
     {
         w.header( ids.ref_at( 1, 0x01fbc365b059b925ull ), 4 ); // hit_kind
+        schema_assert( value.hit_kind >= 0 && value.hit_kind <= 7 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.hit_kind ) );
     }
     if ( value.crit != false )
@@ -12243,11 +12265,13 @@ BENCHTABLE_TABLE_INLINE bool TableChatEventSaveBody( TableWriter & w, TableIds &
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 56, 0xa5013e9ad5caeda4ull ), 4 ); // channel
+        schema_assert( value.channel >= 0 && value.channel <= 3 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.channel ) );
     }
     if ( value.speaker != 0 )
     {
         w.header( ids.ref_at( 75, 0xfbf1ac4d96ebd022ull ), 7 ); // speaker
+        schema_assert( value.speaker <= 4095ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.speaker ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -12761,11 +12785,13 @@ BENCHTABLE_TABLE_INLINE bool TablePickupEventSaveBody( TableWriter & w, TableIds
     if ( value.item_id != 0 )
     {
         w.header( ids.ref_at( 51, 0x9e7fd06d864fbd56ull ), 7 ); // item_id
+        schema_assert( value.item_id <= 1023ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put16( uint16_t( value.item_id ) );
     }
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 43, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( value.amount >= 0 && value.amount <= 255 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

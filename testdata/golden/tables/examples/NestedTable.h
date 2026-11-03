@@ -9527,6 +9527,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.count != 1 )
     {
         w.header( ids.ref_at( 97, 0xb1e5e28e4479a274ull ), 4 ); // count
+        schema_assert( value.count >= 0 && value.count <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.count ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11102,6 +11103,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.count != 1 )
     {
         w.header( ids.ref_at( 97, 0xb1e5e28e4479a274ull ), 4 ); // count
+        schema_assert( value.count >= 0 && value.count <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.count ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

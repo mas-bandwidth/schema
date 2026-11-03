@@ -8213,6 +8213,7 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 27, 0x823b8a195ce2133cull ), 4 ); // seq
+        schema_assert( value.seq >= 0 && value.seq <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.seq ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -9639,6 +9640,7 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds
     if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 27, 0x823b8a195ce2133cull ), 4 ); // seq
+        schema_assert( value.seq >= 0 && value.seq <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.seq ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

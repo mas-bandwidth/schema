@@ -5849,21 +5849,25 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.tilt != 0 )
     {
         w.header( ids.ref_at( 0, 0x1e5088ef2e9bafc6ull ), 20 ); // tilt
+        schema_assert( value.tilt <= 112 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put8( uint8_t( value.tilt ) );
     }
     if ( value.angle != 0 )
     {
         w.header( ids.ref_at( 7, 0x401ab8cd06158638ull ), 22 ); // angle
+        schema_assert( value.angle >= -11796480 && value.angle <= 11796480 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.angle ) );
     }
     if ( value.position != 0 )
     {
         w.header( ids.ref_at( 9, 0x4cbf3a26fca1d74aull ), 23 ); // position
+        schema_assert( value.position >= -1966080000ll && value.position <= 1966080000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.position ) );
     }
     if ( value.reach != 0 )
     {
         w.header( ids.ref_at( 14, 0x891da1f305deb858ull ), 24 ); // reach
+        schema_assert( value.reach >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744008173551616ull ) ) && value.reach <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 65536000000ull ) ) ); // a write keeps the declared bounds (SPEC.md §5.1)
         {
             serialize::uint128_t raw_v = serialize::uint128_t( value.reach );
             w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) );
@@ -5872,26 +5876,31 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.ticks != 0 )
     {
         w.header( ids.ref_at( 13, 0x7fd9266c6a3e25b5ull ), 22 ); // ticks
+        schema_assert( value.ticks >= 0 && value.ticks <= 1000000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.ticks ) );
     }
     if ( value.ratio != 0 )
     {
         w.header( ids.ref_at( 29, 0xfbc924118177ade4ull ), 25 ); // ratio
+        schema_assert( value.ratio <= 240 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put8( uint8_t( value.ratio ) );
     }
     if ( value.speed != 0 )
     {
         w.header( ids.ref_at( 2, 0x2281498aa0200e40ull ), 27 ); // speed
+        schema_assert( value.speed <= 65536000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.speed ) );
     }
     if ( value.span != 0 )
     {
         w.header( ids.ref_at( 15, 0x8b7dc019093cd0e1ull ), 28 ); // span
+        schema_assert( value.span <= 18446744073709486080ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.span ) );
     }
     if ( value.mass != 0 )
     {
         w.header( ids.ref_at( 1, 0x1f3757a2ce7b0ab1ull ), 29 ); // mass
+        schema_assert( value.mass <= ( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 131072000000ull ) ) ); // a write keeps the declared bounds (SPEC.md §5.1)
         {
             serialize::uint128_t raw_v = serialize::uint128_t( value.mass );
             w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) );
@@ -5905,6 +5914,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.flux != 0 )
     {
         w.header( ids.ref_at( 25, 0xd61bdd7908af2642ull ), 18 ); // flux
+        schema_assert( value.flux >= serialize::int128_t( ( serialize::uint128_t( 18446744004990074880ull ) << 64 ) | serialize::uint128_t( 0ull ) ) && value.flux <= serialize::int128_t( ( serialize::uint128_t( 68719476736ull ) << 64 ) | serialize::uint128_t( 0ull ) ) ); // a write keeps the declared bounds (SPEC.md §5.1)
         {
             serialize::uint128_t raw_v = serialize::uint128_t( value.flux );
             w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) );
@@ -5913,6 +5923,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.energy != serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551366ull ) ) )
     {
         w.header( ids.ref_at( 28, 0xf2fd4f9140ef2f15ull ), 18 ); // energy
+        schema_assert( value.energy >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744068709551616ull ) ) && value.energy <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5000000000ull ) ) ); // a write keeps the declared bounds (SPEC.md §5.1)
         {
             serialize::uint128_t raw_v = serialize::uint128_t( value.energy );
             w.put128( uint64_t( raw_v ), uint64_t( raw_v >> 64 ) );
@@ -5929,6 +5940,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.scale != 65536 )
     {
         w.header( ids.ref_at( 11, 0x6aacb9fbb71a1d91ull ), 22 ); // scale
+        schema_assert( value.scale >= -524288 && value.scale <= 524288 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.scale ) );
     }
     {
@@ -5946,6 +5958,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
             w.putleb( (uint64_t) ( 3 ) );
             for ( int32_t elem_i = 0; elem_i < 3; elem_i++ )
             {
+                schema_assert( value.samples[elem_i] >= -524288 && value.samples[elem_i] <= 524288 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( value.samples[elem_i] ) );
             }
         }
@@ -5963,6 +5976,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         w.putleb( (uint64_t) ( value.weights_count ) );
         for ( int32_t elem_i = 0; elem_i < value.weights_count; elem_i++ )
         {
+            schema_assert( value.weights[elem_i] <= 25600 ); // a write keeps the declared bounds (SPEC.md §5.1)
             w.put16( uint16_t( value.weights[elem_i] ) );
         }
     }
@@ -5995,6 +6009,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
                 if ( !TableEnumRef( ids, Axis( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 8 );
+                schema_assert( value.axes.slots[i] >= -429496729600ll && value.axes.slots[i] <= 429496729600ll ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put64( uint64_t( value.axes.slots[i] ) );
             }
         }
@@ -8073,16 +8088,19 @@ SCALARDEMO_TABLE_INLINE bool PoseSaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.x != 32768ll )
     {
         w.header( ids.ref_at( 18, 0xaf63f54c86021707ull ), 23 ); // x
+        schema_assert( value.x >= -1966080000ll && value.x <= 1966080000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.x ) );
     }
     if ( value.y != 0 )
     {
         w.header( ids.ref_at( 17, 0xaf63f44c86021554ull ), 23 ); // y
+        schema_assert( value.y >= -1966080000ll && value.y <= 1966080000ll ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put64( uint64_t( value.y ) );
     }
     if ( value.heading != 0 )
     {
         w.header( ids.ref_at( 22, 0xb128829190ca0f75ull ), 27 ); // heading
+        schema_assert( value.heading <= 23592960 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.heading ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body

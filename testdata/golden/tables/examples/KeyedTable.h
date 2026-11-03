@@ -9865,6 +9865,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
     if ( value.spawn_count != 4 )
     {
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
+        schema_assert( value.spawn_count >= 0 && value.spawn_count <= 64 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.spawn_count ) );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
@@ -12914,6 +12915,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 4 );
+                schema_assert( value.per_team[i] >= 0 && value.per_team[i] <= 100000 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
@@ -15783,6 +15785,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
     if ( value.spawn_count != 4 )
     {
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
+        schema_assert( value.spawn_count >= 0 && value.spawn_count <= 64 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.spawn_count ) );
     }
     if ( value.banner_length < 0 || value.banner_length > 16 ) { return false; } // storage invariant
@@ -16966,6 +16969,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBodyRetain( TableWriter & w, TableReta
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 4 );
+                schema_assert( value.per_team[i] >= 0 && value.per_team[i] <= 100000 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
