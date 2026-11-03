@@ -60,14 +60,10 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	missingBefore := report.MissingRequired
 	report.Malformed = false
 	ok, err := decodeWalk(m, inst, data, report, rt, region)
-	if report.MissingRequired != missingBefore {
-		m.Clear(inst)
-		if rt != nil {
-			rt.store.reset()
-		}
-		report.Malformed = report.Malformed || priorMalformed
-		return false, &tabletext.MissingRequired{Reason: report.Reason}
-	}
+	// THE ONE ANSWER, IN §6.5's ORDER: a non-finite float, then damage, then
+	// a missing required field. The walk reads on past a body that lacks a
+	// required field, so damage later in the wire is still met, and damage
+	// outranks the missing field because it discards the whole load (§4).
 	if refusal := refusedNonFinite(report); refusal != nil {
 		// Refusal publishes no value or retained prefix, just as damage does.
 		m.Clear(inst)
@@ -87,7 +83,18 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 		if rt != nil {
 			rt.store.reset()
 		}
+		if _, missing := err.(*tabletext.MissingRequired); missing {
+			err = nil
+		}
 		return false, err
+	}
+	if report.MissingRequired != missingBefore {
+		m.Clear(inst)
+		if rt != nil {
+			rt.store.reset()
+		}
+		report.Malformed = priorMalformed
+		return false, &tabletext.MissingRequired{Reason: report.Reason}
 	}
 	report.Malformed = priorMalformed
 	return ok, err
@@ -507,7 +514,10 @@ func (r *wireReader) bodyAt(inst *tabletext.Instance, nested bool) bool {
 			// record under it goes before the winning occurrence is read.
 			r.rt.forgetField(fv)
 		}
-		if !r.field(fv) || r.report.MissingRequired != missingBefore {
+		// a body below that lacks a required field is refused whole, and this
+		// body reads on past it by its L, so later damage is still met (§4,
+		// §6.5); this body's own terminator then refuses it too (§2.3)
+		if !r.field(fv) {
 			return false
 		}
 		seen[i] = seen[i] || !r.fieldSkipped
@@ -647,13 +657,18 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 // the body, or a terminator that is not the last byte of its L (§3), counts
 // one malformed and ends this body, and the enclosing body steps over it by
 // its L and reads on, so a non-finite float later in the read is still
-// reached. `whole` is false for a damaged body. `stop` is true only where the
-// whole read stops: a storage refusal, or a required field the body lacks.
+// reached. `whole` is false for a damaged body and for one that lacks a
+// required field, which the report has counted and the enclosing body reads
+// on past, so later damage is still met (§6.5). `stop` is true only where the
+// whole read stops: a storage refusal.
 func (r *wireReader) nested(sub *wireReader, inst *tabletext.Instance, n int) (whole, stop bool) {
 	missingBefore := r.report.MissingRequired
 	ended := sub.bodyAt(inst, true)
-	if r.countRefused() || r.report.MissingRequired != missingBefore {
+	if r.countRefused() {
 		return false, true
+	}
+	if r.report.MissingRequired != missingBefore {
+		return false, false
 	}
 	if !ended || sub.off != n {
 		r.report.Malformed = true
@@ -813,8 +828,13 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			decoded := r.m.NewMapEntry(f)
 			missingBefore := r.report.MissingRequired
 			ended := whole.bodyAt(decoded, true)
-			if r.countRefused() || r.report.MissingRequired != missingBefore {
+			if r.countRefused() {
 				return false
+			}
+			if r.report.MissingRequired != missingBefore {
+				// the entry lacks a required field: counted, dropped, and
+				// the map reads on past it, so later damage is still met
+				continue
 			}
 			if !ended {
 				// DAMAGE ENDS THE BODY IT IS MET IN (§4): the entry is

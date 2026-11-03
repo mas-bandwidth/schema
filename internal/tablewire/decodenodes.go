@@ -280,11 +280,9 @@ func decodeVariable(m *tabletext.Model, inst *tabletext.Instance, data []byte, i
 			continue
 		}
 		sub := &wireReader{buf: rec.Body, report: report, m: m, ids: ids, st: st, rt: rt, countRefusal: &countRefusal, region: region}
-		missingBefore := report.MissingRequired
+		// a node that lacks a required field is counted and the scan reads
+		// on, so damage in a later node is still met (§6.5)
 		sub.bodyAt(st.nodes[i].Inst, true)
-		if report.MissingRequired != missingBefore {
-			return false, &tabletext.MissingRequired{Reason: report.Reason}
-		}
 		if countRefusal {
 			return false, &CountRefusal{}
 		}
