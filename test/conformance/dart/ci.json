@@ -1,2 +1,2 @@
-{"targets": "build/conformance-harness build/conformance-dart",
+{"targets": "build/conformance-harness build/conformance-dart build/conformance-dart-asserts",
  "dart": "3.13.2", "env": "DART=dart"}

@@ -1010,7 +1010,7 @@
     {
       "name": "dart-conformance",
       "when": "pull-request",
-      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host.",
+      "why": "the Dart leg's emitter-side conformance controls (docs/PORTING.md I11) and its documented-surface gate (I12): walk negates the generated text reader's bool arm and requires dart / json-read red alone, zero removes the text_holds_zero refusal and requires exactly the two carried json-hostile zero rows red, the usage control runs docs/USAGE.md's Dart fragment and then renames its entry point, and the hostile-corpus control runs the shared corpus (internal/ci/hostilecorpus) through the Dart readers and then plants a refusing text reader. Each conformance control builds a schema through a Go overlay, regenerates every unit the driver reads and AOT-compiles the driver once: measured 35 s for the two on a local host, so they ride a row of their own beside the dart row rather than pushing it toward the job's five-minute timeout. Two more ride the same row, built the same way (I11, I15): block removes the block Open's pitch check and requires dart / forgery and dart / block-reason red on the block_pitch row alone, and wire removes the counted list's widened count from the wire emitter and requires the tolerant wire fuzzer (harness wire-fuzz, seed 1, no random pass) red on the report comparison, about 15 s each on a local host. The write-contract control (docs/SPEC.md §5.1) deletes the ranged-integer assert from a copy of the generated tabledemo library, AOT-compiles the driver against it with --enable-asserts and requires write-refusal red on the two out-of-range rows alone with every other surface green.",
       "dart": "3.13.2",
       "targets": [
         "conformance-negative-control-dart-walk",
@@ -1020,6 +1020,7 @@
         "conformance-negative-control-dart-share",
         "conformance-negative-control-dart-absent",
         "conformance-negative-control-dart-block",
+        "conformance-negative-control-dart-write-refusal",
         "tables-dart-wire-fuzz-negative-control",
         "schema-dart-runs-hostile-corpus-negative-control",
         "tables-dart-usage-negative-control"
@@ -1164,7 +1165,7 @@
     {
       "name": "java-proof",
       "when": "pull-request",
-      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse), the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), and a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer). The framing control (docs/LAYERS/1-framing.md, F6, T8) recompiles the tblr1 unit without the id table\u2019s 4096-entry cap and the pointers unit without its cycle check, and requires framing red on frame_entries_4097 and the three cycle rows; then the pointers unit with a closed node taken for an open one, and requires framing red on node_diamond_chain; two small javacs and two framing-only harness runs. Five compiler rebuilds over six units each and one harness run of the Java leg alone.",
+      "why": "the Java controls the 3.0.0 proof table cites (docs/PORTING.md M11, M12, I4, I7, I12, J3): the layout contract's comparison planted out of both emitters (the moved accessor offset must open), the cook Open's order-word check planted out (the forged cook with an intact magic must open), TableBytes.i64 read in the JVM's default order (this reader's own cook must refuse), the documented root() renamed in the emitter (the docs/USAGE.md example must stop compiling), a redundant cast planted in every unit's TableBytes (the release tier's -Xlint:all -Werror compile must red), and a conformance driver that writes no absence marker (the harness must red on the cases the leg cannot answer). The framing control (docs/LAYERS/1-framing.md, F6, T8) recompiles the tblr1 unit without the id table\u2019s 4096-entry cap and the pointers unit without its cycle check, and requires framing red on frame_entries_4097 and the three cycle rows; then the pointers unit with a closed node taken for an open one, and requires framing red on node_diamond_chain; two small javacs and two framing-only harness runs. The write-contract control (docs/SPEC.md §5.1) deletes the ranged-integer check from a copy of the generated WeaponConfigVariable, compiles it ahead of the conformance classpath and requires write-refusal red on the two out-of-range rows alone with wire green; one small javac and one harness run of the Java leg. Five compiler rebuilds over six units each and two harness runs of the Java leg alone.",
       "targets": [
         "tables-java-layout-contract-negative-control",
         "tables-java-order-negative-control",
@@ -1173,6 +1174,7 @@
         "tables-java-release-negative-control",
         "conformance-java-absent-negative-control",
         "conformance-negative-control-java-framing",
+        "conformance-negative-control-java-write-refusal",
         "tables-java-generated-fresh-negative-control"
       ],
       "java": "21"
