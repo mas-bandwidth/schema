@@ -540,9 +540,13 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 			e.home(f.Type.Name)
 			e.p(ind, "if !_%sFixedCheck(%s) { return false; }", f.Type.Name, pl.val)
 		}
-	case kInt:
+	case kInt, kInt128:
 		for _, b := range scalarBounds(f) {
 			e.p(ind, "if %s { return false; }", b.over(pl.val))
+		}
+	case kF32, kF64:
+		if lo, hi, ok := floatBounds(f); ok {
+			e.p(ind, "if !(%s >= %s && %s <= %s) { return false; }", pl.val, lo, pl.val, hi)
 		}
 	}
 }
@@ -734,9 +738,14 @@ func (e *fixedEmit) clampElem(ind int, f *ir.Field, pl place) {
 			e.home(f.Type.Name)
 			e.p(ind, "c += _%sFixedClamp(%s);", f.Type.Name, pl.val)
 		}
-	case kInt:
+	case kInt, kInt128:
 		for _, b := range scalarBounds(f) {
 			e.p(ind, "if %s { %s = %s; c += 1; }", b.over(pl.val), pl.val, b.land)
+		}
+	case kF32, kF64:
+		if lo, hi, ok := floatBounds(f); ok {
+			e.p(ind, "if %s < %s { %s = %s; c += 1; } else if %s > %s { %s = %s; c += 1; } else if %s == 0.0 { %s = 0.0; }",
+				pl.val, lo, pl.val, lo, pl.val, hi, pl.val, hi, pl.val, pl.val)
 		}
 	}
 }
@@ -750,10 +759,32 @@ type scalarBound struct {
 
 func (b scalarBound) over(v string) string { return b.test(v) }
 
+func storageBounds(signed bool, bits int64) (wmin, wmax *big.Int) {
+	if signed {
+		return new(big.Int).Neg(new(big.Int).Lsh(big.NewInt(1), uint(bits-1))),
+			new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits-1)), big.NewInt(1))
+	}
+	return big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+}
+
+func floatBounds(f *ir.Field) (lo, hi string, ok bool) {
+	if !f.HasFloatRange {
+		return "", "", false
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32:
+		return goose.FormatFloat32(f.FMin), goose.FormatFloat32(f.FMax), true
+	case ir.TFloat64:
+		return goose.FormatFloat(f.FMin), goose.FormatFloat(f.FMax), true
+	}
+	return "", "", false
+}
+
 // scalarBounds is an integer-shaped element's bounds (docs/FIXED-FORM-ALGORITHM.md
 // §4.6): an enum's top ordinal (None past it), a declared range in raw units
-// (ir.TableRawRange, a fixed field's shifted by F), a bits(N) below its
-// storage. A 128-bit range is lane arithmetic the 128-bit kinds' card owns.
+// (ir.TableRawRange, a fixed field's shifted by F, across both 64-bit lanes for
+// 128-bit storage), and a bits(N) below its storage. Bounds that sit at the
+// storage width's own limit are elided so no tautological comparison is emitted.
 func scalarBounds(f *ir.Field) []scalarBound {
 	t := f.Type
 	if t.Kind == ir.TNamed {
@@ -762,21 +793,37 @@ func scalarBounds(f *ir.Field) []scalarBound {
 		}
 		return nil
 	}
-	if ir.TableFixedStorageBytes(t) > 8 {
-		return nil
-	}
+	w := ir.TableFixedStorageBytes(t)
 	var out []scalarBound
 	if lo, hi, ok := ir.TableRawRange(f); ok {
 		signed := t.Signed && t.Kind != ir.TBits
-		if signed || lo.Sign() > 0 {
+		wmin, wmax := storageBounds(signed, 8*w)
+		if w > 8 {
+			lt := "schema_rt::fixed_lt_u128"
+			if signed {
+				lt = "schema_rt::fixed_lt_i128"
+			}
+			if lo.Cmp(wmin) > 0 {
+				l := goose.Int128Lit(lo)
+				out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s(%s, %s)", lt, v, l) }, land: l})
+			}
+			if hi.Cmp(wmax) < 0 {
+				h := goose.Int128Lit(hi)
+				out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s(%s, %s)", lt, h, v) }, land: h})
+			}
+			return out
+		}
+		if lo.Cmp(wmin) > 0 {
 			l := goose.IntLit(lo)
 			out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s < %s", v, l) }, land: l})
 		}
-		h := goose.IntLit(hi)
-		out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s > %s", v, h) }, land: h})
+		if hi.Cmp(wmax) < 0 {
+			h := goose.IntLit(hi)
+			out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s > %s", v, h) }, land: h})
+		}
 		return out
 	}
-	if t.Kind == ir.TBits && int64(t.Width) < 8*ir.TableFixedStorageBytes(t) {
+	if w <= 8 && t.Kind == ir.TBits && int64(t.Width) < 8*w {
 		m := goose.IntLit(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(t.Width)), big.NewInt(1)))
 		out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s > %s", v, m) }, land: m})
 	}
@@ -788,7 +835,7 @@ func scalarBounds(f *ir.Field) []scalarBound {
 // loop for it (docs/FIXED-FORM-ALGORITHM.md §4.6: "A type that bounds nothing
 // emits no pass at all").
 func elemNeedsClamp(f *ir.Field) bool {
-	return needs(f, map[string]bool{}, func(f *ir.Field) bool { return len(scalarBounds(f)) > 0 }, true)
+	return needs(f, map[string]bool{}, func(f *ir.Field) bool { return f.HasFloatRange || len(scalarBounds(f)) > 0 }, true)
 }
 
 func elemNeedsCheck(f *ir.Field) bool {
@@ -797,7 +844,7 @@ func elemNeedsCheck(f *ir.Field) bool {
 		case ir.TString, ir.TWString, ir.TBytes:
 			return true
 		}
-		return len(scalarBounds(f)) > 0
+		return f.HasFloatRange || len(scalarBounds(f)) > 0
 	}, true)
 }
 
