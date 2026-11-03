@@ -1,0 +1,224 @@
+{
+  "language": "go",
+  "tested_revision": "3bab349e71d7c526a6f016f3ba601235d5d000d1",
+  "host": "vision",
+  "command": "PYTHONUNBUFFERED=1 test/conformance/nightly-readiness go",
+  "finished_utc": "2026-11-03T01:30:49Z",
+  "result": "NIGHTLY_READINESS_PASS language=go phases=25",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_table_events": {
+    "pass": 293,
+    "fail": 0,
+    "skip": 3
+  },
+  "native_table_retired": "the 3 skips are TestFixedFormPlanPath, TestFixedFormArgLaneTextUnderSecondArm and TestFixedFormLayoutRules, retired by docs/FIXED-FORM-ALGORITHM.md \u00a75.6; readiness verified each replacement's pass event in this run (RETIRED)",
+  "plain": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 218,
+    "roots": 64,
+    "enumerated_per_seed": 162042,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "retaining": {
+    "seeds": [
+      1,
+      2,
+      3
+    ],
+    "corpus_seeds": 95,
+    "roots": 28,
+    "enumerated_per_seed": 91395,
+    "random_per_seed": 100000,
+    "divergences": 0
+  },
+  "control_note": "retain-go-file-count-floor and retain-go-unknown-node are intentional sabotages: exit 1 is required, with the exact retention assertion and no skips or compile failure.",
+  "bench_note": "clean clone; siblings at the ci-full.yml pins (serialize v2.1.3, serialize.c/.go/.cs v2.1.1, serialize.js v2.1.2, serialize.rs v5.0.0); build/fixedform-corpus built by the prerequisites phase",
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 26.54030481306836,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 9.669089381932281,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 2.3801227109506726,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 11.116452860995196,
+      "errors": []
+    },
+    {
+      "phase": "native-list-golang",
+      "exit": 0,
+      "seconds": 0.9030378939351067,
+      "errors": []
+    },
+    {
+      "phase": "native-golang",
+      "exit": 0,
+      "seconds": 1.489212766988203,
+      "errors": []
+    },
+    {
+      "phase": "native-list-gotable",
+      "exit": 0,
+      "seconds": 3.750901021063328,
+      "errors": []
+    },
+    {
+      "phase": "native-gotable",
+      "exit": 0,
+      "seconds": 818.5335879109334,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.0010778019204736,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 0.5896523839328438,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.25947574304882437,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 9.136274980031885,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 3.0942757800221443,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 99.48711418407038,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 60.249362990027294,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 60.34351376595441,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 58.4777692980133,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 55.618085041991435,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 57.245603500981815,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 56.84279935597442,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 15.950159745989367,
+      "errors": []
+    },
+    {
+      "phase": "retain-go-file-count-floor-plant",
+      "exit": 0,
+      "seconds": 0.0805125079350546,
+      "errors": []
+    },
+    {
+      "phase": "retain-go-file-count-floor",
+      "exit": 1,
+      "seconds": 7.221428081043996,
+      "errors": []
+    },
+    {
+      "phase": "retain-go-unknown-node-plant",
+      "exit": 0,
+      "seconds": 0.08765911601949483,
+      "errors": []
+    },
+    {
+      "phase": "retain-go-unknown-node",
+      "exit": 1,
+      "seconds": 5.495314622065052,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.log": "479fcca7f33a23a81c0e77e20486ca06c290e26d5db2892a441c40643e369eac",
+    "implementation.log": "6febaaf7de6332f91c1bd61380f628eedd11e8196c7c9bd3f7f5dc7f5b6b5b6a",
+    "native-golang.log": "408c2fef84e85b88b183cff32463d2820c303609c2422e13560cdc79676912bf",
+    "native-gotable.log": "8b67191f988a8bb901190eb39ed34dee1f407c25e4c32b786601b57ab9c78cbb",
+    "native-list-golang.log": "bca899c1cfe78e89f8524bde47b2b7a4ae75854ed15c5c434520e882a486af6f",
+    "native-list-gotable.log": "bf398fe0f915e1504e87909cdc7bfd4c2483f42411f86f60e96dedf807a393a0",
+    "native-list-lockfile.log": "ca9ce56f3a2c6cdfb800a2e131f547cdf6912da3e426d8c2e24315cc26f0f132",
+    "native-lockfile.log": "e828df33c35088ba3881360aabf019d773274dcc53cd2cc838ebf29008c334d5",
+    "packet-build.log": "bcea82872b0b08d8ec7b4081fd3c859495bcec81eb646ec2fcdae15f6eefbeb8",
+    "packet-features.log": "2bb89c8534ae634a68d26944af0bf01a9c00c834d52afe4d0d101e66c7826b16",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.log": "1f7fbea6a15579605b2df9fcf74937f14b72c43893bb9f53da80f1a1632ee8e9",
+    "retain-go-file-count-floor-plant.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retain-go-file-count-floor.log": "b922d07dd72dcf842a6fc7814b0183dc3a58d4512f4bf26254cad225d7c88cf7",
+    "retain-go-unknown-node-plant.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "retain-go-unknown-node.log": "8c4f272bec54c8b25796366cb86f53fe362daf3f1a74ea8b976a6b7bf8ba28bf",
+    "wire-driver-build.log": "27bb55e1abd50aa6fc5d65e111dd9a2b964d64352195f67864bcdf35463cdfb2",
+    "wire-plain-1.log": "10fbe10add487af92d4809b1a87afb9e452ec618ae7fc94794f49c3964140751",
+    "wire-plain-2.log": "97461a92dcb40137f06f86de31388e2b2abe5c7824fe61ae960c4a81db0bea3a",
+    "wire-plain-3.log": "37a1247359dd5d90b99dfdf4c2b2423d1eed58f9f04d7c93ba69e20ee04d76de",
+    "wire-retain-1.log": "bb03556ae50b426945b8c01b9982cae6efd3bd5f48dbd49f156a500382373e6d",
+    "wire-retain-2.log": "e8cd936342737e047fa0634cd999241533166fd0ad41bdccec5ea433b9fea420",
+    "wire-retain-3.log": "1cead42f6d88d72a0507d35eea823bd4fc3eead7fbe799a81796727db6ae2293",
+    "wire-retain-controls.log": "6de77a73dba8d70d5851629cb3fd1c3d2af2641d612e00de52f3fe3b85c94306",
+    "results.json": "a71f94d40c5103ccee0ed4cfb732fcde82d6b2a2fc070f4059ee7840778277e7"
+  }
+}

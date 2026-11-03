@@ -138,3 +138,7 @@ replace cards => ../../../build/tables-generated-go/cards
 require widelistdemo v0.0.0
 
 replace widelistdemo => ../../../build/tables-generated-go/widelist
+
+require featurewitnesses v0.0.0
+
+replace featurewitnesses => ../../../build/tables-generated-go/featurewitnesses

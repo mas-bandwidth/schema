@@ -81,10 +81,10 @@ func Uncook(m *tabletext.Model, root *ir.Struct, file []byte) (*tabletext.Instan
 }
 
 type regionReader struct {
-	m     *tabletext.Model
-	ord   order
-	buf   []byte
-	dir   []DirectoryEntry
+	m        *tabletext.Model
+	ord      order
+	buf      []byte
+	dir      []DirectoryEntry
 	nodes    []*tabletext.Instance // by directory position; nil where the entry is a blob
 	blobs    []*tabletext.Blob     // by directory position; nil where the entry is a table
 	nodeBase int64
