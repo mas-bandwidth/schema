@@ -139,6 +139,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	m.Printf("_M.Roots <- [%s];\n", strings.Join(roots, ", "))
 	m.Printf("%s.link(_M);\n\n", desc)
+	emitStorageLayout(m)
 	if closureHasKeyed(m.Closure) {
 		m.Printf("// THE KEYED ACCESSOR (docs/PORTING.md M5): Keyed(table, field) refuses None\n")
 		m.Printf("// and any key past the enum's last variant by name, in every build.\n")

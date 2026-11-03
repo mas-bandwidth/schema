@@ -22,7 +22,8 @@ local COUNTERS = {
   unknown = "unknown", kindMismatch = "kind_mismatch", widened = "widened",
   clamped = "clamped", duplicate = "duplicate", malformed = "malformed",
   refused = "refused",
-  countRefusal = "count_refusal"
+  countRefusal = "count_refusal",
+  storageOverCap = "storage_over_cap"
 };
 
 // CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
@@ -214,7 +215,7 @@ local witness = function(store, first) {
 // the report's reset: every counter at rest, no reason, no field
 local reset = function(report) {
   foreach (k, _ in COUNTERS)
-    report[k] <- (k == "malformed" || k == "refused" || k == "countRefusal") ? false : 0;
+    report[k] <- (k == "malformed" || k == "refused" || k == "countRefusal" || k == "storageOverCap") ? false : 0;
   report.missingRequired <- false;
   report.reason <- null;
   report.field <- null;
@@ -283,6 +284,12 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local v = _load.loadTolerant(T, root, bytes, witness(store, first), null, true);
   foreach (k, _ in COUNTERS) report[k] = store[k];
   report.missingRequired = store.missingRequired;
+  // A WIRE PAST THE STORAGE CAP (docs/SPEC-TABLES.md §11) is refused by name
+  // before the load builds anything
+  if (store.storageOverCap) {
+    report.reason = "storage_over_cap";
+    return null;
+  }
   // A NON-FINITE FLOAT OUTRANKS EVERY OTHER VERDICT (docs/SPEC-TABLES.md
   // §3.3): the load named it on this report, <Owner>.<field>
   if (report.nonFiniteFloat != null) {
@@ -336,7 +343,7 @@ _M.ReadStrictNames <- {
   previous_form = true, message_form_as_file = true, newer_form = true,
   integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
   non_finite_float = true, clamped = true, kind_mismatch = true, count_refusal = true,
-  missing_required = true,
+  missing_required = true, storage_over_cap = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)
   layout_malformed = true, layout_record_too_large = true, no_layout = true,
   plan_too_large = true

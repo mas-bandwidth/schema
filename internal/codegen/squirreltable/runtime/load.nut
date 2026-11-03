@@ -1301,6 +1301,183 @@ local resolve = function(st, root, report) {
   }
 };
 
+// THE REGION MEASURE (docs/SPEC-TABLES.md §6.5, §8.5, §11): a port of the Lua
+// leg's LoadMeasure (internal/tablewire.FileRegionMeasure): the same walk of
+// the framing, the same rounding, over the C ABI sizes T.StorageLayout
+// carries. It answers the byte count, -1 for a wire it refuses, and -2 for a
+// wire whose measure passes THE STORAGE CAP, 2^40 bytes: storage_over_cap.
+local STORAGE_CAP = 1 << 40;
+local MEASURE_OVER_CAP = -2;
+
+local roundUp = function(n, a) { return (n + a - 1) & -a; };
+
+// one L-framed body as [at, end], or null with the reader ended
+local extentBody = function(r) {
+  local n = leb(r);
+  if (r.bad || n > r.end - r.at) { r.at = r.end; return null; }
+  local at = r.at;
+  r.at = at + n;
+  return [at, at + n];
+};
+
+local armIsPointer = function(fd) {
+  local s = fd.shape;
+  if (s == "ptr" || s == "sblob" || s == "bblob") return true;
+  if (s == "arr" && fd.elem != null) {
+    local es = fd.elem.shape;
+    if (es == "ptr" || es == "sblob" || es == "bblob") return true;
+  }
+  return false;
+};
+
+local measureRecord, measureField, measureUnion;
+
+measureRecord = function(T, ids, scan, desc, b, at, end) {
+  local elems = T.StorageLayout.tables[desc.name].elems;
+  local r = newReader(b, at, end);
+  for (;;) {
+    local ref = leb(r);
+    if (r.bad || ref == 0) return true;
+    if (ref > ids.len() || r.at >= r.end) return true;
+    local id = ids[ref - 1];
+    local kind = u8(r);
+    local fd = (id in desc.byId) ? desc.byId[id] : null;
+    if (fd == null) {
+      if (!skipField(r, kind)) return true;
+    } else if (kind == 15 && fd.shape == "union") {
+      if (!measureUnion(T, ids, scan, unionDesc(T, fd.table), r)) return false;
+    } else if (kind != 13 && kind != 14 && kind != 16) {
+      if (!skipField(r, kind)) return true;
+    } else {
+      local body = extentBody(r);
+      if (body == null) return true;
+      if (kind == fd.kind) {
+        local lay = (id in elems) ? elems[id] : null;
+        if (!measureField(T, ids, scan, fd, lay, r.b, body[0], body[1])) return false;
+      }
+    }
+  }
+};
+
+// lay is a list or map field's [element size, alignment]
+measureField = function(T, ids, scan, fd, lay, b, at, end) {
+  local s = fd.shape;
+  if (s == "ptr" || s == "sblob" || s == "bblob") return true;
+  if (s == "map" || s == "arr") {
+    local r = newReader(b, at, end);
+    if (r.end - r.at < 2) return true;
+    local kind = u8(r);
+    local expected = s == "map" ? 13 : fd.elem.kind;
+    if (kind != expected && !widens(kind, expected)) return true;
+    local count = leb(r);
+    if (r.bad) return true;
+    if (s == "map" || fd.list) {
+      if (count > 0x7fffffff) return false;
+      local floor = kindWidth(kind);
+      if (kind == 13) floor = 2;
+      if (floor < 1) floor = 1;
+      if (count > (r.end - r.at) / floor) return false;
+      // a term past the storage cap is refused before it is summed (§11), so
+      // no count times an element size is multiplied out past it
+      local size = lay[0];
+      local start = roundUp(scan.at, lay[1]);
+      if (count > 0 && size > 0 && count > (STORAGE_CAP - start) / size) {
+        scan.over = true;
+        return false;
+      }
+      scan.at = start + count * size;
+    }
+    if (kind != 13 && kind != 15) return true;
+    local keyed = s == "arr" && fd.keyvariants != null;
+    local sub = null;
+    if (s == "map") sub = T.Descriptors[fd.entry];
+    else if (fd.elem.shape == "tab" && fd.elem.table != null) sub = T.Descriptors[fd.elem.table];
+    for (local i = 0; i < count && r.at < r.end; i++) {
+      if (keyed) {
+        leb(r);
+        if (r.bad) return true;
+      }
+      if (kind == 15) {
+        if (!measureUnion(T, ids, scan, unionDesc(T, fd.elem.table), r)) return false;
+      } else {
+        local body = extentBody(r);
+        if (body == null) return true;
+        if (sub != null && !measureRecord(T, ids, scan, sub, r.b, body[0], body[1])) return false;
+      }
+    }
+    return true;
+  }
+  if (s == "tab") return measureRecord(T, ids, scan, T.Descriptors[fd.table], b, at, end);
+  return true;
+};
+
+measureUnion = function(T, ids, scan, un, r) {
+  local ref = leb(r);
+  if (r.bad) { r.at = r.end; return true; }
+  if (ref == 0) return true;
+  if (ref > ids.len() || r.at >= r.end) { r.at = r.end; return true; }
+  local id = ids[ref - 1];
+  u8(r);
+  local body = extentBody(r);
+  if (body == null) return true;
+  foreach (arm in un.arms) {
+    if (arm.id != id || arm.payload == null || armIsPointer(arm.payload)) continue;
+    if (arm.payload.shape == "union")
+      return measureUnion(T, ids, scan, unionDesc(T, arm.payload.table), newReader(r.b, body[0], body[1]));
+    local elems = T.StorageLayout.unions[un.name];
+    local lay = (id in elems) ? elems[id] : null;
+    return measureField(T, ids, scan, arm.payload, lay, r.b, body[0], body[1]);
+  }
+  return true;
+};
+
+// regionMeasure measures a form-1 file whose integrity trailer, if any, is
+// already removed
+local regionMeasure = function(T, c, bytes) {
+  if (bytes.len() < 9 || (bytes[0] & 0xff) != FORM_VARIABLE) return -1;
+  local count = u64At(bytes, bytes.len() - 8);
+  if (count < 0 || count > (bytes.len() - 9) / 8 || count > ID_TABLE_BOUND) return -1;
+  local end = bytes.len() - 8 - count * 8;
+  local ids = [];
+  local seen = {};
+  for (local i = 0; i < count; i++) {
+    local id = u64At(bytes, end + i * 8);
+    if (id in seen) return -1;
+    seen[id] <- true;
+    ids.append(id);
+  }
+  local SL = T.StorageLayout;
+  local align = SL.regionAlign;
+  local sizeOf = function(d, at, lim) {
+    local scan = { at = 0, over = false };
+    if (!measureRecord(T, ids, scan, d, bytes, at, lim)) return scan.over ? MEASURE_OVER_CAP : -1;
+    return roundUp(roundUp(SL.tables[d.name].size, align) + scan.at, align);
+  };
+  local total = sizeOf(c, 1, end);
+  if (total < 0) return total;
+  local raw = c.variable ? nodeScan(bytes, ids, end, { malformed = false }) : [];
+  if (raw == null) return -1;
+  local lay = SL.tables[c.name];
+  foreach (rec in raw) {
+    if (rec.tid in lay.nodes) {
+      local n = sizeOf(T.Descriptors[lay.nodes[rec.tid]], rec.at, rec.end);
+      if (n < 0) return n;
+      total += n;
+    } else if ((rec.tid == BYTES_BLOB_ID && lay.bblob) || (rec.tid == STRING_BLOB_ID && lay.sblob)) {
+      local blen = rec.end - rec.at;
+      if (blen > 0xffffffff) return -1;
+      local n = 8 + blen;
+      if (rec.tid == STRING_BLOB_ID) n++;
+      total += roundUp(n, align);
+    }
+    // the running total is checked after every node record: each term is at
+    // most the cap, so the sum never overflows
+    if (total > STORAGE_CAP) return MEASURE_OVER_CAP;
+  }
+  total += (raw.len() + 1) * 16;
+  return total > STORAGE_CAP ? MEASURE_OVER_CAP : total;
+};
+
 // THE TOLERANT LOAD (docs/SPEC-TABLES.md §3, §3.1, §4): the form byte, the id
 // table, the node table's records first, then every record's body, then the
 // root body, then the one numbering's resolution. It keeps the recovered value
@@ -1335,6 +1512,20 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     bytes = body;
   }
   if (bytes.len() < 9) { report.malformed = true; return null; }
+  // THE STORAGE CAP (§11) is checked before anything is built: one empty body
+  // of a large fixed table commands its whole storage, and the load builds it.
+  // No wire byte commands more than T.StorageLayout.scale bytes of storage, so
+  // a wire shorter than the cap divided by it cannot pass the cap and is not
+  // measured; a longer one is measured first and refused by name past it.
+  if (bytes.len() >= STORAGE_CAP / T.StorageLayout.scale && regionMeasure(T, c, bytes) == MEASURE_OVER_CAP) {
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.reason <- "storage_over_cap";
+    } else {
+      report.storageOverCap = true;
+    }
+    return null;
+  }
   local count = u64At(bytes, bytes.len() - 8);
   // the count is bounded by division, never by count * 8, which wraps for a
   // count past 2^60 (docs/SPEC-TABLES.md §3: the id table is inside the file),
@@ -1471,6 +1662,25 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     }
   }
   return v;
+};
+
+// LoadMeasure(T, root, bytes [, report]): the region measure of a form-1 file
+// (docs/SPEC-TABLES.md §6.5), the byte count, or -1 for a wire it refuses. A
+// wire whose measure passes the storage cap (§11) answers -1, and the reason
+// storage_over_cap on report when one is passed.
+_M.LoadMeasure <- function(T, rootName, bytes, report = null) {
+  if (bytes == null || !(rootName in T.Descriptors)) return -1;
+  local c = T.Descriptors[rootName];
+  if (bytes.len() >= 1 && (bytes[0] & 0xff) == FORM_VARIABLE && ("integrity" in c) && c.integrity != null && c.integrity != "") {
+    bytes = integrityOpen(bytes);
+    if (bytes == null) return -1;
+  }
+  local n = regionMeasure(T, c, bytes);
+  if (n == MEASURE_OVER_CAP) {
+    if (report != null) report.reason <- "storage_over_cap";
+    return -1;
+  }
+  return n;
 };
 
 // THE STRICT LOAD (docs/SPEC-TABLES.md §6.5): the plain name is the strict
