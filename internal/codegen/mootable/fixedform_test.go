@@ -770,21 +770,22 @@ print(try(0x3F800000, 0, 0x3FF00000))
 	}
 }
 
-// TestMooReadStrictDispatchesTheForm (§6.5, §3.4): table_refusal.moo answers
-// a fixed root's form 3 through its fixed reader and refuses forms 1, 2 and
-// any other byte by direction; a variable root reads form 1 and refuses form
-// 3 as newer_form.
+// TestMooReadStrictDispatchesTheForm (§6.5, §3.4): table_load.moo's ReadStrict,
+// the one strict read, answers a fixed root's form 3 through its fixed reader
+// and reads form 1 as the variable form at both classes; every form byte it
+// does not read (form 2, an unassigned byte, form 3 at a variable root, form
+// 3 with no fixed plan) refuses as unknown_form.
 func TestMooReadStrictDispatchesTheForm(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	u := unitFromSource(t, "package probe\nfixed table Fx\n{\n    a uint32 = 3\n}\ntable Vx\n{\n    a uint32 = 3\n}\n")
 	g := fixedUnit(t, u, nil)
-	main := "--!strict\nlocal R = require(\"./table_refusal\")\nlocal F = require(\"./table_fixed\")\nlocal T = require(\"./ProbeTable\")\n" + `local v = T.NewFx()
+	main := "--!strict\nlocal L = require(\"./table_load\")\nlocal F = require(\"./table_fixed\")\nlocal T = require(\"./ProbeTable\")\n" + `local v = T.NewFx()
 v.A = 9
 local fx = F.save(T.FxDescriptor, T.FxFixed, { v }) :: buffer
 local function read(root: string, b: buffer): string
 	local rep: any = {}
-	local got = R.ReadStrict(T, root, b, rep)
+	local got = L.ReadStrict(root, b, rep, T)
 	if got == nil then return "refused " .. tostring(rep.reason) end
 	return "read " .. tostring(got.A)
 end
@@ -794,8 +795,15 @@ print(read("Fx", buffer.fromstring("\x02\x00\x00")))
 print(read("Fx", buffer.fromstring("\x07")))
 print(read("Vx", fx))
 print(read("Vx", buffer.fromstring("\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00")))
+print(read("Fx", buffer.fromstring("\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00")))
+print((function(): string
+	local rep: any = {}
+	local got = L.ReadStrict("Fx", fx, rep)
+	if got == nil then return "refused " .. tostring(rep.reason) end
+	return "read " .. tostring(got.A)
+end)())
 `
-	want := "read 9\nrefused previous_form\nrefused message_form_as_file\nrefused newer_form\nrefused newer_form\nread 3"
+	want := "read 9\nrefused wire_damaged\nrefused unknown_form\nrefused unknown_form\nrefused unknown_form\nread 3\nread 3\nrefused unknown_form"
 	if got := g.run(t, main, nil); got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}

@@ -51,7 +51,6 @@ var mooModuleKeys = map[string][]string{
 		"resetReport", "setRetain"},
 	"table_message.moo": {"AnnounceRead", "LoadMessages", "MeasureMessages", "NewVocabulary", "SaveMessages",
 		"resetReport", "slots", "unit"},
-	"table_refusal.moo": {"ReadStrict", "ReadStrictNames"},
 	"table_retain.moo": {"FixedClassRefusal", "LoadRetain", "MeasureRetain", "SaveRetain", "ids", "newStore",
 		"used"},
 	"table_save.moo": {"guardHolds", "keyLess", "mapOrder", "measure", "number", "save", "setRetain"},

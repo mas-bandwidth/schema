@@ -9,15 +9,14 @@ package mootable_test
 // (goosetable's TestGooseLoadRefusalReasons).
 //
 //	TestMooLoadRefusalReasons  every row, through table_load.moo's ReadStrict,
-//	    the read a form-1 file goes to. moo's strict read answers ONE name, on
-//	    report.reason: for a row whose form column pins the form refusal (Go's
-//	    TableReport.Reason, Goose's report.reason) that name is the form
-//	    column's, and for every other row it is the strict column's. The tolerant load
-//	    (loadTolerant) names the same form refusal on its report, as Go's
+//	    moo's one strict read. It answers ONE name, on report.reason: the
+//	    strict column's, so every form-byte refusal is unknown_form and every
+//	    damaged wire is wire_damaged (§6.5). The tolerant load (loadTolerant)
+//	    names the form column's refusal on its report, as Go's
 //	    TableReport.Reason does
 //	TestMooLoadRefusalReasonsNegativeControl  breaks the strict read's
-//	    framing verdict, the value-only root's damage bit and the form-2
-//	    reason, each of which must turn exactly its own rows red
+//	    framing verdict, its body-damage name and its form-byte name, each of
+//	    which must turn exactly its own rows red
 
 import (
 	"encoding/hex"
@@ -121,8 +120,8 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 		}
 		for _, r := range mine {
 			want := r.strict
-			if r.form != "-" {
-				want = r.form
+			if want == "malformed" {
+				want = "wire_damaged"
 			}
 			if r.form != "-" && tolerant[r.name] != r.form {
 				bad = append(bad, fmt.Sprintf("%s: the tolerant load's report names %q, want %q", r.name, tolerant[r.name], r.form))
@@ -143,7 +142,7 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 	for _, r := range rows {
 		answered[r.strict] = true
 	}
-	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "kind_mismatch", "clamped", "non_finite_float"} {
+	for _, want := range []string{"ok", "wire_damaged", "unknown_form", "kind_mismatch", "clamped", "non_finite_float"} {
 		if !answered[want] {
 			t.Errorf("no pin row answers %s", want)
 		}
@@ -160,11 +159,12 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 //     wire_damaged: the rows its frame-and-terminator check refuses (a form
 //     byte alone, a cut file, a terminator before the id table) go red, and
 //     only they;
-//   - a value-only root's walk that read past damage no longer marks the
-//     verdict's damage: the row whose bool byte is 2 answers malformed and
-//     goes red, and only it;
-//   - form 2 is named newer_form instead of message_form_as_file: the two
-//     form-2 rows go red, and only they.
+//   - damage in a body behind good framing is named malformed instead of
+//     wire_damaged: the rows whose body is damaged behind good framing (a
+//     count past its field's length, a fixed payload cut short) go red, and
+//     only they;
+//   - a form byte the read does not carry is named newer_form instead of
+//     unknown_form: the seven form-byte rows go red, and only they.
 func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
@@ -176,14 +176,14 @@ func TestMooLoadRefusalReasonsNegativeControl(t *testing.T) {
 			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"wire_damaged\"\n",
 			"\tif fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then\n\t\trep.malformed = true\n\t\trep.reason = \"malformed\"\n",
 			[]string{"cut_last", "fixed_early_end", "form_only"}},
-		{"value-root-damage",
-			"\tif whole and report.malformed and not desc.variable then\n",
-			"\tif false then\n",
-			[]string{"fixed_bool_two"}},
-		{"form-2-reason",
-			"\tif form == 2 then\n\t\trep.reason = \"message_form_as_file\"\n",
-			"\tif form == 2 then\n\t\trep.reason = \"newer_form\"\n",
-			[]string{"form2", "form2_alone"}},
+		{"body-damage-reason",
+			"\t\trep.reason = \"wire_damaged\"\n\t\tif not rep.damaged then\n",
+			"\t\trep.reason = if rep.damaged then \"wire_damaged\" else \"malformed\"\n\t\tif not rep.damaged then\n",
+			[]string{"entries_over_length", "fixed_cut_payload", "values_over_length"}},
+		{"form-byte-reason",
+			"\tif form ~= 1 then\n\t\trep.reason = \"unknown_form\"\n",
+			"\tif form ~= 1 then\n\t\trep.reason = \"newer_form\"\n",
+			[]string{"form0", "form2", "form2_alone", "form3", "form9", "form255", "form255_alone"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()

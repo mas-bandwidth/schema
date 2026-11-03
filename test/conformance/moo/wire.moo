@@ -135,12 +135,13 @@ return function(ctx: any): { [string]: Surface }
 		end,
 	}
 	-- THE STRICT READ'S ONE REASON (docs/SPEC-TABLES.md §6.5) for every report
-	-- and framing row: table_refusal.moo's ReadStrict, its report.reason spelled
-	-- as the bare refusal-names member (a name like `missing_required: <field>`
-	-- answers its name alone), or ok for a read it keeps. T is the <Base>Table
-	-- module carrying the root's fixed form, which a fixed root reads through.
+	-- and framing row: table_load.moo's ReadStrict, the runtime's one strict
+	-- read, its report.reason spelled as the bare refusal-names member (a name
+	-- like `missing_required: <field>` answers its name alone), or ok for a
+	-- read it keeps. T is the <Base>Table module carrying the root's fixed
+	-- form, which a fixed root's form-3 file reads through.
 	local function strictCarried(_: any, key: string): boolean
-		return ctx.module(key, "table_refusal") ~= nil
+		return ctx.module(key, "table_load") ~= nil
 	end
 	surfaces["strict-reason"] = {
 		carried = strictCarried,
@@ -152,7 +153,7 @@ return function(ctx: any): { [string]: Surface }
 						continue
 					end
 					ctx.tables(f[3])
-					local R: any = ctx.module(f[3], "table_refusal")
+					local L: any = ctx.module(f[3], "table_load")
 					local T: any = nil
 					for _, name in ctx.tableNames(f[3]) do
 						local m: any = ctx.module(f[3], name)
@@ -161,7 +162,7 @@ return function(ctx: any): { [string]: Surface }
 						end
 					end
 					local report: any = {}
-					local v = R.ReadStrict(T, f[4], ctx.inputs(f[5]), report)
+					local v = L.ReadStrict(f[4], ctx.inputs(f[5]), report, T)
 					local reason: string? = report.reason
 					if reason ~= nil then
 						ctx.say(f[2], (string.match(reason, "^[%w_]+") or reason) .. "\n")

@@ -15,6 +15,7 @@
 
 local S = require("./schema_tables")
 local V = require("./table_values")
+local F = require("./table_fixed")
 
 local L = {}
 
@@ -1880,10 +1881,9 @@ end
 
 -- the counters that refuse, in TableReport.Err()'s order (§6.5), each with
 -- its §11 name
-local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch" }
+local REFUSING = { "missingRequired", "blobShared", "clamped", "kindMismatch" }
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
-	malformed = "malformed",
 	blobShared = "blob_shared",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
@@ -2227,12 +2227,20 @@ local function witness(root: string, b: buffer, k: string): string?
 	return nil
 end
 
--- THE VARIABLE FORM'S STRICT READ (§6.5): the one answer for form 1, over
--- the tolerant walk. It resets the caller's report, applies the file's own
--- framing (integrity, the id table and the root body's terminator), then the
--- non-finite refusal, then the refusing counters in TableReport.Err()'s
--- order, so a wire always answers one name.
-function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
+-- THE STRICT READ (§6.5, §3, §3.4): the runtime's one strict read, for both
+-- classes. It answers the root's value or refuses with ONE name. Every
+-- form-byte refusal is unknown_form (§6.5, strict error identity); the
+-- tolerant load's report keeps naming the direction. Form 1 is read as the
+-- variable form at every root, a declared-fixed root included. Form 3 at a
+-- declared-fixed root is read through its fixed reader (table_fixed.moo) and
+-- answers that reader's own §3.4 names; T is the <Base>Table module that
+-- carries the root's fixed plan, and without it form 3 is unknown_form. For
+-- form 1 it resets the caller's report, applies the file's own framing
+-- (integrity, the id table and the root body's terminator), then the
+-- non-finite refusal, then the refusing counters, so a wire always answers
+-- one name. ALL DAMAGE IS wire_damaged (§4, §6.5): the report's malformed
+-- flag stays set, and the strict read names it wire_damaged.
+function L.ReadStrict(root: string, bytes: buffer?, report: any?, T: any?): any
 	local rep: any = report or {}
 	reset(rep)
 	if bytes == nil or buffer.len(bytes) < 1 then
@@ -2242,15 +2250,38 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 	end
 	local b = bytes :: buffer
 	local form = buffer.readu8(b, 0)
-	if form == 2 then
-		rep.reason = "message_form_as_file"
-		return nil
+	local d = S.lookup(root)
+	if form == 3 and d.fixed then
+		local fixed = if T ~= nil then T[root .. "Fixed"] else nil
+		if fixed == nil then
+			rep.reason = "unknown_form"
+			return nil
+		end
+		local values = F.load(d, fixed, b, rep)
+		if values == nil then
+			return nil
+		end
+		if #values ~= 1 then
+			reset(rep)
+			rep.malformed = true
+			rep.reason = "wire_damaged"
+			return nil
+		end
+		-- the fixed load's counters refuse as the variable read's do
+		if rep.clamped > 0 then
+			rep.reason = "clamped"
+			return nil
+		end
+		if rep.kindMismatch > 0 then
+			rep.reason = "kind_mismatch"
+			return nil
+		end
+		return values[1]
 	end
 	if form ~= 1 then
-		rep.reason = "newer_form"
+		rep.reason = "unknown_form"
 		return nil
 	end
-	local d = S.lookup(root)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local body = integrityOpen(b)
 		if body == nil then
@@ -2278,11 +2309,13 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.reason = "count_over_extent_cap"
 		return nil
 	end
-	-- THE VERDICT'S DAMAGE IS wire_damaged, and a malformed body behind good
-	-- framing is malformed (TableReport.Err()'s order); a load that read
-	-- nothing whole and names nothing else is wire_damaged
-	if rep.damaged then
+	-- damage, in the framing or in a body behind good framing, is
+	-- wire_damaged and outranks every counter: it discards the whole load
+	if rep.damaged or rep.malformed then
 		rep.reason = "wire_damaged"
+		if not rep.damaged then
+			rep.field = witness(root, b, "malformed")
+		end
 		return nil
 	end
 	for _, k in REFUSING do
@@ -2316,7 +2349,7 @@ function L.setRetain(h: any)
 	_retain = h
 end
 
--- resetReport is the report at rest, shared with refusal.moo's fixed path.
+-- resetReport is the report at rest.
 function L.resetReport(report: any)
 	reset(report)
 end
