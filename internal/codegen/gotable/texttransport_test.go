@@ -61,8 +61,8 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	}
 	text := base64.StdEncoding.EncodeToString(wire)
 	got, err := RootLoadText(text, nil)
-	if got != nil || err == nil || err.Error() != "malformed" || !errors.Is(err, TableRefuseMalformed) {
-		t.Fatalf("nil report: value %v, error %v; want nil and malformed", got != nil, err)
+	if got != nil || err == nil || err.Error() != "wire_damaged" || !errors.Is(err, TableRefuseWireDamaged) {
+		t.Fatalf("nil report: value %v, error %v; want nil and wire_damaged", got != nil, err)
 	}
 	var r TableReport
 	got, err = RootLoadText(text, &r)

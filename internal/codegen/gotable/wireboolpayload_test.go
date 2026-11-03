@@ -107,8 +107,8 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		if report.Reason != "malformed: "+field {
 			t.Fatalf("Reason=%q want %q", report.Reason, "malformed: "+field)
 		}
-		if _, err := PatrolReadStrict(bad); !errors.Is(err, TableRefuseMalformed) {
-			t.Fatalf("strict read did not refuse malformed %s: %v", field, err)
+		if _, err := PatrolReadStrict(bad); !errors.Is(err, TableRefuseWireDamaged) {
+			t.Fatalf("strict read did not refuse wire_damaged for %s: %v", field, err)
 		}
 	}
 

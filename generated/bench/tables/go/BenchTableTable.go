@@ -234,6 +234,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	TextDamaged bool // JSON text damage, which Err names malformed (§16.2); wire damage is wire_damaged (§6.5)
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served
@@ -736,16 +737,16 @@ func (r TableRefuseReason) Error() string {
 
 // tableTruncatedMalformed is the typed error a truncated fixed load answers
 // (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): a short file is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is a value, not the caller's *TableReport, so the error keeps its
+// damage (wire_damaged) by class and truncated by name, so a caller matching
+// either sees it. It is a value, not the caller's *TableReport, so the error keeps its
 // answer when the report is reused. The rule is on this error, not on the
 // enum: the fixed writer's short output buffer returns TableRefuseTruncated
-// itself and never matches malformed.
+// itself and never matches wire_damaged.
 type tableTruncatedMalformed struct{}
 
 func (tableTruncatedMalformed) Error() string { return TableRefuseTruncated.Error() }
 func (tableTruncatedMalformed) Is(target error) bool {
-	return target == TableRefuseTruncated || target == TableRefuseMalformed
+	return target == TableRefuseTruncated || target == TableRefuseWireDamaged
 }
 func tableRefuseError(reason TableRefuseReason) error {
 	if reason == TableRefuseOk {
@@ -872,7 +873,12 @@ func (r *TableReport) Err() error {
 	if r.Reason == "count_over_extent_cap" {
 		return TableRefuseCountOverExtentCap
 	}
-	if r.Verdict == TableOpenDamaged {
+	// Wire DAMAGE, framing or body, is wire_damaged ahead of missing_required (§4, §6.5); JSON text damage is malformed (§16.2).
+	if w := r.Malformed && !r.TextDamaged; w || r.Verdict == TableOpenDamaged {
+		const p = "malformed: "
+		if w && len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
+			return TableMalformedField{Field: r.Reason[len(p):]}
+		}
 		return TableRefuseWireDamaged
 	}
 	if r.MissingRequired > 0 {
@@ -884,10 +890,6 @@ func (r *TableReport) Err() error {
 		return TableMissingRequired{Fields: f}
 	}
 	if r.Malformed {
-		const p = "malformed: "
-		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
-			return TableMalformedField{Field: r.Reason[len(p):]}
-		}
 		return TableRefuseMalformed
 	}
 	// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
@@ -955,13 +957,13 @@ func tableTextMalformed(r *TableReport, field string) {
 	}
 }
 
-// TableMalformedField is a strict read's malformed refusal naming the text
-// list or map it refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1):
-// errors.Is(err, TableRefuseMalformed) holds.
+// TableMalformedField is a strict read's damage refusal naming the text list
+// or map the report called malformed (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1, §6.5): its
+// name is wire_damaged and errors.Is(err, TableRefuseWireDamaged) holds.
 type TableMalformedField struct{ Field string }
 
-func (e TableMalformedField) Error() string        { return "malformed: " + e.Field }
-func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+func (e TableMalformedField) Error() string        { return "wire_damaged: " + e.Field }
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseWireDamaged }
 
 const tableIDCapacity = 78
 const tableIDBuckets = 256
@@ -4366,12 +4368,8 @@ func TableEntityLoadTolerant(value *TableEntity, data []byte, report *TableRepor
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -4682,12 +4680,8 @@ func TableStatLoadTolerant(value *TableStat, data []byte, report *TableReport) b
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -6596,12 +6590,8 @@ func TableMixedLoadTolerant(value *TableMixed, data []byte, report *TableReport)
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7029,12 +7019,8 @@ func TableHitEventLoadTolerant(value *TableHitEvent, data []byte, report *TableR
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7351,12 +7337,8 @@ func TableChatEventLoadTolerant(value *TableChatEvent, data []byte, report *Tabl
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {
@@ -7673,12 +7655,8 @@ func TablePickupEventLoadTolerant(value *TablePickupEvent, data []byte, report *
 	report.Reason = ""
 	if verdict == TableOpenRefused {
 		report.Reason = "newer_form"
-		if len(data) > 0 {
-			if data[0] == 2 {
-				report.Reason = "message_form_as_file"
-			} else if data[0] == 0 {
-				report.Reason = "previous_form"
-			}
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
 		}
 	}
 	if verdict != TableOpenOk {

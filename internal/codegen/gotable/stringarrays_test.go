@@ -405,7 +405,7 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	if !report.Malformed {
 		t.Fatalf("ill-formed UTF-8 element: %+v", report)
 	}
-	if _, err := ListsReadStrict(file("\xc3")); !errors.Is(err, TableRefuseMalformed) {
+	if _, err := ListsReadStrict(file("\xc3")); !errors.Is(err, TableRefuseWireDamaged) {
 		t.Fatalf("ReadStrict ill-formed: %v", err)
 	}
 }

@@ -183,7 +183,7 @@ func TestFixedStrict(t *testing.T) {
 	fixed := []wcase{
 		{"clamped", clamped, TableRefuseClamped, func(r TableReport) bool {return r.Clamped == 1}},
 		{"kind_mismatch", olderFile, TableRefuseKindMismatch, func(r TableReport) bool {return r.KindMismatch == 1}},
-		{"truncated", form3[:len(form3)-1], TableRefuseMalformed, func(r TableReport) bool {return r.Malformed}},
+		{"truncated", form3[:len(form3)-1], TableRefuseWireDamaged, func(r TableReport) bool {return r.Malformed}},
 	}
 	for _, c := range fixed {
 		got[0] = Fix{N: 9, M: 9}
@@ -206,7 +206,7 @@ func TestFixedStrict(t *testing.T) {
 	forged[2] = forged[2]&^0x78 | 0x78
 	messages := []wcase{
 		{"clamped", forged, TableRefuseClamped, func(r TableReport) bool {return r.Clamped == 1}},
-		{"truncated", msg[:1], TableRefuseMalformed, func(r TableReport) bool {return r.Malformed}},
+		{"truncated", msg[:1], TableRefuseWireDamaged, func(r TableReport) bool {return r.Malformed}},
 	}
 	for _, c := range messages {
 		got[0] = Fix{N: 9, M: 9}

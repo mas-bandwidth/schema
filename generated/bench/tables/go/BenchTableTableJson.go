@@ -2164,6 +2164,7 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	if in.bad || !ok || report.Malformed {
 		info.Reset(value)
 		report.Malformed = true
+		report.TextDamaged = true
 		return false
 	}
 	report.Malformed = pre

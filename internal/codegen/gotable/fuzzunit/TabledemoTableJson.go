@@ -2164,6 +2164,7 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 	if in.bad || !ok || report.Malformed {
 		info.Reset(value)
 		report.Malformed = true
+		report.TextDamaged = true
 		return false
 	}
 	report.Malformed = pre
@@ -3527,6 +3528,7 @@ func tableRegionFromJSON(value unsafe.Pointer, info *TableTypeInfo, worker *Tabl
 	}
 	if value == nil {
 		report.Malformed = true
+		report.TextDamaged = true
 		return false
 	}
 	graph := tableJSONGraph{alloc: worker.Alloc, allocate: worker.Arena.Allocator.alloc, release: worker.Arena.Allocator.free}
@@ -3541,6 +3543,7 @@ func tableRegionFromJSON(value unsafe.Pointer, info *TableTypeInfo, worker *Tabl
 	if !ok || in.bad || in.pos != len(text) || report.Malformed {
 		info.Reset(value)
 		report.Malformed = true
+		report.TextDamaged = true
 		return false
 	}
 	report.Malformed = pre

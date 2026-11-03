@@ -398,9 +398,9 @@ func tableRegionPack(root unsafe.Pointer,info *TableTypeInfo,a *TableArena) ([]b
 
 const tableRegionJSONSource = `
 func tableRegionFromJSON(value unsafe.Pointer,info *TableTypeInfo,worker *TableWorker,text []byte,report *TableReport,options TableJSONOptions) bool {
- if report==nil {var ignored TableReport;report=&ignored};if value==nil {report.Malformed=true;return false}
+ if report==nil {var ignored TableReport;report=&ignored};if value==nil {report.Malformed=true;report.TextDamaged=true;return false}
  graph:=tableJSONGraph{alloc:worker.Alloc,allocate:worker.Arena.Allocator.alloc,release:worker.Arena.Allocator.free};defer graph.close()
- pre:=report.Malformed;report.Malformed=false;in:=tableJSONIn{text:text,report:report,graph:&graph,nullEmpty:options.NullAsEmpty};info.Reset(value);in.byteOrderMark();ok:=tableJSONReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text)||report.Malformed{info.Reset(value);report.Malformed=true;return false};report.Malformed=pre;return true // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4)
+ pre:=report.Malformed;report.Malformed=false;in:=tableJSONIn{text:text,report:report,graph:&graph,nullEmpty:options.NullAsEmpty};info.Reset(value);in.byteOrderMark();ok:=tableJSONReadTable(&in,value,info,0);in.space();if !ok||in.bad||in.pos!=len(text)||report.Malformed{info.Reset(value);report.Malformed=true;report.TextDamaged=true;return false};report.Malformed=pre;return true // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4)
 }
 // The text writer refuses a blob named from two slots by name, blob_shared:
 // there is no spelling to owe, and writing the value at each slot is the

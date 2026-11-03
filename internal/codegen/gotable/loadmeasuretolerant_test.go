@@ -18,7 +18,7 @@ func TestGoLoadMeasureSizesTheTolerantLoadOfDamagedFraming(t *testing.T) {
   n:=RootLoadMeasure(cut);if n<0{t.Fatalf("tolerant load measure %d on the cut wire",n)}
   raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)]
   var r TableReport;if v:=RootLoadTolerant(region,cut,&r);v!=nil||!r.Malformed{t.Fatalf("tolerant load of the cut wire must discard the whole load: nil=%t report %+v",v==nil,r)}
-  var pr TableReport;if v:=RootLoad(region,cut,&pr);v!=nil||!errors.Is(pr.Err(),TableRefuseMalformed){t.Fatalf("strict plain load of the cut wire: nil=%t err %v",v==nil,pr.Err())}
+  var pr TableReport;if v:=RootLoad(region,cut,&pr);v!=nil||!errors.Is(pr.Err(),TableRefuseWireDamaged){t.Fatalf("strict plain load of the cut wire: nil=%t err %v",v==nil,pr.Err())}
  }
  `)
 }

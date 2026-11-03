@@ -113,14 +113,14 @@ case TableRefuseLengthOverBound:return "length_over_bound"
 };return "invalid refusal reason"}
 // tableTruncatedMalformed is the typed error a truncated fixed load answers
 // (docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): a short file is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is a value, not the caller's *TableReport, so the error keeps its
+// damage (wire_damaged) by class and truncated by name, so a caller matching
+// either sees it. It is a value, not the caller's *TableReport, so the error keeps its
 // answer when the report is reused. The rule is on this error, not on the
 // enum: the fixed writer's short output buffer returns TableRefuseTruncated
-// itself and never matches malformed.
+// itself and never matches wire_damaged.
 type tableTruncatedMalformed struct{}
 func(tableTruncatedMalformed) Error() string {return TableRefuseTruncated.Error()}
-func(tableTruncatedMalformed) Is(target error) bool {return target==TableRefuseTruncated||target==TableRefuseMalformed}
+func(tableTruncatedMalformed) Is(target error) bool {return target==TableRefuseTruncated||target==TableRefuseWireDamaged}
 func tableRefuseError(reason TableRefuseReason)error{if reason==TableRefuseOk{return nil};return reason}
 // TableBuildVersionMismatch is the typed error a strict announcement refusal
 // reports (docs/SPEC-TABLES.md §3.3): the endpoint's build version and the
@@ -185,9 +185,10 @@ if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
 // A builder load that met a count above the int32 storage cap refused it by
 // name (docs/SPEC-TABLES.md §2.9): not damage, so Malformed stays false.
 if r.Reason=="count_over_extent_cap" {return TableRefuseCountOverExtentCap}
-if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
+// Wire DAMAGE, framing or body, is wire_damaged ahead of missing_required (§4, §6.5); JSON text damage is malformed (§16.2).
+if w:=r.Malformed&&!r.TextDamaged;w||r.Verdict==TableOpenDamaged {const p="malformed: ";if w&&len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
-if r.Malformed {const p="malformed: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseMalformed}
+if r.Malformed {return TableRefuseMalformed}
 // A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
 // the one node and counts it; the strict read refuses it by name.
 if r.BlobShared>0 {return TableRefuseBlobShared}
@@ -218,11 +219,11 @@ func (e TableClampedField) Is(target error) bool { return target == TableRefuseC
 // tableTextMalformed names the text list or map whose element or key a read
 // refused (docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
 func tableTextMalformed(r *TableReport,field string){if r!=nil&&r.Reason==""{r.Reason="malformed: "+field}}
-// TableMalformedField is a strict read's malformed refusal naming the text
-// list or map it refused (docs/SPEC-TABLES.md §2.13.1):
-// errors.Is(err, TableRefuseMalformed) holds.
+// TableMalformedField is a strict read's damage refusal naming the text list
+// or map the report called malformed (docs/SPEC-TABLES.md §2.13.1, §6.5): its
+// name is wire_damaged and errors.Is(err, TableRefuseWireDamaged) holds.
 type TableMalformedField struct{ Field string }
-func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
-func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+func (e TableMalformedField) Error() string { return "wire_damaged: " + e.Field }
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseWireDamaged }
 
 `

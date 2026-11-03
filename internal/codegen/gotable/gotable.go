@@ -1006,6 +1006,7 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
+	TextDamaged bool // JSON text damage, which Err names malformed (§16.2); wire damage is wire_damaged (§6.5)
 	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
 	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
 	// reports it too — the operator's other answer, a layout this build served

@@ -514,8 +514,8 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 		}
 		_, err := WhereReadStrict(c.image)
 		var named TableMalformedField
-		if !errors.Is(err, TableRefuseMalformed) || !errors.As(err, &named) || named.Field != c.field || err.Error() != "malformed: "+c.field {
-			t.Fatalf("%s: ReadStrict %v, want malformed naming %s", c.name, err, c.field)
+		if !errors.Is(err, TableRefuseWireDamaged) || !errors.As(err, &named) || named.Field != c.field || err.Error() != "wire_damaged: "+c.field {
+			t.Fatalf("%s: ReadStrict %v, want wire_damaged naming %s", c.name, err, c.field)
 		}
 	}
 	// a duplicate key is §2.8's event: last wins, counted, not malformed
