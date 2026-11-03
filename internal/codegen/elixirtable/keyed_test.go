@@ -558,8 +558,13 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 	// slots whose body was mutated inside the outer keyed-array frame.
 	const target = `      case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
-          {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
-          read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+            {:cont, v, report} ->
+              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
+
+            {:halt, v, report} ->
+              {:halt, Map.put(acc, name, v), report}
+          end
 
         :error ->
           read_keyed_pairs(
@@ -572,7 +577,7 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
             %{report | unknown: report.unknown + 1}
           )
       end`
-	const sabotage = `      {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+	const sabotage = `      {_status, v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
       case Map.fetch(f.key_by_id, kid) do
         {:ok, name} ->
           read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
