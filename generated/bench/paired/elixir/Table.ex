@@ -6345,100 +6345,109 @@ defmodule Bench.Table do
   # length header, its bytes and its terminator, rounded; a type id this build
   # cannot name commands none. A node table that cannot be read whole commands
   # nothing, exactly as a reader that cannot name it steps over it.
-  defp measure_nodes(bin, ids, desc) do
+  defp measure_nodes(bin, ids, desc), do: measure_nodes(bin, ids, desc, nil)
+
+  defp measure_nodes(bin, ids, desc, found) do
     case leb(bin) do
       :error ->
-        {:ok, 0, 0}
+        measure_found_nodes(found, ids, desc)
 
       {0, _rest} ->
-        {:ok, 0, 0}
+        measure_found_nodes(found, ids, desc)
 
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
-            {:ok, 0, 0}
+            measure_found_nodes(found, ids, desc)
 
           id ->
             case rest do
               <<kind, rest2::binary>> ->
-                case slice(rest2, kind) do
-                  {:ok, payload, rest3} ->
-                    if id == @node_id and kind == 12 do
-                      case measure_node_table(payload, ids, desc) do
-                        {:ok, count, blobs} -> {:ok, count, blobs}
-                        :error -> {:ok, 0, 0}
-                      end
-                    else
-                      measure_nodes(rest3, ids, desc)
+                if id == @node_id do
+                  if kind == 12 do
+                    case slice(rest2, 12) do
+                      {:ok, payload, rest3} -> measure_nodes(rest3, ids, desc, payload)
+                      :error -> {:ok, 0, 0}
                     end
-
-                  :error ->
+                  else
                     {:ok, 0, 0}
+                  end
+                else
+                  case slice(rest2, kind) do
+                    {:ok, _payload, rest3} -> measure_nodes(rest3, ids, desc, found)
+                    :error -> measure_found_nodes(found, ids, desc)
+                  end
                 end
 
               _ ->
-                {:ok, 0, 0}
+                measure_found_nodes(found, ids, desc)
             end
         end
     end
   end
+
+  defp measure_found_nodes(nil, _ids, _desc), do: {:ok, 0, 0}
+  defp measure_found_nodes(payload, ids, desc), do: measure_node_table(payload, ids, desc)
 
   defp measure_node_table(bin, ids, desc) do
-    case leb(bin) do
-      {l, rest} when byte_size(rest) >= l ->
-        content = binary_part(rest, 0, l)
-
-        case leb(content) do
-          {n, cr} -> measure_records(cr, n, ids, desc, 0, 0)
-          :error -> :error
-        end
-
-      _ ->
-        :error
+    with {l, rest} when byte_size(rest) >= l <- leb(bin),
+         content = binary_part(rest, 0, l),
+         {n, cr} <- leb(content),
+         {:ok, records} <- scan_measure_records(cr, n, ids, []) do
+      measure_records(records, ids, desc, 0, 0)
+    else
+      _ -> {:ok, 0, 0}
     end
   end
 
-  defp measure_records(_rest, 0, _ids, _desc, count, blobs), do: {:ok, count, blobs}
+  defp scan_measure_records(<<>>, n, _ids, acc) do
+    if n == length(acc), do: {:ok, Enum.reverse(acc)}, else: :error
+  end
 
-  defp measure_records(rest, n, ids, desc, count, blobs) do
+  defp scan_measure_records(rest, n, ids, acc) do
     with {tref, r1} <- leb(rest),
+         true <- tref != 0 and tref <= div(byte_size(ids), 8),
          {len, r2} <- leb(r1),
          true <- byte_size(r2) >= len do
-      type_id = resolve(ids, tref)
-      body = binary_part(r2, 0, len)
+      rec = {resolve(ids, tref), len, binary_part(r2, 0, len)}
 
-      added =
-        cond do
-          type_id == @string_id and desc.string_blob ->
-            {:ok, region_round(8 + len + 1)}
-
-          type_id == @bytes_id and desc.bytes_blob ->
-            {:ok, region_round(8 + len)}
-
-          Map.has_key?(desc.node_types, type_id) ->
-            node = Map.fetch!(@tables, Map.fetch!(desc.node_types, type_id))
-
-            case extent(node, body, ids) do
-              {:ok, at} -> {:ok, region_round(region_round(node.size) + at)}
-              :error -> :error
-            end
-
-          true ->
-            {:ok, 0}
-        end
-
-      with {:ok, bytes} <- added do
-        measure_records(
-          binary_part(r2, len, byte_size(r2) - len),
-          n - 1,
-          ids,
-          desc,
-          count + 1,
-          blobs + bytes
-        )
-      end
+      scan_measure_records(
+        binary_part(r2, len, byte_size(r2) - len),
+        n,
+        ids,
+        [rec | acc]
+      )
     else
       _ -> :error
+    end
+  end
+
+  defp measure_records([], _ids, _desc, count, blobs), do: {:ok, count, blobs}
+
+  defp measure_records([{type_id, len, body} | rest], ids, desc, count, blobs) do
+    added =
+      cond do
+        type_id == @string_id and desc.string_blob ->
+          if len > 0xFFFFFFFF, do: :error, else: {:ok, region_round(8 + len + 1)}
+
+        type_id == @bytes_id and desc.bytes_blob ->
+          if len > 0xFFFFFFFF, do: :error, else: {:ok, region_round(8 + len)}
+
+        Map.has_key?(desc.node_types, type_id) ->
+          node = Map.fetch!(@tables, Map.fetch!(desc.node_types, type_id))
+
+          case extent(node, body, ids) do
+            {:ok, at} -> {:ok, region_round(region_round(node.size) + at)}
+            :error -> :error
+          end
+
+        true ->
+          {:ok, 0}
+      end
+
+    case added do
+      {:ok, bytes} -> measure_records(rest, ids, desc, count + 1, blobs + bytes)
+      :error -> :error
     end
   end
 
