@@ -1,0 +1,339 @@
+{
+  "language": "cs",
+  "tested_revision": "16dcb340f64d1d2f499334ec8e4cc1d72ed1f9c6",
+  "source_provenance": {
+    "physical_checkout_revision": "b2ff760d95fd45f6bc58a11ceb78757dfe17c82c",
+    "note": "The nightly began with these 11 uncommitted files frozen over the recorded base. Their exact bytes were subsequently committed in a30ff5d, 18f0a61 and 16dcb340f. No source was changed during the run.",
+    "frozen_source_sha256": {
+      "test/conformance/cs/src/BuilderCodecs.cs": "d550a771fe05bb5215dd326ea9dfc44dd461b9a845d20ebdd0a9dfb5e5a91135",
+      "test/conformance/cs/src/Program.cs": "88b5115354dfd835fdd0af9f53dba1d1548f8b7e9281ee9135fd850f74c249d2",
+      "test/conformance/cs/src/RegionCodecs.cs": "78b14fff241435eb175e5d9cfda46c217a77f9256d3eda2fb4b86b55b30d94eb",
+      "test/conformance/cs/src/RetainCodecs.cs": "6a37203b4828458fd27c864c6fac44d3c9ebf4315f69e79cfe5a3ea45077df28",
+      "test/conformance/nightly-readiness": "78c750b4a06e42c630bc91dffd5fd521f4d7b37be8bbf0c9a12759481f915006",
+      "test/conformance/nightly-readiness.md": "d9e17255c00999ff13eb5c4fa77dd75e4674ab1c0f9a0b90da56d5b4654e7c36",
+      "test/conformance/nightly_readiness_test.py": "572ec64cd25d5f70e8611758505844b8e612aed28bfe45bfb8cb32b0f9d35c60",
+      "internal/codegen/cstable/maps.go": "6d65b1b7c09f6fe06b5c3c45039fbaa66b2cc32c5e053727303224a754a44b56",
+      "internal/codegen/cstable/region.go": "564f14c640769d8753568f7199a4b60230182d061b5a8c3725c487d6fe4d617b",
+      "internal/codegen/cstable/unbounded_text_test.go": "4f4c4b8bdb345d46cb52d408ba10015f1f75b80b268318399bbba5ea916ec0d8",
+      "internal/codegen/cstable/map_repeated_key_widen_test.go": "f2ee1af0c456268e686710e1cdec6edf85d71d0e43af1f9e513a42a358362a7f"
+    },
+    "artifact_sha256": {
+      "nightly-base-sha.txt": "fcb0f43fae984b3f7880cc6a362fa8f1eababa30304538e9cb21c341b9c99eb0",
+      "nightly-source-sha256.txt": "e68ec149b1eb1183afae05cdb68c3d038a8aca2a0ddd9c58e237408c494e620f",
+      "nightly-frozen-source.patch": "a4bd8861b98f59436d90910ef7bb635c6834f2f491e6044e8f8a16a6f56373fe",
+      "nightly-frozen-source-files.tar.gz": "0a7a3e7bb76e12be7099e76358ecf339d69fe072fc5aa85e6a70229689b237fe",
+      "nightly-complete-attempt.log": "a22c58fed5489d1986cf00274837cd9fdba2b6ec6aeed17ea0bdc09d2b044692"
+    },
+    "committed_file_verification": "All 11 frozen file digests independently match git show at tested_revision."
+  },
+  "host": "hulk",
+  "command": "GOMAXPROCS=2 GOFLAGS=-p=2 DOTNET=/home/gaffer/sdk/bin/dotnet test/conformance/nightly-readiness cs",
+  "toolchains": {
+    "go": "go1.26.10 linux/amd64",
+    "dotnet": "10.0.401"
+  },
+  "finished_utc": "2026-11-03T00:08:13Z",
+  "result": "NIGHTLY_READINESS_PASS language=cs phases=26",
+  "implementation": {
+    "registered_constructs": 11,
+    "qualified_witnesses": 3
+  },
+  "native_events": {
+    "lockfile": {
+      "pass": 295,
+      "fail": 0,
+      "skip": 0
+    },
+    "csharp": {
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    },
+    "cstable": {
+      "pass": 464,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "wire_profiles": {
+    "plain": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "profile": "region",
+      "corpus_seeds": 212,
+      "roots": 64,
+      "outside_arm_seeds": 0,
+      "enumerated_per_seed": 162036,
+      "random_per_seed": 100000,
+      "divergences": 0,
+      "summaries": [
+        "wire-fuzz: seed 1, 212 seeds over 64 roots, 162036 enumerated + 100000 random = 262036 mutants, 0 divergences, 137.7 s, 1903 mutants/s",
+        "wire-fuzz: seed 2, 212 seeds over 64 roots, 162036 enumerated + 100000 random = 262036 mutants, 0 divergences, 121.0 s, 2165 mutants/s",
+        "wire-fuzz: seed 3, 212 seeds over 64 roots, 162036 enumerated + 100000 random = 262036 mutants, 0 divergences, 124.2 s, 2109 mutants/s"
+      ]
+    },
+    "retain": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "profile": "region",
+      "corpus_seeds": 92,
+      "roots": 28,
+      "outside_arm_seeds": 120,
+      "enumerated_per_seed": 91392,
+      "random_per_seed": 100000,
+      "divergences": 0,
+      "summaries": [
+        "wire-fuzz retain: seed 1, 92 seeds over 28 roots, 120 seeds outside the arm, 91392 enumerated + 100000 random = 191392 mutants, 0 divergences, 119.8 s, 1598 mutants/s",
+        "wire-fuzz retain: seed 2, 92 seeds over 28 roots, 120 seeds outside the arm, 91392 enumerated + 100000 random = 191392 mutants, 0 divergences, 149.8 s, 1278 mutants/s",
+        "wire-fuzz retain: seed 3, 92 seeds over 28 roots, 120 seeds outside the arm, 91392 enumerated + 100000 random = 191392 mutants, 0 divergences, 121.9 s, 1570 mutants/s"
+      ]
+    },
+    "builder": {
+      "seeds": [
+        1,
+        2,
+        3
+      ],
+      "profile": "mutable-builder",
+      "corpus_seeds": 92,
+      "roots": 28,
+      "outside_arm_seeds": 120,
+      "enumerated_per_seed": 91392,
+      "random_per_seed": 100000,
+      "divergences": 0,
+      "summaries": [
+        "wire-fuzz-builder: seed 1, 92 seeds over 28 roots, 120 seeds outside the arm, 91392 enumerated + 100000 random = 191392 mutants, 0 divergences, 162.3 s, 1179 mutants/s",
+        "wire-fuzz-builder: seed 2, 92 seeds over 28 roots, 120 seeds outside the arm, 91392 enumerated + 100000 random = 191392 mutants, 0 divergences, 128.5 s, 1489 mutants/s",
+        "wire-fuzz-builder: seed 3, 92 seeds over 28 roots, 120 seeds outside the arm, 91392 enumerated + 100000 random = 191392 mutants, 0 divergences, 127.9 s, 1496 mutants/s"
+      ]
+    }
+  },
+  "total_mutants": 1934460,
+  "profile_note": "Six region phases cover the complete plain roster and normative retaining arm. Three additional mutable-builder phases cover all variable-file roots. Fixed/message seeds outside that supplemental arm are covered by the region phases, not exempted from readiness.",
+  "control_note": "Pack and retaining controls both execute the expected positive and sabotaged assertions; the wrapper exits zero only when those controls behave as specified.",
+  "fixed_oracle": {
+    "files_including_stamp": 78,
+    "content_files": 77,
+    "manifest_sha256": "032765199f974d98fbc33b77b2098bacb7da549d551ca5188d7660c5bbb4f415",
+    "listing_sha256": "30b9c78db280b4378682966deec286823eaa6f63ef2620e91e8942ed92f4c41f"
+  },
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 1.2268858519382775,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 1.187144840019755,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 1.0514814429916441,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 10.879495362052694,
+      "errors": []
+    },
+    {
+      "phase": "native-list-csharp",
+      "exit": 0,
+      "seconds": 0.9665507100289688,
+      "errors": []
+    },
+    {
+      "phase": "native-csharp",
+      "exit": 0,
+      "seconds": 0.3505874640541151,
+      "errors": []
+    },
+    {
+      "phase": "native-list-cstable",
+      "exit": 0,
+      "seconds": 0.7276902189478278,
+      "errors": []
+    },
+    {
+      "phase": "native-cstable",
+      "exit": 0,
+      "seconds": 228.0504768450046,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.3446898990077898,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 4.252214544918388,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 3.7574960539350286,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 3.4376756160054356,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 3.5219815589953214,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 22.195185380987823,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 152.573621988995,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 28.437267950968817,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 138.89242438599467,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 121.99024045001715,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 125.28417323506437,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 120.75977976003196,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 150.81331770599354,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 123.1983785649063,
+      "errors": []
+    },
+    {
+      "phase": "wire-builder-1",
+      "exit": 0,
+      "seconds": 163.32435108406935,
+      "errors": []
+    },
+    {
+      "phase": "wire-builder-2",
+      "exit": 0,
+      "seconds": 129.74221448600292,
+      "errors": []
+    },
+    {
+      "phase": "wire-builder-3",
+      "exit": 0,
+      "seconds": 128.98575051291846,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 29.614487105049193,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.command.json": "be538d31f92ab7999dc5728b63c110a1ddddfc044e3cde2d5d20c9ad2b93fbc5",
+    "external-table-gates.log": "798b70b4d39b48ff71dd4b207c4a096b77995d5b51f086534de7e2a922a8b192",
+    "implementation.command.json": "761539e2fbda5d3940f77df00bfd70886204afa6e6fe28a7ea3586e04d84b97b",
+    "implementation.log": "1eafcd38a267242b831ea83a8e206c9802649c171c44f8f3d94a7ffdfd3951dd",
+    "native-csharp.command.json": "c3fa94c79eb5108451b1fec2256ca7e9aa879a689fdbd222295f54fdacd4b2a6",
+    "native-csharp.log": "1977a5dbee4d9b6053405b09d20a2a58c07bac8312907b9ad4e94142fcaa3356",
+    "native-cstable.command.json": "b7bef3d8a3e115fca68d3299ca74528e14582911bce16fe039e3a1404e58163e",
+    "native-cstable.log": "cafb9553bcf280806b5a7ee13fa09fa1be46946e079af0ca2715c52525ba0eec",
+    "native-list-csharp.command.json": "1956d42f7bb04139ed9ae7796851dfc85f97b1a189d23a0a00d8e0d51561a1dc",
+    "native-list-csharp.log": "d7c01b08b9ee42e68d148de129753a0a239767ffae4e2cc6554fffddc9d02801",
+    "native-list-cstable.command.json": "4a9cce732348196de16235cdc068c5a9d1c273bfdfa81c180500f58dc1b7be5e",
+    "native-list-cstable.log": "bd366a849a19271bdeac3c103b7e969ff165dab57082e9ed0cedc93e0e8c6ac0",
+    "native-list-lockfile.command.json": "816b58eccf8c26e1546a5fe5b38bd5d2aeaccde9b9e32ec4f5c8331dd60c15b1",
+    "native-list-lockfile.log": "ca9ce56f3a2c6cdfb800a2e131f547cdf6912da3e426d8c2e24315cc26f0f132",
+    "native-lockfile.command.json": "29c8ff481ac7ac1002febac47cc558776cbcbec16fabf8d635ff66d0f7949485",
+    "native-lockfile.log": "2e27a4e6519f57c7956c916863955b71bdc8b8797f3e5ac957d448c0bcc55f1f",
+    "packet-build.command.json": "cea28fc8049351853fd4c19aa42e55fc46b81800d6e3c30282316caa26594f85",
+    "packet-build.log": "a17acd918d60776b35a1c2a142dfd834e9c3a300a3e015cf9e2cae92f4d7b670",
+    "packet-features.command.json": "c5eca7fc710d0a6dcbaaa330b5e95134070147c12ab6012f98538b4189a14f68",
+    "packet-features.log": "7376abc40acbbab36f8ebd67d6e04e952d85b502f8c1630f846a47b27331336d",
+    "packet-ludicrous-0.command.json": "b4c55e604b9dfe372682b45d6a5639dffe766f3aebe3f80a07d1bfc01d1f3b05",
+    "packet-ludicrous-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-ludicrous-1.command.json": "4ebac16566824190230fbe413dc3870787c5c42f651cc63a89f63b96b9e5eb51",
+    "packet-ludicrous-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-0.command.json": "525f5342aa261113ba367c7bca0997b019b88c071caa18bbc8ff3b18f81627e9",
+    "packet-normal-0.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "packet-normal-1.command.json": "ef0576ca81478dea42d5c9eb625204582f95cbdd19bb4f657d049912cdef5788",
+    "packet-normal-1.log": "a12b7cb43c9d9134b5bb1b35e9096b66775d9e92e7611d1cc92b02edd6782a87",
+    "prerequisites.command.json": "14e8e311c99ea32fabdb085648b051306d8ce91ec1c6eb4ea6fcd0e0c75e6675",
+    "prerequisites.log": "eb104b4bd80e7d68d058bd42fcd6730ea8eb3f38bfd221ca2c3112d50c52c86b",
+    "results.json": "ceccb1cf83337a5847f3953462e322f6b4db38da0a7de94dd7e84694d8da2135",
+    "wire-builder-1.command.json": "594d098b6590301ab9754e42801c42c45810bd72adc33f996b43fe1e7844c738",
+    "wire-builder-1.log": "e3c1cc04c96a77a6b7e2ef334cfc5a9714b16b4046eb39cb6f9dc76a799ae56a",
+    "wire-builder-2.command.json": "144e6c372292b80201526db28da3f8481d42e3de11aa4af3660fd4700b4f2844",
+    "wire-builder-2.log": "15dd14c318c59f04e650a55bdcf063b63898c59b842fb74b5bae6b6abb092561",
+    "wire-builder-3.command.json": "03d22ec563ca27ab3a24d70819cf7fcec19d60aa7ebf6fe57054da56efc17d61",
+    "wire-builder-3.log": "84b9c6e4d39dc5707c476b2897c89a5eb0c7843cd048bbddd89bf74fe77e2dcf",
+    "wire-driver-build.command.json": "dec93b6e35997ae74e343d25dceed2174682614aa1983a80906b235e7c1c84c8",
+    "wire-driver-build.log": "3276f5d3ee70ee0ca356a25460de58adcf2aa02a21cd51320aac23ab020fae39",
+    "wire-plain-1.command.json": "60ab14864503a3716c0d72382c7697f6ac3fe4c5946d81c27c6b74dbd00e076a",
+    "wire-plain-1.log": "2fc10642a5ca779ac9f0e1ff9138e6b2b905b0ed8092a9383bdbffe7085d0a80",
+    "wire-plain-2.command.json": "4cd55d154d6aedf5de8bdbeffb48f60336f45473a5fce98a98a5e23d928b0adf",
+    "wire-plain-2.log": "34254fa70b85d35ced91621980e5aa6aaa89bece59dc626a9842fa731458ba7c",
+    "wire-plain-3.command.json": "0d469f4a6b1182f63a344f9fc758fe9660e8c534599b7efecdf6606deb5ab401",
+    "wire-plain-3.log": "e4844578b4a556e70adbe4c5e0e55261c4f557b60f5e941ece7dba45c201ba57",
+    "wire-retain-1.command.json": "6c4b432fa9835fd29735d7a0e01f4dc5018ae5d7ff98c529f714af7467d21b32",
+    "wire-retain-1.log": "fdc2eeb1db68b1b057a730b38a576b78a736672433aeedd5aa599d7961f3c5da",
+    "wire-retain-2.command.json": "5bbaca3414a7b8b8ea99827d92a88e1e3239ac2b35647feb7775ae097b737d3b",
+    "wire-retain-2.log": "35bf0b5a0f2090b2ed1f80a11f0adcd7daff4a27bd14278de65ffdb069cdfb9f",
+    "wire-retain-3.command.json": "c7c4501c4b914ea238b5cb19a797d467268d2a732d63790fa4fc8b6dd7726d01",
+    "wire-retain-3.log": "54c5861b2ca6774c2ac538152ce09073b43ab60753974f897acbbf16968f9677",
+    "wire-retain-controls.command.json": "a9a712eccc35e9ede5d9a43daa97adce174e999199233fdac9f01d6bf2ab7f18",
+    "wire-retain-controls.log": "8a8e09e979c84ffbef04d199629415afcbd397224fd6c74b4e03879933b48056"
+  }
+}

@@ -59,7 +59,7 @@ func (g *tableGen) emitRetainFileRoot(st *ir.Struct) {
 	g.body.WriteString(previous)
 	g.body.WriteString(retainedCode(code, names, g.sym(n, "load_graph")))
 	g.pf("static SCHEMA_UNUSED const %s * %s(uint8_t * region,int64_t region_bytes,const uint8_t * wire,int64_t wire_bytes,TableRetain * retain,TableReport * report)\n{\n", n, g.api(n, "load_retain"))
-	g.pf(" TableReport ignored={0};TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;int malformed_before,reason_before;int32_t non_finite_before;\n if(report==NULL)report=&ignored;malformed_before=report->malformed;reason_before=report->reason;non_finite_before=report->non_finite_floats;report->malformed=0;table_retain_reset(retain,NULL,NULL);\n");
+	g.pf(" TableReport ignored={0};TableReader reader;TableNodeMap nodes;TableNodeDirEntry * directory;TableRegionSink place;TableSink sink;TableRetainWalk retention;int64_t data,records,total;int malformed_before,reason_before;int32_t non_finite_before;\n if(report==NULL)report=&ignored;malformed_before=report->malformed;reason_before=report->reason;non_finite_before=report->non_finite_floats;report->malformed=0;table_retain_reset(retain,NULL,NULL);\n")
 	if st.Integrity != "" {
 		g.pf(" if(wire_bytes>0&&wire!=NULL&&wire[0]==1&&!schema_table_integrity_holds_(wire,wire_bytes)){report->malformed=1;report->damage_reason=SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH;return NULL;}\n if(wire_bytes>0&&wire!=NULL&&wire[0]==1)wire_bytes-=4;\n")
 	}
