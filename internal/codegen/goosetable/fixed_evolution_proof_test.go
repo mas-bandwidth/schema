@@ -785,3 +785,73 @@ func TestGooseFixedProofInteroperability(t *testing.T) {
 		res.owes(t)
 	})
 }
+
+// TestGooseFixedProofEvolutionNegativeControl proves that the layout hash,
+// C++ reference corpus comparison, and wire refusal checks in
+// fixed_evolution_proof_test.go fail when layout-relevant schema properties or
+// wire bytes are mutated.
+func TestGooseFixedProofEvolutionNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "goose")
+
+	t.Run("definition_hash_sensitivity", func(t *testing.T) {
+		t.Parallel()
+		uBase := parseCheckUnit(t, `package probe
+fixed table T {
+    x int32
+    b bytes(6)
+}
+`)
+		uNameChanged := parseCheckUnit(t, `package probe
+fixed table T {
+    y int32
+    b bytes(6)
+}
+`)
+		uBoundChanged := parseCheckUnit(t, `package probe
+fixed table T {
+    x int32
+    b bytes(8)
+}
+`)
+		_, hBase, _ := fixedRootFacts(fixedRootStruct(t, uBase, "T"))
+		_, hName, _ := fixedRootFacts(fixedRootStruct(t, uNameChanged, "T"))
+		_, hBound, _ := fixedRootFacts(fixedRootStruct(t, uBoundChanged, "T"))
+		if hBase == hName {
+			t.Fatalf("negative control failed: changing field name did not change definition hash")
+		}
+		if hBase == hBound {
+			t.Fatalf("negative control failed: changing bytes(N) bound did not change definition hash")
+		}
+	})
+
+	t.Run("corpus_byte_mutation_detected", func(t *testing.T) {
+		t.Parallel()
+		corpus := fixedCorpus(t)
+		records := fixedManifestRecords(t, corpus)
+		v := fixedVectors[0]
+		want := records[v.file]
+		orig, err := os.ReadFile(filepath.Join(corpus, v.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := fixedUnit(t, v.schema)
+		st := fixedRootStruct(t, u, v.root)
+		layout, _, _ := fixedRootFacts(st)
+
+		// Flip one byte in the first record body and run the Goose round-trip probe:
+		// either FixedLoad refuses the mutated byte or the re-saved hex diverges
+		// from the original C++ reference corpus bytes.
+		mutated := bytes.Clone(orig)
+		bodyIdx := 20 + len(layout) + 8
+		mutated[bodyIdx] ^= 0x01
+
+		dir := t.TempDir()
+		main := fixedProgram(t, u, v.root, dir, []string{"corpus.bin"}, want)
+		out := gooserun.Run(t, dir, main, map[string][]byte{"corpus.bin": mutated})
+		a := fixedAnswers(t, out, 1)[0]
+		if a.n == want && a.reason == "ok" && a.bytes == hex.EncodeToString(orig) {
+			t.Fatalf("negative control failed: mutated corpus byte was not detected by round-trip oracle")
+		}
+	})
+}

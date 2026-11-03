@@ -6,37 +6,38 @@
 package goosetable
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
+	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 type gooseFixedValueCase struct {
-	id     string
-	schema string
-	root   string
-	body   int64
-	main   string
-	want   string
+	id       string
+	schema   string
+	root     string
+	body     int64
+	count    int
+	cppSetup string
+	main     string
+	want     string
 }
 
-// TestGooseFixedProofSuiteValues provides direct Goose runtime proof coverage
-// for the 34 value, default, file-roundtrip, and record-measurement rows of
-// port/goose/fixed/*. Each subtest verifies the IR layout walk, the emitted
-// Goose fixed-form constants/functions, and a live Goose write-read round trip
-// with boundary and non-default values.
-func TestGooseFixedProofSuiteValues(t *testing.T) {
-	t.Parallel()
-	slowtest.Gate(t, "goose")
-
-	cases := []gooseFixedValueCase{
+func fixedProofValueCases() []gooseFixedValueCase {
+	return []gooseFixedValueCase{
 		// 16. port/goose/fixed/bool-values
 		{
 			id: "bool-values",
@@ -46,8 +47,13 @@ fixed table T {
     b bool = true
 }
 `,
-			root: "T",
-			body: 2,
+			root:  "T",
+			body:  2,
+			count: 2,
+			cppSetup: `
+    value[1].a = true;
+    value[1].b = false;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: true, B: false };
@@ -72,8 +78,19 @@ fixed table T {
     d int64 = -9223372036854775808
 }
 `,
-			root: "T",
-			body: 15,
+			root:  "T",
+			body:  15,
+			count: 3,
+			cppSetup: `
+    value[1].a = 127;
+    value[1].b = 32767;
+    value[1].c = 2147483647;
+    value[1].d = 9223372036854775807LL;
+    value[2].a = -1;
+    value[2].b = 0;
+    value[2].c = 1;
+    value[2].d = -2LL;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: 127, B: 32767, C: 2147483647, D: 9223372036854775807 };
@@ -102,8 +119,19 @@ fixed table T {
     d uint64 = 18446744073709551615
 }
 `,
-			root: "T",
-			body: 15,
+			root:  "T",
+			body:  15,
+			count: 3,
+			cppSetup: `
+    value[1].a = 0;
+    value[1].b = 0;
+    value[1].c = 0;
+    value[1].d = 0ULL;
+    value[2].a = 1;
+    value[2].b = 256;
+    value[2].c = 65536U;
+    value[2].d = 4294967296ULL;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: 0, B: 0, C: 0, D: 0 };
@@ -129,8 +157,13 @@ fixed table T {
     a int128 = -170141183460469231731687303715884105728 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
 }
 `,
-			root: "T",
-			body: 16,
+			root:  "T",
+			body:  16,
+			count: 3,
+			cppSetup: `
+    value[1].a = serialize::int128_t( ( serialize::uint128_t( 0x7fffffffffffffffull ) << 64 ) | serialize::uint128_t( 0xffffffffffffffffull ) );
+    value[2].a = serialize::int128_t( 1 );
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: schema_rt::Int128 { lo: 0xffffffffffffffff, hi: 0x7fffffffffffffff } };
@@ -156,8 +189,13 @@ fixed table T {
     a uint128 = 340282366920938463463374607431768211455
 }
 `,
-			root: "T",
-			body: 16,
+			root:  "T",
+			body:  16,
+			count: 3,
+			cppSetup: `
+    value[1].a = serialize::uint128_t( 0 );
+    value[2].a = serialize::uint128_t( 1 );
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: schema_rt::Int128 { lo: 0, hi: 0 } };
@@ -185,8 +223,17 @@ fixed table T {
     c uint16 | min = 0, max = 1000
 }
 `,
-			root: "T",
-			body: 14,
+			root:  "T",
+			body:  14,
+			count: 2,
+			cppSetup: `
+    value[0].a = -5;
+    value[0].b = -1000000000000LL;
+    value[0].c = 0;
+    value[1].a = 5;
+    value[1].b = 1000000000000LL;
+    value[1].c = 1000;
+`,
 			main: `fn main() {
     var v0 = probe::T { A: -5, B: -1000000000000, C: 0 };
     var v1 = probe::T { A: 5, B: 1000000000000, C: 1000 };
@@ -212,8 +259,19 @@ fixed table T {
     d bits(40)
 }
 `,
-			root: "T",
-			body: 20,
+			root:  "T",
+			body:  20,
+			count: 2,
+			cppSetup: `
+    value[0].a = 7;
+    value[0].b = 4095;
+    value[0].c = 1048575U;
+    value[0].d = 1099511627775ULL;
+    value[1].a = 0;
+    value[1].b = 0;
+    value[1].c = 0;
+    value[1].d = 0ULL;
+`,
 			main: `fn main() {
     var v0 = probe::T { A: 7, B: 4095, C: 1048575, D: 1099511627775 };
     var v1 = probe::T { A: 0, B: 0, C: 0, D: 0 };
@@ -237,8 +295,13 @@ fixed table T {
     b float32 = -0.5
 }
 `,
-			root: "T",
-			body: 8,
+			root:  "T",
+			body:  8,
+			count: 2,
+			cppSetup: `
+    value[1].a = -1024.25f;
+    value[1].b = 2048.75f;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: -1024.25, B: 2048.75 };
@@ -262,8 +325,13 @@ fixed table T {
     b float64 = -1234.5
 }
 `,
-			root: "T",
-			body: 16,
+			root:  "T",
+			body:  16,
+			count: 2,
+			cppSetup: `
+    value[1].a = -987654321.125;
+    value[1].b = 123456789.875;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { A: -987654321.125, B: 123456789.875 };
@@ -287,8 +355,17 @@ fixed table T {
     b float32 = 0.5 | min = -1.0, max = 1.0, resolution = 0.001
 }
 `,
-			root: "T",
-			body: 8,
+			root:  "T",
+			body:  8,
+			count: 3,
+			cppSetup: `
+    value[0].a = 0.25f;
+    value[0].b = -0.5f;
+    value[1].a = 0.0f;
+    value[1].b = -1.0f;
+    value[2].a = 1.0f;
+    value[2].b = 1.0f;
+`,
 			main: `fn main() {
     var v0 = probe::T { A: 0.25, B: -0.5 };
     var v1 = probe::T { A: 0.0, B: -1.0 };
@@ -314,8 +391,17 @@ fixed table T {
     c fixed(112, 16) | min = -1000, max = 1000
 }
 `,
-			root: "T",
-			body: 28,
+			root:  "T",
+			body:  28,
+			count: 2,
+			cppSetup: `
+    value[0].a = -( 8 << 16 );
+    value[0].b = -( 100LL << 16 );
+    value[0].c = serialize::int128_t( ( serialize::uint128_t( 0xffffffffffffffffull ) << 64 ) | serialize::uint128_t( 0xffffffffff000000ull ) );
+    value[1].a = ( 8 << 16 );
+    value[1].b = ( 100LL << 16 );
+    value[1].c = serialize::int128_t( 0x0000000000fa0000ull );
+`,
 			main: `fn main() {
     var v0 = probe::T { A: -8 << 16, B: -100 << 16, C: schema_rt::Int128 { lo: 0xffffffffff000000, hi: 0xffffffffffffffff } };
     var v1 = probe::T { A: 8 << 16, B: 100 << 16, C: schema_rt::Int128 { lo: 0x0000000000fa0000, hi: 0 } };
@@ -340,8 +426,17 @@ fixed table T {
     c ufixed(112, 16) | min = 0, max = 1000
 }
 `,
-			root: "T",
-			body: 28,
+			root:  "T",
+			body:  28,
+			count: 2,
+			cppSetup: `
+    value[0].a = 0;
+    value[0].b = 0ULL;
+    value[0].c = serialize::uint128_t( 0 );
+    value[1].a = ( 16U << 16 );
+    value[1].b = ( 100ULL << 16 );
+    value[1].c = serialize::uint128_t( 1000ULL << 16 );
+`,
 			main: `fn main() {
     var v0 = probe::T { A: 0, B: 0, C: schema_rt::Int128 { lo: 0, hi: 0 } };
     var v1 = probe::T { A: 16 << 16, B: 100 << 16, C: schema_rt::Int128 { lo: 1000 << 16, hi: 0 } };
@@ -363,8 +458,14 @@ fixed table T {
 flags Caps { Jump, Fly, Swim }
 fixed table T { caps Caps }
 `,
-			root: "T",
-			body: 8,
+			root:  "T",
+			body:  8,
+			count: 3,
+			cppSetup: `
+    value[0].caps = 0;
+    value[1].caps = 5;
+    value[2].caps = 7;
+`,
 			main: `fn main() {
     var v0 = probe::T { Caps: 0 };
     var v1 = probe::T { Caps: 5 };
@@ -386,8 +487,14 @@ fixed table T { caps Caps }
 enum Grade { Gold, Silver, Bronze }
 fixed table T { g Grade }
 `,
-			root: "T",
-			body: 1,
+			root:  "T",
+			body:  1,
+			count: 3,
+			cppSetup: `
+    value[0].g = Grade::None;
+    value[1].g = Grade::Gold;
+    value[2].g = Grade::Bronze;
+`,
 			main: `fn main() {
     var v0 = probe::T { G: 0 };
     var v1 = probe::T { G: 1 };
@@ -408,8 +515,13 @@ fixed table T { g Grade }
 			schema: `package probe
 fixed table T { s string(8) }
 `,
-			root: "T",
-			body: 12,
+			root:  "T",
+			body:  12,
+			count: 2,
+			cppSetup: `
+    memcpy( value[1].s, "hello", 5 );
+    value[1].s_length = 5;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { S: [104, 101, 108, 108, 111, 0, 0, 0], SLength: 5 };
@@ -429,8 +541,16 @@ fixed table T { s string(8) }
 			schema: `package probe
 fixed table T { w wstring(4) }
 `,
-			root: "T",
-			body: 12,
+			root:  "T",
+			body:  12,
+			count: 2,
+			cppSetup: `
+    value[1].w[0] = 0x0041;
+    value[1].w[1] = 0x03b1;
+    value[1].w[2] = 0xd83d;
+    value[1].w[3] = 0xde00;
+    value[1].w_length = 4;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { W: [0x0041, 0x03b1, 0xd83d, 0xde00], WLength: 4 };
@@ -450,8 +570,18 @@ fixed table T { w wstring(4) }
 			schema: `package probe
 fixed table T { blob bytes(6) }
 `,
-			root: "T",
-			body: 10,
+			root:  "T",
+			body:  10,
+			count: 2,
+			cppSetup: `
+    value[1].blob[0] = 0xff;
+    value[1].blob[1] = 0x00;
+    value[1].blob[2] = 0x5a;
+    value[1].blob[3] = 1;
+    value[1].blob[4] = 2;
+    value[1].blob[5] = 3;
+    value[1].blob_length = 6;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { Blob: [0xff, 0x00, 0x5a, 1, 2, 3], BlobLength: 6 };
@@ -472,8 +602,14 @@ fixed table T { blob bytes(6) }
 type Badge { title string(4) }
 fixed table T { badge Badge }
 `,
-			root: "T",
-			body: 8,
+			root:  "T",
+			body:  8,
+			count: 1,
+			cppSetup: `
+    value[0].badge.title[0] = 'h';
+    value[0].badge.title[1] = 'i';
+    value[0].badge.title_length = 2;
+`,
 			main: `fn main() {
     var v = probe::T { Badge: probe::Badge { Title: [104, 105, 0, 0], TitleLength: 2 } };
     var out: u8[>..] = [];
@@ -493,8 +629,13 @@ fixed table T { badge Badge }
 fixed table Child { n int32 }
 fixed table T { child Child }
 `,
-			root: "T",
-			body: 4,
+			root:  "T",
+			body:  4,
+			count: 2,
+			cppSetup: `
+    value[0].child.n = -2147483647 - 1;
+    value[1].child.n = 2147483647;
+`,
 			main: `fn main() {
     var v0 = probe::T { Child: probe::Child { N: -2147483648 } };
     var v1 = probe::T { Child: probe::Child { N: 2147483647 } };
@@ -514,8 +655,14 @@ fixed table T { child Child }
 			schema: `package probe
 fixed table T { tag [3]int32 }
 `,
-			root: "T",
-			body: 12,
+			root:  "T",
+			body:  12,
+			count: 1,
+			cppSetup: `
+    value[0].tag[0] = -2147483647 - 1;
+    value[0].tag[1] = 0;
+    value[0].tag[2] = 2147483647;
+`,
 			main: `fn main() {
     var v = probe::T { Tag: [-2147483648, 0, 2147483647] };
     var out: u8[>..] = [];
@@ -534,8 +681,15 @@ fixed table T { tag [3]int32 }
 			schema: `package probe
 fixed table T { nums [..4]uint16 }
 `,
-			root: "T",
-			body: 12,
+			root:  "T",
+			body:  12,
+			count: 2,
+			cppSetup: `
+    value[1].nums[0] = 10;
+    value[1].nums[1] = 65535;
+    value[1].nums[2] = 32768;
+    value[1].nums_count = 3;
+`,
 			main: `fn main() {
     var v0 = probe::T { Nums: [0, 0, 0, 0], NumsCount: 0 };
     var v1 = probe::T { Nums: [10, 65535, 32768, 0], NumsCount: 3 };
@@ -556,8 +710,13 @@ fixed table T { nums [..4]uint16 }
 enum Key { A, B }
 fixed table T { slots [Key]int32 }
 `,
-			root: "T",
-			body: 8,
+			root:  "T",
+			body:  8,
+			count: 1,
+			cppSetup: `
+    value[0].slots[Key::A] = -2147483647 - 1;
+    value[0].slots[Key::B] = 2147483647;
+`,
 			main: `fn main() {
     var v = probe::T { Slots: [-2147483648, 2147483647] };
     var out: u8[>..] = [];
@@ -578,8 +737,13 @@ enum Key { A, B }
 fixed table Child { n int32 }
 fixed table T { slots [Key]Child }
 `,
-			root: "T",
-			body: 8,
+			root:  "T",
+			body:  8,
+			count: 1,
+			cppSetup: `
+    value[0].slots[Key::A].n = 11;
+    value[0].slots[Key::B].n = -22;
+`,
 			main: `fn main() {
     var v = probe::T { Slots: [probe::Child { N: 11 }, probe::Child { N: -22 }] };
     var out: u8[>..] = [];
@@ -608,8 +772,18 @@ union Body {
 }
 fixed table T { body Body }
 `,
-			root: "T",
-			body: 9,
+			root:  "T",
+			body:  9,
+			count: 3,
+			cppSetup: `
+    value[0].body.type = BodyType::V;
+    value[0].body.v.x = 11;
+    value[0].body.v.y = -22;
+    value[1].body.type = BodyType::T;
+    value[1].body.t.n = 41;
+    value[2].body.type = BodyType::N;
+    value[2].body.n = 1073741821;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     v0.Body.Type = 1;
@@ -644,8 +818,21 @@ union Body {
 }
 fixed table T { body Body }
 `,
-			root: "T",
-			body: 17,
+			root:  "T",
+			body:  17,
+			count: 3,
+			cppSetup: `
+    value[0].body.type = BodyType::Sa;
+    value[0].body.sa = -5;
+    value[1].body.type = BodyType::Ta;
+    memcpy( value[1].body.ta.value, "abc", 3 );
+    value[1].body.ta.value_length = 3;
+    value[2].body.type = BodyType::Aa;
+    value[2].body.aa.value[0] = -1;
+    value[2].body.aa.value[1] = 0;
+    value[2].body.aa.value[2] = 1;
+    value[2].body.aa.value_count = 3;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     v0.Body.Type = 1;
@@ -686,8 +873,23 @@ fixed table T {
     trail int32
 }
 `,
-			root: "T",
-			body: 13,
+			root:  "T",
+			body:  13,
+			count: 3,
+			cppSetup: `
+    value[0].lead = 10;
+    value[0].pick.type = PickType::Alpha;
+    value[0].pick.alpha = 99;
+    value[0].trail = 20;
+    value[1].lead = 30;
+    value[1].pick.alpha = 777;
+    value[1].pick.type = PickType::Quiet;
+    value[1].trail = 40;
+    value[2].lead = 50;
+    value[2].pick.alpha = 888;
+    value[2].pick.type = PickType::Signal;
+    value[2].trail = 60;
+`,
 			main: `fn main() {
     var v0 = probe::T { Lead: 10, Pick: probe::Pick { Type: 1, Alpha: 99 }, Trail: 20 };
     var v1 = probe::T { Lead: 30, Pick: probe::Pick { Type: 2, Alpha: 777 }, Trail: 40 };
@@ -718,8 +920,18 @@ union Pick {
 }
 fixed table T { picks [..3]Pick }
 `,
-			root: "T",
-			body: 31,
+			root:  "T",
+			body:  31,
+			count: 1,
+			cppSetup: `
+    value[0].picks_count = 3;
+    value[0].picks[0].type = PickType::A;
+    value[0].picks[0].a = 3;
+    value[0].picks[1].type = PickType::B;
+    value[0].picks[1].b = -1099511627776LL;
+    value[0].picks[2].type = PickType::A;
+    value[0].picks[2].a = 0;
+`,
 			main: `fn main() {
     var v = probe::T { .. };
     v.PicksCount = 3;
@@ -750,8 +962,15 @@ fixed table T {
     g ?Grade
 }
 `,
-			root: "T",
-			body: 7,
+			root:  "T",
+			body:  7,
+			count: 2,
+			cppSetup: `
+    value[1].n = -123456;
+    value[1].n_present = true;
+    value[1].g = Grade::Silver;
+    value[1].g_present = true;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { N: -123456, NPresent: true, G: 2, GPresent: true };
@@ -776,8 +995,14 @@ type Vec {
 }
 fixed table T { p ?Vec }
 `,
-			root: "T",
-			body: 9,
+			root:  "T",
+			body:  9,
+			count: 2,
+			cppSetup: `
+    value[1].p.x = 99;
+    value[1].p.y = -99;
+    value[1].p_present = true;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { P: probe::Vec { X: 99, Y: -99 }, PPresent: true };
@@ -798,8 +1023,16 @@ fixed table T { p ?Vec }
 			schema: `package probe
 fixed table T { xs ?[..3]int32 }
 `,
-			root: "T",
-			body: 17,
+			root:  "T",
+			body:  17,
+			count: 2,
+			cppSetup: `
+    value[1].xs[0] = 7;
+    value[1].xs[1] = -8;
+    value[1].xs[2] = 9;
+    value[1].xs_count = 3;
+    value[1].xs_present = true;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { Xs: [7, -8, 9], XsCount: 3, XsPresent: true };
@@ -825,8 +1058,14 @@ fixed table T {
     f float32 = 1.5
 }
 `,
-			root: "T",
-			body: 9,
+			root:  "T",
+			body:  9,
+			count: 2,
+			cppSetup: `
+    value[1].x = -9;
+    value[1].g = Grade::Bronze;
+    value[1].f = -2.25f;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T { X: -9, G: 3, F: -2.25 };
@@ -853,8 +1092,20 @@ fixed table T {
     c Caps = { Jump, Fly }
 }
 `,
-			root: "T",
-			body: 28,
+			root:  "T",
+			body:  28,
+			count: 2,
+			cppSetup: `
+    memset( value[1].s, 0, sizeof( value[1].s ) );
+    memcpy( value[1].s, "xyz", 3 );
+    value[1].s_length = 3;
+    value[1].b[0] = 0x00;
+    value[1].b[1] = 0xff;
+    value[1].b[2] = 0x5a;
+    value[1].b[3] = 0x01;
+    value[1].b_length = 4;
+    value[1].c = 4;
+`,
 			main: `fn main() {
     var v0 = probe::T { .. };
     var v1 = probe::T {
@@ -887,8 +1138,15 @@ fixed table T {
     b uint16 = 2
 }
 `,
-			root: "T",
-			body: 6,
+			root:  "T",
+			body:  6,
+			count: 2,
+			cppSetup: `
+    value[0].a = 10;
+    value[0].b = 20;
+    value[1].a = 30;
+    value[1].b = 40;
+`,
 			main: `fn main() {
     let m0 = probe::TFixedMeasure(0);
     let m2 = probe::TFixedMeasure(2);
@@ -903,8 +1161,232 @@ fixed table T {
 			want: "true true true true",
 		},
 	}
+}
 
-	for _, tc := range cases {
+// resolveSerializeInclude finds the sibling serialize checkout directory if
+// present, or writes a minimal 128-bit storage header into fallbackDir so C++
+// reference probes for 128-bit and fixed-point schemas compile in any layout.
+func resolveSerializeInclude(fallbackDir string) string {
+	candidates := []string{
+		os.Getenv("SERIALIZE"),
+		"../../../../serialize",
+		"../../../serialize",
+		"../../serialize",
+		"../serialize",
+	}
+	for _, c := range candidates {
+		if c == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(c); err == nil {
+			if _, err := os.Stat(filepath.Join(abs, "serialize.h")); err == nil {
+				return abs
+			}
+		}
+	}
+	const minSerialize = `#pragma once
+#include <stdint.h>
+namespace serialize {
+typedef __int128 int128_t;
+typedef unsigned __int128 uint128_t;
+}
+`
+	_ = os.WriteFile(filepath.Join(fallbackDir, "serialize.h"), []byte(minSerialize), 0o600)
+	return fallbackDir
+}
+
+// buildAndRunCppFixedOracle compiles a C++ reference program from the same
+// schema unit u using cpp.Generate(u) and cpptable.GenerateLineage(u, nil),
+// runs it in "save" mode to produce the reference Form 3 bytes (cppBytes), and
+// returns cppBytes along with a function that runs the compiled C++ oracle in
+// "verify" mode against any candidate Form 3 byte slice (returning nil iff C++
+// FixedLoad succeeds with zero counters/refusals and re-saves to cppBytes).
+func buildAndRunCppFixedOracle(t *testing.T, id string, u *ir.Unit, root string, count int, cppSetup string) ([]byte, func([]byte) error) {
+	t.Helper()
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatalf("%s: cpp.Generate: %v", id, err)
+	}
+	tables, err := cpptable.GenerateLineage(u, nil)
+	if err != nil {
+		t.Fatalf("%s: cpptable.GenerateLineage: %v", id, err)
+	}
+	maps.Copy(files, tables)
+
+	outDir := t.TempDir()
+	var tableHeader string
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(outDir, name), data, 0o600); err != nil {
+			t.Fatalf("%s: write %s: %v", id, name, err)
+		}
+		if strings.HasSuffix(name, "Table.h") {
+			tableHeader = name
+		}
+	}
+	if tableHeader == "" {
+		t.Fatalf("%s: no Table.h generated", id)
+	}
+
+	serDir := resolveSerializeInclude(outDir)
+	probeSrc := fmt.Sprintf(`#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include "%[4]s"
+
+using namespace probe;
+
+static void fill_records( %[1]s * value )
+{
+    for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( value[i] );
+%[3]s
+}
+
+int main( int argc, char ** argv )
+{
+    static uint8_t buffer[1 << 18];
+    static uint8_t cand_buf[1 << 18];
+    static uint8_t re_buf[1 << 18];
+    static TableFixedEntry plan[4096];
+    TableReport r;
+
+    %[1]s value[%[2]d];
+    fill_records( value );
+
+    const int64_t need = %[1]sFixedMeasure( %[2]d );
+    const int64_t saved = %[1]sFixedSave( value, %[2]d, buffer, need );
+    if ( saved != need ) {
+        printf( "cpp save: need=%%lld saved=%%lld\n", (long long) need, (long long) saved );
+        return 1;
+    }
+
+    %[1]s back[%[2]d];
+    for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( back[i] );
+    memset( &r, 0, sizeof( r ) );
+    const int64_t n = %[1]sFixedLoad( back, %[2]d, buffer, saved, plan, 4096, NULL, &r );
+    if ( n != %[2]d || r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused ) {
+        printf( "cpp self-load failed: n=%%lld reason=%%d c=%%d u=%%d km=%%d w=%%d m=%%d x=%%d\n",
+            (long long) n, (int) r.reason, r.clamped, r.unknown, r.kind_mismatch, r.widened, (int) r.malformed, (int) r.refused );
+        return 1;
+    }
+
+    if ( argc >= 3 && strcmp( argv[1], "save" ) == 0 ) {
+        FILE * f = fopen( argv[2], "wb" );
+        if ( !f ) return 2;
+        if ( (int64_t) fwrite( buffer, 1, (size_t) saved, f ) != saved ) { fclose( f ); return 3; }
+        fclose( f );
+        return 0;
+    }
+
+    if ( argc >= 3 && strcmp( argv[1], "verify" ) == 0 ) {
+        FILE * f = fopen( argv[2], "rb" );
+        if ( !f ) return 2;
+        int64_t clen = (int64_t) fread( cand_buf, 1, sizeof( cand_buf ), f );
+        fclose( f );
+        %[1]s from_cand[%[2]d];
+        for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( from_cand[i] );
+        memset( &r, 0, sizeof( r ) );
+        const int64_t cn = %[1]sFixedLoad( from_cand, %[2]d, cand_buf, clen, plan, 4096, NULL, &r );
+        if ( cn != %[2]d || r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused ) {
+            printf( "cpp load of candidate failed: cn=%%lld reason=%%d c=%%d u=%%d km=%%d w=%%d m=%%d x=%%d\n",
+                (long long) cn, (int) r.reason, r.clamped, r.unknown, r.kind_mismatch, r.widened, (int) r.malformed, (int) r.refused );
+            return 4;
+        }
+        const int64_t re_saved = %[1]sFixedSave( from_cand, %[2]d, re_buf, need );
+        if ( re_saved != saved || memcmp( re_buf, buffer, (size_t) saved ) != 0 ) {
+            printf( "cpp re-save after loading candidate differed from reference\n" );
+            return 5;
+        }
+        if ( clen != saved || memcmp( cand_buf, buffer, (size_t) saved ) != 0 ) {
+            printf( "candidate bytes differed from cpp reference bytes\n" );
+            return 6;
+        }
+        return 0;
+    }
+    return 1;
+}
+`, root, count, cppSetup, tableHeader)
+
+	probeCpp := filepath.Join(outDir, "probe.cpp")
+	probeBin := filepath.Join(outDir, "probe")
+	if err := os.WriteFile(probeCpp, []byte(probeSrc), 0o600); err != nil {
+		t.Fatalf("%s: write probe.cpp: %v", id, err)
+	}
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		cxx = "c++"
+	}
+	args := []string{"-std=c++17", "-O1", "-I" + outDir, "-I" + serDir, probeCpp, "-o", probeBin}
+	if out, err := exec.Command(cxx, args...).CombinedOutput(); err != nil {
+		t.Fatalf("%s: compile C++ reference oracle failed: %v\n%s", id, err, out)
+	}
+
+	cppBinPath := filepath.Join(outDir, "cpp.bin")
+	if out, err := exec.Command(probeBin, "save", cppBinPath).CombinedOutput(); err != nil {
+		t.Fatalf("%s: run C++ reference oracle save failed: %v\n%s", id, err, out)
+	}
+	cppBytes, err := os.ReadFile(cppBinPath)
+	if err != nil {
+		t.Fatalf("%s: read cpp.bin: %v", id, err)
+	}
+
+	verifyFn := func(cand []byte) error {
+		candPath := filepath.Join(outDir, "cand.bin")
+		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
+			return err
+		}
+		out, err := exec.Command(probeBin, "verify", candPath).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	return cppBytes, verifyFn
+}
+
+// withGooseCrossCheck appends a cross-check tail to a Goose main() body that:
+//  1. Prints the hex of `out` (the Form 3 bytes saved by Goose FixedSave).
+//  2. Loads `cpp.bin` (the Form 3 bytes saved by the C++ reference FixedSave)
+//     via Goose FixedLoad, verifies a clean load of `count` records, re-saves
+//     via Goose FixedSave, and prints the hex of the re-saved bytes.
+func withGooseCrossCheck(mainBody, root string, count int) string {
+	idx := strings.LastIndex(mainBody, "}")
+	if idx < 0 {
+		panic("mainBody missing closing brace")
+	}
+	tail := fmt.Sprintf(`    hex(out);
+    var cppIn: u8[>..] = [];
+    if !read_file("cpp.bin", cppIn) { print("cpp-read-failed"); return; }
+    var cppBack: probe::%[1]s[%[2]d] = [probe::%[1]s { .. }; %[2]d];
+    var cppRep = schema_rt::FixedReport { .. };
+    let cppN = probe::%[1]sFixedLoad(cppBack, cppIn, cppRep);
+    var cppReOut: u8[>..] = [];
+    let cppW = probe::%[1]sFixedSave(cppBack, cppReOut);
+    print(cppN == %[2]d && cppRep.reason == 0 && cppRep.clamped == 0 && cppW == out.len);
+    hex(cppReOut);
+}
+`, root, count)
+	return mainBody[:idx] + tail
+}
+
+// TestGooseFixedProofSuiteValues provides direct Goose runtime proof coverage
+// for the 34 value, default, file-roundtrip, and record-measurement rows of
+// port/goose/fixed/*. Each of the 33 value/default/measurement subtests:
+//  1. Verifies the IR layout walk, body byte size, and emitted Goose symbols.
+//  2. Compiles and runs the C++ reference implementation (cpp.Generate +
+//     cpptable.GenerateLineage) on the identical schema and record values to
+//     obtain reference Form 3 bytes (cppBytes).
+//  3. Runs the Goose implementation to obtain Goose Form 3 bytes (gooseBytes),
+//     verifies byte-for-byte equality with cppBytes, verifies that Goose
+//     FixedLoad loads cppBytes cleanly and re-saves to cppBytes, and verifies
+//     that C++ FixedLoad loads gooseBytes cleanly and re-saves to cppBytes.
+func TestGooseFixedProofSuiteValues(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "goose")
+
+	for _, tc := range fixedProofValueCases() {
 		t.Run(tc.id, func(t *testing.T) {
 			t.Parallel()
 			u := parseCheckUnit(t, tc.schema)
@@ -940,9 +1422,36 @@ fixed table T {
 				}
 			}
 			_ = files
-			got := runCustomFixedGoose(t, u, nil, tc.main, nil)
-			if got != tc.want {
+
+			cppBytes, verifyInCpp := buildAndRunCppFixedOracle(t, tc.id, u, tc.root, tc.count, tc.cppSetup)
+			wrappedMain := withGooseCrossCheck(tc.main, tc.root, tc.count)
+			rawOut := runCustomFixedGoose(t, u, nil, wrappedMain, map[string][]byte{"cpp.bin": cppBytes})
+			lines := strings.Split(strings.TrimSpace(rawOut), "\n")
+			if len(lines) != 4 {
+				t.Fatalf("%s: expected 4 output lines, got %d:\n%s", tc.id, len(lines), rawOut)
+			}
+			if got := strings.TrimSpace(lines[0]); got != tc.want {
 				t.Fatalf("%s: got %q, want %q", tc.id, got, tc.want)
+			}
+			gooseBytes, err := hex.DecodeString(strings.TrimSpace(lines[1]))
+			if err != nil {
+				t.Fatalf("%s: decode goose hex: %v", tc.id, err)
+			}
+			if !bytes.Equal(gooseBytes, cppBytes) {
+				t.Fatalf("%s: Goose FixedSave bytes != C++ reference FixedSave bytes:\ngoose=%x\ncpp  =%x", tc.id, gooseBytes, cppBytes)
+			}
+			if crossOk := strings.TrimSpace(lines[2]); crossOk != "true" {
+				t.Fatalf("%s: Goose FixedLoad of C++ reference bytes failed: %s", tc.id, crossOk)
+			}
+			reSavedBytes, err := hex.DecodeString(strings.TrimSpace(lines[3]))
+			if err != nil {
+				t.Fatalf("%s: decode goose re-saved hex: %v", tc.id, err)
+			}
+			if !bytes.Equal(reSavedBytes, cppBytes) {
+				t.Fatalf("%s: Goose re-save after loading C++ bytes differed:\ngot =%x\nwant=%x", tc.id, reSavedBytes, cppBytes)
+			}
+			if err := verifyInCpp(gooseBytes); err != nil {
+				t.Fatalf("%s: C++ FixedLoad verification of Goose bytes failed: %v", tc.id, err)
 			}
 		})
 	}
@@ -974,6 +1483,105 @@ fixed table T {
 			if a.n != want || a.reason != "ok" || a.clamped != 0 || a.written != len(data) || a.bytes != hex.EncodeToString(data) {
 				t.Fatalf("%s: roundtrip failed: n=%d reason=%s clamped=%d written=%d", v.file, a.n, a.reason, a.clamped, a.written)
 			}
+		}
+	})
+}
+
+// TestGooseFixedProofSuiteNegativeControl proves that the C++ reference byte
+// oracle and bidirectional load/save checks in TestGooseFixedProofSuiteValues
+// reject both trailer-corrupted wire images and re-signed payload-mutated wire
+// images across all 33 value rows.
+func TestGooseFixedProofSuiteNegativeControl(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "goose")
+
+	for _, tc := range fixedProofValueCases() {
+		t.Run(tc.id, func(t *testing.T) {
+			t.Parallel()
+			u := parseCheckUnit(t, tc.schema)
+			st := fixedRootStruct(t, u, tc.root)
+			layout, _, body := fixedRootFacts(st)
+			cppBytes, verifyInCpp := buildAndRunCppFixedOracle(t, tc.id, u, tc.root, tc.count, tc.cppSetup)
+
+			// 1. Corrupting a byte without updating the CRC-32C trailer must fail
+			// C++ FixedLoad verification.
+			corruptTrailer := bytes.Clone(cppBytes)
+			corruptTrailer[0] ^= 0x01
+			if err := verifyInCpp(corruptTrailer); err == nil {
+				t.Fatalf("%s: negative control failed: C++ FixedLoad accepted corrupt trailer", tc.id)
+			}
+
+			// 2. Flipping a live record body byte and re-signing the CRC-32C trailer
+			// must be caught by the C++ reference oracle comparison.
+			mutatedPayload := bytes.Clone(cppBytes)
+			rec0BodyStart := 16 + len(layout) + 8
+			if rec0BodyStart >= len(mutatedPayload)-4 || body <= 0 {
+				t.Fatalf("%s: unexpected record body offset %d", tc.id, rec0BodyStart)
+			}
+			// Mutate the last record's first body byte (which is non-default in all
+			// multi-record cases) and re-sign the CRC-32C trailer.
+			lastRecBodyStart := 16 + len(layout) + (tc.count-1)*int(8+body) + 8
+			mutatedPayload[lastRecBodyStart] ^= 0x01
+			if bytes.Equal(mutatedPayload, cppBytes) {
+				t.Fatalf("%s: negative control mutation produced identical bytes", tc.id)
+			}
+			if err := verifyInCpp(mutatedPayload); err == nil {
+				t.Fatalf("%s: negative control failed: C++ oracle accepted mutated payload byte", tc.id)
+			}
+		})
+	}
+
+	// 3. Mutating the generated Goose FixedSave emitter in ProbeTable.goose
+	// (while still producing a valid Form 3 envelope and CRC-32C trailer) must
+	// be caught by both the byte-oracle equality check and C++ FixedLoad verify.
+	t.Run("mutated-goose-writer", func(t *testing.T) {
+		t.Parallel()
+		tc := fixedProofValueCases()[2] // unsigned-integers
+		u := parseCheckUnit(t, tc.schema)
+		cppBytes, verifyInCpp := buildAndRunCppFixedOracle(t, tc.id, u, tc.root, tc.count, tc.cppSetup)
+
+		files, err := goose.Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tables, err := Generate(u)
+		if err != nil {
+			t.Fatal(err)
+		}
+		maps.Copy(files, tables)
+		// Mutate ProbeTable.goose so TFixedSave flips one byte before computing CRC-32C.
+		tableCode := string(files["ProbeTable.goose"])
+		orig := "_TFixedWrite(out, values[k]);"
+		if !strings.Contains(tableCode, orig) {
+			t.Fatalf("ProbeTable.goose missing expected _TFixedWrite call")
+		}
+		mutatedCode := strings.Replace(tableCode, orig, orig+"\n        out[out.len - 1] = out[out.len - 1] ^ 1;", 1)
+		files["ProbeTable.goose"] = []byte(mutatedCode)
+
+		dir := t.TempDir()
+		for name, data := range files {
+			if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		mainSrc := "import os;\nimport .Probe;\nimport .ProbeTable;\nimport .schema_rt;\n\n" + gooserun.HexProbe + "\n" + withGooseCrossCheck(tc.main, tc.root, tc.count)
+		if err := os.WriteFile(filepath.Join(dir, "main.goose"), []byte(mainSrc), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		rawOut := strings.TrimSpace(string(gooserun.Run(t, dir, "main.goose", map[string][]byte{"cpp.bin": cppBytes})))
+		lines := strings.Split(rawOut, "\n")
+		if len(lines) < 2 {
+			t.Fatalf("unexpected output: %s", rawOut)
+		}
+		mutatedGooseBytes, err := hex.DecodeString(strings.TrimSpace(lines[1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Equal(mutatedGooseBytes, cppBytes) {
+			t.Fatalf("negative control failed: mutated Goose writer produced identical bytes to C++ oracle")
+		}
+		if err := verifyInCpp(mutatedGooseBytes); err == nil {
+			t.Fatalf("negative control failed: C++ oracle accepted bytes from mutated Goose writer")
 		}
 	})
 }
