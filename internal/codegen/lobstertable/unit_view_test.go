@@ -15,13 +15,13 @@ func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
 		t.Run(fmt.Sprintf("tables_%v", tables), func(t *testing.T) {
 			dir := t.TempDir()
 			sources := map[string]string{
-				"Orphan.schema":     "package registryprobe\ntype Orphan { choice Choice }\n",
-				"Payload.schema":    "package registryprobe\ntype Payload { n int32 }\n",
-				"Vocabulary.schema": "package registryprobe\nenum Mode { One, Two }\nflags Options { Fast, Safe }\nunion Choice { one Payload }\n",
-				"Constants.schema":  "package registryprobe\nconst Answer = 42\nconst Floor = -9223372036854775808\n",
+				"Orphan.schema":     "package probe\ntype Orphan { choice Choice }\n",
+				"Payload.schema":    "package probe\ntype Payload { n int32 }\n",
+				"Vocabulary.schema": "package probe\nenum Mode { One, Two }\nflags Options { Fast, Safe }\nunion Choice { one Payload }\n",
+				"Constants.schema":  "package probe\nconst Answer = 42\nconst Floor = -9223372036854775808\n",
 			}
 			if tables {
-				sources["Root.schema"] = "package registryprobe\ntable Root { n int32 }\n"
+				sources["Root.schema"] = "package probe\ntable Root { n int32 }\n"
 			}
 			var paths []string
 			// Keep input ordering stable so this also checks that the entry point
@@ -43,9 +43,9 @@ func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
 			if tables {
 				tableCount = 1
 			}
-			program := fmt.Sprintf(`import .registryprobeView
-let v = registryprobe.UnitView()
-assert v.package == "registryprobe" and v.protocol_id != 0
+			program := fmt.Sprintf(`import .probeView
+let v = probe.UnitView()
+assert v.package == "probe" and v.protocol_id != 0
 assert length(v.types) == 2
 assert schema_rt.lookup_table("Orphan") != nil and schema_rt.lookup_table("Payload") != nil
 assert schema_rt.lookup_union("Choice") != nil
@@ -66,7 +66,7 @@ print("whole unit passed")
 			// Remove a declaration-only module from the entry point. The
 			// otherwise valid unit must expose the missing constant, proving
 			// that the entry point imports it rather than relying on codecs.
-			entry := filepath.Join(g.dir, "registryprobeView.lobster")
+			entry := filepath.Join(g.dir, "probeView.lobster")
 			raw, err := os.ReadFile(entry)
 			if err != nil {
 				t.Fatal(err)
@@ -78,8 +78,8 @@ print("whole unit passed")
 			if err := os.WriteFile(entry, []byte(strings.Replace(string(raw), anchor, "", 1)), 0644); err != nil {
 				t.Fatal(err)
 			}
-			control := `import .registryprobeView
-let v = registryprobe.UnitView()
+			control := `import .probeView
+let v = probe.UnitView()
 assert length(v.types) == 2 and length(v.enums) == 1 and length(v.flags) == 1 and length(v.unions) == 1
 assert length(v.constants) == 0
 print("constant omission detected")
