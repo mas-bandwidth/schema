@@ -129,7 +129,7 @@ local function run(mod: any, root: string, input: buffer, wire: buffer)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		body = Load.integrityOpen(wire)
 	end
-	local loaded = if body ~= nil then Load.loadTolerant(root, body, Load.newReport()) else nil
+	local loaded = if body ~= nil then Load.loadOpened(root, body, Load.newReport()) else nil
 	hexs(if loaded ~= nil then text(mod, root, loaded) else "load refused")
 end
 `)

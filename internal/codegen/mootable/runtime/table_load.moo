@@ -1704,12 +1704,13 @@ local function reset(report: any)
 	report.duplicateField = nil
 end
 
--- loadTolerant loads a form-1 wire at the descriptor named root, fills report
+-- loadOpened is loadTolerant over a wire whose integrity trailer, if the root
+-- is sealed, has already been verified and taken off (§2.14): it fills report
 -- and returns the root value only if the wire is whole. Tolerant evolution
 -- is not damage (§4): malformed input returns nil, as on every read form.
 -- A non-finite float also refuses it whole (§3.3):
 -- nil, with report.reason "non_finite_float: <Owner>.<field>".
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
+function L.loadOpened(root: string, bytes: buffer, report: any): any
 	if report.missingRequired == nil then
 		report.missingRequired = 0
 	end
@@ -1873,6 +1874,24 @@ end
 
 L.integrityOpen = integrityOpen
 
+-- loadTolerant loads a form-1 wire at the descriptor named root: a sealed
+-- root's trailer is checked before any field is decoded (§2.14), a mismatch
+-- is malformed with report.reason "integrity_mismatch", and the rest is
+-- loadOpened's.
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local d = S.lookup(root)
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(bytes)
+		if body == nil then
+			report.malformed = true
+			report.reason = "integrity_mismatch"
+			return nil
+		end
+		return L.loadOpened(root, body, report)
+	end
+	return L.loadOpened(root, bytes, report)
+end
+
 -- the end of one payload of `kind` at `at`, or nil when it does not fit
 local function stepOver(b: buffer, at: number, e: number, kind: number): number?
 	local r = new_reader(b, at, e)
@@ -1961,7 +1980,7 @@ local function witness(root: string, b: buffer, k: string): string?
 
 	local function probe(wire: string): boolean
 		local rep = fresh()
-		L.loadTolerant(root, buffer.fromstring(wire), rep)
+		L.loadOpened(root, buffer.fromstring(wire), rep)
 		return moved(rep, k)
 	end
 
@@ -2205,7 +2224,7 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local v = L.loadTolerant(root, b, rep)
+	local v = L.loadOpened(root, b, rep)
 	if rep.nonFinite > 0 then
 		rep.field = rep.nonFiniteField
 		return nil

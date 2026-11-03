@@ -1431,6 +1431,7 @@ export type Report = {
 	malformed: boolean,
 	reason: string?,
 	blobShared: number,
+	missingRequired: number,
 }
 
 type Reader = {
@@ -1942,6 +1943,7 @@ end
 ----------------------------------------------------------------------------
 
 local St = require("./schema_tables")
+local V = require("./table_values")
 
 -- EXTRA: the facts the text form needs beyond the descriptor, keyed by the
 -- field (or element, or arm) descriptor they belong to: a flags set's variant
@@ -1975,6 +1977,43 @@ local function keyIndex(d: any): { [string]: number }
 		KEYS[d] = k
 	end
 	return k
+end
+
+-- guardHolds: a field's guard, a conjunction of (bool slot, value) pairs on
+-- the record, holds (§3); a field with no guard always does
+local function guardHolds(fd: any, rec: any): boolean
+	local guard = fd.guard
+	if guard == nil then
+		return true
+	end
+	for _, term in guard do
+		if rec[term[1]] ~= term[2] then
+			return false
+		end
+	end
+	return true
+end
+
+-- requiredSeen closes ONE object (§2.3, §16.2): every field marked
+-- `| required` whose guard holds must have had its key named, whatever its
+-- value. An object that left one out counts missing_required once, names the
+-- missing fields in declaration order, and refuses the read.
+local function requiredSeen(r: Reader, d: any, rec: any, seen: { [number]: boolean }): boolean
+	local missing: { string }? = nil
+	for i, fd in d.fields do
+		if fd.required == true and not seen[i] and guardHolds(fd, rec) then
+			if missing == nil then
+				missing = {}
+			end
+			table.insert(missing :: { string }, fd.name)
+		end
+	end
+	if missing == nil then
+		return true
+	end
+	r.report.missingRequired += 1
+	r.report.reason = "missing_required: " .. table.concat(missing :: { string }, ", ")
+	return false
 end
 
 local function isPointerShape(s: string?): boolean
@@ -2107,9 +2146,11 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 	local d = St.lookup(t)
 	local c = peek(r)
 	if c == 125 then
+		-- an empty object: a node at its defaults, which names no key
 		r.pos += 1
-		holder[key] = d.new()
-		return true
+		local node = d.new()
+		holder[key] = node
+		return requiredSeen(r, d, node, {})
 	end
 	if c == 0 then
 		r.bad = true
@@ -3173,7 +3214,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 			local c = peek(r)
 			if c == 125 then
 				r.pos += 1
-				return true
+				return requiredSeen(r, d, rec, seen)
 			end
 			if c == 0 then
 				r.bad = true
@@ -3233,7 +3274,7 @@ readTableKeys = function(r: Reader, d: any, rec: any, depth: number, firstKey: s
 			r.pos += 1
 		elseif c == 125 then
 			r.pos += 1
-			return true
+			return requiredSeen(r, d, rec, seen)
 		else
 			r.bad = true
 			return false
@@ -3282,6 +3323,7 @@ local function resetReport(report: any)
 	report.malformed = false
 	report.reason = nil
 	report.blobShared = 0
+	report.missingRequired = 0
 end
 
 -- fromJson(d, rec, text, report): FromJson (docs/SPEC-TABLES.md §16.1): ONE
@@ -3305,7 +3347,8 @@ function J.fromJson(d: any, rec: any, text: any, report: any?): boolean
 		end
 	end
 	if r.bad or not ok then
-		rep.malformed = true
+		-- a missing required field refuses by name (§2.3), not as damage
+		rep.malformed = r.bad or rep.missingRequired == 0
 		local fresh = d.new()
 		for k, v in fresh do
 			rec[k] = v
@@ -3349,19 +3392,6 @@ local function fail(w: W, why: string): boolean
 		w.err = why
 	end
 	return false
-end
-
-local function guardHolds(fd: any, rec: any): boolean
-	local guard = fd.guard
-	if guard == nil then
-		return true
-	end
-	for _, term in guard do
-		if rec[term[1]] ~= term[2] then
-			return false
-		end
-	end
-	return true
 end
 
 local function written(fd: any, rec: any): boolean
@@ -3762,6 +3792,14 @@ end
 writeFields = function(w: W, d: any, rec: any, depth: number, any: boolean): (boolean, boolean)
 	for _, fd in d.fields do
 		if written(fd, rec) then
+			-- `| required` (§2.3): a required integer whose declared range
+			-- excludes its stored value has no text, as on the wire
+			if fd.required == true and fd.s == "int" and fd.lo ~= nil then
+				local x = V.toRaw(fd, rec[fd.slot])
+				if x ~= nil and (V.rawCmp(x, fd.lo, fd.kw, fd.signed == true) < 0 or V.rawCmp(x, fd.hi, fd.kw, fd.signed == true) > 0) then
+					return fail(w, "invalid_value: " .. fd.name .. " is outside its required range"), any
+				end
+			end
 			emit(w, if any then "," else "{")
 			any = true
 			line(w, depth + 1)

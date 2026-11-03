@@ -17,7 +17,7 @@ import (
 //	json-write   Load the wire golden, ToJson, the text       == json/<name>.json
 //
 // Load and Save are the tables layer's (runtime/table_load.moo, table_save.moo);
-// Load opens an integrity root's trailer before the tolerant walk, as
+// Load opens an integrity root's trailer and walks the opened bytes (loadOpened), as
 // R.LoadRetain does. This test is the text form's half of the pair.
 //
 // wireOwed is each unit whose wire half is not yet the value mapping's, with
@@ -63,7 +63,7 @@ local function run(mod: any, root: string, text: buffer, wire: buffer)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		body = Load.integrityOpen(wire)
 	end
-	local loaded = if body ~= nil then Load.loadTolerant(root, body, Load.newReport()) else nil
+	local loaded = if body ~= nil then Load.loadOpened(root, body, Load.newReport()) else nil
 	if loaded == nil then
 		hexs("load refused")
 		return
