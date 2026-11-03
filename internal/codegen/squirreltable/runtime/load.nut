@@ -1448,10 +1448,6 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read that met
   // damage returns nothing; the report says malformed and the caller discards
   if (report.malformed) {
-    // The strict witness distinguishes body damage from an unopened file,
-    // without requiring this tolerant API to hand it a partial record.
-    local frame = ::getstackinfos(2);
-    if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
     return null;
   }
   if (report.getdelegate() == null) {

@@ -11,10 +11,6 @@ import (
 )
 
 const squirrelFileDiscard = `  if (report.malformed) {
-    // The strict witness distinguishes body damage from an unopened file,
-    // without requiring this tolerant API to hand it a partial record.
-    local frame = ::getstackinfos(2);
-    if (frame != null && ("_strictFrame" in frame.locals)) frame.locals.store.walkDamaged = true;
     return null;
   }
 `

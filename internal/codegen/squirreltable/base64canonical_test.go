@@ -106,7 +106,8 @@ func TestSquirrelLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 		if !ok {
 			t.Fatalf("report row %s has no pinned report", r.name)
 		}
-		wireReason[r.unit+"|"+r.root+"|"+r.wire] = strictName(t, r.name, p)
+		name, _ := strictName(t, r.name, p)
+		wireReason[r.unit+"|"+r.root+"|"+r.wire] = name
 	}
 
 	var rows []base64ProbeRow

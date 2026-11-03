@@ -150,7 +150,10 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 		return data
 	}
 
-	type loadCase struct{ key, unit, root, want string }
+	type loadCase struct {
+		key, unit, root, want string
+		body                  bool
+	}
 	var loadCases []loadCase
 	for _, r := range rows {
 		if !ensure(r.unit) {
@@ -161,14 +164,14 @@ func TestSquirrelDefaultReadIsStrict(t *testing.T) {
 			t.Fatalf("report row %s has no pinned report", r.name)
 		}
 		inputs[r.name] = readInput(r.wire)
-		want := strictName(t, r.name, pin)
+		want, body := strictName(t, r.name, pin)
 		if len(inputs[r.name]) == 0 {
-			want = "wire_damaged"
+			want, body = "wire_damaged", false
 		} else if f := formName(inputs[r.name][0], false); f != "" {
-			want = f
+			want, body = f, false
 		}
 		fmt.Fprintf(&p, "runLoad(%q, %q, %q, %q);\n", r.unit, mods[r.unit], r.root, r.name)
-		loadCases = append(loadCases, loadCase{key: r.name, unit: r.unit, root: r.root, want: want})
+		loadCases = append(loadCases, loadCase{key: r.name, unit: r.unit, root: r.root, want: want, body: body})
 	}
 
 	type jsonCase struct{ key, unit, root, hostile, verdict string }
@@ -244,7 +247,7 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 		plainValue, reason, twinValue, twinCounters := g[0], g[1], g[2], g[3]
 		pin := pinned[c.key]
 		wantCounters := strings.Join(strings.Split(pin, ",")[:6], ",")
-		if c.want != "malformed" && twinCounters != wantCounters {
+		if !c.body && twinCounters != wantCounters {
 			t.Errorf("load %s: loadTolerant counted %s, the pinned report is %s", c.key, twinCounters, wantCounters)
 		}
 		loadNames[reason]++
@@ -262,10 +265,10 @@ fixed table Fix { n int32 = 1 | min = 0, max = 10
 			if reason != c.want {
 				t.Errorf("load %s: the plain load refused %q, ReadStrict names %q", c.key, reason, c.want)
 			}
-			if c.want == "malformed" && (twinValue != "null" || !strings.HasSuffix(twinCounters, ",true")) {
-				t.Errorf("load %s: malformed read retained a value or lost its verdict", c.key)
+			if c.body && (twinValue != "null" || !strings.HasSuffix(twinCounters, ",true")) {
+				t.Errorf("load %s: a damaged read retained a value or lost its malformed verdict", c.key)
 			}
-			if c.want != "malformed" && c.want != "wire_damaged" && c.want != "newer_form" && c.want != "message_form_as_file" && twinValue != "val" {
+			if c.want != "wire_damaged" && c.want != "unknown_form" && twinValue != "val" {
 				t.Errorf("load %s: loadTolerant did not keep the recovered value", c.key)
 			}
 		}

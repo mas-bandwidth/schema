@@ -1,9 +1,10 @@
 // THE STRICT READ AND ITS NAMED REFUSALS (docs/SPEC-TABLES.md §6.5, §11,
 // §2.14). ReadStrict answers the root or refuses with ONE name, the set §6.5
-// states and Go's TableReport.Err() answers: wire_damaged (the file's own
-// framing), non_finite_float, malformed, clamped and kind_mismatch, each with the
-// first field the walk saw move it; a form byte the root's own form does not read
-// (previous_form, message_form_as_file, newer_form); and integrity_mismatch.
+// states and Go's TableReport.Err() answers: wire_damaged (every damaged wire,
+// the file's own framing and a body alike, §4), non_finite_float, clamped and
+// kind_mismatch, each with the first field the walk saw move it; unknown_form
+// for a form byte the root's own form does not read (§6.5, STRICT ERROR
+// IDENTITY); and integrity_mismatch.
 // It does NOT refuse unknown, widened or duplicate alone (§6.5: unknown is
 // evolution, widened decoded exactly; a repeat is last-wins, §4): those stay
 // counted on the report. It is a wrapper over schema_table_load's tolerant
@@ -232,10 +233,10 @@ local reset = function(report) {
 // names its own refusals (and answers previous_form for a form byte 1 it is
 // handed, §3.4); ReadStrict at a declared-fixed root READS a form-1 file as
 // the variable form, the accepting read (the ruling, docs/SPEC-TABLES.md
-// §6.5). A variable root reads form 1, and a form-3 file at it is newer_form
-// (§6.5's previous_form is only a form THIS form is ahead of). Form 2 is
-// message_form_as_file at either. A form byte the root does not read moves
-// no counter (§3, §6.5).
+// §6.5). A variable root reads form 1. A form-3 file at a variable root, form
+// 2 at either, and any other byte the root does not read answer unknown_form
+// on this read, where the tolerant report says newer_form or
+// message_form_as_file; it moves no counter (§3, §6.5).
 _M.ReadStrict <- function(T, root, bytes, report) {
   local _strictFrame = true;
   if (report == null) report = {};
@@ -257,7 +258,10 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     local out = [d.make()];
     local n = T[root + "FixedLoadTolerant"](bytes, out, 1);
     if (n < 0) {
-      report.reason = T.FixedReason;
+      // STRICT ERROR IDENTITY (docs/SPEC-TABLES.md §6.5): the fixed refusal
+      // keeps its own name, and only a form-byte refusal answers unknown_form
+      local fr = T.FixedReason;
+      report.reason = (fr == "previous_form" || fr == "newer_form" || fr == "message_form_as_file") ? "unknown_form" : fr;
       // a non-finite float names its field (docs/SPEC-TABLES.md §3.3)
       if (("FixedField" in T) && T.FixedField != null) report.field = T.FixedField;
       return null;
@@ -265,8 +269,11 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     if (n != 1) { report.malformed = true; report.reason = "wire_damaged"; return null; }
     return out[0];
   }
+  // a form byte this read does not carry is unknown_form on the strict read
+  // (docs/SPEC-TABLES.md §6.5, STRICT ERROR IDENTITY); the tolerant report
+  // names it newer_form or message_form_as_file
   if (form != FORM_VARIABLE) {
-    report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "newer_form";
+    report.reason = "unknown_form";
     return null;
   }
   if (("integrity" in d) && d.integrity != null && d.integrity != "") {
@@ -277,7 +284,6 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local store = {};
   foreach (k, _ in COUNTERS) store[k] <- report[k];
   store.missingRequired <- false;
-  store.walkDamaged <- false;
   local first = {};
   // the trailer was opened above (§2.14), so the load must not strip it again
   local v = _load.loadTolerant(T, root, bytes, witness(store, first), null, true);
@@ -309,19 +315,18 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     report.field = ("missingRequired" in first) ? first.missingRequired : null;
     return null;
   }
-  // damage first, then the counters in Err()'s order, so one wire always
-  // answers one name (§6.5, §11); unknown, widened and duplicate alone read
-  // Both paths discard the value. The witness records whether the file was
-  // opened and its body walked: failure before that is wire_damaged, while
-  // damage in the body is malformed, matching Go's strict error names.
-  if (v == null && store.malformed && !store.walkDamaged) {
+  // DAMAGE IS wire_damaged ON THE STRICT READ (docs/SPEC-TABLES.md §4, §6.5):
+  // every damaged wire, framing or body, answers that one name, ahead of the
+  // refusing counters; the report keeps its malformed flag. Then the counters
+  // in Err()'s order, so one wire always answers one name (§6.5, §11);
+  // unknown, widened and duplicate alone read. Both paths discard the value.
+  if (store.malformed) {
     report.reason = "wire_damaged";
+    report.field = ("malformed" in first) ? first.malformed : null;
     return null;
   }
-  // damage, then the refusing counters in Go's Err() order
-  foreach (k in ["malformed", "clamped", "kindMismatch"]) {
-    local moved = typeof store[k] == "bool" ? store[k] : store[k] > 0;
-    if (!moved) continue;
+  foreach (k in ["clamped", "kindMismatch"]) {
+    if (store[k] <= 0) continue;
     report.reason = COUNTERS[k];
     report.field = (k in first) ? first[k] : null;
     return null;
@@ -335,8 +340,7 @@ _M.ReadStrict <- function(T, root, bytes, report) {
 // the names this file owns, for a caller that wants the spelling rather than
 // the reason string (docs/SPEC-TABLES.md §11, §6.5)
 _M.ReadStrictNames <- {
-  previous_form = true, message_form_as_file = true, newer_form = true,
-  integrity_mismatch = true, wire_damaged = true, unknown_form = true, malformed = true,
+  integrity_mismatch = true, wire_damaged = true, unknown_form = true,
   non_finite_float = true, clamped = true, kind_mismatch = true, count_over_extent_cap = true,
   missing_required = true,
   // the fixed reader's own, answered through <Root>FixedLoad (§3.4)

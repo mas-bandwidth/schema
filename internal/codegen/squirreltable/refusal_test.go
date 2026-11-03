@@ -53,10 +53,12 @@ type refusalCase struct {
 
 // strictName is the one name §6.5 gives a pinned report (u,k,w,c,d,m,verdict
 // of testdata/conformance/tables/reports.txt) under ReadStrict's order, Go's
-// TableReport.Err(): malformed, then clamped, then kind_mismatch. unknown,
-// widened and duplicate alone are not refusals (§6.5: unknown is evolution,
-// widened decoded exactly). "ok" is a clean read.
-func strictName(t *testing.T, row, pinned string) string {
+// TableReport.Err(): damage, then clamped, then kind_mismatch. Every damaged
+// wire is wire_damaged on the strict read, body and framing alike (§4, §6.5);
+// the second answer says the damage was in a body the walk reached, where the
+// read names the field. unknown, widened and duplicate alone are not refusals
+// (§6.5: unknown is evolution, widened decoded exactly). "ok" is a clean read.
+func strictName(t *testing.T, row, pinned string) (string, bool) {
 	t.Helper()
 	f := strings.Split(pinned, ",")
 	if len(f) != 7 {
@@ -64,15 +66,15 @@ func strictName(t *testing.T, row, pinned string) string {
 	}
 	switch {
 	case f[5] == "true" && f[6] == "read":
-		return "malformed"
+		return "wire_damaged", true
 	case f[5] == "true":
-		return "wire_damaged"
+		return "wire_damaged", false
 	case f[3] != "0":
-		return "clamped"
+		return "clamped", false
 	case f[1] != "0":
-		return "kind_mismatch"
+		return "kind_mismatch", false
 	}
-	return "ok"
+	return "ok", false
 }
 
 // formName is ReadStrict's form-byte refusal for a file whose first byte is b
@@ -81,14 +83,13 @@ func strictName(t *testing.T, row, pinned string) string {
 // declared-fixed root reads a form-1 file as the variable form, the accepting
 // read) (docs/SPEC-TABLES.md, The three wires: neither class borrows the
 // other's form; §6.5, the ruling), or "" when the form is the root's own.
+// Every form-byte refusal is unknown_form on the strict read (§6.5, STRICT
+// ERROR IDENTITY).
 func formName(b byte, fixed bool) string {
-	switch {
-	case b == 1, fixed && b == 3:
+	if b == 1 || fixed && b == 3 {
 		return ""
-	case b == 2:
-		return "message_form_as_file"
 	}
-	return "newer_form"
+	return "unknown_form"
 }
 
 // TestSquirrelStrictReadRefusesByName drives ReadStrict over EVERY report row
@@ -178,7 +179,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			t.Fatalf("report row %s has no pinned report", r.name)
 		}
 		inputs[r.name] = data
-		want := strictName(t, r.name, p)
+		want, body := strictName(t, r.name, p)
 		field := pinnedFields[r.name]
 		if len(data) == 0 {
 			want = "wire_damaged"
@@ -186,10 +187,12 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			want, field = f, "-"
 		} else if data[0] == 3 {
 			t.Fatalf("%s: a form-3 report row; the fixed reader's name is not derived here", r.name)
+		} else if body {
+			moved["body damage"]++
 		} else {
 			moved[want]++
 		}
-		if want == "ok" || want == "wire_damaged" {
+		if want == "ok" || want == "wire_damaged" && !body {
 			field = "-"
 		}
 		cases = append(cases, refusalCase{key: r.name, unit: r.unit, root: r.root, input: r.name, form: -1, want: want, field: field})
@@ -199,7 +202,7 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		t.Fatal("no report row reached a generated unit")
 	}
 	// every counter §6.5 refuses on does so on at least one pinned row
-	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
+	for _, name := range []string{"kind_mismatch", "clamped", "body damage"} {
 		if moved[name] == 0 {
 			t.Errorf("no generated report row refuses as %s", name)
 		}
@@ -302,14 +305,14 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "variable_empty", unit: "streamdemo", root: "Feed", input: "empty", form: -1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "variable_short", unit: "streamdemo", root: "Feed", input: "form_v1", form: 1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "variable_early_end", unit: "streamdemo", root: "Feed", input: "early_end", form: -1, want: "wire_damaged", field: "-"},
-		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "form_v2", form: 2, want: "message_form_as_file", field: "-"},
-		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "form_v3", form: 3, want: "newer_form", field: "-"},
-		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "form_v127", form: 127, want: "newer_form", field: "-"},
+		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "form_v2", form: 2, want: "unknown_form", field: "-"},
+		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "form_v3", form: 3, want: "unknown_form", field: "-"},
+		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "form_v127", form: 127, want: "unknown_form", field: "-"},
 		// a fixed root: form 1 is READ as the variable form (the ruling, §6.5);
 		// a lone form byte is the framing's damage, not previous_form
 		refusalCase{key: "fixed_previous", unit: fixedUnit, root: fixedRoot, input: "form_f1", form: 1, want: "wire_damaged", field: "-"},
-		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "message_form_as_file", field: "-"},
-		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "newer_form", field: "-"},
+		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "form_f2", form: 2, want: "unknown_form", field: "-"},
+		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "form_f9", form: 9, want: "unknown_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
 		// names a header too short to hold a layout truncated (docs/FIXED-FORM-ALGORITHM.md
 		// §5.3, the framing-damage returns renamed)
@@ -378,8 +381,8 @@ func TestSquirrelStrictReadRefusesByName(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
-		"message_form_as_file", "newer_form", "integrity_mismatch", "ok"} {
+	for _, name := range []string{"wire_damaged", "clamped", "kind_mismatch",
+		"unknown_form", "integrity_mismatch", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
 		}
@@ -475,7 +478,7 @@ func TestSquirrelStrictReadReadsFormOneAtFixedRoot(t *testing.T) {
 	if reason == "previous_form" {
 		t.Errorf("ReadStrict at a declared-fixed root refuses a form-1 file as previous_form; the ruling reads it")
 	}
-	if want := strictName(t, "v1_cfg_as_v2", pinned); reason != want {
+	if want, _ := strictName(t, "v1_cfg_as_v2", pinned); reason != want {
 		t.Errorf("ReadStrict at a declared-fixed root refuses %q, want %q (the variable-form read's own strict name)", reason, want)
 	}
 	if (reason == "-") != (parts[1] == "root") {
