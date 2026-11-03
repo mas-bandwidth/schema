@@ -243,6 +243,8 @@ func init() {
 		Name{Name: "TableMessageResetReport", What: "zeroes a report for reuse"},
 		Name{Name: "tableMessageCountBits", What: "counts the bits an integer value occupies in a bit reader (§6)"},
 		Name{Name: "tableMessageEntry", What: "resolves a vocabulary reference to a message entry, with the count"},
+		Name{Name: "tableMessageUtf8Valid", What: "whether a UTF-8 text payload in a message body is well-formed (§6)"},
+		Name{Name: "tableMessageUtf8Clamp", What: "codepoint-boundary byte bound for an oversize UTF-8 text payload (§6)"},
 		Name{Name: "TableFixedTextOk", What: "whether a text payload's bytes are well-formed for its flavour (fixed form)"},
 
 		Name{Name: "BuildVersion", What: "the unit's build version (docs/SPEC-TABLES.md §20). C# spells it a member of Schema, which claims nothing; C++, Go, Rust, Java, Elixir and JavaScript put it at unit scope — Java in a file of its own name, Elixir as a module, JavaScript as a module-scope export — so the claim is the union. C does NOT emit this spelling: an object-like macro carrying a common PascalCase identifier rewrites it everywhere in the consumer's own translation unit, which no front end can refuse, so the C backend spells the value SCHEMA_<PKG>_BUILD_VERSION_VALUE under the reserved prefix (internal/check's cReservedMacros)", RustConst: true},
