@@ -330,7 +330,7 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 // header, the record at the data part's base, and the one-entry attribution
 // part; every other root gets the region writer's (emitCookRegionRoot).
 func emitCookRoot(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
-	if !st.IsTable || st.IsMapEntry() {
+	if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 		return
 	}
 	if cookRegionRoot(u, st) {
@@ -364,10 +364,11 @@ func emitCookRoot(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
 	g.Pf("}\n\n")
 }
 
-// cookRegionRoot reports a table whose write side is the region writer: a
-// pointered root, or a fixed one the typed writer does not carry.
+// cookRegionRoot reports a table whose write side is the region writer: one
+// that declares the cook among its forms (§2.12) and is a pointered root, or
+// a fixed one the typed writer does not carry.
 func cookRegionRoot(u *ir.Unit, st *ir.Struct) bool {
-	if !st.IsTable || st.IsMapEntry() {
+	if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") {
 		return false
 	}
 	if ir.VariableTables(u)[st.Name] {

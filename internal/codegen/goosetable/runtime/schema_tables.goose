@@ -90,6 +90,8 @@ struct TableDesc {
     table: bool,
     fixed: bool,
     variable: bool,
+    json_array: bool,
+    integrity: bool,
     place: const (const u8[:])[:], // what a pointer walk from it may place
     place_str: bool,
     place_bytes: bool,
@@ -108,3 +110,37 @@ struct UnionDesc {
 // it selects. The first row that matches wins. It lives here, beside the
 // array it types, so this module checks on its own.
 struct LoadReg { shape: u8, array: u8, wide: bool, loader: Loader }
+
+// crc32c is §2.14's CRC-32C (Castagnoli, reflected polynomial 0x82F63B78)
+// over data[start..end].
+fn crc32c(data: const u8[:], start: i64, end: i64) -> u32 {
+    var crc: u32 = 0xFFFFFFFF;
+    var i = start;
+    while i < end {
+        crc ^= data[i];
+        var b: i64 = 0;
+        while b < 8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ 0x82F63B78;
+            } else {
+                crc >>= 1;
+            }
+            b += 1;
+        }
+        i += 1;
+    }
+    return crc ^ 0xFFFFFFFF;
+}
+
+// integrity_holds is §2.14's read check: a file or batch of at least
+// min_body + 4 bytes whose last four bytes (little-endian) match the
+// CRC-32C of every byte before them.
+fn integrity_holds(data: const u8[:], min_body: i64) -> bool {
+    let n = data.len - 4;
+    if n < min_body { return false; }
+    let got: u32 = data[n]
+        | ((data[n + 1] as u32) << 8)
+        | ((data[n + 2] as u32) << 16)
+        | ((data[n + 3] as u32) << 24);
+    return got == crc32c(data, 0, n);
+}
