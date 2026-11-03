@@ -444,6 +444,62 @@ func roundtripProbe(g *generatedUnit, rootName string) string {
 	return b.String()
 }
 
+// sameLoadedValue compares two normalized trees where the only difference a
+// FLOAT32 may leave is its spelling: the probe prints a float32 widened to the
+// double it is, and the golden spells it at its own width (§16.2), so a golden
+// number that parses at float32 to exactly the probe's double is that value.
+func sameLoadedValue(got, want any) bool {
+	switch g := got.(type) {
+	case string:
+		w, ok := want.(string)
+		if !ok {
+			return false
+		}
+		if g == w {
+			return true
+		}
+		gr, gok := strings.CutPrefix(g, "number:")
+		wr, wok := strings.CutPrefix(w, "number:")
+		if !gok || !wok {
+			return false
+		}
+		gv, ok := new(big.Rat).SetString(gr)
+		if !ok {
+			return false
+		}
+		wv, ok := new(big.Rat).SetString(wr)
+		if !ok {
+			return false
+		}
+		g64, gexact := gv.Float64()
+		w32, _ := wv.Float32()
+		return gexact && float64(w32) == g64
+	case map[string]any:
+		w, ok := want.(map[string]any)
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for k, gv := range g {
+			if wv, ok := w[k]; !ok || !sameLoadedValue(gv, wv) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		w, ok := want.([]any)
+		if !ok || len(w) != len(g) {
+			return false
+		}
+		for i := range g {
+			if !sameLoadedValue(g[i], w[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return reflect.DeepEqual(got, want)
+}
+
 // normalizeNumbers replaces each json.Number with its exact rational value,
 // so 1000000.0 and 1000000 are one value and no wide or fixed value passes
 // through a double (docs/SPEC-TABLES.md §16.2, Numbers).
@@ -537,7 +593,7 @@ func TestLuauTableLoadRoundTripsEveryCleanInstance(t *testing.T) {
 		got := decodeText(t, gotText, "the loaded value")
 		wantV := decodeText(t, want, golden)
 		compared = append(compared, row.caseName)
-		if !reflect.DeepEqual(got, wantV) {
+		if !reflect.DeepEqual(got, wantV) && !sameLoadedValue(got, wantV) {
 			failures = append(failures, fmt.Sprintf("%s:\nloaded: %s\ngolden: %s", row.caseName, gotText, want))
 		}
 	}
