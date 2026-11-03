@@ -138,13 +138,13 @@ type tableGen struct {
 	// lineage is the LOCKED LAYOUTS per fixed table, OLDEST FIRST, handed down
 	// by GenerateLineage (docs/FIXED-FORM-ALGORITHM.md §5.2). Nil is a build
 	// with no lock: a table then carries its own entry and nothing else.
-	lineage     map[string][]FixedLineageEntry
-	anyVariable bool // the unit declares at least one variable-length table
-	anySequence bool
-	anyList     bool
+	lineage          map[string][]FixedLineageEntry
+	anyVariable      bool // the unit declares at least one variable-length table
+	anySequence      bool
+	anyList          bool
 	anyMap           bool
 	anyUnboundedText bool
-	anyKeyed    bool // the unit declares at least one enum-keyed array
+	anyKeyed         bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
 	// answerable by asking one question (§2.2).
