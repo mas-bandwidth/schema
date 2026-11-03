@@ -311,12 +311,14 @@ func main() {
 
 // repoRelative keeps every path in the data and in a driver's argv relative to
 // the repository root, because a golden that carries an absolute path is a
-// golden that only passes on one machine.
+// golden that only passes on one machine. Paths outside the working tree remain
+// absolute: walking upward from a logical cwd can cross symlinks differently
+// from the child driver that opens the path.
 func repoRelative(path string) string {
 	if filepath.IsAbs(path) {
 		if wd, err := os.Getwd(); err == nil {
-			if rel, err := filepath.Rel(wd, path); err == nil {
-				return rel
+			if rel, err := filepath.Rel(wd, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return filepath.ToSlash(rel)
 			}
 		}
 	}
