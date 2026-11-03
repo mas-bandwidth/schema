@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -468,6 +475,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -9885,7 +9895,10 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBody( TableReader & r, Unit & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10035,7 +10048,7 @@ inline bool UnitLoad( Unit & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = UnitLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -10334,7 +10347,10 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBody( TableReader & r, Bounded & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10550,7 +10566,7 @@ inline bool BoundedLoad( Bounded & value, const uint8_t * buffer, int64_t bytes,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = BoundedLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -10909,7 +10925,10 @@ inline bool UnboundedLoadBody( TableReader & r, const TableNodeMap & nodes, Unbo
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -12653,7 +12672,7 @@ inline const Unbounded * UnboundedLoad( uint8_t * region, int64_t region_bytes, 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Unbounded * root = UnboundedLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -12746,6 +12765,7 @@ inline bool UnboundedLoadBuilderTolerant( UnboundedBuilder & builder, const uint
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -12795,6 +12815,7 @@ inline bool UnboundedLoadBuilderTolerant( UnboundedBuilder & builder, const uint
     bool ok = !nodes.refused && UnboundedLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -12831,7 +12852,7 @@ inline bool UnboundedLoadBuilder( UnboundedBuilder & builder, const uint8_t * wi
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = UnboundedLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -12873,7 +12894,7 @@ inline const Unbounded * UnboundedReadStrict( const uint8_t * wire_file, int64_t
     UnboundedBuilder builder( allocator );
     TableReport report;
     const bool decoded = UnboundedLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -12939,7 +12960,10 @@ LISTDEMO_TABLE_INLINE bool UnitLoadBodyRetain( TableReader & r, Unit & value, Ta
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -13093,7 +13117,10 @@ LISTDEMO_TABLE_INLINE bool BoundedLoadBodyRetain( TableReader & r, Bounded & val
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -13338,7 +13365,10 @@ inline bool UnboundedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -14600,21 +14630,21 @@ extern const TableTypeInfo BoundedTableInfo;
 extern const TableTypeInfo UnboundedTableInfo;
 
 inline const TableFieldInfo UnitTableFields[] = {
-    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Unit, v ), (uint32_t) sizeof( Unit::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Unit, v ), (uint32_t) sizeof( Unit::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo UnitTableInfo = { "Unit", (uint32_t) sizeof( Unit ), 1, UnitTableFields, +[]( void * p ) { UnitReset( *(Unit *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * UnitTableType() { return &UnitTableInfo; }
 
 inline const TableFieldInfo BoundedTableFields[] = {
-    { "items", "items", "Unit", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Bounded, items ), (uint32_t) sizeof( Bounded::items[0] ), (uint32_t) offsetof( Bounded, items_count ), 0xffffffffu, &UnitTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "tag", "tag", "int32", 0x56d7ab194448a4f3ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bounded, tag ), (uint32_t) sizeof( Bounded::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "items", "items", "Unit", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Bounded, items ), (uint32_t) sizeof( Bounded::items[0] ), (uint32_t) offsetof( Bounded, items_count ), 0xffffffffu, &UnitTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tag", "tag", "int32", 0x56d7ab194448a4f3ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bounded, tag ), (uint32_t) sizeof( Bounded::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo BoundedTableInfo = { "Bounded", (uint32_t) sizeof( Bounded ), 2, BoundedTableFields, +[]( void * p ) { BoundedReset( *(Bounded *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BoundedTableType() { return &BoundedTableInfo; }
 
 inline const TableFieldInfo UnboundedTableFields[] = {
-    { "items", "items", "Unit", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Unbounded, items ), (uint32_t) sizeof( Unit ), (uint32_t) offsetof( Unbounded, items.count ), 0xffffffffu, &UnitTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Unit> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "tag", "tag", "int32", 0x56d7ab194448a4f3ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Unbounded, tag ), (uint32_t) sizeof( Unbounded::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "items", "items", "Unit", 0x3e7884bf4f412c6full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Unbounded, items ), (uint32_t) sizeof( Unit ), (uint32_t) offsetof( Unbounded, items.count ), 0xffffffffu, &UnitTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Unit> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "tag", "tag", "int32", 0x56d7ab194448a4f3ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Unbounded, tag ), (uint32_t) sizeof( Unbounded::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo UnboundedTableInfo = { "Unbounded", (uint32_t) sizeof( Unbounded ), 2, UnboundedTableFields, +[]( void * p ) { UnboundedReset( *(Unbounded *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * UnboundedTableType() { return &UnboundedTableInfo; }
