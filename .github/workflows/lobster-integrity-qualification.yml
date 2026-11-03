@@ -7,7 +7,7 @@ permissions:
 jobs:
   native:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
@@ -38,6 +38,11 @@ jobs:
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           make build/fixedform-corpus/.stamp
-          go test ./internal/codegen/lobstertable -run '^TestLobsterFixedForm(Evolution|NamesEveryRefusal)$' -count=1 -timeout 300s -v
-      - name: Pure Go Lobster and compiler checks
-        run: go test ./internal/codegen/lobstertable ./internal/tablenames -count=1
+          go test ./internal/codegen/lobstertable -run '^TestLobsterFixedForm' -count=1 -timeout 300s -v
+      - name: Complete native table baseline and compiler checks
+        env:
+          SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable ./internal/tablenames -count=1 -timeout 600s -v
