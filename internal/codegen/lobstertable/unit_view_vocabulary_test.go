@@ -23,7 +23,11 @@ func TestLobsterUnitViewVocabulary(t *testing.T) {
  union UnusedChoice { other Payload }
  table Leaf { n int32 }
  union TableChoice { leaf Leaf }
- table Root { mode Mode choice Choice table_choice TableChoice }
+ table Root {
+ mode Mode
+ choice Choice
+ table_choice TableChoice
+ }
  `
 	if err := os.WriteFile(path, []byte(source), 0644); err != nil {
 		t.Fatal(err)
