@@ -274,3 +274,9 @@ map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind
 
 # Unknown key fields leave two equal default keys: last wins and duplicate counts.
 map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin
+
+# UTF-16 NUL is malformed even though the host Unicode converter accepts it.
+wide_text_zero_unit widedemo Caption testdata/wire/tables/fuzz-vectors/wide_text_zero_unit.bin
+
+# A bounded byte count clamps before payload extent checks.
+bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/bytes_count_clamped_prefix.bin
