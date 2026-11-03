@@ -153,3 +153,51 @@ tables-goose-retain-fuzz-driver:
 tables-goose-retain-fuzz-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/
+
+# THE INTEGRITY TRAILER UNDER THE LEG'S OWN BUILD (docs/SPEC-TABLES.md §2.14;
+# internal/codegen/goosetable/integrity_test.go). The gate builds its probes
+# with `goose build -O2`, which compiles through the machine's C compiler:
+# crc32c's known answers against Go's Castagnoli table, the short-body vector
+# (testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin)
+# malformed with integrity_mismatch on every load path, and the
+# featurewitnesses corpus files saved back to their own bytes.
+.PHONY: tables-goose-integrity tables-goose-integrity-negative-control
+tables-goose-integrity:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseIntegrity(CRC32C|WireFuzzLeg)$$' ./internal/codegen/goosetable/
+
+# ITS CONTROLS, each deterministic on any C compiler. A wrong-polynomial
+# table reds the known answers and the Root round trips, and nothing else. A
+# crc32c that never returns (a constant-condition loop, which no C compiler
+# may assume terminates) put in one leg's generated schema_tables.goose must
+# turn the harness's replay of the short-body vector red on its own stall
+# watchdog.
+GOOSE_FUZZ_SED_crcloop := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|loop { crc ^= 1; } // SABOTAGED: crc32c never returns|
+tables-goose-integrity-negative-control: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseIntegrityCRC32CNegativeControl$$' ./internal/codegen/goosetable/
+	@sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/control-crcloop '$(GOOSE_FUZZ_SED_crcloop)'; \
+	rc=$$?; if [ $$rc -eq 0 ]; then \
+		echo "NEGATIVE CONTROL FAILED: a crc32c that never returns left the replay green"; exit 1; \
+	elif [ $$rc -ne 3 ]; then \
+		echo "NEGATIVE CONTROL FAILED: the replay went red, but not on the driver's stall"; exit 1; fi
+	@echo "goose integrity negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-crcloop/log)"
+
+# THE BITWISE-LOOP DIAGNOSTIC, never a gate. The bitwise CRC loop in the
+# shape Goose lowers `while` into, put back in one leg, is replayed against
+# the short-body vector, and the C compiler `goose toolchain` reports is said
+# to be affected (the replay stalls) or not. GCC 15 -O2 (-foptimize-crc)
+# compiles that loop into an endless one; recorded 2026-11-02: gcc
+# 15.2.0-16ubuntu1 (Ubuntu, x86-64) affected, clang 21 (macOS arm64) not.
+GOOSE_FUZZ_SED_crcbitwise := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|crc ^= data[i]; var b: i64 = 0; while b < 8 { if (crc \& 1) != 0 { crc = (crc >> 1) ^ 0x82F63B78; } else { crc >>= 1; } b += 1; } // SABOTAGED: the bitwise loop|
+.PHONY: tables-goose-integrity-crc-diagnostic
+tables-goose-integrity-crc-diagnostic: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@cc=$$("$(GOOSE)" toolchain | sed -n 's/^id: *//p'); \
+	sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/diagnostic-crcbitwise '$(GOOSE_FUZZ_SED_crcbitwise)'; \
+	case $$? in \
+		0) echo "goose integrity crc diagnostic: compiler not affected ($$cc): the bitwise CRC loop answers";; \
+		3) echo "goose integrity crc diagnostic: compiler affected ($$cc): the bitwise CRC loop never returns";; \
+		*) echo "goose integrity crc diagnostic: inconclusive ($$cc):"; cat $(GOOSE_FUZZ_DIR)/diagnostic-crcbitwise/log;; \
+	esac; \
+	echo "goose integrity crc diagnostic: recorded 2026-11-02: gcc 15.2.0-16ubuntu1 (x86-64) affected, clang 21 (arm64) not affected"
