@@ -1227,7 +1227,9 @@ async function wireFuzz() {
         report.clamped = rep.clamped;
         report.duplicate = rep.duplicate;
         report.malformed = rep.malformed;
-        report.refused = rep.refused;
+        // Storage-cap rejection is an out-of-band builder failure, not a
+        // wire-form refusal in the shared report protocol.
+        report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
         report.retained = rep.retained;
         report.retainLost = rep.retainLost;
         report.reason = rep.reason;

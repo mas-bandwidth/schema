@@ -777,6 +777,11 @@ void main() {
   }
 }
 `, reader, st.Name, lower, src)
+	if home := runtimeHome(u); home != reader {
+		// A wrapper imports, rather than re-exports, the shared runtime home.
+		probe = strings.Replace(probe, "import './"+reader+"Fixed.dart' as t;",
+			"import './"+reader+"Fixed.dart' as t;\nimport './"+home+"Fixed.dart' as t;", 1)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -651,6 +651,14 @@ with `--message`. The region profiles retain their measurement and bounds
 checks; native heap readers such as Dart use the builder profile and test
 region sizing separately.
 
+`wire-fuzz --mixed-builder` preserves the full default roster. It uses the
+mutable builder oracle only for variable-class file roots, and keeps the
+existing fixed-file and message oracles for those roots. This profile lets a
+heap-based variable reader qualify every file and message root in one pass.
+It cannot be combined with `--builder`. With `--retain`, the roster remains
+the existing variable-file retention domain; both retention counters are
+compared. The plain mixed profile reports no seeds outside its arm.
+
 For an instance with a Go writer refusal, the manifest may carry the
 go-refusal=<reason> marker. On that Go wire row the driver writes the
 case.absent file with the exact reason bytes, and the harness counts one named
