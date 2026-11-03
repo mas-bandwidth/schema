@@ -17,8 +17,11 @@ package goosetable_test
 //	                and save back to their own bytes on every one of those paths
 //
 // A program that does not terminate fails these gates at the test binary's
-// own -timeout; make tables-goose-integrity-negative-control is the watchdog that
-// shows the bitwise CRC loop hangs where the C compiler miscompiles it.
+// own -timeout. make tables-goose-integrity-negative-control holds the
+// harness's stall watchdog red on a crc32c that never returns, and make
+// tables-goose-integrity-crc-diagnostic says whether the machine's C compiler
+// turns the bitwise CRC loop into an endless one (gcc 15.2.0-16ubuntu1 on
+// x86-64 does at -O2, recorded 2026-11-02).
 
 import (
 	"bytes"

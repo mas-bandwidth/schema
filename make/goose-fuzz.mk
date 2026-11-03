@@ -166,36 +166,38 @@ tables-goose-integrity:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseIntegrity(CRC32C|WireFuzzLeg)$$' ./internal/codegen/goosetable/
 
-# ITS CONTROLS. A wrong-polynomial table reds the known answers and the Root
-# round trips, and nothing else. The bitwise CRC loop put back in one leg's
-# generated schema_tables.goose is the form GCC 15 -O2 (-foptimize-crc)
-# compiles into an endless loop: where `goose toolchain` reports GCC 15 or
-# newer, the harness's own stall watchdog must turn the replay of the
-# short-body vector red; any other C compiler compiles that loop correctly,
-# and the control says so.
-GOOSE_FUZZ_SED_crc := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|crc ^= data[i]; var b: i64 = 0; while b < 8 { if (crc \& 1) != 0 { crc = (crc >> 1) ^ 0x82F63B78; } else { crc >>= 1; } b += 1; } // SABOTAGED: the bitwise loop|
+# ITS CONTROLS, each deterministic on any C compiler. A wrong-polynomial
+# table reds the known answers and the Root round trips, and nothing else. A
+# crc32c that never returns (a constant-condition loop, which no C compiler
+# may assume terminates) put in one leg's generated schema_tables.goose must
+# turn the harness's replay of the short-body vector red on its own stall
+# watchdog.
+GOOSE_FUZZ_SED_crcloop := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|loop { crc ^= 1; } // SABOTAGED: crc32c never returns|
 tables-goose-integrity-negative-control: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseIntegrityCRC32CNegativeControl$$' ./internal/codegen/goosetable/
-	@rm -rf $(GOOSE_FUZZ_DIR)/control-crc && mkdir -p $(GOOSE_FUZZ_DIR)/control-crc
-	@./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out $(GOOSE_FUZZ_DIR)/control-crc/unit testdata/conformance/feature-witnesses/full/Features.schema >/dev/null
-	@sed '$(GOOSE_FUZZ_SED_crc)' $(GOOSE_FUZZ_DIR)/control-crc/unit/schema_tables.goose >$(GOOSE_FUZZ_DIR)/control-crc/schema_tables.goose
-	@grep -q SABOTAGED $(GOOSE_FUZZ_DIR)/control-crc/schema_tables.goose || { \
-		echo "NEGATIVE CONTROL FAILED: the crc sabotage patched nothing"; exit 1; }
-	@mv $(GOOSE_FUZZ_DIR)/control-crc/schema_tables.goose $(GOOSE_FUZZ_DIR)/control-crc/unit/schema_tables.goose
-	@sh make/goose-wirefuzz-build.sh "$(GOOSE)" $(GOOSE_FUZZ_DIR)/control-crc/unit $(GOOSE_FUZZ_DIR)/control-crc/leg
-	@cc=$$("$(GOOSE)" toolchain | sed -n 's/^C compiler: *\([a-z]*\) \([0-9]*\)\..*/\1 \2/p'); \
-	if ./build/conformance-harness wire-fuzz --driver "$(GOOSE_FUZZ_DIR)/control-crc/leg/wirefuzz featurewitnesses builder" \
-		--replay testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin --unit featurewitnesses --root Root --builder --retain \
-		>$(GOOSE_FUZZ_DIR)/control-crc/log 2>&1; then \
-		case "$$cc" in gcc\ 1[5-9]|gcc\ [2-9][0-9]) \
-			cat $(GOOSE_FUZZ_DIR)/control-crc/log; \
-			echo "NEGATIVE CONTROL FAILED: the bitwise CRC loop under $$cc left the replay green"; exit 1;; \
-		esac; \
-		echo "goose integrity crc negative control: $${cc:-this C compiler} compiles the bitwise CRC loop correctly; the hang needs GCC 15 or newer"; \
-	else \
-		grep -q 'the driver stalled' $(GOOSE_FUZZ_DIR)/control-crc/log || { \
-			cat $(GOOSE_FUZZ_DIR)/control-crc/log; \
-			echo "NEGATIVE CONTROL FAILED: the replay went red, but not on a stall"; exit 1; }; \
-		echo "goose integrity crc negative control ($$cc): $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-crc/log)"; \
-	fi
+	@sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/control-crcloop '$(GOOSE_FUZZ_SED_crcloop)'; \
+	rc=$$?; if [ $$rc -eq 0 ]; then \
+		echo "NEGATIVE CONTROL FAILED: a crc32c that never returns left the replay green"; exit 1; \
+	elif [ $$rc -ne 3 ]; then \
+		echo "NEGATIVE CONTROL FAILED: the replay went red, but not on the driver's stall"; exit 1; fi
+	@echo "goose integrity negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-crcloop/log)"
+
+# THE BITWISE-LOOP DIAGNOSTIC, never a gate. The bitwise CRC loop in the
+# shape Goose lowers `while` into, put back in one leg, is replayed against
+# the short-body vector, and the C compiler `goose toolchain` reports is said
+# to be affected (the replay stalls) or not. GCC 15 -O2 (-foptimize-crc)
+# compiles that loop into an endless one; recorded 2026-11-02: gcc
+# 15.2.0-16ubuntu1 (Ubuntu, x86-64) affected, clang 21 (macOS arm64) not.
+GOOSE_FUZZ_SED_crcbitwise := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|crc ^= data[i]; var b: i64 = 0; while b < 8 { if (crc \& 1) != 0 { crc = (crc >> 1) ^ 0x82F63B78; } else { crc >>= 1; } b += 1; } // SABOTAGED: the bitwise loop|
+.PHONY: tables-goose-integrity-crc-diagnostic
+tables-goose-integrity-crc-diagnostic: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@cc=$$("$(GOOSE)" toolchain | sed -n 's/^id: *//p'); \
+	sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/diagnostic-crcbitwise '$(GOOSE_FUZZ_SED_crcbitwise)'; \
+	case $$? in \
+		0) echo "goose integrity crc diagnostic: compiler not affected ($$cc): the bitwise CRC loop answers";; \
+		3) echo "goose integrity crc diagnostic: compiler affected ($$cc): the bitwise CRC loop never returns";; \
+		*) echo "goose integrity crc diagnostic: inconclusive ($$cc):"; cat $(GOOSE_FUZZ_DIR)/diagnostic-crcbitwise/log;; \
+	esac; \
+	echo "goose integrity crc diagnostic: recorded 2026-11-02: gcc 15.2.0-16ubuntu1 (x86-64) affected, clang 21 (arm64) not affected"
