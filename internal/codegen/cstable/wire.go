@@ -5,6 +5,7 @@ package cstable
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -107,6 +108,41 @@ func leafFiniteCondition(f *ir.Field) string {
 	return ""
 }
 
+// writeRangeCheck is the write-side contract of a ranged integer or a bits(N)
+// field narrower than 64 bits, over the C# value expression v: the positive
+// form, with each half the storage already guarantees elided. "" when the
+// storage holds nothing the field refuses. The writer checks it with
+// Debug.Assert, so it is debug-only (docs/SPEC-TABLES.md §3.3).
+func writeRangeCheck(f *ir.Field, v string) string {
+	width := tableKindWidth(tableScalarKind(f))
+	if width == 0 || width > 8 {
+		return ""
+	}
+	var lo, hi *big.Int
+	var low, high bool
+	switch {
+	case f.Type.Kind == ir.TInt && f.HasIntRange && f.IntMin != nil && f.IntMax != nil:
+		lo, hi = f.IntMin, f.IntMax
+		low, high = tableClampEnds(f, width)
+	case f.Type.Kind == ir.TBits && f.Type.Width < 64:
+		lo = big.NewInt(0)
+		hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		_, storageMax := tableStorageRange(false, width*8)
+		high = hi.Cmp(storageMax) < 0
+	default:
+		return ""
+	}
+	signed := f.Type.Kind == ir.TInt && f.Type.Signed
+	var parts []string
+	if low {
+		parts = append(parts, fmt.Sprintf("%s >= %s", v, csIntLit(lo, signed, width)))
+	}
+	if high {
+		parts = append(parts, fmt.Sprintf("%s <= %s", v, csIntLit(hi, signed, width)))
+	}
+	return strings.Join(parts, " && ")
+}
+
 func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	name := st.Name
 	g.pf("public static bool %sCollectTyped(%s v, ref TableWire.Ids ids)\n{\n", name, name)
@@ -118,6 +154,9 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 		if isCleanScalarLeaf(f) {
 			if finite := leafFiniteCondition(f); finite != "" {
 				g.pf("    if (%s) return false;\n", finite)
+			}
+			if check := writeRangeCheck(f, "v."+member(f)); check != "" {
+				g.pf("    System.Diagnostics.Debug.Assert(%s, \"write refused: %s.%s out of range\");\n", check, st.DeclaredName(), f.Name)
 			}
 			cond := leafRideCondition(f)
 			g.pf("    if (%s && !ids.Add(0x%016xul)) return false;\n", cond, id)
@@ -455,6 +494,12 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 			lit = formatFloat32
 		}
 		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { %s v = %s; return v >= %s && v <= %s; }", typ, value, lit(f.FMin), lit(f.FMax))
+	}
+	if !f.Required {
+		if check := writeRangeCheck(f, "v"); check != "" {
+			value := strings.TrimSuffix(strings.TrimPrefix(csRawSet("v", "raw", f.Type), "v = "), ";")
+			fmt.Fprintf(&b, ", WriteValidRaw = delegate (ulong raw) { %s v = %s; return %s; }", csFieldType(f.Type), value, check)
+		}
 	}
 	var c strings.Builder
 	typ := csFieldType(f.Type)
@@ -849,6 +894,10 @@ public static partial class TableWire
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
+        // a ranged integer or a bits(N) value outside its field is caller
+        // error on the write side: checked in a debug build, gone in release
+        System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i)), "write refused: " + f.Name + " out of range");
+        System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(f.GetWide(value, i)), "write refused: " + f.Name + " out of range");
         // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
         // §3.3): collect precedes measure and the first output byte, so Measure
         // and Save both answer -1.
