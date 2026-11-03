@@ -4343,6 +4343,25 @@ static SCHEMA_UNUSED int64_t graphdemo_table_graph_cook(const graphdemo_table_ct
 done:
     graphdemo_table_number_dispose(&n); return result;
 }
+#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_graphdemo_table_cook_text_(graphdemo_table_numbering_t * n,const graphdemo_table_ref_t * src,uint8_t * slot,uint8_t * extent,int64_t * at,int order)
+{
+    int32_t len=0; int64_t bytes; const char * text;
+    if(src->value==0) { return 1; }
+    text=schema_graphdemo_table_text_at_(n->ctx,src,&len);
+    if(len<0) { return 0; }
+    if(len==0) { return 1; }
+    bytes=graphdemo_table_blob_storage((int64_t)len,1);
+    if(bytes<0 || !table_extent_reserve(at,1,bytes,8)) { return 0; }
+    if(slot!=NULL && extent!=NULL) {
+        uint8_t * raw=extent+*at-bytes;
+        graphdemo_table_cook_put(slot,(uint64_t)(raw-slot),8,order);
+        graphdemo_table_cook_put(raw,(uint32_t)len,4,order);
+        graphdemo_table_cook_bytes(raw+8,text,len,len);
+    }
+    return 1;
+}
+#endif
 #endif
 
 #ifndef SCHEMA_GRAPHDEMO_TABLE_RETAIN_RUNTIME

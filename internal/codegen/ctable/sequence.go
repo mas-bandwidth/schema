@@ -1,13 +1,15 @@
 package ctable
 
 import (
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Lists and maps share a relocatable reference/count record. Arena segments
 // retain element addresses through append and erase; region elements are one
 // contiguous array inside the owning node's extent.
-const tableSequenceRuntime = `
+const tableSequenceRuntimeBase = `
 #ifndef SCHEMA_TABLE_SEQUENCE_RUNTIME
 #define SCHEMA_TABLE_SEQUENCE_RUNTIME
 typedef struct TableSequence { TableRef items; int32_t count, padding; } TableSequence;
@@ -174,6 +176,67 @@ static SCHEMA_UNUSED void table_sequence_fill_end(TableSequenceFill * f)
 #endif
 `
 
+const tableUnboundedTextSequenceRuntime = `
+static SCHEMA_UNUSED int schema_table_text_place_(TableSink * sink,TableRef * ref,const uint8_t * text,uint64_t size,int * refused)
+{
+    ref->value=0;
+    if(size==0) { return 1; }
+    if(size>UINT32_MAX || sink==NULL) { return 0; }
+    if(sink->worker!=NULL) {
+        if(table_string_emplace(sink->worker,ref,(const char *)text,(int64_t)size)==NULL) { if(refused!=NULL) { *refused=1; } return 0; }
+        return 1;
+    }
+    if(sink->region!=NULL) {
+        TableRegionSink * region=sink->region; int64_t at=region->used,bytes=table_blob_storage((int64_t)size,1); TableBlob * blob; char * data;
+        if(bytes<0 || !table_extent_reserve(&at,1,bytes,8) || at>region->capacity) { return 0; }
+        blob=(TableBlob *)(void *)(region->base+at-bytes); region->used=at;
+        blob->length=(uint32_t)size; blob->zero=0;
+        data=(char *)(blob+1); memcpy(data,text,(size_t)size); data[size]=0;
+        ref->value=(int64_t)((uint8_t *)(void *)blob-(uint8_t *)(void *)ref);
+        return 1;
+    }
+    return 0;
+}
+static SCHEMA_UNUSED int schema_table_text_extent_(const TableCtx * ctx,uint8_t * pack_base,const TableRef * src,TableRef * dst,int64_t * at)
+{
+    int32_t len=0; int64_t bytes; const char * text;
+    if(src->value==0) { if(dst!=NULL) { dst->value=0; } return 1; }
+    text=schema_table_text_at_(ctx,src,&len);
+    if(len<0) { return 0; }
+    if(len==0) { if(dst!=NULL) { dst->value=0; } return 1; }
+    bytes=table_blob_storage((int64_t)len,1);
+    if(bytes<0 || !table_extent_reserve(at,1,bytes,8)) { return 0; }
+    if(dst!=NULL) {
+        uint8_t * raw=pack_base+*at-bytes;
+        TableBlob * blob=(TableBlob *)(void *)raw;
+        blob->length=(uint32_t)len; blob->zero=0;
+        memcpy(blob+1,text,(size_t)len); ((char *)(blob+1))[len]=0;
+        dst->value=(int64_t)(raw-(uint8_t *)(void *)dst);
+    }
+    return 1;
+}`
+
+func tableSequenceRuntime(anyUnboundedText bool) string {
+	if !anyUnboundedText {
+		return tableSequenceRuntimeBase
+	}
+	s := tableSequenceRuntimeBase
+	s = strings.Replace(s,
+		"typedef int (*TableSequenceCompare)(const void *,const void *);",
+		"typedef int (*TableSequenceCompare)(const TableCtx *,const void *,const void *);", 1)
+	s = strings.Replace(s,
+		"static SCHEMA_UNUSED void table_sequence_sift(const void ** entries,int64_t at,int64_t count,TableSequenceCompare compare)",
+		"static SCHEMA_UNUSED void table_sequence_sift(const TableCtx * ctx,const void ** entries,int64_t at,int64_t count,TableSequenceCompare compare)", 1)
+	s = strings.Replace(s,
+		`if(child+1<count && compare(entries[child],entries[child+1])<0) { child++; }
+        if(compare(entries[at],entries[child])>=0) { return; }`,
+		`if(child+1<count && compare(ctx,entries[child],entries[child+1])<0) { child++; }
+        if(compare(ctx,entries[at],entries[child])>=0) { return; }`, 1)
+	s = strings.ReplaceAll(s, "table_sequence_sift(order->entries,", "table_sequence_sift(ctx,order->entries,")
+	s = strings.Replace(s, "\n#endif\n", tableUnboundedTextSequenceRuntime+"\n#endif\n", 1)
+	return s
+}
+
 func sequenceElement(f *ir.Field) *ir.Field {
 	if f.IsMap() {
 		return &ir.Field{Type: ir.FieldType{Kind: ir.TNamed, Name: f.MapEntry.Name, Ref: f.MapEntry}}
@@ -188,6 +251,9 @@ func (g *tableGen) sequenceType(f *ir.Field) string {
 	e := sequenceElement(f)
 	if e.Type.Pointer {
 		g.noteRef(e.Type.Name)
+		return "TableRef"
+	}
+	if e.Type.TextUnbounded() {
 		return "TableRef"
 	}
 	return g.cFieldType(e.Type)
@@ -236,8 +302,57 @@ func sequenceWireKind(f *ir.Field) int {
 	return ir.TableWireScalarKind(f)
 }
 
+func (g *tableGen) emitUnboundedTextListSurface(st *ir.Struct, f *ir.Field) {
+	name := st.Name + ir.GoExportName(f.Name)
+	elem := f.Type.Name
+	optional := ir.TextListOptional(f)
+	absent := ""
+	present := ""
+	if optional {
+		absent = " || !p->value_present"
+		present = " p->value_present = 1;"
+	}
+	if f.IsList() {
+		g.pf("static SCHEMA_UNUSED const char * %s(const TableCtx * ctx, const %s * value, int32_t i, int32_t * out_len)\n{\n", g.api(name, "text_at"), st.Name)
+		g.pf("    TableSequenceCursor c; const %s * p = NULL; int32_t k;\n", elem)
+		g.pf("    if ( out_len != NULL ) { *out_len = 0; }\n")
+		g.pf("    if ( value == NULL || i < 0 || i >= value->%s.count ) { return NULL; }\n", f.Name)
+		g.pf("    c = table_sequence_cursor( ctx, &value->%s, sizeof( %s ) ); if ( !c.ok ) { return NULL; }\n", f.Name, elem)
+		g.pf("    for ( k = 0; k <= i; k++ ) { p = (const %s *) table_sequence_next( &c ); }\n", elem)
+		g.pf("    if ( p == NULL%s ) { return NULL; }\n", absent)
+		g.pf("    return schema_table_text_at_( ctx, &p->value, out_len );\n}\n")
+		g.pf("static SCHEMA_UNUSED int %s(TableWorker * worker, %s * value, const char * text, int32_t length)\n{\n", g.api(name, "append"), st.Name)
+		g.pf("    TableRef ref = { 0 }; %s * p;\n", elem)
+		g.pf("    if ( value == NULL || !schema_table_text_store_( worker, &ref, text, length ) ) { return 0; }\n")
+		g.pf("    p = %s( worker, &value->%s ); if ( p == NULL ) { return 0; }\n", g.api(name, "add"), f.Name)
+		g.pf("    p->value = ref;%s return 1;\n}\n", present)
+		if optional {
+			g.pf("static SCHEMA_UNUSED int %s(TableWorker * worker, %s * value)\n{\n", g.api(name, "append_absent"), st.Name)
+			g.pf("    if ( value == NULL ) { return 0; }\n    return %s( worker, &value->%s ) != NULL;\n}\n", g.api(name, "add"), f.Name)
+		}
+	} else {
+		g.pf("static SCHEMA_UNUSED const char * %s(const TableCtx * ctx, const %s * value, int32_t i, int32_t * out_len)\n{\n", g.api(name, "text_at"), st.Name)
+		g.pf("    const %s * p;\n    if ( out_len != NULL ) { *out_len = 0; }\n", elem)
+		g.pf("    if ( value == NULL || i < 0 || i >= value->%s_count || value->%s_count > %d ) { return NULL; }\n", f.Name, f.Name, f.ArrayBound)
+		g.pf("    p = &value->%s[i];\n    if ( 0%s ) { return NULL; }\n", f.Name, absent)
+		g.pf("    return schema_table_text_at_( ctx, &p->value, out_len );\n}\n")
+		g.pf("static SCHEMA_UNUSED int %s(TableWorker * worker, %s * value, const char * text, int32_t length)\n{\n", g.api(name, "append"), st.Name)
+		g.pf("    TableRef ref = { 0 }; %s * p;\n", elem)
+		g.pf("    if ( value == NULL || value->%s_count < 0 || value->%s_count >= %d ) { return 0; }\n", f.Name, f.Name, f.ArrayBound)
+		g.pf("    if ( !schema_table_text_store_( worker, &ref, text, length ) ) { return 0; }\n")
+		g.pf("    p = &value->%s[value->%s_count]; %s( p );\n", f.Name, f.Name, g.api(elem, "reset"))
+		g.pf("    p->value = ref;%s value->%s_count++; return 1;\n}\n", present, f.Name)
+		if optional {
+			g.pf("static SCHEMA_UNUSED int %s(TableWorker * worker, %s * value)\n{\n", g.api(name, "append_absent"), st.Name)
+			g.pf("    (void) worker;\n    if ( value == NULL || value->%s_count < 0 || value->%s_count >= %d ) { return 0; }\n", f.Name, f.Name, f.ArrayBound)
+			g.pf("    %s( &value->%s[value->%s_count] ); value->%s_count++; return 1;\n}\n", g.api(elem, "reset"), f.Name, f.Name, f.Name)
+		}
+	}
+}
+
 func (g *tableGen) emitTextListSurface(st *ir.Struct, f *ir.Field) {
 	if ir.TextListUnbounded(f) {
+		g.emitUnboundedTextListSurface(st, f)
 		return
 	}
 	name := st.Name + ir.GoExportName(f.Name)
@@ -377,13 +492,20 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	switch kind {
 	case tkString:
 		val := ir.TextListValue(f)
-		g.pf("                            TableReader item; uint64_t keep;\n")
-		g.pf("                            if(!table_reader_span(&sub,&item)) { %s }\n", bad)
-		g.pf("                            if(!table_wire_utf8(item.buffer,(uint64_t)item.size)) { %s(element); %s }\n", g.api(f.Type.Name, "reset"), bad)
-		g.pf("                            keep=(uint64_t)item.size;\n")
-		g.pf("                            if(keep>%d) { keep=table_wire_utf8_clamp(item.buffer,keep,%d); r->report->clamped++; }\n", val.Type.Size, val.Type.Size)
-		g.pf("                            memset(element->value,0,sizeof(element->value));\n")
-		g.pf("                            memcpy(element->value,item.buffer,(size_t)keep); element->value[keep]=0; element->value_length=(int32_t)keep;\n")
+		if val.Type.TextUnbounded() {
+			g.pf("                            TableReader item; int refused=0;\n")
+			g.pf("                            if(!table_reader_span(&sub,&item)) { %s }\n", bad)
+			g.pf("                            if(!table_wire_utf8(item.buffer,(uint64_t)item.size)) { %s(element); %s }\n", g.api(f.Type.Name, "reset"), bad)
+			g.pf("                            if(!schema_table_text_place_(r->nodes ? r->nodes->sink : NULL,&element->value,item.buffer,(uint64_t)item.size,&refused)) { if(refused) { r->nodes->refused=1; return 0; } %s(element); %s }\n", g.api(f.Type.Name, "reset"), bad)
+		} else {
+			g.pf("                            TableReader item; uint64_t keep;\n")
+			g.pf("                            if(!table_reader_span(&sub,&item)) { %s }\n", bad)
+			g.pf("                            if(!table_wire_utf8(item.buffer,(uint64_t)item.size)) { %s(element); %s }\n", g.api(f.Type.Name, "reset"), bad)
+			g.pf("                            keep=(uint64_t)item.size;\n")
+			g.pf("                            if(keep>%d) { keep=table_wire_utf8_clamp(item.buffer,keep,%d); r->report->clamped++; }\n", val.Type.Size, val.Type.Size)
+			g.pf("                            memset(element->value,0,sizeof(element->value));\n")
+			g.pf("                            memcpy(element->value,item.buffer,(size_t)keep); element->value[keep]=0; element->value_length=(int32_t)keep;\n")
+		}
 	case tkTable:
 		g.pf("                            TableReader item; if(!table_reader_span(&sub,&item)) { %s }\n                            %s(&item,element);\n", bad, g.api(e.Type.Name, "load_body"))
 		g.wireRefusalCheck("                            ")

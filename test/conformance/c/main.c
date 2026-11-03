@@ -174,7 +174,7 @@ static const UnitFn units[] = {
     conformance_codecs_tblp3,
     conformance_codecs_widedemo,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_widelist
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_widelist, conformance_codecs_featurewitnesses
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
