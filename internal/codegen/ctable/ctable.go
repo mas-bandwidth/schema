@@ -1057,7 +1057,7 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	}
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(g.wirePrimitives())
-	h.WriteString(tableRefuseRuntime)
+	h.WriteString(strings.Replace(tableRefuseRuntime, "STORAGE_CAP_BYTES", fmt.Sprint(ir.MaxSizeBytes), 1))
 	if g.anyVariable {
 		h.WriteString("\n")
 		h.WriteString(tableAllocatorRuntime)

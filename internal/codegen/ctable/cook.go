@@ -109,8 +109,12 @@ enum {
     SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH=22,
     SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT=23,
     SCHEMA_TABLE_REFUSE_BLOB_SHARED=24,
-    SCHEMA_TABLE_REFUSE_MISSING_REQUIRED=25
+    SCHEMA_TABLE_REFUSE_MISSING_REQUIRED=25,
+    SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP=26
 };
+/* the STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure passes it is refused as
+   storage_over_cap, and no count times an element size is summed past it */
+#define SCHEMA_TABLE_STORAGE_CAP INT64_C(STORAGE_CAP_BYTES)
 static SCHEMA_UNUSED const uint8_t * table_cook_refuse(TableRefuseReason * out,TableRefuseReason reason)
 { if(out!=NULL) { *out=reason; } return NULL; }
 /* THE STRICT RULE (docs/SPEC-TABLES.md §6.5): every plain read name refuses
@@ -125,6 +129,7 @@ static SCHEMA_UNUSED int table_report_strict_refuses( TableReport * report, int 
 {
     TableRefuseReason reason = SCHEMA_TABLE_REFUSE_OK;
     if ( report->refused && report->reason == SCHEMA_TABLE_NON_FINITE_FLOAT ) { reason = SCHEMA_TABLE_REFUSE_NON_FINITE_FLOAT; }
+    else if ( report->refused && report->reason == SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP ) { reason = SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP; }
     else if ( report->refused && report->reason == SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP ) { reason = SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; }
     else if ( report->refused ) { reason = SCHEMA_TABLE_REFUSE_UNKNOWN_FORM; }
     else if ( report->damage_reason == SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH ) { reason = SCHEMA_TABLE_REFUSE_INTEGRITY_MISMATCH; }
