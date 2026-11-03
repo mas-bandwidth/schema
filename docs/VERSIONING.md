@@ -297,8 +297,9 @@ pipeline step; player saves hold state, which has no weekly default.
 Three mechanisms judge an edit, and each sees what the others cannot:
 
 - **The read report** says what a *reader* can tell happened: on a read that
-  returns, the evolution counters `unknown` and `widened`; on a refusal, its
-  ONE reason (SPEC-TABLES.md §4, §6.5). Every read is strict: damage, a kind
+  returns, the evolution counters `unknown` and `widened`; on a refusal, the
+  verdict "refused", with its reason as per-language diagnostic detail that is
+  never compared (SPEC-TABLES.md §4, §6.5). Every read is strict: damage, a kind
   mismatch, a value out of range and a count or length past its bound each
   refuse the whole load. A
   caller that opts into retain-unknown reads two more on the same struct
@@ -368,8 +369,10 @@ section.
 **There is one read, and it is strict** (Glenn, 2026-11-03: "Cut the tolerant
 wire. It's too much work. It was a mistake to try to do it." and "It's best to
 consistently refuse. Too much undefined behavior per-language by trying to be
-tolerant."). A load returns the whole value or refuses the whole load with ONE
-reason (SPEC-TABLES.md §6.5): `wire_damaged` for damage on the binary wire,
+tolerant."). A load returns the whole value or refuses the whole load. The verdict is
+the cross-language contract; the reason is per-language diagnostic detail,
+never compared, and the RECOMMENDED names are (SPEC-TABLES.md §6.5):
+`wire_damaged` for damage on the binary wire,
 `malformed` for a text that is not this dialect's JSON, `kind_mismatch`,
 `out_of_range`, `count_over_bound`, `length_over_bound`, `missing_required`,
 `non_finite_float`, `blob_shared`, `integrity_mismatch`, a form refusal, and

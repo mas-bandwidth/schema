@@ -94,7 +94,21 @@
           "message": "SPEC-TABLES 6.5: the plain Go read name is the strict read; the tolerant read is named"
         }
       ]
+    },
+    {
+      "id": "refusal-verdict-only",
+      "date": "2026-11-03",
+      "quotes": [
+        "This is another example of trying to be too correct. It is like a softer version of trying to do partial reads. I am actually OK if there is only a generic failure to read. I do not care about the specific reporting on a per-instance basis. So for example, split it into two things 1. the thing that must be the same across all languages \"failed to read\" (or whatever you call it), and then the per-language specific details about why it is failing to read. That doesn't need to conform, and it can be different across languages.",
+        "Trying to make both the \"failed to read\" and the specific details of why the read fails, it makes each language have to write exactly the same code and do the exact same order when parsing a file. I don't think we need to be correct here.",
+        "Solve this in the simplest possible way"
+      ],
+      "source": "Glenn, live in Rowan's session, relayed verbatim by the coordinator, after two cold reads of the strict-only spec showed that choosing one reason across languages (first by byte order, then by a fixed rank of names) forces every language into the same code and the same check order. The cross-language read contract is the VERDICT alone: the value (identical in every language) or refused, never a partial value. Why a read refused is per-language diagnostic detail, never compared by conformance; the spec's reason vocabulary is recommended and non-normative; each language checks in whatever order is fastest for it. Specified in docs/SPEC-TABLES.md §6.5 and §13.10.",
+      "supersedes": [
+        "the fixed rank of reason names and the byte-order reason selection drafted on rowan/strict-only-spec (commits 983adaed2 and 135d038b3, never on main)",
+        "every reason-identity rule: SPEC-TABLES §6.5 'Strict error identity', 'THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET', the same-reason requirement of the wire fuzzer (§4.2) and of the region, builder and measure paths",
+        "#2777's 'damage outranks' ranking and #2762's strict-reason comparison of names: the gate compares verdicts"
+      ]
     }
-
   ]
 }

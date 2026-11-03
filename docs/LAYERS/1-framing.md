@@ -16,14 +16,15 @@ What holds the layer:
   `test/conformance/harness/framing_vectors.go`, with the read report each
   owes on its manifest line and the value each owes in
   `testdata/conformance/tables/framing/<case>.json`. A row over DAMAGED bytes
-  owes the refusal alone: its verdict is the one reason, `wire_damaged`, and its
-  value is `-`, because a refused load returns nothing (D1) and nothing else it produced
+  owes the refusal alone: its verdict is "refused" (recommended diagnostic
+  `wire_damaged`), and its value is `-`, because a refused load returns nothing
+  (D1) and nothing else it produced
   is defined. Every expected answer is derived from the rule text below, never
   from an implementation's output.
 - **The oracle check** — `test/conformance/harness/framing_test.go` runs every
   vector through the Go engine (`internal/tablewire`), the reference every leg
-  is fuzzed against, and compares the engine's answer — the value and the
-  evolution counters, or the one reason — with the manifest's. The engine is held to this page.
+  is fuzzed against, and compares the engine's verdict — the value and `unknown`, or "refused" —
+  with the manifest's. The engine is held to this page.
 - **The surface** — `framing`, which runs the same vectors through every leg's
   driver (`test/conformance/README.md`, "The surfaces").
 - **The model** — `tla/Framing.tla`, a layout model of the record scan with
@@ -38,21 +39,20 @@ defect (fixed, with a test and a negative control) or a finding below.
 
 ## 0. Damage discards the whole load
 
-**D1. Damage anywhere refuses the whole load with one reason, `wire_damaged`,
+**D1. Damage anywhere refuses the whole load (recommended name `wire_damaged`),
 and nothing else the read produced is defined.** §4: "DAMAGE — `wire_damaged`.
 Damage is input no conforming writer produces and that the wire itself, read
 with no declaration, already shows to be wrong." §6.5: every read is the strict
-read, and the reason is the highest-ranked NAME of the conditions the input
-holds, by §6.5's fixed rank; `wire_damaged` outranks everything after the
-envelope. Glenn, 2026-10-31: "failing to read something means the whole read is
+read, and the verdict, the value or "refused", is the whole cross-language answer;
+the reason is per-language diagnostic detail. Glenn, 2026-10-31: "failing to read something means the whole read is
 undefined, in my book." and "there's no point hand wringing trying to make
 partial reads well defined. if it fails to read, it's broken and everything in
 it today is suspect. discard." Glenn, 2026-11-03: "Cut the tolerant wire. It's
 too much work. It was a mistake to try to do it." and "It's best to
 consistently refuse." Every rule below that names damage names a case of D1,
 and none of them says what a load returns after it: no partial value, no
-resume point, no default, no counter. **No read needs to continue past damage**:
-only the envelope outranks it (§6.5).
+resume point, no default, no counter. **No read needs to continue past damage**: the
+verdict is already "refused" (§6.5).
 
 **D2. Evolution is not damage, and it is the only thing a read accepts.** §4:
 an unknown field, variant, arm or slot skipped and counted `unknown`, an absent
@@ -331,10 +331,9 @@ as the legal twins.
 ## F. The report
 
 **C1. A read that returns reports the evolution counters; a refusal reports
-its one reason and moves no counter.** §4: "THE READ REPORT HOLDS THE REASON AND
+"refused" and moves no counter.** §4: "THE READ REPORT HOLDS THE REASON AND
 THE EVOLUTION COUNTERS, AND NOTHING ELSE." `unknown` and `widened`, and on a
-retaining read `retained` and `retain_lost`. On a damaged read the reason
-`wire_damaged` is the whole observable answer (D1).
+retaining read `retained` and `retain_lost`. On a damaged read "refused" is the whole compared answer (D1).
 
 **C2. Counters on a refused read are not defined.** D1: nothing else the read
 produced is defined. Counters stand only on a read that returns.

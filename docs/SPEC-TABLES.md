@@ -2983,11 +2983,9 @@ byte: nothing was decoded, so there is nothing to count, and a refusal is not
 one of §4's events. **`LoadBuilder`'s NULL is the same refusal by the same
 name**: it answers `count_over_extent_cap` and moves no counter. Every builder
 read answers it this way: the plain one, `ReadStrict` and the retaining loads.
-**When a read meets two refusals, the higher-ranked NAME is the answer** (§6.5):
-a NaN and an over-cap count in one wire answer `count_over_extent_cap`,
-whichever comes first (the `nan_then_over_cap` and `over_cap_then_nan` rows
-of `internal/codegen/goosetable/testdata/load_refusal_reasons.tsv` both pin
-it).
+**When a read meets two conditions, it refuses**, and which reason it reports
+is its own (§6.5): a NaN and an over-cap count in one wire refuse, in every
+language.
 **A caller that wants one answer for both paths measures first**,
 which is what §6.5 already tells a region caller to do.
 
@@ -4114,8 +4112,7 @@ past the reader's `N` refuses `count_over_bound`; an element past `M` refuses
 `length_over_bound`; ill-formed UTF-8 or a zero byte in an element is damage,
 `wire_damaged`. The JSON text holds the same rule at its own entry: an element
 or a map key whose string decodes to `U+0000` refuses the read (§16.3). Each
-refusal's diagnostic text names the field, `<Table>.<field>`, and §6.5's rank
-of names picks the answer.
+refusal's diagnostic text names the field, `<Table>.<field>` (recommended, §6.5).
 
 **THE TOTAL: `| total = N`.** A list of `[..N]` elements of `M` bytes each
 bounds every element and the count, and nothing bounds their SUM, so what one
@@ -4148,9 +4145,7 @@ read each other's bytes under §4.
   forbids.
 - **On the read side it is a refusal** (§4): a list whose sum is past `N`
   refuses `length_over_bound`, naming the field. Nothing is cut and no prefix
-  is kept. A count past `[..N]` and an element past `M` are refusals of their
-  own, and §6.5's rank names the read: `count_over_bound` before
-  `length_over_bound`.
+  is kept. A count past `[..N]` and an element past `M` refuse too.
 - **JSON TEXT follows the same rule**, element for element (§16.2): the read
   refuses past it, and the write refuses past it. BASE64 TEXT is the binary wire and reads by it.
 - **The cooked form's check (§7.4) does not read it**, as it does not read a
@@ -5316,10 +5311,9 @@ that instrument goes red.
   for form `0`, form `3` and form `0xFF`, which are the forms no reader knows.
   Form `2` is the MESSAGE FORM and has rows of its own (§3.3).
   **The report format carries a
-  REFUSAL VERDICT distinct from a clean read**, the one reason by name, because
-  zero counters are what a clean read prints too
-  (`testdata/conformance/tables/FORMAT.md`). Red if a row prints a clean read,
-  names another reason, or moves a counter.
+  REFUSAL VERDICT distinct from a clean read**, because zero counters are what
+  a clean read prints too (`testdata/conformance/tables/FORMAT.md`). Red if a
+  row prints a clean read or moves a counter; the reason is not compared.
 - **The reference encoding.** The wire fuzzer's canonical-LEB pass (§4.2)
   writes every reference, length, count and index in its non-minimal
   spellings. Red if a leg decodes one instead of refusing `wire_damaged`.
@@ -6601,8 +6595,8 @@ The five ways a batch is damaged, at bit granularity:
   integer's offset above the sender's `max` is a value, `out_of_range` (above),
   for one reason**: an index past `count` names no grid point, so there is no
   value to decode at all, while an offset past `max` decodes to a definite
-  number (`base` plus the offset) that only the range rules out. The first is
-  in the `wire_damaged` rank group, the second in the values group (§6.5).
+  number (`base` plus the offset) that only the range rules out. Both refuse; the
+  recommended names say which.
 - **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
   reference on an entry that is not kind `0` and an arm reference on one that
   is (above). The entry resolved and it contradicts the position it was used
@@ -8631,8 +8625,8 @@ reading past damage. What a read accepts is EVOLUTION, and evolution only:
   hazard but a ROUND-TRIP one, and it is the one edit whose cost lands on
   the tool that rewrites the file rather than on the one that reads it.
 
-**EVERYTHING ELSE REFUSES, AND EACH REFUSAL HAS ONE NAME** (§6.5 states which
-name a wire with several conditions answers):
+**EVERYTHING ELSE REFUSES** (§6.5). Each case below carries its RECOMMENDED
+diagnostic name, which is not normative and is never compared:
 
 - **DAMAGE — `wire_damaged`.** Damage is input no conforming writer produces
   and that the wire itself, read with no declaration, already shows to be
@@ -8707,25 +8701,25 @@ name a wire with several conditions answers):
   nothing is dropped.
 - **A REQUIRED FIELD ABSENT — `missing_required`** (§2.3).
 
-**THE READ REPORT HOLDS THE REASON AND THE EVOLUTION COUNTERS, AND NOTHING
-ELSE.** A read that returns a value reports `unknown` (every id this reader
+**THE READ REPORT: THE VERDICT, THREE CONFORMING COUNTERS, AND DIAGNOSTICS.** A
+read that returns a value reports `unknown` (every id this reader
 cannot name: a field id, an enum variant id, a union arm id, a keyed slot's
 key) and `widened`, each counted ONCE PER FIELD where it fires — an array or
 a map whose elements carry the event counts one for the field, as `widened`
 always has; a retaining read adds `retained` and `retain_lost` (§6.6),
 which stay zero until a caller asks for retention. Silence (all zero) means
-the data matched this reader's schema exactly. A read that refuses reports its
-one reason (§6.5) and no counter: nothing it decoded is defined, so there is
+the data matched this reader's schema exactly. A read that refuses reports "refused" and no
+counter, with its reason as per-language diagnostic detail (§6.5): nothing it decoded is defined, so there is
 nothing to count. **No other counter exists**: `kind_mismatch`, `clamped`,
 `duplicate`, `blob_shared` and `missing_required` were tolerant-read counts and
 are now refusal reasons, the `malformed` flag was the tolerant read's verdict
 and the refusal is now the verdict, and the clamped-field slot named a clamp no
-read makes. **The four survive because each tells a caller something true
-about a value it got back**: `unknown` and `retain_lost` say a tool that
-rewrites the file would drop data this build cannot name — the never-clobber
-rule (VERSIONING.md) reads them — `retained` says how much it kept, and
-`widened` says the bytes will change shape on the next save. A tool surfaces
-them; nothing else about a read that returned is left to policy. Nothing
+read makes. **Three are CONFORMING, compared across languages, because a cross-language
+rule needs them**: `unknown` and `retain_lost` are what the never-clobber rule
+(VERSIONING.md) reads before a rewrite, and `retained` is what the retention
+round trip (§6.6) is held to. **`widened` is DIAGNOSTIC**: it says the bytes
+will change shape on the next save, no rule reads it, and conformance does not
+compare it. Nothing
 crashes on data from a different schema version, in either direction, and
 that property is held by a both-directions evolution test in the corpus.
 
@@ -9095,11 +9089,11 @@ that replays it:
 2. **The answer matches an independent oracle.** The oracle is the compiler's
    own engine, `internal/tablewire` — a third reading of §3 that no backend
    was written from, and the one that writes `reports.txt`. **On a mutant the
-   oracle refuses, the leg must refuse with the SAME ONE REASON (§6.5), and
-   that is the whole of what is compared**: no counter, no retention counter,
+   oracle refuses, the leg must refuse, and that verdict is the whole of what
+   is compared** — never the reason, which is per-language detail (§6.5): no counter, no retention counter,
    no value and no saved byte, because a refused load returns nothing (§4). On
-   a mutant the oracle reads, the leg must read too, and the evolution
-   counters (`unknown`, `widened`) must agree exactly. Requirement 3 and the
+   a mutant the oracle reads, the leg must read too, and the conforming
+   counter `unknown` must agree exactly. Requirement 3 and the
    retention leg below apply to mutants both sides read.
 3. **The decoded value matches.** The leg saves what it loaded; the oracle
    encodes what it decoded; the bytes must be identical, or both must refuse
@@ -9755,109 +9749,70 @@ consistently refuse. Too much undefined behavior per-language by trying to be
 tolerant."). The region load, the builder load, the retaining load (§6.6), the
 fixed load (§3.4), the message read (§3.3), the JSON read (§16) and the
 hand-editable text read (§16.9) each return the whole value or refuse the
-whole load with exactly ONE reason, a member of `TableRefuseReason` below.
+whole load; the reason is diagnostic (below).
 There is no tolerant read, under any name, in any target: no partial value,
 no repair, no clamp, no count of a condition the read then accepts, and no
 reading past damage. What a read accepts is evolution, and §4 lists it whole.
 
-**WHICH ONE REASON: A FIXED RANK OF NAMES.** A wire can carry more than one
-condition, and fifteen readers that each stop where their own walk happens to
-meet one would name different reasons for one payload. The compared answer is
-the reason's NAME (below), so the rule is on names: **a read reports the
-highest-ranked condition present in the input**, by this rank, first to last
-(Glenn, 2026-11-03: "Solve this in the simplest possible way"):
+**THE CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES** (Glenn, 2026-11-03: "I
+am actually OK if there is only a generic failure to read. I do not care about
+the specific reporting on a per-instance basis."). For one input every read in
+every language either RETURNS the value, the same value in every language, or
+REFUSES. "Refused" is the single conforming refusal: there is no partial value,
+ever, and nothing the read produced is defined. WHY a read refused is
+per-language DIAGNOSTIC detail — an error, an enum value or a message in the
+language's own idiom — that need not match across languages and is never
+compared by conformance. The reason vocabulary on this page (the table below,
+and every reason a section names) is the RECOMMENDED spelling for that detail,
+kept so the ports read alike; it is NOT NORMATIVE, and no rule decides which
+reason a read names when an input carries several conditions. What IS
+normative is everything that decides refuse against accept: what damage is,
+what is out of range or past a bound, what a kind mismatch is, and what
+evolution a read accepts (§4).
 
-1. **THE ENVELOPE.** The form byte (`unknown_form`, `message_form_as_file`,
-   `previous_form`, `newer_form`); then `integrity_mismatch`; then the id
-   table's and the header's validity (`truncated`, `reserved_not_zero`, the
-   message announcement's refusals: `build_version_mismatch`, `no_vocabulary`,
-   `second_announcement`, `vocabulary_too_large`, `batch_too_large`,
-   `plan_too_large`); then the fixed form's layout selection, the file's and
-   EACH RECORD's (`layout_unknown`, `layout_unsupported`, `layout_malformed`
-   and the `layout_*` rule names, `layout_record_too_large`, `no_layout`).
-2. **`wire_damaged`**, and on the JSON read `malformed` with every text the
-   grammar names (`string_not_utf8`, `string_lone_surrogate`, the depth cap,
-   a repeated key, `json_root_not_array`), and on the hand-editable read
-   `text_syntax`, `text_unterminated`, `text_encoding` and
-   `text_duplicate_key`: ALL framing damage anywhere in the input, the node
-   table's framing, every §4 damage condition, a map key equal to or below the
-   one before it, and the POINTER GRAPH's structure — a cycle, a record no
-   pointer reaches, an index past the table, and a pointer whose target record
-   is not the type its slot requires. On the fixed form this group also holds
-   `text_ill_formed` and a bool or present byte other than `0` or `1`.
-3. **`blob_shared`.**
-4. **THE CAPS**: `storage_over_cap` where a leg carries it, then
-   `count_over_extent_cap`, then `blob_over_size_cap`.
-5. **THE BOUNDS**: `count_over_bound`, then `length_over_bound` (a text list's
-   `total` included), then `text_bound` and `text_limit` on the hand-editable
-   read.
-6. **THE VALUES**: `non_finite_float`, then `missing_required` (and
-   `text_missing_required`), then `kind_mismatch` (and `text_kind_mismatch`),
-   then `out_of_range`; then the JSON value names `timestamp_not_rfc3339`,
-   `text_holds_zero`, `base64_damaged` and `base64_not_canonical`; then the
-   hand-editable read's `text_unknown_key`, `text_unknown_variant`,
-   `text_inactive_field`, `text_reference` and `text_timestamp`.
+**DETECTION ORDER IS FREE, AND EACH LANGUAGE TAKES ITS FASTEST.** Glenn,
+2026-11-03: "Trying to make both the "failed to read" and the specific details
+of why the read fails, it makes each language have to write exactly the same
+code and do the exact same order when parsing a file. I don't think we need to
+be correct here." So each language checks in whatever order is fastest for it
+— the house rule is the fastest correct implementation per language — and
+stops at the first condition it meets, so long as the verdict, the value or
+"refused", is the same as every other language's.
 
-**WHAT THE RANK LETS A READER SKIP.** A reader may stop at a condition only when
-no condition of a HIGHER rank can still be present in the input; otherwise it
-continues far enough to know there is none. Damage outranks everything after
-the envelope, so a reader that meets damage stops there: whatever lies past
-damage, decidable or not, can never be the answer. A reader that meets a group
-6 condition keeps checking the rest of the input for groups 1 to 5, which is
-the well-formedness walk every reader already makes (the framing, the pointer
-graph, the caps and the bounds), and need not decode another value. Within a
-group, the first name listed wins.
+**EVERY PATH AGREES ON THE OUTCOME.** The region read, the builder read, the
+retaining read and `ReadStrict` (which IS `Load`) refuse exactly the same
+inputs, and where they accept they return the same value. `LoadMeasure` and
+`LoadMeasureReason` refuse every input whose framing shows a condition (§3,
+§4), and where the framing shows none they answer the exact size the `Load`
+fills when it accepts; an input refused only for a condition a decode sees (a
+value, a bound, the declaration) may be measured and then refused by `Load`.
 
-**EVERY PATH RANKS THE SAME WAY.** The region read and the builder read report
-the same top-ranked reason for one input, and `ReadStrict` IS `Load`: the same
-read, the same answer. `LoadMeasure` and `LoadMeasureReason` read the framing
-alone, so they rank the conditions the framing shows — groups 1 to 4 and
-`wire_damaged` met in the framing — by the same rank; they may answer a size
-where `Load` then refuses, for a condition only a decode sees (`wire_damaged`
-in a value, groups 5 and 6), and never name a different reason for a
-condition both see.
-
-**THE COMPARED ANSWER IS THE REASON'S NAME, AND NOTHING ELSE.** A reader may
-add diagnostic text after the name and a colon, and where it names a field it
-spells it `<Table>.<field>`, or `<Table>#<id>` for a field the reader has no
-name for (the id in hexadecimal). When several conditions share the top name,
-the text names the first of them in byte order. The text is never compared:
-two readers agree when they name the same member. Under the JSON read a lone
-surrogate is the reason `malformed` with the text
-`string_lone_surrogate: <Table>.<field>` (§16.3).
-
-**THE MESSAGE FORM** (§3.3) takes the same rank over the batch: a reference
-above the entry count `E`, a reference naming an entry of the wrong sort, a
-quantized index past its `count` and ill-formed text are `wire_damaged`,
-because none of them decodes to a value at all; a ranged offset outside the
-sender's announced range decodes to a definite number and is `out_of_range`, a
-value (§3.3); and an ANNOUNCED
-kind that does not match the reader's declaration is `kind_mismatch` when a
-body uses the field.
+**THE MESSAGE FORM** (§3.3) takes the same contract over the batch: the batch is
+accepted whole, every body delivered, or refused with a count of `0`.
 
 **THE GRAPH, DEFINED ONCE.** The pointer graph is every kind `17` payload in the
 input — in every record and every field, known to this reader or not, every
 element of an array of them, every arm that is one — and a node's children are
-those payloads in WIRE order. The checks of group 2 are over that graph:
-walked from the root, a pointer naming a node whose descent is still open is a
-cycle, and a record the walk never reaches is unreachable; a second slot naming
-one blob record is `blob_shared`. A record out of first-visit order is NOT a
-condition: the numbering is positional. **The node table's own id is known to
-every reader**: the field is parsed by every reader of the variable form,
-whatever its declaration, and is exempt from the unknown-field rule (§3.1).
+those payloads in WIRE order. Walked from the root, a pointer naming a node
+whose descent is still open is a cycle, and a record the walk never reaches is
+unreachable: both are damage. A second slot naming one blob record refuses
+(`blob_shared`), and a pointer whose target record is not the type its slot
+requires is damage. A record out of first-visit order is NOT a condition: the
+numbering is positional. **The node table's own id is known to every reader**:
+the field is parsed by every reader of the variable form, whatever its
+declaration, and is exempt from the unknown-field rule (§3.1).
 
 **ONE EXPLICIT EXCEPTION: THE HAND-EDITABLE TEXT FORM (§16.9) REFUSES UNKNOWN
 KEYS AND VARIANTS.** It is authoring input read against one declaration, never
 another build's output, so a key or a variant name it cannot place is a typing
-error (`text_unknown_key`, `text_unknown_variant`) and not evolution. Every
-other read takes §4's evolution rules. The text form takes the same rank.
+error and not evolution. Every other read takes §4's evolution rules.
 
 **A `1` BOOL byte that is neither `0` nor `1` is DAMAGE on this read**:
 the whole load refuses `wire_damaged` (§3, §4). The FIXED form refuses the same
 byte in a bool or a present flag by the same name (§3.4).
 
-**Strict error identity.** A read of a fixed-form file returns the
-fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
+**Recommended diagnostic identity** (not normative). A read of a fixed-form file
+reports the fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
 `layout_unknown`, `count_over_bound` remains `count_over_bound`, and so on.
 On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
 `message_form_as_file` or `unsupported wire form`) answers `unknown_form`.
@@ -9919,14 +9874,14 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   is sized, with `LoadMeasureReason` naming the reason (`wire_damaged` for
   damage) and the plain `LoadMeasure` answering the bare `-1`. Damage the
   framing walk does not read — a bool byte, ill-formed text, a key order — and
-  every declaration condition are the `Load`'s to refuse, by the rank above;
+  every declaration condition are the `Load`'s to refuse;
   a measure that answered a size for such a wire has sized a region the caller
   pays for and the `Load` does not fill.
 - **A `-1` CARRIES A REASON, and it is the SAME ENUM the accelerators'
   refusals carry: `TableRefuseReason`** (§7, §11). `Open` and `BlockOpen` answer
   a null beside a value of it (§7, §19.2), and a call that answers `-1`
   answers the same way, as an
-  enum out-parameter, with the same spellings in every target. One enum covers
+  enum out-parameter; the spellings are recommended, not compared (above). One enum covers
   both, because a caller asking "why can I not have this file" is asking one
   question whichever call refused it, and two enums would be two vocabularies
   for one answer in nine ports. **The enum's rule is §7's**, one value per
@@ -10005,12 +9960,13 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `timestamp_out_of_range` | a `time.Time` whose nanoseconds do not fit an `int64`: outside the years 1678 through 2262 (§2.11). Carried as the typed `TableTimestampError`, whose `Error()` is `timestamp_out_of_range: <field> <time> is outside the years 1678 through 2262` |
   <!-- refusal-names:end -->
 
-  **THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET.**
-  `TableRefuseReason` is one closed enum shared by the load, measure, cook,
-  fixed-form, message and text paths; a port declares every member of the
-  table above even when its own implementation can never answer it, so the
-  names, their order and their spelling agree in all nine ports and a caller
-  may compare against any of them. The rows whose reason carries a
+  **THE TABLE IS THE RECOMMENDED VOCABULARY, NOT A CONTRACT.**
+  `TableRefuseReason` is the reference's closed enum, shared by its load,
+  measure, cook, fixed-form, message and text paths, and a port is RECOMMENDED
+  to spell the same members in its own idiom so its diagnostics read alike.
+  Which member a read names is per-language detail (§6.5's contract, above):
+  conformance never compares it, and a port may name a refusal differently or
+  not at all. The rows whose reason carries a
   `": <Table>.<field>"` suffix (`missing_required`, `non_finite_float`,
   `out_of_range`, `kind_mismatch`, `count_over_bound`, `length_over_bound`,
   `json_root_not_array`, `text_holds_zero`, `timestamp_not_rfc3339`) are
@@ -10216,7 +10172,7 @@ SceneSaveRetain( scene, &retain, buffer, size, &report );
 ```
 
 `LoadRetain` takes the region and the wire and ANSWERS the root, exactly as
-`Load` does, and refuses exactly what `Load` refuses, with the same one reason
+`Load` does, and refuses exactly what `Load` refuses
 (§4, §6.5), and the root it answers is what `MeasureRetain` and
 `SaveRetain` take. The retention buffer is the one argument the three share,
 and it is the same buffer across all three by construction.
@@ -10445,7 +10401,7 @@ DAMAGE THE READ HAS ALREADY REFUSED**: §6.5's second phase checks every field
 the wire holds by the kinds and the framing the wire carries, known to this
 reader or not, so a field with damage inside it refuses the whole load
 `wire_damaged` before the walk is reached, retention on or off. The walk
-therefore meets only well-formed fields, and the read answers the same reason
+therefore meets only well-formed fields, and the read gives the same verdict
 with retention on as with it off: retention can lose a field to its capacity
 or to an excluded class, and it can never change what a read refuses or
 accepts, which is the property that lets a caller switch it on without
@@ -10705,8 +10661,7 @@ refusal by name is a compile error rather than an answer a driver writes.
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
 it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
-same one reason or the same evolution counters, the two retention counters
-beside them, and a save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+same verdict, the same `unknown`, the two retention counters beside it, and a save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
@@ -14811,7 +14766,7 @@ consistently refuse. Too much undefined behavior per-language by trying to be
 tolerant."*
 
 **What it rules.** Every read of every form is the strict read: it returns the
-whole value or refuses the whole load with exactly one reason (§4, §6.5).
+whole value or refuses the whole load (§4, §6.5).
 Damage, a kind mismatch, a value out of range, a count or a length past its
 bound, broken framing and a non-finite float each refuse; nothing is clamped,
 repaired, kept in part or read past. The JSON and hand-editable text reads
@@ -14823,6 +14778,18 @@ field, variant, arm or slot from a newer writer is skipped and counted
 default; a widening decodes exactly and counts `widened`; and the fixed form
 selects its lineage plan by hash (§21). A value outside the WRITER's range refuses `out_of_range` on every form where
 the read knows that range; it never clamps.
+
+**The second ruling, the same day, and its why.** Glenn: *"I am actually OK if
+there is only a generic failure to read. I do not care about the specific
+reporting on a per-instance basis."* And: *"Trying to make both the "failed to
+read" and the specific details of why the read fails, it makes each language
+have to write exactly the same code and do the exact same order when parsing a
+file. I don't think we need to be correct here."* So the cross-language
+contract is the VERDICT alone: the value, or "refused". Why a read refused is
+per-language diagnostic detail, the reason vocabulary is recommended and never
+compared, and each language checks in whatever order is fastest for it, so long
+as the verdict is the same (§6.5). This supersedes the fixed rank of reason
+names and every reason-identity rule.
 
 **What it keeps on purpose, as an exception.** Non-zero slack in a fixed record
 is unread and not refused (§3.4): no writer leaves it and no reader looks at
@@ -15941,7 +15908,7 @@ refusal: `malformed` for a text that is not this dialect's JSON or that repeats
 a key, `kind_mismatch` for a value of the wrong JSON type or shape (a string
 where a number was declared is refused, never coerced), `out_of_range`,
 `count_over_bound`, `length_over_bound`, `missing_required` and the named text
-refusals of §16.3, by §6.5's rank of names. **`widened` STAYS ZERO in this
+refusals of §16.3, as recommended names (§6.5). **`widened` STAYS ZERO in this
 form**, because a JSON number carries no kind for a reader to find narrower
 than its own. Silence means the
 text matched the schema exactly, and it means it honestly: no value a read
@@ -16747,12 +16714,9 @@ Each refusal is one name, and the read stops at it (§6.5). Implementations may 
 | `text_limit` | Caller-supplied byte/token/node/decoded-allocation limit or the depth cap of 128 is exceeded. |
 | `text_edit_conflict` | An edit cannot preserve the requested source spans/comment disposition. |
 
-The reported name is §6.5's rank of names: lexical and syntax failures
-(`text_syntax`, `text_unterminated`, `text_encoding`, `text_duplicate_key`)
-outrank the bounds (`text_bound`, `text_limit`), which outrank every semantic
-name. `text_limit` may stop work at once, because only the grammar names
-outrank it and a limit is met before the grammar can finish. The diagnostic
-text points at the second occurrence for duplicates, the offending value's
+Any failure refuses the read, and the names below are recommended diagnostics
+(§6.5); a reader checks in its own order, and `text_limit` may stop work at
+once. The diagnostic text points at the second occurrence for duplicates, the offending value's
 start for bounds, and the closing delimiter for missing fields; it is never
 compared. A zero or
 negative limit takes the contract defaults — 65536 bytes, 8192 tokens, 4096 <!-- limit name=text_default_max_bytes value=65536 --> <!-- limit name=text_default_max_tokens value=8192 --> <!-- limit name=text_default_max_nodes value=4096 -->
@@ -16778,7 +16742,7 @@ The reader resolves the document strictly against the descriptors (§8), then
 lands the value through the JSON walk (§16) from the canonical JSON of the
 same value; any count in that walk's report is refused rather than trusted.
 Structural edits are not implemented: they refuse as `text_edit_conflict`.
-This form takes §6.5's rank of names. A record's pairing (an odd item count,
+A record's pairing (an odd item count,
 a key that is not a keyword or a string) is grammar, `text_syntax`, wherever it
 sits.
 
@@ -16953,8 +16917,8 @@ An array whose element is probed carries one element, its minimum count where
 that is larger, and all `N` of a fixed `[N]T`, the first the probed one and the
 rest fillers.
 
-For each probe, `Test<Name>GenBoundProbes` requires that every read refuses it
-by the probe's one reason, returning nothing: the plain `Load` (a fixed table)
+For each probe, `Test<Name>GenBoundProbes` requires that every read refuses it,
+returning nothing: the plain `Load` (a fixed table)
 or `LoadBuilder` (a variable one), and `<Name>ReadStrict`, each refusing
 `out_of_range` for a `:below` or `:above` probe of a range or a `bits(N)`,
 `length_over_bound` for a text or byte buffer, and `count_over_bound` for a
@@ -17492,8 +17456,8 @@ states — every row of the number grammar, a value past a `bits(N)` width, a
 lone surrogate, a `null` at every kind, a `"None"` key, a repeated key, a
 union with two keys — each carrying the outcome the rule requires. It is a
 TWO-SIDED differential: the same text goes through the packer and through the
-backend's `FromJson`, and their ANSWERS must agree, the one reason or the
-evolution counters, and their WIRE BYTES byte for byte. A
+backend's `FromJson`, and their VERDICTS must agree, refused or read with
+the same `unknown`, and their WIRE BYTES byte for byte. A
 tree that packs carries one further invariant: its bytes load clean in that
 backend and re-save byte-identically, because a read either implementation
 accepts must not be one the backend then refuses. A corpus of

@@ -6,16 +6,18 @@ Too much undefined behavior per-language by trying to be tolerant."*
 
 The rule is stated in `docs/SPEC-TABLES.md` §4, §6.5 and §13.10 and in
 `docs/FIXED-FORM-ALGORITHM.md` §4.5, §4.6 and §5.4; `docs/rulings.json`
-`strict-only-read` lists what it overturns. In one paragraph: every read of
-every form returns the whole value or refuses the whole load with ONE reason.
+`strict-only-read` and `refusal-verdict-only` list what they overturn. In one
+paragraph: every read of every form returns the whole value or refuses the
+whole load; the verdict is the only cross-language contract.
 Damage, a kind mismatch, a value out of range, a count or a length past its
 bound, broken framing and a non-finite float each refuse. Evolution along a
 lawful lineage is kept: an unknown field, variant, arm or slot is skipped and
 counted `unknown` (or retained), an absent field takes its default, a widening
 decodes exactly and counts `widened`, and the fixed form selects its plan by
-hash. The report holds the one reason, or `unknown`, `widened`, `retained` and
-`retain_lost`. The reason is the highest-ranked NAME of the conditions the input holds, by
-a fixed rank (§6.5).
+hash. A read that returns reports the conforming counters `unknown`, `retained`
+and `retain_lost` (and `widened`, diagnostic). Why a read refused is
+per-language diagnostic detail, never compared, and each language checks in
+its fastest order (§6.5).
 
 This page is the work list. The roadmap entry is `strict-only-read-2026-11-03`
 in `docs/roadmap.sexp`, one task per layer below.
@@ -29,15 +31,12 @@ in `docs/roadmap.sexp`, one task per layer below.
    `length_over_bound`** for a count or a length past the reader's bound (the
    fixed form's names), and `out_of_range` for a value. A text list's `| total`
    is `length_over_bound`.
-3. **The reason is chosen by a FIXED RANK OF NAMES** (§6.5; Glenn: "Solve
-   this in the simplest possible way"), not by byte position: the envelope;
-   `wire_damaged` (all framing and the pointer graph); `blob_shared`; the caps;
-   the bounds; the values (`non_finite_float`, `missing_required`,
-   `kind_mismatch`, `out_of_range`). A read reports the highest-ranked
-   condition present and may stop early only when nothing higher can still be
-   present. A NaN anywhere beside damage is `wire_damaged`; the float "reach"
-   rule is gone. This keeps #2777's "damage outranks" and replaces its counter
-   ranking.
+3. **The verdict is the whole cross-language contract** (Glenn, 2026-11-03,
+   docs/rulings.json `refusal-verdict-only`): a read returns the value or
+   refuses. Why it refused is per-language diagnostic detail, never compared;
+   the reason names in decisions 1 and 2 are RECOMMENDED spellings only. No
+   rule picks a reason when an input carries several conditions, and each
+   language checks in its fastest order.
 4. **An unknown enum variant, union arm or keyed slot stays evolution**: the
    value reads `None` (the slot is dropped) and counts `unknown`, as an unknown
    field does. The alternative is to refuse it.
@@ -73,9 +72,9 @@ everything above it is red by design until its own layer lands.
 | layer | what | gate |
 |---|---|---|
 | 0 | **The spec** (this branch): SPEC-TABLES, FIXED-FORM-ALGORITHM, SPEC, VERSIONING, LAYERS/1-framing, FIXED-FORM-VERSIONING-TESTS, rulings.json, this plan | A cold read with no memory of the drafting, its findings applied; Glenn's answers to the decisions above. It lands together with layer 2, because the spec-agreement tests read the page |
-| 1 | **The models**: `tla/Framing.tla` (the inert body and the H3 crossing span removed; the header inside its body), a new `tla/ReadOrder.tla` (the fixed rank of names, invariant `OneReason`: every input has exactly one top-ranked reason, and any detection order reports it), `tla/CardVersioning.tla` (`kindMis` and `clamp` become refusals) | TLC green on a bench machine on a small instance, a reversed witness per new invariant, `tla/RUNS.tsv` rows |
+| 1 | **The models**: `tla/Framing.tla` (the inert body and the H3 crossing span removed; the header inside its body), a new `tla/ReadOrder.tla` (invariant `OneVerdict`: every input is accepted with one value or refused, with no partial value, in any detection order), `tla/CardVersioning.tla` (`kindMis` and `clamp` become refusals) | TLC green on a bench machine on a small instance, a reversed witness per new invariant, `tla/RUNS.tsv` rows |
 | 2 | **The Go engine and oracle**: `internal/tablewire`, `internal/tabletext`, `internal/tablecook`, the report (`tabletext.Report`) and `tables/goruntime` `TableReport` and `Err()` | `go test` of those packages; `test/conformance/harness` `TestFramingVectorsReadThroughTheEngine`; the spec-agreement tests (`compiler/specgo_*`, `internal/baseline` `TestEvolutionTableDocsAgreeWithTheGolden`, `compiler/specgo_refusal_enum_test.go`) green against this spec; a negative control per phase |
-| 3 | **The harness and corpora** (inventory (b)), re-pinned from the engine | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes from the engine until the C++ leg lands, then from C++ again |
+| 3 | **The harness and corpora** (inventory (b)), re-pinned from the engine to VERDICTS: a read row is `read` with its value and `unknown`, a refusal row is `refused`; no reason name is compared anywhere | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes from the engine until the C++ leg lands, then from C++ again |
 | 4 | **Each leg** (inventory (a)), in this order: go, cpp, c, cs, rust, java, js, dart, elixir, goose, moo, lua, luau, squirrel, lobster. Go first because it is the engine's twin; C++ second because it is the reference the pins come from; then the original nine; then the six newer ports | For the leg: every conformance surface green; its wire fuzz with zero divergences against the engine; its negative controls; no tolerant entry point in its generated output or in `internal/tablenames/<lang>.go` (a grep gate per leg) |
 | 5 | **The docs that describe implementations**: USAGE, PORTING, CARDS, COMPARISON-TABLES, COMPETITION, CPP-REFERENCE-REVIEW, GO-GENERATED-SIZE-SURVEY, the PORT pages, SECURITY, HOSTILE-CORPUS, CONTRIBUTING, `test/conformance/README.md`, `testdata/conformance/tables/FORMAT.md` | A grep for the retired names (`Tolerant`, `clamped`, `kind_mismatch` as a count, `duplicate`, `malformed` as a binary verdict) over the CODE (`internal/`, `tables/`, `test/`, `compiler/`, `cmd/`, `tools/`) and the implementation docs named here is empty; the spec pages are out of its scope, because they name the retired members to say they are retired. And a cold read of each page |
 
@@ -356,7 +355,7 @@ load and must become the only read instead).
 | `report` rows | `testdata/conformance/tables/MANIFEST.txt` 238-395, 867-872, 992-1008, 1119-1176; `reports.txt` 9-70; `report-values/` | six counters plus a verdict, and a decoded value beside kind mismatch, clamp and damage | 62 rows: 24 kind_mismatch, 4 kind_mismatch with clamp, 3 clamp, 2 damage with a value, 4 refusals with no reason, 25 evolution; 56 value files | re-pin to `<case> <reason>` or the evolution counters and value; 31 value files deleted |
 | `framing` rows | MANIFEST 1178-1294; `testdata/wire/tables/framing/` (98 `.bin`) | `malformed` verdicts, 4 INERT rows, 2 last-wins rows, 6 kind mismatches, 1 clamp | 98 rows | `wire_damaged` for damage, INERT and last-wins rows become `wire_damaged`, header-crossing rows `wire_damaged`; bytes kept |
 | `json-hostile` rows | MANIFEST 643-911; `json-hostile/` (155 trees, 120 value files) | accept-and-count: duplicates, kind mismatches, clamps; `refused` with no name; `carried-by`/`uncarried` | 155 rows: 16 duplicate, 24 kind_mismatch, 18 clamp, 35 unnamed refusals, 5 uncarried, 60 keep | re-pin to the reason; 60 value files deleted; the `uncarried` mechanism retired once every leg carries the rows |
-| strict-reason | `strict-reasons.txt`, `strict/` (on #2762/#2777, not main) | already one reason per wire | 164 rows, 8 of them `clamped` | KEEP and merge; rename the 8 rows; it becomes the report surface's answer |
+| strict-reason | `strict-reasons.txt`, `strict/` (on #2762/#2777, not main), `goosetable/testdata/load_refusal_reasons.tsv` and the per-leg refusal-reason pin tests | one reason name per wire | 164 rows | reduce to verdicts (`ok` or `refused`); reason names are no longer compared |
 | harness code | `test/conformance/harness/manifest.go:69-118`, `:146-163`, `:605-623`; `run.go:305-315`, `:382-441`, `:782`; `generate.go:214-287`; `wirefuzz.go:1`, `:375`, `:541-553`, `:630-668`, `:697-704` | the `Counts` struct, the six-counter parse, the pipe reply's counters and malformed byte, the reach rule, the oracle's partial read | — | re-pin to a reason; the pipe carries the reason (or its ordinal) and the evolution counters; the reach rule deleted |
 | harness tests | `wirefuzz_test.go:189` (malformed is not a refusal: delete), `:203`; `wirefuzz_mapheader_test.go:22`; `wirefuzz_timestamp_bool_test.go:44`; `framing_vectors_test.go:240-393`; `maps_test.go:106-315`; `messagerules_test.go:421-533`, `:746-793`, `:1005-1057`, `:1397`; `unbounded_oracle_test.go:231`; `illformedatbound_test.go:14`; `feature_witness_native_test.go:91` | counters, clamps, last-wins, inert | about 20 tests | re-pin each to its reason |
 | fuzz vectors | `testdata/wire/tables/fuzz-vectors/INDEX.txt` (367 lines) | the 33 `reach_*` vectors and about 20 last-wins, inert, read-on and clamp vectors | 98 vectors | the reach family collapses to about 8 phase-order vectors; the rest re-pinned |
@@ -388,15 +387,15 @@ carries.
 | #2784 | rowan/limit-followups | rework to refuse | depth and timestamp limits stand; its kind_mismatch-count fix and the map entry kept at default on a wrong shape now refuse; stacked on #2779 |
 | #2783 | emma/certify-cpp-cs-20261103 | keep | C++ format ratchet and C# JIT warmup |
 | #2782 | emma/certify-wfr-java-dart-elixir-20261103 | rework to refuse | Dart count-cap order and Java absent spill stand; the wire-fuzz `!report.Malformed` guard leans on the retired flag |
-| #2781 | emma/cpp-go-missing-required-reason-20261103 | keep | `missing_required` at ordinal 25 in C++ and Go strict reads; drop the `!malformed` condition on rebase |
+| #2781 | emma/cpp-go-missing-required-reason-20261103 | drop | aligning the `missing_required` enum ordinal across legs is no longer needed for conformance; keep any C++ refusal it adds only if the leg layer wants the diagnostic |
 | #2780 | rowan/fuzz-lua-luau-squirrel | rework to refuse | keep the LEB length wrap and region alignment fixes; drop the repeated-key-widen reset and widening across `L` |
-| #2779 | rowan/limit-vectors | rework to refuse | the at and over limit vectors stand; restate each over-limit answer as one reason |
-| #2778 | rowan/strict-read-six | rework to refuse | adds a strict read BESIDE the tolerant load in cs, java, js, rust, dart and elixir; it must become the only read, with the phase order and `out_of_range`; stacked on #2762 |
-| #2777 | rowan/strict-reasons-conform | keep | every leg names damage `wire_damaged`, exactly this spec; its SPEC-TABLES hunks are superseded by this branch; stacked on #2762 |
+| #2779 | rowan/limit-vectors | rework to refuse | the at and over limit vectors stand; restate each over-limit answer as a refusal verdict |
+| #2778 | rowan/strict-read-six | rework to refuse | adds a strict read BESIDE the tolerant load in cs, java, js, rust, dart and elixir; it must become the only read, and its reason ranking is dropped: only the verdict is compared; stacked on #2762 |
+| #2777 | rowan/strict-reasons-conform | rework to refuse | its legs already refuse damage; the gate becomes verdict-only, its shared reason TSV and reason pin tests reduce to verdicts, and its spec hunks are superseded; stacked on #2762 |
 | #2776 | emma/certify-release-tooling-20261103 | keep | release-gate Makefile fix; its Java hunk fixes a loader for a clamp-counter test the harness layer deletes |
 | #2775 | rowan/main-reds-20261103 | rework to refuse | the re-pins and the Lobster cycle fix stand; the Elixir `bits(N)` clamp must refuse `out_of_range` |
 | #2771 | rowan/moo-tagged-green | keep | MOO cook writer and tagged CI gates |
-| #2762 | rowan/harness-reasons | keep | the strict-reason surface and its cross-leg gate: the harness of the one read; lands first |
+| #2762 | rowan/harness-reasons | rework to refuse | the cross-leg surface stays, as a VERDICT-only gate: each leg answers `ok` or `refused`, and reason names are no longer compared; then it is the harness of the one read and lands first |
 | #2749 | rowan/fixed-range-clamp-vector | rework to refuse | keep `hostile_range_widen.bin`; its answer is `out_of_range`, not a clamp to the writer's range; the PR body is stale |
 | #2731 | codex/schema-lobster-readiness | drop | its purpose is last-wins on a repeated map key, which is damage |
 | #2576 | rowan/c-cpp-hostile-runners | keep | C and C++ hostile-corpus runners under sanitizers; needs a rebase |
@@ -445,9 +444,8 @@ carries.
 | #1933 | stella/schema-java-oracle-20261014 | drop | stale draft; its range-conflict topic is now `out_of_range` |
 | #1906 | roadmap/github-cleanup-2026-10-14 | drop | a stale snapshot |
 
-Sixteen keep, nine rework to refuse, thirty-eight drop. **#2762 and #2777
-are the base of layer 3**; #2778 is rebuilt on them as the only read in the
-six legs that have none; #2557's engine and C++ commits and #2781 belong to
-layers 2 and 4. The limits stack #2779 → #2784 → #2787 → #2788 is sound and
+Thirteen keep, eleven rework to refuse, thirty-nine drop. **#2762 and #2777,
+reduced to verdicts, are the base of layer 3**; #2778 is rebuilt on them as the only read in the
+six legs that have none; #2557's engine and C++ commits belong to layers 2 and 4. The limits stack #2779 → #2784 → #2787 → #2788 is sound and
 needs only its over-limit answers restated. Closing the `dev` and `sprint/*`
 PRs is Glenn's call and is not done by this branch.
