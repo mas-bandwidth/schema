@@ -145,6 +145,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if err := requireCycle(graph, order); err != nil {
 		return nil, err
 	}
+	// the unit view, on the side: nothing requires it (view.go, §8.4)
+	name, view, err := generateView(u, reach, mods)
+	if err != nil {
+		return nil, err
+	}
+	out[name] = view
 	keep := runtimeGate(u)
 	for name, data := range Runtime() {
 		if keep(name) {
