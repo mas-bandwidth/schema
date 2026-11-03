@@ -479,6 +479,35 @@ conformance-negative-control-cs-framing: build-conformance-cs build/conformance-
 		$(CS_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
 test-cs: conformance-cs-framing
 
+# THE WRITE-REFUSAL NEGATIVE CONTROL, C# side (testdata/conformance/tables/
+# FORMAT.md, write-refusal). The driver is built Debug against a COPY of the
+# generated C# tree with the ranged-integer / bits(N) Debug.Assert taken out of
+# the generic Collect walk, and the leg's conformance run must go RED on
+# `cs / write-refusal` while `wire` stays GREEN: the write check is the only
+# thing that moved. Nothing tracked is written to.
+CS_WREF_CONTROL := build/conformance-cs-write-refusal-control
+.PHONY: conformance-negative-control-cs-write-refusal
+conformance-negative-control-cs-write-refusal: build-conformance-cs build/conformance-harness
+	@rm -rf $(CS_WREF_CONTROL) && mkdir -p $(CS_WREF_CONTROL)
+	@cp -R build/tables-generated-cs $(CS_WREF_CONTROL)/generated
+	@files=$$(grep -rlF 'System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i))' $(CS_WREF_CONTROL)/generated); \
+		[ -n "$$files" ] || { echo "NEGATIVE CONTROL: the write-range sabotage matches no generated line"; exit 1; }; \
+		perl -pi -e 's/^\s*\QSystem.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i))\E.*$$/        \/* SABOTAGED: no write range check *\//' $$files
+	@grep -rqF 'SABOTAGED: no write range check' $(CS_WREF_CONTROL)/generated || { echo "NEGATIVE CONTROL: the write-range sabotage did not apply"; exit 1; }
+	@$(DOTNET) build test/conformance/cs --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/$(CS_WREF_CONTROL)/generated \
+		-p:CardsGeneratedDir=$(CURDIR)/$(CS_WREF_CONTROL)/generated/cards -p:BaseIntermediateOutputPath=$(CURDIR)/$(CS_WREF_CONTROL)/obj/ \
+		-o $(CS_WREF_CONTROL)/checker > $(CS_WREF_CONTROL)/build.log 2>&1 || \
+		{ cat $(CS_WREF_CONTROL)/build.log; echo "NEGATIVE CONTROL: the sabotaged driver does not compile"; exit 1; }
+	@printf '#!/bin/sh\nexec %s %s/%s/checker/schemaconformance.dll "$$@"\n' "$(DOTNET)" "$(CURDIR)" "$(CS_WREF_CONTROL)" > $(CS_WREF_CONTROL)/driver
+	@chmod +x $(CS_WREF_CONTROL)/driver
+	@printf 'cs %s/%s/driver\n' "$(CURDIR)" "$(CS_WREF_CONTROL)" > $(CS_WREF_CONTROL)/drivers.txt
+	@if build/conformance-harness run --drivers $(CS_WREF_CONTROL)/drivers.txt --work $(CS_WREF_CONTROL)/work > $(CS_WREF_CONTROL)/log 2>&1; then \
+		cat $(CS_WREF_CONTROL)/log; echo "NEGATIVE CONTROL FAILED: no write range check left conformance green"; exit 1; fi
+	@grep -E '^ *write-refusal +FAIL' $(CS_WREF_CONTROL)/log || { cat $(CS_WREF_CONTROL)/log; echo "NEGATIVE CONTROL: write-refusal did not go red"; exit 1; }
+	@grep -Eq '^ *wire +pass' $(CS_WREF_CONTROL)/log || { cat $(CS_WREF_CONTROL)/log; echo "NEGATIVE CONTROL: wire did not stay green"; exit 1; }
+	@echo 'C# write-refusal negative control: no write range check is detected by cs / write-refusal; wire stays green'
+test-cs: conformance-negative-control-cs-write-refusal
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
