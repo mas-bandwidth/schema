@@ -55,6 +55,15 @@ export type FieldDescriptor = {
 	lo: any,
 	hi: any,
 	def: any,
+	-- THE ANNOTATION COLUMNS (docs/SPEC-TABLES.md §8.1), on a field and a
+	-- union arm: the declared type's spelling, an arm's offset in its union's
+	-- storage at the record layout (the one payload base every arm overlays),
+	-- the `///` block verbatim (DocNone when there is none) and the tags in
+	-- DECLARED order (nil when there are none)
+	type_name: string?,
+	arm_offset: number?,
+	doc: string?,
+	tags: { string }?,
 }
 
 -- A TableDescriptor is one table, map entry, or packet type a table reaches
@@ -73,6 +82,8 @@ export type TableDescriptor = {
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
+	doc: string, -- the declaration's own `///` block, DocNone when none (§8.1)
+	tags: { string }?, -- and its tags, in DECLARED order
 	new: () -> any,
 }
 
@@ -85,6 +96,11 @@ export type UnionDescriptor = {
 }
 
 local S = {}
+
+-- DocNone is THE ONE EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every
+-- descriptor of a declaration, a field or an arm with no `///` block names
+-- it, so the emitted text defines the empty doc once.
+S.DocNone = ""
 
 local registry: { [string]: any } = {}
 
@@ -107,6 +123,7 @@ local function freezeField(f: FieldDescriptor)
 	freezeList(f.vs)
 	freezeList(f.keyvs)
 	freezeList(f.guard)
+	freezeList(f.tags)
 	for _, k in { "flo", "fhi", "fres" } do
 		local v = (f :: any)[k]
 		if v ~= nil then
@@ -133,6 +150,7 @@ function S.table(d: TableDescriptor): TableDescriptor
 		table.freeze(d.forms :: any)
 	end
 	table.freeze(d.fields :: any)
+	freezeList(d.tags)
 	table.freeze(d.place.tables :: any)
 	table.freeze(d.place :: any)
 	table.freeze(d :: any)

@@ -27,6 +27,10 @@ type Gen struct {
 	// the build handed it to GenerateLineage (docs/FIXED-FORM-ALGORITHM.md
 	// §5.2); nil for a unit with no lock.
 	Lineage map[string][]FixedLineageEntry
+	// wireless marks a description of a declaration no table closure
+	// reaches, which the unit view writes (view.go): its ids are 0 and its
+	// text keys empty (docs/SPEC-TABLES.md §8.2).
+	wireless bool
 
 	body     strings.Builder
 	requires map[string]bool

@@ -61,9 +61,10 @@ func emitDescriptor(g *Gen, t *ir.Struct) {
 	g.Pf("\tfields = {\n")
 	guards := guardPairs(t)
 	for i, f := range t.Fields {
-		g.Pf("\t\t%s,\n", fieldDesc(g, t.Name, f, i, guardLua(guards[f.Name])))
+		g.Pf("\t\t%s,\n", annotateField(g, fieldDesc(g, t.Name, f, i, guardLua(guards[f.Name])), f, f.Doc, f.Tags, 0))
 	}
 	g.Pf("\t},\n")
+	g.Pf("\t%s,\n", annotation(t.Doc, t.Tags))
 	g.Pf("\tnew = %s,\n", strings.TrimSuffix(g.Ctor(t.Name), "()"))
 	g.Pf("})\n\n")
 }
@@ -77,12 +78,15 @@ func emitUnionDescriptor(g *Gen, un *ir.Union) {
 	g.Pf("\tarms = {\n")
 	for i, v := range un.Variants {
 		id := IdLit(ir.TableWireId(v.WireName()))
+		if g.wireless {
+			id = IdLit(0)
+		}
 		if v.Void() {
-			g.Pf("\t\t{ id = %s, name = %q, slot = \"\", tag = %d, s = \"void\" },\n", id, v.Name, i+1)
+			g.Pf("\t\t{ id = %s, name = %q, slot = \"\", tag = %d, s = \"void\", %s },\n", id, v.Name, i+1, annotation(v.Doc, v.Tags))
 			continue
 		}
 		f := armField(v)
-		d := fieldDesc(g, un.Name, f, i, "")
+		d := annotateField(g, fieldDesc(g, un.Name, f, i, ""), f, v.Doc, v.Tags, armOffset(g.Unit, un))
 		g.Pf("\t\t%s, tag = %d },\n", strings.TrimSuffix(d, " }"), i+1)
 	}
 	g.Pf("\t},\n")
@@ -148,7 +152,9 @@ func guardLua(pairs [][2]any) string {
 }
 
 // fieldDesc renders one field's descriptor: its wire id, name, slot, text
-// key, ordinal, header kind, SHAPE and what the shape needs. The shapes:
+// key, ordinal, header kind, SHAPE and what the shape needs; a field of a type
+// no table closure reaches carries id 0 and an empty text key (§8.2). The
+// shapes:
 //
 //	bool, int, float   a scalar at its kind's width
 //	str                string(N) (a moo string) or wstring(N) (wide = true:
@@ -161,9 +167,13 @@ func guardLua(pairs [][2]any) string {
 //	arr, map           [N]T / [..N]T / []T / [E]T over an element; map[K]V
 func fieldDesc(g *Gen, owner string, f *ir.Field, ordinal int, guard string) string {
 	var b strings.Builder
+	id, json := ir.TableFieldWireId(f), ir.TableFieldJsonKey(f)
+	if g.wireless {
+		id, json = 0, ""
+	}
 	fmt.Fprintf(&b, "{ id = %s, name = %q, owner = %q, slot = %q, json = %q, o = %d, k = %d, ",
-		IdLit(ir.TableFieldWireId(f)), f.Name, owner, ir.GoExportName(f.Name),
-		ir.TableFieldJsonKey(f), ordinal, ir.TableWireFieldKind(f))
+		IdLit(id), f.Name, owner, ir.GoExportName(f.Name),
+		json, ordinal, ir.TableWireFieldKind(f))
 	if f.Type.Optional {
 		fmt.Fprintf(&b, "present = %q, ", ir.GoExportName(f.Name+"_present"))
 	}
@@ -194,7 +204,7 @@ func fieldDesc(g *Gen, owner string, f *ir.Field, ordinal int, guard string) str
 		}
 		keyvs := ""
 		if f.KeyEnumRef != nil {
-			keyvs = ", keyvs = " + enumVariants(f.KeyEnumRef)
+			keyvs = ", keyvs = " + g.enumVariants(f.KeyEnumRef)
 		}
 		fmt.Fprintf(&b, "s = \"arr\", array = %q, bound = %d, min = %d, ek = %d%s%s, e = %s }",
 			array, f.ArrayBound, f.ArrayMin, ir.TableWireElemKind(f), keyvs, unbounded, elemDesc(g, f))
@@ -277,7 +287,7 @@ func valueDesc(g *Gen, f *ir.Field, def bool) string {
 		switch r := t.Ref.(type) {
 		case *ir.Enum:
 			_, init := g.scalar(f, def)
-			return fmt.Sprintf("s = \"enum\", t = %q, vs = %s, fw = %d, def = %s", r.Name, enumVariants(r), r.StorageBits/8, init)
+			return fmt.Sprintf("s = \"enum\", t = %q, vs = %s, fw = %d, def = %s", r.Name, g.enumVariants(r), r.StorageBits/8, init)
 		case *ir.Flags:
 			return intDesc(g, f, def)
 		case *ir.Union:
@@ -299,12 +309,17 @@ func f64Pair(v float64) string {
 }
 
 // enumVariants is an enum's variants as { name, wire id, deprecated }
-// triples: identity is the variant NAME's hash (§2.15, §5).
-func enumVariants(e *ir.Enum) string {
+// triples: identity is the variant NAME's hash (§2.15, §5), and 0 for an
+// enum no table closure reaches, described by the unit view (§8.2).
+func (g *Gen) enumVariants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
 		deprecated := i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
-		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], IdLit(ir.TableWireId(e.VariantWireName(i))), deprecated)
+		id := ir.TableWireId(e.VariantWireName(i))
+		if g.wireless && !ir.TableClosureVocabulary(g.Unit)[e.Name] {
+			id = 0
+		}
+		parts[i] = fmt.Sprintf("{ %q, %s, %v }", e.Variants[i], IdLit(id), deprecated)
 	}
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
