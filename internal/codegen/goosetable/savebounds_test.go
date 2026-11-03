@@ -1,22 +1,29 @@
 package goosetable_test
 
 // THE SAVE'S SIGNED BOUNDS over a caller's edited values: the save converts a
-// stored union tag and a retained record's copied length to signed integers
-// before it indexes with them, so a value with its high bit set reads as
-// negative. Each conversion is bounded below as well as above:
+// stored union tag, a pointer slot's node index and a retained record's copied
+// length to signed integers before it indexes with them, so a value with its
+// high bit set reads as negative. Each conversion is bounded below as well as
+// above:
 //
 //	union   the root's union slot is loaded, then its tag is set to
 //	        0xFFFFFFFFFFFFFFFF (signed -1): save_table and save_table_retain
 //	        refuse union_no_arm, and the caller's output keeps its one
 //	        poison byte (runtime/wire_save.goose, edges_arm)
+//	pointer the root's *string slot is set to 0x8000000000000002, to all
+//	        ones, and to the node count plus two (one past the node table's
+//	        last index): save_table and save_table_retain refuse
+//	        invalid_value, and the output keeps its poison byte
+//	        (runtime/wire_save.goose, edge_of)
 //	retain  a retained by-value table's string length in the caller's
 //	        RetainStore is rewritten as a LEB128 of 2^64-1000 (signed -1000):
 //	        the record is dropped as one retain_lost and the save writes the
 //	        bytes a save without retention writes (runtime/wire_retain.goose,
 //	        em_copy)
 //
-// TestGooseSaveSignedBoundsNegativeControl takes each lower bound out and
-// requires the program to stop on a negative index.
+// TestGooseSaveSignedBoundsNegativeControl takes each bound out and requires
+// the probe to stop on an out-of-range index, or, for the pointer's signed
+// reading, to save the high-bit slots as null.
 //
 // Unit tests here use no real time, no socket and no network: each run is
 // `goose run` of a generated program in t.TempDir().
@@ -101,6 +108,34 @@ fn union_case() {
     write_stdout(str("union-retain ", schema_rt::save_refusal_name(r2), "_ ", hex(again), "\n"));
 }
 
+// pointer_case loads the union wire, sets the root's *string slot to lo
+// (the node count plus two when past), and saves it plain and retaining
+// into outputs that hold one poison byte each.
+fn pointer_case(name: const u8[:], lo: u64, past: bool) {
+    let data = input("union.bin");
+    var vals: schema_rt::LoadVal[>..] = [];
+    var nodes: schema_rt::LoadNode[>..] = [];
+    var report = schema_rt::LoadReport { .. };
+    let root = schema_rt::load_table(conformance_unit(), "Root", data, vals, nodes, report);
+    if root < 0 || report.malformed { write_stdout(str(name, " refused\n")); return; }
+    let s = vals[root].first + 1;
+    if vals[s].state != schema_rt::ValPresent { write_stdout(str(name, " unset\n")); return; }
+    vals[s].bits = schema_rt::Int128 { lo: if past { (nodes.len + 2) as! u64 } else { lo }, hi: 0 };
+    var out: u8[>..<] = [];
+    out.push(0xEE);
+    let r = schema_rt::save_table(conformance_unit(), "Root", data, vals, nodes, root, out);
+    write_stdout(str(name, " ", schema_rt::save_refusal_name(r), "_ ", hex(out), "\n"));
+    var bytes: u8[>..<] = [];
+    var recs: schema_rt::RetainRec[>..<] = [];
+    var ids: u64[>..<] = [];
+    var store = store_of(bytes, recs, ids);
+    var rr = schema_rt::LoadReport { .. };
+    var again: u8[>..<] = [];
+    again.push(0xEE);
+    let r2 = schema_rt::save_table_retain(conformance_unit(), "Root", data, vals, nodes, root, store, rr, again);
+    write_stdout(str(name, "-retain ", schema_rt::save_refusal_name(r2), "_ ", hex(again), "\n"));
+}
+
 // retain_case loads the newer writer's wire retaining, rewrites the retained
 // string's length in the caller's store, and saves it retaining; the plain
 // save is the bytes it must equal.
@@ -133,6 +168,9 @@ fn retain_case(poison: const u8[:]) {
 
 fn main() {
     union_case();
+    pointer_case("ptr-high", 0x8000000000000002, false);
+    pointer_case("ptr-ones", 0xFFFFFFFFFFFFFFFF, false);
+    pointer_case("ptr-past", 0, true);
 `
 
 // saveBounds runs the probe over the runtime (with `override` replacing
@@ -195,6 +233,14 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 	return stdout.String(), stderr.String(), err == nil
 }
 
+// saveBoundsRefusals is each refused row's refusal name.
+var saveBoundsRefusals = map[string]string{
+	"union": "union_no_arm", "union-retain": "union_no_arm",
+	"ptr-high": "invalid_value", "ptr-high-retain": "invalid_value",
+	"ptr-ones": "invalid_value", "ptr-ones-retain": "invalid_value",
+	"ptr-past": "invalid_value", "ptr-past-retain": "invalid_value",
+}
+
 func TestGooseSaveSignedBounds(t *testing.T) {
 	t.Parallel()
 	out, stderr, ok := saveBounds(t, nil)
@@ -202,9 +248,9 @@ func TestGooseSaveSignedBounds(t *testing.T) {
 		t.Fatalf("the probe stopped: %q\nstderr:\n%s", out, stderr)
 	}
 	lines := probeLines([]byte(out))
-	for _, name := range []string{"union", "union-retain"} {
-		if f := lines[name]; len(f) != 2 || f[0] != "union_no_arm_" || f[1] != "ee" {
-			t.Errorf("%s: the save answered %q, want union_no_arm_ with the output's poison byte untouched", name, f)
+	for name, want := range saveBoundsRefusals {
+		if f := lines[name]; len(f) != 2 || f[0] != want+"_" || f[1] != "ee" {
+			t.Errorf("%s: the save answered %q, want %s_ with the output's poison byte untouched", name, f, want)
 		}
 	}
 	f := lines["retain"]
@@ -220,27 +266,49 @@ func TestGooseSaveSignedBounds(t *testing.T) {
 	}
 }
 
-// TestGooseSaveSignedBoundsNegativeControl takes out one lower bound at a
-// time; the probe must then stop on a negative index:
+// TestGooseSaveSignedBoundsNegativeControl takes out one bound at a time:
 //
 //   - edges_arm without `tag < 0`: the all-ones tag indexes the arms at -2;
+//   - edge_of without its upper bound: the pointer one past the node table
+//     indexes the save's open marks past their end;
+//   - edge_of bounding the signed reading from above only: the high-bit
+//     pointers read as negative and save as null, unrefused;
 //   - em_copy without the copied length's bound: the cursor steps back past
 //     the record and the next read indexes the store below zero.
 func TestGooseSaveSignedBoundsNegativeControl(t *testing.T) {
 	t.Parallel()
+	const bound = "    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { refuse(c, SaveRefuseInvalidValue); return 0; }\n"
 	for _, ctl := range []struct {
 		name, file, from, to string
+		null                 bool // the probe runs to its end and the high-bit rows save
 	}{
 		{"union-tag", "wire_save.goose",
 			"    if u < 0 || tag < 0 || tag > c.unit.unions[u].arms.len { return; }\n",
-			"    if u < 0 || tag > c.unit.unions[u].arms.len { return; }\n"},
+			"    if u < 0 || tag > c.unit.unions[u].arms.len { return; }\n", false},
+		{"pointer-upper", "wire_save.goose", bound,
+			"    if c.vals[s].bits.hi != 0 { refuse(c, SaveRefuseInvalidValue); return 0; }\n", false},
+		{"pointer-signed", "wire_save.goose", bound,
+			"    if c.vals[s].bits.hi != 0 || (wire as! i64) > c.nodes.len + 1 { refuse(c, SaveRefuseInvalidValue); return 0; }\n", true},
 		{"retain-length", "wire_retain.goose",
 			"        if x > (k.end - k.off - used) as! u64 { k.bad = true; return; }\n",
-			""},
+			"", false},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
 			out, stderr, ok := saveBounds(t, sabotage(t, ctl.file, ctl.from, ctl.to))
+			if ctl.null {
+				lines := probeLines([]byte(out))
+				if !ok {
+					t.Fatalf("%s: the probe stopped: %q\nstderr:\n%s", ctl.name, out, stderr)
+				}
+				for _, name := range []string{"ptr-high", "ptr-high-retain", "ptr-ones", "ptr-ones-retain"} {
+					if f := lines[name]; len(f) != 2 || f[0] != "_" {
+						t.Errorf("%s: %s answered %q, want an unrefused save", ctl.name, name, f)
+					}
+				}
+				t.Logf("%s: ptr-high saved %s", ctl.name, lines["ptr-high"])
+				return
+			}
 			if ok || !strings.Contains(stderr, "out of bounds") || !strings.Contains(stderr, ctl.file) {
 				t.Fatalf("%s: without the bound the probe ran to its end (%t) or stopped elsewhere: %q\nstderr:\n%s", ctl.name, ok, out, stderr)
 			}

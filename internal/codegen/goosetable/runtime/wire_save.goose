@@ -129,6 +129,7 @@ let SaveRefuseDeprecatedVariant: i64 = 4;
 let SaveRefuseUnionNoArm: i64 = 5;
 let SaveRefuseUnknownRoot: i64 = 6;
 let SaveRefuseNonFiniteFloat: i64 = 7;
+let SaveRefuseInvalidValue: i64 = 8;
 
 // save_refusal_name is a refusal's name, "" for none.
 fn save_refusal_name(code: i64) -> const u8[:] {
@@ -140,6 +141,7 @@ fn save_refusal_name(code: i64) -> const u8[:] {
         SaveRefuseUnionNoArm => "union_no_arm",
         SaveRefuseUnknownRoot => "unknown_root",
         SaveRefuseNonFiniteFloat => "non_finite_float",
+        SaveRefuseInvalidValue => "invalid_value",
         _ => "",
     };
 }
@@ -277,9 +279,13 @@ recursive fn visit(c: SaveCtx&, wire: i64) {
     c.open[wire] = false;
 }
 
+// edge_of is a pointer slot's node index, 0 for null; an index past the node
+// table, or one with any high bit set, is refused as invalid_value.
 fn edge_of(c: SaveCtx&, s: i64) -> i64 {
     if s < 0 || c.vals[s].state != ValPresent { return 0; }
-    return c.vals[s].bits.lo as! i64;
+    let wire = c.vals[s].bits.lo;
+    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { refuse(c, SaveRefuseInvalidValue); return 0; }
+    return wire as! i64;
 }
 
 // live_of: the elements an array carries on the wire — every slot of a fixed
