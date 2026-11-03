@@ -1,0 +1,221 @@
+{
+  "language": "goose",
+  "tested_revision": "c95359ca2a74b5d6cdd8d9900150236ad427d1a5",
+  "host": "vision",
+  "platform": "Linux x86-64",
+  "goose_runtime": "dede1ff88606",
+  "c_compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+  "command": "PYTHONUNBUFFERED=1 test/conformance/nightly-readiness goose (GOOSE from make dist-goose, pinned v2026.2 linux-x64)",
+  "finished_utc": "2026-11-03T04:30:47.601686+00:00",
+  "result": "NIGHTLY_READINESS_PASS language=goose phases=25",
+  "scope_note": "Frozen Linux acceptance at main c95359ca2 (includes #2723 table-driven CRC-32C, which removes the GCC 15 -O2 -foptimize-crc hang). Clean clone, siblings at the ci-full.yml pins, corpus built by prerequisites. Together with the macOS receipt this qualifies the Goose wire fuzzer and retention on both platforms; it does not close cook, JSON or cards.",
+  "native_events": {
+    "lockfile": {
+      "pass": 295,
+      "fail": 0,
+      "skip": 0
+    },
+    "goose": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0
+    },
+    "goosetable": {
+      "pass": 684,
+      "fail": 0,
+      "skip": 0
+    }
+  },
+  "fuzz": {
+    "plain": [
+      "wire-fuzz-mixed-builder: seed 1, 237 seeds over 64 roots, 162061 enumerated + 100000 random = 262061 mutants, 0 divergences, 40.6 s, 6455 mutants/s",
+      "wire-fuzz-mixed-builder: seed 2, 237 seeds over 64 roots, 162061 enumerated + 100000 random = 262061 mutants, 0 divergences, 38.9 s, 6737 mutants/s",
+      "wire-fuzz-mixed-builder: seed 3, 237 seeds over 64 roots, 162061 enumerated + 100000 random = 262061 mutants, 0 divergences, 38.8 s, 6755 mutants/s"
+    ],
+    "retain": [
+      "wire-fuzz-mixed-builder retain: seed 1, 108 seeds over 28 roots, 129 seeds outside the arm, 91408 enumerated + 100000 random = 191408 mutants, 0 divergences, 27.7 s, 6917 mutants/s",
+      "wire-fuzz-mixed-builder retain: seed 2, 108 seeds over 28 roots, 129 seeds outside the arm, 91408 enumerated + 100000 random = 191408 mutants, 0 divergences, 28.2 s, 6776 mutants/s",
+      "wire-fuzz-mixed-builder retain: seed 3, 108 seeds over 28 roots, 129 seeds outside the arm, 91408 enumerated + 100000 random = 191408 mutants, 0 divergences, 28.2 s, 6786 mutants/s"
+    ]
+  },
+  "results": [
+    {
+      "phase": "prerequisites",
+      "exit": 0,
+      "seconds": 28.240526494919322,
+      "errors": []
+    },
+    {
+      "phase": "implementation",
+      "exit": 0,
+      "seconds": 0.6705311170080677,
+      "errors": []
+    },
+    {
+      "phase": "native-list-lockfile",
+      "exit": 0,
+      "seconds": 2.357155168079771,
+      "errors": []
+    },
+    {
+      "phase": "native-lockfile",
+      "exit": 0,
+      "seconds": 10.562546094995923,
+      "errors": []
+    },
+    {
+      "phase": "native-list-goose",
+      "exit": 0,
+      "seconds": 0.7355681889457628,
+      "errors": []
+    },
+    {
+      "phase": "native-goose",
+      "exit": 0,
+      "seconds": 1.5127191379433498,
+      "errors": []
+    },
+    {
+      "phase": "native-list-goosetable",
+      "exit": 0,
+      "seconds": 2.5525171789340675,
+      "errors": []
+    },
+    {
+      "phase": "native-goosetable",
+      "exit": 0,
+      "seconds": 428.63954341202043,
+      "errors": []
+    },
+    {
+      "phase": "packet-build",
+      "exit": 0,
+      "seconds": 1.6815315319690853,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-0",
+      "exit": 0,
+      "seconds": 0.4652410870185122,
+      "errors": []
+    },
+    {
+      "phase": "packet-normal-1",
+      "exit": 0,
+      "seconds": 0.4762388790259138,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-0",
+      "exit": 0,
+      "seconds": 0.08974094898439944,
+      "errors": []
+    },
+    {
+      "phase": "packet-ludicrous-1",
+      "exit": 0,
+      "seconds": 0.09091552009340376,
+      "errors": []
+    },
+    {
+      "phase": "packet-features",
+      "exit": 0,
+      "seconds": 10.753485364024527,
+      "errors": []
+    },
+    {
+      "phase": "external-table-gates",
+      "exit": 0,
+      "seconds": 41.47038356401026,
+      "errors": []
+    },
+    {
+      "phase": "wire-driver-build",
+      "exit": 0,
+      "seconds": 90.85969425202347,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-1",
+      "exit": 0,
+      "seconds": 41.15060622896999,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-2",
+      "exit": 0,
+      "seconds": 39.441029452951625,
+      "errors": []
+    },
+    {
+      "phase": "wire-plain-3",
+      "exit": 0,
+      "seconds": 39.33649824897293,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-1",
+      "exit": 0,
+      "seconds": 28.182724341982976,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-2",
+      "exit": 0,
+      "seconds": 28.74430688598659,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-3",
+      "exit": 0,
+      "seconds": 28.64586850395426,
+      "errors": []
+    },
+    {
+      "phase": "wire-retain-controls",
+      "exit": 0,
+      "seconds": 7.753096157917753,
+      "errors": []
+    },
+    {
+      "phase": "retain-goose-tablewire",
+      "exit": 0,
+      "seconds": 37.003933603991754,
+      "errors": []
+    },
+    {
+      "phase": "retain-goose-fuzz",
+      "exit": 0,
+      "seconds": 23.737737750983797,
+      "errors": []
+    }
+  ],
+  "sha256": {
+    "external-table-gates.log": "0982009044eb1c05ed0e94d3f8675255b3603e862a7ec2921472a1b953fbc5f2",
+    "implementation.log": "89f97b38f4527eecd34433fe75bf2fe2d194f077325a4d8b0fea1984d2987be2",
+    "native-goose.log": "019c261b9fd6d4935e7e98993de04a98b14598bb9b7a238ae534bc04179bf788",
+    "native-goosetable.log": "7337f27254c0056510c5852b6677cffe2202fff8b7bebc6307f70ffe14e5b1c5",
+    "native-list-goose.log": "d9d830d34cee7064043e9ba7633345f475a64418e8195f4409b1fd2eea950976",
+    "native-list-goosetable.log": "93f32bb732b40ef8a62f2296b27de2f767b46e67df73e7bdb0a1ceb2830d8599",
+    "native-list-lockfile.log": "ca9ce56f3a2c6cdfb800a2e131f547cdf6912da3e426d8c2e24315cc26f0f132",
+    "native-lockfile.log": "8c07d0e49810c59849b4d39f0ccac8347265f525459f8b0c76e3ed4ebc15c379",
+    "packet-build.log": "e29a994ddb05bc9f30498993343d40e3d0c4b4ba05a6a310c4a63acb0bf528d6",
+    "packet-features.log": "4cadf987af1d8f6eeeac82957d8b3deb682f9a2938054412869ff1bfb3873575",
+    "packet-ludicrous-0.log": "54bb6bd5ed43b0878f8f331be2c95f1556912efad114e301ad5257cec3ead05e",
+    "packet-ludicrous-1.log": "54bb6bd5ed43b0878f8f331be2c95f1556912efad114e301ad5257cec3ead05e",
+    "packet-normal-0.log": "be5b1fe58286c2e8cf94fb3c92f8eafc37e544300aa857f14dbbd36da51d9f81",
+    "packet-normal-1.log": "be5b1fe58286c2e8cf94fb3c92f8eafc37e544300aa857f14dbbd36da51d9f81",
+    "prerequisites.log": "74501ab412b1dd6620985e4deef461da02baea991d5ad6071b2f65b5b61993a9",
+    "retain-goose-fuzz.log": "ebc957b8e4a2b07950c31d02ab95709510ed9bd97a68613fc699b25d139ad1a3",
+    "retain-goose-tablewire.log": "d6a258676d9dd223cee5d0f2ab33b7c2ecee610a22a8170c1c062b0c95eb1543",
+    "wire-driver-build.log": "3a8d052804952643b6a2fbeda1866d3cd7a6aaae8a960fddc1b9c3f102f4b626",
+    "wire-plain-1.log": "18eedb71e9b59bd926fc164584ca646077f98538021b24cad7b0fd07a199cbdf",
+    "wire-plain-2.log": "1d44387f1cbf4568aa88d170cbd59b892bd6bcbc794c6f2b1833129c9d703f2d",
+    "wire-plain-3.log": "a42b58cb58875e0a166423248d6bd99bb1f0d4450718781787092cff7d18d0a5",
+    "wire-retain-1.log": "a72c136302523a20865134c32e5963b8ef501060cc0e0ed98daf867f960f0b77",
+    "wire-retain-2.log": "2826314031f3f711f9b4126a296964e4fa60bbafdd908bb2b54ce6dc11c0b278",
+    "wire-retain-3.log": "8118306ff07d236d2a670d9f485f088b67421d98cc75b2af59c3c11e265ee04a",
+    "wire-retain-controls.log": "0be842f0281082417a2d645dc9038823666af45c0ec0df2f2062c06e428cb00d",
+    "results.json": "14e7cb73914424ac19346f257c283b49f8a390837084ba2dd640e1985cf4b970"
+  }
+}
