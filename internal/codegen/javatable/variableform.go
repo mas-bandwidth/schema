@@ -1347,6 +1347,13 @@ public final class TableVariable {
             if (r.report.refused) {
                 return;
             }
+            // the storage cap (§11), after every record: each record is at
+            // most the cap, so the sum never overflows
+            if (blobs + bodies > STORAGE_CAP) {
+                r.report.refused = true;
+                r.report.reason = "storage_over_cap";
+                return;
+            }
             r.off = bodyOff + n;
         }
         m.nodeRecords = count;
@@ -3120,7 +3127,7 @@ func generateVariableFiles(u *ir.Unit) (map[string][]byte, error) {
 		return map[string][]byte{}, nil
 	}
 	out := map[string][]byte{
-		"TableVariable.java": javaFile(u, "the VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1", strings.TrimSuffix(tableVariableRuntime, "}\n")+variableWideRuntime+"}\n"),
+		"TableVariable.java": javaFile(u, "the VARIABLE FORM's runtime (docs/SPEC-TABLES.md §3), form byte 1", strings.TrimSuffix(tableVariableRuntime, "}\n")+variableWideRuntime+storageCapRuntime+"}\n"),
 	}
 	if unitCarriesForm(u, "json") {
 		out["TableJson.java"] = javaFile(u, "the TEXT form's runtime (docs/SPEC-TABLES.md §16), JSON in and out", strings.TrimSuffix(tableJsonRuntime, "}\n")+variableWideJsonRuntime+"}\n")
@@ -3644,6 +3651,16 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	} else {
+		// THE STORAGE CAP IS REFUSED BEFORE ANY VALUE IS BUILT
+		// (docs/SPEC-TABLES.md §6.5, §11): the measure runs first, and its
+		// answer is the one the framing check below reads.
+		fmt.Fprintf(&b, "        TableVariable.Measure measure = new TableVariable.Measure();\n")
+		fmt.Fprintf(&b, "        long measured = loadMeasure(data, measure);\n")
+		fmt.Fprintf(&b, "        if (measured < 0 && \"storage_over_cap\".equals(measure.report.reason)) {\n")
+		fmt.Fprintf(&b, "            report.refused = true;\n")
+		fmt.Fprintf(&b, "            report.reason = measure.report.reason;\n")
+		fmt.Fprintf(&b, "            return null;\n")
+		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        report.rootTypeId = TYPE_ID;\n")
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);\n")
 		fmt.Fprintf(&b, "        if (nt.recs != null && !nt.bad) {\n")
@@ -3686,8 +3703,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		// read either. So the walk runs on every load that has not refused:
 		// measureFields IS the oracle walk, and the load refuses exactly where
 		// loadMeasure answers -1, whatever the read reported.
-		fmt.Fprintf(&b, "        TableVariable.Measure measure = new TableVariable.Measure();\n")
-		fmt.Fprintf(&b, "        if (loadMeasure(data, measure) < 0) {\n")
+		fmt.Fprintf(&b, "        if (measured < 0) {\n")
 		fmt.Fprintf(&b, "            report.refused = true;\n")
 		fmt.Fprintf(&b, "            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
 		fmt.Fprintf(&b, "            return null;\n")
@@ -3734,7 +3750,7 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 	b.WriteString("    // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).\n")
 	fmt.Fprintf(b, "    private static final long ALIGN = %d;\n", align)
-	fmt.Fprintf(b, "    private static final long RECORD_SIZE = %d;\n", recordSize)
+	fmt.Fprintf(b, "    private static final long RECORD_SIZE = %dL;\n", recordSize)
 	b.WriteString("    private static long alignUp(long n, long a) { return (n + a - 1) & -a; }\n")
 	b.WriteString("    private static long round(long n) { return (n + ALIGN - 1) & -ALIGN; }\n")
 	b.WriteString("    // A node table record's region is its rounded record layout plus the\n")
@@ -3817,6 +3833,13 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            total += m.nodeBlobBytes + m.nodeTableBytes;\n")
 	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        total += (records + 1) * 16;\n")
+	b.WriteString("        // the storage cap (§11): each part is at most the cap, so the sum\n")
+	b.WriteString("        // never overflows\n")
+	fmt.Fprintf(b, "        if (total > TableVariable.STORAGE_CAP) {\n")
+	fmt.Fprintf(b, "            m.report.refused = true;\n")
+	fmt.Fprintf(b, "            m.report.reason = \"storage_over_cap\";\n")
+	fmt.Fprintf(b, "            return -1;\n")
+	fmt.Fprintf(b, "        }\n")
 	fmt.Fprintf(b, "        return total;\n")
 	fmt.Fprintf(b, "    }\n\n")
 
@@ -4016,7 +4039,13 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 			}
 		}
 		b.WriteString("        if (count > (long) (r.limit - r.off) / floor) { report.refused = true; return at; }\n")
-		fmt.Fprintf(b, "        at = ((at + %d - 1) & -%dL) + count * %dL;\n", align, align, size)
+		fmt.Fprintf(b, "        at = (at + %d - 1) & -%dL;\n", align, align)
+		if size > 0 {
+			// the storage cap (§11): the term is refused before it is added,
+			// so no count times an element size passes it
+			fmt.Fprintf(b, "        if (count > (TableVariable.STORAGE_CAP - at) / %dL) { report.refused = true; report.reason = \"storage_over_cap\"; return at; }\n", size)
+		}
+		fmt.Fprintf(b, "        at += count * %dL;\n", size)
 	}
 	walksTable, walksUnion := false, false
 	for _, k := range accepted {
@@ -5837,3 +5866,11 @@ func shiftLines(s string, n int) string {
 	}
 	return strings.Join(lines, "")
 }
+
+// storageCapRuntime is the storage cap a wire's region measure is refused past
+// (docs/SPEC-TABLES.md §6.5, §11), emitted from ir.MaxSizeBytes.
+var storageCapRuntime = fmt.Sprintf(`
+    // STORAGE_CAP: a wire whose region measure passes it, 2^40 bytes, is
+    // refused as storage_over_cap before any value is built (§6.5, §11).
+    public static final long STORAGE_CAP = %dL;
+`, ir.MaxSizeBytes)

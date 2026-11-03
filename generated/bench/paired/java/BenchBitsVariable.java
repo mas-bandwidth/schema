@@ -629,6 +629,13 @@ public final class BenchBitsVariable {
             return null;
         }
         Value v = new Value();
+        TableVariable.Measure measure = new TableVariable.Measure();
+        long measured = loadMeasure(data, measure);
+        if (measured < 0 && "storage_over_cap".equals(measure.report.reason)) {
+            report.refused = true;
+            report.reason = measure.report.reason;
+            return null;
+        }
         report.rootTypeId = TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
@@ -662,8 +669,7 @@ public final class BenchBitsVariable {
         if (report.refused) {
             return null;
         }
-        TableVariable.Measure measure = new TableVariable.Measure();
-        if (loadMeasure(data, measure) < 0) {
+        if (measured < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
@@ -695,7 +701,7 @@ public final class BenchBitsVariable {
 
     // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
-    private static final long RECORD_SIZE = 40;
+    private static final long RECORD_SIZE = 40L;
 
     private static long alignUp(long n, long a) {
         return (n + a - 1) & -a;
@@ -772,6 +778,13 @@ public final class BenchBitsVariable {
             total += m.nodeBlobBytes + m.nodeTableBytes;
         }
         total += (records + 1) * 16;
+        // the storage cap (§11): each part is at most the cap, so the sum
+        // never overflows
+        if (total > TableVariable.STORAGE_CAP) {
+            m.report.refused = true;
+            m.report.reason = "storage_over_cap";
+            return -1;
+        }
         return total;
     }
 
