@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
@@ -12,52 +13,16 @@ import (
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
-// shared cross-version vector every leg reads. hostile_range_widen.bin is the
-// OLD writer's | 0..100 file with `v` forged to 150, inside the NEW reader's
-// | 0..200; the NEW reader clamps it to the WRITER's max and counts `clamped`
-// once. The answer is the manifest's `expect=`, which is what the C++
-// reference's own NEW reader landed from the same bytes.
+// shared cross-version vectors every leg reads (fixedvector.WriterRange): an
+// OLD writer's file with one ranged value forged past that writer's range, read
+// by the NEW reader whose own range is wider. The reader clamps to the WRITER's
+// range and counts `clamped` once: a scalar, one element of a ranged fixed
+// array (held the same as a scalar), and a uint64 at or above 2^63 (compared
+// unsigned, so it lands the max). The answer is the manifest's `expect=`, which
+// is what the C++ reference's own NEW reader landed from the same bytes.
 func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "cargo (it runs the generated NEW reader over the forged file)")
 	corpus := versionCorpus(t)
-	want, err := fixedvector.Read(corpus, fixedvector.RangeWidenHostile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, err := want.Int("r0.v")
-	if err != nil {
-		t.Fatal(err)
-	}
-	lead, err := want.Int("r0.lead")
-	if err != nil {
-		t.Fatal(err)
-	}
-	trail, err := want.Int("r0.trail")
-	if err != nil {
-		t.Fatal(err)
-	}
-	tests := fmt.Sprintf(`
-#[test]
-fn v_range_widen_hostile() {
-    let data = std::fs::read(%[1]q).expect("the reference's hostile_range_widen.bin");
-    let mut values = vec![ROWTYPE::default(); 8];
-    let mut plan = vec![TableFixedEntry::default(); 4096];
-    let mut remap = vec![0u16; 4096];
-    let mut report = TableFixedReport::default();
-    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    println!("range_widen_hostile: landed v={} clamped={}", values[0].v, report.clamped);
-    let n = n.unwrap_or_else(|| panic!("the NEW reader REFUSED the forged file: {} {:?}", report.reason.name(), report));
-    assert_eq!(n, 1, "the forged file carries one record, not {n}");
-    assert!(!report.refused && !report.malformed, "a clamped read is not a refusal: {:?}", report);
-    assert_eq!((values[0].v, report.clamped), (%[2]d, %[3]d), "the forged 150 clamps to the WRITER's max and counts once");
-    assert_eq!((values[0].lead, values[0].trail), (%[4]d, %[5]d), "a bracket moved");
-    assert!(
-        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
-        "a counter that must not move did: {:?}", report
-    );
-}
-`, filepath.Join(corpus, fixedvector.RangeWidenHostile), v, want.Clamped, lead, trail)
-
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)
@@ -69,20 +34,63 @@ fn v_range_widen_hostile() {
 	if _, err := os.Stat(serialize); err != nil {
 		t.Fatalf("the Rust runtime is not beside this tree at %s: %v", serialize, err)
 	}
-	root := t.TempDir()
-	versionWriteCrate(t, root, serialize, versionProbe{
-		name:   "probe_range_widen_hostile",
-		reader: "VNEW_range_widen",
-		older:  []string{"VOLD_range_widen"},
-		src:    versionProbeSource(tests),
-	})
-	cmd := exec.Command("cargo", "test", "--", "--nocapture")
-	cmd.Dir = filepath.Join(root, "probe_range_widen_hostile")
-	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("range_widen_hostile: %v\n%s", err, out)
+	for _, vec := range fixedvector.WriterRange {
+		t.Run(vec.Row, func(t *testing.T) {
+			t.Parallel()
+			want, err := fixedvector.Read(corpus, vec.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			leaves, err := want.Leaves()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var checks strings.Builder
+			for _, l := range leaves {
+				expr := "values[0]." + l.Field
+				if l.Index >= 0 {
+					expr += fmt.Sprintf("[%d]", l.Index)
+				}
+				fmt.Fprintf(&checks, "    assert_eq!(%[1]s.to_string(), %[2]q, \"%[3]s: the forged value clamps to the WRITER's range\");\n",
+					expr, fmt.Sprint(l.Value), l.Path)
+			}
+			fn := "v_" + vec.Row + "_hostile"
+			tests := fmt.Sprintf(`
+#[test]
+fn %[1]s() {
+    let data = std::fs::read(%[2]q).expect("the reference's %[3]s");
+    let mut values = vec![ROWTYPE::default(); 8];
+    let mut plan = vec![TableFixedEntry::default(); 4096];
+    let mut remap = vec![0u16; 4096];
+    let mut report = TableFixedReport::default();
+    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+    let n = n.unwrap_or_else(|| panic!("the NEW reader REFUSED the forged file: {} {:?}", report.reason.name(), report));
+    assert_eq!(n, 1, "the forged file carries one record, not {n}");
+    assert!(!report.refused && !report.malformed, "a clamped read is not a refusal: {:?}", report);
+%[4]s    assert_eq!(report.clamped, %[5]d, "one forged value, one clamp");
+    assert!(
+        report.unknown == 0 && report.kind_mismatch == 0 && report.widened == 0,
+        "a counter that must not move did: {:?}", report
+    );
+}
+`, fn, filepath.Join(corpus, vec.File), vec.File, checks.String(), want.Clamped)
+			root := t.TempDir()
+			name := "probe_" + vec.Row + "_hostile"
+			versionWriteCrate(t, root, serialize, versionProbe{
+				name:   name,
+				reader: "VNEW_" + vec.Row,
+				older:  []string{"VOLD_" + vec.Row},
+				src:    versionProbeSource(tests),
+			})
+			cmd := exec.Command("cargo", "test", "--", "--nocapture")
+			cmd.Dir = filepath.Join(root, name)
+			cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("%s: %v\n%s", vec.File, err, out)
+			}
+			versionAssert(t, string(out), fn)
+			t.Logf("%s", out)
+		})
 	}
-	versionAssert(t, string(out), "v_range_widen_hostile")
-	t.Logf("%s", out)
 }

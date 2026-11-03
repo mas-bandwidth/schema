@@ -217,7 +217,11 @@ build/tables-generated/vnum/VNEW_lineage_mergeTable.h
 build/tables-generated/vnum/VNEW_optional_addBlock.h
 build/tables-generated/vnum/VNEW_optional_addTable.h
 build/tables-generated/vnum/VNEW_range_widenBlock.h
+build/tables-generated/vnum/VNEW_range_widen_arrayBlock.h
+build/tables-generated/vnum/VNEW_range_widen_u64Block.h
 build/tables-generated/vnum/VNEW_range_widenTable.h
+build/tables-generated/vnum/VNEW_range_widen_arrayTable.h
+build/tables-generated/vnum/VNEW_range_widen_u64Table.h
 build/tables-generated/vnum/VNEW_string_growBlock.h
 build/tables-generated/vnum/VNEW_string_growTable.h
 build/tables-generated/vnum/VNEW_uint_widenBlock.h
@@ -259,7 +263,11 @@ build/tables-generated/vnum/VOLD_lineage_mergeTable.h
 build/tables-generated/vnum/VOLD_optional_addBlock.h
 build/tables-generated/vnum/VOLD_optional_addTable.h
 build/tables-generated/vnum/VOLD_range_widenBlock.h
+build/tables-generated/vnum/VOLD_range_widen_arrayBlock.h
+build/tables-generated/vnum/VOLD_range_widen_u64Block.h
 build/tables-generated/vnum/VOLD_range_widenTable.h
+build/tables-generated/vnum/VOLD_range_widen_arrayTable.h
+build/tables-generated/vnum/VOLD_range_widen_u64Table.h
 build/tables-generated/vnum/VOLD_string_growBlock.h
 build/tables-generated/vnum/VOLD_string_growTable.h
 build/tables-generated/vnum/VOLD_uint_widenBlock.h

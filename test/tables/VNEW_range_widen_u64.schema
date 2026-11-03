@@ -1,0 +1,16 @@
+// VNEW_range_widen_u64.schema — NEW: uint64 | 0..2000
+//
+// One of the fixed form's versioning rows (docs/FIXED-FORM-VERSIONING-TESTS.md).
+// The OLD and the NEW file of this pair differ by EXACTLY the row named above,
+// so a case in test/tables/fixedform_dump.cpp can say which change the read
+// answered for. `lead` and `trail` bracket the row's field: a mislaid size
+// moves a neighbor, and the equality check sees it.
+
+package vnew_range_widen_u64
+
+fixed table RangeWidenU64
+{
+    lead  uint32 = 1
+    v     uint64 = 10 | min = 0, max = 2000
+    trail uint32 = 2
+}

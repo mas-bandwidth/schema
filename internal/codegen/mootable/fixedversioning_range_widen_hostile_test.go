@@ -11,33 +11,35 @@ import (
 )
 
 // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5), the
-// shared cross-version vector every leg reads. hostile_range_widen.bin is the
-// OLD writer's | 0..100 file with `v` forged to 150, inside the NEW reader's
-// | 0..200; the NEW reader clamps it to the WRITER's max and counts `clamped`
-// once. The answer is the manifest's `expect=`, which is what the C++
-// reference's own NEW reader landed from the same bytes.
+// shared cross-version vectors every leg reads (fixedvector.WriterRange): an
+// OLD writer's file with one ranged value forged past that writer's range, read
+// by the NEW reader whose own range is wider. The reader clamps to the WRITER's
+// range and counts `clamped` once: a scalar, one element of a ranged fixed
+// array (held the same as a scalar), and a uint64 at or above 2^63 (compared
+// unsigned, so it lands the max). The answer is the manifest's `expect=`, which
+// is what the C++ reference's own NEW reader landed from the same bytes.
 func TestMooFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
 	corpus := fixedCorpus(t)
-	want, err := fixedvector.Read(corpus, fixedvector.RangeWidenHostile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	older, newer := readTestSchema(t, "VOLD_range_widen"), readTestSchema(t, "VNEW_range_widen")
-	g := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
-	got := runFixedLoad(t, g, "VNEW_range_widenTable", "RangeWiden", corpusFile(t, corpus, fixedvector.RangeWidenHostile))
-	t.Logf("range_widen_hostile: landed v=%s, head %s", got.dump["r0.v"], got.head)
-	if head := fmt.Sprintf("ok 1 u0 k0 c%d w0", want.Clamped); got.head != head {
-		t.Errorf("head %s, want %s: the forged 150 clamps to the WRITER's max and counts once", got.head, head)
-	}
-	for _, path := range []string{"r0.lead", "r0.v", "r0.trail"} {
-		w, err := want.Int(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got.dump[path] != strconv.FormatInt(w, 10) {
-			t.Errorf("%s landed %s, want %d", path, got.dump[path], w)
-		}
+	for _, vec := range fixedvector.WriterRange {
+		t.Run(vec.Row, func(t *testing.T) {
+			t.Parallel()
+			want, err := fixedvector.Read(corpus, vec.File)
+			if err != nil {
+				t.Fatal(err)
+			}
+			older, newer := readTestSchema(t, "VOLD_"+vec.Row), readTestSchema(t, "VNEW_"+vec.Row)
+			g := fixedUnit(t, newer, lineageOf(t, []*ir.Unit{older}, 0))
+			got := runFixedLoad(t, g, "VNEW_"+vec.Row+"Table", vec.Root, corpusFile(t, corpus, vec.File))
+			if head := fmt.Sprintf("ok 1 u0 k0 c%d w0", want.Clamped); got.head != head {
+				t.Errorf("head %s, want %s: one forged value, one clamp", got.head, head)
+			}
+			for _, path := range want.Paths {
+				if w := strconv.FormatInt(want.Values[path], 10); got.dump[path] != w {
+					t.Errorf("%s landed %s, want %s: the forged value clamps to the WRITER's range", path, got.dump[path], w)
+				}
+			}
+		})
 	}
 }

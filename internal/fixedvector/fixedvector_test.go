@@ -23,10 +23,45 @@ func TestRead(t *testing.T) {
 	if e.Clamped != 1 {
 		t.Fatalf("clamped = %d, want 1", e.Clamped)
 	}
+	if e.ForgedPath != "r0.v" || e.ForgedAt != 104 {
+		t.Fatalf("forged = %s@%d, want r0.v@104", e.ForgedPath, e.ForgedAt)
+	}
+	leaves, err := e.Leaves()
+	if err != nil || len(leaves) != 3 || leaves[1].Field != "v" || leaves[1].Index != -1 || leaves[1].Value != 100 {
+		t.Fatalf("leaves = %+v (%v), want lead, v = 100, trail", leaves, err)
+	}
 	if _, err := Read(dir, "old_range_widen.bin"); err == nil {
 		t.Fatal("a line with no expect= read as a vector")
 	}
 	if _, err := Read(dir, "absent.bin"); err == nil {
 		t.Fatal("a file the manifest does not name read as a vector")
+	}
+}
+
+func TestLeavesArray(t *testing.T) {
+	e := Expect{File: "x.bin", Values: map[string]int64{"r0.vals[2]": 100, "r0.lead": 1}, Paths: []string{"r0.lead", "r0.vals[2]"}}
+	leaves, err := e.Leaves()
+	if err != nil || len(leaves) != 2 || leaves[1].Field != "vals" || leaves[1].Index != 2 || leaves[1].Value != 100 {
+		t.Fatalf("leaves = %+v (%v), want lead and vals[2] = 100", leaves, err)
+	}
+	for _, bad := range []string{"r1.v", "r0.a.b", "r0.vals[x]", "r0.vals[2"} {
+		if _, err := (Expect{File: "x.bin", Values: map[string]int64{bad: 1}, Paths: []string{bad}}).Leaves(); err == nil {
+			t.Errorf("%s split as a root leaf", bad)
+		}
+	}
+}
+
+func TestWriterRangeNamesEveryVector(t *testing.T) {
+	seen := map[string]bool{}
+	for _, v := range WriterRange {
+		if v.File == "" || v.Row == "" || v.Root == "" || seen[v.File] {
+			t.Errorf("vector %+v is incomplete or repeated", v)
+		}
+		seen[v.File] = true
+	}
+	for _, f := range []string{RangeWidenHostile, RangeWidenArrayHostile, RangeWidenU64Hostile} {
+		if !seen[f] {
+			t.Errorf("%s is not in WriterRange", f)
+		}
 	}
 }
