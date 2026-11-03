@@ -179,6 +179,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
 | `cook-reason` | `refusal` (`cook`) | Open the forged cook, the reason beside the null as the enum's value name, or `ok` | the reason in the manifest |
 | `block-reason` | `refusal` (`block`) | Open the forged block, the reason beside the false as the enum's value name, or `ok` | the reason in the manifest |
+| `write-refusal` | `write-refusal` | Load the wire, set the row's one field to its value, Save through the variable form: `refused`, `wrote`, or `unrepresentable` where the leg's own types cannot hold the value | the verdict in the manifest (`refused` also accepts `unrepresentable`) |
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
@@ -650,6 +651,21 @@ So the rule holds comfortably while ports take the cheap shape, and the leg
 that does not is the one to shard — per language leg, the way the type wire's
 nine legs already are. Not needed at this size, and the number to watch is the
 per-start cost of the managed legs, not the case count.
+
+**`write-refusal` IS THE WRITE CONTRACT'S SURFACE** (docs/SPEC.md §5.1), and
+the one surface whose answer depends on the BUILD a leg runs. A refusal in an
+assert leg is a debug-only check, so that leg answers this surface from its
+debug configuration: the C++ and C drivers fork one child per case and read an
+abort as the refusal, C# installs a throwing `TraceListener` around each save,
+Rust catches the `debug_assert!` panic, the Java driver runs this surface under
+`-ea`, and the Dart leg builds a second binary, `build/conformance-dart-asserts`,
+with `--enable-asserts`. Every other leg answers from its ordinary build,
+because it refuses in every build. Every refused row has a lawful twin at the
+same boundary that must be WRITTEN, so a driver that refused everything would
+fail half the battery, and `unrepresentable` answers a refused row only. Each
+leg carries `conformance-negative-control-<lang>-write-refusal`: one check
+removed from a copy of the generated code, `<lang> / write-refusal` red and
+`wire` green.
 
 ## What is not here yet
 

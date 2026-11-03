@@ -961,76 +961,57 @@ thing that differs per language.
 
 ## Writes are the caller's responsibility
 
-**The validation guarantee is on reads.** That is where hostile input arrives,
-and it holds in every language.
+**Keep your values inside their declared bounds on the write side** — your
+simulation already knows they are, and that is the only assumption the wire
+makes. **Every writer still refuses a value its declaration does not admit**
+(Glenn, 2026-11-03: "It is our intent to refuse the write of out of range
+values. ... Some mechanism for refusal of invalid values or write must
+exist."), and it does so the way its language verifies correctness:
 
-**Each language uses its own correctness idiom on the write side.** C++ has
-`assert`/`NDEBUG`, a check that disappears in a release build, so the C++
-backend uses `serialize_assert` — and so does the C backend, which has the
-same `assert` and the same `NDEBUG` (2026-09-07: "Every language, by design,
-compiles out asserts/checks in release build. This is the whole point!").
-Rust has `debug_assert!`, compiled out of release, and serialize.rs itself
-holds its API-misuse contracts with it (`src/stream.rs`, `misuse_check!`), so
-the Rust backend `debug_assert!`s (2026-09-07: "No runtime should ever promise
-to keep checks in writing packets (asserts) in release build. Removing them is
-the whole point... checks are *DEBUG ONLY*"). C# has `Debug.Assert` and
-`[Conditional("DEBUG")]`, which remove the check AND the call from a release
-build, so the C# backend asserts too — the same idiom the serialize.cs runtime
-it calls has always used for its own write path.
-Go has no assert idiom, so it returns
-`ErrValueOutOfRange` (and its table writers refuse with
-`TableRefuseInvalidValue`, below); JavaScript likewise returns failure
-rather than invent an assert. Dart has `assert` — active under
-`--enable-asserts`, compiled out of release and AOT builds — so the Dart
-writer asserts, exactly like C++; Java's `assert` is active under `-ea` and
-dormant otherwise, so the Java writer asserts too (one predicate call per
-write, issue #156's inline-threshold discipline); the BEAM has no dormant
-assert, so the Elixir writer raises `ArgumentError` on a violated contract in
-every build. The rule is that a language should verify
-correctness the way that language verifies correctness — not that every
-target behaves identically here.
+- **C, C++, C#, Rust, Java and Dart check in DEBUG** and pay nothing in a
+  release build: `schema_assert`/`serialize_assert` under `NDEBUG` in C and
+  C++, `Debug.Assert` in C#, `debug_assert!` in Rust, `assert` under `-ea` in
+  Java and under `--enable-asserts` in Dart. "In low level languages like
+  C/C++ our intent is to do this at debug time for speed." A check that guards
+  the writer's own storage (a count or length that would index past its
+  array) refuses in every build.
+- **Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO and Goose refuse in every
+  build**, because their languages have no debug-only idiom: a Go table save
+  returns `-1` and its `...Reason` twin `TableRefuseInvalidValue`, a Go packet
+  write `serialize.ErrValueOutOfRange`; JavaScript's `Save` returns `null`;
+  Elixir's `save/2` returns `{:error, :invalid_value}`; the Lua family returns
+  `nil` and a reason.
 
 So writing `health = 2000` into a field declared `| min = 0, max = 1000`
-asserts in a C++, C, C# `DEBUG`, debug-Rust, checked-Dart or `-ea` Java build,
-raises in Elixir, silently writes the truncated low bits in a C++ or C release
-(`NDEBUG`), a C# release, a Rust release (`debug-assertions = false`; a length
-or count past its array's end panics there on the slice instead, the
-language's own bounds check, which no profile removes), Dart AOT or
-default-JVM build, and returns failure in the others.
+asserts in a debug C, C++, C#, Rust, Java or Dart build and is refused in
+every Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO or Goose build. A
+release build of an assert language writes whatever its storage holds, and the
+reader on the other end refuses or clamps it: that build's value is yours to
+keep in range, which is the right trade for a game shipping at 60 Hz, where
+re-checking every field of every packet in release is a cost with no buyer.
 
-**Go tables are held to the stricter rule, in every build** (2026-10-15: "Go
-table writers, variable and fixed, refuse out-of-contract values by name").
-A Go table has no debug build to compile a check out of, and a record its own
-reader would clamp or refuse is a record the writer should never have made. So
-a Go table save — `<T>Save` for a variable or a fixed-size table and
-`<T>FixedSave` for the fixed form — **refuses** a value off its declared
-`min`/`max`, a count past its array's `Max`, a length past its text or bytes
-bound `N`, ill-formed UTF-8 in a `string`, and a NUL in a `string`, by name:
-the save returns `-1` and the `...Reason` twin (`<T>MeasureReason`,
-`<T>FixedSaveReason`) returns `TableRefuseInvalidValue`. Nothing is clamped on
-the way out and nothing is written for a refused fixed batch. The cost is one
-comparison per ranged field, one per count and length, and one word-at-a-time
-scan over the used bytes of each string (ASCII passes on the word test; only
-text with a byte at or past 0x80 is asked of `utf8.Valid`). The fixed writer
-pays for its check by storing only the live extent, as
-[FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 always said it must: a
-counted array's `count` elements and a text field's `length` bytes, onto the
-zeroed template, never all `Max` and never the slack of the caller's storage.
-The write path is measured before and after through the one sanctioned
-benchmark, the tables bench ([bench/tables](../bench/tables/README.md), the
-variable form) and the paired pass ([bench/paired](../bench/paired/README.md),
-the fixed form), under a speed gate: a save may not get slower than the
-before-run's spread. The packet writers and the other
-languages' table writers are unchanged by this paragraph.
+The whole contract — every kind of value a writer refuses, which writer of
+which language holds which today, and the conformance surface that holds them
+— is [SPEC.md](SPEC.md) §5.1.
+
+**Go table writers refuse by name, in every build** (2026-10-15: "Go table
+writers, variable and fixed, refuse out-of-contract values by name"): `<T>Save`
+for a variable or a fixed-size table and `<T>FixedSave` for the fixed form
+refuse a value off its declared `min`/`max`, a count past its array's `Max`, a
+length past its text or bytes bound `N`, ill-formed UTF-8 in a `string`, and a
+NUL in a `string`; the save returns `-1` and the `...Reason` twin
+(`<T>MeasureReason`, `<T>FixedSaveReason`) returns `TableRefuseInvalidValue`.
+Nothing is clamped on the way out and nothing is written for a refused fixed
+batch. The cost is one comparison per ranged field, one per count and length,
+and one word-at-a-time scan over the used bytes of each string (ASCII passes on
+the word test; only text with a byte at or past 0x80 is asked of
+`utf8.Valid`). The fixed writer stores only the live extent, as
+[FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) §3.1 says it must: a counted
+array's `count` elements and a text field's `length` bytes, onto the zeroed
+template, never all `Max` and never the slack of the caller's storage.
 A variable-wire `bool` a Go table writer saves always holds `0` or `1`; a read
 that meets any other byte on the variable wire keeps the value (`true`), counts
 the field `malformed` by name, and the strict read (§6.5) refuses it (§3).
-
-Do not build on any of it. **Keep your values inside their declared bounds on
-the write side** — your simulation already knows they are, and that is the only
-assumption the wire makes. The C++ behaviour in particular is the right one for
-a game shipping at 60 Hz, where re-checking every field of every packet in
-release is a cost with no buyer.
 
 ## The protocol id
 
