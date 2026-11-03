@@ -27,7 +27,14 @@ var gooseWideTableKinds bool
 
 func (gooseTarget) Names() []string { return []string{"goose"} }
 
-// Generate is the type surface (one module per schema file) and, for a unit
+// Generate is the NO-LINEAGE case: a unit whose lock the caller did not read,
+// or that has none. Every fixed table then carries the single entry it can
+// always compute, its own (docs/FIXED-FORM-ALGORITHM.md §5.9 #1).
+func (t gooseTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the type surface (one module per schema file) and, for a unit
 // that declares tables, the table surface (one <Base>Table.goose per file
 // with tables) — the descriptors and constructors, no codec yet
 // (docs/PORT-GOOSE.md, THE CARD MAP).
@@ -45,7 +52,12 @@ func (gooseTarget) Names() []string { return []string{"goose"} }
 // (carryGoose(carryForms) as a package-level var, or registerListCarrier("goose")
 // and its kin from an init) and never edits this file: each refusal below
 // stands down by itself, because each reads its registry, not this chain.
-func (gooseTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
+//
+// THE LINEAGE IS THE DRIVER'S (§5.9 #1): compiler/generate.go reads the unit's
+// lock once (compiler/lineage.go) and hands the entries down as data, so
+// goosetable opens no file and a build ships a reader for every layout the
+// lock records, with its retirement floor.
+func (gooseTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	if !gooseWideTableKinds {
 		if err := ir.RefuseWideTableKinds(u, "goose"); err != nil {
 			return nil, err
@@ -70,12 +82,35 @@ func (gooseTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	tables, err := goosetable.Generate(u)
+	tables, err := goosetable.GenerateLineage(u, gooseTableLineage(u, lineage))
 	if err != nil {
 		return nil, err
 	}
 	maps.Copy(files, tables)
 	return files, nil
+}
+
+// gooseTableLineage is the lock's lineage in the Goose backend's own spelling.
+// Nil in, nil out: a unit with no lock hands nothing. Each entry's Record is
+// already the whole record (FixedLineage.Entries) and passes through as it
+// stands.
+func gooseTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]goosetable.FixedEvolutionEntry {
+	if lineage == nil {
+		return nil
+	}
+	out := map[string][]goosetable.FixedEvolutionEntry{}
+	for _, st := range ir.TableFixedRoots(u) {
+		for _, e := range lineage.Entries(st.Name) {
+			out[st.Name] = append(out[st.Name], goosetable.FixedEvolutionEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {
