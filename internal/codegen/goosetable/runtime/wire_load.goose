@@ -1190,6 +1190,7 @@ fn map_key_scan(c: LoadCtx&, body: Rd, kd: FieldDesc, key: LoadVal&, kind_bad: b
         if id == kd.id {
             if kind != want && widens(kind, want) {
                 widened = true;
+                kind_bad = false; // this occurrence replaces the earlier key kind
                 if !scalar_at(c, scratch, scan, key, kd, want, kind) { return false; }
                 continue;
             }
