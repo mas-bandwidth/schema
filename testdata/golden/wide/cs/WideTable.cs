@@ -3705,10 +3705,12 @@ namespace Wide
                 if (bytes.Length < 9) { return -1; }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { return -1; }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { return -1; } } }
+                if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(root)) { return -1; }
                 long extent = 0;
@@ -3877,10 +3879,12 @@ namespace Wide
                 if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+                if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
@@ -5444,32 +5448,24 @@ namespace Wide
                     if (field.Optional && placed) { field.SetPresent(value, true); }
                 }
             }
+            // DistinctVocabulary proves the id table's entries distinct (docs/SPEC-TABLES.md
+            // §3, THE DISTINCTNESS CHECK IS BOUNDED WORK); every caller has refused a
+            // table above 4096 entries first. Under sixteen entries a pairwise scan is
+            // at most 120 comparisons. From sixteen up the ids are copied to a stack
+            // array of at most 32 KiB and sorted (MemoryExtensions.Sort, introsort:
+            // O(n log n) whatever the ids are), and a repeat sits beside its twin. A
+            // hash probe would let ids crafted onto one slot cost n(n-1)/2.
             static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
             {
                 int count = vocabulary.Length / 8;
                 if (count >= 16)
                 {
-                    // Slots store ordinal+1, so the identity zero remains an ordinary
-                    // identity. At most 4096 entries occupy 8192 slots: even deliberately
-                    // colliding identities reach an empty slot after at most 4096
-                    // occupied probes, so the whole walk is bounded and allocation-free
-                    // (docs/SPEC-TABLES.md §3, the bounded-work contract).
-                    Span<ushort> slots = stackalloc ushort[8192];
-                    slots.Clear();
-                    for (int i = 0; i < count; i++)
-                    {
-                        ulong id = Read64(vocabulary, i * 8);
-                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 51);
-                        while (slots[slot] != 0)
-                        {
-                            if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
-                            slot = (slot + 1) & 8191;
-                        }
-                        slots[slot] = (ushort)(i + 1);
-                    }
+                    Span<ulong> ids = stackalloc ulong[count];
+                    for (int i = 0; i < count; i++) { ids[i] = Read64(vocabulary, i * 8); }
+                    ids.Sort();
+                    for (int i = 1; i < count; i++) { if (ids[i] == ids[i - 1]) { return false; } }
                     return true;
                 }
-                // Tiny vocabularies avoid scratch initialization.
                 for (int i = 0; i < vocabulary.Length; i += 8)
                 {
                     ulong id = Read64(vocabulary, i);
