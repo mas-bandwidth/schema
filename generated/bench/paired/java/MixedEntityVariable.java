@@ -229,10 +229,28 @@ public final class MixedEntityVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((v.entityId >>> 12) != 0) return false;
+        if ((long) v.posX < -16383 || (long) v.posX > 16383) return false;
+        if ((long) v.posY < -16383 || (long) v.posY > 16383) return false;
+        if ((long) v.posZ < -16383 || (long) v.posZ > 16383) return false;
+        if ((v.yaw >>> 9) != 0) return false;
+        if ((v.pitch >>> 9) != 0) return false;
+        if ((long) v.velX < -2048 || (long) v.velX > 2047) return false;
+        if ((long) v.velY < -2048 || (long) v.velY > 2047) return false;
+        if ((long) v.velZ < -2048 || (long) v.velZ > 2047) return false;
+        if ((long) v.health < 0 || (long) v.health > 1000) return false;
+        if (v.weapon < 0 || v.weapon > 15) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: MixedEntity";
         return true;
     }
 

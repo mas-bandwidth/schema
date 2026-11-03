@@ -3419,9 +3419,13 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 	}
 	b.WriteString("    }\n\n")
 
-	// buildGraph
+	// buildGraph, the pre-walk every save runs, asserting the write contract
+	checked := writeVariableCheck(&b, st)
 	b.WriteString("    public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {\n")
 	b.WriteString("        if (v == null) { return true; }\n")
+	if checked {
+		fmt.Fprintf(&b, "        assert checkWrite(v) : \"write contract: %s\";\n", st.Name)
+	}
 	for _, f := range st.Fields {
 		open := openGuard(&b, st, f)
 		writeVariableGraphField(&b, f)

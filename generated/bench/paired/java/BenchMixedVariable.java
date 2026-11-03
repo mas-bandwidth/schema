@@ -257,10 +257,32 @@ public final class BenchMixedVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((v.sequence >>> 16) != 0) return false;
+        if ((long) v.ackSequence < 0 || (long) v.ackSequence > 65535) return false;
+        if (Long.compareUnsigned(v.nonce, 0L) < 0
+                || Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) > 0)
+            return false;
+        if (v.worldTime < -1000000000000L || v.worldTime > 1000000000000L) return false;
+        if ((v.frameTick >>> 48) != 0L) return false;
+        if (v.entities.size() < 1 || v.entities.size() > 8) return false;
+        if (v.stats.size() > 80) return false;
+        if (v.loadout.size() > 4) return false;
+        if (TableVariable.utf8Len(v.playerName) > 15L) return false;
+        if (v.payload != null && v.payload.length > 16) return false;
+        if ((v.crcHint >>> 24) != 0) return false;
+        if ((long) v.extra < 0 || (long) v.extra > 255) return false;
+        if ((long) v.idleTicks < 0 || (long) v.idleTicks > 15) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: BenchMixed";
         for (int i = 0, n = v.entities.size(); i < n; i++) {
             MixedEntityVariable.Value elem = v.entities.get(i);
             if (elem != null) {
