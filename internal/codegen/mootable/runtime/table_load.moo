@@ -549,9 +549,17 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 			-- earlier occurrence built goes with it, moving neither counter
 			_retain.supersede(v, fd.slot, fd)
 		end
-		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap)
+		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap): a
+		-- count inside the map's L is the load's refusal, the one LoadMeasure
+		-- names; a count whose spelling crosses L is read against the parent
+		-- (§3) where the measure, bounded by L, sees no count, so it is the
+		-- region's recovery instead: damage, the walk resuming after L
 		if count > 0x7FFFFFFF then
-			_countRefused = true
+			if head.at > endpos then
+				report.malformed = true
+			else
+				_countRefused = true
+			end
 			r.at = endpos
 			return true
 		end
@@ -835,7 +843,8 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	local head = new_reader(sub.b, sub.at, headerEnd or sub.e)
 	local ek = r_u8(head)
 	local count = r_leb(head)
-	sub.at = if head.at > sub.e then sub.e else head.at
+	local crossed = head.at > sub.e
+	sub.at = if crossed then sub.e else head.at
 	if head.bad then
 		report.malformed = true
 		if fd.present ~= nil and v ~= nil then
@@ -857,8 +866,14 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	end
 	local keep = count
 	if fd.array == "list" then
+		-- THE STORAGE CAP (§2.9, §2.2), read_map's rule: inside L the load's
+		-- refusal, crossing L the region's damage
 		if count > 0x7FFFFFFF then
-			_countRefused = true
+			if crossed then
+				report.malformed = true
+			else
+				_countRefused = true
+			end
 			return false
 		end
 	elseif fd.bound ~= nil and count > fd.bound then
