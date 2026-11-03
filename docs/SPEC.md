@@ -30,6 +30,15 @@ bytes, and the self-contained targets are held to the same goldens. schema
 inherits that foundation: **a type serialized by generated code in any
 target language decodes identically in the others.**
 
+**And the converse holds for every writer: one value, one byte string.** Every
+target that writes a value writes the same bytes for it, on every wire. The
+packet wire leaves a writer no choice (docs/PACKET-WIRE-ALGORITHM.md §2), and
+the table forms pin every choice a reader tolerates — field order, elision,
+map entry order, node numbering, the id table's order, slack and padding
+bytes — in one place, the write algorithm of docs/SPEC-TABLES.md §22. Its gate
+reads every corpus input in every target and holds what each writes back to
+one canonical byte string.
+
 The idea is extracted from
 [serialize.modern](https://github.com/mas-bandwidth/serialize.modern)'s
 compile-time schema language, which proved that a schema that sees the packet
