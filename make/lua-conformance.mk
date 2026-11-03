@@ -22,7 +22,11 @@
 # conformance-negative-control-lua-cycle  the cycle check taken out (lua /
 #                                        framing red on node_cycle_*, wire and
 #                                        report green)
-.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle
+# conformance-negative-control-lua-write-refusal  the writer's declared-range
+#                                        test taken out (lua / write-refusal
+#                                        red on wref_range_*, wire and
+#                                        json-read green)
+.PHONY: conformance-negative-control-lua conformance-negative-control-lua-walk conformance-negative-control-lua-framing conformance-negative-control-lua-cycle conformance-negative-control-lua-write-refusal
 conformance-negative-control-lua: build/conformance-harness
 	sh test/conformance/lua/negative-control report
 
@@ -32,3 +36,5 @@ conformance-negative-control-lua-framing: build/conformance-harness
 	sh test/conformance/lua/negative-control framing
 conformance-negative-control-lua-cycle: build/conformance-harness
 	sh test/conformance/lua/negative-control cycle
+conformance-negative-control-lua-write-refusal: build/conformance-harness
+	sh test/conformance/lua/negative-control write-refusal
