@@ -10659,7 +10659,10 @@ inline const Patrol * PatrolReadStrict( const uint8_t * wire_file, int64_t wire_
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = PatrolLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -10682,6 +10685,11 @@ inline const Patrol * PatrolReadStrict( const uint8_t * wire_file, int64_t wire_
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )

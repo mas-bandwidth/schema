@@ -44,6 +44,7 @@ type reasonRow struct{ name, schema, wire, strict, form string }
 var reasonSchemas = map[string]string{
 	"measure": "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
 	"fixed":   "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
+	"float":   "package probe\n table Root { f float32\n values []int32 }\n",
 }
 
 func reasonRows(t *testing.T) []reasonRow {
@@ -87,7 +88,7 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 	t.Helper()
 	rows := reasonRows(t)
 	var bad []string
-	for _, schema := range []string{"measure", "fixed"} {
+	for _, schema := range []string{"measure", "fixed", "float"} {
 		files := probeFiles(t, probeUnit(t, reasonSchemas[schema]), override)
 		var main strings.Builder
 		main.WriteString(probePrelude)
@@ -121,6 +122,10 @@ func loadReasons(t *testing.T, override map[string][]byte) []string {
 			} else if r.strict == "count_over_extent_cap" && (g[2] != "0" || g[3] != "false") {
 				// the count-cap refusal moves no counter and is not damage (§2.9)
 				bad = append(bad, fmt.Sprintf("%s: counters %s, malformed %s; the refusal moves none and is not damage", r.name, g[2], g[3]))
+			} else if r.schema == "float" && r.strict == "non_finite_float" && strings.TrimSuffix(g[1], "_") != r.strict {
+				// two refusals in one read: the first in read order names the
+				// load's report too (§2.9)
+				bad = append(bad, fmt.Sprintf("%s: the report names %s; the first refusal is %s", r.name, g[1], r.strict))
 			}
 		}
 	}
@@ -152,8 +157,9 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 //   - a form byte this reader does not carry no longer answers unknown_form:
 //     the form rows go red, and only they;
 //   - a count past the int32 storage cap no longer answers
-//     count_over_extent_cap: the five cap rows fall to the strict read's
-//     wire_damaged and go red, and only they;
+//     count_over_extent_cap: the six cap rows go red, and only they (the
+//     five fall to the strict read's wire_damaged, and over_cap_then_nan to
+//     the NaN after the count);
 //   - a widened element kind counts before the builder's count-cap refusal:
 //     the widened cap row moves a counter and goes red, and only it.
 func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
@@ -167,7 +173,7 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 		{"form-reason", "        LoadRefuseUnknownForm => \"unknown_form\",\n", "",
 			[]string{"form0", "form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
 		{"count-cap", "    if report.count_refused { return LoadRefuseCountOverExtentCap; }\n", "",
-			[]string{"entries_cap31", "entries_cap32", "values_cap31", "values_cap32", "values_widened_over_cap"}},
+			[]string{"entries_cap31", "entries_cap32", "over_cap_then_nan", "values_cap31", "values_cap32", "values_widened_over_cap"}},
 		{"widened-at-cap", "                if widened && !c.cap { c.report.widened += 1; }\n", "                if widened { c.report.widened += 1; }\n",
 			[]string{"values_widened_over_cap"}},
 	} {
