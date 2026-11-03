@@ -2,6 +2,7 @@ package main
 
 import (
 	"blobdemo"
+	"featurewitnesses"
 	"graphdemo"
 	"listdemo"
 	"mapdemo"
@@ -10,9 +11,25 @@ import (
 	"tblp2"
 	"tblw1"
 	"tblw2"
+	"widelistdemo"
 )
 
 var retentionCodecs = []retentionCodec{
+	retainRow("widelist", "Wide", func() *widelistdemo.TableRetain {
+		return &widelistdemo.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]widelistdemo.TableRetainID, (1<<20)/8)}
+	}, widelistdemo.WideLoadMeasure, widelistdemo.WideLoadRetain, widelistdemo.WideMeasureRetain, widelistdemo.WideSaveRetain, func(r *widelistdemo.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == widelistdemo.TableOpenRefused || r.NonFiniteFloat != ""}
+	}, func(r *widelistdemo.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("featurewitnesses", "Root", func() *featurewitnesses.TableRetain {
+		return &featurewitnesses.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]featurewitnesses.TableRetainID, (1<<20)/8)}
+	}, featurewitnesses.RootLoadMeasure, featurewitnesses.RootLoadRetain, featurewitnesses.RootMeasureRetain, featurewitnesses.RootSaveRetain, func(r *featurewitnesses.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == featurewitnesses.TableOpenRefused || r.NonFiniteFloat != ""}
+	}, func(r *featurewitnesses.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
+	retainRow("featurewitnesses", "ArrayRoot", func() *featurewitnesses.TableRetain {
+		return &featurewitnesses.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]featurewitnesses.TableRetainID, (1<<20)/8)}
+	}, featurewitnesses.ArrayRootLoadMeasure, featurewitnesses.ArrayRootLoadRetain, featurewitnesses.ArrayRootMeasureRetain, featurewitnesses.ArrayRootSaveRetain, func(r *featurewitnesses.TableReport) report {
+		return report{r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed, r.Verdict == featurewitnesses.TableOpenRefused || r.NonFiniteFloat != ""}
+	}, func(r *featurewitnesses.TableReport) (int32, int32) { return r.Retained, r.RetainLost }),
 	retainRow("tblp2", "Chain", func() *tblp2.TableRetain {
 		return &tblp2.TableRetain{Bytes: make([]byte, 1<<20), Ids: make([]tblp2.TableRetainID, (1<<20)/8)}
 	}, tblp2.ChainLoadMeasure, tblp2.ChainLoadRetain, tblp2.ChainMeasureRetain, tblp2.ChainSaveRetain, func(r *tblp2.TableReport) report {
