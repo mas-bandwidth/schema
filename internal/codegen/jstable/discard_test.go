@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,7 +162,6 @@ console.log("ok");
 func TestDamageDiscardsTheWholeLoadJavaScript(t *testing.T) {
 	slowtest.Gate(t, "node (whole read discard)")
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated module)")
 
 	t.Run("nested", func(t *testing.T) {
 		t.Parallel()
@@ -295,7 +293,6 @@ for (const row of %s) {
 // re-entered shared nodes would never finish.
 func TestCyclicWireIsDamageJavaScript(t *testing.T) {
 	t.Parallel()
-	slowtest.Gate(t, "node (it runs the generated module)")
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
 		t.Fatal(err)

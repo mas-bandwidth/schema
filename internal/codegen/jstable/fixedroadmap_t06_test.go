@@ -178,7 +178,8 @@ fixed table T
 // docs/FIXED-FORM-ALGORITHM.md §5.9 item 42 and §5.8 row 14.
 func t06JsR31(t *testing.T) {
 	rt := t02Norm(fixedRuntime)
-	t02Has(t, rt, "TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)",
+	t02Has(t, rt, "const expected = e[b + TableFixedLaneArg];", "R31 the expected ordinal comes from its own lane")
+	t02Has(t, rt, "TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (expected >>> 0)",
 		"R31 the guard compares at its own width, never at its first byte")
 	t02Has(t, rt, "let lo = 0, hi = 0;",
 		"R31 the ordinal temporary is sixty-four bits, two u32 lanes, never truncated to 32")

@@ -3,6 +3,7 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import re
 from pathlib import Path
 import tempfile
 import unittest
@@ -300,7 +301,7 @@ class Contracts(unittest.TestCase):
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),51)
+        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),60)
         for lang, entries in m.RETIRED_NATIVE.items():
             for marker, required in entries.items():
                 with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):
@@ -311,6 +312,14 @@ class Contracts(unittest.TestCase):
                         self.assertTrue(m.native_retirement_errors(marker,lang,required-{missing}))
         self.assertTrue(m.native_retirement_errors("SKIP: unknown future test","go",set()))
         self.assertTrue(m.native_retirement_errors("SKIPPED: owed live ruling","elixir",set()))
+
+    def test_js_retirement_inventory_is_exact(self):
+        source = (ROOT / "test/js-tables/fixedform.mjs").read_text()
+        calls = re.findall(r'  retired\("([^"]+)", "([^"]+)"\);', source)
+        markers = {"RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): " + name + " — " + reason
+                   for name, reason in calls}
+        self.assertEqual(len(calls), 9)
+        self.assertEqual(markers, set(m.RETIRED_NATIVE["js"]))
 
     def test_go_retirement_without_replacement_is_incomplete(self):
         for name,(reason,required) in m.RETIRED.items():
