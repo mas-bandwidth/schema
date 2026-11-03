@@ -239,6 +239,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -469,6 +476,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -10307,7 +10317,10 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntryLoadBody( TableReader & r, RunsSpansEntr
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10537,7 +10550,10 @@ inline bool RunsLoadBody( TableReader & r, const TableNodeMap & nodes, Runs & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11662,7 +11678,7 @@ inline const Runs * RunsLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Runs * root = RunsLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -11755,6 +11771,7 @@ inline bool RunsLoadBuilderTolerant( RunsBuilder & builder, const uint8_t * wire
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -11804,6 +11821,7 @@ inline bool RunsLoadBuilderTolerant( RunsBuilder & builder, const uint8_t * wire
     bool ok = !nodes.refused && RunsLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -11840,7 +11858,7 @@ inline bool RunsLoadBuilder( RunsBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = RunsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -11882,7 +11900,7 @@ inline const Runs * RunsReadStrict( const uint8_t * wire_file, int64_t wire_file
     RunsBuilder builder( allocator );
     TableReport report;
     const bool decoded = RunsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -11988,7 +12006,10 @@ MAPDEMO_TABLE_INLINE bool RunsSpansEntryLoadBodyRetain( TableReader & r, RunsSpa
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -12228,7 +12249,10 @@ inline bool RunsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Run
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -13215,15 +13239,15 @@ extern const TableTypeInfo RunsSpansEntryTableInfo;
 extern const TableTypeInfo RunsTableInfo;
 
 inline const TableFieldInfo RunsSpansEntryTableFields[] = {
-    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RunsSpansEntry, key ), (uint32_t) sizeof( RunsSpansEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RunsSpansEntry, value ), (uint32_t) sizeof( RunsSpansEntry::value[0] ), (uint32_t) offsetof( RunsSpansEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RunsSpansEntry, key ), (uint32_t) sizeof( RunsSpansEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RunsSpansEntry, value ), (uint32_t) sizeof( RunsSpansEntry::value[0] ), (uint32_t) offsetof( RunsSpansEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo RunsSpansEntryTableInfo = { "RunsSpansEntry", (uint32_t) sizeof( RunsSpansEntry ), 2, RunsSpansEntryTableFields, +[]( void * p ) { RunsSpansEntryReset( *(RunsSpansEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RunsSpansEntryTableType() { return &RunsSpansEntryTableInfo; }
 
 inline const TableFieldInfo RunsTableFields[] = {
-    { "spans", "spans", "map[uint16]Item", 0x437dfc8ab2566816ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Runs, spans ), (uint32_t) sizeof( RunsSpansEntry ), (uint32_t) offsetof( Runs, spans.count ), 0xffffffffu, &RunsSpansEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<RunsSpansEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Runs, past ), (uint32_t) sizeof( Runs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "spans", "spans", "map[uint16]Item", 0x437dfc8ab2566816ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Runs, spans ), (uint32_t) sizeof( RunsSpansEntry ), (uint32_t) offsetof( Runs, spans.count ), 0xffffffffu, &RunsSpansEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<RunsSpansEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Runs, past ), (uint32_t) sizeof( Runs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo RunsTableInfo = { "Runs", (uint32_t) sizeof( Runs ), 2, RunsTableFields, +[]( void * p ) { RunsReset( *(Runs *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RunsTableType() { return &RunsTableInfo; }

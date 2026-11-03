@@ -1156,6 +1156,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	if g.anyExtent {
 		g.pf("    nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)\n")
 	}
+	g.pf("    const int32_t missing_before = out->missing_required;\n")
 	g.pf("    {\n")
 	g.pf("        TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );\n")
 	g.pf("        int64_t k = 0;\n")
@@ -1207,6 +1208,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	}
 	g.pf("    // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)\n")
 	g.pf("    if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }\n")
+	g.pf("    if ( out->missing_required != missing_before ) { ok = false; }\n")
 	if g.anyExtent {
 		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
 		g.pf("    // §2.9): the same whole-load outcome as damage, the root reset below\n")
@@ -1241,7 +1243,7 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    TableReport * out = report != NULL ? report : &ignored;\n")
 	g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
 	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );\n", n)
-	g.pf("    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+	g.pf("    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )\n    {\n")
 	g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).\n")
 	g.pf("        if ( out->refuse_reason == ok )\n        {\n")
 	g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
@@ -1283,7 +1285,7 @@ func (g *tableGen) emitVariableReadStrict(st *ir.Struct) {
 	g.pf("    %sBuilder builder( allocator );\n", n)
 	g.pf("    TableReport report;\n")
 	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );\n", n)
-	g.pf("    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )\n    {\n")
+	g.pf("    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )\n    {\n")
 	g.pf("        if ( reason != NULL )\n        {\n")
 	g.pf("            if ( report.refuse_reason != ok ) { *reason = report.refuse_reason; }\n")
 	g.pf("            else if ( report.refused ) { *reason = unknown_form; }\n")
@@ -2088,7 +2090,7 @@ func (g *tableGen) emitVariableLoad(st *ir.Struct) {
 		g.pf("    *out = TableReport(); // this read's report, not the caller's last one (§6.5)\n")
 		g.pf("    const %s * root = %sLoadTolerant( region, region_bytes, wire_file, wire_file_bytes,%s out );\n",
 			n, n, g.retainLoadParam())
-		g.pf("    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )\n    {\n")
+		g.pf("    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )\n    {\n")
 		g.pf("        // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).\n")
 		g.pf("        if ( out->refuse_reason == ok )\n        {\n")
 		g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")

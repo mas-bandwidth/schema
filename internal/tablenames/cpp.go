@@ -7,6 +7,7 @@ func init() {
 	names := []Name{
 		// the shared surface both backends define per unit
 		{Name: "TableReport", What: "the read report — the permissive contract's ledger"},
+		{Name: "TableJsonRequireSeen", What: "the text object close: every | required key was seen (§2.3, §16.2)"},
 		// RETAIN-UNKNOWN's caller-owned storage (docs/SPEC-TABLES.md §6.6): the
 		// record bytes, the retained-id list, and what has been used of each. The
 		// entry type rides INSIDE it and claims no name of its own.

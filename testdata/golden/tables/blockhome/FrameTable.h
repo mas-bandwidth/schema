@@ -218,6 +218,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -427,6 +434,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -5188,7 +5198,10 @@ BLOCKHOME_TABLE_INLINE bool PartRowLoadBody( TableReader & r, PartRow & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -5425,7 +5438,7 @@ inline bool PartRowLoad( PartRow & value, const uint8_t * buffer, int64_t bytes,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = PartRowLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -5809,7 +5822,10 @@ BLOCKHOME_TABLE_INLINE bool PartFrameLoadBody( TableReader & r, PartFrame & valu
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -6025,7 +6041,7 @@ inline bool PartFrameLoad( PartFrame & value, const uint8_t * buffer, int64_t by
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = PartFrameLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -7963,10 +7979,10 @@ inline const TableTypeInfo * PartFrameTableType();
 inline const TableTypeInfo * PartRowTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "armor", "armor", "ArmorConfig", 0xd19988b67e699194ull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, armor ), (uint32_t) sizeof( PartRow::armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, gunner ), (uint32_t) sizeof( PartRow::gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "part_id", "part_id", "uint32", 0x04d6206b33415104ull, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "slot", "slot", "uint8", 0x6a771618f6fe31d1ull, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "armor", "armor", "ArmorConfig", 0xd19988b67e699194ull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, armor ), (uint32_t) sizeof( PartRow::armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, gunner ), (uint32_t) sizeof( PartRow::gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "part_id", "part_id", "uint32", 0x04d6206b33415104ull, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "slot", "slot", "uint8", 0x6a771618f6fe31d1ull, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { PartRowReset( *(PartRow *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -7975,8 +7991,8 @@ inline const TableTypeInfo * PartRowTableType()
 inline const TableTypeInfo * PartFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( PartFrame, version ), (uint32_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "parts", "parts", "PartRow", 0x0c519da7a1f958c5ull, 13, true, true, false, 32, (uint32_t) offsetof( PartFrame, parts ), (uint32_t) sizeof( PartFrame::parts[0] ), (uint32_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( PartFrame, version ), (uint32_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "parts", "parts", "PartRow", 0x0c519da7a1f958c5ull, 13, true, true, false, 32, (uint32_t) offsetof( PartFrame, parts ), (uint32_t) sizeof( PartFrame::parts[0] ), (uint32_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "PartFrame", (uint32_t) sizeof( PartFrame ), 2, fields, +[]( void * p ) { PartFrameReset( *(PartFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
