@@ -780,6 +780,17 @@ json-hostile trailing-commas              tabledemo RootConfig  testdata/conform
 json-hostile union-two-keys               tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-two-keys               refused
 json-hostile union-unknown-arm            tabledemo RootConfig  testdata/conformance/tables/json-hostile/union-unknown-arm            1,0,0,0,0,false,read
 json-hostile unknown-key                  tabledemo RootConfig  testdata/conformance/tables/json-hostile/unknown-key                  1,0,0,0,0,false,read
+# A TEXT LIST'S TOTAL in the text (docs/SPEC-TABLES.md §2.13, §16.2), over the
+# witness root's `labels [..4]string(8) | total=8`: the read keeps the longest
+# prefix whose bytes are within the total and drops the element that would
+# carry the sum past it and every element after it, clamped counted ONCE for
+# the field. `past` drops "abc" at 9 bytes and the short "a" after it; `at`
+# holds exactly 8 bytes and reads clean (feature_full's "é" and "schema" are the
+# same boundary as an instance); `after-clamp` clamps its first element at M,
+# counted, and then the total drops "a", counted again.
+json-hostile text-total-past              featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-past              0,0,0,1,0,false,read
+json-hostile text-total-at                featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-at                0,0,0,0,0,false,read
+json-hostile text-total-after-clamp       featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-after-clamp       0,0,0,2,0,false,read
 
 # THE SHARING CONSTRUCT'S OWN EDGES (docs/SPEC-TABLES.md §16.7), over the
 # pointered root: `&node` is a LABEL — with fields after it, it defines a node
