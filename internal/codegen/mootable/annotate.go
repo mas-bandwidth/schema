@@ -2,6 +2,7 @@ package mootable
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -23,17 +24,27 @@ import (
 //     beside it.
 
 // annotateField adds a field's or a union arm's §8.1 columns to its rendered
-// descriptor d. armOffset is 0 on a field, which carries no arm_offset.
-func annotateField(g *Gen, d string, f *ir.Field, doc string, tags []string, armOffset int64) string {
-	var b strings.Builder
-	b.WriteString(strings.TrimSuffix(d, " }"))
-	fmt.Fprintf(&b, ", type_name = %s", textLit(ir.TableTypeSpelling(f)))
-	if armOffset != 0 {
-		fmt.Fprintf(&b, ", arm_offset = %d", armOffset)
+// descriptor d, after the identity columns (id … k) and before the shape.
+// armOffset is 0 on a field, which carries no arm_offset.
+func annotateField(d string, f *ir.Field, doc string, tags []string, armOffset int64) string {
+	loc := identityColumns.FindStringIndex(d)
+	if loc == nil {
+		panic("mootable: a field descriptor without its header kind: " + d) // fieldDesc always writes k
 	}
-	b.WriteString(", " + annotation(doc, tags) + " }")
+	var b strings.Builder
+	b.WriteString(d[:loc[1]])
+	fmt.Fprintf(&b, "type_name = %s, ", textLit(ir.TableTypeSpelling(f)))
+	if armOffset != 0 {
+		fmt.Fprintf(&b, "arm_offset = %d, ", armOffset)
+	}
+	b.WriteString(annotation(doc, tags) + ", ")
+	b.WriteString(d[loc[1]:])
 	return b.String()
 }
+
+// identityColumns ends at a field descriptor's header kind, the last column
+// every field and arm carries before its shape.
+var identityColumns = regexp.MustCompile(`, k = \d+, `)
 
 // annotation is a row's doc and its tags, as descriptor fields.
 func annotation(doc string, tags []string) string {

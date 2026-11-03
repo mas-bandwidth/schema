@@ -55,7 +55,7 @@ export type ViewConstant = {
 	file: string, -- the declaring schema file's basename
 	type_name: string, -- declared storage: "int64", "float64", ...
 	is_float: boolean,
-	int_value: any, -- the folded value, a serialize.Int64; 0 when is_float
+	int_value: any, -- the folded value as a wide Int64; 0 when is_float
 	float_bits: string, -- a float's binary64 bits, eight little-endian bytes
 	doc: string, -- the ` + "`///`" + ` block above it; St.DocNone when none
 	tags: { string }?, -- its tags, in DECLARED order

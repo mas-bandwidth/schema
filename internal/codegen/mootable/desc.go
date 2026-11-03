@@ -61,7 +61,7 @@ func emitDescriptor(g *Gen, t *ir.Struct) {
 	g.Pf("\tfields = {\n")
 	guards := guardPairs(t)
 	for i, f := range t.Fields {
-		g.Pf("\t\t%s,\n", annotateField(g, fieldDesc(g, t.Name, f, i, guardLua(guards[f.Name])), f, f.Doc, f.Tags, 0))
+		g.Pf("\t\t%s,\n", annotateField(fieldDesc(g, t.Name, f, i, guardLua(guards[f.Name])), f, f.Doc, f.Tags, 0))
 	}
 	g.Pf("\t},\n")
 	g.Pf("\t%s,\n", annotation(t.Doc, t.Tags))
@@ -86,7 +86,7 @@ func emitUnionDescriptor(g *Gen, un *ir.Union) {
 			continue
 		}
 		f := armField(v)
-		d := annotateField(g, fieldDesc(g, un.Name, f, i, ""), f, v.Doc, v.Tags, armOffset(g.Unit, un))
+		d := annotateField(fieldDesc(g, un.Name, f, i, ""), f, v.Doc, v.Tags, armOffset(g.Unit, un))
 		g.Pf("\t\t%s, tag = %d },\n", strings.TrimSuffix(d, " }"), i+1)
 	}
 	g.Pf("\t},\n")
