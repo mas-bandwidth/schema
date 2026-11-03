@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	cgen "github.com/mas-bandwidth/schema/v2/internal/codegen/c"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -358,6 +359,7 @@ func generateCIntegrityFiles(t *testing.T, u *ir.Unit) (map[string][]byte, strin
 
 func writeAndCompileCIntegrity(t *testing.T, files map[string][]byte, driver string) ([]byte, error) {
 	t.Helper()
+	slowtest.Gate(t, "cc")
 	cc, err := exec.LookPath("cc")
 	if err != nil {
 		t.Skip("no cc on PATH")

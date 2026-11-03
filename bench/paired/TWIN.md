@@ -22,6 +22,12 @@ From `generated/bench/paired/{c,cpp}/FixedTableTable.h`:
 2. The identity plan, the layout bytes, and the plan count / guarded split —
    the numbers the schema compiler laid down, which no port gets to recompute.
 
+The separate integrity runtime is outside this fixed-runtime slice on both
+sides: C emits its integrity primitives before the fixed runtime, while C++
+appends `tableIntegrityRuntime` after `tableFixedRuntime128`. The extractor
+stops at that boundary; it does not erase individual integrity functions.
+Native integrity tests cover those primitives and their message/file callers.
+
 Write / clamp / save / load bodies ride the same map so a store offset or a
 `.as.` arm that drifted is a leftover line.
 

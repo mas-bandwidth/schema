@@ -195,3 +195,19 @@ func TestPairedHeadersAgree(t *testing.T) {
 		t.Fatalf("%d leftover line(s) after the twin map (first %d):\n%s", n, len(left), strings.Join(left, "\n"))
 	}
 }
+
+// The emitted C++ primitives append the separate integrity runtime after the
+// fixed runtime. Keep every fixed operation, including newly added ones, in
+// the comparison; do not maintain a growing list of helpers to erase.
+func TestRuntimeExtractionEndsBeforeSeparateIntegrity(t *testing.T) {
+	prefix := "constexpr uint8_t kTableFixedForm = 3;\ninline void TableFixedNewOperation() { keep_this(); }\n"
+	src := "// emitted header\n" + prefix + "inline uint32_t schema_crc32c(const uint8_t *data, int64_t bytes) { return 0; }\ninline void TableMessageBatchSeal() { separate_runtime(); }\n} // namespace bench\n"
+	got, err := extractRuntime(src)
+	if err != nil || got != prefix {
+		t.Fatalf("fixed runtime boundary: got %q, error %v", got, err)
+	}
+	changed := strings.Replace(prefix, "keep_this", "changed_operation", 1)
+	if len(diffLines("fixed", canonicalize(prefix), canonicalize(changed))) == 0 {
+		t.Fatal("a fixed-runtime operation change disappeared from the comparison")
+	}
+}

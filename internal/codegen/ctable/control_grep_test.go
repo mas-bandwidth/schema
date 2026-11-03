@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // These are executable guards from make/c.mk, not copies of their grep flags.
@@ -16,6 +18,7 @@ import (
 // expressions, BRE alternation, and fixed-string controls before they could
 // recognize the intentionally planted failures.
 func TestCNegativeControlGrepDialects(t *testing.T) {
+	slowtest.Gate(t, "grep")
 	if runtime.GOOS == "windows" {
 		t.Skip("the C make controls execute on POSIX runners")
 	}
