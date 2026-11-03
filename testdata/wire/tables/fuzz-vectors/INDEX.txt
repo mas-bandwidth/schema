@@ -249,3 +249,6 @@ retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vector
 
 # A known numeric union arm widens identically in plain and retaining reads.
 retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin
+
+# A keyed scalar element kind widens once and preserves every named slot.
+keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin

@@ -2214,7 +2214,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # pair count, then (key reference, L, element) pairs. A key this reader cannot
   # name counts unknown and its element is skipped by its L.
   # A body of fewer than two bytes is inert (§4); a foreign element kind is
-  # a kind mismatch, judged before the count; a count that does not complete
+  # a kind mismatch; a count that does not complete
   # inside the body is damage (§3, THE HEADER AGAINST THE PARENT: completed in
   # the parent, it is a count the body cannot cover).
   defp read_payload(%{t: :keyed} = f, payload, nodes, ids, report) do
@@ -2222,13 +2222,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {_len, body} when byte_size(body) < 2 ->
         {:cont, :inert, report}
 
-      {_len, <<ek, _::binary>>} when ek != f.elem_kind ->
-        {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}}
-
-      {_len, <<_ek, rest::binary>>} ->
+      {_len, <<ek, rest::binary>>} ->
         case leb(rest) do
-          {n, pairs} -> read_keyed_pairs(f, pairs, n, nodes, ids, %{}, report)
-          :error -> {:cont, %{}, %{report | malformed: true}}
+          {n, pairs} ->
+            case keyed_reader(f, ek, report) do
+              {:ok, reader, report} -> read_keyed_pairs(reader, pairs, n, nodes, ids, %{}, report)
+              {:mismatch, report} -> {:cont, %{}, report}
+            end
+
+          :error ->
+            {:cont, %{}, %{report | malformed: true}}
         end
 
       :error ->
@@ -2476,6 +2479,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       read_keyed_pairs(f, rest, n - 1, nodes, ids, acc, report)
     else
       _ -> {:cont, acc, %{report | malformed: true}}
+    end
+  end
+
+  # A keyed body's scalar element kind widens once for the field. Each
+  # length-framed slot is then decoded at that incoming width (§3.2, §4).
+  defp keyed_reader(f, kind, report) do
+    cond do
+      kind == f.elem_kind ->
+        {:ok, f, report}
+
+      kind_widens?(kind, f.elem_kind) ->
+        {:ok, %{f | elem_kind: kind}, %{report | widened: report.widened + 1}}
+
+      true ->
+        {:mismatch, %{report | kind_mismatch: report.kind_mismatch + 1}}
     end
   end
 
@@ -2890,7 +2908,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
        when t in [:list, :map, :keyed] do
     case leb(payload) do
       {_len, <<actual, _count, _::binary>>} ->
-        actual == expected or (t == :list and kind_widens?(actual, expected))
+        actual == expected or (t in [:list, :keyed] and kind_widens?(actual, expected))
 
       _ ->
         true
@@ -6261,20 +6279,23 @@ const variableRetainSource = `
   defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
     retain = retain_reset(retain, path, f.ordinal, nil)
 
-    # the header rules are the plain read's (read_payload, :keyed): a body
-    # too short for a header is inert, another element kind is a kind
-    # mismatch, and a count that cannot be read is damage (§3, §4)
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
         {:cont, %{}, report, retain}
 
-      {_len, <<ek, _::binary>>} when ek != f.elem_kind ->
-        {:cont, %{}, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
-
-      {_len, <<_ek, rest::binary>>} ->
+      {_len, <<ek, rest::binary>>} ->
         case leb(rest) do
-          {n, pairs} -> read_keyed_retain(f, pairs, n, nodes, ids, %{}, report, retain, path)
-          :error -> {:cont, %{}, %{report | malformed: true}, retain}
+          {n, pairs} ->
+            case keyed_reader(f, ek, report) do
+              {:ok, reader, report} ->
+                read_keyed_retain(reader, pairs, n, nodes, ids, %{}, report, retain, path)
+
+              {:mismatch, report} ->
+                {:cont, %{}, report, retain}
+            end
+
+          :error ->
+            {:cont, %{}, %{report | malformed: true}, retain}
         end
 
       :error ->
