@@ -3130,11 +3130,20 @@ defmodule Bench.Table do
           {:malformed, desc, %{report | malformed: true}}
 
         true ->
-          {:keep, desc, report}
+          duplicate = acc != [] and key == Map.get(hd(acc), "key", kf.default)
+          {:keep, Map.put(desc, :map_duplicate, duplicate), report}
       end
     else
       {:keep, desc, report}
     end
+  end
+
+  # Count a duplicate only after its complete value has been decoded. The
+  # event survives a later key mismatch that clears the map's stored value.
+  defp map_duplicate_report(desc, report) do
+    if Map.get(desc, :map_duplicate, false),
+      do: Map.update(report, :duplicate, 1, &(&1 + 1)),
+      else: report
   end
 
   defp scan_map_key(kf, bin, ids, key, bad, widened) do
@@ -3511,7 +3520,9 @@ defmodule Bench.Table do
 
             f = Map.put(f, :map_widened, Map.get(desc, :map_widened, false))
 
-            case text_list_keep(f, value, merge_report(report, elem_report)) do
+            report = map_duplicate_report(desc, merge_report(report, elem_report))
+
+            case text_list_keep(f, value, report) do
               {:keep, f, report} ->
                 read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
