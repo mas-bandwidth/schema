@@ -149,34 +149,35 @@ bin/schema: $(GO_SOURCES) $(EMBED_SOURCES)
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/schema
 
 # bin-schema-embeds: for one embedded file of every package that embeds
-# (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
-# newer mtime on that file makes bin/schema out of date. `make -q` asks
-# without building; the last step rebuilds once.
+# (go list's EmbedFiles, so the list cannot drift from the go:embed lines),
+# `make -q -W <file> bin/schema` answers whether a newer file there makes
+# bin/schema out of date. -W ("what if") takes the file as newer than any
+# time, so the answer does not depend on how finely the filesystem or this
+# make resolves an mtime (make 3.81, macOS's, resolves whole seconds), and no
+# file is touched.
 .PHONY: bin-schema-embeds
 bin-schema-embeds: bin/schema
 	@n=0; for f in $$(go list -deps -f '{{$$d := .Dir}}{{range .EmbedFiles}}{{$$d}}/{{.}}{{"\n"}}{{break}}{{end}}' ./cmd/schema); do \
-		n=$$((n+1)); touch "$$f"; \
-		if $(MAKE) --no-print-directory -q bin/schema; then \
-			echo "bin-schema-embeds FAILED: touching $$f left bin/schema up to date"; exit 1; fi; \
-		touch -r "$$f" bin/schema; \
+		n=$$((n+1)); rel=$${f#$(CURDIR)/}; \
+		if $(MAKE) --no-print-directory -q -W "$$rel" bin/schema; then \
+			echo "bin-schema-embeds FAILED: a newer $$rel left bin/schema up to date"; exit 1; fi; \
 	done; \
 	test $$n -gt 0 || { echo "bin-schema-embeds FAILED: go list named no embedded file"; exit 1; }; \
 	echo "bin-schema-embeds: $$n embedding package(s), a newer file in each rebuilds bin/schema"
-	@$(MAKE) --no-print-directory bin/schema
 
 test: bin-schema-embeds
 
-# Its control: with EMBED_SOURCES emptied on the command line, a touched
+# Its control: with EMBED_SOURCES emptied on the command line, a newer
 # runtime leaves bin/schema up to date and bin-schema-embeds must go red.
 .PHONY: bin-schema-embeds-negative-control
 bin-schema-embeds-negative-control: bin/schema
 	@mkdir -p build
 	@if $(MAKE) --no-print-directory bin-schema-embeds EMBED_SOURCES= > build/bin-schema-embeds-control.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: with no embedded file a prerequisite, bin-schema-embeds stayed green"; cat build/bin-schema-embeds-control.log; exit 1; fi
-	@grep -q 'bin-schema-embeds FAILED: touching .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
+	@grep -q 'bin-schema-embeds FAILED: a newer .* left bin/schema up to date' build/bin-schema-embeds-control.log || \
 		{ echo "NEGATIVE CONTROL FAILED: bin-schema-embeds went red for another reason"; cat build/bin-schema-embeds-control.log; exit 1; }
 	@$(MAKE) --no-print-directory bin/schema
-	@echo "negative control: without the embedded files as prerequisites, a touched runtime leaves bin/schema stale and bin-schema-embeds goes RED"
+	@echo "negative control: without the embedded files as prerequisites, a newer runtime leaves bin/schema stale and bin-schema-embeds goes RED"
 
 # one generate run emits every header; the stamp carries the dependency
 generated/cpp/.stamp: bin/schema $(SCHEMAS)
