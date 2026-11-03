@@ -459,9 +459,10 @@ func withoutUnions(runtime string) string {
 // union field or an array of unions. A unit with no union is emitted without
 // them, for the same reason.
 var retainUnionFamilies = []string{"read_arm_retain", "read_arm_payload_retain",
-	"arm_header_retain", "arm_content_retain"}
+	"arm_header_retain", "arm_content_retain", "read_unions_retain", "read_union_list_retain"}
 
 var retainUnionClauses = []string{
+	"  defp read_payload_retain(%{t: :list, elem_kind: 15}",
 	"  defp read_payload_retain(%{t: :union}",
 	"  defp emit_field_retain(%{t: :union}",
 	"  defp emit_element_retain(%{elem_kind: 15}",
@@ -497,20 +498,21 @@ func withoutRetainUnions(retain string) string {
 // only the kinds in `kinds`: Elixir's type checker reports a clause that no arm
 // of the unit can reach, so the table arm's clauses go when no arm is a table,
 // the pointer reader's when none is a pointer. The generic writer also handles
-// pointer arms, while the generic reader handles only the remaining kinds.
+// pointer and enum arms, while the generic reader handles only the remaining kinds.
 // Every clause must be found.
 func withRetainArmKinds(retain string, kinds map[string]bool) string {
-	table, pointer, other := kinds["table"], kinds["pointer"], false
+	table, pointer, enum, other := kinds["table"], kinds["pointer"], kinds["enum"], false
 	for k := range kinds {
-		if k != "table" && k != "pointer" {
+		if k != "table" && k != "pointer" && k != "enum" {
 			other = true
 		}
 	}
 	heads := map[string]bool{
 		"  defp arm_content_retain(%{t: :table}":        table,
-		"  defp arm_content_retain(a,":                  other || pointer,
+		"  defp arm_content_retain(a,":                  other || pointer || enum,
 		"  defp read_arm_payload_retain(%{t: :table}":   table,
 		"  defp read_arm_payload_retain(%{t: :pointer}": pointer,
+		"  defp read_arm_payload_retain(%{t: :enum}":    enum,
 		"  defp read_arm_payload_retain(a,":             other,
 	}
 	found := map[string]bool{}
@@ -2682,26 +2684,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
 
       {vref, after_sub} ->
-        value =
-          case resolve(ids, vref) do
-            :error ->
-              nil
+        case resolve(ids, vref) do
+          :error ->
+            # A reference outside the id table is framing damage (§3, §4),
+            # not None or an id this enum does not declare.
+            {Enum.reverse(acc), %{report | malformed: true}}
 
-            variant_id ->
+          variant_id ->
+            {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> name
-                :error -> :unknown
+                {:ok, name} -> {name, report}
+                :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
-          end
 
-        # an element naming a variant this reader cannot name reads None and
-        # counts unknown (docs/SPEC-TABLES.md §4)
-        {value, report} =
-          if value == :unknown,
-            do: {nil, %{report | unknown: report.unknown + 1}},
-            else: {value, report}
-
-        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+        end
 
       :error ->
         {Enum.reverse(acc), %{report | malformed: true}}
@@ -6229,6 +6226,12 @@ const variableRetainSource = `
     end
   end
 
+  # A union array uses the element index followed by the arm ordinal, exactly
+  # as its retaining writer does. Walk once with an explicit index.
+  defp read_payload_retain(%{t: :list, elem_kind: 15} = f, p, ns, ids, r, rt, path) do
+    read_union_list_retain(f, p, ns, ids, r, rt, path)
+  end
+
   # a union field: the arm is the step pair {ordinal, arm ordinal}.
   defp read_payload_retain(%{t: :union} = f, payload, nodes, ids, report, retain, path) do
     retain = retain_reset(retain, path, f.ordinal, nil)
@@ -6288,6 +6291,23 @@ const variableRetainSource = `
     end
   end
 
+  # Unknown enum references in known array slots are excluded just like a
+  # known scalar enum field (§6.6). Only that array's new unknowns count.
+  defp read_payload_retain(
+         %{t: :list, elem_kind: 30} = f,
+         payload,
+         nodes,
+         ids,
+         report,
+         retain,
+         _path
+       ) do
+    unknown_before = report.unknown
+    {:cont, value, report} = read_payload(f, payload, nodes, ids, report)
+    report = %{report | retain_lost: report.retain_lost + report.unknown - unknown_before}
+    {:cont, value, report, retain}
+  end
+
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
     {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
     {:cont, v, report, retain}
@@ -6313,6 +6333,60 @@ const variableRetainSource = `
 
       _ ->
         {%{}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_union_list_retain(f, payload, nodes, ids, report, retain, path) do
+    retain = retain_reset(retain, path, f.ordinal, nil)
+
+    with {_len, <<15, count_rest::binary>>} <- leb(payload),
+         {n, elems} <- leb(count_rest) do
+      check_wire_count(n, f, report)
+      {n, report} = clamp_count(n, f, report)
+
+      {value, report, retain} =
+        read_unions_retain(f, elems, n, nodes, ids, [], report, retain, path, 0)
+
+      clamp_retain(value, f, report, retain)
+    else
+      {_len, _other} -> {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+      _ -> {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_unions_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain, _path, _index),
+    do: {Enum.reverse(acc), report, retain}
+
+  defp read_unions_retain(f, rest, n, nodes, ids, acc, report, retain, path, index) do
+    case slice(rest, 15) do
+      {:ok, header, after_sub} ->
+        {_, value, report, retain} =
+          read_arm_retain(
+            f.elem,
+            f.ordinal,
+            header,
+            nodes,
+            ids,
+            report,
+            retain,
+            path ++ [{f.ordinal, index}]
+          )
+
+        read_unions_retain(
+          f,
+          after_sub,
+          n - 1,
+          nodes,
+          ids,
+          [value | acc],
+          report,
+          retain,
+          path,
+          index + 1
+        )
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}, retain}
     end
   end
 
@@ -6405,6 +6479,15 @@ const variableRetainSource = `
     end
   end
 
+  defp read_arm_payload_retain(%{t: :enum} = a, name, inner, _framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_payload_retain(a, inner, nodes, ids, report, retain, arm_path) do
+      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+      {:halt, value, report, retain} -> {:halt, {name, value}, report, retain}
+    end
+  end
+
   defp read_arm_payload_retain(a, name, inner, framed, c, _arm_path) do
     {nodes, ids, report, retain} = c
 
@@ -6476,7 +6559,14 @@ const variableRetainSource = `
         slot
       )
     else
+      unknown_before = report.unknown
       {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+
+      report =
+        if f.elem_kind == 30,
+          do: %{report | retain_lost: report.retain_lost + report.unknown - unknown_before},
+          else: report
+
       {v, report, retain}
     end
   end

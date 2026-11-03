@@ -127,17 +127,17 @@ Registration now covers all 11 active constructs in C, C#, Go, Rust, Java, JavaS
 
 Landed: required-field, forms, integrity and text-list implementation across the ports; stronger ordinary-positive-unit coverage; populated feature witnesses; pointer-target and root-closure regressions; neutral repeated-key widening and message-integrity repairs; Rust nested-reader refusal repair; JavaScript helper emission and blob accounting; Dart string identity and retained-record accounting; Elixir measurement, pointer and root-closure repairs. Shared failing inputs stay in the corpus.
 
-Remaining C/C++/Go: Go repeated-map-key widening repair; C++ active-construct registration and full acceptance reconciliation. C is complete across all 11/11 active constructs, populated feature witnesses, text-form/report/surrogate refusal coverage, repeated-key widening, and full 25-phase nightly-readiness acceptance (NIGHTLY_READINESS_PASS language=c phases=25).
+C/C++/Go update: C and Go repeated-map-key widening repairs are landed, covering four C reader APIs and both Go region/builder readers with the exact shared failing input; C unbounded text, 11/11 active-construct registration, hostile JSON text-form/report coverage, and full 25-phase nightly-readiness acceptance (docs/validation/2026-11-02-c-nightly.json) are also landed. Remaining: C++ active-construct registration and Go/C++ full nightly acceptance.
 
-C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. Remaining: full-roster builder/retaining driver alignment and full nightly acceptance.
+C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. The full-roster region driver and separate mutable-builder driver are now aligned with their reader contracts. Remaining: full nightly acceptance.
 
-Remaining Rust: the final full nightly rerun after the nested-reader and neutral-reference fixes was stopped before completion. Its implementation and bounded regression repairs have landed; full acceptance is still open.
+Rust update: the full uncapped fleet nightly passed all 24 required phases at 8bb3969aa3d3ac6044253c347525216be19606c9: 11 registered constructs, 365 native table passes with no skips/failures, all six full fuzz runs, and working negative controls. The reproducible receipt and log hashes are in docs/validation/2026-11-02-rust-nightly.json.
 
-Remaining Java: required-blob shared accounting and complete retaining/fuzzer acceptance. JavaScript update: package-derived UnitRegistry name collisions are repaired, with emitted-name regression and packet-only scope control. Final full-roster acceptance remains open.
+Java update: repeated-map-key widening and required-blob shared report accounting are repaired, including repeated-load, report-reset and null-report regression coverage. Caller-built equal strings and retained shared-wire refusal are covered. Complete retaining/fuzzer acceptance remains open. JavaScript update: package-derived UnitRegistry name collisions are repaired, with emitted-name regression and packet-only scope control. Repeated-map-key widening now clears stale incompatible-kind state, with three ordering controls and the exact shared input across plain/retaining loads. The managed-load fuzz driver now uses the matching mutable-reader contract while retaining all fixed and message roots. Final full-roster acceptance and native replacement controls remain open.
 
-Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Remaining: cook-open/write proof and nightly builder/retirement controls. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage and the exact failing input retained. Full nightly acceptance remains open. Their complete retaining/fuzzer acceptance remains open.
+Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Cursor and node-table length checks now validate remaining extent before addition; the three original overflow inputs are in the shared corpus and pass native JIT/AOT regression tests. The full-roster mixed mutable-reader profile and native second-arm lineage replacement are integrated. Cook-open cursor handling and guarded cook-write support are qualified by native JIT/AOT tests and all five cook conformance surfaces, with no absent cases. Remaining: full nightly acceptance. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage. Enum collection references outside the ID table now report malformed, with 21-case native coverage and an exact shared regression input. Unknown enum collection/arm losses and retaining union-array traversal are repaired, with native plain/retain matrices, nested-record save coverage and a shared foreign-enum regression input. Full nightly acceptance remains open. Their complete retaining/fuzzer acceptance remains open.
 
-Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. Current full-roster nightly acceptance remains incomplete across the nine, so the wire-fuzzer row is open. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
+Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. C and Rust full-roster nightly acceptance are complete at their recorded revisions; the other seven acceptance cells remain open pending their complete runs. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
 
 <!-- nova-work:variable-tables:start -->
 
@@ -149,21 +149,21 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | text form: JSON in and out of a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | reflection descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | block form, read side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | build version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | variable class (pointers, the flat node table) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | text form, variable class | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | block form, build side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | fixed-point and 128-bit scalars on the table wire | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | unions whose arms are tables | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of pointers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of unions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | optional arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| the wire fuzzer gate | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| maps | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| the wire fuzzer gate | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| maps | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | union arms of any field type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | string, bytes and flags defaults, and renaming a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | renaming variants, arms and type fields | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 100% | 96% | 93% | 96% | 87% | 96% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 100% | 96% | 96% | 100% | 93% | 96% | 93% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 

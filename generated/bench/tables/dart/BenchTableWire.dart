@@ -640,7 +640,7 @@ final class TableWireReader {
       edges = parent.edges,
       nodeIndex = parent.nodeIndex;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  bool has(int n) => n >= 0 && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -4419,9 +4419,8 @@ int tableEntityWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;
@@ -4640,9 +4639,8 @@ int tableStatWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;
@@ -4932,9 +4930,8 @@ int tableMixedWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;

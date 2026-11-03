@@ -1152,7 +1152,7 @@ final class TableWireReader {
       edges = parent.edges,
       nodeIndex = parent.nodeIndex;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  bool has(int n) => n >= 0 && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -3442,9 +3442,8 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\t\tseen = true;\n")
 	g.pf("\t\t\tif (kind != 12) { unframed = true; continue; }\n")
 	g.pf("\t\t\tfinal len = r.readLeb();\n")
-	g.pf("\t\t\tif (len == null) { unframed = true; continue; }\n")
+	g.pf("\t\t\tif (len == null || !r.has(len)) { unframed = true; continue; }\n")
 	g.pf("\t\t\tfinal end = r.pos + len;\n")
-	g.pf("\t\t\tif (end > r.limit) { unframed = true; continue; }\n")
 	g.pf("\t\t\tpstart = r.pos;\n")
 	g.pf("\t\t\tpend = end;\n")
 	g.pf("\t\t\tr.pos = end;\n")

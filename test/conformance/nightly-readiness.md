@@ -21,8 +21,16 @@ does not add an all-pairs matrix or ask the reference to read each writer.
 | Native compiler suites | `SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -json -timeout=0 -count=1 -parallel=2 ./internal/codegen/<packet> ./internal/codegen/<table>`, executed as separate package phases. C++ also executes `./compiler` and the entire `./test/conformance/harness` package once, including the BOM oracle and permanent shared corpus/gate regressions. Its prerequisite builds both native C/C++ collection drivers and pins their paths for the shared differential tests; missing drivers cannot turn those tests into accepted skips. Each package's discovered tests/examples/fuzz seed tests must finish, at least one must pass, and the package must pass. The small internal/lockfile suite also runs to certify the replacements for retired layout-validation tests. |
 | Packets | Execute the normal and ludicrous packet programs below, plus defaults, UTF-8, wide-text and their existing negative controls. Run the finite-value targets where registered. C++ executes its own wide, guard and random packet binaries and four wide/text controls. |
 | External table executables | The existing fixed-form/paired/native targets listed below complement the package tests. Missing targets, missing corpora, failed builds or nonzero programs fail readiness. |
-| Wire and retaining load | Build the existing all-roots driver. Run the shared differential `wire-fuzz` directly for plain and `--retain`, each at seeds 1, 2 and 3 with 100000 random mutants plus the complete enumerated pass. No `--finite-owed`, replay-only replacement, caller seed/count reduction or custom roster is accepted. |
+| Wire and retaining load | Build the existing all-roots driver. Run the shared differential `wire-fuzz` directly for plain and `--retain`, each at seeds 1, 2 and 3 with 100000 random mutants plus the complete enumerated pass. Dart and JavaScript use the mixed-builder profile for their managed variable-file loaders; the complete fixed/message roster retains its form-specific oracle. No `--finite-owed`, replay-only replacement, caller seed/count reduction or custom roster is accepted. |
 | Wire/retention controls | Execute the existing planted wire controls and retention controls. C, Go and Rust's existing retention overlays are reproduced with only the outer Go-suite timeout changed to zero; the exact intended test failure and diagnostic remain mandatory. |
+
+C# runs those six passes through its native region loader and retaining loader,
+then runs three additional plain mutable-builder passes with `--builder` at the
+same seeds and counts. The two profiles have different count-cap contracts.
+Each has its own mandatory phase names and strict summary; neither can stand
+in for the other. Fixed/message seeds are normatively outside these additional
+builder-only passes and remain covered by the six region passes. A builder
+pass never uses the region retention binding.
 
 The packet/table package pairs are:
 
@@ -47,6 +55,11 @@ fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
 already run in their complete packages, without the legacy filtered targets'
 600-second or 20-minute suite limits.
 
+Dart's six wire phases use `--mixed-builder`: variable-file roots use the
+mutable reader oracle, while fixed and message roots keep their existing
+oracles in the full plain roster. The variable-only `--builder` summary is
+rejected; only the retaining arm may report seeds outside its retention domain.
+
 Wire controls are the existing `tables[-<lang>]-wire-fuzz-negative-control`
 targets, with C#'s pack control and Elixir's refusal control. Retention controls
 are C++'s retaining differential pair; C's dropped retained field; C#'s
@@ -60,17 +73,18 @@ runs may use N=0; they never stand in for the six positive release runs.
 
 - Native JSON events, not a package's exit code alone, identify executed tests.
   Empty lists, missing terminal events, failing tests and skips are incomplete.
-- The three named Go test retirements and 51 exact native-program retirement
+- The three named Go test retirements and 52 exact native-program retirement
   messages have explicit replacement test requirements in the script. Every
   replacement must actually pass in the current run, including the lockfile
   validation rules; a historical receipt is not acceptance. Retirements are
   printed as retired and are never counted as passed. Live owed rulings,
   UNPORTED rows, unsupported shapes and absent toolchains/corpora fail.
-  Two old native controls still lack an established equivalent: C's
-  fixed_fx2_bytes_row_control and Dart's fuCase. Those markers are not allowed
-  exceptions. Rust's two text-under-an-arm retirements require actual current-run
-  FU1-to-FU2 lineage probes: second-arm text/neighbors and noncanonical
-  bool/presence bytes, with zero-byte controls.
+  Dart's fuCase requires both FU1 identity and FU2 compiled native passes in
+  TestFixedVersioningSecondArmText, including an actual wrong-guard control.
+  C's fixed_fx2_bytes_row_control still lacks an established equivalent and is
+  not an allowed exception. Rust's two text-under-an-arm retirements require
+  actual current-run FU1-to-FU2 lineage probes: second-arm text/neighbors and
+  noncanonical bool/presence bytes, with zero-byte controls.
 - Each strict fuzz summary must name the requested arm/seed, nonempty roots and
   seeds, a nonempty enumerated pass, exactly 100000 random mutants, consistent
   totals and zero divergences. An absent seed or finite exemption is incomplete.

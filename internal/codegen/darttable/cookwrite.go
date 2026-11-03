@@ -366,7 +366,7 @@ func (g *cookGen) emitCookWriteVariable(st *ir.Struct) {
 		}
 	}
 	g.pf("        }\n")
-	g.pf("        if (!_writeNode(id, node, c, 0)) {\n")
+	g.pf("        if (!_writeNode(id, node, c, 0) || !c.valid) {\n")
 	g.pf("          if (report != null) report.reason = 'invalid_value';\n          return -1;\n        }\n")
 	g.pf("      }\n")
 	g.pf("      if (alignment > align) align = alignment;\n")
@@ -464,10 +464,6 @@ func (g *cookGen) variableCookRefusal(st *ir.Struct) string {
 		// every field's storage below, so an unsupported construct stays
 		// refused by name.
 		for _, f := range rs.Fields {
-			if f.Guard != "" && !guardedCookField(f) {
-				why = fmt.Sprintf("%s.%s is guarded and holds a reference or a record, whose numbering under a false guard this writer does not carry yet (docs/SPEC-TABLES.md §3.1, §7.6)", name, f.Name)
-				break
-			}
 			if un := unionRef(f); un != nil {
 				if arm := variableCookUnion(un); arm != "" {
 					why = fmt.Sprintf("%s.%s's union (%s) is not carried by the variable cook writer yet (docs/SPEC-TABLES.md §7.2)", name, f.Name, arm)
@@ -584,18 +580,6 @@ func variableCookField(f *ir.Field) bool {
 		return false
 	}
 	return false
-}
-
-// guardedCookField reports whether a GUARDED field's storage is one this
-// writer carries. A guard is the wire's (docs/SPEC-TABLES.md §2.2, §16.2): it
-// decides what RIDES, and the cooked region is the storage, so a scalar or an
-// inline text slot under a false guard is written exactly as it is held —
-// what internal/tablecook's region writer and the Go leg's tableCookWriter
-// both write (§7.6). A reference is different: §3.1's numbering skips a node
-// reached only through a false guard, so its slot has no node to point at,
-// and a guarded record may hold such a slot; both stay refused by name.
-func guardedCookField(f *ir.Field) bool {
-	return !f.Type.Pointer && !f.Type.Blob() && tableRef(f) == nil
 }
 
 // emitCookVariableRecord writes one record of the graph where it lies, with
@@ -1276,6 +1260,7 @@ final class TableCookGraph {
   final int Function(Object node) indexOf;
   final int Function(int id, Object blob, [Object? owner, String? field]) blobIndex;
   ByteData? out;
+  bool valid = true;
 
   TableCookGraph(this.order, int count, this.indexOf, this.blobIndex)
     : offsets = List<int>.filled(count, 0);
@@ -1309,20 +1294,38 @@ final class TableCookGraph {
   // A reference slot holds the signed delta from the slot to its target node,
   // and a null is a delta of zero (§6.3).
   void ref(int slot, Object? node) {
+    // Validate during measurement too: dead storage may name a node the
+    // wire's numbering never reached. Refuse before touching output (§7.6).
+    var index = 0;
+    if (node != null) {
+      try {
+        index = indexOf(node);
+      } on StateError {
+        valid = false;
+        return;
+      }
+    }
     final out = this.out;
     if (out == null) return;
-    var delta = 0;
-    if (node != null) delta = 64 + offsets[indexOf(node) - 1] - slot;
+    final delta = index == 0 ? 0 : 64 + offsets[index - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 
   // A blob is a node of its own reserved type id, numbered by its identity
   // (§3.1): the String or byte list the field holds.
   void blob(int slot, int id, Object? blob, [Object? owner, String? field]) {
+    var index = 0;
+    if (blob != null) {
+      try {
+        index = blobIndex(id, blob, owner, field);
+      } on StateError {
+        valid = false;
+        return;
+      }
+    }
     final out = this.out;
     if (out == null) return;
-    var delta = 0;
-    if (blob != null) delta = 64 + offsets[blobIndex(id, blob, owner, field) - 1] - slot;
+    final delta = index == 0 ? 0 : 64 + offsets[index - 1] - slot;
     out.setInt64(slot, delta, order);
   }
 }
