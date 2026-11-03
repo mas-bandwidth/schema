@@ -299,3 +299,6 @@ graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cy
 # endless one. Found by the retaining arm at seed 1, pass truncate #5 of
 # feature_full.
 integrity_short_body_mismatch featurewitnesses Root testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin
+
+# A framed node record with an impossible collection count refuses region sizing.
+node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/node_record_list_count_refusal.bin
