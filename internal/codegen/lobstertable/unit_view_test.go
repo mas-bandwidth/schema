@@ -15,7 +15,8 @@ func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
 		t.Run(fmt.Sprintf("tables_%v", tables), func(t *testing.T) {
 			dir := t.TempDir()
 			sources := map[string]string{
-				"Orphan.schema":     "package registryprobe\ntype Payload { n int32 }\ntype Orphan { choice Choice }\n",
+				"Orphan.schema":     "package registryprobe\ntype Orphan { choice Choice }\n",
+				"Payload.schema":    "package registryprobe\ntype Payload { n int32 }\n",
 				"Vocabulary.schema": "package registryprobe\nenum Mode { One, Two }\nflags Options { Fast, Safe }\nunion Choice { one Payload }\n",
 				"Constants.schema":  "package registryprobe\nconst Answer = 42\nconst Floor = -9223372036854775808\n",
 			}
@@ -25,7 +26,7 @@ func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
 			var paths []string
 			// Keep input ordering stable so this also checks that the entry point
 			// imports every file, rather than accidentally depending on root order.
-			for _, name := range []string{"Orphan.schema", "Vocabulary.schema", "Constants.schema", "Root.schema"} {
+			for _, name := range []string{"Orphan.schema", "Vocabulary.schema", "Payload.schema", "Constants.schema", "Root.schema"} {
 				if src, ok := sources[name]; ok {
 					p := filepath.Join(dir, name)
 					if err := os.WriteFile(p, []byte(src), 0644); err != nil {
