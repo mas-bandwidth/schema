@@ -8599,7 +8599,7 @@ reading past damage. What a read accepts is EVOLUTION, and evolution only:
   `widened` says is that the bytes were not the shape this reader declares**,
   even though the value survived: a tool that rewrites the file writes the
   wider kind, so the file changes while the number does not. It names no
-  loss, which is why the never-clobber rule does not list it (VERSIONING.md).
+  loss. Like every read counter it is per-language diagnostic detail (§4).
 - **A grown array BOUND** (a literal, a constant, or an `E.Max` expression
   that moved up): the bound is not part of identity — a field is its name
   hash and its kind, and neither carries an extent — so a count short of the
@@ -8701,7 +8701,7 @@ diagnostic name, which is not normative and is never compared:
   nothing is dropped.
 - **A REQUIRED FIELD ABSENT — `missing_required`** (§2.3).
 
-**THE READ REPORT: THE VERDICT, THREE CONFORMING COUNTERS, AND DIAGNOSTICS.** A
+**THE READ REPORT: THE VERDICT, AND DIAGNOSTICS.** A
 read that returns a value reports `unknown` (every id this reader
 cannot name: a field id, an enum variant id, a union arm id, a keyed slot's
 key) and `widened`, each counted ONCE PER FIELD where it fires — an array or
@@ -8714,12 +8714,12 @@ nothing to count. **No other counter exists**: `kind_mismatch`, `clamped`,
 `duplicate`, `blob_shared` and `missing_required` were tolerant-read counts and
 are now refusal reasons, the `malformed` flag was the tolerant read's verdict
 and the refusal is now the verdict, and the clamped-field slot named a clamp no
-read makes. **Three are CONFORMING, compared across languages, because a cross-language
-rule needs them**: `unknown` and `retain_lost` are what the never-clobber rule
-(VERSIONING.md) reads before a rewrite, and `retained` is what the retention
-round trip (§6.6) is held to. **`widened` is DIAGNOSTIC**: it says the bytes
-will change shape on the next save, no rule reads it, and conformance does not
-compare it. Nothing
+read makes. **ALL FOUR COUNTERS ARE DIAGNOSTIC**, per-language detail that conformance never
+compares: a caller's own never-clobber check reads `unknown` and `retain_lost`
+in its own language (VERSIONING.md), and `widened` says the bytes will change
+shape on the next save. What crosses languages is the VALUE a read returns and
+the BYTES a save writes: the never-clobber guarantee is held by retained
+unknowns saved back byte-exact (§6.6), not by a count. Nothing
 crashes on data from a different schema version, in either direction, and
 that property is held by a both-directions evolution test in the corpus.
 
@@ -9101,8 +9101,9 @@ that replays it:
    neighbor's bytes fails here. **This runs with RETENTION OFF** (§6.6), which
    is what leaves the requirement the one stated. **THE RETENTION LEG RUNS
    BESIDE IT**, `make tables-wire-fuzz-retain`, driving the same mutants
-   through both engines' RETAINING paths and comparing the two retention
-   counters beside the evolution counters and the saved bytes beside them. Its arm is the
+   through both engines' RETAINING paths and comparing the verdict and the
+   SAVED BYTES, retained unknowns included, byte for byte; no counter is
+   compared. Its arm is the
    VARIABLE-CLASS FILE ROOTS and nothing else, because a fixed-class root's
    `LoadRetain` is refused by name and a form-2 `SaveRetain` refuses by name
    (§6.6, §3.3), and the line says how many seeds it left out. **Both
@@ -9111,20 +9112,15 @@ that replays it:
    records and the arm would measure the two layouts rather than the feature.
    The capacity rule itself is held by each engine's own retain gate, where
    the buffer is pinned one byte short of the last record.
-4. **`LoadMeasure` never asks past a stated bound.** For a variable root the
-   region it asks for is held to the framing. When the node table read whole
-   AND the read returns a value, the answer is EXACT: the root's storage, each
-   record's storage by its type id, each map's `N × sizeof( Entry )` rounded
-   up to `alignof( Entry )` at every depth (§2.8), and sixteen bytes of
-   directory per node. When the read refuses after the framing walk (§6.5's
-   third phase), the answer is the size the framing commands, which the
-   caller paid and the read did not fill. When the
-   node table did not read whole, the answer may not exceed the most the
-   framing could have commanded, which is one unit of the largest storage per
-   TWO wire bytes. A map entry's `L` and its terminator is the smallest wire
-   footprint that commands one storage unit, and under this form's variable
-   lengths that footprint is two bytes. A measure that sizes a region its
-   own `Load` then refuses fails the first requirement.
+4. **`LoadMeasure` never asks past a stated bound, and agrees on the verdict.**
+   The measure refuses every mutant whose framing shows a condition, as the
+   oracle's framing walk does, and where it accepts, the size it answers is the
+   leg's own: storage layouts differ by language, so sizes are never compared
+   across legs. Within the leg, the answer may not exceed the most the framing
+   could have commanded, which is one unit of the leg's largest storage per TWO
+   wire bytes (a map entry's `L` and its terminator is the smallest wire
+   footprint that commands one storage unit), and the leg's own `Load` fills
+   within it.
 
 **The line it prints** is the row the register carries: the seed, the seed
 count over the root count, the enumerated and random mutant counts, the wall
@@ -9783,8 +9779,9 @@ stops at the first condition it meets, so long as the verdict, the value or
 retaining read and `ReadStrict` (which IS `Load`) refuse exactly the same
 inputs, and where they accept they return the same value. `LoadMeasure` and
 `LoadMeasureReason` refuse every input whose framing shows a condition (§3,
-§4), and where the framing shows none they answer the exact size the `Load`
-fills when it accepts; an input refused only for a condition a decode sees (a
+§4), and where the framing shows none they answer a size the `Load` fills when
+it accepts; the size is per-language (each language lays its own storage) and
+is never compared across languages, only the verdict is; an input refused only for a condition a decode sees (a
 value, a bound, the declaration) may be measured and then refused by `Load`.
 
 **THE MESSAGE FORM** (§3.3) takes the same contract over the batch: the batch is
@@ -10495,7 +10492,8 @@ Two consequences follow, and each is a rule:
   already in the table takes that entry and is never appended twice, exactly as
   any repeat is.
 
-**THE REPORT: two counters, and one of them is most of the check** (§4).
+**THE REPORT: two diagnostic counters** (§4), per-language detail never compared
+across languages; what conformance holds is the saved bytes (above).
 
 - **`retained`** counts the fields whose bytes were kept.
 - **`retain_lost`** counts every unknown this load or save could not keep: a
@@ -10509,13 +10507,16 @@ one report type and not two (§4). Retention moves no existing
 counter: a retained field still counts `unknown`, because `unknown` says what a
 READER could not name and that stays true.
 
-**THE SAFETY CHECK IS ONE COUNTER EACH WAY.** A read that refused returned
-nothing to rewrite (§4), and a read that returned changed no value: no read
-clamps, skips a mismatched field or keeps a partial value. So the only data a
-rewrite can drop is what the reader could not name. **A rewrite is safe when
-the last load returned and its `unknown` was zero, OR when retention was on and
-`retain_lost` is zero after the save.** The second is the first with `unknown`
-struck out, and that is precisely what retention buys.
+**THE GUARANTEE IS THE SAVED BYTES.** A read that refused returned nothing to
+rewrite (§4), and a read that returned changed no value: no read clamps, skips
+a mismatched field or keeps a partial value. So the only data a rewrite can
+drop is what the reader could not name, and retention is what keeps it: **an
+older program that loads with retention and saves writes a newer program's
+fields back unchanged, byte for byte**, in every language, and that OUTPUT is
+what conformance holds. The counters (`unknown`, `retained`, `retain_lost`) are
+per-language diagnostics a caller may consult before a rewrite; they are never
+compared across languages (Glenn, 2026-11-03: "read counters, memory size
+obviously yes these can change per-language").
 
 **REFUSAL IS PER RECORD AND NEVER PARTIAL.** A record the remaining capacity
 cannot hold whole is not written at all: `retain_lost` counts one, the read
@@ -10661,7 +10662,8 @@ refusal by name is a compile error rather than an answer a driver writes.
 **The wire fuzzer runs with retention OFF** (§4.2), which leaves its round-trip
 requirement the requirement it is today, and it carries one leg that runs with
 it ON, its roster the VARIABLE-CLASS FILE roots and nothing else (§4.2): the
-same verdict, the same `unknown`, the two retention counters beside it, and a save the oracle reproduces. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
+same verdict and a save the oracle reproduces byte for byte, retained unknowns
+included; no counter is compared. **THAT LEG NEEDS THE ORACLE TO RETAIN TOO**, and it
 does. `internal/tablewire` is the compiler-side engine the fuzzer compares
 against, a third reading of §3 written from the page rather than from a
 backend, and it carries the retention this subsection specifies: the caller's
@@ -17456,8 +17458,8 @@ states — every row of the number grammar, a value past a `bits(N)` width, a
 lone surrogate, a `null` at every kind, a `"None"` key, a repeated key, a
 union with two keys — each carrying the outcome the rule requires. It is a
 TWO-SIDED differential: the same text goes through the packer and through the
-backend's `FromJson`, and their VERDICTS must agree, refused or read with
-the same `unknown`, and their WIRE BYTES byte for byte. A
+backend's `FromJson`, and their VERDICTS must agree, refused or read, and
+their WIRE BYTES byte for byte. A
 tree that packs carries one further invariant: its bytes load clean in that
 backend and re-save byte-identically, because a read either implementation
 accepts must not be one the backend then refuses. A corpus of

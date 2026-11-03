@@ -419,27 +419,24 @@ dropped on rewrite BY DEFAULT: everything in schema has a schema, and a tool
 built from an older schema that rewrites a newer file drops what it does not
 know and counts it. That default has one consequence every studio with a mixed
 fleet must write into its own code before the first staged rollout: **a save
-cycle or a rewriting tool never overwrites a file whose read report is not
-silent.** The `unknown` counter fires on the exact load that precedes the
-destructive rewrite. Write beside the file, or refuse the rewrite. Nothing in
-the runtime enforces this: no generated `Save` refuses when the last load's
-report was not silent, so the game keeps the report beside the instance and
-checks it before it writes.
+cycle or a rewriting tool never overwrites a newer program's file without
+retention.** Write beside the file, retain, or refuse the rewrite. The read
+counters (`unknown` among them) are per-language diagnostics a caller may
+consult to decide; they are not compared across languages and no rule depends
+on their exact value.
 
-**RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for, and
-it strikes ONE counter out of the never-clobber condition** (SPEC-TABLES.md
-§6.6).
+**RETAIN-UNKNOWN is the opt-in that answers the case the rule exists for**
+(SPEC-TABLES.md §6.6).
 A caller that hands `LoadRetain` bounded side storage it declares and owns,
 a buffer for the records and a list for their ids,
 keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
-body they came from. Retention covers the `unknown` class and nothing else, so
-the rule reads: **a save cycle or a rewriting tool never overwrites a file
-whose read reported `unknown`, UNLESS retention was on and `retain_lost` is
-zero after the save.** That is the original condition with `unknown` struck
-out, and it is precisely what retention buys. A refused load has nothing to
+body they came from. Retention covers the `unknown` class and nothing else, and
+its guarantee is the OUTPUT: **an older program that loads with retention and
+saves writes a newer program's fields back unchanged, byte for byte, in every
+language.** That is what conformance holds and precisely what retention buys;
+`retained` and `retain_lost` are diagnostics beside it. A refused load has nothing to
 rewrite, and a load that returned changed no value.
-**`widened` is not in the condition and never was**, on either side of the
-opt-in: a widened field decoded exactly, so a rewrite loses nothing, and the
+**`widened` names no loss**, on either side of the opt-in: a widened field decoded exactly, so a rewrite loses nothing, and the
 counter is there to say the file's bytes will change shape rather than that
 its values did (SPEC-TABLES.md §4).
 The condition is read after the SAVE and not only after the load, because a

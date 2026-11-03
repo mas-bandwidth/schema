@@ -109,6 +109,22 @@
         "every reason-identity rule: SPEC-TABLES §6.5 'Strict error identity', 'THE TABLE IS THE WHOLE ENUM, AND EVERY PORT SPELLS THE SAME SET', the same-reason requirement of the wire fuzzer (§4.2) and of the region, builder and measure paths",
         "#2777's 'damage outranks' ranking and #2762's strict-reason comparison of names: the gate compares verdicts"
       ]
+    },
+    {
+      "id": "conformance-is-read-then-write",
+      "date": "2026-11-03",
+      "quotes": [
+        "read counters, memory size obviously yes these can change per-language",
+        "3 and 4, yes these should be able to vary",
+        "the only thing that matters is, can we read in the data in each language, and get the valid values in",
+        "and we test this by checking that it can write out that data the same way"
+      ],
+      "source": "Glenn, live in Rowan's session, relayed verbatim by the coordinator, following refusal-verdict-only. 'These' are the read counters (unknown, widened, retained, retain_lost), LoadMeasure and region sizes, and (3, 4) the fuzz harness's counter and flag comparisons and diagnostic text, field names and JSON error positions: all per-language detail, never compared. The cross-language read test is: every leg reads every corpus input; a readable input is written back out (wire, and JSON and text) and the bytes are identical across legs and equal to the canonical bytes; an unreadable input is refused by every leg. Retained unknowns saved back byte-exact carry the never-clobber guarantee. Specified in docs/SPEC-TABLES.md §4, §4.2, §6.5, §6.6 and docs/plans/strict-only.md layer 3.",
+      "supersedes": [
+        "the read counters as compared numbers on every conformance surface (report rows, reports.txt, the wire-fuzz pipe, the retention leg)",
+        "LoadMeasure and region sizes as compared numbers, including the wire fuzzer's EXACT-measure requirement",
+        "the strict-reason surface's reason names, and every comparison of diagnostic text, field names or JSON error positions"
+      ]
     }
   ]
 }

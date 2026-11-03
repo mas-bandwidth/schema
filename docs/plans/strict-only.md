@@ -74,7 +74,7 @@ everything above it is red by design until its own layer lands.
 | 0 | **The spec** (this branch): SPEC-TABLES, FIXED-FORM-ALGORITHM, SPEC, VERSIONING, LAYERS/1-framing, FIXED-FORM-VERSIONING-TESTS, rulings.json, this plan | A cold read with no memory of the drafting, its findings applied; Glenn's answers to the decisions above. It lands together with layer 2, because the spec-agreement tests read the page |
 | 1 | **The models**: `tla/Framing.tla` (the inert body and the H3 crossing span removed; the header inside its body), a new `tla/ReadOrder.tla` (invariant `OneVerdict`: every input is accepted with one value or refused, with no partial value, in any detection order), `tla/CardVersioning.tla` (`kindMis` and `clamp` become refusals) | TLC green on a bench machine on a small instance, a reversed witness per new invariant, `tla/RUNS.tsv` rows |
 | 2 | **The Go engine and oracle**: `internal/tablewire`, `internal/tabletext`, `internal/tablecook`, the report (`tabletext.Report`) and `tables/goruntime` `TableReport` and `Err()` | `go test` of those packages; `test/conformance/harness` `TestFramingVectorsReadThroughTheEngine`; the spec-agreement tests (`compiler/specgo_*`, `internal/baseline` `TestEvolutionTableDocsAgreeWithTheGolden`, `compiler/specgo_refusal_enum_test.go`) green against this spec; a negative control per phase |
-| 3 | **The harness and corpora** (inventory (b)), re-pinned from the engine to VERDICTS: a read row is `read` with its value and `unknown`, a refusal row is `refused`; no reason name is compared anywhere | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes from the engine until the C++ leg lands, then from C++ again |
+| 3 | **The harness and corpora: READ, THEN WRITE** (inventory (b); docs/rulings.json `conformance-is-read-then-write`). Every leg reads every corpus input. For a READABLE input the leg writes the value back out — the wire, and the JSON and text forms — and the bytes are identical across legs and equal to the canonical bytes. For an UNREADABLE input every leg refuses. That is the whole cross-language read contract. Retained unknowns are saved back byte-exact (the retain-save bytes), and cook bytes stay compared. Every surface that compares anything else is retired: report counters, region and measure sizes, reason names, diagnostic text, field names and JSON error positions | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes the canonical bytes and the refuse set from the engine until the C++ leg lands, then from C++ again |
 | 4 | **Each leg** (inventory (a)), in this order: go, cpp, c, cs, rust, java, js, dart, elixir, goose, moo, lua, luau, squirrel, lobster. Go first because it is the engine's twin; C++ second because it is the reference the pins come from; then the original nine; then the six newer ports | For the leg: every conformance surface green; its wire fuzz with zero divergences against the engine; its negative controls; no tolerant entry point in its generated output or in `internal/tablenames/<lang>.go` (a grep gate per leg) |
 | 5 | **The docs that describe implementations**: USAGE, PORTING, CARDS, COMPARISON-TABLES, COMPETITION, CPP-REFERENCE-REVIEW, GO-GENERATED-SIZE-SURVEY, the PORT pages, SECURITY, HOSTILE-CORPUS, CONTRIBUTING, `test/conformance/README.md`, `testdata/conformance/tables/FORMAT.md` | A grep for the retired names (`Tolerant`, `clamped`, `kind_mismatch` as a count, `duplicate`, `malformed` as a binary verdict) over the CODE (`internal/`, `tables/`, `test/`, `compiler/`, `cmd/`, `tools/`) and the implementation docs named here is empty; the spec pages are out of its scope, because they name the retired members to say they are retired. And a cold read of each page |
 
@@ -350,6 +350,15 @@ load and must become the only read instead).
 
 ## (b) The harness, corpora and tests that encode tolerant answers
 
+**Layer 3's rule decides every disposition below**: a corpus row keeps its input
+and becomes either READ (the leg writes the value back and the bytes must equal
+the canonical wire, JSON and text bytes) or REFUSED. A column, a file or a test
+that pins a counter (`unknown`, `widened`, `retained`, `retain_lost`, and the
+retired six), a region or measure size, a reason name, diagnostic text or an
+error position is retired, not re-pinned. Where the table below says "re-pin to
+the reason", read "re-pin to the verdict". The JSON and text OUTPUT bytes are
+held to the deterministic writer specified on `rowan/deterministic-json`.
+
 | surface | where | what it encodes | size | disposition |
 |---|---|---|---|---|
 | `report` rows | `testdata/conformance/tables/MANIFEST.txt` 238-395, 867-872, 992-1008, 1119-1176; `reports.txt` 9-70; `report-values/` | six counters plus a verdict, and a decoded value beside kind mismatch, clamp and damage | 62 rows: 24 kind_mismatch, 4 kind_mismatch with clamp, 3 clamp, 2 damage with a value, 4 refusals with no reason, 25 evolution; 56 value files | re-pin to `<case> <reason>` or the evolution counters and value; 31 value files deleted |
@@ -391,11 +400,11 @@ carries.
 | #2780 | rowan/fuzz-lua-luau-squirrel | rework to refuse | keep the LEB length wrap and region alignment fixes; drop the repeated-key-widen reset and widening across `L` |
 | #2779 | rowan/limit-vectors | rework to refuse | the at and over limit vectors stand; restate each over-limit answer as a refusal verdict |
 | #2778 | rowan/strict-read-six | rework to refuse | adds a strict read BESIDE the tolerant load in cs, java, js, rust, dart and elixir; it must become the only read, and its reason ranking is dropped: only the verdict is compared; stacked on #2762 |
-| #2777 | rowan/strict-reasons-conform | rework to refuse | its legs already refuse damage; the gate becomes verdict-only, its shared reason TSV and reason pin tests reduce to verdicts, and its spec hunks are superseded; stacked on #2762 |
+| #2777 | rowan/strict-reasons-conform | rework to refuse | its legs already refuse damage; its gate becomes the refuse half of read-then-write, its shared reason TSV and reason pin tests reduce to verdicts, and its spec hunks are superseded; stacked on #2762 |
 | #2776 | emma/certify-release-tooling-20261103 | keep | release-gate Makefile fix; its Java hunk fixes a loader for a clamp-counter test the harness layer deletes |
 | #2775 | rowan/main-reds-20261103 | rework to refuse | the re-pins and the Lobster cycle fix stand; the Elixir `bits(N)` clamp must refuse `out_of_range` |
 | #2771 | rowan/moo-tagged-green | keep | MOO cook writer and tagged CI gates |
-| #2762 | rowan/harness-reasons | rework to refuse | the cross-leg surface stays, as a VERDICT-only gate: each leg answers `ok` or `refused`, and reason names are no longer compared; then it is the harness of the one read and lands first |
+| #2762 | rowan/harness-reasons | rework to refuse | its cross-leg driver plumbing stays as the REFUSE half of the read-then-write gate (each leg answers `ok` or `refused` per input); its reason comparison is retired; it lands first |
 | #2749 | rowan/fixed-range-clamp-vector | rework to refuse | keep `hostile_range_widen.bin`; its answer is `out_of_range`, not a clamp to the writer's range; the PR body is stale |
 | #2731 | codex/schema-lobster-readiness | drop | its purpose is last-wins on a repeated map key, which is damage |
 | #2576 | rowan/c-cpp-hostile-runners | keep | C and C++ hostile-corpus runners under sanitizers; needs a rebase |
