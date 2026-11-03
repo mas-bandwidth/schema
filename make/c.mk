@@ -179,7 +179,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	$(patsubst tables/%.schema,build/tables-generated-c/%Table.c,$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS)) \
 	test/conformance/c/unit_tblw1.c build/tables-generated-c/w1/W1Table.c \
 	test/conformance/c/unit_tblw2.c build/tables-generated-c/w2/W2Table.c \
-	test/conformance/c/main.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
+	test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
 	test/conformance/c/unit_tblg1.c build/tables-generated-c/g1/G1Table.c \
 	test/conformance/c/unit_tblp2.c build/tables-generated-c/p2/P2Table.c \
 	test/conformance/c/unit_streamdemo.c build/tables-generated-c/stream/StreamTable.c \
