@@ -78,6 +78,9 @@ export type Node = {
 	remap: { [number]: number }?,
 	arms: { [number]: any }?,
 	tagw: number?,
+	-- the WRITER range a compiled plan holds this leaf to (§4.5), raw
+	wlo: any?,
+	whi: any?,
 }
 
 local function leafSize(kind: number): number
@@ -396,11 +399,28 @@ compileStruct = function(d: any, n: Node, census: any)
 	n.pairs = pairs
 end
 
--- a plan: the writer's tree with its pairs, and the census it owes
-local function compilePlan(d: any, layout: string, recordBytes: number): any
+-- a plan: the writer's tree with its pairs, and the census it owes. An
+-- older entry's WRITER ranges (docs/FIXED-FORM-ALGORITHM.md §4.5) land on the
+-- nodes they hold, by the reader field's name: a scalar's own node, or a
+-- fixed array's element node, which every element is read through, so each
+-- element is held the same as a scalar.
+local function compilePlan(d: any, layout: string, recordBytes: number, ranges: any): any
 	local root = parseLayout(layout, recordBytes)
 	local census = { unknown = 0, kindMismatch = 0 }
 	compileStruct(d, root, census)
+	if ranges ~= nil then
+		for _, p in root.pairs :: { any } do
+			local r = ranges[p.f.name]
+			if r ~= nil then
+				local node = p.v
+				if p.f.s == "arr" then
+					node = node.children[1]
+				end
+				node.wlo = r.lo
+				node.whi = r.hi
+			end
+		end
+	end
 	return { root = root, census = census, recordBytes = recordBytes }
 end
 
@@ -454,8 +474,10 @@ local function rawAt(rec: buffer, off: number, size: number, signed: boolean): a
 end
 
 -- one scalar leaf: the raw value at the WRITER's kind, widened to this
--- reader's (counted), clamped to the declared range and bits(N)'s ceiling in
--- the bounds pass (counted), then held as this field's storage
+-- reader's (counted), clamped to the writer's range for the entry this plan
+-- was compiled for, then to the declared range and bits(N)'s ceiling in the
+-- bounds pass (each clamp counted), then held as this field's storage. Every
+-- comparison is in the kind's own domain, unsigned for an unsigned kind.
 local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, named: any): any
 	local k = n.kind
 	local off = n.off + dx
@@ -499,6 +521,15 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 	end
 	if n.size ~= kw then
 		x = V.widen(x, kw, signed)
+	end
+	if n.wlo ~= nil then
+		if V.rawCmp(x, n.wlo, kw, signed) < 0 then
+			x = n.wlo
+			rep.clamped += 1
+		elseif V.rawCmp(x, n.whi, kw, signed) > 0 then
+			x = n.whi
+			rep.clamped += 1
+		end
 	end
 	if f.lo ~= nil then
 		if V.rawCmp(x, f.lo, kw, signed) < 0 then
@@ -905,7 +936,7 @@ export type Fixed = {
 	hash: string,
 	recordBytes: number,
 	floor: number,
-	lineage: { { hash: string, recordBytes: number, retired: boolean, layout: string } },
+	lineage: { { hash: string, recordBytes: number, retired: boolean, layout: string, ranges: any? } },
 }
 
 local plans: { [any]: { [number]: any } } = {}
@@ -919,7 +950,7 @@ local function planFor(d: any, fixed: any, i: number): any
 	local p = cache[i]
 	if p == nil then
 		local e = fixed.lineage[i]
-		p = compilePlan(d, e.layout, e.recordBytes)
+		p = compilePlan(d, e.layout, e.recordBytes, e.ranges)
 		cache[i] = p
 	end
 	return p

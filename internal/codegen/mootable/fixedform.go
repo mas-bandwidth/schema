@@ -17,6 +17,7 @@ package mootable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -32,13 +33,17 @@ func init() {
 // carry, the ONLY fact a file is matched on; Layout the bytes verbatim, which
 // LOAD compares and the plan walks; Record the whole record, the eight-byte
 // hash plus the body, from the lock and never from a file. Retired moves the
-// floor.
+// floor. Ranges are the WRITER's ranged integer leaves on the raw scale
+// (ir.TableFixedWriterRanges): a record read under this entry is held to
+// them first, then to this reader's own ranges (docs/FIXED-FORM-ALGORITHM.md
+// §4.5).
 type FixedLineageEntry struct {
 	Wire    uint64
 	Layout  []byte
 	Record  int64
 	Retired bool
 	Reason  string
+	Ranges  []ir.TableFixedWriterRange
 }
 
 const fixedHashBytes = 8
@@ -56,6 +61,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: fixedHashBytes + ir.TableFixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false
@@ -172,9 +178,39 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 	g.Pf("\tfloor = %d,\n", floor)
 	g.Pf("\tlineage = {\n")
 	for _, e := range entries {
-		g.Pf("\t\t{ hash = %s, recordBytes = %d, retired = %v, layout = %s }, -- 0x%016x\n",
-			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), e.Wire)
+		ranges := ""
+		if e.Wire != own.Wire {
+			ranges = fixedWriterRangesLit(g, root, e.Ranges)
+		}
+		g.Pf("\t\t{ hash = %s, recordBytes = %d, retired = %v, layout = %s%s }, -- 0x%016x\n",
+			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), ranges, e.Wire)
 	}
 	g.Pf("\t},\n")
 	g.Pf("})\n\n")
+}
+
+// fixedWriterRangesLit is one older entry's writer ranges resolved onto this
+// reader's root fields (ir.TableFixedWriterField), as the entry's `ranges`
+// table: the reader field's name to the writer's raw bounds, spelled in the
+// reader's kind domain as its own descriptor's lo/hi are, so the read compares
+// them with the same rawCmp. A fixed array's range holds every element the
+// same as a scalar. Empty when the writer bounds nothing this reader holds.
+func fixedWriterRangesLit(g *Gen, root *ir.Struct, ranges []ir.TableFixedWriterRange) string {
+	var parts []string
+	for _, r := range ranges {
+		for _, f := range root.Fields {
+			if _, ok := ir.TableFixedWriterField(f, r); !ok {
+				continue
+			}
+			kind := ir.TableWireScalarKind(f)
+			kw, signed := ir.TableKindWidth(kind), ir.TableKindSigned(kind)
+			parts = append(parts, fmt.Sprintf("[%q] = { lo = %s, hi = %s }", f.Name,
+				rawLit(g, kw, signed, big.NewInt(r.Lo)), rawLit(g, kw, signed, big.NewInt(r.Hi))))
+			break
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ", ranges = { " + strings.Join(parts, ", ") + " }"
 }
