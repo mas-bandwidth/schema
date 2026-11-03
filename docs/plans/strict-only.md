@@ -53,8 +53,8 @@ in `docs/roadmap.sexp`, one task per layer below.
    (`invalid_value`) instead of the quantizer clamping it, and the fixed form's
    plan carries the WRITER's compressed-float range, which overturns
    schema#1164 statement B (2026-09-19, "reversible by Glenn").
-9. **A lone or out-of-order surrogate escape in JSON refuses
-   `string_lone_surrogate`** now, instead of decoding to `U+FFFD`, and the two
+9. **A lone or out-of-order surrogate escape in JSON refuses** now, reason
+   `malformed` with the text `string_lone_surrogate`, instead of decoding to `U+FFFD`, and the two
    JSONTestSuite `y_object_duplicated_key*` files refuse (a dialect row).
 10. **Non-zero slack in a fixed record stays unspecified and is not refused**
     (§3.4): no reader reads it, so no leg can disagree about it.
@@ -77,7 +77,7 @@ everything above it is red by design until its own layer lands.
 | 2 | **The Go engine and oracle**: `internal/tablewire`, `internal/tabletext`, `internal/tablecook`, the report (`tabletext.Report`) and `tables/goruntime` `TableReport` and `Err()` | `go test` of those packages; `test/conformance/harness` `TestFramingVectorsReadThroughTheEngine`; the spec-agreement tests (`compiler/specgo_*`, `internal/baseline` `TestEvolutionTableDocsAgreeWithTheGolden`, `compiler/specgo_refusal_enum_test.go`) green against this spec; a negative control per phase |
 | 3 | **The harness and corpora** (inventory (b)), re-pinned from the engine | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes from the engine until the C++ leg lands, then from C++ again |
 | 4 | **Each leg** (inventory (a)), in this order: go, cpp, c, cs, rust, java, js, dart, elixir, goose, moo, lua, luau, squirrel, lobster. Go first because it is the engine's twin; C++ second because it is the reference the pins come from; then the original nine; then the six newer ports | For the leg: every conformance surface green; its wire fuzz with zero divergences against the engine; its negative controls; no tolerant entry point in its generated output or in `internal/tablenames/<lang>.go` (a grep gate per leg) |
-| 5 | **The docs that describe implementations**: USAGE, PORTING, CARDS, COMPARISON-TABLES, COMPETITION, CPP-REFERENCE-REVIEW, GO-GENERATED-SIZE-SURVEY, the PORT pages, SECURITY, HOSTILE-CORPUS, CONTRIBUTING, `test/conformance/README.md`, `testdata/conformance/tables/FORMAT.md` | A grep for the retired names (`Tolerant`, `clamped`, `kind_mismatch` as a count, `duplicate`, `malformed` as a binary verdict) over `docs/` is empty, and a cold read of each page |
+| 5 | **The docs that describe implementations**: USAGE, PORTING, CARDS, COMPARISON-TABLES, COMPETITION, CPP-REFERENCE-REVIEW, GO-GENERATED-SIZE-SURVEY, the PORT pages, SECURITY, HOSTILE-CORPUS, CONTRIBUTING, `test/conformance/README.md`, `testdata/conformance/tables/FORMAT.md` | A grep for the retired names (`Tolerant`, `clamped`, `kind_mismatch` as a count, `duplicate`, `malformed` as a binary verdict) over the CODE (`internal/`, `tables/`, `test/`, `compiler/`, `cmd/`, `tools/`) and the implementation docs named here is empty; the spec pages are out of its scope, because they name the retired members to say they are retired. And a cold read of each page |
 
 Every generated tree (`generated/`, `testdata/golden/tables/`,
 `tables/cards/<lang>/`, `internal/codegen/gotable/fuzzunit/`) is regenerated in

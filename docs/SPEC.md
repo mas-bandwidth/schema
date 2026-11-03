@@ -2204,12 +2204,10 @@ exactly. Two things are checked on every packet write, in every target, in
 that target's own idiom (§5): **the used length is within [0, N]**, because it
 guards the copy, and **a zero code unit among the used units is refused**,
 exactly as §4.7 refuses the interior null and symmetric with the reader's
-zero-group refusal. **The table wire's `Save` checks the used length and
-nothing about the content**, which is the shape kind `12` already has there:
-ill-formed text is a READ-side verdict on that wire, damage the reader answers
-by refusing the whole load `wire_damaged` (SPEC-TABLES.md §3, §4). Surrogate pairing is NOT checked on write. It is a writer
-obligation whose enforcement is the reader on the other end, which refuses
-an unpaired surrogate under the rules above. A code unit above `0xFFFF`
+zero-group refusal. **The table wire's `Save` checks the used length AND the content**
+(SPEC-TABLES.md §16.3, 2026-11-03): ill-formed text and an unpaired surrogate
+are refused on write, `invalid_value`, and a reader that meets either anyway
+refuses the whole load `wire_damaged` (SPEC-TABLES.md §3, §4). A code unit above `0xFFFF`
 cannot be written at all, because the storage holds 16 bits per unit in
 every target. In Elixir, where the storage is a binary rather than a counted
 buffer, the write additionally requires an EVEN `byte_size` and raises

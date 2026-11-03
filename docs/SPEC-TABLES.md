@@ -4890,8 +4890,8 @@ one document rather than two.
 
   **So ill-formed text never reaches storage from a wire**, which is what
   keeps the write side unrescoped: an instance a load produced is
-  always one the reference can re-save (§5). §16.3's `U+FFFD` rule is the TEXT
-  FORM's answer for storage a PROGRAM built, not the wire's, and it says so.
+  always one the reference can re-save (§5). Storage a PROGRAM built that holds ill-formed
+  text is refused by every writer, the text form's included (§16.3).
   A group above `0xFFFF` has no case here at all, because two bytes cannot
   spell one.
 
@@ -4911,10 +4911,11 @@ one document rather than two.
   exists because an arm header carries a kind (below), so an arm that holds
   nothing needs a kind that says so. It closes the edit a bare `L = 0` would
   have left open: an arm that gains or loses its payload moves between kind
-  `32` and the payload's own kind, and is an ordinary kind mismatch. A reader
-  that declares an arm payload-free and meets an `L` that is not `0` refuses
-  the whole load `wire_damaged` (§4), exactly as it does for a
-  fixed-width arm whose `L` is not its width.
+  `32` and the payload's own kind, and is an ordinary kind mismatch. A kind `32`
+  whose `L` is not `0` is damage at ANY position — an arm this reader
+  declares, one it does not, a field, an element — and the whole load refuses
+  `wire_damaged` (§4, §6.5's step 2), exactly as for a fixed-width arm whose
+  `L` is not its width.
 
   **KIND `31` IS THE ESCAPE, and no declaration maps to it.** Its payload is
   `L` and `L` bytes, opaque, and this major never writes one. It exists so
@@ -7444,7 +7445,7 @@ entries announces about 5 KB once.
 - **The batch's four answers.** A `SaveMessages` and a `MeasureMessages` of 257
   bodies, each refusing by name and writing nothing. A `LoadMessages` of a
   256-body batch into storage for eight, refusing by name with no counter moved
-  and nothing decoded, its returned count reading 256. A three-body batch damaged inside the second,
+  and nothing decoded, its returned count reading 0 (§6.5). A three-body batch damaged inside the second,
   which must report `wire_damaged` and return a count of 0 with no body delivered.
   Red if a leg writes consecutive batches, decodes a body before
   refusing on capacity, leaves the returned count at the caller's capacity,
@@ -7995,7 +7996,9 @@ so the used extent is always stated before the bytes are reached.
 - **UNSPECIFIED ON READ, AND NOT A REFUSAL.** A reader validates the USED UNITS
   ONLY and never looks at the slack, so a peer that leaves garbage there is a
   peer this reader reads correctly. **NON-ZERO SLACK IS NOT DAMAGE, NOT A
-  REFUSAL, AND MOVES NO COUNTER.** Making it one would mean reading every byte
+  REFUSAL, AND MOVES NO COUNTER — A DELIBERATE EXCEPTION to "refuse what no
+  writer produces" (§13.10)**, kept because no reader reads slack, so no two
+  readers can disagree about it. Making it one would mean reading every byte
   of a bound to check bytes that carry no meaning, which is the cost this form
   exists to avoid, and it would refuse records that are perfectly readable.
 - **THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE.** A
@@ -9840,7 +9843,19 @@ agree when they name the same member. Under the JSON read a lone surrogate is
 the reason `malformed` with the text `string_lone_surrogate: <Table>.<field>`
 (§16.3).
 
-**A `1` BOOL byte that is neither `0` nor `1` is DAMAGE on this read**:
+**ONE EXPLICIT EXCEPTION: THE HAND-EDITABLE TEXT FORM (§16.9) REFUSES UNKNOWN
+KEYS AND VARIANTS.** It is authoring input read against one declaration, never
+another build's output, so a key or a variant name it cannot place is a typing
+error (`text_unknown_key`, `text_unknown_variant`) and not evolution. Every
+other read takes §4's evolution rules. The text form keeps §6.5's one order.
+
+**`ReadStrict` IS `Load`**: the same read, the same answer, the same reason.
+**`LoadMeasureReason` MAY NAME A DIFFERENT REASON THAN `Load`** on one wire: the
+measure reads the framing alone, so it can stop at a framing condition before
+a condition `Load` meets earlier in byte order at a value (§6.5 bullets
+below). The reason a caller compares is `Load`'s.
+
+**A `1` BOOL byte that is neither) `0` nor `1` is DAMAGE on this read**:
 the whole load refuses `wire_damaged` (§3, §4). The FIXED form refuses the same
 byte in a bool or a present flag by the same name (§3.4).
 
@@ -9946,10 +9961,10 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
   | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
   | `integrity_mismatch` | the integrity trailer does not match the bytes before it; nothing is decoded (§2.14, §3, §19) |
-  | `non_finite_float` | a plain float whose bits are a NaN or an infinity: every read refuses it and every writer refuses to emit one (§3.3). The report's reason is `non_finite_float: <field>`. Same ordinal as the retired spelling `non_finite` |
+  | `non_finite_float` | a plain float whose bits are a NaN or an infinity: every read refuses it and every writer refuses to emit one (§3.3). The diagnostic text is `non_finite_float: <Table>.<field>`. Same ordinal as the retired spelling `non_finite` |
   | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it and every read refuses it |
   | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
-  | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
+  | `missing_required` | a record lacks a field declared required (§2.3). The diagnostic text is `missing_required: <Table>.<field>`, and the typed `TableMissingRequired` names the fields |
   | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **It is the FIXED READER (`<T>FixedLoad`, §3.4) that answers it**, for a form byte `1` it is handed. **The STRICT read does not**: `ReadStrict` at a declared-fixed root READS a form-1 file as the variable form — the accepting read — so a form-1 file over a fixed root reads rather than refusing `previous_form` |
   | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
   | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
@@ -14811,6 +14826,11 @@ default; a widening decodes exactly and counts `widened`; and the fixed form
 selects its lineage plan by hash (§21). A value outside the WRITER's range refuses `out_of_range`, in §6.5's third
 step on every form; it never clamps.
 
+**What it keeps on purpose, as an exception.** Non-zero slack in a fixed record
+is unread and not refused (§3.4): no writer leaves it and no reader looks at
+it, so it cannot make two readers disagree, and refusing it would cost a read
+of every byte of every bound.
+
 **What it overturns.** The tolerant read and its named entry points
 (`...Tolerant`, §6.5); the owner read policy of 2026-10-17 ("reads forgiving
 only where that costs nearly nothing"), whose forgiveness is now evolution
@@ -15771,7 +15791,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value refuses `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N bytes refuses `length_over_bound` |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units refuses `length_over_bound`. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, and a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape names no scalar value and refuses the read `malformed`, never decoded to `U+FFFD` (§16.3, §16.12). So an unpaired surrogate in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units refuses `length_over_bound`. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, and a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape names no scalar value and refuses the read `malformed`, never decoded to `U+FFFD` (§16.3, §16.12). So an unpaired surrogate in storage was built in code, and the writer refuses it `invalid_value` (§16.3) |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N bytes refuses `length_over_bound`. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) refuses `kind_mismatch`. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false and its one reason is `timestamp_not_rfc3339: <field>`. A NUMBER token is the wrong JSON type and refuses `kind_mismatch`, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted `unknown`. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -16029,39 +16049,17 @@ past a field's bound spells no code point, so the read refuses `malformed`
 whatever the bound would have said (conformance row `json-hostile
 str-illformed-at-bound`).
 
-**The two text types answer DIFFERENTLY, because the two failures are
-different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
-perfectly good code point that JSON has an escape for, so it is written
-`\u0000` — and only ever for storage a program built, because no read, the
-text's included, puts one there (below). A WIDE field's UNPAIRED
-SURROGATE is not a code point at all, encodes to nothing, and is written as
-one `U+FFFD`, because one unpaired surrogate is one ill-formed unit. Each
-type then takes the other half of the same distinction: a narrow field's
-ill-formed UTF-8 sequence is not a code point either and writes `U+FFFD`,
-one per maximal subpart, and a wide field's zero unit is `U+0000` and writes
-`\u0000`. **The rule underneath both is one rule** — a code point is
-escaped and preserved, and what is not a code point is replaced — and the
-two types are named separately only because each meets it through a
-different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
-text this form emits must be readable by any conforming parser, not only by
-schema's own reader.
-
-**A MAXIMAL SUBPART is the unit of that replacement**, so "one `U+FFFD` per
-ill-formed sequence" means one per maximal subpart: the longest prefix of
-the remaining ill-formed bytes, beginning at the first unconvertible byte,
-that is itself a prefix of some well-formed UTF-8 sequence,
-or, when no such prefix exists, that one byte
-(The Unicode Standard, chapter 3, "U+FFFD substitution of maximal
-subparts", Definition D93b). A byte that cannot extend the current
-subpart begins the next, so one ill-formed run can produce several
-`U+FFFD`. The unit holds for every reader and every writer of the text
-form: a reader that replaced rather than refusing would use it, and the
-read in fact REFUSES ill-formed text by name (above), so it is the two
-writers, narrow and wide, that emit the replacement. Worked from the bytes
-a writer's storage holds:
-`E2 82 41` writes `U+FFFD` then `A`; `F0 80 80 80` writes four `U+FFFD`;
-`ED A0 80` (a surrogate) writes three; `C0 AF` writes two;
-`F4 90 80 80` writes four; and a lone `FF` writes one.
+**THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
+one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,
+a perfectly good code point that JSON has an escape for, so it is written
+`\u0000`, and a WIDE field's zero unit the same — only ever for storage a
+program built, because no read puts one there (below). A narrow field's
+ill-formed UTF-8 sequence and a wide field's UNPAIRED SURROGATE are not code
+points at all, and the writer REFUSES them: `ToJsonMeasure` and `ToJson` return
+`-1` with the reason `invalid_value`, naming the field, and nothing is replaced.
+The binary writers hold the same rule (§3, SPEC.md §4.12): `Measure` and `Save`
+refuse ill-formed text and an unpaired surrogate by the same name. So no writer
+turns storage that is not text into text that reads back as something else.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
@@ -16155,7 +16153,7 @@ without touching a stored file.
   character, at an astral pair, at exactly `N` code units and at one past it,
   which refuses `length_over_bound`, one past it whose last unit is the high
   half of a pair, which refuses the same, storage BUILT IN CODE holding an unpaired surrogate,
-  which writes `U+FFFD`, and storage built in code holding a zero unit, which
+  which the writer refuses `invalid_value`, and storage built in code holding a zero unit, which
   writes `\u0000` (§16.3), and the same
   values through a `*wstring` blob, where no length bound applies. The two storage rows
   are built in code deliberately: no wire can deliver either (§3), and a row
@@ -16782,10 +16780,10 @@ The reader resolves the document strictly against the descriptors (§8), then
 lands the value through the JSON walk (§16) from the canonical JSON of the
 same value; any count in that walk's report is refused rather than trusted.
 Structural edits are not implemented: they refuse as `text_edit_conflict`.
-One ordering is weaker than the rule above: whether a list is a record is
-known only from its kind, so a record's pairing (an odd item count, a key that
-is not a keyword or a string) is checked while resolving, and a semantic
-failure earlier in source order is reported first.
+This form takes §6.5's one order: the grammar over the whole document first,
+then the declaration, each the first in source byte order. A record's pairing
+(an odd item count, a key that is not a keyword or a string) is grammar, so it
+is judged in the first step wherever it sits.
 
 ### 16.10 The array root: `table GoalList | json = "array"`
 
@@ -17420,20 +17418,11 @@ no content hash, no protocol id, no length prefix around the whole. A
 caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
-trip §1 promises, and `unpack` → `pack` is byte-stable, with the
-ill-formed UTF-8 case handled under §16.3: its text can be longer than the
-bytes were, and a text past the field's own bound is refused
-`length_over_bound` (§16.2), which §17.4 makes a nonzero exit; a text inside
-it reaches the FIXED POINT IN ONE LAP — after the first write every string is
-well-formed, so the second text and the third agree. **The carve-out is narrower than it was**:
-since ill-formed text is damage on the table wire and terminal on the
-packet wire (§3, SPEC.md §4.7), a `.bin` this project wrote can no longer
-carry it into storage, so the lap is byte-identical for every file that came
-through a wire and the carve-out covers only an instance a PROGRAM built with
-ill-formed text in it. Wide text takes it on the same terms, an unpaired
-surrogate writing `U+FFFD` and a zero unit `\u0000` (§16.3). The alternative
-is emitting a text no
-conforming parser can read, which §16.3 already refuses.
+trip §1 promises, and `unpack` → `pack` is byte-stable. Ill-formed text cannot
+break it: a `.bin` cannot carry it into storage (damage on the table wire,
+terminal on the packet wire, §3, SPEC.md §4.7), and storage a PROGRAM built
+with ill-formed text or an unpaired surrogate in it is refused by `unpack`'s
+writer, `invalid_value` (§16.3), which §17.4 makes a nonzero exit.
 
 **`pack` THEN `unpack` is the other lap, and it is not byte-stable over a
 HAND-AUTHORED tree**, by the form's own rules and not by any defect: a text
