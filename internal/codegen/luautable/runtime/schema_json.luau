@@ -2965,16 +2965,19 @@ to_lua = function(desc: any, v: any, A: any, memo: any): any
   memo.l2v[out] = v
   for _, fd in desc.fields do
     local luau_slot = fd.raw.slot or fd.raw.name
-    if fd.raw.s == "str" or fd.raw.s == "bytes" then
+    -- a slot the value does not hold (an absent optional, a list the read
+    -- never placed) has no length or count to carry: a Lua table cannot be
+    -- indexed by nil
+    local held = v[luau_slot]
+    if held ~= nil and (fd.raw.s == "str" or fd.raw.s == "bytes") then
       memo.len = memo.len or {}
-      memo.len[v[luau_slot]] = v[luau_slot .. "Length"] or 0
+      memo.len[held] = v[luau_slot .. "Length"] or 0
     end
-    if fd.raw.s == "arr" then
+    if held ~= nil and fd.raw.s == "arr" then
       memo.count = memo.count or {}
-      local av = v[luau_slot]
-      if fd.raw.array == "counted" then memo.count[av] = v[luau_slot .. "Count"] or 0
-      elseif fd.raw.array == "list" then memo.count[av] = av ~= nil and (av.n or #av) or 0
-      elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[av] = fd.raw.bound or 0 end
+      if fd.raw.array == "counted" then memo.count[held] = v[luau_slot .. "Count"] or 0
+      elseif fd.raw.array == "list" then memo.count[held] = held.n or #held
+      elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[held] = fd.raw.bound or 0 end
     end
     if fd.optional then
       if v[fd.raw.present] then
