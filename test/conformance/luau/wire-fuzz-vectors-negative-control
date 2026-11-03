@@ -95,3 +95,5 @@ plant retain_orphan_node_first \
 	's/saved = if nv ~= nil then numbering\.index\[nv\] else nil/saved = node/' retain
 plant retain_scalar_array_elements \
 	's/\t\tif ek == 13 then\n\t\t\tif not resolve_payload\(r, ids, 13, out, depth \+ 1\) then return false end\n\t\telse\n/\t\tif true then\n\t\t\tlocal elen = r_leb(r); if r.bad or r.at + elen > r.e then return false end\n\t\t\tr.at = r.at + elen\n\t\telse\n/' retain
+plant retain_pointer_arm \
+	's/\tlocal n = r\.at <= #r\.s and \(#r\.s - r\.at \+ 1\) or 0\n\treturn \{ kind = "raw", b = save_take\(r, n\) \}\nend/\treturn { kind = "raw", b = "" }\nend/' retain

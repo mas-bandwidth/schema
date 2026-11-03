@@ -78,3 +78,7 @@ retain_orphan_node_first graphdemo Scene testdata/wire/tables/fuzz-vectors/retai
 # A RETAINED ARRAY's ELEMENTS ARE PAYLOADS OF THE ELEMENT KIND (§3, §6.6): only a
 # table element is framed by its own L.
 retain_scalar_array_elements streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_scalar_array_elements.bin retain
+
+# A UNION ARM OF ANY KIND IS WRITTEN BACK WHOLE BY THE RETAINING SAVE (§3,
+# §6.6), a pointer arm's node index included.
+retain_pointer_arm streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_pointer_arm.bin retain

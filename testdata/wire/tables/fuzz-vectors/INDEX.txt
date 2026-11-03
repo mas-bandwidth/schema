@@ -430,3 +430,11 @@ retain_orphan_node_first graphdemo Scene testdata/wire/tables/fuzz-vectors/retai
 # record as retain_lost. From streamdemo.Feed stream_chain, mutant 45085 of the
 # reference pass (every seed).
 retain_scalar_array_elements streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_scalar_array_elements.bin
+
+# A POINTER ARM RIDES THROUGH THE RETAINING SAVE (§3, §6.6). streamdemo.Feed's
+# stream_arm_pointer with its first field's reference turned to an id the
+# reader cannot name: one retained record, so the save takes the retaining
+# path, and the root's union holds a pointer arm (kind 17, one LEB node
+# index). The Luau retaining save re-read the arm with no payload and wrote
+# L = 0. Mutant 49486 of the reference pass (every seed).
+retain_pointer_arm streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_pointer_arm.bin

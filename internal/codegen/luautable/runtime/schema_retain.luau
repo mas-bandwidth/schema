@@ -1056,7 +1056,10 @@ save_parse_arm = function(r: any, kind: number, ids: { any }): any
 	if w > 0 then
 		return { kind = "raw", b = save_take(r, w) }
 	end
-	return { kind = "raw", b = "" }
+	-- any other arm (a pointer arm's node index among them) is its payload
+	-- whole: the plain save wrote it, and the retaining save writes it back
+	local n = r.at <= #r.s and (#r.s - r.at + 1) or 0
+	return { kind = "raw", b = save_take(r, n) }
 end
 
 save_parse_nodes = function(r: any, ids: { any }): any
