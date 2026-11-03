@@ -543,6 +543,8 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     if (v == null) {
       local why = named(rr, "wire_damaged");
       if (why == "wire_damaged" || why == "malformed") why = "damaged";
+      // the corpus names a count past the int32 storage cap count_refusal
+      if (why == "count_over_extent_cap") why = "count_refusal";
       emit(name, "refuse", why, null);
       return;
     }

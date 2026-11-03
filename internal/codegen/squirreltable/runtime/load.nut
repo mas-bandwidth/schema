@@ -1316,10 +1316,10 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (report.getdelegate() == null) report.nonFiniteFloat <- null;
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
-  if (!report.rawin("countRefusal")) {
-    if (report.getdelegate() == null) report.countRefusal <- false;
-    else report.countRefusal = false;
-  }
+  // THIS READ'S OWN count refusal: one an earlier read left on a reused
+  // report does not refuse this one
+  if (report.getdelegate() == null) report.countRefusal <- false;
+  else if (!report.rawin("countRefusal")) report.countRefusal = false;
 
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
@@ -1405,7 +1405,22 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
       if (report.countRefusal) break;
     }
   }
-  local finished = bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  local finished = report.countRefusal ? false : bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  // A COUNT PAST THE INT32 STORAGE CAP REFUSES THE READ BY NAME
+  // (docs/SPEC-TABLES.md §2.9): the walk stopped at it, nothing is resolved,
+  // the partial value is discarded, and the report says refused with the
+  // reason count_over_extent_cap. It is not damage, so malformed stays unset
+  // and no counter moves for it. A non-finite float the walk met before it
+  // outranks it (§3.3). A strict caller (ReadStrict, refusal.nut) reads the
+  // refusal off its own report.
+  if (report.countRefusal && st.nonFinite == null) {
+    if ("stopped" in report) report.stopped = true;
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.reason <- "count_over_extent_cap";
+    }
+    return null;
+  }
   resolve(st, c, report);
   // WHETHER THE ROOT BODY READ TO ITS OWN TERMINATOR (docs/SPEC-TABLES.md §4,
   // §4.2): a builder whose root body stopped holds a partial value, which a
