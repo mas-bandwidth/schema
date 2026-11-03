@@ -1,0 +1,24 @@
+// A record past 4 GiB (docs/SPEC-TABLES.md §11): every leg generates and
+// compiles this unit, holding each stored type size, field offset and cook
+// element size at 64 bits. Part is 2 GiB, Huge is three of them and a
+// trailing field, so Huge is past 6 GiB and its tail sits past 4 GiB.
+package widerecord
+
+fixed table Part
+{
+    a [268435456]int64
+}
+
+fixed table Huge
+{
+    p    [3]Part
+    tail int32
+}
+
+table Root
+{
+    items []Huge
+    next  *Huge
+    index map[int32]Huge
+    count int32
+}
