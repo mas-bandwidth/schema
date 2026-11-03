@@ -53,12 +53,6 @@ func emitDescriptors(g *lobster.Gen) error {
 			if _, ok := g.Unit.Tables[d.Name]; ok {
 				continue
 			}
-			// a packet type no table reaches still gets a view: its descriptor
-			// is emitted here, in this file's table module (§8.2).
-			reach := ir.TableClosure(g.Unit)[d.Name]
-			if !reach {
-				emitDescriptor(g, d)
-			}
 			g.Pf("schema_rt.view_type(%sDescriptor, %s, %s, %s)\n", d.Name, lobster.StringLit([]byte(base)), lobster.StringLit([]byte(d.Doc)), tagList(d.Tags))
 			for _, f := range d.Fields {
 				fieldAnnotations(g, d.Name, f)
@@ -235,9 +229,6 @@ func constInt(c *ir.Const) string {
 	}
 	if c.Int == nil {
 		return "0"
-	}
-	if c.Int.IsInt64() {
-		return fmt.Sprint(c.Int.Int64())
 	}
 	return lobster.IntLit(c.Int)
 }

@@ -223,7 +223,7 @@ func moduleFiles(u *ir.Unit, _ map[string]bool) map[string]bool {
 	return out
 }
 
-func emitFile(g *lobster.Gen, reach map[string]bool) {
+func emitFile(g *lobster.Gen, _ map[string]bool) {
 	for _, un := range g.File.TableUnions {
 		g.EmitUnion(un)
 	}
@@ -238,18 +238,16 @@ func emitFile(g *lobster.Gen, reach map[string]bool) {
 	for _, t := range g.File.Tables {
 		emitDescriptor(g, t)
 	}
-	// the packet types of this file a table reaches: their descriptors only;
-	// the class and its constructor are the type module's
+	// Every packet type and union has a descriptor for reflection, even
+	// outside a table closure. Classes and constructors stay in the type module.
 	for _, d := range g.File.Decls {
 		switch d := d.(type) {
 		case *ir.Struct:
-			if reach[d.Name] {
-				g.Import(g.File.Base)
+			if g.Unit.Tables[d.Name] == nil {
 				emitDescriptor(g, d)
 			}
 		case *ir.Union:
-			if reach[d.Name] {
-				g.Import(g.File.Base)
+			if g.Unit.TableUnions[d.Name] == nil {
 				emitUnionDescriptor(g, d)
 			}
 		}

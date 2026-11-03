@@ -15,9 +15,9 @@ func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
 		t.Run(fmt.Sprintf("tables_%v", tables), func(t *testing.T) {
 			dir := t.TempDir()
 			sources := map[string]string{
-				"Orphan.schema":     "package registryprobe\ntype Orphan { n int32 }\n",
-				"Vocabulary.schema": "package registryprobe\nenum Mode { One, Two }\nflags Options { Fast, Safe }\nunion Choice { one Orphan }\n",
-				"Constants.schema":  "package registryprobe\nconst Answer = 42\n",
+				"Orphan.schema":     "package registryprobe\ntype Payload { n int32 }\ntype Orphan { choice Choice }\n",
+				"Vocabulary.schema": "package registryprobe\nenum Mode { One, Two }\nflags Options { Fast, Safe }\nunion Choice { one Payload }\n",
+				"Constants.schema":  "package registryprobe\nconst Answer = 42\nconst Floor = -9223372036854775808\n",
 			}
 			if tables {
 				sources["Root.schema"] = "package registryprobe\ntable Root { n int32 }\n"
@@ -45,9 +45,12 @@ func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
 			program := fmt.Sprintf(`import .registryprobeView
 let v = registryprobe.UnitView()
 assert v.package == "registryprobe" and v.protocol_id != 0
-assert length(v.types) == 1 and v.types[0].name == "Orphan"
+assert length(v.types) == 2
+assert schema_rt.lookup_table("Orphan") != nil and schema_rt.lookup_table("Payload") != nil
+assert schema_rt.lookup_union("Choice") != nil
 assert length(v.tables) == %d
-assert length(v.constants) == 1 and v.constants[0].name == "Answer" and v.constants[0].int_value == 42
+assert length(v.constants) == 2 and v.constants[0].name == "Answer" and v.constants[0].int_value == 42
+assert v.constants[1].name == "Floor" and v.constants[1].int_value == 0x8000000000000000
 assert length(v.enums) == 1 and v.enums[0].name == "Mode"
 assert length(v.flags) == 1 and v.flags[0].name == "Options"
 assert length(v.unions) == 1 and v.unions[0].name == "Choice"
@@ -76,7 +79,7 @@ print("whole unit passed")
 			}
 			control := `import .registryprobeView
 let v = registryprobe.UnitView()
-assert length(v.types) == 1 and length(v.enums) == 1 and length(v.flags) == 1 and length(v.unions) == 1
+assert length(v.types) == 2 and length(v.enums) == 1 and length(v.flags) == 1 and length(v.unions) == 1
 assert length(v.constants) == 0
 print("constant omission detected")
 `
