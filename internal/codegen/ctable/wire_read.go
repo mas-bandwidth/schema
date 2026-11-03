@@ -292,6 +292,11 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.pf("%sif ( sub.size %% 2 != 0 || !table_wire_utf16( sub.buffer, sub.size/2 ) ) { r->report->malformed = 1; %s[0] = 0; %s_length = 0; break; }\n", ind, dst, dst)
 		g.pf("%skeep = table_wire_utf16_clamp( sub.buffer, sub.size/2, %d ); if ( keep != sub.size/2 ) { r->report->clamped++; }\n", ind, f.Type.Size)
 		g.pf("%sfor ( i = 0; i < keep; i++ ) { %s[i] = table_wire_utf16_unit( sub.buffer, i ); } %s[keep] = 0; %s_length = (int32_t)keep;\n", ind, dst, dst, dst)
+	case f.Type.TextUnbounded():
+		g.pf("%sTableReader sub; int refused = 0;\n", ind)
+		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
+		g.pf("%sif ( !table_wire_utf8( sub.buffer, (uint64_t) sub.size ) ) { r->report->malformed = 1; %s.value = 0; break; }\n", ind, dst)
+		g.pf("%sif ( !schema_table_text_place_( r->nodes ? r->nodes->sink : NULL, &%s, sub.buffer, (uint64_t) sub.size, &refused ) ) { if ( refused ) { r->nodes->refused = 1; return 0; } r->report->malformed = 1; %s.value = 0; break; }\n", ind, dst, dst)
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
 		g.pf("%sTableReader sub; uint64_t keep;\n", ind)
 		g.pf("%sif ( !table_reader_span( r, &sub ) ) { r->report->malformed = 1; return 0; }\n", ind)
@@ -347,13 +352,20 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		switch kind {
 		case tkString:
 			val := ir.TextListValue(f)
-			g.pf("%s            TableReader elem; uint64_t keep;\n", ind)
-			g.pf("%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, bad)
-			g.pf("%s            if ( !table_wire_utf8( elem.buffer, (uint64_t) elem.size ) ) { %s( &%s[i] ); %s }\n", ind, g.api(f.Type.Name, "reset"), dst, bad)
-			g.pf("%s            keep = (uint64_t) elem.size;\n", ind)
-			g.pf("%s            if ( keep > %d ) { keep = table_wire_utf8_clamp( elem.buffer, keep, %d ); r->report->clamped++; }\n", ind, val.Type.Size, val.Type.Size)
-			g.pf("%s            memset( %s[i].value, 0, sizeof( %s[i].value ) );\n", ind, dst, dst)
-			g.pf("%s            memcpy( %s[i].value, elem.buffer, (size_t) keep ); %s[i].value[keep] = 0; %s[i].value_length = (int32_t) keep;\n", ind, dst, dst, dst)
+			if val.Type.TextUnbounded() {
+				g.pf("%s            TableReader elem; int refused = 0;\n", ind)
+				g.pf("%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, bad)
+				g.pf("%s            if ( !table_wire_utf8( elem.buffer, (uint64_t) elem.size ) ) { %s( &%s[i] ); %s }\n", ind, g.api(f.Type.Name, "reset"), dst, bad)
+				g.pf("%s            if ( !schema_table_text_place_( r->nodes ? r->nodes->sink : NULL, &%s[i].value, elem.buffer, (uint64_t) elem.size, &refused ) ) { if ( refused ) { r->nodes->refused = 1; return 0; } %s( &%s[i] ); %s }\n", ind, dst, g.api(f.Type.Name, "reset"), dst, bad)
+			} else {
+				g.pf("%s            TableReader elem; uint64_t keep;\n", ind)
+				g.pf("%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, bad)
+				g.pf("%s            if ( !table_wire_utf8( elem.buffer, (uint64_t) elem.size ) ) { %s( &%s[i] ); %s }\n", ind, g.api(f.Type.Name, "reset"), dst, bad)
+				g.pf("%s            keep = (uint64_t) elem.size;\n", ind)
+				g.pf("%s            if ( keep > %d ) { keep = table_wire_utf8_clamp( elem.buffer, keep, %d ); r->report->clamped++; }\n", ind, val.Type.Size, val.Type.Size)
+				g.pf("%s            memset( %s[i].value, 0, sizeof( %s[i].value ) );\n", ind, dst, dst)
+				g.pf("%s            memcpy( %s[i].value, elem.buffer, (size_t) keep ); %s[i].value[keep] = 0; %s[i].value_length = (int32_t) keep;\n", ind, dst, dst, dst)
+			}
 		case tkTable:
 			g.pf("%s            TableReader elem;\n%s            if ( !table_reader_span( &sub, &elem ) ) { %s }\n", ind, ind, bad)
 			g.pf("%s            %s( &elem, &%s[i] );\n", ind, g.api(f.Type.Name, "load_body"), dst)

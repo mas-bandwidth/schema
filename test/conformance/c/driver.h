@@ -117,6 +117,7 @@ const ConformanceCodec * conformance_codecs_widedemo( int * count );
 const ConformanceCodec * conformance_codecs_scalars( int * count );
 const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
 const ConformanceCodec * conformance_codecs_widelist( int * count );
+const ConformanceCodec * conformance_codecs_featurewitnesses( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

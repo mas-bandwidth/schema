@@ -240,6 +240,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		typ = "SCHEMA_C_ALIGN16 " + typ
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    TableRef %s;\n", f.Name)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    uint16_t %s[%d + 1];\n    int32_t %s_length;\n", f.Name, f.Type.Size, f.Name)
 	case f.Type.Kind == ir.TString:
@@ -325,6 +327,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 	typ := g.cFieldType(f.Type)
 	selfInit := cSelfInit(f.Type)
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    value->%s.value = 0;\n", f.Name)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
 		g.pf("    memset( value->%s, 0, sizeof( value->%s ) );\n", f.Name, f.Name)
 		if f.HasDefault && len(f.DefBytes) != 0 {
@@ -792,7 +796,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
 	}
 
-	if f.Type.Pointer && f.Array == ir.ArrayNone {
+	if (f.Type.Pointer || f.Type.TextUnbounded()) && f.Array == ir.ArrayNone {
 		// a pointer's storage IS the reference slot: offset names it,
 		// elem_size is the slot's width, and there is no companion
 		elemSize = "(uint32_t) sizeof( TableRef )"
