@@ -58,3 +58,7 @@ conformance-negative-control-goose-json-label: build/conformance-harness build/c
 conformance-negative-control-goose-json-share: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/json-value-negative-control share
+
+# The leg gate reaches the conformance gate and its three controls, so the
+# PORTING register's I11 and M14 cells cite targets `make test` runs.
+test-goose: tables-goose-json-conformance conformance-negative-control-goose-walk conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share
