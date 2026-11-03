@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -468,6 +475,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -10136,7 +10146,10 @@ LISTDEMO_TABLE_INLINE bool PlacementLoadBody( TableReader & r, Placement & value
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10344,7 +10357,7 @@ inline bool PlacementLoad( Placement & value, const uint8_t * buffer, int64_t by
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = PlacementLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -10672,7 +10685,10 @@ LISTDEMO_TABLE_INLINE bool LogEntryLoadBody( TableReader & r, LogEntry & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10822,7 +10838,7 @@ inline bool LogEntryLoad( LogEntry & value, const uint8_t * buffer, int64_t byte
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = LogEntryLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -11186,7 +11202,10 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11603,7 +11622,10 @@ LISTDEMO_TABLE_INLINE bool PointLoadBody( TableReader & r, Point & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11791,7 +11813,7 @@ inline bool PointLoad( Point & value, const uint8_t * buffer, int64_t bytes, Tab
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = PointLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -12328,7 +12350,10 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -15570,7 +15595,7 @@ inline const Save * SaveLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Save * root = SaveLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -15663,6 +15688,7 @@ inline bool SaveLoadBuilderTolerant( SaveBuilder & builder, const uint8_t * wire
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -15712,6 +15738,7 @@ inline bool SaveLoadBuilderTolerant( SaveBuilder & builder, const uint8_t * wire
     bool ok = !nodes.refused && SaveLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -15748,7 +15775,7 @@ inline bool SaveLoadBuilder( SaveBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = SaveLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -15790,7 +15817,7 @@ inline const Save * SaveReadStrict( const uint8_t * wire_file, int64_t wire_file
     SaveBuilder builder( allocator );
     TableReport report;
     const bool decoded = SaveLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -16510,7 +16537,7 @@ inline const Mixed * MixedLoad( uint8_t * region, int64_t region_bytes, const ui
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Mixed * root = MixedLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -16603,6 +16630,7 @@ inline bool MixedLoadBuilderTolerant( MixedBuilder & builder, const uint8_t * wi
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -16652,6 +16680,7 @@ inline bool MixedLoadBuilderTolerant( MixedBuilder & builder, const uint8_t * wi
     bool ok = !nodes.refused && MixedLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -16688,7 +16717,7 @@ inline bool MixedLoadBuilder( MixedBuilder & builder, const uint8_t * wire_file,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = MixedLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -16730,7 +16759,7 @@ inline const Mixed * MixedReadStrict( const uint8_t * wire_file, int64_t wire_fi
     MixedBuilder builder( allocator );
     TableReport report;
     const bool decoded = MixedLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -16812,7 +16841,10 @@ LISTDEMO_TABLE_INLINE bool PlacementLoadBodyRetain( TableReader & r, Placement &
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -16984,7 +17016,10 @@ LISTDEMO_TABLE_INLINE bool LogEntryLoadBodyRetain( TableReader & r, LogEntry & v
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -17234,7 +17269,10 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -17642,7 +17680,10 @@ LISTDEMO_TABLE_INLINE bool PointLoadBodyRetain( TableReader & r, Point & value, 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -18036,7 +18077,10 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20689,39 +20733,39 @@ extern const TableTypeInfo PointTableInfo;
 extern const TableTypeInfo MixedTableInfo;
 
 inline const TableFieldInfo PlacementTableFields[] = {
-    { "x", "x", "float32", 0xaf63f54c86021707ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, x ), (uint32_t) sizeof( Placement::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "y", "y", "float32", 0xaf63f44c86021554ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, y ), (uint32_t) sizeof( Placement::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "model", "model", "uint32", 0x9de543933e6e703aull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, model ), (uint32_t) sizeof( Placement::model ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "x", "x", "float32", 0xaf63f54c86021707ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, x ), (uint32_t) sizeof( Placement::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "y", "y", "float32", 0xaf63f44c86021554ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, y ), (uint32_t) sizeof( Placement::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "model", "model", "uint32", 0x9de543933e6e703aull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, model ), (uint32_t) sizeof( Placement::model ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo PlacementTableInfo = { "Placement", (uint32_t) sizeof( Placement ), 3, PlacementTableFields, +[]( void * p ) { PlacementReset( *(Placement *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PlacementTableType() { return &PlacementTableInfo; }
 
 inline const TableFieldInfo LogEntryTableFields[] = {
-    { "tick", "tick", "uint32", 0x1e7683ef2ebc7684ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LogEntry, tick ), (uint32_t) sizeof( LogEntry::tick ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "tick", "tick", "uint32", 0x1e7683ef2ebc7684ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LogEntry, tick ), (uint32_t) sizeof( LogEntry::tick ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo LogEntryTableInfo = { "LogEntry", (uint32_t) sizeof( LogEntry ), 1, LogEntryTableFields, +[]( void * p ) { LogEntryReset( *(LogEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LogEntryTableType() { return &LogEntryTableInfo; }
 
 inline const TableFieldInfo SaveTableFields[] = {
-    { "placements", "placements", "Placement", 0xd24733aa574d4b09ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, placements ), (uint32_t) sizeof( Placement ), (uint32_t) offsetof( Save, placements.count ), 0xffffffffu, &PlacementTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Placement> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "log", "log", "LogEntry", 0x125073191daf5431ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) LogEntryAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) LogEntryEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Save, log ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Save, log.count ), 0xffffffffu, &LogEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<LogEntry *> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "scores", "scores", "int32", 0x01986b0b27400fb2ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, scores ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Save, scores.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "placements", "placements", "Placement", 0xd24733aa574d4b09ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, placements ), (uint32_t) sizeof( Placement ), (uint32_t) offsetof( Save, placements.count ), 0xffffffffu, &PlacementTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Placement> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "log", "log", "LogEntry", 0x125073191daf5431ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) LogEntryAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) LogEntryEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Save, log ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Save, log.count ), 0xffffffffu, &LogEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<LogEntry *> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "scores", "scores", "int32", 0x01986b0b27400fb2ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, scores ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Save, scores.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
 };
 inline const TableTypeInfo SaveTableInfo = { "Save", (uint32_t) sizeof( Save ), 3, SaveTableFields, +[]( void * p ) { SaveReset( *(Save *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SaveTableType() { return &SaveTableInfo; }
 
 inline const TableFieldInfo PointTableFields[] = {
-    { "x", "x", "int32", 0xaf63f54c86021707ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, x ), (uint32_t) sizeof( Point::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "y", "y", "int32", 0xaf63f44c86021554ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, y ), (uint32_t) sizeof( Point::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "x", "x", "int32", 0xaf63f54c86021707ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, x ), (uint32_t) sizeof( Point::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "y", "y", "int32", 0xaf63f44c86021554ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, y ), (uint32_t) sizeof( Point::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo PointTableInfo = { "Point", (uint32_t) sizeof( Point ), 2, PointTableFields, +[]( void * p ) { PointReset( *(Point *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PointTableType() { return &PointTableInfo; }
 
 inline const TableFieldInfo MixedTableFields[] = {
-    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, grades ), (uint32_t) sizeof( Grade ), (uint32_t) offsetof( Mixed, grades.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Grade> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "perms", "perms", "Perm", 0x4af2ed8470862ea8ull, 9, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, perms ), (uint32_t) sizeof( Perm ), (uint32_t) offsetof( Mixed, perms.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerm( (int) v ); }, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Perm> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "hits", "hits", "Hit", 0x732dfbcc9b0cf0bbull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, hits ), (uint32_t) sizeof( Hit ), (uint32_t) offsetof( Mixed, hits.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "point"; case 2: return "damage"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x73feab3544c345b1ull; case 2: return 0x7f6308be8ab37fc0ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Hit[] = { { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hit, damage ), (uint32_t) sizeof( Hit::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Hit, point ), &PointTableInfo, NULL, 8 }, { (uint32_t) offsetof( Hit, damage ), NULL, &arm_fields_Hit[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Hit, type ), (uint32_t) sizeof( Hit::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Hit> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "bounds", "bounds", "int32", 0x52f60c4caef0b768ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, bounds ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Mixed, bounds.count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, grades ), (uint32_t) sizeof( Grade ), (uint32_t) offsetof( Mixed, grades.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Grade> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "perms", "perms", "Perm", 0x4af2ed8470862ea8ull, 9, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, perms ), (uint32_t) sizeof( Perm ), (uint32_t) offsetof( Mixed, perms.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerm( (int) v ); }, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Perm> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "hits", "hits", "Hit", 0x732dfbcc9b0cf0bbull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, hits ), (uint32_t) sizeof( Hit ), (uint32_t) offsetof( Mixed, hits.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "point"; case 2: return "damage"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x73feab3544c345b1ull; case 2: return 0x7f6308be8ab37fc0ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Hit[] = { { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hit, damage ), (uint32_t) sizeof( Hit::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Hit, point ), &PointTableInfo, NULL, 8 }, { (uint32_t) offsetof( Hit, damage ), NULL, &arm_fields_Hit[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Hit, type ), (uint32_t) sizeof( Hit::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Hit> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "bounds", "bounds", "int32", 0x52f60c4caef0b768ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, bounds ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Mixed, bounds.count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
 };
 inline const TableTypeInfo MixedTableInfo = { "Mixed", (uint32_t) sizeof( Mixed ), 4, MixedTableFields, +[]( void * p ) { MixedReset( *(Mixed *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MixedTableType() { return &MixedTableInfo; }

@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -468,6 +475,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -9943,7 +9953,10 @@ inline bool BytesLoadBody( TableReader & r, const TableNodeMap & nodes, Bytes & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10191,7 +10204,10 @@ inline bool IntsLoadBody( TableReader & r, const TableNodeMap & nodes, Ints & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10504,7 +10520,10 @@ inline bool FloatsLoadBody( TableReader & r, const TableNodeMap & nodes, Floats 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11933,7 +11952,7 @@ inline const Bytes * BytesLoad( uint8_t * region, int64_t region_bytes, const ui
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Bytes * root = BytesLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -12026,6 +12045,7 @@ inline bool BytesLoadBuilderTolerant( BytesBuilder & builder, const uint8_t * wi
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -12075,6 +12095,7 @@ inline bool BytesLoadBuilderTolerant( BytesBuilder & builder, const uint8_t * wi
     bool ok = !nodes.refused && BytesLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -12111,7 +12132,7 @@ inline bool BytesLoadBuilder( BytesBuilder & builder, const uint8_t * wire_file,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = BytesLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -12153,7 +12174,7 @@ inline const Bytes * BytesReadStrict( const uint8_t * wire_file, int64_t wire_fi
     BytesBuilder builder( allocator );
     TableReport report;
     const bool decoded = BytesLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -12873,7 +12894,7 @@ inline const Ints * IntsLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Ints * root = IntsLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -12966,6 +12987,7 @@ inline bool IntsLoadBuilderTolerant( IntsBuilder & builder, const uint8_t * wire
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -13015,6 +13037,7 @@ inline bool IntsLoadBuilderTolerant( IntsBuilder & builder, const uint8_t * wire
     bool ok = !nodes.refused && IntsLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -13051,7 +13074,7 @@ inline bool IntsLoadBuilder( IntsBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = IntsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -13093,7 +13116,7 @@ inline const Ints * IntsReadStrict( const uint8_t * wire_file, int64_t wire_file
     IntsBuilder builder( allocator );
     TableReport report;
     const bool decoded = IntsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -13813,7 +13836,7 @@ inline const Floats * FloatsLoad( uint8_t * region, int64_t region_bytes, const 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Floats * root = FloatsLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -13906,6 +13929,7 @@ inline bool FloatsLoadBuilderTolerant( FloatsBuilder & builder, const uint8_t * 
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -13955,6 +13979,7 @@ inline bool FloatsLoadBuilderTolerant( FloatsBuilder & builder, const uint8_t * 
     bool ok = !nodes.refused && FloatsLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -13991,7 +14016,7 @@ inline bool FloatsLoadBuilder( FloatsBuilder & builder, const uint8_t * wire_fil
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = FloatsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -14033,7 +14058,7 @@ inline const Floats * FloatsReadStrict( const uint8_t * wire_file, int64_t wire_
     FloatsBuilder builder( allocator );
     TableReport report;
     const bool decoded = FloatsLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -14146,7 +14171,10 @@ inline bool BytesLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, By
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -14401,7 +14429,10 @@ inline bool IntsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Int
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -14721,7 +14752,10 @@ inline bool FloatsLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, F
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -17045,22 +17079,22 @@ extern const TableTypeInfo IntsTableInfo;
 extern const TableTypeInfo FloatsTableInfo;
 
 inline const TableFieldInfo BytesTableFields[] = {
-    { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, past ), (uint32_t) sizeof( Bytes::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "data", "data", "uint8", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Bytes, data ), (uint32_t) sizeof( uint8_t ), (uint32_t) offsetof( Bytes, data.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<uint8_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Bytes, past ), (uint32_t) sizeof( Bytes::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo BytesTableInfo = { "Bytes", (uint32_t) sizeof( Bytes ), 2, BytesTableFields, +[]( void * p ) { BytesReset( *(Bytes *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BytesTableType() { return &BytesTableInfo; }
 
 inline const TableFieldInfo IntsTableFields[] = {
-    { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, past ), (uint32_t) sizeof( Ints::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "values", "values", "int32", 0x21277bcf1a4d67fbull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ints, values ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Ints, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ints, past ), (uint32_t) sizeof( Ints::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo IntsTableInfo = { "Ints", (uint32_t) sizeof( Ints ), 2, IntsTableFields, +[]( void * p ) { IntsReset( *(Ints *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * IntsTableType() { return &IntsTableInfo; }
 
 inline const TableFieldInfo FloatsTableFields[] = {
-    { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "", TableDocNone, 0, NULL, true },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, past ), (uint32_t) sizeof( Floats::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "values", "values", "float32", 0x21277bcf1a4d67fbull, 10, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Floats, values ), (uint32_t) sizeof( float ), (uint32_t) offsetof( Floats, values.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<float> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Floats, past ), (uint32_t) sizeof( Floats::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo FloatsTableInfo = { "Floats", (uint32_t) sizeof( Floats ), 2, FloatsTableFields, +[]( void * p ) { FloatsReset( *(Floats *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FloatsTableType() { return &FloatsTableInfo; }

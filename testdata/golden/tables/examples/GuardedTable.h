@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -461,6 +468,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -9604,7 +9614,10 @@ inline bool PatrolLoadBody( TableReader & r, const TableNodeMap & nodes, Patrol 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10437,7 +10450,7 @@ inline const Patrol * PatrolLoad( uint8_t * region, int64_t region_bytes, const 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Patrol * root = PatrolLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -10529,6 +10542,7 @@ inline bool PatrolLoadBuilderTolerant( PatrolBuilder & builder, const uint8_t * 
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -10574,6 +10588,7 @@ inline bool PatrolLoadBuilderTolerant( PatrolBuilder & builder, const uint8_t * 
     bool ok = PatrolLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -10607,7 +10622,7 @@ inline bool PatrolLoadBuilder( PatrolBuilder & builder, const uint8_t * wire_fil
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = PatrolLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -10649,7 +10664,7 @@ inline const Patrol * PatrolReadStrict( const uint8_t * wire_file, int64_t wire_
     PatrolBuilder builder( allocator );
     TableReport report;
     const bool decoded = PatrolLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -10796,7 +10811,10 @@ inline bool PatrolLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, P
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11613,12 +11631,12 @@ inline const TableTypeInfo * PatrolTableType();
 extern const TableTypeInfo PatrolTableInfo;
 
 inline const TableFieldInfo PatrolTableFields[] = {
-    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false },
-    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false },
-    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL, false },
-    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false },
+    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false },
+    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false },
+    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL, false, false },
+    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false, false },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo PatrolTableInfo = { "Patrol", (uint32_t) sizeof( Patrol ), 6, PatrolTableFields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PatrolTableType() { return &PatrolTableInfo; }
