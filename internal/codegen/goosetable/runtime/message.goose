@@ -36,6 +36,7 @@ let MsgRefuseMessageFormAsFile: i64 = 5;
 let MsgRefuseBatchTooLarge: i64 = 6;
 let MsgRefuseNonFiniteFloat: i64 = 7;
 let MsgRefuseInvalidValue: i64 = 8;
+let MsgRefuseIntegrityMismatch: i64 = 9;
 
 fn msg_reason_name(code: i64) -> const u8[:] {
     match code {
@@ -48,6 +49,7 @@ fn msg_reason_name(code: i64) -> const u8[:] {
         6 => "batch_too_large",
         7 => "non_finite_float",
         8 => "invalid_value",
+        9 => "integrity_mismatch",
         _ => "???",
     }
 }

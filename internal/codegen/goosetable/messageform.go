@@ -1116,6 +1116,9 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 			e.p(1, "let size = %sMeasureMessages(values, report);", n)
 			e.p(1, "if size < 0 { return -1; }")
 		}
+		if !measure && st.Integrity == "crc32c" {
+			e.p(1, "let start = out.len;")
+		}
 		e.p(1, "var w = schema_rt::MsgWriter { .. };")
 		if measure {
 			e.p(1, "w.measure = true;")
@@ -1131,6 +1134,14 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 		e.p(2, "i += 1;")
 		e.p(1, "}")
 		e.p(1, "schema_rt::msg_align(w, out);")
+		if st.Integrity == "crc32c" {
+			if measure {
+				e.p(1, "schema_rt::msg_put(w, out, 0, 32);")
+			} else {
+				e.p(1, "let sum = schema_rt::crc32c(out, start, out.len);")
+				e.p(1, "schema_rt::msg_put(w, out, sum as u64, 32);")
+			}
+		}
 		e.p(1, "return w.bits / 8;")
 		e.p(0, "}\n")
 	}
@@ -1151,11 +1162,21 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "report.reason = schema_rt::MsgRefuseNewerForm;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
+	if st.Integrity == "crc32c" {
+		e.p(1, "if !schema_rt::integrity_holds(data, 2) {")
+		e.p(2, "report.malformed = true;")
+		e.p(2, "report.reason = schema_rt::MsgRefuseIntegrityMismatch;")
+		e.p(2, "return -1;")
+		e.p(1, "}")
+		e.p(1, "let batch = data[0..data.len - 4];")
+	} else {
+		e.p(1, "let batch = data;")
+	}
 	e.p(1, "if !voc.announced {")
 	e.p(2, "report.reason = schema_rt::MsgRefuseNoVocabulary;")
 	e.p(2, "return -1;")
 	e.p(1, "}")
-	e.p(1, "var r = schema_rt::MsgReader { b: data, pos: 8, end: data.len * 8, voc: voc, .. };")
+	e.p(1, "var r = schema_rt::MsgReader { b: batch, pos: 8, end: batch.len * 8, voc: voc, .. };")
 	e.p(1, "let count = (schema_rt::msg_get(r, 8) as! i64) + 1;")
 	e.p(1, "if !r.ok {")
 	e.p(2, "report.malformed = true;")
