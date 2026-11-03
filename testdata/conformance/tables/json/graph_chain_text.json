@@ -1,0 +1,180 @@
+{
+  "name": "chain",
+  "version": 1,
+  "head": {
+    "value": 1,
+    "name": "n1",
+    "next": {
+      "value": 2,
+      "name": "n2",
+      "next": {
+        "value": 3,
+        "name": "n3",
+        "next": {
+          "value": 4,
+          "name": "n4",
+          "next": {
+            "value": 5,
+            "name": "n5",
+            "next": {
+              "value": 6,
+              "name": "n6",
+              "next": {
+                "value": 7,
+                "name": "n7",
+                "next": {
+                  "value": 8,
+                  "name": "n8",
+                  "next": {
+                    "value": 9,
+                    "name": "n9",
+                    "next": {
+                      "value": 10,
+                      "name": "n10",
+                      "next": {
+                        "value": 11,
+                        "name": "n11",
+                        "next": {
+                          "value": 12,
+                          "name": "n12",
+                          "next": {
+                            "value": 13,
+                            "name": "n13",
+                            "next": {
+                              "value": 14,
+                              "name": "n14",
+                              "next": {
+                                "value": 15,
+                                "name": "n15",
+                                "next": {
+                                  "value": 16,
+                                  "name": "n16",
+                                  "next": {
+                                    "value": 17,
+                                    "name": "n17",
+                                    "next": {
+                                      "value": 18,
+                                      "name": "n18",
+                                      "next": {
+                                        "value": 19,
+                                        "name": "n19",
+                                        "next": {
+                                          "&node": 1,
+                                          "value": 20,
+                                          "name": "n20",
+                                          "next": {
+                                            "value": 21,
+                                            "name": "n21",
+                                            "next": {
+                                              "value": 22,
+                                              "name": "n22",
+                                              "next": {
+                                                "value": 23,
+                                                "name": "n23",
+                                                "next": {
+                                                  "value": 24,
+                                                  "name": "n24",
+                                                  "next": {
+                                                    "value": 25,
+                                                    "name": "n25",
+                                                    "next": {
+                                                      "value": 26,
+                                                      "name": "n26",
+                                                      "next": {
+                                                        "value": 27,
+                                                        "name": "n27",
+                                                        "next": {
+                                                          "value": 28,
+                                                          "name": "n28",
+                                                          "next": {
+                                                            "value": 29,
+                                                            "name": "n29",
+                                                            "next": {
+                                                              "value": 30,
+                                                              "name": "n30",
+                                                              "next": {
+                                                                "value": 31,
+                                                                "name": "n31",
+                                                                "next": {
+                                                                  "value": 32,
+                                                                  "name": "n32",
+                                                                  "next": {
+                                                                    "value": 33,
+                                                                    "name": "n33",
+                                                                    "next": {
+                                                                      "value": 34,
+                                                                      "name": "n34",
+                                                                      "next": {
+                                                                        "value": 35,
+                                                                        "name": "n35",
+                                                                        "next": {
+                                                                          "value": 36,
+                                                                          "name": "n36",
+                                                                          "next": {
+                                                                            "value": 37,
+                                                                            "name": "n37",
+                                                                            "next": {
+                                                                              "value": 38,
+                                                                              "name": "n38",
+                                                                              "next": {
+                                                                                "value": 39,
+                                                                                "name": "n39",
+                                                                                "next": {
+                                                                                  "value": 40,
+                                                                                  "name": "n40",
+                                                                                  "next": null
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tree": null,
+  "settings": null,
+  "alias": {
+    "&node": 1
+  },
+  "ground": {
+    "depth": 0,
+    "head": null
+  },
+  "layers": [],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}

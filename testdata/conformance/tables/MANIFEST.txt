@@ -1302,3 +1302,28 @@ framing node_chain_two                        graphdemo ListNode testdata/wire/t
 unit widelist tables/widelist
 instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
 cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook
+
+# THE CANONICAL WRITER'S ROWS (docs/SPEC-TABLES.md §16.14): each instance is
+# built to separate a choice an implementation could make differently, so the
+# json-write surface, which compares bytes, goes red on the leg that makes it.
+# map_key_order: string, signed and unsigned keys of every map in Fleet given
+# out of order — "7" before "10", "-32768" before "-3", "" first, a proper
+# prefix before its extension, and "｡" (EF BD A1) before "😀" (F0 9F 98 80),
+# the pair UTF-16 code unit order reverses. map_text_order: the same over
+# Text's three maps, with every escape class in a key and in a value, base64
+# at every padding length and the int32 extremes as keys. feature_key_order:
+# the unbounded `map[string]V` key and an optional map, with a pre-epoch
+# timestamp one nanosecond before 1970. feature_stamp_frac: a fraction with
+# trailing zeros and an offset spelled `+00:00`, which write as `.12` and `Z`.
+# text_float32_double_round: the float32 0x15AE43FE and 0x15AE43FD, the only
+# positive float32 values whose `%.*g` loop stops at a different precision
+# when the read-back is twice rounded (through a double, then narrowed), with
+# the integer extremes of ProfileConfig. graph_chain_text: a 40-node chain,
+# indented 2 spaces a level, with a shared node defined deep in `head` and
+# referenced from `alias`.
+instance map_key_order             mapdemo           Fleet         testdata/wire/tables/map_key_order.bin
+instance map_text_order            mapdemo           Text          testdata/wire/tables/map_text_order.bin
+instance feature_key_order         featurewitnesses  Root          testdata/wire/tables/feature_key_order.bin
+instance feature_stamp_frac        featurewitnesses  Root          testdata/wire/tables/feature_stamp_frac.bin
+instance text_float32_double_round tabledemo         ProfileConfig testdata/wire/tables/text_float32_double_round.bin
+instance graph_chain_text          graphdemo         Scene         testdata/wire/tables/graph_chain_text.bin
