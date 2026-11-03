@@ -135,7 +135,7 @@ Rust update: the full uncapped fleet nightly passed all 24 required phases at 8b
 
 Java update: repeated-map-key widening and required-blob shared report accounting are repaired, including repeated-load, report-reset and null-report regression coverage. Caller-built equal strings and retained shared-wire refusal are covered. Complete retaining/fuzzer acceptance remains open. JavaScript update: package-derived UnitRegistry name collisions are repaired, with emitted-name regression and packet-only scope control. The managed-load fuzz driver now uses the matching mutable-reader contract while retaining all fixed and message roots. Final full-roster acceptance and native replacement controls remain open.
 
-Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Cursor and node-table length checks now validate remaining extent before addition; the three original overflow inputs are in the shared corpus and pass native JIT/AOT regression tests. The full-roster mixed mutable-reader profile and native second-arm lineage replacement are integrated. Remaining: cook-open/write proof and full nightly acceptance. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage. Enum collection references outside the ID table now report malformed, with 21-case native coverage and an exact shared regression input. Unknown-enum retention accounting is still under repair; full nightly acceptance remains open. Their complete retaining/fuzzer acceptance remains open.
+Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Cursor and node-table length checks now validate remaining extent before addition; the three original overflow inputs are in the shared corpus and pass native JIT/AOT regression tests. The full-roster mixed mutable-reader profile and native second-arm lineage replacement are integrated. Cook-open cursor handling and guarded cook-write support are qualified by native JIT/AOT tests and all five cook conformance surfaces, with no absent cases. Remaining: full nightly acceptance. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage. Enum collection references outside the ID table now report malformed, with 21-case native coverage and an exact shared regression input. Unknown-enum retention accounting is still under repair; full nightly acceptance remains open. Their complete retaining/fuzzer acceptance remains open.
 
 Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. Rust full-roster nightly acceptance is complete at its recorded revision; the other eight acceptance cells remain open pending their complete runs. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
 
@@ -149,12 +149,12 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | text form: JSON in and out of a table | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | reflection descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | block form, read side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| cook open | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | build version | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | variable class (pointers, the flat node table) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | text form, variable class | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | block form, build side | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| cook write in the runtime | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | fixed-point and 128-bit scalars on the table wire | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | unions whose arms are tables | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | arrays of pointers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 84% | 96% | 96% | 100% | 93% | 96% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 84% | 96% | 96% | 100% | 93% | 96% | 93% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
