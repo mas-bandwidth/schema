@@ -121,6 +121,15 @@ unless plain.unknown==1 and plain.retain_lost==0,do: raise("plain enum pin "<>in
 unless kept.unknown==1 and kept.retain_lost==1 and kept.retained==0,do: raise("retained enum pin "<>inspect(kept))
 `, hex.EncodeToString(enumWire))
 
+	out := runCompleteUnitProbe(t, u, probe)
+	if !strings.Contains(out, "PINNED_NESTED_FLOAT_OK") {
+		t.Fatalf("native pinned payloads: %s", out)
+	}
+}
+
+func runCompleteUnitProbe(t *testing.T, u *ir.Unit, probe string) string {
+	t.Helper()
+
 	// Compile the complete unit together: its fixed structs have cross-file
 	// dependencies, so alphabetic serial requires are not a valid build.
 	dir := t.TempDir()
@@ -146,7 +155,8 @@ unless kept.unknown==1 and kept.retain_lost==1 and kept.retained==0,do: raise("r
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	raw, e := cmd.CombinedOutput()
 	out := string(raw)
-	if e != nil || !strings.Contains(out, "PINNED_NESTED_FLOAT_OK") || strings.Contains(out, "warning:") {
-		t.Fatalf("native pinned float: %v\n%s", e, out)
+	if e != nil || strings.Contains(out, "warning:") {
+		t.Fatalf("native complete unit: %v\n%s", e, out)
 	}
+	return out
 }

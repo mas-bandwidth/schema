@@ -243,3 +243,6 @@ enum_array_ref_outside tabledemo RootConfig testdata/wire/tables/fuzz-vectors/en
 
 # An unknown enum variant in a known array slot is excluded retention loss.
 enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_foreign_variant.bin
+
+# A nested union arm retains unknown fields in its selected inner table body.
+retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin

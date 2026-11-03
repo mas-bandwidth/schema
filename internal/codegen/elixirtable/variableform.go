@@ -501,18 +501,22 @@ func withoutRetainUnions(retain string) string {
 // pointer and enum arms, while the generic reader handles only the remaining kinds.
 // Every clause must be found.
 func withRetainArmKinds(retain string, kinds map[string]bool) string {
-	table, pointer, enum, other := kinds["table"], kinds["pointer"], kinds["enum"], false
+	table, pointer, enum, list, union, other := kinds["table"], kinds["pointer"], kinds["enum"], kinds["list"], kinds["union"], false
 	for k := range kinds {
-		if k != "table" && k != "pointer" && k != "enum" {
+		if k != "table" && k != "pointer" && k != "enum" && k != "list" && k != "union" {
 			other = true
 		}
 	}
 	heads := map[string]bool{
 		"  defp arm_content_retain(%{t: :table}":        table,
+		"  defp arm_content_retain(%{t: :list}":         list,
+		"  defp arm_content_retain(%{t: :union}":        union,
 		"  defp arm_content_retain(a,":                  other || pointer || enum,
 		"  defp read_arm_payload_retain(%{t: :table}":   table,
 		"  defp read_arm_payload_retain(%{t: :pointer}": pointer,
 		"  defp read_arm_payload_retain(%{t: :enum}":    enum,
+		"  defp read_arm_payload_retain(%{t: :list}":    list,
+		"  defp read_arm_payload_retain(%{t: :union}":   union,
 		"  defp read_arm_payload_retain(a,":             other,
 	}
 	found := map[string]bool{}
@@ -5878,6 +5882,15 @@ const variableRetainSource = `
     {[body, <<0>>], s}
   end
 
+  defp arm_content_retain(%{t: :list} = a, value, s, arm_path) do
+    elements = pad_fixed(a, value || [])
+    {body, s} = save_elements_retain(a, elements, 0, s, arm_path, [])
+    {[<<a.elem_kind>>, leb_encode(length(elements)), body], s}
+  end
+
+  defp arm_content_retain(%{t: :union} = a, value, s, arm_path),
+    do: arm_header_retain(a.elem, a.ordinal, value, s, arm_path)
+
   defp arm_content_retain(a, v, {idx_map, ids, order, retain, report}, _arm_path) do
     {content, ids, order} = arm_content(a, v, idx_map, ids, order)
     {content, {idx_map, ids, order, retain, report}}
@@ -5899,6 +5912,11 @@ const variableRetainSource = `
 
   defp emit_element_retain(%{elem_kind: 15} = f, e, s, path, index),
     do: arm_header_retain(f.elem, f.ordinal, e, s, path ++ [{f.ordinal, index}])
+
+  defp emit_element_retain(f, value, {idx_map, ids, order, retain, report}, _path, _index) do
+    {element, ids, order} = emit_element(f, value, idx_map, ids, order)
+    {element, {idx_map, ids, order, retain, report}}
+  end
 
   # emit_retain_tail re-emits the records whose path names the body being
   # written, in the order retained (§6.6).
@@ -6480,6 +6498,24 @@ const variableRetainSource = `
   end
 
   defp read_arm_payload_retain(%{t: :enum} = a, name, inner, _framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_payload_retain(a, inner, nodes, ids, report, retain, arm_path) do
+      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+      {:halt, value, report, retain} -> {:halt, {name, value}, report, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :list} = a, name, _inner, framed, c, arm_path) do
+    {nodes, ids, report, retain} = c
+
+    case read_payload_retain(a, framed, nodes, ids, report, retain, arm_path) do
+      {:cont, :inert, report, retain} -> {:cont, {name, inert_empty(a)}, report, retain}
+      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+    end
+  end
+
+  defp read_arm_payload_retain(%{t: :union} = a, name, inner, _framed, c, arm_path) do
     {nodes, ids, report, retain} = c
 
     case read_payload_retain(a, inner, nodes, ids, report, retain, arm_path) do
