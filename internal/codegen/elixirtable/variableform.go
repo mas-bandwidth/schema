@@ -2154,6 +2154,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # declared size clamps.
   defp read_payload(%{t: :bytes} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
+      {_len, arr} when byte_size(arr) < 2 ->
+        {:cont, :inert, report}
+
       {_len, arr} ->
         case arr do
           <<6, count_rest::binary>> ->
@@ -6097,6 +6100,19 @@ const variableRetainSource = `
     hex = id |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(16, "0")
     desc.name <> ".0x" <> hex
   end
+
+  # Inert headers preserve both the prior value and its retained records.
+  defp read_payload_retain(
+         %{t: t},
+         <<len, body::binary>>,
+         _nodes,
+         _ids,
+         report,
+         retain,
+         _path
+       )
+       when t in [:list, :map, :keyed, :bytes] and len < 2 and byte_size(body) == len,
+       do: {:cont, :inert, report, retain}
 
   # an array of tables: element i is the step pair {ordinal, i}. A later
   # occurrence of the field resets the earlier one's records (§6.6).
