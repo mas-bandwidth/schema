@@ -1,4 +1,4 @@
-// TestUncoveredPaths is the card's entry point from the package's public
+// TestUncoveredPathsPublic is the card's entry point from the package's public
 // side: every test the package already owns runs under it, so the one name
 // reaches the whole surface the coverage profile measures.
 package tablewire_test
@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestUncoveredPaths(t *testing.T) {
+func TestUncoveredPathsPublic(t *testing.T) {
 	t.Parallel()
 	run := map[string]func(*testing.T){
 		"was arm announcement":             TestAWasRenamedArmAnnouncesTheOldNamesHash,
