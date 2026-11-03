@@ -1536,6 +1536,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::text_ill_formed: return "text_ill_formed";
         case blockdemo::count_over_bound: return "count_over_bound";
         case blockdemo::length_over_bound: return "length_over_bound";
+        case blockdemo::storage_over_cap: return "storage_over_cap";
     }
     return "?";
 }

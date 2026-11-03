@@ -506,6 +506,9 @@ fn jv_rfc3339(s: const u8[:]) -> i64, bool {
     if seconds < -9223372037 || seconds > 9223372036 { return 0, false; }
     if seconds == -9223372037 && nanos < 145224192 { return 0, false; }
     if seconds == 9223372036 && nanos > 854775807 { return 0, false; }
+    // a negative second with a fraction is summed from the second above it,
+    // so the product never passes int64's minimum (the domain's first second)
+    if seconds < 0 && nanos > 0 { return (seconds + 1) * 1000000000 - (1000000000 - nanos), true; }
     return seconds * 1000000000 + nanos, true;
 }
 
