@@ -31,8 +31,8 @@ name (the toolchain gate, issue #599). The fleet installs the same pin.
 ## THE TYPE MAPPING
 
 One packet module per schema file, `<Base>.lobster`, and a separate
-`<Base>Table.lobster` carrying its reflection declarations and any table codecs. Every module of a
-unit declares the same `namespace <package>`, so a consumer spells a
+`<Base>Table.lobster` carrying its reflection declarations and any table codecs.
+Every module of a unit declares the same `namespace <package>`, so a consumer spells a
 declaration `<package>.<Name>` and one module names another's declarations
 bare. A value is a Lobster `class` (a mutable object, copied by reference)
 with EVERY field present from construction (the storage principle, SPEC
