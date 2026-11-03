@@ -46,6 +46,10 @@ walk)
 	source=internal/codegen/luautable/runtime/schema_json.luau
 	sed 's/    if fd.key == key then return fd end/    if fd.key == key and fd.raw.o ~= 0 then return fd end/' "$source" > "$out/runtime.luau"
 	;;
+cycle)
+	source=internal/codegen/luautable/runtime/schema_load.luau
+	sed 's/^	if _numberingGood and not report.malformed and cyclic() then$/	if false then/' "$source" > "$out/runtime.luau"
+	;;
 framing)
 	source=internal/codegen/luautable/runtime/schema_load.luau
 	sed '/^	if count > ID_TABLE_BOUND then report.malformed = true; return nil end$/d' "$source" > "$out/runtime.luau"
@@ -112,6 +116,7 @@ case "$mode" in
 report) want="report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
+cycle) want="framing " ; green="wire report" ;;
 esac
 if [ "$red" != "$want" ]; then
 	echo "NEGATIVE CONTROL FAILED: the luau $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2
