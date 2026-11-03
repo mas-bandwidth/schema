@@ -324,7 +324,7 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 // layout constant, and the write — the header, the record at the data part's
 // base, and the one-entry attribution part.
 func emitCookRoot(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
-	if !st.IsTable || st.IsMapEntry() || ir.VariableTables(u)[st.Name] {
+	if !st.IsTable || st.IsMapEntry() || !st.CarriesForm("cook") || ir.VariableTables(u)[st.Name] {
 		return
 	}
 	if ok, _ := cookWritable(u, st, map[string]bool{}); !ok {

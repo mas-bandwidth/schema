@@ -43,6 +43,7 @@ fn fixed_evolve_refusal_name(code: i64) -> const u8[:] {
         6 => "truncated",
         14 => "invalid_value",
         18 => "clamped",
+        22 => "integrity_mismatch",
         25 => "previous_form",
         26 => "newer_form",
         27 => "message_form_as_file",
@@ -73,6 +74,19 @@ fn fixed_evolve_refuse(report: FixedEvolveReport&, code: i64, malformed: bool) -
 // fixed_evolve_header holds a file to §2's framing before the hash selects a
 // plan: the form byte before the length, the twenty-byte minimum, the
 // reserved zeros and the layout's length. 0 is none.
+fn fixed_evolve_open_integrity(b: const u8[:], report: FixedEvolveReport&) -> i64 {
+    if b.len < 1 { return fixed_evolve_refuse(report, FixedRefuseTruncated, true); }
+    if b[0] != FixedForm {
+        if b[0] == 1 { return fixed_evolve_refuse(report, FixedRefusePreviousForm, false); }
+        if b[0] == 2 { return fixed_evolve_refuse(report, FixedRefuseMessageFormAsFile, false); }
+        return fixed_evolve_refuse(report, FixedRefuseNewerForm, false);
+    }
+    if !integrity_holds(b, 1) {
+        return fixed_evolve_refuse(report, FixedRefuseIntegrityMismatch, true);
+    }
+    return 0;
+}
+
 fn fixed_evolve_header(b: const u8[:], report: FixedEvolveReport&) -> i64 {
     if b.len < 1 { return fixed_evolve_refuse(report, FixedRefuseTruncated, true); }
     if b[0] != FixedForm {
