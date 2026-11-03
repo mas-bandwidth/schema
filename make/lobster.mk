@@ -70,7 +70,8 @@ update-goldens-lobster: ;
 # port joins the builtins (compiler/target_lobster.go). A unit the target
 # refuses is recorded as its refusal line, never dropped in silence.
 LOBSTER_MANIFEST := testdata/conformance/tables/MANIFEST.txt
-build/conformance-lobster: $(LOBSTER_MANIFEST) make/lobster.mk
+build/conformance-lobster: $(LOBSTER_MANIFEST) make/lobster.mk $(GO_SOURCES) $(CONFORMANCE_UNIT_SCHEMAS) \
+	$(filter internal/codegen/lobster/% internal/codegen/lobstertable/%,$(EMBED_SOURCES))
 	@rm -rf $@ && mkdir -p $@
 	go build -o build/schema-lobster ./cmd/schema
 	@grep '^unit ' $(LOBSTER_MANIFEST) | while read -r _ key paths; do \

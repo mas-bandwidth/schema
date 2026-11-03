@@ -1341,3 +1341,7 @@ cards-cs-retain-negative-control: build-conformance-cs build/conformance-harness
 	@echo 'cards C# negative control: dropping the Card retention turns exactly the retain arm red'
 
 test-cs: cards-cs-retain-negative-control
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-cs/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

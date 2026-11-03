@@ -1496,8 +1496,12 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
                 if !json_literal(jr, "null") { return false; }
                 if !F(jr, rec, index, JsonOpAbsent, depth) { return false; }
             } else if got != shapes[index] {
+                // the wrong JSON type for the kind: skipped and counted, and
+                // the KEY is still presence (§16.2), so an optional field is
+                // present at the value it already held
                 jr.rep.kind_mismatch += 1;
                 if !json_skip_value(jr, depth + 1) { return false; }
+                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }
             } else {
                 if !F(jr, rec, index, JsonOpRead, depth) {
                     if jr.zero && jr.rep.reason == 0 {
