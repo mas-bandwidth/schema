@@ -268,6 +268,11 @@ local function readElement(ctx: any, owner: string, fd: any, e: any, at: number,
 		return inst
 	elseif s == "union" then
 		return readUnion(ctx, e.t, at)
+	elseif s == "str" and (e.bound or 0) == 0 then
+		-- an UNBOUNDED element (§2.13.1, bound 0) is one eight-byte slot
+		-- naming a blob record; a null slot is the empty string
+		local blob = blobAt(ctx, at)
+		return if blob == nil then "" else buffer.tostring(blob)
 	elseif s == "str" then
 		return textAt(ctx, e, at, nil)
 	end

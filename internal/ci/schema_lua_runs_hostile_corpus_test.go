@@ -379,6 +379,9 @@ func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	// Accepted by both, but the subnormal float's canonical text differs: a
 	// reader/writer spelling bug in the Lua float32 path.
 	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}
+	// A text list past its total on the wire (docs/SPEC-TABLES.md §2.13): the
+	// Lua load refuses the whole file where the engine keeps the prefix.
+	out["wire-text-total-past"] = luaHostileCarried{"refuse", "damaged", "schema-lua-wire-text-list-total-r"}
 	return out
 }
 

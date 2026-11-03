@@ -22,7 +22,8 @@
 // THE SURFACES (test/conformance/harness/run.go). The table wire, form 1
 // (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-GOOSE.md, THE TABLE WIRE):
 //   wire         load every instance and save it back, byte for byte
-//   report       load every report row, print §4's counters and verdict
+//   report       load every report row, print §4's counters and verdict,
+//                then the §16 text of the value when the read reads
 //   retain       load with retention (§6.6), print the load's three counters
 //                and the save's retain_lost
 //   retain-save  the bytes that retaining save writes back
@@ -30,9 +31,12 @@
 //   message      AnnounceRead the connection's announcement, LoadMessages the
 //                batch against it, SaveMessages what landed: the bytes
 // The JSON text form (docs/SPEC-TABLES.md §16.2, §16.3):
-//   json-read    a strict text read -> form-1 save, against the pinned wire
+//   json-read    a tolerant text read -> form-1 save, against the pinned wire:
+//                json-read and json-hostile call one entry point, the
+//                tolerant read (test/conformance/README.md)
 //   json-write   form-1 load -> the canonical text, against the pinned text
-//   json-hostile a tolerant read of <tree>/<root>.json and its report: through
+//   json-hostile a tolerant read of <tree>/<root>.json, its report and the
+//                §16 text of the value it left: through
 //                the unit's text glue for a root it names (unit.goose, which
 //                the shell driver copies from units/<unit>.goose, or the empty
 //                unit.goose beside this file), and through the flat value
@@ -86,7 +90,10 @@ fn load_file(path: const u8[:], out: u8[>..]&) {
     }
 }
 
-// surface_report: §4's counters and verdict, `u,k,w,c,d,malformed,verdict`.
+// surface_report: §4's counters and verdict, `u,k,w,c,d,malformed,verdict`,
+// then the §16 text of the value when the read reads. A root the glue writes
+// no text for answers the line alone beside its absence: the verdict is held
+// and the value is the missing feature (test/conformance/README.md).
 fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -96,10 +103,21 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
-        schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-        let text = str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
-                       report.duplicate, ",", bool_word(report.malformed), ",",
-                       if report.refused || report.non_finite { "refused" } else { "read" }, "\n");
+        let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        let refused = report.refused || report.non_finite;
+        var text: u8[>..] = [];
+        text.append(str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
+                        report.duplicate, ",", bool_word(report.malformed), ",",
+                        if refused { "refused" } else { "read" }, "\n"));
+        if !refused && !report.malformed && at >= 0 {
+            var json: u8[>..] = [];
+            if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 {
+                answer(f[1], text);
+                absent(f[1], "");
+                continue;
+            }
+            text.append(json);
+        }
         answer(f[1], text);
     }
 }
@@ -228,7 +246,8 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
 }
 
 // surface_json_hostile: the verdict of a tolerant read of <tree>/<root>.json
-// for every json-hostile row of the unit, `u,k,w,c,d,false,read` or `refused`
+// for every json-hostile row of the unit, `u,k,w,c,d,false,read` and the §16
+// text of the value it left, or `refused`
 // (test/conformance/README.md): through the unit's text glue for a root it
 // names (its typed <Root>FromJsonTolerant), and through the flat value table
 // for every other root.

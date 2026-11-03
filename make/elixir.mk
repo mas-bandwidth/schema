@@ -1828,6 +1828,46 @@ tables-elixir-wire-fuzz-refusal-negative-control: build/conformance-harness buil
 
 test-elixir: tables-elixir-wire-fuzz-refusal tables-elixir-wire-fuzz-refusal-negative-control
 
+# WHAT A READ REACHES (docs/SPEC-TABLES.md §4), Elixir side: damage ends the
+# body it is met in and the enclosing body reads on, so a non-finite float
+# after damage in a nested body is reached and refuses the read. The pinned
+# `reach_` vectors (testdata/wire/tables/fuzz-vectors/INDEX.txt) ride every
+# wire-fuzz run. Their control compiles tabledemo from a COPY of the emitter
+# whose nested-body read ends the WHOLE read at damage, which is the answer
+# the Elixir leg gave before this rule, over a copy of the corpus ebin, and
+# replays three vectors: each must go red on the oracle's refusal. Nothing
+# tracked is written to.
+ELIXIR_REACH_NC := build/elixir-reach-nc
+ELIXIR_REACH_NC_VECTORS := reach_nested_damage_then_nan reach_deep_damage_then_nan reach_element_damage_then_element_nan
+
+.PHONY: tables-elixir-reach-negative-control
+tables-elixir-reach-negative-control: build/conformance-harness build/elixir-tables-ebin/.stamp
+	@rm -rf $(ELIXIR_REACH_NC) && mkdir -p $(ELIXIR_REACH_NC)/ebin $(ELIXIR_REACH_NC)/gen
+	@cp build/elixir-tables-ebin/*.beam $(ELIXIR_REACH_NC)/ebin/
+	@sed -e '/defp read_element(desc, sub, nodes, ids) do/,/^  end$$/ s@{:cont, %{}, %{report | malformed: true}}@throw(:wire_damaged)@' \
+		internal/codegen/elixirtable/variableform.go > $(ELIXIR_REACH_NC)/variableform.go.txt
+	@test "$$(grep -c 'throw(:wire_damaged)' $(ELIXIR_REACH_NC)/variableform.go.txt)" -gt \
+		"$$(grep -c 'throw(:wire_damaged)' internal/codegen/elixirtable/variableform.go)" || \
+		{ echo "NEGATIVE CONTROL: the Elixir reach sabotage patched nothing"; exit 1; }
+	@root="$$(dirname "$$(go env GOMOD)")"; \
+		printf '{"Replace":{"%s/internal/codegen/elixirtable/variableform.go":"%s/$(ELIXIR_REACH_NC)/variableform.go.txt"}}\n' \
+		"$$root" "$(CURDIR)" > $(ELIXIR_REACH_NC)/overlay.json
+	@go build -overlay $(ELIXIR_REACH_NC)/overlay.json -o $(ELIXIR_REACH_NC)/schema ./cmd/schema
+	@$(ELIXIR_REACH_NC)/schema generate --lang elixir --out $(ELIXIR_REACH_NC)/gen tables/examples > /dev/null
+	@$(ELIXIRC) --ignore-module-conflict -o $(ELIXIR_REACH_NC)/ebin $(ELIXIR_REACH_NC)/gen/Table.ex > /dev/null 2>&1
+	@for v in $(ELIXIR_REACH_NC_VECTORS); do \
+		if ELIXIR_TABLES_EBIN=$(CURDIR)/$(ELIXIR_REACH_NC)/ebin ./build/conformance-harness wire-fuzz \
+				--driver 'test/conformance/elixir/driver wire-fuzz' \
+				--replay testdata/wire/tables/fuzz-vectors/$$v.bin --unit tabledemo --root ProfileConfig \
+				--failed $(ELIXIR_REACH_NC)/$$v.failed.bin > $(ELIXIR_REACH_NC)/$$v.log 2>&1; then \
+			echo "NEGATIVE CONTROL FAILED: a read that stops at nested damage left $$v green"; exit 1; fi; \
+		grep -q 'the oracle refuses a non-finite float' $(ELIXIR_REACH_NC)/$$v.log || \
+			{ cat $(ELIXIR_REACH_NC)/$$v.log; echo "NEGATIVE CONTROL FAILED: $$v went red, but not on the refusal"; exit 1; }; \
+	done
+	@echo "negative control: an Elixir read that stops at nested damage turns $(words $(ELIXIR_REACH_NC_VECTORS)) reach_ vectors RED"
+
+test-elixir: tables-elixir-reach-negative-control
+
 # cards-elixir-test compiles the facade (tables/cards/elixir/cards.ex) against
 # the generated codec ebin and runs the ExUnit tests (cards_test.exs). The
 # facade is the owning layer over Cards.Table, ported from tables/cards/cards.go.

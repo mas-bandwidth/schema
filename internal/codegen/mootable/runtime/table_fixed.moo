@@ -78,7 +78,7 @@ export type Node = {
 	remap: { [number]: number }?,
 	arms: { [number]: any }?,
 	tagw: number?,
-	-- the WRITER range a compiled plan holds this leaf to (§4.5), raw
+	-- the WRITER's declared range for this entry, raw (§4.5)
 	wlo: any?,
 	whi: any?,
 }
@@ -117,7 +117,12 @@ local function parseLayout(bytes: string, recordBytes: number): Node
 		end
 		entries[i] = { id = buffer.readstring(b, p, 8), kind = buffer.readu8(b, p + 8), size = size, children = u32(b, p + 13) }
 	end
+	-- an entry reaching past the writer's own record is refused by the bound's
+	-- name (§5.2); one inside the record and outside its parent is malformed
 	local function inside(c: Node, off: number, size: number)
+		if c.off + c.size > recordBytes then
+			refuse("layout_record_too_large")
+		end
 		if c.off < off or c.off + c.size > off + size then
 			refuse("layout_malformed")
 		end
@@ -145,9 +150,13 @@ local function parseLayout(bytes: string, recordBytes: number): Node
 			for _ = 1, kids do
 				local c
 				c, i = parse(i, cursor, depth + 1)
+				cursor += c.size
+				-- no partial sum of a table's fields passes the record cap
+				if cursor - off > RECORD_MAX then
+					refuse("layout_record_too_large")
+				end
 				inside(c, off, e.size)
 				table.insert(node.children, c)
-				cursor += c.size
 			end
 			if cursor - off ~= e.size then
 				refuse("layout_malformed")
@@ -233,6 +242,10 @@ local function parseLayout(bytes: string, recordBytes: number): Node
 			end
 		end
 		return node, i
+	end
+	-- a zero root is the record bound's refusal too (§1.1 rule 6)
+	if entries[1].size == 0 then
+		refuse("layout_record_too_large")
 	end
 	local root, next = parse(1, 0, 0)
 	if next ~= count + 1 or root.kind ~= KIND_TABLE then
@@ -399,23 +412,26 @@ compileStruct = function(d: any, n: Node, census: any)
 	n.pairs = pairs
 end
 
--- a plan: the writer's tree with its pairs, and the census it owes. An
--- older entry's WRITER ranges (docs/FIXED-FORM-ALGORITHM.md §4.5) land on the
--- nodes they hold, by the reader field's name: a scalar's own node, or a
--- fixed array's element node, which every element is read through, so each
--- element is held the same as a scalar.
-local function compilePlan(d: any, layout: string, recordBytes: number, ranges: any): any
+-- a plan: the writer's tree with its pairs, and the census it owes
+local function compilePlan(d: any, layout: string, recordBytes: number, ranges: any?): any
 	local root = parseLayout(layout, recordBytes)
 	local census = { unknown = 0, kindMismatch = 0 }
 	compileStruct(d, root, census)
+	-- the writer's ranges this entry carries land on the writer's nodes, so
+	-- the bounds pass holds the plan's own (§4.5): a scalar's own node, or a
+	-- fixed array's element node, which every element is read through, so
+	-- each element is held the same as a scalar
 	if ranges ~= nil then
 		for _, p in root.pairs :: { any } do
-			local r = ranges[p.f.name]
-			if r ~= nil then
-				local node = p.v
-				if p.f.s == "arr" then
-					node = node.children[1]
-				end
+			local r = ranges[p.f.id]
+			local f = p.f
+			local node: Node? = nil
+			if f.s == "int" then
+				node = p.v
+			elseif f.s == "arr" and f.array == "fixed" and f.e.s == "int" then
+				node = p.v.children[1]
+			end
+			if r ~= nil and node ~= nil then
 				node.wlo = r.lo
 				node.whi = r.hi
 			end
@@ -474,10 +490,8 @@ local function rawAt(rec: buffer, off: number, size: number, signed: boolean): a
 end
 
 -- one scalar leaf: the raw value at the WRITER's kind, widened to this
--- reader's (counted), clamped to the writer's range for the entry this plan
--- was compiled for, then to the declared range and bits(N)'s ceiling in the
--- bounds pass (each clamp counted), then held as this field's storage. Every
--- comparison is in the kind's own domain, unsigned for an unsigned kind.
+-- reader's (counted), clamped to the declared range and bits(N)'s ceiling in
+-- the bounds pass (counted), then held as this field's storage
 local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, named: any): any
 	local k = n.kind
 	local off = n.off + dx
@@ -522,6 +536,8 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 	if n.size ~= kw then
 		x = V.widen(x, kw, signed)
 	end
+	-- the bounds pass holds the WRITER's range for the entry being read
+	-- (§4.5); the reader's own, which contains it, follows
 	if n.wlo ~= nil then
 		if V.rawCmp(x, n.wlo, kw, signed) < 0 then
 			x = n.wlo
@@ -1030,7 +1046,7 @@ local function resetReport(report: any)
 end
 
 -- the load proper; raises a refusal, returns the values and the counters
-local function loadAll(d: any, fixed: Fixed, file: buffer, report: any): { any }
+local function loadAll(d: any, fixed: Fixed, file: buffer, report: any, capacity: number?): { any }
 	-- §5.3 step 1: the form byte before the length
 	if buffer.len(file) < 1 then
 		refuse("truncated", true)
@@ -1102,6 +1118,11 @@ local function loadAll(d: any, fixed: Fixed, file: buffer, report: any): { any }
 		refuse("truncated", true)
 	end
 	local count = rest // stride
+	-- step 10: more records than the caller's room is refused before any
+	-- record is looked at
+	if capacity ~= nil and count > capacity then
+		refuse("batch_too_large")
+	end
 	-- step 11, TOTAL OVER THE BATCH: every record's hash first
 	for i = 0, count - 1 do
 		if buffer.readstring(file, at + i * stride, 8) ~= h then
@@ -1128,7 +1149,9 @@ end
 -- damage §5.3 names: truncated, reserved_not_zero), report.layoutHash the
 -- file's hash for layout_unknown and layout_unsupported, report.field the
 -- field a non_finite_float names. A refusal is TOTAL: no counter moves.
-function F.load(d: any, fixed: Fixed, file: buffer?, report: any?): { any }?
+-- capacity, when given, is the most records the caller takes: a file holding
+-- more is refused batch_too_large (§5.3 step 10).
+function F.load(d: any, fixed: Fixed, file: buffer?, report: any?, capacity: number?): { any }?
 	local rep: any = report or {}
 	resetReport(rep)
 	if file == nil then
@@ -1136,7 +1159,7 @@ function F.load(d: any, fixed: Fixed, file: buffer?, report: any?): { any }?
 		rep.reason = "truncated"
 		return nil
 	end
-	local ok, res = pcall(loadAll, d, fixed, file, rep)
+	local ok, res = pcall(loadAll, d, fixed, file, rep, capacity)
 	if ok then
 		return res
 	end
@@ -1176,7 +1199,7 @@ F.Names = table.freeze({
 	newer_form = true, layout_malformed = true, layout_unknown = true, layout_unsupported = true,
 	layout_record_too_large = true, plan_too_large = true, no_layout = true, count_over_bound = true,
 	length_over_bound = true, text_ill_formed = true, integrity_mismatch = true, non_finite_float = true,
-	invalid_value = true,
+	invalid_value = true, batch_too_large = true,
 })
 
 return table.freeze(F)

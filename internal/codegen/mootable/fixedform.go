@@ -17,7 +17,6 @@ package mootable
 
 import (
 	"fmt"
-	"math/big"
 	"sort"
 	"strings"
 
@@ -33,17 +32,21 @@ func init() {
 // carry, the ONLY fact a file is matched on; Layout the bytes verbatim, which
 // LOAD compares and the plan walks; Record the whole record, the eight-byte
 // hash plus the body, from the lock and never from a file. Retired moves the
-// floor. Ranges are the WRITER's ranged integer leaves on the raw scale
-// (ir.TableFixedWriterRanges): a record read under this entry is held to
-// them first, then to this reader's own ranges (docs/FIXED-FORM-ALGORITHM.md
-// §4.5).
+// floor.
+//
+// Writer is the writer's own root when the build holds its declaration — the
+// unit's own entry, or an older unit a test locks — and nil for an entry read
+// from a lock, whose digest names no field. A read through an entry with a
+// Writer clamps each ranged integer field to the WRITER's declared range for
+// that entry (docs/FIXED-FORM-ALGORITHM.md §4.5), as the C++ reference's known
+// ranges do.
 type FixedLineageEntry struct {
 	Wire    uint64
 	Layout  []byte
 	Record  int64
 	Retired bool
 	Reason  string
-	Ranges  []ir.TableFixedWriterRange
+	Writer  *ir.Struct
 }
 
 const fixedHashBytes = 8
@@ -61,7 +64,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: fixedHashBytes + ir.TableFixedTypeBytes(st),
-			Ranges: ir.TableFixedWriterRanges(st),
+			Writer: st,
 		}, true
 	}
 	return FixedLineageEntry{}, false
@@ -178,36 +181,51 @@ func emitFixedRoot(g *Gen, root *ir.Struct) {
 	g.Pf("\tfloor = %d,\n", floor)
 	g.Pf("\tlineage = {\n")
 	for _, e := range entries {
-		ranges := ""
-		if e.Wire != own.Wire {
-			ranges = fixedWriterRangesLit(g, root, e.Ranges)
-		}
 		g.Pf("\t\t{ hash = %s, recordBytes = %d, retired = %v, layout = %s%s }, -- 0x%016x\n",
-			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), ranges, e.Wire)
+			IdLit(e.Wire), e.Record-fixedHashBytes, e.Retired, bytesLit(e.Layout), writerRanges(g, root, e.Writer), e.Wire)
 	}
 	g.Pf("\t},\n")
 	g.Pf("})\n\n")
 }
 
-// fixedWriterRangesLit is one older entry's writer ranges resolved onto this
-// reader's root fields (ir.TableFixedWriterField), as the entry's `ranges`
-// table: the reader field's name to the writer's raw bounds, spelled in the
-// reader's kind domain as its own descriptor's lo/hi are, so the read compares
-// them with the same rawCmp. A fixed array's range holds every element the
-// same as a scalar. Empty when the writer bounds nothing this reader holds.
-func fixedWriterRangesLit(g *Gen, root *ir.Struct, ranges []ir.TableFixedWriterRange) string {
-	var parts []string
-	for _, r := range ranges {
-		for _, f := range root.Fields {
-			if _, ok := ir.TableFixedWriterField(f, r); !ok {
-				continue
-			}
-			kind := ir.TableWireScalarKind(f)
-			kw, signed := ir.TableKindWidth(kind), ir.TableKindSigned(kind)
-			parts = append(parts, fmt.Sprintf("[%q] = { lo = %s, hi = %s }", f.Name,
-				rawLit(g, kw, signed, big.NewInt(r.Lo)), rawLit(g, kw, signed, big.NewInt(r.Hi))))
-			break
+// writerRanges is one lineage entry's WRITER ranges (§4.5): for each ranged
+// integer field of the reader's root that the writer declared ranged at the
+// same storage width and scalar kind, the writer's raw bounds keyed by the
+// field's wire id — the fields, widths and kinds the C++ reference's known
+// ranges hold (internal/codegen/cpptable/lineage.go, collectKnownRanges). A
+// ranged fixed array's range holds each element the same as a scalar; the
+// runtime lands it on the array's element node. An entry with no writer, or
+// no such field, lays down nothing.
+func writerRanges(g *Gen, reader, writer *ir.Struct) string {
+	if writer == nil {
+		return ""
+	}
+	byId := map[uint64]*ir.Field{}
+	for _, f := range writer.Fields {
+		if f != nil {
+			byId[ir.TableFieldWireId(f)] = f
 		}
+	}
+	var parts []string
+	for _, rf := range reader.Fields {
+		if rf == nil || !rf.HasIntRange {
+			continue
+		}
+		wf := byId[ir.TableFieldWireId(rf)]
+		if wf == nil || !wf.HasIntRange {
+			continue
+		}
+		w := ir.TableFixedStorageBytes(wf.Type)
+		if w <= 0 || w > 8 || ir.TableFixedStorageBytes(rf.Type) != w || ir.TableScalarKind(wf) != ir.TableScalarKind(rf) {
+			continue
+		}
+		lo, hi, ok := ir.TableRawRange(wf)
+		if !ok || !lo.IsInt64() || !hi.IsInt64() {
+			continue
+		}
+		kind := ir.TableWireScalarKind(rf)
+		kw, signed := ir.TableKindWidth(kind), ir.TableKindSigned(kind)
+		parts = append(parts, fmt.Sprintf("[%s] = { lo = %s, hi = %s }", IdLit(ir.TableFieldWireId(rf)), rawLit(g, kw, signed, lo), rawLit(g, kw, signed, hi)))
 	}
 	if len(parts) == 0 {
 		return ""

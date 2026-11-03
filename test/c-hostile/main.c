@@ -30,11 +30,13 @@ const hc_binding_t * hc_bindings_streamdemo( int * count );
 const hc_binding_t * hc_bindings_mapdemo( int * count );
 const hc_binding_t * hc_bindings_listdemo( int * count );
 const hc_binding_t * hc_bindings_probe( int * count );
+const hc_binding_t * hc_bindings_featurewitnesses( int * count );
 
 static const hc_unit_t units[] = {
     hc_bindings_tabledemo, hc_bindings_messagedemo, hc_bindings_blobdemo,
     hc_bindings_graphdemo, hc_bindings_scalardemo, hc_bindings_streamdemo,
     hc_bindings_mapdemo,   hc_bindings_listdemo,    hc_bindings_probe,
+    hc_bindings_featurewitnesses,
 };
 
 static int answered;
@@ -139,6 +141,7 @@ static void * hc_run( void * arg )
         }
     }
     if ( b == NULL ) { printf( "unbound no C binding for %s %s\n", c->schema, c->table ); answered = 1; return NULL; }
+    if ( b->absent ) { hc_skip( c->carrier, b->absent ); return NULL; }
     if ( strcmp( c->carrier, "wire" ) == 0 )
     {
         if ( b->wire ) b->wire( c->data, c->size ); else hc_skip( c->carrier, "no file-form load for this root" );

@@ -212,12 +212,16 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
             TableReport builder_report;
             builder_report.unknown = 7; builder_report.widened = 13; builder_report.duplicate = 19;
             CHECK(!%sLoadBuilderTolerant(builder, wire, (int64_t)sizeof(wire), &builder_report), "%s/%d builder refusal");
-            CHECK(!builder_report.malformed && !builder_report.refused &&
+            CHECK(!builder_report.malformed && builder_report.refused && builder_report.reason == count_over_extent_cap &&
+                builder_report.refuse_reason == count_over_extent_cap &&
                 builder_report.unknown == %d && builder_report.widened == %d && builder_report.duplicate == %d, "%s/%d builder counters");
+            TableReport plain_report;
+            CHECK(!%sLoadBuilder(builder, wire, (int64_t)sizeof(wire), &plain_report) && !plain_report.malformed &&
+                plain_report.refuse_reason == count_over_extent_cap, "%s/%d plain builder reason");
         }
     }
 `, cppBytes(wire), root, root, shape, count, shape, count, shape, count, r.Unknown, r.Widened, r.Duplicate, retainingReport.Retained, retainingReport.RetainLost, shape, count, shape, count,
-				root, shape, count, shape, count, root, root, shape, count, r.Unknown, r.Widened, r.Duplicate, shape, count)
+				root, shape, count, shape, count, root, root, shape, count, r.Unknown, r.Widened, r.Duplicate, shape, count, root, shape, count)
 		}
 		root, wire := cppCountWire(t, u, shape, 0, false)
 		var rep tabletext.Report

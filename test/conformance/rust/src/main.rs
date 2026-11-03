@@ -1168,15 +1168,24 @@ fn surface_wire(manifest: &Manifest, out: &str) {
 fn surface_report(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("report") {
         let data = slurp(&f[4]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, _to, _from| {
+        // the report line, then the §16 text of the value the read left when
+        // the read reads (test/conformance/README.md)
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
-            let ok = load(&data, &mut report).is_some();
-            let malformed = report.malformed || (!ok && !report.refused);
+            let value = load(&data, &mut report);
+            let malformed = report.malformed || (value.is_none() && !report.refused);
             let verdict = if report.refused { "refused" } else { "read" };
-            format!(
+            let mut text = format!(
                 "{},{},{},{},{},{},{}\n",
                 report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate, malformed, verdict
-            )
+            );
+            if let (Some(v), false, false) = (value, report.refused, malformed) {
+                match to_json(&v) {
+                    Some(body) => text.push_str(&body),
+                    None => fail(&format!("{}: ToJson refused the value", f[1])),
+                }
+            }
+            text
         });
         match answer {
             Some(text) => spill(out, &f[1], text.as_bytes()),
@@ -1317,13 +1326,13 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
 
 // JSON-HOSTILE (docs/SPEC-TABLES.md §16.2, §16.3; FORMAT.md): one tree per
 // rule the text form states, and the verdict is `refused` or the §4 report the
-// read produces, `u,k,w,c,d,false,read`. The tree is what `schema pack` reads,
+// read produces, `u,k,w,c,d,false,read`, then the §16 text of the value it left. The tree is what `schema pack` reads,
 // so the text is <tree>/<root>.json (§17). A root this leg's text form does not
 // carry answers ABSENT, one row at a time, exactly as json-read does.
 fn surface_json_hostile(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("json-hostile") {
         let path = format!("{}/{}.json", f[4], f[3]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, _to, from_json| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, to_json, from_json| {
             let text = match fs::read(&path) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
@@ -1333,13 +1342,19 @@ fn surface_json_hostile(manifest: &Manifest, out: &str) {
             let mut report = Default::default();
             let value = from_json(&text, &mut report);
             let r = &report;
-            if value.is_none() || r.malformed || r.refused {
-                "refused\n".to_string()
-            } else {
-                format!(
-                    "{},{},{},{},{},false,read\n",
-                    r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
-                )
+            match value {
+                Some(v) if !r.malformed && !r.refused => {
+                    let mut answer = format!(
+                        "{},{},{},{},{},false,read\n",
+                        r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate
+                    );
+                    match to_json(&v) {
+                        Some(body) => answer.push_str(&body),
+                        None => fail(&format!("{}: ToJson refused the value", f[1])),
+                    }
+                    answer
+                }
+                _ => "refused\n".to_string(),
             }
         });
         match answer {

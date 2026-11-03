@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -60,6 +61,18 @@ func schemaPath(units, schema string) (string, error) {
 	return path, os.WriteFile(path, []byte(hostilecorpus.ProbeSchema), 0o644)
 }
 
+// refusal is the Lobster target refusing a schema the corpus names: every case
+// of that schema is a NAMED ABSENCE, counted and printed with the refusal.
+type refusal struct{ err error }
+
+func (r refusal) Error() string { return r.err.Error() }
+
+// firstLine is a refusal's first line, which names the construct.
+func firstLine(s string) string {
+	line, _, _ := strings.Cut(s, "\n")
+	return line
+}
+
 func generate(units, schema string) error {
 	path, err := schemaPath(units, schema)
 	if err != nil {
@@ -76,7 +89,7 @@ func generate(units, schema string) error {
 	}
 	files, err := c.Generate(u, "lobster", compiler.Options{})
 	if err != nil {
-		return fmt.Errorf("lobster refuses %s: %w", schema, err)
+		return refusal{fmt.Errorf("lobster refuses %s: %w", schema, err)}
 	}
 	dir := unitDir(units, schema)
 	if err := os.RemoveAll(dir); err != nil {
@@ -219,20 +232,37 @@ func main() {
 	}
 	sort.Strings(schemas)
 	answers := map[string]map[string][]string{}
+	absent := map[string]string{}
 	for _, schema := range schemas {
 		if !*noGenerate {
 			if err := generate(*units, schema); err != nil {
+				var r refusal
+				if errors.As(err, &r) {
+					absent[schema] = firstLine(r.Error())
+					continue
+				}
 				fatalf("%v", err)
 			}
+		} else if _, err := os.Stat(unitDir(*units, schema)); os.IsNotExist(err) {
+			absent[schema] = "no unit generated for " + schema
+			continue
 		}
 		if answers[schema], err = run(*units, *corpus, schema); err != nil {
 			fatalf("%v", err)
 		}
 	}
 
-	pass, carried := 0, 0
+	pass, carried, missing := 0, 0, 0
 	var bad, stale []string
 	for _, c := range cases {
+		if why, no := absent[c.Schema]; no {
+			missing++
+			fmt.Printf("ABSENT %s carrier=%s: %s\n", c.Name, c.Carrier, why)
+			if finding, owed := findings[c.Name]; owed {
+				stale = append(stale, fmt.Sprintf("STALE FIX-CARD %s: the case is absent; delete its line (%s)", c.Name, finding))
+			}
+			continue
+		}
 		a, ok := answers[c.Schema][c.Name]
 		var got string
 		switch {
@@ -274,7 +304,7 @@ func main() {
 	for _, line := range stale {
 		fmt.Println(line)
 	}
-	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d fail, %d stale, of %d cases\n", pass, carried, len(bad), len(stale), len(cases))
+	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d absent, %d fail, %d stale, of %d cases\n", pass, carried, missing, len(bad), len(stale), len(cases))
 	if len(bad) > 0 || len(stale) > 0 {
 		os.Exit(1)
 	}

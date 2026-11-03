@@ -94,9 +94,13 @@ tables-goose-tablewire-negative-control:
 # build/conformance-goose is the manifest's units generated for goose, one
 # directory per unit. The schema_leg_goose tag is the target's until the port
 # joins the builtins (compiler/target_goose.go). A unit the target refuses is
-# recorded as its refusal line, never dropped in silence.
+# recorded as its refusal line, never dropped in silence. The units move with
+# the compiler, the goose runtimes it embeds and the unit schemas, not only with
+# the manifest.
 GOOSE_MANIFEST := testdata/conformance/tables/MANIFEST.txt
-build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk
+build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk $(GO_SOURCES) \
+	$(filter internal/codegen/goose/% internal/codegen/goosetable/%,$(EMBED_SOURCES)) \
+	$(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
 	go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
 	@grep '^unit ' $(GOOSE_MANIFEST) | while read -r _ key paths; do \

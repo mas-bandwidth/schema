@@ -46,6 +46,189 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
@@ -120,7 +303,7 @@ inline bool TableWireExtentKeyed( const uint8_t * body, int64_t length, int64_t 
 // members that carry an extent, and the ones whose extent walks are emitted.
 func (g *tableGen) hasExtent(st *ir.Struct) bool {
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		// A CONTAINER REACHABLE BY VALUE IS THIS RECORD'S EXTENT, whichever
@@ -191,6 +374,7 @@ func alignOfEntry(u *ir.Unit, entry *ir.Struct) int64 {
 type extentVisitor struct {
 	mapField  func(f *ir.Field, expr edgeExpr, ind string)
 	listField func(f *ir.Field, expr edgeExpr, ind string)
+	textField func(f *ir.Field, expr edgeExpr, ind string)
 	descend   func(table string, expr edgeExpr, ind string)
 }
 
@@ -212,6 +396,12 @@ func (g *tableGen) emitExtentWalk(st *ir.Struct, base edgeVisitor, v extentVisit
 		}
 		if f.IsList() {
 			v.listField(f, g.fieldExpr(ev, f), "    ")
+			continue
+		}
+		if f.Type.TextUnbounded() {
+			if v.textField != nil {
+				v.textField(f, g.fieldExpr(ev, f), "    ")
+			}
 			continue
 		}
 		switch g.edgeOf(f) {
@@ -319,6 +509,9 @@ func (g *tableGen) emitExtent(st *ir.Struct) {
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]"}, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
 		},
+		textField: func(f *ir.Field, expr edgeExpr, ind string) {
+			g.pf("%sif ( !schema_table_text_extent_( ctx, %s, at ) ) { return false; }\n", ind, expr.Src)
+		},
 		descend: func(table string, expr edgeExpr, ind string) {
 			g.pf("%sif ( !%sExtentAt<Ctx, schema_cook_extent>( ctx, %s, at ) ) { return false; }\n", ind, table, expr.Src)
 		},
@@ -393,6 +586,9 @@ func (g *tableGen) emitExtentPack(st *ir.Struct) {
 			g.pf("%s    }\n", ind)
 			g.emitListElementExtents(f, edgeExpr{Src: "cursor[i]", Dst: "placed[i]"}, ev, v, ind, "")
 			g.pf("%s}\n", ind)
+		},
+		textField: func(f *ir.Field, expr edgeExpr, ind string) {
+			g.pf("%sif ( !schema_table_text_pack_( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, expr.Src, expr.Dst)
 		},
 		descend: func(table string, expr edgeExpr, ind string) {
 			g.pf("%sif ( !%sExtentPack( ctx, %s, %s, extent, at, capacity ) ) { return false; }\n", ind, table, expr.Src, expr.Dst)
@@ -579,7 +775,7 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 		if f.IsList() {
 			elem := g.listElementType(f)
 			inner := "NULL"
-			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) {
+			if ref := listElementStruct(f); ref != nil && g.hasExtent(ref) && !ir.TextListPlain(f) {
 				inner = "&" + ref.Name + "WireExtent"
 			}
 			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an unbounded array\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
@@ -589,11 +785,30 @@ func (g *tableGen) emitWireExtentCases(st *ir.Struct) {
 			g.pf("            r.offset += (int64_t) list_len;\n")
 			g.pf("            if ( !TableListWireExtent( list_body, (int64_t) list_len, at, (int64_t) sizeof( %s ), (int64_t) alignof( %s ), %d, %d, %s, ids, reason ) ) { return false; }\n",
 				elem, elem, listElementWireKind(f), listElementFloor(f), inner)
+			if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+				g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, (int64_t) list_len, 0, at, reason ) ) { return false; }\n")
+			}
 			if un := listElementUnion(f); un != nil && g.unionHasExtent(un, map[*ir.Union]bool{}) {
 				// the elements' arms, after the whole array: one arm header
 				// per element, read over the same body (§2.6, §2.9)
 				g.pf("            if ( !%sWireArmsExtent( list_body, (int64_t) list_len, at, ids, reason ) ) { return false; }\n", un.Name)
 			}
+			g.pf("            continue;\n        }\n")
+			continue
+		}
+		if f.Type.TextUnbounded() {
+			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: an unbounded text\n        {\n", ir.TableFieldWireId(f), tkString, f.Name)
+			g.pf("            if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }\n")
+			g.pf("            continue;\n        }\n")
+			continue
+		}
+		if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+			g.pf("        if ( field_id == 0x%016xull && field_kind == %d ) // %s: a bounded array of unbounded strings\n        {\n", ir.TableFieldWireId(f), tkArray, f.Name)
+			g.pf("            uint64_t list_len = 0;\n")
+			g.pf("            if ( !r.getleb( list_len ) || !r.room( list_len ) ) { return true; }\n")
+			g.pf("            const uint8_t * list_body = r.buffer + r.offset;\n")
+			g.pf("            r.offset += (int64_t) list_len;\n")
+			g.pf("            if ( !schema_table_list_text_wire_extent_( list_body, (int64_t) list_len, %d, at, reason ) ) { return false; }\n", f.ArrayBound)
 			g.pf("            continue;\n        }\n")
 			continue
 		}
@@ -754,6 +969,24 @@ func (g *tableGen) emitCookExtent(st *ir.Struct) {
 			g.emitListElementExtents(f, element, ev, v, ind, " // then, element by element in index order")
 			g.pf("%s}\n", ind)
 		},
+		textField: func(f *ir.Field, expr edgeExpr, ind string) {
+			g.pf("%s{ // %s: an unbounded text's bytes\n", ind, f.Name)
+			g.pf("%s    int32_t len = 0;\n", ind)
+			g.pf("%s    const char * bytes = schema_table_text_at_( ctx, %s, len );\n", ind, expr.Src)
+			g.pf("%s    if ( bytes == NULL ) { return false; }\n", ind)
+			g.pf("%s    if ( len == 0 )\n%s    {\n", ind, ind)
+			g.pf("%s        table_cook_put( %s, 0, 8, order );\n", ind, expr.addr(0))
+			g.pf("%s    }\n%s    else\n%s    {\n", ind, ind, ind)
+			g.pf("%s        at = ( at + 7 ) & ~(int64_t) 7;\n", ind)
+			g.pf("%s        uint8_t * block = extent + at;\n", ind)
+			g.pf("%s        at += TableAlignUp64( 9 + (int64_t) len );\n", ind)
+			g.pf("%s        table_cook_put( %s, (uint64_t) (int64_t) ( block - ( %s ) ), 8, order );\n", ind, expr.addr(0), expr.addr(0))
+			g.pf("%s        table_cook_put( block, (uint64_t) (uint32_t) len, 4, order );\n", ind)
+			g.pf("%s        table_cook_put( block + 4, 0, 4, order );\n", ind)
+			g.pf("%s        memcpy( block + 8, bytes, (size_t) len );\n", ind)
+			g.pf("%s        block[8 + len] = 0;\n", ind)
+			g.pf("%s    }\n%s}\n", ind, ind)
+		},
 		descend: func(table string, expr edgeExpr, ind string) {
 			g.pf("%sif ( !%sCookExtent( ctx, region, extent, at, %s, %s, order ) ) { return false; }\n", ind, table, expr.addr(0), expr.Src)
 		},
@@ -833,7 +1066,7 @@ func (g *tableGen) emitCookNodeBytes(st *ir.Struct, ind, expr, onBad string) {
 // because the extent writer fills them.
 func onlyExtentFields(st *ir.Struct) bool {
 	for _, f := range st.Fields {
-		if !f.IsMap() && !f.IsList() {
+		if !f.IsMap() && !f.IsList() && !f.Type.TextUnbounded() {
 			return false
 		}
 	}

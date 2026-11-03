@@ -110,7 +110,8 @@ def surface_wire(text:string):
             say(f[1], out)
 
 // the REPORT surface: the six counters and the verdict (§4), as
-// `u,k,w,c,d,m,verdict`. A report line is `report <case> <unit> <root> <wire>`.
+// `u,k,w,c,d,m,verdict`, then the §16 text of the value when the read reads.
+// A report line is `report <case> <unit> <root> <wire>`.
 def surface_report(text:string):
     for(rows(text, "report")) f:
         let rep = schema_rt.LoadReport {}
@@ -118,7 +119,12 @@ def surface_report(text:string):
         // A damaged read discards the record; only its verdict is usable.
         assert rec or rep.refused or rep.malformed
         let verdict = if rep.refused: "refused" else: "read"
-        say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}\n")
+        var out = "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},{rep.malformed},{verdict}\n"
+        if rec and not rep.refused and not rep.malformed:
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            out += js
+        say(f[1], out)
 
 // the FRAMING surface (docs/LAYERS/1-framing.md): the read report as the
 // report surface prints it, then the §16 text of the value the read left,
@@ -340,7 +346,9 @@ def surface_retain(text:string, saves:bool):
 def has_text(f:[string]) -> bool:
     return not (length(f) > 5 and f[5] == "no-text")
 
-// JSON-READ: FromJson json/<name>.json, Save, the bytes.
+// JSON-READ: the tolerant text read of json/<name>.json, Save, the bytes.
+// json-read and json-hostile call one entry point, json_read, which is this
+// leg's tolerant read (test/conformance/README.md).
 def surface_json_read(text:string):
     for(rows(text, "instance")) f:
         if has_text(f):
@@ -363,13 +371,16 @@ def surface_json_write(text:string):
             say(f[1] + ".json", out)
 
 // JSON-HOSTILE: FromJson <tree>/<root>.json, `refused` or the report
-// `u,k,w,c,d,false,read`. A line is `json-hostile <case> <unit> <root> <tree>`.
+// `u,k,w,c,d,false,read` and the §16 text of the value it left. A line is
+// `json-hostile <case> <unit> <root> <tree>`.
 def surface_json_hostile(text:string):
     for(rows(text, "json-hostile")) f:
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.json_read(f[3], fixture(f[4] + "/" + f[3] + ".json"), rep)
         if rec and not rep.malformed:
-            say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},false,read\n")
+            let js, why = schema_rt.json_write(rec)
+            assert why == ""
+            say(f[1], "{rep.unknown},{rep.kind_mismatch},{rep.widened},{rep.clamped},{rep.duplicate},false,read\n" + js)
         else:
             say(f[1], "refused\n")
 
