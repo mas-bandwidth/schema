@@ -1404,7 +1404,9 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	base := corpusFile(t, corpus, "old_range_widen.bin")
-	at := len(base) - 12 + 4 // lead, then v
+	older, newer := readTestSchema(t, "VOLD_range_widen"), readTestSchema(t, "VNEW_range_widen")
+	// the file's one record body is its last bytes, and v follows lead
+	at := len(base) - int(ir.TableFixedTypeBytes(ir.TableFixedFormRoots(older)[0])) + 4
 	forge := func(v int32) []byte {
 		b := clone(base)
 		binary.LittleEndian.PutUint32(b[at:], uint32(v))
@@ -1419,7 +1421,6 @@ func TestMooFixedEvolutionWriterRange(t *testing.T) {
 	if out, err := exec.Command("g++", "-std=c++17", "-ffp-contract=off", "-I"+headers, "-I"+filepath.Join(root, "..", "serialize"), filepath.Join(dir, "probe.cpp"), "-o", bin).CombinedOutput(); err != nil {
 		t.Fatalf("the C++ reference probe does not build: %v\n%s", err, out)
 	}
-	older, newer := readTestSchema(t, "VOLD_range_widen"), readTestSchema(t, "VNEW_range_widen")
 	lineage := lineageOf(t, []*ir.Unit{older}, 0)
 	g := fixedUnit(t, newer, lineage)
 	for _, c := range []struct {
