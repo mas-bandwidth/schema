@@ -5310,7 +5310,7 @@ that instrument goes red.
   **The report format carries a
   REFUSAL VERDICT distinct from a clean read**, because zero counters are what
   a clean read prints too (`testdata/conformance/tables/FORMAT.md`). Red if a
-  row prints a clean read or moves a counter; the reason is not compared.
+  refusing row reads; a refusal writes nothing, and the reason is not compared.
 - **The reference encoding.** The wire fuzzer's canonical-LEB pass (§4.2)
   writes every reference, length, count and index in its non-minimal
   spellings. Red if a leg decodes one instead of refusing `wire_damaged`.
@@ -5332,12 +5332,11 @@ that instrument goes red.
   element-kind byte. A `report` row plants kind `31` at a field the reader
   cannot name, at a field it CAN name, at an arm, and as an element kind, one
   at each of the three depths at which `tables/messages` carries a union
-  (§2.6). Red if the unnameable position answers anything but `unknown`, if a
-  named position answers anything but a `kind_mismatch` refusal, or if any of
-  them refuses `wire_damaged`.
+  (§2.6). Red if the unnameable position does not read (the value written back
+  equals the canonical bytes), or if a named position reads.
 - **The enum kind against the raw integer.** A `report` row written with an
   enum field and read with the field respelled `uint16`, and the reverse.
-  Red if either direction answers anything but `kind_mismatch`.
+  Red if either direction reads; each refuses, writes nothing.
 - **An enum reference no reader can name.** A `report` row whose enum field
   carries a variant the reading declaration removed. Red if the field reads
   anything but `None`, or if `unknown` does not count once.
@@ -7412,7 +7411,8 @@ entries announces about 5 KB once.
   from the packet wire's index or float by one, clamps the index above the
   count to `count` or to any float instead of refusing, writes `11.0` instead of refusing it, or reproduces `0.005`
   or `0.123` out of the file it wrote.
-- **A refused first announcement.** A connection whose first announcement is
+- **A refused first announcement** (a per-leg gate: `vocabulary_too_large` is a
+  caller resource limit, outside the verdict contract, §6.5). A connection whose first announcement is
   refused as `vocabulary_too_large`, then a well-formed announcement, then a
   body: the second announcement refuses as `second_announcement` and sets
   nothing, and the body refuses as `no_vocabulary` with nothing decoded and no
@@ -7437,7 +7437,9 @@ entries announces about 5 KB once.
 - **The pad, and what follows it.** A batch whose trailing bits to the byte
   boundary are not zero, and a buffer carrying a whole batch and then a byte
   more. Red if a leg reads either clean.
-- **The batch's four answers.** A `SaveMessages` and a `MeasureMessages` of 257
+- **The batch's four answers** (a per-leg gate for the capacity rows: a
+  caller's batch capacity is a resource limit, outside the verdict contract,
+  §6.5). A `SaveMessages` and a `MeasureMessages` of 257
   bodies, each refusing by name and writing nothing. A `LoadMessages` of a
   256-body batch into storage for eight, refusing with nothing decoded, its returned count reading 0 (§6.5). A
   three-body batch damaged inside the second, which must refuse and return a
@@ -7455,8 +7457,7 @@ entries announces about 5 KB once.
   this wire against SPEC.md §4.12's 256. Red if a leg spends a 32-bit group a
   unit, or aligns before the units.
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
-  and a union arm reference naming a kind-`0` entry. Each is damage, `wire_damaged`. Red if a leg counts `unknown` instead, or does not report
-  `wire_damaged`.
+  and a union arm reference naming a kind-`0` entry. Each refuses, writes nothing. Red if a leg reads either.
   Beside them the same two on the SKIP path: a body naming an enum entry the
   root does not declare, so the field is unknown and stepped over, whose
   variant reference names a field-name entry in one row and is above `E` in the
@@ -7515,8 +7516,10 @@ entries announces about 5 KB once.
   sets a vocabulary, or if the unknown-field
   row refuses. Beside them a refused announcement whose build version WAS read,
   which must name it.
-- **The two bounds.** An announcement one entry above the entry bound, and one a
-  byte above the byte bound with a legal entry count. Red if a leg touches an
+- **The two bounds** (a per-leg gate: the caller's vocabulary storage is a
+  resource limit, outside the verdict contract, §6.5). An announcement one
+  entry above the entry bound, and one a byte above the byte bound with a legal
+  entry count. Red if a leg touches an
   entry before refusing either.
 - **The three reserved ids where they do not belong.** A row planting each of
   `0xFFFFFFFFFFFFFFFF`, `0xFFFFFFFFFFFFFFFE` and `0xFFFFFFFFFFFFFFFD` as a
@@ -7857,7 +7860,7 @@ validation nobody ever watched fail is a validation nobody has.
   | **A KIND IS USED AS ITS DEFINITION ALLOWS** — the ROOT is a table; an optional wrapper has exactly one child; an array exactly one; an enum-keyed array exactly two, the first an enum; an enum's children are variants; a leaf has none | `layout_kind_invalid` | a kind and a child count that disagree is a tree the child-walk table (above) does not describe, and there is no reading of it to fall back on |
   | **THE PRE-ORDER CHILD WALK CONSUMES EXACTLY THE ENTRIES** — starting at entry `0` and following each entry's `child count`, the walk ends on the last entry and not before or after it | `layout_tree_unclosed` | the walk is the whole structure; a tree that runs out of layout is truncated and a layout that outlasts its tree has entries no walk reaches |
   | **THE TOTAL RECORD SIZE DOES NOT OVERFLOW AND IS WITHIN 65536** — no partial sum of a parent's children exceeds it, and neither does the root's own size | `layout_record_too_large` | sizes are `u32` and a record is a value copied whole, so a sum that wraps is a buffer this reader would then read past; and 65536 is what §3.4's size bound below fixes, so a record past it is one this build does not decode however honest the layout is <!-- limit name=fixed_record_bound value=65536 --> |
-  | **NOTHING NESTED PAST 64, THE BOUND EVERY READER HOLDS** (normative, not a per-reader choice) | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> |
+  | **NOTHING NESTED PAST 64, THE BOUND EVERY READER HOLDS** (normative, not a per-reader choice): the root is at depth 0, every layout entry is one level, depth 64 passes and 65 refuses | `layout_too_deep` | **A BOUND ON THE WALK AND NOT ON THE WIRE.** The validation is recursive, so a layout of three thousand entries each claiming one child would spend a reader's stack before any other rule could fire. **Go's reader states 64 nested bodies on the fixed walk**, and the compiler holds the same 64 at compile time (`ir.TableFixedMaxDepth`), so a writer never emits a layout a conforming reader refuses <!-- limit name=fixed_max_depth value=64 --> |
 
 **THERE IS NO CYCLE RULE, AND THERE CANNOT BE A CYCLE.** A pre-order walk cannot
 express one: **an entry's children ARE THE ENTRIES THAT FOLLOW IT**, so a child's
@@ -8470,9 +8473,8 @@ added moves it without anyone remembering to.
   reader accepts and breaking exactly one thing in it: the entry count, a kind
   byte outside the closed set, a kind used against its own definition, a
   constant size its kind does not admit, a child count that leaves the tree
-  open, a record size past 65536, and a nesting depth past the walk's bound.
-  Each must come back REFUSED, under ITS OWN NAME, with nothing decoded and no
-  counter moved. A validation nobody watched fail is a validation nobody has.
+  open, a record size past 65536, and a nesting depth past 64.
+  Each refuses, writes nothing. A validation nobody watched fail is a validation nobody has.
 - **THE SIZE BOUNDS, one test each.** A fixed table past 4096 bytes
   of record body WARNS, naming the table and the size and changing no exit code;
   a DECLARED fixed table past 65536 DOES NOT COMPILE, by name; one merely
@@ -9962,7 +9964,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `layout_kind_invalid` | a kind this build KNOWS, used in a way its own definition does not allow (§3.4): a root that is not a table, an optional wrapper or an array without exactly one child, an enum-keyed array without exactly two, an enum whose children are not variants, a leaf with children. KEPT: the lock-init parse still reaches it at `fixedruntime.go:957`, `:970`, `:979` and their siblings through the call at `:1681` |
   | `layout_size_mismatch` | an entry's stated constant size is not one its kind admits, or not the one its children account for (§3.4). KEPT: the lock-init parse still reaches it at `fixedruntime.go:952`, `:965`, `:974` and their siblings through the call at `:1681` |
   | `layout_tree_unclosed` | the pre-order child walk does not consume exactly the entries (§3.4): the tree runs out of layout, or the layout outlasts the tree. KEPT: the lock-init parse still reaches it at `fixedruntime.go:896` and `:1106` through the call at `:1681` |
-  | `layout_too_deep` | a nesting depth past 64, the bound every reader holds (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires. KEPT: the lock-init parse still reaches it at `fixedruntime.go:900` through the call at `:1681` |
+  | `layout_too_deep` | a nesting depth past 64, the bound every reader holds: the root is at depth 0, every layout entry is one level, depth 64 passes and 65 refuses (§3.4). A bound on the WALK and not on the wire, so a hostile layout cannot spend a reader's stack before another rule fires. KEPT: the lock-init parse still reaches it at `fixedruntime.go:900` through the call at `:1681` |
   | `layout_record_too_large` | a record size that overflows, or that is past §3.4's 65536-byte bound: a size this build will not decode, and the same number the compiler stops emitting the form at (§3.4, §21.3) |
   | `plan_too_large` | a fixed-form layout whose compiled plan does not fit the plan storage the caller declared (§3.4), which is the announced vocabulary's `vocabulary_too_large` for the same reason and on the same rule: this codec never allocates |
   | `no_layout` | a FIXED-form record whose hash names no LAYOUT this reader holds (§3.4, §21.3 — the layout is what form 1 called the vocabulary block). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
@@ -15855,7 +15857,8 @@ stored. **A float field reads a token by ONE correctly rounded conversion**
 from the token's exact decimal value to the field's width (round to nearest,
 ties to even), never through a wider float first, and it refuses ONLY when
 that conversion rounds to infinity; a token that rounds to a finite value, a
-subnormal or zero included, lands as that value. **A token that is not a JSON number at all** —
+subnormal or zero included, lands as that value. It refuses for nothing else
+but a value outside the field's DECLARED range (`out_of_range`). **A token that is not a JSON number at all** —
 `1-2`, `5+`, `1.2.3`, `--3` — is `malformed`: the token grammar is RFC
 8259's, and a typo in an authoring file is a diagnostic, never a value. **A token's LENGTH is never the reason it is refused**: a valid
 number is read by its value however many bytes it spans, within the
@@ -17009,8 +17012,9 @@ they came from.
 tool's engine (`internal/tabletext`) and the generated Go walk (`tableJsonIn`).
 The layer is a leading byte-order mark if there is one, then ONE whole value
 under RFC 8259's grammar, then whitespace, then the end of the input, under the
-three caps both walks carry: depth 128, a key of 255 bytes, a number token of
-511 bytes. **The table walk above it is not ruled here**: its refusals (§16.2)
+caps both walks carry: depth 128 and a key of 255 bytes. A number token has no
+length limit in the verdict; a walk's token cap (511 bytes in Go) is a caller
+resource limit, outside the verdict contract (§6.5). **The table walk above it is not ruled here**: its refusals (§16.2)
 decide whether an accepted value lands in a field, and they never turn a
 refusal into an acceptance.
 
@@ -17059,16 +17063,16 @@ verdict.
 | `n_object_trailing_comment.json` | accept (dialect) | a `/* */` comment, accepted on read for hand-edited texts and never written (§16.2) |
 | `n_object_trailing_comment_slash_open.json` | accept (dialect) | a `//` comment that runs to the end of input, accepted on read and never written (§16.2) |
 | `n_structure_object_with_comment.json` | accept (dialect) | a `/* */` comment between a key and its value, accepted on read and never written (§16.2) |
-| `i_number_double_huge_neg_exp.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_huge_exp.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_neg_int_huge_exp.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_pos_double_huge_exp.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_real_neg_overflow.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_real_pos_overflow.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_real_underflow.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_too_big_neg_int.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_too_big_pos_int.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
-| `i_number_very_big_negative_int.json` | accept | the 511-byte token cap bounds the work; the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_double_huge_neg_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_huge_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_neg_int_huge_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_pos_double_huge_exp.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_real_neg_overflow.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_real_pos_overflow.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_real_underflow.json` | accept | lands as the correctly rounded value, zero or a subnormal (§16.2) |
+| `i_number_too_big_neg_int.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_too_big_pos_int.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
+| `i_number_very_big_negative_int.json` | accept | no number-length limit is part of the verdict (a token cap is a caller resource limit, outside it, §6.5); the walk refuses `out_of_range` or `kind_mismatch` where the token lands in a field, and no infinity is stored (§16.2) |
 | `i_string_UTF-8_invalid_sequence.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
 | `i_string_UTF8_surrogate_U+D800.json` | refuse | `string_not_utf8`: a surrogate encoded as UTF-8 bytes is not well-formed UTF-8 (§16.3) |
 | `i_string_invalid_utf-8.json` | refuse | `string_not_utf8`: bytes that are not well-formed UTF-8 (§16.3) |
@@ -17273,7 +17277,7 @@ key or a dropped member would make the value unequal without saying so. A read e
 | the integrity trailer (§2.14), which only a file's ROOT carries: it covers this table when the table is the root, and a nested value only through the trailer of the root that holds it, when that root declares `integrity` | not applicable (no trailer in a text) | the CRC-32C is checked before anything is decoded | `integrity_mismatch` |
 | the depth cap, 128, counted from the FILE's root as §16.12's layer counts it: the document's root container sits at depth 0, and a container whose depth is past 128 is refused, so a value as the root may nest 129 containers and a value sitting at depth d may nest 129 − d | the layer's own check, the walk passing the depth at which the value sits | the scan's stack, started at the depth the table walk passes in (0 for the root), so the binary step and the writer's cap (§16.3) agree with the text | `json_value_too_deep` |
 | a key of at most 255 DECODED bytes | the key is refused, never clamped | a `key_len` past 255 | `json_value_key_too_long` |
-| a number token of at most 511 bytes | the layer's token cap | a Number's `text_len` past 511 | `json_value_number_too_long` |
+| a number token of at most 511 bytes (a resource limit, outside the verdict contract, §6.5) | the carrier's token cap | a Number's `text_len` past 511 | `json_value_number_too_long` |
 | a number token is RFC 8259's `number` production | the layer's grammar (a breach is `malformed`) | the Number's bytes, an empty token included, are checked against the same production | `json_value_number_grammar` |
 | strings and keys are well-formed UTF-8 | §16.3's refusals, `string_not_utf8` and `string_lone_surrogate` | the bytes of a String or a key are checked for well-formed UTF-8 | `string_not_utf8` |
 | a count or a length fits `uint32` | a container with more than 2^32 − 1 children, or a string or key past 2^32 − 1 bytes | not applicable (the field cannot hold more) | `json_value_too_large` |
