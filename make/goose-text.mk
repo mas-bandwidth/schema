@@ -45,3 +45,16 @@ tables-goose-json-conformance: build/conformance-harness build/conformance-goose
 conformance-negative-control-goose-walk: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/walk-negative-control
+
+# The variable class of the text form (docs/SPEC-TABLES.md §16.7), over the
+# flat value table (runtime/json_value.goose): each control breaks one clause
+# of that walk in the emitter and requires exactly its surface red on
+# graphdemo — `label` the writer's `&node` (json-write), `share` the reader's
+# reference resolution (json-read).
+.PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share
+conformance-negative-control-goose-json-label: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-value-negative-control label
+conformance-negative-control-goose-json-share: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-value-negative-control share

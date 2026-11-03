@@ -30,12 +30,13 @@
 //   message      AnnounceRead the connection's announcement, LoadMessages the
 //                batch against it, SaveMessages what landed: the bytes
 // The JSON text form (docs/SPEC-TABLES.md §16.2, §16.3):
-//   json-read    FromJson -> ToLoaded -> form-1 save, against the pinned wire
-//   json-write   form-1 load -> FromLoaded -> ToJson, against the pinned text
-//   json-hostile FromJsonTolerant of <tree>/<root>.json and its report, through
-//                the unit's text glue: unit.goose, which the shell driver
-//                copies from units/<unit>.goose, or the empty unit.goose beside
-//                this file for a unit that has none (every row ABSENT)
+//   json-read    a strict text read -> form-1 save, against the pinned wire
+//   json-write   form-1 load -> the canonical text, against the pinned text
+//   json-hostile a tolerant read of <tree>/<root>.json and its report: through
+//                the unit's text glue for a root it names (unit.goose, which
+//                the shell driver copies from units/<unit>.goose, or the empty
+//                unit.goose beside this file), and through the flat value
+//                table for every other root
 // The cook's and the block form's surfaces are accel.goose's: the shell
 // driver runs that program for them.
 import os;
@@ -129,8 +130,10 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
-// Read canonical JSON through the typed API and save form 1; or load form 1
-// and write canonical JSON. Unsupported root shapes remain explicit absences.
+// Read canonical JSON and save form 1; or load form 1 and write canonical
+// JSON: through a root's typed record where it has one, and through the flat
+// value table for every other root (the glue's conformance_json_read and
+// conformance_json_write).
 fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
     for line in lines {
         let f = words(line);
@@ -150,15 +153,14 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
             let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
             if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
             var json: u8[>..] = [];
-            result = conformance_json_write(f[3], data, vals, at, json);
+            result = conformance_json_write(f[3], data, vals, nodes, at, json);
             out.append(json);
         } else {
             var text: u8[>..] = [];
             load_file(str("testdata/conformance/tables/json/", f[1], ".json"), text);
-            result = conformance_json_read(f[3], text, data, vals);
+            result = conformance_json_read(f[3], text, data, vals, nodes);
             if result >= 0 && schema_rt::save_table(conformance_unit(), f[3], data, vals, nodes, result, out) != 0 { result = -2; }
         }
-        if result == -1 { absent(name, "typed JSON bridge is not carried for this root"); continue; }
         if result < 0 { write_stderr(str("driver: ", f[1], " JSON bridge refused\n")); exit(1); }
         answer(name, out);
     }
@@ -225,10 +227,11 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     }
 }
 
-// surface_json_hostile: the verdict of FromJsonTolerant over <tree>/<root>.json
+// surface_json_hostile: the verdict of a tolerant read of <tree>/<root>.json
 // for every json-hostile row of the unit, `u,k,w,c,d,false,read` or `refused`
-// (test/conformance/README.md). A root the unit's text glue does not name is
-// ABSENT.
+// (test/conformance/README.md): through the unit's text glue for a root it
+// names (its typed <Root>FromJsonTolerant), and through the flat value table
+// for every other root.
 fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
@@ -236,10 +239,7 @@ fn surface_json_hostile(lines: const u8[:][:], unit: const u8[:]) {
         var data: u8[>..] = [];
         load_file(str(f[4], "/", f[3], ".json"), data);
         var verdict: u8[>..] = [];
-        if !unit_json_verdict(f[3], data, verdict) {
-            absent(f[1], "");
-            continue;
-        }
+        if !unit_json_verdict(f[3], data, verdict) { conformance_json_verdict(f[3], data, verdict); }
         answer(f[1], verdict);
     }
 }
