@@ -24,6 +24,20 @@ goose-packet-ready:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
 
+# THE PACKET PROGRAMS as files (test/conformance/nightly-readiness goose):
+# examples/ and examples128/ generated beside test/goose/main.goose and
+# test/goose-ludicrous/main.goose with every wire golden, the layout
+# TestGooseExamplesAgreeWithTheWireGoldens builds in a temp directory. Each
+# program prints OK under `$(GOOSE) run` and `$(GOOSE) run --debug`.
+GOOSE_PACKET_DIR := build/goose-packet
+build/goose-packet/.stamp: goose-packet-ready $(SCHEMAS) $(SCHEMAS128) test/goose/main.goose test/goose-ludicrous/main.goose
+	@rm -rf $(GOOSE_PACKET_DIR) && mkdir -p $(GOOSE_PACKET_DIR)/normal $(GOOSE_PACKET_DIR)/ludicrous
+	./build/schema-goose generate --lang goose --out $(GOOSE_PACKET_DIR)/normal examples
+	./build/schema-goose generate --lang goose --out $(GOOSE_PACKET_DIR)/ludicrous examples128
+	cp test/goose/main.goose testdata/wire/*.bin $(GOOSE_PACKET_DIR)/normal/
+	cp test/goose-ludicrous/main.goose testdata/wire/*.bin $(GOOSE_PACKET_DIR)/ludicrous/
+	@touch $@
+
 # $(1) the control directory, $(2) the sabotage, $(3) the emitter file it
 # edits: writes $(1)/schema, the compiler with that one rule removed.
 define goose-packet-sabotaged

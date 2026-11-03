@@ -412,7 +412,7 @@ func implementationRoot(u *ir.Unit, name string) (*ir.Unit, error) {
 func implementationReport(w io.Writer, m *Manifest, lang string) error {
 	langs := originalNine
 	if lang != "" {
-		if !slices.Contains(originalNine, lang) {
+		if !admittedImplementationLanguage(lang) {
 			return fmt.Errorf("implementation: %q is not an original-nine language", lang)
 		}
 		langs = []string{lang}

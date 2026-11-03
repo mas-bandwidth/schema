@@ -22,7 +22,7 @@
 # beside the units) is an absence. The program's exit status is the
 # compiler's: 2 on a surface is ABSENT, and this script passes it through. The
 # compiler's own progress lines go to stderr, kept under
-# build/conformance-goose/driver.
+# the work directory below.
 #
 # The working directory is the repository root.
 #
@@ -34,7 +34,14 @@
 main=test/conformance/goose/main.goose
 goose=${GOOSE:-dist/goose-v2026.2-linux-x64/goose}
 units=${SCHEMA_GOOSE_GENERATED:-build/conformance-goose}
-dir=build/conformance-goose-driver
+# THE WORK DIRECTORY is one per units tree and per surface, so calls that run
+# at once under make -j (the forgery fuzzer, the block lead, the controls over
+# their own copies of the units) never share a file:
+# build/conformance-goose-driver/<surface> for the generated units, and
+# <units>.driver/<surface> for a copy named by SCHEMA_GOOSE_GENERATED.
+base=build/conformance-goose-driver
+[ -n "${SCHEMA_GOOSE_GENERATED:-}" ] && base=$units.driver
+dir=$base/$2
 mkdir -p "$dir" || exit 1
 # glue <unit dir>: the root and its glue module beside the unit's modules
 glue() {
@@ -110,11 +117,16 @@ glue() {
 		echo "    }"
 		echo "    out.push(10);"
 		echo "}"
-	} >"$1/conformance_unit.goose"
-	cp "$main" "$1/main.goose"
+	} >"$1/conformance_unit.goose.$$"
+	cp "$main" "$1/main.goose.$$"
 	text=test/conformance/goose/units/$(basename "$1").goose
 	[ -f "$text" ] || text=test/conformance/goose/unit.goose
-	cp "$text" "$1/unit.goose"
+	cp "$text" "$1/unit.goose.$$"
+	# each lands by rename, so a call compiling this unit beside us never
+	# reads a half-written module
+	for f in conformance_unit main unit; do
+		mv -f "$1/$f.goose.$$" "$1/$f.goose" || exit 1
+	done
 }
 # THE ACCELERATORS (docs/SPEC-TABLES.md §7, §19): the block form's and the
 # cook's surfaces run accel.goose in place of main.goose, beside a second glue

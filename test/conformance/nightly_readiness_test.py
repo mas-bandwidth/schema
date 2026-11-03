@@ -26,7 +26,7 @@ def native(package="gotable", name="TestReady", action="pass", output=""):
 
 
 def fuzz(arm="plain", seed=1, lang="", builder=False):
-    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in ("dart", "js") else "") + (" retain" if arm == "retain" else "")
+    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in m.MIXED_BUILDER else "") + (" retain" if arm == "retain" else "")
     return f"{prefix}: seed {seed}, 41 seeds over 20 roots, 30 enumerated + 100000 random = 100030 mutants, 0 divergences, 1.0 s, 100030 mutants/s"
 
 
@@ -65,6 +65,10 @@ class FakeRunner(m.Runner):
                 text = "Generated: /tmp/mock-packet"
         elif name.endswith("-plant"):
             Path(argv[argv.index("-out")+1]).write_text("mock planted source\n")
+        elif name.startswith("retain-goose-"):
+            tests = argv[argv.index("-run")+1][2:-2].split("|")
+            text = "\n".join("\n".join(native("goosetable",t).splitlines()[:-1]) for t in tests)
+            text += "\n" + native("goosetable").splitlines()[-1]
         elif name.startswith("retain-"):
             test = argv[argv.index("-run")+1][1:-1]
             package = argv[-1].split("/")[-1]
@@ -135,7 +139,7 @@ class Contracts(unittest.TestCase):
                 self.assertTrue(m.fuzz_result(fuzz(arm, seed), arm, seed, "dart"))
                 self.assertTrue(m.fuzz_result(builder.replace("-mixed-builder", "-builder"), arm, seed, "dart"))
                 for lang in m.LANGUAGES:
-                    if lang not in ("dart", "js"):
+                    if lang not in m.MIXED_BUILDER:
                         self.assertTrue(m.fuzz_result(builder, arm, seed, lang))
                 for text in ("", builder + "\n" + builder,
                              builder.replace("41 seeds", "0 seeds"),
@@ -228,7 +232,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(sum(line.startswith("NIGHTLY_READINESS_PASS language="+lang+" phases=")
                                  for line in output.getvalue().splitlines()),1)
 
-    def test_full_mock_plan_all_nine_and_timeout_commands(self):
+    def test_full_mock_plan_every_language_and_timeout_commands(self):
         real=m.Runner
         m.Runner=FakeRunner
         try:
@@ -276,7 +280,7 @@ class Contracts(unittest.TestCase):
                         self.assertIn("-timeout=0",argv,(name,argv))
                     if name.startswith("wire-plain-") or (name.startswith("wire-retain-") and name[-1:].isdigit()):
                         self.assertNotIn("--finite-owed",argv)
-                        self.assertEqual("--mixed-builder" in argv, lang in ("dart", "js"))
+                        self.assertEqual("--mixed-builder" in argv, lang in m.MIXED_BUILDER)
                         self.assertNotIn("--builder", argv)
                         self.assertEqual(argv[argv.index("--n")+1],"100000")
                 runner.temporary.cleanup()
@@ -460,7 +464,9 @@ class Contracts(unittest.TestCase):
         targets=set()
         for text in [*m.FIXED_GATES.values(),*m.DRIVER_BUILD.values(),*m.WIRE_CONTROLS.values()]:
             targets.update(text.split())
-        targets.update(("bin/schema","build/conformance-harness","build/c-collections-fuzz","build/cpp-collections-fuzz"))
+        targets.update(("bin/schema","build/conformance-harness","build/c-collections-fuzz","build/cpp-collections-fuzz",
+                        "goose-toolchain-ready","build/conformance-harness-goose","build/goose-packet/.stamp",
+                        "packet-finite-goose","packet-finite-goose-negative-control"))
         for lang in m.LANGUAGES:
             if lang!="cpp":
                 for feature in ("defaults","utf8","wide"):
@@ -471,7 +477,114 @@ class Contracts(unittest.TestCase):
                          "tables-cs-pack-negative-control tables-cs-retain-negative-control")
         outer={name for name in targets if any(m.re.search(r"\bgo test\b|test/slowgate/proof",line)
                                                 for line in blocks[name])}
-        self.assertEqual(outer,{"tables-view","tables-fixed-twin","packet-wide-go"})
+        # Goose's gates run go test in their own recipes; the readiness run
+        # executes them through goose_uncapped_makefile, which uncaps each.
+        goose_outer={name for name in outer if name.startswith("tables-goose-")}
+        self.assertEqual(outer-goose_outer,{"tables-view","tables-fixed-twin","packet-wide-go"})
+        self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
+        runner=FakeRunner(ROOT,"goose")
+        m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"])
+        receipt=json.loads((runner.out/"Makefile.goose-uncapped.json").read_text())
+        self.assertEqual(set(receipt),goose_outer)
+        runner.temporary.cleanup()
+
+    def test_goose_plan_is_the_expanded_shape(self):
+        required=m.required_phases("goose")
+        for phase in ("prerequisites","implementation","native-goose","native-goosetable","native-lockfile",
+                      "packet-build","packet-normal-0","packet-normal-1","packet-ludicrous-0","packet-ludicrous-1",
+                      "packet-features","external-table-gates","wire-driver-build","wire-retain-controls",
+                      "retain-goose-tablewire","retain-goose-fuzz",
+                      *("wire-"+arm+"-"+str(seed) for arm in ("plain","retain") for seed in (1,2,3))):
+            self.assertIn(phase,required)
+        # no §5.6 retirement is admitted for Goose
+        self.assertNotIn("goose",m.RETIRED_NATIVE)
+        self.assertTrue(m.native_retirement_errors("RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.6): anything","goose",set()))
+        skip="\n".join(native("goosetable","TestFixedFormPlanPath","skip",m.RETIRED["TestFixedFormPlanPath"][0]).splitlines()[:-1])+"\n"+native("goosetable")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertTrue(m.native_result(skip,["TestFixedFormPlanPath","TestReady"],"goosetable",
+                                            set(m.RETIRED["TestFixedFormPlanPath"][1])))
+        self.assertEqual(m.driver_command(ROOT,"goose"),"build/goose-wirefuzz-dispatch build/goose-wirefuzz-legs/legs")
+        self.assertIn("goose",m.MIXED_BUILDER)
+
+    def test_goose_main_uses_tagged_harness_and_dispatcher(self):
+        real=m.Runner
+        m.Runner=FakeRunner
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(m.main(["goose"]),0)
+            runner=FakeRunner.instances[-1]
+            calls={name:(argv,cwd) for name,argv,cwd in runner.calls}
+            self.assertIn("build/conformance-harness-goose",calls["prerequisites"][0])
+            self.assertIn("goose-toolchain-ready",calls["prerequisites"][0])
+            self.assertEqual(calls["implementation"][0][0],"./build/conformance-harness-goose")
+            self.assertIn("build/conformance-goose-wirefuzz",calls["wire-driver-build"][0])
+            for arm in ("plain","retain"):
+                for seed in m.SEEDS:
+                    argv=calls["wire-"+arm+"-"+str(seed)][0]
+                    self.assertEqual(argv[0],"./build/conformance-harness")
+                    self.assertEqual(argv[argv.index("--driver")+1],m.driver_command(ROOT,"goose"))
+            for label in ("normal","ludicrous"):
+                self.assertEqual(calls["packet-"+label+"-0"][1],ROOT/"build/goose-packet"/label)
+                self.assertIn("--debug",calls["packet-"+label+"-1"][0])
+            self.assertIn("-f",calls["external-table-gates"][0])
+            for name in ("retain-goose-tablewire","retain-goose-fuzz"):
+                self.assertIn("-timeout=0",calls[name][0])
+            runner.temporary.cleanup()
+        finally:
+            m.Runner=real
+
+    def test_goose_dist_matches_the_go_pin(self):
+        source=(ROOT/"internal/codegen/goose/gooserun").glob("*.go")
+        text="".join(p.read_text() for p in source)
+        version=m.re.search(r'Version\s*=\s*"([^"]+)"',text)[1]
+        self.assertEqual(m.GOOSE_DIST,"dist/goose-"+version+"-linux-x64")
+
+    def test_goose_uncapped_makefile_is_exact_and_drift_rejected(self):
+        runner=FakeRunner(ROOT,"goose")
+        path=m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"])
+        text=path.read_text()
+        self.assertTrue(text.startswith("include Makefile\n"))
+        self.assertNotIn("-timeout 600s",text)
+        for target in m.FIXED_GATES["goose"].split():
+            block=m.re.search(r"^"+m.re.escape(target)+r":\n((?:\t[^\n]*\n)+)",text,m.re.MULTILINE)
+            self.assertIsNotNone(block,target)
+            self.assertNotIn("go test -count",block[1])
+            self.assertIn("go test -timeout=0 ",block[1])
+        runner.temporary.cleanup()
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/"make").mkdir()
+            for f in (ROOT/"make").glob("goose*.mk"):
+                (root/"make"/f.name).write_text(f.read_text().replace("go test -count=1 -timeout 600s","go test -count=1 -timeout 900s"))
+            runner=FakeRunner(root,"goose")
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertIsNone(m.goose_uncapped_makefile(runner,m.FIXED_GATES["goose"]))
+            self.assertTrue(runner.results[-1]["errors"])
+            runner.temporary.cleanup()
+
+    def test_real_runner_pwd_matches_each_physical_working_directory(self):
+        # Go honours a valid inherited logical PWD while make CURDIR resolves
+        # it. Their different source spellings silently miss Go overlays.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            root = base / "physical"
+            root.mkdir()
+            nested = root / "packet"
+            nested.mkdir()
+            link = base / "logical"
+            link.symlink_to(root, target_is_directory=True)
+            with patch.dict(m.os.environ, {"PWD": str(link)}):
+                runner = m.Runner(root, "goose")
+            for name, cwd in (("root", None), ("packet", link / "packet")):
+                with self.subTest(name=name), contextlib.redirect_stdout(io.StringIO()):
+                    text, status = runner.run(name, [m.sys.executable, "-c",
+                        "import os; print(os.environ['PWD']); print(os.getcwd())"], cwd=cwd)
+                    actual = (cwd or root).resolve()
+                    self.assertEqual(status, 0)
+                    self.assertEqual(text.splitlines(), [str(actual), str(actual)])
+                    command = json.loads((runner.out / (name + ".command.json")).read_text())
+                    self.assertEqual(command["cwd"], str(actual))
+                    self.assertEqual(command["PWD"], str(actual))
+            self.assertEqual(runner.env["PWD"], str(link))
 
     def test_real_runner_nonzero_cannot_be_masked_by_valid_summary(self):
         runner=self.runner("go")
