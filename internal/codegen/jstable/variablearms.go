@@ -475,6 +475,7 @@ function TableVariableMapKeyScan(fd, bytes, at, end, table) {
     const kind = r.u8();
     if (id === kd.id) {
       if (kind !== kd.k && TableVariableWidens(kind, kd.k)) {
+        kindBad = false;
         widened = true;
         const x = TableVariableScalar(r, kd, kind, rep);
         if (x === undefined) { return { ok: false, key, kindBad, widened }; }
