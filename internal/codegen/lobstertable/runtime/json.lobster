@@ -1550,6 +1550,10 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
     if j_peek(r) != '[':
         r.bad = true
         return false
+    // the array is one level below its holder, and its elements one below that
+    if depth + 1 > json_max_depth:
+        r.bad = true
+        return false
     r.pos++
     for(length(sl.elems)) i:
         sl.elems[i] = element_zero(f)
@@ -1573,7 +1577,7 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
             push(sl.elems, element_zero(f))
         if placed >= bound:
             r.report.clamped++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif e.s == "ptr" and j_value_shape(r) == 'z':
             if not j_literal(r, "null"):
@@ -1582,7 +1586,7 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
             placed++
         elif j_value_shape(r) != shape:
             r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
             placed++
         else:
@@ -1605,6 +1609,10 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
 def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     if j_peek(r) != '[':
+        r.bad = true
+        return false
+    // the text list is one level below its holder, and its elements one below that
+    if depth + 1 > json_max_depth:
         r.bad = true
         return false
     r.pos++
@@ -1631,7 +1639,7 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
             push(sl.elems, element_zero(f))
         if placed >= bound:
             r.report.clamped++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif optional and j_value_shape(r) == 'z':
             if not j_literal(r, "null"):
@@ -1639,7 +1647,7 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
             placed++
         elif j_value_shape(r) != 's':
             r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
             placed++
         else:
@@ -1675,6 +1683,10 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
     if j_peek(r) != '{':
         r.bad = true
         return false
+    // the keyed object is one level below its holder, and its elements one below that
+    if depth + 1 > json_max_depth:
+        r.bad = true
+        return false
     r.pos++
     for(length(sl.elems)) i:
         sl.elems[i] = element_zero(f)
@@ -1706,11 +1718,11 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
             seen[slot] = true
         if slot < 0:
             r.report.unknown++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif j_value_shape(r) != shape:
             r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif not j_read_scalar(r, sl.elems[slot], e, depth + 1, true):
             return false
@@ -2101,6 +2113,10 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
     if j_peek(r) != '[':
         r.bad = true
         return false
+    // the flags array is one level below its holder, and its elements one below that
+    if depth + 1 > json_max_depth:
+        r.bad = true
+        return false
     r.pos++
     var bits = 0
     while true:
@@ -2113,7 +2129,7 @@ def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
             return false
         if c != '\"':
             r.report.kind_mismatch++
-            if not j_skip_value(r, depth + 1):
+            if not j_skip_value(r, depth + 2):
                 return false
         else:
             let name, _, ok = j_scan_string(r, json_max_key)

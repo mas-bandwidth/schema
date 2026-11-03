@@ -732,6 +732,25 @@ json-hostile nesting-one-past-depth-cap-through-union mapdemo Depth testdata/con
 # `weapons` (an array), a WeaponConfig, its `effect` union, then the Buff arm.
 json-hostile nesting-at-depth-cap-through-fixed-union       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-fixed-union       1,0,0,0,0,false,read
 json-hostile nesting-one-past-depth-cap-through-fixed-union tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-fixed-union refused
+# A SKIPPED value is a container like any other: a declared array's element
+# of the wrong shape, a keyed object's key no enum names, a text list's
+# element that is not a string and a flags array's element that is not a
+# name each sit one level below their array or object, which sits one below
+# its holder. A reader that labels the skipped value at its container's own
+# level reads the one-past text.
+json-hostile nesting-at-depth-cap-through-skipped-array       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-array 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-array tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-array refused
+json-hostile nesting-at-depth-cap-through-skipped-keyed       tabledemo PackConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-keyed 1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-keyed tabledemo PackConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-keyed refused
+json-hostile nesting-at-depth-cap-through-skipped-text-list   featurewitnesses Root testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-text-list 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-text-list featurewitnesses Root testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-text-list refused
+json-hostile nesting-at-depth-cap-through-skipped-flags       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-flags 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-flags tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-flags refused
+# and a map's value of the wrong shape and a union's arm no variant names.
+json-hostile nesting-at-depth-cap-through-skipped-map-value   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-map-value 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-map-value mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-map-value refused
+json-hostile nesting-at-depth-cap-through-skipped-union-arm   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-union-arm 1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-union-arm mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-union-arm refused
 json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,0,false,read
 json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,0,false,read
 json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused

@@ -1752,6 +1752,8 @@ readField = function(T, c, fd, r, v, depth) {
 // an array of pointers is a null slot
 readArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
+  // the array is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
   local fixed = !fd.list && !fd.counted;
@@ -1773,14 +1775,14 @@ readArray = function(T, c, fd, r, v, depth) {
     local vs = valueShape(r);
     if (placed >= bound) {
       r.report.clamped++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (vs == 'z' && (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob")) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
     } else if (vs != shape) {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
       placed++;
     } else if (text) {
       if (e.shape == "bblob") {
@@ -1813,6 +1815,8 @@ readArray = function(T, c, fd, r, v, depth) {
 // the generated element records; null is an absent `?string` element.
 readTextArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
+  // the text list is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
   local ed = tableDesc(T, e.table);
@@ -1828,14 +1832,14 @@ readTextArray = function(T, c, fd, r, v, depth) {
     local vs = valueShape(r);
     if (out.len() >= bound) {
       r.report.clamped++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (fd.textlist == 2 && vs == 'z') {
       if (!literal(r, "null")) return false;
       rec.ValuePresent = false;
       out.append(rec);
     } else if (vs != 's') {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
       out.append(rec);
     } else {
       local s = scanBytes(r, capacity);
@@ -1862,6 +1866,8 @@ readTextArray = function(T, c, fd, r, v, depth) {
 // repeated slot is a duplicate, counted before the shape check.
 readKeyed = function(T, c, fd, r, v, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
+  // the keyed object is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   r.p++;
   local e = fd.elem;
   local out = array(fd.bound);
@@ -1889,10 +1895,10 @@ readKeyed = function(T, c, fd, r, v, depth) {
     }
     if (slot < 0) {
       r.report.unknown++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (valueShape(r) != shape) {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
       return false;
     }
@@ -1969,8 +1975,12 @@ readMap = function(T, c, fd, r, v, depth) {
         if (vd.optional) ent[vd.member + "Present"] = false;
         valueOk = true;
       } else if (shape != shapeOf(T, vd)) {
+        // a value of the wrong shape is skipped and counted, and its entry
+        // stays at the value's default (§16.2), as the Go reference keeps it
         r.report.kindMismatch++;
         if (!skipValue(r, depth + 2)) return false;
+        if (vd.optional) ent[vd.member + "Present"] = true;
+        valueOk = true;
       } else if (!readField(T, ed, vd, r, ent, depth + 1)) {
         return false;
       } else {
@@ -2182,6 +2192,8 @@ local placeWide = function(d, tok, report) {
 
 local readFlags = function(d, r, depth) {
   if (peek(r) != '[') { r.bad = true; return null; }
+  // the flags array is one level below its holder, and its elements one below that
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return null; }
   r.p++;
   local names = has(d, "flagNames") ? d.flagNames : [];
   local bits = 0;
@@ -2191,7 +2203,7 @@ local readFlags = function(d, r, depth) {
     if (ch == 0) { r.bad = true; return null; }
     if (ch != '"') {
       r.report.kindMismatch++;
-      if (!skipValue(r, depth + 1)) return null;
+      if (!skipValue(r, depth + 2)) return null;
     } else {
       local name = scanKey(r);
       if (name == null) return null;

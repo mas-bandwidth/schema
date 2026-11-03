@@ -2435,6 +2435,8 @@ namespace Blockhome
                 {
                     if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
                     input.Pos++;
+                    // the flags array is one level below its holder, and its elements one below that
+                    if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
                     ulong bits = 0;
                     Span<byte> name = stackalloc byte[MaxKey];
                     for (; ; )
@@ -2445,7 +2447,7 @@ namespace Blockhome
                         if (c != '"')
                         {
                             input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else
                         {
@@ -2732,6 +2734,8 @@ namespace Blockhome
                 {
                     if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
                     input.Pos++;
+                    // the keyed object is one level below its holder, and its elements one below that
+                    if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
                     // every slot back to its declared defaults first, so a key the text
                     // omits keeps them and a repeated field key cannot leave an earlier
                     // occurrence's slots standing
@@ -2772,12 +2776,12 @@ namespace Blockhome
                         if (slot < 0)
                         {
                             input.Report.Unknown++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else if (ValueShape(text, ref input) != shape)
                         {
                             input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
                         {
@@ -2795,6 +2799,8 @@ namespace Blockhome
                 {
                     if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
                     input.Pos++;
+                    // the array is one level below its holder, and its elements one below that
+                    if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
                     // LAST WINS has to be true of a repeated ARRAY key too, and it is
                     // wire-visible: a fixed array writes every slot, so a second,
                     // shorter occurrence overlaying a prefix would leave the first
@@ -2810,19 +2816,19 @@ namespace Blockhome
                         byte c = Peek(text, ref input);
                         if (c == ']') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
-                        if (textFull) { if (!SkipValue(text,ref input,depth+1)) { return false; } }
+                        if (textFull) { if (!SkipValue(text,ref input,depth+2)) { return false; } }
                         else if (placed >= f.ArrayBound)
                         {
                             // more elements than the reader's bound: the bounded prefix
                             // is kept and the excess counts, the wire's rule (§4)
                             input.Report.Clamped++; TableWire.TextClamp(input.Report,f);
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                         {
                             if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                             input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                             placed++;
                         }
                         else

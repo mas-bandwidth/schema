@@ -2250,6 +2250,8 @@ function TableVariableTextListClamp(fd, report) {
 }
 function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
+  // the text list is one level below its holder, and its elements one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const out = [], vf = fd.e.c.fields[0];
   v[fd.n] = out;
@@ -2261,14 +2263,14 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
     if (ch === "") { inp.bad = true; return false; }
     if (count >= bound || dropped) {
       if (!dropped && count >= bound) { TableVariableTextListClamp(fd, report); }
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else {
       const record = fd.e.c.make(), shape = inp.shape();
       if (shape === "z" && vf.opt) {
         if (!inp.literal("null")) { return false; }
       } else if (shape !== "s") {
         report.kindMismatch++;
-        if (!inp.skip(depth + 1, graph)) { return false; }
+        if (!inp.skip(depth + 2, graph)) { return false; }
       } else {
         const before = report.clamped;
         if (!TableVariableTextField(vf, inp, record, depth + 1, graph, report)) { return false; }
@@ -3624,6 +3626,8 @@ function TableVariableZero(e) {
 // a null element of an array of pointers is a null slot (§16.2)
 function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
+  // the array is one level below its holder, and its elements one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const e = fd.e;
   const out = fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableZero(e)) : [];
@@ -3637,13 +3641,13 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     const shape = inp.shape();
     if (placed >= bound) {
       report.clamped++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (e.s === "ptr" && shape === "z") {
       if (!inp.literal("null")) { return false; }
       out[placed++] = null;
     } else if (shape !== e.js) {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
       out[placed++] = TableVariableZero(e);
     } else {
       out[placed] = TableVariableZero(e);
@@ -3725,6 +3729,8 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
     }
     case "flags": {
       if (inp.peek() !== "[") { inp.bad = true; return false; }
+      // the flags array is one level below its holder, and its elements one below that
+      if (depth + 1 > 128) { inp.bad = true; return false; }
       inp.p++;
       let mask = 0n;
       for (;;) {
@@ -3733,7 +3739,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         if (ch === "") { inp.bad = true; return false; }
         if (inp.shape() !== "s") {
           report.kindMismatch++;
-          if (!inp.skip(depth + 1, graph)) { return false; }
+          if (!inp.skip(depth + 2, graph)) { return false; }
         } else {
           const s = inp.str();
           if (s === null) { return false; }
@@ -4083,6 +4089,8 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
 
 function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  // the keyed object is one level below its holder, and its elements one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
   v[fd.n] = arr;
@@ -4102,10 +4110,10 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     }
     if (slot === undefined) {
       report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (inp.shape() !== fd.e.js) {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
       return false;
     }

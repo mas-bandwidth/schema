@@ -1189,6 +1189,11 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the array is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	// an ARRAY re-establishes before placing: a fixed array writes every slot,
 	// so a second, shorter occurrence overlaying a prefix would leave the
 	// first occurrence's tail standing (docs/SPEC-TABLES.md §16.2, last-wins as a
@@ -1227,7 +1232,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			// more elements than the reader's bound: the bounded prefix is
 			// kept and the excess counts, the wire's rule (§4)
 			in.report.Clamped++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case f.Type.Pointer && in.valueShape() == 'z':
@@ -1239,7 +1244,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			placed++
 		case in.valueShape() != shape:
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 			placed++
@@ -1281,6 +1286,11 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the text list is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	// re-establish every element at the element record's defaults, as readArray
 	// re-establishes its slots
 	for i := range fv.Elems {
@@ -1317,12 +1327,12 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 		before := placed
 		switch {
 		case full:
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case placed >= bound:
 			in.report.Clamped++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case optional && in.valueShape() == 'z':
@@ -1332,7 +1342,7 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			placed++
 		case in.valueShape() != 's':
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 			placed++
@@ -1393,6 +1403,11 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the keyed object is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	// every slot back to its declared defaults ONCE, so a key the text omits
 	// keeps them and a repeated field key cannot leave an earlier occurrence's
 	// slots standing. Per-KEY the slot is not re-established: a repeated slot
@@ -1432,12 +1447,12 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		switch {
 		case slot < 0:
 			in.report.Unknown++ // a key this enum cannot name
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case in.valueShape() != shape:
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		default:
@@ -1784,6 +1799,11 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the flags array is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	var bits uint64
 	for {
 		c := in.peek()
@@ -1797,7 +1817,7 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		}
 		if c != '"' {
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {

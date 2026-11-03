@@ -1756,6 +1756,8 @@ recursive fn jr_pointer(c: JvIn&, s: i64, ref: const u8[:], depth: i64) -> bool 
 recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
+    // the array is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let shape = jr_shape(c, e, owner, ord, true);
@@ -1775,14 +1777,14 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         let got = json_shape(c.jr);
         if placed >= bound {
             c.jr.rep.clamped += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
         } else if e.shape == ShapePtr && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != shape {
             c.jr.rep.kind_mismatch += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else {
@@ -1813,6 +1815,8 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
     let et = jv_table(c.unit, e.ref);
     if et < 0 { return json_fail(c.jr); }
     let fd = c.unit.tables[et].fields[0];
+    // the text list is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let mark = c.scratch.len;
@@ -1832,17 +1836,17 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
         }
         let got = json_shape(c.jr);
         if full {
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
         } else if placed >= bound {
             c.jr.rep.clamped += 1;
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
         } else if fd.optional && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != 's' {
             c.jr.rep.kind_mismatch += 1;
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else {
@@ -1878,6 +1882,8 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
 recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
+    // the keyed object is one level below its holder, and its elements one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     let keys = jv_keys(c.unit, owner, d);
     let shape = jr_shape(c, e, owner, ord, true);
@@ -1907,10 +1913,10 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         }
         if slot < 0 {
             c.jr.rep.unknown += 1;
-            if !jr_skip(c, depth + 1) { return false; }
+            if !jr_skip(c, depth + 2) { return false; }
         } else if json_shape(c.jr) != shape {
             c.jr.rep.kind_mismatch += 1;
-            if !jr_skip(c, depth + 1) { return false; }
+            if !jr_skip(c, depth + 2) { return false; }
         } else if !jr_value(c, c.vals[s].first + slot, e, owner, ord, true, depth + 1) {
             return false;
         }

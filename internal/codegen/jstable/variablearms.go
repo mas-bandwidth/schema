@@ -888,6 +888,8 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
 
 function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  // the keyed object is one level below its holder, and its elements one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
   v[fd.n] = arr;
@@ -907,10 +909,10 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     }
     if (slot === undefined) {
       report.unknown++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (inp.shape() !== fd.e.js) {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
       return false;
     }

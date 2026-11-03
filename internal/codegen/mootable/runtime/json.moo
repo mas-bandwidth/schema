@@ -2511,6 +2511,11 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 		r.bad = true
 		return false
 	end
+	-- the flags array is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local low, high = 0, 0
 	while true do
@@ -2525,7 +2530,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 		end
 		if c ~= 34 then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2692,6 +2697,11 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
+	-- the array is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local e = fd.e
 	local slot = fd.slot
@@ -2742,7 +2752,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		local s = valueShape(r)
 		if placed >= bound then
 			r.report.clamped += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif isPointerShape(e.s) and s == "z" then
@@ -2753,7 +2763,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 			placed += 1
 		elseif s ~= want then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 			placed += 1
@@ -2799,6 +2809,11 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 		r.bad = true
 		return false
 	end
+	-- the text list is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local slot = fd.slot
 	local list = fd.array == "list"
@@ -2837,12 +2852,12 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 		local before = placed
 		local s = valueShape(r)
 		if full then
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed >= bound then
 			r.report.clamped += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif tl.opt and s == "z" then
@@ -2852,7 +2867,7 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			placed += 1
 		elseif s ~= "s" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 			placed += 1
@@ -2914,6 +2929,11 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
+	-- the keyed object is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local e = fd.e
 	local arr = rec[fd.slot]
@@ -2961,12 +2981,12 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		end
 		if at < 0 then
 			r.report.unknown += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif valueShape(r) ~= want then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif not readScalar(r, e, arr, at, depth + 1, true, fd.name) then

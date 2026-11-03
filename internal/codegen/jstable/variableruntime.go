@@ -2222,6 +2222,8 @@ function TableVariableZero(e) {
 // a null element of an array of pointers is a null slot (§16.2)
 function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
+  // the array is one level below its holder, and its elements one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const e = fd.e;
   const out = fd.fixed ? Array.from({ length: fd.bound }, () => TableVariableZero(e)) : [];
@@ -2235,13 +2237,13 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     const shape = inp.shape();
     if (placed >= bound) {
       report.clamped++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (e.s === "ptr" && shape === "z") {
       if (!inp.literal("null")) { return false; }
       out[placed++] = null;
     } else if (shape !== e.js) {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
       out[placed++] = TableVariableZero(e);
     } else {
       out[placed] = TableVariableZero(e);
@@ -2323,6 +2325,8 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
     }
     case "flags": {
       if (inp.peek() !== "[") { inp.bad = true; return false; }
+      // the flags array is one level below its holder, and its elements one below that
+      if (depth + 1 > 128) { inp.bad = true; return false; }
       inp.p++;
       let mask = 0n;
       for (;;) {
@@ -2331,7 +2335,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         if (ch === "") { inp.bad = true; return false; }
         if (inp.shape() !== "s") {
           report.kindMismatch++;
-          if (!inp.skip(depth + 1, graph)) { return false; }
+          if (!inp.skip(depth + 2, graph)) { return false; }
         } else {
           const s = inp.str();
           if (s === null) { return false; }

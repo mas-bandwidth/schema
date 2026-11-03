@@ -1179,6 +1179,8 @@ end
 
 read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
+  -- the array is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
   if fd.fixed then
@@ -1194,14 +1196,14 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
     if c == nil then inp.bad = true; return false end
     if placed >= bound then
       report.clamped = report.clamped + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     elseif fd.elem.shape == "pointer" and vs == 'z' then
       literal(inp, "null")
       placed = placed + 1
       out[placed] = false
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
     else
@@ -1316,6 +1318,8 @@ end
 
 local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '{' then inp.bad = true; return false end
+  -- the keyed object is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out = {}
   for i = 1, fd.bound do out[i] = zero_elem(T, fd.elem) end
@@ -1335,13 +1339,13 @@ local function read_keyed(T: any, fd: any, inp: Input, holder: any, key: any, de
     for i, v in ipairs(fd.keyed) do if v[1] == name then slot = i; break end end
     if slot == nil then
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     else
       if seen[slot] then report.duplicate = report.duplicate + 1 end
       seen[slot] = true
       if value_shape(inp) ~= eshape then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
       else
         if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true) then
           return false
@@ -1559,6 +1563,8 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
     return true
   elseif s == "flags" then
     if peek(inp) ~= '[' then inp.bad = true; return false end
+    -- the flags array is one level below its holder, and its elements one below that
+    if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
     inp.p = inp.p + 1
     local bits = 0
     while true do
@@ -1567,7 +1573,7 @@ read_value = function(T: any, d: any, inp: Input, holder: any, key: any, depth: 
       if c == nil then inp.bad = true; return false end
       if c ~= '"' then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
       else
         local st = inp.p
         local _, _, ok = scan_string(inp, MAX_KEY)
