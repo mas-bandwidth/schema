@@ -3,7 +3,8 @@
 # a missing text event, a noncanonical integer accepted by the generated
 # wire reader, an absent case that writes no `.absent` answer, and the 4096
 # id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
-# reader (frame-cap).
+# reader (frame-cap), and a writer that orders map entries or numbers nodes
+# against the write algorithm (map-order, node-order; docs/SPEC-TABLES.md §22).
 set -eu
 
 mode=$1
@@ -39,6 +40,25 @@ leb|leb-driver)
 frame-cap)
     source=$(grep -l 'if n > 4096 {' build/tables-generated-go/r1/*Table.go)
     sed 's/if n > 4096 {/if false { \/\/ SABOTAGED: no entry cap/' "$source" > "$out/source.gotext"
+    ;;
+map-order)
+    # THE WRITE ALGORITHM'S MAP ORDER (docs/SPEC-TABLES.md §22.2.1) broken in
+    # the generated mapdemo writer: a loaded region's entry array is walked
+    # DESCENDING, so a load followed by a save writes every map in the reverse
+    # of the key order the wire held and the canonical bytes hold
+    source=$(grep -l '^func tableMapCursor(' build/tables-generated-go/maps/*.go)
+    sed -e '/^func tableMapCursor(/,/^}/ s/^\(\t\)if !f.Map || a == nil || h.Count == 0 {/\1if f.Map \&\& a == nil \&\& h.Count > 1 \&\& c.p != nil { c.p = unsafe.Add(c.p, int64(h.Count-1)*c.size); c.size = -c.size } \/\/ SABOTAGED: a region walks descending\
+\1if !f.Map || a == nil || h.Count == 0 {/' \
+        "$source" > "$out/source.gotext"
+    ;;
+node-order)
+    # THE WRITE ALGORITHM'S NODE NUMBERING (docs/SPEC-TABLES.md §22.3) broken
+    # in the generated graphdemo writer: the numbering walk takes a body's
+    # fields in REVERSE declaration order, so a graph whose pointer fields
+    # reach different nodes first numbers them differently
+    source=$(grep -l '^func tableRegionEdges(' build/tables-generated-go/pointers/*.go)
+    sed '/^func tableRegionEdges(/,/^}/ s/for i := range info.Fields {/for i := len(info.Fields) - 1; i >= 0; i-- { \/\/ SABOTAGED: reverse order/' \
+        "$source" > "$out/source.gotext"
     ;;
 absent)
     # Model two explicit missing cases before suppressing their markers.
@@ -119,6 +139,13 @@ else
     elif [ "$mode" = frame-cap ]; then
         grep -q 'go / framing: frame_entries_4097: damaged input owes the refusal' "$out/log"
         grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = map-order ]; then
+        grep -q 'go / wire: edge_map_keys' "$out/log"
+        ! grep -q 'go / wire: scalars_full' "$out/log"
+    elif [ "$mode" = node-order ]; then
+        grep -q 'go / wire: edge_graph_diamond' "$out/log"
+        grep -q 'go / rewrite: node_diamond_chain' "$out/log"
+        ! grep -q 'go / wire: scalars_full' "$out/log"
     elif [ "$mode" = absent ]; then
         grep -q 'go / wire: root_full: .*driver wrote nothing' "$out/log"
         grep -q 'go / framing: frame_empty_table: the driver wrote nothing' "$out/log"
