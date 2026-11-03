@@ -149,7 +149,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema)
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -189,6 +189,8 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,lists,listdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/widelist tables/widelist
 	$(call go_table_module,widelist,widelistdemo)
+	./bin/schema generate --lang go --out build/tables-generated-go/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+	$(call go_table_module,featurewitnesses,featurewitnesses)
 	./bin/schema generate --lang go --out build/tables-generated-go/maps tables/maps
 	$(call go_table_module,maps,mapdemo)
 	./bin/schema generate --lang go --out build/tables-generated-go/backend tables/backend
