@@ -1442,7 +1442,7 @@ def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
     if s == "ptr":
         return j_read_pointer_cell(r, sl.cell, f.t, depth)
     if s == "text" or (s == "str" and not f.wide):
-        let out, clamped, ok = j_scan_stored(r, f.bound)
+        let out, clamped, ok = j_scan_stored(r, if s == "text": -1 else: f.bound)
         if not ok:
             return false
         if clamped:
@@ -1643,7 +1643,7 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
                 return false
             placed++
         else:
-            let out, clamped, ok = j_scan_stored(r, vf.bound)
+            let out, clamped, ok = j_scan_stored(r, if vf.s == "text": -1 else: vf.bound)
             if not ok:
                 return false
             if clamped:
@@ -2242,7 +2242,7 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             r.bad = true
             return false
         var fits = true
-        if string_key and placed == 0 and not over:
+        if string_key and kf.s != "text" and placed == 0 and not over:
             fits = length(entry.fields[0].cell.s) <= kf.bound
         if over and string_key:
             r.report.clamped++
