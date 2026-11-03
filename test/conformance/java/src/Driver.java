@@ -1274,6 +1274,100 @@ public final class Driver {
         return 0;
     }
 
+    // ---- the write-refusal surface (testdata/conformance/tables/FORMAT.md)
+    //
+    // write-refusal <case> <unit> <root> <wire> <path> <kind> <value>: load the
+    // wire as the root, set the ONE field the path names, and save through the
+    // variable form. The debug contract is an assert, so the driver script runs
+    // this surface under -ea; an AssertionError is the refusal, as is a null
+    // answer from an every-build refusal. The setters are per root, and a path
+    // or kind no setter knows fails the surface loudly.
+    private static int surfaceWriteRefusal(String out) throws IOException {
+        for (String[] f : kind("write-refusal")) {
+            if (!f[2].equals("tabledemo")) return failInt(f[1] + ": no write-refusal setter for unit " + f[2]);
+            byte[] wire = Files.readAllBytes(Paths.get(f[4]));
+            tabledemo.TableVariable.Report report = new tabledemo.TableVariable.Report();
+            String verdict;
+            try {
+                byte[] saved;
+                if (f[3].equals("RootConfig")) {
+                    tabledemo.RootConfigVariable.Value v = tabledemo.RootConfigVariable.load(wire, report);
+                    if (v == null || report.refused) return failInt(f[1] + ": load refused " + f[4]);
+                    String unknown = setRootConfig(v, f[5], f[6], f[7]);
+                    if (unknown != null) return failInt(f[1] + ": " + unknown);
+                    saved = tabledemo.RootConfigVariable.save(v);
+                } else if (f[3].equals("LoadoutConfig")) {
+                    tabledemo.LoadoutConfigVariable.Value v = tabledemo.LoadoutConfigVariable.load(wire, report);
+                    if (v == null || report.refused) return failInt(f[1] + ": load refused " + f[4]);
+                    String unknown = setLoadoutConfig(v, f[5], f[6], f[7]);
+                    if (unknown != null) return failInt(f[1] + ": " + unknown);
+                    saved = tabledemo.LoadoutConfigVariable.save(v);
+                } else {
+                    return failInt(f[1] + ": no write-refusal setter for root " + f[3]);
+                }
+                verdict = saved == null ? "refused" : "wrote";
+            } catch (AssertionError contract) {
+                verdict = "refused";
+            }
+            spill(out, f[1], verdict + "\n");
+        }
+        return 0;
+    }
+
+    private static float floatValue(String value) {
+        switch (value) {
+            case "nan": return Float.NaN;
+            case "inf": return Float.POSITIVE_INFINITY;
+            case "-inf": return Float.NEGATIVE_INFINITY;
+            default: return Float.parseFloat(value);
+        }
+    }
+
+    // setRootConfig sets the one field at path by kind, and answers null, or
+    // the reason it cannot.
+    private static String setRootConfig(tabledemo.RootConfigVariable.Value v, String path, String kind, String value) {
+        String key = path + " " + kind;
+        switch (key) {
+            case "weapons count": {
+                int n = Integer.parseInt(value);
+                if (v.weapons.isEmpty()) return "weapons has no element 0 to copy";
+                tabledemo.WeaponConfigVariable.Value first = v.weapons.get(0);
+                while (v.weapons.size() > n) v.weapons.remove(v.weapons.size() - 1);
+                while (v.weapons.size() < n) v.weapons.add(first);
+                return null;
+            }
+            case "version_note length":
+                v.versionNote = "a".repeat(Integer.parseInt(value));
+                return null;
+            default:
+                break;
+        }
+        if (!path.startsWith("weapons[0].")) return "no RootConfig setter for " + key;
+        if (v.weapons.isEmpty()) return "weapons has no element 0";
+        tabledemo.WeaponConfigVariable.Value w = v.weapons.get(0);
+        switch (key.substring("weapons[0].".length())) {
+            case "penetration int": w.penetration = Integer.parseInt(value); return null;
+            case "channel int": w.channel = Integer.parseInt(value); return null;
+            case "damage float": w.damage = floatValue(value); return null;
+            case "effect tag":
+                // a lawful tag takes its arm at the arm's declared defaults
+                w.effect = new tabledemo.EffectVariable.Value();
+                w.effect.tag = Integer.parseInt(value);
+                return null;
+            default:
+                return "no RootConfig setter for " + key;
+        }
+    }
+
+    private static String setLoadoutConfig(tabledemo.LoadoutConfigVariable.Value v, String path, String kind, String value) {
+        String key = path + " " + kind;
+        if (key.equals("grade ordinal")) {
+            v.grade = Integer.parseInt(value);
+            return null;
+        }
+        return "no LoadoutConfig setter for " + key;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -1289,7 +1383,8 @@ public final class Driver {
             System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
+                    + "write-refusal\n");
             return 0;
         }
         if (args.length < 3) {
@@ -1317,6 +1412,7 @@ public final class Driver {
             case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
+            case "write-refusal": return surfaceWriteRefusal(out);
             default: return 2;
         }
     }
