@@ -27,7 +27,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { BenchMixed, InitBenchMixed } from "./Bench.js";
+import { BenchMixed, InitBenchMixed, InitMixedChatEvent, InitMixedEntity, InitMixedHitEvent, InitMixedPickupEvent, InitMixedStat } from "./Bench.js";
 
 
 // ---------------------------------------------------------------------------
@@ -1945,6 +1945,38 @@ function tableMessageCountBits(s) {
   while (n !== 0) { bits++; n = Math.floor(n / 2); }
   return bits;
 }
+export function tableMessageUtf8Valid(bytes, at, len) {
+  for (let i = 0; i < len;) {
+    const b0 = bytes[at + i];
+    if (b0 === 0) { return false; }
+    if (b0 < 0x80) { i += 1; continue; }
+    let need, cp;
+    if ((b0 & 0xe0) === 0xc0) { need = 1; cp = b0 & 0x1f; }
+    else if ((b0 & 0xf0) === 0xe0) { need = 2; cp = b0 & 0x0f; }
+    else if ((b0 & 0xf8) === 0xf0) { need = 3; cp = b0 & 0x07; }
+    else { return false; }
+    if (i + 1 + need > len) { return false; }
+    for (let k = 1; k <= need; k++) {
+      const b = bytes[at + i + k];
+      if ((b & 0xc0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3f);
+    }
+    const min = need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { return false; }
+    i += 1 + need;
+  }
+  return true;
+}
+export function tableMessageUtf8Clamp(bytes, at, bound) {
+  let i = 0;
+  while (i < bound) {
+    const b0 = bytes[at + i];
+    const step = b0 < 0x80 ? 1 : (b0 & 0xe0) === 0xc0 ? 2 : (b0 & 0xf0) === 0xe0 ? 3 : 4;
+    if (i + step > bound) { break; }
+    i += step;
+  }
+  return i;
+}
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
   const [raw, ok] = r.Get(bits);
@@ -2731,6 +2763,7 @@ export function MixedEntitySaveMessageBody(w, value) {
 }
 
 export function MixedEntityLoadMessageBody(r, value) {
+  InitMixedEntity(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -2900,6 +2933,7 @@ export function MixedStatSaveMessageBody(w, value) {
 }
 
 export function MixedStatLoadMessageBody(r, value) {
+  InitMixedStat(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -2958,6 +2992,7 @@ export function MixedHitEventSaveMessageBody(w, value) {
 }
 
 export function MixedHitEventLoadMessageBody(r, value) {
+  InitMixedHitEvent(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3022,6 +3057,7 @@ export function MixedChatEventSaveMessageBody(w, value) {
 }
 
 export function MixedChatEventLoadMessageBody(r, value) {
+  InitMixedChatEvent(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3072,6 +3108,7 @@ export function MixedPickupEventSaveMessageBody(w, value) {
 }
 
 export function MixedPickupEventLoadMessageBody(r, value) {
+  InitMixedPickupEvent(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3262,6 +3299,7 @@ export function BenchMixedSaveMessageBody(w, value) {
 }
 
 export function BenchMixedLoadMessageBody(r, value) {
+  InitBenchMixed(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
@@ -3453,8 +3491,10 @@ export function BenchMixedLoadMessageBody(r, value) {
         { const [n, ok] = tableMessageCount(r.Bits, entry.Shape); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }
           const start = r.Bits.Offset >> 3;
           if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }
-          let kept = Number(n);
-          if (kept > 15) { kept = 15; r.Report.Clamped++; }
+          const rawLen = Number(n);
+          if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Malformed = true; return false; }
+          let kept = rawLen;
+          if (kept > 15) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, 15); r.Report.Clamped++; }
           value.playerName.fill(0);
           for (let i = 0; i < kept; i++) { value.playerName[i] = r.Bits.Buffer[start + i]; }
           value.playerNameLength = kept;
@@ -3603,6 +3643,7 @@ export function FixedTableSaveMessageBody(w, value) {
 }
 
 export function FixedTableLoadMessageBody(r, value) {
+  InitFixedTable(value);
   for (;;) {
     const [ref, ok] = r.Bits.Get(r.RefBits);
     if (!ok) { r.Report.Malformed = true; return false; }
