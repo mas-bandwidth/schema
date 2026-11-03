@@ -2926,11 +2926,16 @@ defmodule Benchtable.Table do
         case arr do
           <<6, count_rest::binary>> ->
             case leb(count_rest) do
-              {n, bytes} when byte_size(bytes) >= n ->
-                raw = binary_part(bytes, 0, n)
+              {n, bytes} ->
                 keep = min(n, f.size)
                 clamped = if n > f.size, do: 1, else: 0
-                {:cont, binary_part(raw, 0, keep), %{report | clamped: report.clamped + clamped}}
+                report = %{report | clamped: report.clamped + clamped}
+
+                if byte_size(bytes) >= keep do
+                  {:cont, binary_part(bytes, 0, keep), report}
+                else
+                  {:cont, bytes, %{report | malformed: true}}
+                end
 
               _ ->
                 {:cont, <<>>, %{report | malformed: true}}
@@ -3010,21 +3015,40 @@ defmodule Benchtable.Table do
     end
   end
 
-  # wstring(N) (docs/SPEC-TABLES.md §3): L UTF-16LE bytes; past N code units
-  # clamps, and bytes that are not UTF-16 read empty and count malformed.
+  # Validate the whole UTF-16LE payload before clamping. NUL and unpaired
+  # surrogates are damage even beyond the bound; a clamp never splits a pair.
   defp read_payload(%{t: :wstring} = f, payload, _nodes, _ids, report) do
     case leb(payload) do
       {len, rest} when byte_size(rest) >= len and rem(len, 2) == 0 ->
-        {raw, report} =
-          if div(len, 2) > f.size do
-            {binary_part(rest, 0, f.size * 2), %{report | clamped: report.clamped + 1}}
-          else
-            {binary_part(rest, 0, len), report}
-          end
+        raw = binary_part(rest, 0, len)
 
         case :unicode.characters_to_binary(raw, {:utf16, :little}, :utf8) do
-          s when is_binary(s) -> {:cont, s, report}
-          _ -> {:cont, "", %{report | malformed: true}}
+          s when is_binary(s) ->
+            cond do
+              not utf8_valid?(s) ->
+                {:cont, "", %{report | malformed: true}}
+
+              div(len, 2) > f.size ->
+                cut = binary_part(raw, 0, f.size * 2)
+                size = byte_size(cut)
+
+                cut =
+                  if size > 0 do
+                    <<last::little-unsigned-16>> = binary_part(cut, size - 2, 2)
+                    if last in 0xD800..0xDBFF, do: binary_part(cut, 0, size - 2), else: cut
+                  else
+                    cut
+                  end
+
+                {:cont, :unicode.characters_to_binary(cut, {:utf16, :little}, :utf8),
+                 %{report | clamped: report.clamped + 1}}
+
+              true ->
+                {:cont, s, report}
+            end
+
+          _ ->
+            {:cont, "", %{report | malformed: true}}
         end
 
       _ ->
