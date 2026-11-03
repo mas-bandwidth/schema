@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -220,6 +221,7 @@ func storageCapFailures(got map[string]string) []string {
 // vector, and load/2 and load_retain/4 refuse each over vector by name before
 // building anything.
 func TestElixirStorageCapRefusedAtMeasure(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	slowtest.Gate(t, "the Elixir toolchain")
 	t.Parallel()
 	if bad := storageCapFailures(storageCapRun(t, nil)); len(bad) > 0 {
@@ -231,6 +233,7 @@ func TestElixirStorageCapRefusedAtMeasure(t *testing.T) {
 // Table module and requires the probe to go red: the extent term, the running
 // node total, the final total, and the loads' guard.
 func TestElixirStorageCapNegativeControl(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	slowtest.Gate(t, "the Elixir toolchain")
 	t.Parallel()
 	plants := []struct{ name, from, to string }{
@@ -241,6 +244,7 @@ func TestElixirStorageCapNegativeControl(t *testing.T) {
 	}
 	for _, p := range plants {
 		t.Run(p.name, func(t *testing.T) {
+			memceiling.Guard(t, memceiling.Default)
 			t.Parallel()
 			got := storageCapRun(t, func(files map[string][]byte) { elixirPatch(t, files, p.from, p.to) })
 			if len(storageCapFailures(got)) == 0 {
