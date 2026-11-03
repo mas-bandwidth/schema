@@ -13560,10 +13560,13 @@ in build version (§20.5).
   owed it. Each of those legs stores a type's size, its field offsets and its
   element, entry and cook element sizes at 64 bits, so a record past 4 GiB
   (`testdata/wire/tables/storage-cap/wide`) generates and compiles with
-  its sizes exact. Two runtime limits stand below the cap: the CLR loads no
-  value type of 2 GiB or more, so C#'s by-value row and block structs for
-  such a record do not compile, and a Java `byte[]` view reads no position
-  past 2^31-1, so its accessor for one throws `ArithmeticException`.
+  its sizes exact, except in C#. Two platform limits stand below the cap. C#
+  spells every record as a struct too (its block and cook rows), and CoreCLR
+  loads no struct over 2^31-1 bytes or with a field past offset 2^27-8, so
+  the C# generator refuses such a unit by name, `cs_value_type_too_large`,
+  naming the record, its struct and its size. A Java `byte[]` view reads no
+  position past 2^31-1, so its accessor for one throws
+  `ArithmeticException`.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a

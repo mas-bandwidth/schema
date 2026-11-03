@@ -171,6 +171,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// half does — a unit whose variable class the wire cannot spell still gets
 	// its cooks opened.
 	blocks := ir.Blocks(u)
+	// a record whose C# struct CoreCLR cannot load refuses the unit by name
+	// before anything is emitted (valuetype.go)
+	if err := csValueTypeLimit(u, blocks); err != nil {
+		return nil, err
+	}
 	out, err := generateBlockFiles(u, blocks)
 	if err != nil {
 		return nil, err
