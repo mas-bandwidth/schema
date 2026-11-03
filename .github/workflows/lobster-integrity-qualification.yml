@@ -33,6 +33,12 @@ jobs:
           name: lobster-registry-compiler
           path: build/registry-compiler/
           retention-days: 7
+      - name: JSON feature value identity
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable -run '^TestLobsterJSONFeatureValues$' -count=1 -v
       - name: Whole-unit registry regression
         env:
           SCHEMA_SLOW: '1'
