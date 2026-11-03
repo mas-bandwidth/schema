@@ -2678,7 +2678,10 @@ adapt_field = function(fd: any, owner: any): any
     if fd.fbits ~= nil then o.fixed_units = true end
     end
   elseif s == "float" then o.shape = "float"; o.f32 = fd.f32; o.lo = fd.lo; o.hi = fd.hi; o.res = fd.res
-  elseif s == "str" then o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+  elseif s == "str" then
+    o.shape = fd.wide and "wstring" or "string"; o.bound = fd.bound; o.wide = fd.wide
+    -- an unbounded text list element rides as str with no bound (§2.13.1)
+    if not fd.wide and (fd.bound or 0) == 0 then o.bound = -1 end
   elseif s == "text" then o.shape = "string"; o.bound = -1
   elseif s == "bytes" then o.shape = "bytes"; o.bound = fd.bound
   elseif s == "enum" then

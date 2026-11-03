@@ -701,6 +701,12 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 	if t.Integrity != "" {
 		g.Pf("\tintegrity = %q,\n", t.Integrity)
 	}
+	// the unit's region alignment (ir.TableRegionAlign), which pads an
+	// unbounded text blob in a cook (docs/SPEC-TABLES.md §2.13.1); the cook
+	// writer takes the floor of eight when the entry is absent
+	if ra := ir.TableRegionAlign(g.Unit); ra != ir.RegionAlignFloor {
+		g.Pf("\tregionAlign = %d,\n", ra)
+	}
 	var placeable []string
 	for _, r := range ir.PointerReachable(t) {
 		placeable = append(placeable, fmt.Sprintf("%q", r.Name))

@@ -70,6 +70,7 @@ export type TableDescriptor = {
 	variable: boolean,
 	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
 	integrity: string?,
+	regionAlign: number?, -- docs/SPEC-TABLES.md §2.13.1, absent at the floor of eight
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
 	new: () -> any,
