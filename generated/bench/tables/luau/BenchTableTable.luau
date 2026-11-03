@@ -57,6 +57,7 @@ _T.TableEntityDescriptor = _schema_tables.table({
 	table = true,
 	fixed = true,
 	variable = false,
+	size = 64, align = 8, ralign = 8,
 	place = { tables = {  }, str = false, bytes = false },
 	fields = {
 		{ id = 2593226102015223570i, name = "entity_id", slot = "EntityId", json = "entity_id", o = 0, k = 7, s = "int", kw = 2, signed = false, dom = "number", bits = 12, def = 0 },
@@ -98,6 +99,7 @@ _T.TableStatDescriptor = _schema_tables.table({
 	table = true,
 	fixed = true,
 	variable = false,
+	size = 8, align = 4, ralign = 8,
 	place = { tables = {  }, str = false, bytes = false },
 	fields = {
 		{ id = 0x80ab75f0866dbf65i, name = "stat_id", slot = "StatId", json = "stat_id", o = 0, k = 6, s = "int", kw = 1, signed = false, dom = "number", bits = 8, def = 0 },
@@ -187,6 +189,7 @@ _T.TableMixedDescriptor = _schema_tables.table({
 	table = true,
 	fixed = true,
 	variable = false,
+	size = 1352, align = 8, ralign = 8,
 	place = { tables = {  }, str = false, bytes = false },
 	fields = {
 		{ id = 7663561793681298941i, name = "protocol_magic", slot = "ProtocolMagic", json = "protocol_magic", o = 0, k = 7, s = "int", kw = 2, signed = false, dom = "number", def = 0 },
@@ -229,6 +232,7 @@ _T.TableHitEventDescriptor = _schema_tables.table({
 	table = false,
 	fixed = false,
 	variable = false,
+	size = 16, align = 4, ralign = 8,
 	place = { tables = {  }, str = false, bytes = false },
 	fields = {
 		{ id = 0xb7bc9ac015a25050i, name = "target_id", slot = "TargetId", json = "target_id", o = 0, k = 7, s = "int", kw = 2, signed = false, dom = "number", bits = 12, def = 0 },
@@ -247,6 +251,7 @@ _T.TableChatEventDescriptor = _schema_tables.table({
 	table = false,
 	fixed = false,
 	variable = false,
+	size = 8, align = 4, ralign = 8,
 	place = { tables = {  }, str = false, bytes = false },
 	fields = {
 		{ id = 0xa5013e9ad5caeda4i, name = "channel", slot = "Channel", json = "channel", o = 0, k = 4, s = "int", kw = 4, signed = true, dom = "number", lo = 0, hi = 3, def = 0 },
@@ -263,6 +268,7 @@ _T.TablePickupEventDescriptor = _schema_tables.table({
 	table = false,
 	fixed = false,
 	variable = false,
+	size = 8, align = 4, ralign = 8,
 	place = { tables = {  }, str = false, bytes = false },
 	fields = {
 		{ id = 0x9e7fd06d864fbd56i, name = "item_id", slot = "ItemId", json = "item_id", o = 0, k = 7, s = "int", kw = 2, signed = false, dom = "number", bits = 10, def = 0 },
