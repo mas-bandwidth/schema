@@ -1236,7 +1236,6 @@ func TestFixedVersioningLineageMerge(t *testing.T) {
 	}
 }
 
-
 // The old compiled-plan fixture now reads through the writer's locked lineage.
 // Exercise its second-arm text, signed/float widenings, and noncanonical true
 // bytes against the C++ fu1.bin corpus on both identity (FU1) and compiled (FU2) paths.
