@@ -83,7 +83,8 @@ public final class Runner {
                     "tables/stream", "streamdemo",
                     "tables/maps", "mapdemo",
                     "tables/lists", "listdemo",
-                    "schemas/probe.schema", "probe");
+                    "schemas/probe.schema", "probe",
+                    "testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses");
 
     // A verdict: "accept <digest>" or "refuse <reason>"; anything else (a
     // throw, a value the runner cannot canonicalise) is its own text and never
@@ -191,7 +192,8 @@ public final class Runner {
         String verdict(Object value, Object report) throws ReflectiveOperationException, NoSuchAlgorithmException {
             if (flag(report, "refused")) {
                 String r = reason(report);
-                return refuse(r == null || r.isEmpty() ? "damaged" : r);
+                // the corpus names a count past the int32 storage cap count_refusal
+                return refuse(r == null || r.isEmpty() ? "damaged" : r.equals("count_over_extent_cap") ? "count_refusal" : r);
             }
             if (flag(report, "malformed") || value == null) {
                 return refuse("damaged");

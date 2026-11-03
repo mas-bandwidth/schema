@@ -393,15 +393,15 @@ fn announce_once(v: MsgVocabulary&, data: const u8[:], report: MsgReport&) -> bo
         report.malformed = true;
         return false;
     }
+    // THE BOUNDED-WORK CONTRACT (§3), as for a file (wire_load.goose)
+    if ids_n > IdTableBound as! u64 {
+        report.malformed = true;
+        return false;
+    }
     let first = data.len - span;
-    for i in ids_n as! i64 {
-        let a = le_at(data, first + i * 8, 8);
-        for j in i {
-            if le_at(data, first + j * 8, 8) == a {
-                report.malformed = true;
-                return false;
-            }
-        }
+    if !ids_distinct(data, first, ids_n as! i64) {
+        report.malformed = true;
+        return false;
     }
     // the body's extent: a body that ENDED EARLY is malformed (§3)
     var off: i64 = 1;

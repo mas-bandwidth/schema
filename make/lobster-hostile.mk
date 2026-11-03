@@ -11,7 +11,8 @@
 #
 # A disagreement the port already owes is carried, by name, in
 # test/conformance/lobster/hostile-known-findings.tsv and printed as a
-# FIX-CARD (none today: all 161 cases agree, over every carrier). A
+# FIX-CARD. A schema the Lobster target refuses is a NAMED ABSENCE: each of its
+# cases is printed ABSENT with the refusal and counted, never passed. A
 # disagreement no FIX-CARD names is a failure, and a FIX-CARD that has gone green is a failure
 # too, so the list cannot rot into silence.
 #

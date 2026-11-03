@@ -13,13 +13,17 @@
 # every unit that carries the form; its control sabotages the GENERATED read
 # accessor's field dispatch by one ordinal and requires exactly the goldens
 # that pass through a RootConfig red (I11's shape, at the gate's own grain).
+# Beside it, a text list's total (§2.13) in both forms of the variable class:
+# the reads keep the prefix within it and the writes refuse past it, and its
+# control takes the total out of the unit's runtime and requires exactly the
+# probes that meet it red.
 .PHONY: tables-goose-json-walk tables-goose-json-walk-negative-control
 tables-goose-json-walk:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^(TestGooseJSONWalkIsOneRuntime|TestGooseJSONRoundTripsTheGoldens|TestGooseJSONHostile)$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -run '^(TestGooseJSONWalkIsOneRuntime|TestGooseJSONRoundTripsTheGoldens|TestGooseJSONHostile|TestGooseTextTotal)$$' ./internal/codegen/goosetable/
 tables-goose-json-walk-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseJSONWalkNegativeControl$$' ./internal/codegen/goosetable/
+	SCHEMA_SLOW=1 go test -count=1 -run '^(TestGooseJSONWalkNegativeControl|TestGooseTextTotalNegativeControl)$$' ./internal/codegen/goosetable/
 
 # tables-goose-json-differential (PORTING I13): 200 random instances, the leg's
 # text against the compiler's own engine's, both directions; its control caps
@@ -48,17 +52,21 @@ conformance-negative-control-goose-walk: build/conformance-harness build/conform
 
 # The variable class of the text form (docs/SPEC-TABLES.md §16.7), over the
 # flat value table (runtime/json_value.goose): each control breaks one clause
-# of that walk in the emitter and requires exactly its surface red on
-# graphdemo — `label` the writer's `&node` (json-write), `share` the reader's
-# reference resolution (json-read).
-.PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share
+# of that walk in the emitter and requires exactly its surface red on one
+# unit — `label` the writer's `&node` (json-write) and `share` the reader's
+# reference resolution (json-read) on graphdemo, `total` the read's hold of a
+# text list's total (json-hostile, §2.13) on featurewitnesses.
+.PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total
 conformance-negative-control-goose-json-label: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/json-value-negative-control label
 conformance-negative-control-goose-json-share: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/json-value-negative-control share
+conformance-negative-control-goose-json-total: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-value-negative-control total
 
-# The leg gate reaches the conformance gate and its three controls, so the
+# The leg gate reaches the conformance gate and its four controls, so the
 # PORTING register's I11 and M14 cells cite targets `make test` runs.
-test-goose: tables-goose-json-conformance conformance-negative-control-goose-walk conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share
+test-goose: tables-goose-json-conformance conformance-negative-control-goose-walk conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total

@@ -42,6 +42,9 @@ typedef struct hc_binding_t
     void ( *announce )( const uint8_t * data, int64_t size, const char * carrier );
     void ( *packet )( const uint8_t * data, int64_t size );
     const char * wire_retain_skip; /* why wire_retain is NULL, when it is */
+    /* a root the port's target does not generate: every carrier answers
+       skip, naming why */
+    const char * absent;
 } hc_binding_t;
 
 void hc_accept_text( const char * text, int64_t size );

@@ -879,6 +879,23 @@ recursive fn jw_array(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
         return true;
     }
     let text = jv_text_list(c.text, owner, ord);
+    // a list past its total is refused, as a count past its bound is (§2.13)
+    let total = if text { d.text_total } else { 0 };
+    if total > 0 && made {
+        var sum: i64 = 0;
+        var j: i64 = 0;
+        while j < count && j < c.vals[s].count {
+            let rec = c.vals[s].first + j;
+            if c.vals[rec].made {
+                let et = c.vals[rec].tab;
+                let fd = c.unit.tables[et].fields[0];
+                let fs = jv_slot(c.vals, rec, 0);
+                if !(fd.optional && jv_state(c.vals, fs) == ValAbsent) { sum += jw_view(c, fs, fd).len; }
+            }
+            j += 1;
+        }
+        if sum > total { return false; }
+    }
     out.push('[');
     var k: i64 = 0;
     while k < count {
@@ -1520,7 +1537,7 @@ recursive fn jr_field(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     if d.shape == ShapeMap { return jr_map(c, s, d, owner, depth); }
     if d.shape == ShapeArr {
         if d.array == ArrayKeyed { return jr_keyed(c, s, d, owner, ord, depth); }
-        if jv_text_list(c.text, owner, ord) { return jr_text_list(c, s, d, depth); }
+        if jv_text_list(c.text, owner, ord) { return jr_text_list(c, s, d, owner, depth); }
         return jr_array(c, s, d, owner, ord, depth);
     }
     return jr_value(c, s, d, owner, ord, false, depth);
@@ -1780,8 +1797,12 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
 }
 
 // jr_text_list places a TEXT LIST (readTextList): strings, `null` for an
-// absent `?string(M)` element; an element past M clamps, past N drops.
-fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, depth: i64) -> bool {
+// absent `?string(M)` element; an element past M clamps, past N drops. A
+// total keeps the longest prefix whose bytes are within it: the element that
+// would carry the sum past it and every element after it drop, clamped
+// counted once (§2.13).
+fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
+    let total = d.text_total;
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
     let et = jv_table(c.unit, e.ref);
@@ -1791,6 +1812,8 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, depth: i64) -> bool {
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let mark = c.scratch.len;
     var placed: i64 = 0;
+    var spent: i64 = 0;
+    var full = false;
     var ok = true;
     loop {
         let ch = json_peek(c.jr);
@@ -1803,7 +1826,9 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, depth: i64) -> bool {
             break;
         }
         let got = json_shape(c.jr);
-        if placed >= bound {
+        if full {
+            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+        } else if placed >= bound {
             c.jr.rep.clamped += 1;
             if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
         } else if fd.optional && got == 'z' {
@@ -1817,13 +1842,21 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, depth: i64) -> bool {
             placed += 1;
         } else {
             let t = jr_new_record(c, et);
-            c.scratch.push(t);
-            placed += 1;
             let fs = c.vals[t].first;
             let off = c.data.len;
             let good = if fd.shape == ShapeStr && fd.wide { jr_units(c, fd.bound) } else { jr_text(c, if fd.shape == ShapeStr { fd.bound } else { -1 }) };
             if !good { ok = false; break; }
             jr_place_view(c, fs, off);
+            let n = c.data.len - off;
+            if total > 0 && n > total - spent {
+                c.jr.rep.clamped += 1;
+                json_clamped(c.jr.rep, owner, d.name);
+                full = true;
+            } else {
+                spent += n;
+                c.scratch.push(t);
+                placed += 1;
+            }
         }
         let r = jr_after(c, ']');
         if r < 0 { ok = false; break; }
