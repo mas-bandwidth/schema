@@ -1,7 +1,7 @@
 # Layer 1: FRAMING
 
 The lowest layer of the table read path, and the one every other layer stands
-on: the record scan, the `L` bounds, the header-against-parent rule, what is
+on: the record scan, the `L` bounds, the header inside its body, what is
 damage and what is evolution, and the node-table scan. Every rule here is
 quoted from `docs/SPEC-TABLES.md` with its section, in present tense, and
 numbered so a vector, a test and a model can cite one rule by number. Nothing
@@ -16,14 +16,14 @@ What holds the layer:
   `test/conformance/harness/framing_vectors.go`, with the read report each
   owes on its manifest line and the value each owes in
   `testdata/conformance/tables/framing/<case>.json`. A row over DAMAGED bytes
-  owes the refusal alone: its verdict is spelled `malformed` and its value is
-  `-`, because a damaged load is discarded (D1) and nothing else it produced
+  owes the refusal alone: its verdict is the one reason, `wire_damaged`, and its
+  value is `-`, because a refused load returns nothing (D1) and nothing else it produced
   is defined. Every expected answer is derived from the rule text below, never
   from an implementation's output.
 - **The oracle check** — `test/conformance/harness/framing_test.go` runs every
   vector through the Go engine (`internal/tablewire`), the reference every leg
-  is fuzzed against, and compares the engine's report and value with the
-  manifest's (on a damaged row, its refusal alone). The engine is held to this page.
+  is fuzzed against, and compares the engine's answer — the value and the
+  evolution counters, or the one reason — with the manifest's. The engine is held to this page.
 - **The surface** — `framing`, which runs the same vectors through every leg's
   driver (`test/conformance/README.md`, "The surfaces").
 - **The model** — `tla/Framing.tla`, a layout model of the record scan with
@@ -38,28 +38,30 @@ defect (fixed, with a test and a negative control) or a finding below.
 
 ## 0. Damage discards the whole load
 
-**D1. Damage anywhere refuses the whole load: the report says `malformed`, and
-nothing else the read produced is defined.** §4, DAMAGE DISCARDS THE WHOLE
-LOAD: "A read that meets damage anywhere in its input refuses the whole load:
-it returns nothing to use, its report says `malformed`, and nothing else the
-read produced is defined — not a value it decoded, a default it filled, a
-counter it moved before or after the damage, nor anything a retaining read
-kept or would save." Glenn, 2026-10-31: "failing to read something means the
-whole read is undefined, in my book." and "there's no point hand wringing
-trying to make partial reads well defined. if it fails to read, it's broken
-and everything in it today is suspect. discard." Every rule below that names
-a condition `malformed` names a case of D1, and none of them says what a load
-returns after it: no partial value, no resume point, no default, no counter
-other than the flag. Where the read goes after damage is defined, because a
-non-finite float it reaches refuses the read (§3.3): damage ends the body it is
-met in, and the enclosing body steps over that body by its `L` and reads on (§4).
+**D1. Damage anywhere refuses the whole load with one reason, `wire_damaged`,
+and nothing else the read produced is defined.** §4: "DAMAGE — `wire_damaged`.
+Damage is input no conforming writer produces and that the wire itself, read
+with no declaration, already shows to be wrong." §6.5: every read is the strict
+read, and the reason is fixed by the input — the envelope first, then the
+well-formedness of the whole input in byte order, then the declaration in byte
+order. Glenn, 2026-10-31: "failing to read something means the whole read is
+undefined, in my book." and "there's no point hand wringing trying to make
+partial reads well defined. if it fails to read, it's broken and everything in
+it today is suspect. discard." Glenn, 2026-11-03: "Cut the tolerant wire. It's
+too much work. It was a mistake to try to do it." and "It's best to
+consistently refuse." Every rule below that names damage names a case of D1,
+and none of them says what a load returns after it: no partial value, no
+resume point, no default, no counter. **No read continues past damage**: the
+first damage in byte order is the answer (§6.5).
 
-**D2. Evolution is not damage.** §4: "EVOLUTION IS NOT DAMAGE and every other
-row of this section stands: an unknown field, variant, arm or slot skipped and
-counted, a kind mismatch, a widening, a clamp, a duplicate key, an inert short
-array body; the load succeeds and the report counts them." The rules below
-that skip, count and read on (R2, R4, H2, H4, H6, L1, L5, T6, T7's unknown
-record) are evolution and keep their full answer, value included.
+**D2. Evolution is not damage, and it is the only thing a read accepts.** §4:
+an unknown field, variant, arm or slot skipped and counted `unknown`, an absent
+field at its default, and a widening counted `widened`; the load succeeds and
+the report counts them. Everything else refuses: damage (D1), and above this
+layer the declaration's refusals — `kind_mismatch`, `out_of_range`,
+`count_over_bound`, `length_over_bound`, `missing_required`. The rules below
+that skip and count (R2, L1, T6, T7's unknown record) are evolution and keep
+their full answer, value included.
 
 ## A. The file frame
 
@@ -94,7 +96,7 @@ left over between the root body's terminator and the first entry. The whole
 wire is malformed and nothing is decoded." And the fifth: "A TABLE THAT
 CARRIES ONE ID TWICE: the whole wire is malformed, on the first rule's terms."
 The slack rule is stated again in the file's own list: "Any byte between the
-root's terminator and the table's first entry is `malformed`, because no field
+root's terminator and the table's first entry is damage, because no field
 claims it and the two ends of the file have met." D1.
 
 **F6. The entry count has a maximum of 4096, and a count above it is malformed
@@ -158,16 +160,16 @@ it cannot alike, the failed skip is damage and the whole load is discarded
 reader of this major therefore meets `34` only as DAMAGE — a kind it cannot
 skip, exactly as it meets `37` or `200`."
 
-**R4. A field at a position the reader names, under another kind, is skipped
-by that kind's rule and counted `kind_mismatch`; the widening pairs decode
-instead.** §4: "Kind mismatch (a field changed type between builds): skipped,
-never misdecoded, counted." The widening family is layer 2's; framing's share
-is that the skip uses the WIRE kind's rule.
+**R4. A field at a position the reader names, under another kind, refuses
+`kind_mismatch`; the widening pairs decode instead.** §4: "KIND MISMATCH —
+`kind_mismatch` (a field changed type between builds and the pair is not a
+widening)." The widening family is layer 2's; framing's share is that the
+wire kind's own framing is judged first (D1), so a field that is both
+mismatched and damaged answers `wire_damaged`.
 
-**R5. Field order is not contractual, and a repeated id is legal with the
-last occurrence winning.** §3: "every field is found by its id, so any order
-decodes the same value, and a body carrying an id more than once is legal
-input, the last occurrence winning."
+**R5. Field order is not contractual, and a repeated id is damage (D1).** §3:
+"every field is found by its id, so any order decodes the same value. A body
+carrying an id more than once is damage (§4): no writer emits it."
 
 **R6. A reserved id in a body that is not its transport is damage (D1).**
 §3.1: "A RESERVED ID IN ANY BODY BUT THE ONE WHOSE TRANSPORT IT IS, IS
@@ -175,20 +177,22 @@ MALFORMED ... The NODE-TABLE id's own body is a wire's ROOT body, so the id
 inside a NESTED body is malformed ... The BUILD-VERSION id's and the
 VOCABULARY id's own body is the announcement's (§3.3), so either anywhere else,
 in a file and in a message alike, is malformed on the same terms. Each is
-damage rather than a foreign name: `malformed` counts and the whole load is
-discarded (§4), in a file and in a message batch alike."
+damage rather than a foreign name: the whole load refuses `wire_damaged` (§4),
+in a file and in a message batch alike."
 
 ## C. Lengths and bodies
 
 **L1. A length-framed payload is `L` then `L` bytes, and `L` says where the
 next field begins.** §3, payload table: kind `12` "`L`, then `L` bytes"; kind
 `13` "`L`, then `L` bytes of table body"; kind `14` "`L`, then the array
-body"; kind `16` "`L`, then the body". A field skipped as evolution (R2, R4,
-H4) is stepped over by its `L`, and the parent reads on at the byte after it.
+body"; kind `16` "`L`, then the body". A field skipped as evolution (R2) is
+stepped over by its `L`, and the parent reads on at the byte after it; the
+well-formedness walk (§6.5) still checks the skipped bytes by their wire kinds,
+so damage inside them is D1.
 
 **L2. Damage inside a nested body is damage to the whole load (D1).** §4,
 DAMAGE DISCARDS THE WHOLE LOAD. No nesting level stops alone and no parent
-reads on past a damaged body.
+reads on past a damaged body: the first damage in byte order is the answer.
 
 **L3. A body's terminator is the end of its payload; a terminator that arrives
 earlier, or not by `L`, is damage (D1).** §3: "A BODY'S TERMINATOR IS THE END
@@ -196,22 +200,17 @@ OF ITS PAYLOAD, and that holds for a kind `13` field, an array element, a map
 entry and an arm whose payload is a body alike. The zero reference is the last
 byte of the payload's `L`. A terminator that arrives earlier leaves bytes
 inside `L` that no field claims, and a terminator that does not arrive by `L`
-leaves the body unended; both are damage, `malformed` counts and the whole
-load is discarded (§4)."
+leaves the body unended; both are damage" (§3, §4).
 
 **L4. A length that runs past the body carrying it is damage (D1).** §3: "A
 LENGTH THAT RUNS PAST THE BODY CARRYING IT IS DAMAGE, at any depth, the root
-included: `malformed` counts and the whole load is discarded (§4)."
+included" (§3, §4).
 
-**L5. Bytes left inside a union arm's `L` after a whole inner union are not
-damage, and the parent steps over them by the arm's `L`.** §3: "Bytes left
-inside a union arm's `L` after a whole inner union are not damage: the append
-rule lets a newer writer add at the end of an envelope, so the reader decodes
-the inner union, steps over the rest of the arm by its `L` and counts
-nothing, while a byte after the root's own terminator, outside every envelope,
-stays malformed."
+**L5. Bytes left inside a union arm's `L` after a whole inner union are damage
+(D1).** §3: "Bytes left inside a union arm's `L` after a whole inner union are
+damage, as a byte after the root's own terminator is: no writer emits them."
 
-## D. Arrays, maps and keyed arrays: the header against the parent
+## D. Arrays, maps and keyed arrays: the header inside the body
 
 **H1. An array body is `element kind (u8)`, `N`, then the elements, under the
 field's `L`.** §3, payload table, kind `14`: "`L`, then the array body:
@@ -220,84 +219,62 @@ field's `L`.** §3, payload table, kind `14`: "`L`, then the array body:
 reference`, `L`, `L` bytes of element." A map "rides as kind `14` with element
 kind `13`, an array of one generated `{ key, value }` table" (§3).
 
-**H2. A body too short to carry its header, fewer than two bytes, is inert:
-nothing decoded, nothing counted, the field keeps the value it has.** §4: "An
-ARRAY body too short to carry its own header, which is the element kind byte
-and the count and so fewer than two bytes, is INERT: no element is decoded,
-no counter fires, and the field keeps the value it has ... The framing is not
-damaged — the length agrees with the enclosing body and the walk continues
-past it — so this is not `malformed`." §2.9 restates it for `[]T`: "A body TOO
-SHORT TO CARRY ITS OWN HEADER is INERT, §4's rule unchanged."
+**H2. A body too short to carry its header, fewer than two bytes, is damage
+(D1).** §4: "an array, keyed or map body too short to carry its own header
+(fewer than two bytes: the element kind byte and the count)" is damage. §2.9:
+"A body TOO SHORT TO CARRY ITS OWN HEADER is DAMAGE."
 
-**H3. The header is read against the enclosing buffer, not against the body's
-own `L`; the elements stay bounded by `L`.** §2.9: "The decoding cursor reads
-the count against the enclosing value buffer, so a continuation byte beyond
-`L` can complete that header. This does not extend the element body: element
-reads remain bounded by `L`." This is the #2400 rule, and §3, THE HEADER
-AGAINST THE PARENT, states it for kind `14`, kind `16` and a map alike (N3).
-It decides whether a header is evolution (H4) or damage (H5, D1). The engine
-applies it to a map's and a keyed array's header
-(`internal/tablewire` `mapField`, `keyed`), and PR #2400 and #2418 hold Dart
-and Rust to it.
+**H3. The header lies inside the body's own `L`, and a header that crosses `L`
+or cannot complete inside it is damage (D1).** §3, THE HEADER INSIDE THE BODY:
+"An array body's header, the element kind byte and the count, lies inside the
+field's own `L`, for kind `14`, for kind `16` and for a map alike ... Damage is
+judged before the declaration (§6.5), so a header that crosses `L` is
+`wire_damaged` whatever its element kind."
 
-**H4. An element kind the reader does not declare is a kind mismatch for the
-field: counted once, the field skipped whole by its `L`, the field at its
-declared default.** §3: "For kinds `14` and `16` a reader compares the element
-kind it declares against the one in the body and, when they differ, skips the
-field and counts a kind mismatch (§4) ... the array reads empty, one
-`kind_mismatch` counts, and the field is skipped whole by its `L`." §2.8: "A
-map header whose ELEMENT kind is not `13` is the ordinary array kind mismatch
-of §4." The header is judged before any element is read, so a count that
-crossed the `L` (H3) under a foreign element kind is this event and nothing
-else.
+**H4. An element kind the reader does not declare refuses `kind_mismatch`.**
+§3: "For kinds `14` and `16` a reader compares the element kind it declares
+against the one in the body and, when they differ, refuses `kind_mismatch`."
+The header is judged by framing first (H3), so a header that crosses `L` is
+D1 whatever its element kind.
 
 **H5. Elements decode inside the field's body bounds, and a count the body
 cannot cover is damage (D1).** §4: "Array elements decode inside their field's
-body bounds, so no value is ever read from a neighbor's bytes." "`malformed`
-is reserved for a count the BODY cannot cover, which is damage and a
-different thing."
+body bounds, so no value is ever read from a neighbor's bytes." A count the body cannot cover is damage (§4).
 
-**H6. A count past the reader's bound keeps the bounded prefix and counts
-`clamped`; an unbounded array has no count to clamp.** §4: "A count past the
-READER's bound keeps the bounded prefix and counts clamped; a count short of
-it fills what the writer sent and leaves the reader's tail at its declared
-defaults." §2.9: "`clamped` CANNOT FIRE ON THE COUNT of a `[]T`." A crossed
-count on a bounded array (H3) whose element kind agrees is a count the body
-cannot cover, which is H5's damage, and D1 then leaves the clamp unobservable.
+**H6. A count past the reader's bound refuses `count_over_bound`; an unbounded
+array has no bound to pass.** §4: "A COUNT OR A LENGTH PAST THE READER'S BOUND —
+`count_over_bound`". A count short of the bound fills what the writer sent and
+leaves the reader's tail at its declared defaults (evolution, D2). §2.9:
+"`count_over_bound` CANNOT FIRE ON THE COUNT of a `[]T`." The bound is the
+declaration's, so it is judged after the whole input is well-formed (§6.5).
 
 **H7. A keyed array's slot key of `0` is damage (D1).** §3.2: "A stored key
-reference of `0` is MALFORMED rather than an unknown variant ... It is damage:
-`malformed` counts and the whole load is discarded (§4)." A key the reader
+reference of `0` is MALFORMED rather than an unknown variant ... It is damage" (§3.2, §4). A key the reader
 cannot name "is skipped by its length and counted `unknown`" and "a slot the
 writer never sent keeps its declared default", which are evolution (D2).
 
-**H8. Malformed entry framing in a map, and a descending key, are damage
-(D1).** §3 (L3) and §2.8: "DESCENDING: the body is not a map any conforming
-writer produced. It is damage: `malformed` is set and the whole load is
-discarded (§4, DAMAGE DISCARDS THE WHOLE LOAD)." A repeated key is evolution:
-`duplicate`, last wins whole (D2).
+**H8. Malformed entry framing in a map, and a descending or repeated key, are
+damage (D1).** §3 (L3) and §2.8: "EQUAL OR DESCENDING: the body is not a map any
+conforming writer produced. It is damage, and the whole load refuses
+`wire_damaged`."
 
 **H9. A union arm is framed as a field: arm id reference, kind, `L`, `L`
 bytes; a fixed-width arm whose `L` is not its width, and a length-shaped arm
 damaged inside its `L`, are damage (D1).** §3: "AN ARM HEADER IS A FIELD
 HEADER: the arm id reference, the arm's KIND byte, `L`, then `L` bytes of arm
 payload." "A fixed-width arm whose `L` is not its kind's width, and a
-length-shaped arm whose payload is damaged inside its `L`, are damage:
-`malformed` counts and the whole load is discarded (§4)." A payload-free arm:
-"A reader that declares an arm payload-free and meets an `L` that is not `0`
-counts `malformed` and discards the whole load (§4)." A retyped arm is
-evolution: "the arm skips by `L`, the union reads `None`, `kind_mismatch`
-counts (§4), and the parent reads on" (D2). An arm id of `0` "is the empty
+length-shaped arm whose payload is damaged inside its `L`, are damage." A
+payload-free arm: "A reader that declares an arm payload-free and meets an `L`
+that is not `0` refuses the whole load `wire_damaged`." A retyped arm "is a
+KIND MISMATCH, and the read refuses `kind_mismatch`" (§3, §4). An arm id of `0` "is the empty
 union and carries nothing after it, not even a kind byte ... a reader accepts
 the id wherever it appears."
 
 **H10. An array arm's header is read inside the arm's `L`, and a count that
-crosses it is damage (D1).** §3: "AN ARRAY ARM IS THE ONE PLACE THE BOUND IS
-NOT THE ENCLOSING BODY: an arm's `L` stands in for the field's own length (the
-arm payload table, below), and the buffer an arm payload is read from is the
-arm's, so an array arm's header is read inside the arm's `L` and a count that
-crosses it is damage, which discards the whole load
-(`arm_array_count_past_arm_length`)."
+crosses it is damage (D1).** §3: "AN ARRAY ARM IS THE SAME RULE ONE LEVEL IN: an
+arm's `L` stands in for the field's own length (the arm payload table, below),
+so an array arm's header is read inside the arm's `L` and a count that crosses
+it is damage (`arm_array_count_past_arm_length`)."
 
 ## E. The node table
 
@@ -313,8 +290,7 @@ ONCE."
 **T2. The table is whole or it is nothing, and a table that cannot be read
 whole is damage (D1).** §3.1: "A node-table field arriving under a kind other
 than `12`, a record whose length runs past the field, or bytes left over
-inside the field make the whole table malformed, which is damage and
-discards the whole load (§4). A reader never salvages part of a numbering."
+inside the field make the whole table malformed, which is damage" (§3.1, §4). A reader never salvages part of a numbering."
 "No index ever resolves against a numbering that failed."
 
 **T3. The record scan is authoritative, and a `node_count` that disagrees
@@ -341,13 +317,12 @@ nothing."
 counted `unknown`, and keeps its index; an index above `node_count + 1`, or a
 non-canonical one, is damage (D1).** §3.1: "it is skipped by its length,
 counted unknown. It KEEPS ITS INDEX." "An index above `node_count + 1`, or one
-whose LEB128 is not canonical ... malformed, which discards the whole load
-(§4)." "a pointer field's payload is a NUMBER: it is bounds-checked and
+whose LEB128 is not canonical ... damage, `wire_damaged`" (§3.1, §4). "a pointer field's payload is a NUMBER: it is bounds-checked and
 stored, and the decode never follows it."
 
 **T8. A cyclic wire is damage (D1); a second pointer to a CLOSED node is a
 share and legal.** Glenn, 2026-10-31: "It's perhaps the MOST OBVIOUS attack
-somebody would do on this protocol!" §3.1: "A cycle anywhere is `malformed`
+somebody would do on this protocol!" §3.1: "A cycle anywhere is `wire_damaged`
 (§4) on every read", over every pointer slot the load stored, false guards
 included, and "THE CHECK IS LINEAR": each node is entered once. Held by
 `node_cycle_self`, `node_cycle_to_root` and `node_cycle_mid`, with
@@ -356,18 +331,14 @@ as the legal twins.
 
 ## F. The report
 
-**C1. `malformed` is a flag beside five counters, and a refusal moves none of
-them.** §4: "The wire-tolerance counters are `unknown`, `kind_mismatch`,
-`widened`, `clamped`, `duplicate` and the `malformed` flag." §3: "A refusal is
-not damage and moves none of §4's six counters." On a damaged read the flag is
-the whole observable answer (D1).
+**C1. A read that returns reports the evolution counters; a refusal reports
+its one reason and moves no counter.** §4: "THE READ REPORT HOLDS THE REASON AND
+THE EVOLUTION COUNTERS, AND NOTHING ELSE." `unknown` and `widened`, and on a
+retaining read `retained` and `retain_lost`. On a damaged read the reason
+`wire_damaged` is the whole observable answer (D1).
 
-**C2. Counters on a damaged read are not defined.** D1: "nothing else the
-read produced is defined — ... a counter it moved before or after the
-damage". Counters stand on a read that meets no damage, including the ones
-an evolution event moved before a later evolution event (§2.8: "Events
-counted inside earlier entries of that map stand", said of a key-kind
-mismatch, D2).
+**C2. Counters on a refused read are not defined.** D1: nothing else the read
+produced is defined. Counters stand only on a read that returns.
 
 **C3. An `unknown` is counted where a body names an id, never at resolve time
 (F7); a node record of a type the root cannot place counts once at the record
@@ -395,23 +366,22 @@ the refusal alone (D1).
 - **N2. An `L` past its carrying body.** Settled: §3 states "A LENGTH THAT
   RUNS PAST THE BODY CARRYING IT IS DAMAGE", at any depth, the root included
   (L4).
-- **N3. The header-against-parent rule for kinds `14` and `16` and maps.**
-  Settled: §3, THE HEADER AGAINST THE PARENT, states it for kind `14`, kind
-  `16` and a map alike, and §2.8 and §3.2 cite it (H3). Java, Luau and
-  Squirrel are owed the rule where it decides between a kind mismatch and
-  damage.
+- **N3. Where an array, keyed or map header is bounded.** RULED
+  (2026-11-03, the one read): inside the body's own `L` (§3, THE HEADER INSIDE
+  THE BODY), and a header that crosses it is damage whatever its element kind
+  (H3). The earlier header-against-the-parent rule is retired with the
+  tolerant read.
 - **N4. An array ARM's header is bounded by the arm's `L`.** Settled: §3
-  states it as the one place the bound is not the enclosing body, and a count
-  that crosses it is damage (H10).
-- **N5. A count header that cannot complete even in the enclosing buffer.**
-  Settled: §2.9 and §3 call it damage, not inertness (D1); inertness is for a
-  body of fewer than two bytes alone (H2).
+  states it as H3's rule one level in, and a count that crosses it is damage
+  (H10).
+- **N5. A count header that cannot complete.** Settled: damage (H2, H3, D1);
+  there is no inert body.
 - **N6. An empty buffer.** Settled: §3 says a buffer of no bytes has no form
-  byte to read and is malformed, never refused (F5); `frame_empty_buffer` is a
+  byte to read and is damage, never a form refusal (F5); `frame_empty_buffer` is a
   refusal row.
-- **N7. The node table riding twice.** Settled: legal input, the LAST
-  occurrence is the numbering on R5's last-wins rule and the earlier one is
-  stepped over (§3.1); `node_table_twice` owes its full report and value.
+- **N7. The node table riding twice.** RULED (2026-11-03, the one read):
+  damage, as any repeated id is (R5, §3.1); `node_table_twice` is a refusal
+  row.
 - **N8. The 4096 entry bound.** An engine fix, not a finding: F6 is
   unambiguous and the engine applies it (`ir.TableWireIdTableBound`,
   `internal/tablewire` `trailerBounded`, held by
@@ -419,6 +389,6 @@ the refusal alone (D1).
   as the negative control). The legs' own readers are owed the same check.
 - **N9. An unskippable kind at a position the reader NAMES.** Settled by D1:
   the failed skip is damage at a named position and an unnamed one alike, and
-  no counter the read moved on the way, `kind_mismatch` included, is defined.
+  damage is judged before the declaration, so it is never `kind_mismatch`.
   `frame_kind_unknown_37`, `frame_kind_reserved_34`, `frame_kind_zero` and
   their named twins (`*_named`) are refusal rows.

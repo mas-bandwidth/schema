@@ -85,9 +85,8 @@ named in its section below.
     class has it and a fixed-class root has none. It covers unknown FIELDS
     and not unknown enum variants, union arms, keyed-array slots, node
     records, node indices or the node table itself. And it covers the
-    `unknown` class alone, so a load that reported `kind_mismatch` or
-    `clamped` still loses what those counters name, and a `malformed` load is
-    discarded whole. It is opt-in, it
+    `unknown` class alone; everything else a reader cannot take, it refuses
+    whole, so there is nothing else to lose. It is opt-in, it
     allocates nothing, and every gap counts `retain_lost`. Specified in
     SPEC-TABLES.md §6.6. The C++ reference, C# and Go carry it; C, Rust, Java,
     JavaScript, Dart and Elixir do not yet.
@@ -111,8 +110,9 @@ was shipped with the one that wrote it. This is where the bytes-per-packet
 budget is won.
 
 The **table wire**, what `table` declarations produce, is self-describing and
-tolerant. Every field carries its identity and its kind; a reader skips what
-it does not know and defaults what it does not find. It costs bytes for that,
+carries evolution. Every field carries its identity and its kind; a reader
+skips what it does not know, defaults what it does not find, and refuses
+everything else by name (SPEC-TABLES.md §4, §6.5). It costs bytes for that,
 deliberately: this is the wire for data that outlives the build that wrote it,
 whether on disk or crossing a connection between builds. A five-year-old file
 reads in today's build, today's file reads in the five-year-old build, and
@@ -296,11 +296,11 @@ pipeline step; player saves hold state, which has no weekly default.
 
 Three mechanisms judge an edit, and each sees what the others cannot:
 
-- **The read report** says what a *reader* can tell happened: six counters,
-  `unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate` and the
-  `malformed` flag, filled on every load and never fatal on data from another
-  build. `malformed` is DAMAGE rather than evolution, and a load that reports
-  it is discarded whole (SPEC-TABLES.md §4). A
+- **The read report** says what a *reader* can tell happened: on a read that
+  returns, the evolution counters `unknown` and `widened`; on a refusal, its
+  ONE reason (SPEC-TABLES.md §4, §6.5). Every read is strict: damage, a kind
+  mismatch, a value out of range and a count or length past its bound each
+  refuse the whole load. A
   caller that opts into retain-unknown reads two more on the same struct
   (SPEC-TABLES.md §6.6), and they report on retention rather than on the read.
 - **The baseline** says what the *compiler* refuses to let you do to data
@@ -328,9 +328,9 @@ committed rule and say what the repository does today.
 | a variant or an arm renamed a second time, the new `was` naming the intermediate spelling | `unknown` on every old file, and the new id was never written to | **refuses** | moves |
 | a scalar's default changed | **silent**: the same bytes mean something else | **refuses** | moves (a meaning fact) |
 | a string, bytes or flags default changed | **silent**: an absent field reads as the new default | **refuses**, as a scalar's default change does (SPEC-TABLES.md §18.2) | moves (a meaning fact) |
-| a bound raised or lowered, a capacity or array bound grown | `clamped` where a stored value exceeds it | passes; warns on a shrink | moves |
-| a range tightened | `clamped` | warns | moves |
-| a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | `kind_mismatch`; the value reads as the default | **refuses** | moves |
+| a bound raised or lowered, a capacity or array bound grown | refuses `count_over_bound` or `length_over_bound` where a stored value exceeds it | passes; warns on a shrink | moves |
+| a range tightened | refuses `out_of_range` where a stored value is past it | warns | moves |
+| a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | refuses `kind_mismatch` | **refuses** | moves |
 | a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file still kind-mismatches | moves |
 | `T`→`?T`, `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
@@ -338,16 +338,16 @@ committed rule and say what the repository does today.
 | an enum variant renamed | the old name reads `None`, counted | warns | moves, and the protocol id with it where a `type` reaches the enum: order is spelled in names |
 | a `fixed` field's `F` moved | **silent**: the raw integer reads at the new scale | **refuses** | moves |
 | a field's referent replaced by one that cannot stand in (a nested table swapped for a same-shaped twin) | **silent** | **refuses** | moves |
-| a field or a union arm changed between an enum and its raw integer | `kind_mismatch`: an enum has a kind of its own | **refuses** | moves |
-| a union arm's declared type changed | `kind_mismatch` where the kind moved, `malformed` where the length no longer frames it | **refuses** | moves |
+| a field or a union arm changed between an enum and its raw integer | refuses `kind_mismatch`: an enum has a kind of its own | **refuses** | moves |
+| a union arm's declared type changed | refuses `kind_mismatch` where the kind moved, `wire_damaged` where the length no longer frames it | **refuses** | moves |
 | a flags variant inserted or removed | silent | refuses | moves, and so does the protocol id |
 | a flags variant reordered or renamed in place | **silent** | **refuses** | moves: the cook projection digests each variant's bit position, and the protocol id moves too |
 | a union arm reordered or renamed | `unknown` for an arm this reader lacks; a reorder is silent and safe | warns on a vanished name | moves, and the protocol id with it where a `type` reaches the union: the arm names are what a same-typed reorder moves |
-| a keyed array made positional | `kind_mismatch` | refuses; and in a TABLE body and in a UNION ARM the positional spelling is refused by name, on the bound's provenance, so `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that folds from either are all refused there (SPEC-TABLES.md §2.4, §11) | moves |
+| a keyed array made positional | refuses `kind_mismatch` | refuses; and in a TABLE body and in a UNION ARM the positional spelling is refused by name, on the bound's provenance, so `[E.Max]T`, `[E.Count]T` and `[N]T` under a `const N` that folds from either are all refused there (SPEC-TABLES.md §2.4, §11) | moves |
 | a keyed array's key enum swapped for another | `unknown`, one per slot; the kind stays | refuses | moves |
-| a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind is one `kind_mismatch` for the map, which reads empty. A tightened bound drops the entries that no longer fit and counts `clamped`, one per entry | **refuses** a changed kind, warns on a tightened bound | moves |
-| an array changed between `[]T` and `[..N]T` (SPEC-TABLES.md §2.9) | nothing where the count fits the new bound, `clamped` past it: the two are the same bytes | warns on the direction that ADDS a bound, as any capacity shrunk; passes on the one that removes it | moves: the storage is a reference and a count on one side and the maximum inline on the other |
-| an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (SPEC-TABLES.md §2.9) | `kind_mismatch`, the array reading empty | **refuses**, as any element kind changed | moves |
+| a map's KEY kind changed, or its KEY bound tightened (SPEC-TABLES.md §2.8) | a changed kind refuses `kind_mismatch`. A tightened bound refuses `length_over_bound` on a key that no longer fits | **refuses** a changed kind, warns on a tightened bound | moves |
+| an array changed between `[]T` and `[..N]T` (SPEC-TABLES.md §2.9) | nothing where the count fits the new bound, refuses `count_over_bound` past it: the two are the same bytes | warns on the direction that ADDS a bound, as any capacity shrunk; passes on the one that removes it | moves: the storage is a reference and a count on one side and the maximum inline on the other |
+| an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (SPEC-TABLES.md §2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | moves |
 | a guard added or removed | nothing | passes | nothing |
 | a `json =` key changed | nothing on the wire | passes | nothing |
 | a `///` doc comment or a tag added, changed or removed (SPEC.md §4.1, §4.2) | nothing: neither is a fact a codec reads | passes; neither enters a baseline row | **nothing**, and the protocol id does not move either, so annotating a shipped schema is a free edit |
@@ -365,46 +365,32 @@ section.
 
 ## The read report
 
-A load fills the report and returns; nothing on the table wire is fatal on
-data from another build. `unknown` is the ordinary sound of evolution and
-fires on every cross-version load by design. `duplicate` counts a REPEATED
-KEY, and it has one source on each side: a repeated JSON key in the text
-form, and a MAP's repeated key on the wire, which is the one wire event that
-raises it (SPEC-TABLES.md §2.8, §4). `widened` is the one counter that names
-NO LOSS: an integer kind read into a wider one of the same signedness, or an
-`f32` into an `f64`, decodes exactly, and the count says the bytes were not
-the shape this reader declares rather than that anything was dropped. It fires
-on the NEW build reading the OLD file, and never the other way, which is the
-whole shape of the pattern below. `kind_mismatch` and `clamped` are a
-decision the reader made, and `malformed` is damage, which discards the whole
-load (SPEC-TABLES.md §4); a game that alarms on those three and logs the others has the severity
-split it needs. A tool that wants to know *which* field was clamped re-walks
-the file with the descriptors, the per-field facts every table's generated
-header carries; per-event attribution on the generated read path is additive
-and safe to add after 3.0.0.
+**There is one read, and it is strict** (Glenn, 2026-11-03: "Cut the tolerant
+wire. It's too much work. It was a mistake to try to do it." and "It's best to
+consistently refuse. Too much undefined behavior per-language by trying to be
+tolerant."). A load returns the whole value or refuses the whole load with ONE
+reason (SPEC-TABLES.md §6.5): `wire_damaged` for damage on the binary wire,
+`malformed` for a text that is not this dialect's JSON, `kind_mismatch`,
+`out_of_range`, `count_over_bound`, `length_over_bound`, `missing_required`,
+`non_finite_float`, `blob_shared`, `integrity_mismatch`, a form refusal, and
+the fixed form's layout refusals. Nothing is clamped, nothing is kept in part,
+and nothing is read past damage.
 
-**The STRICT read** (SPEC-TABLES.md §6.5) is the one call that turns this
-report into a refusal. It refuses, with one typed reason, a read that is
-malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
-build-version-mismatched, or, for a root that declares `integrity`, whose
-checksum trailer does not match (`integrity_mismatch`, SPEC-TABLES.md §2.14;
-the tolerant read counts that as whole-file `malformed`). It does not refuse `unknown`, `widened` or
-`retained` alone. `TableReport.Err()` answers that same reason, and nil when
-the strict read would accept — a clean read, or one whose only counters are
-those three.
+A load that returns reports EVOLUTION, and only evolution. `unknown` is the
+ordinary sound of a newer writer and fires on every forward cross-version load
+by design. `widened` names NO LOSS: an integer kind read into a wider one of
+the same signedness, or an `f32` into an `f64`, decodes exactly, and the count
+says the bytes were not the shape this reader declares rather than that
+anything was dropped. It fires on the NEW build reading the OLD file, and never
+the other way, which is the whole shape of the pattern below. A game alarms on
+a refusal and logs the counters.
 
-**In Go the plain name IS the strict read** (SPEC-TABLES.md §6.5, Go first).
-`<Name>Load`, `<Name>LoadBuilder`, `<Name>FromJson`, `<Name>FixedLoad` and
-`<Name>LoadMessages` refuse every read `ReadStrict` refuses, `missing_required`
-included, keep their signatures, and leave THIS read's report in the one the
-caller passes, so `report.Err()` is the typed reason on a refusal. The
-tolerant read, which hands back the recovered value with the counters above
-counted, is `<Name>LoadTolerant`, `<Name>LoadBuilderTolerant`,
-`<Name>FromJsonTolerant`, `<Name>FixedLoadTolerant` and
-`<Name>LoadMessagesTolerant` (and `<Name>FromJsonTolerantWith` beside the
-strict `<Name>FromJsonWith`): a reader that wants the severity split above
-calls it by that name. Every other target's plain name stays tolerant until
-its emitter takes the rule.
+**`<Name>ReadStrict`** answers the root or the reason in one call, and every
+plain name — `<Name>Load`, `<Name>LoadBuilder`, `<Name>FromJson`,
+`<Name>FixedLoad`, `<Name>LoadMessages`, `<Name>LoadText` and the retaining
+loads — refuses exactly what it refuses and leaves THIS read's report in the
+one the caller passes, so `report.Err()` is the typed reason on a refusal and
+nil on a read that returned. There is no tolerant twin under any name.
 
 **A fixed table's file can be refused before any counter exists**, and the
 refusal says what the reader knows. `layout_unsupported` is a layout the
@@ -415,7 +401,7 @@ damaged header, and it does not say which. `layout_newer` ("ship the reader")
 is reserved for a hash the lock lineage proves newer, and nothing on the wire
 or in the lock proves that today, so no reader that has taken this rule (Go
 today) answers it yet; the legs that have not taken it still answer
-`layout_newer` (SPEC-TABLES.md §21.3). A refused load moves no counter. The strict error preserves the fixed
+`layout_newer` (SPEC-TABLES.md §21.3). A refused load moves no counter. The error preserves the fixed
 refusal's own reason name (`layout_unknown`, `count_over_bound`, and the other
 section 3.4 reasons). Only a refusal of a form byte the call does not carry answers
 `unknown_form`; `TableReport.Err()` follows that rule (SPEC-TABLES.md section 6.5).
@@ -447,13 +433,10 @@ a buffer for the records and a list for their ids,
 keeps every unknown FIELD's bytes, and `SaveRetain` writes them back into the
 body they came from. Retention covers the `unknown` class and nothing else, so
 the rule reads: **a save cycle or a rewriting tool never overwrites a file
-whose read report is not silent, UNLESS retention was on and `retain_lost`,
-`kind_mismatch`, `clamped` and `malformed` are all zero after the save.** That
-is the original condition with `unknown` struck out and nothing else moved,
-and it is precisely what retention buys. The other three still name real loss:
-a `kind_mismatch` field was skipped and read its declared default, a `clamped`
-value was changed on the way in, and a `malformed` load was discarded whole
-and has nothing to rewrite.
+whose read reported `unknown`, UNLESS retention was on and `retain_lost` is
+zero after the save.** That is the original condition with `unknown` struck
+out, and it is precisely what retention buys. A refused load has nothing to
+rewrite, and a load that returned changed no value.
 **`widened` is not in the condition and never was**, on either side of the
 opt-in: a widened field decoded exactly, so a rewrite loses nothing, and the
 counter is there to say the file's bytes will change shape rather than that
@@ -602,7 +585,7 @@ than in cooked assets.
 if load time does not demand one, the game loads the table from the wire,
 which hot-reloads across any edit and reports what changed. No "ignore build
 version in development" flag exists, because the path such a flag would open
-already exists and is tolerant.
+already exists and carries evolution.
 
 A **block** is a fixed table's rows at a compiler-computed stride, for data
 one language writes and another reads at frame rate. It is same-build in the
@@ -717,8 +700,8 @@ declaration has moved. That is what pays for there being no kind byte and no
 length on the wire, and it is what keeps every row of the evolution table above
 standing: a range, a capacity and an array bound are WIDTH facts under
 bitpacking, and a receiver that meets a width it did not expect reads the
-sender's, reconstructs the value from the sender's own base, and applies its own
-bound, counting `clamped`, rather than losing the field.
+sender's, reconstructs the value from the sender's own base, and holds it to its own
+bound, refusing `out_of_range` past it, rather than losing the field.
 
 **Three properties follow from announcing the unit rather than the message.**
 The vocabulary is a pure function of the build version, so two peers at one
@@ -795,7 +778,7 @@ a field inside an array of tables.
 
 **Damage discards the whole batch, as it discards the whole load on every
 form** (SPEC-TABLES.md §4). A reference above the entry count, a length
-running past the batch, and exhaustion each refuse the batch as `malformed`,
+running past the batch, and exhaustion each refuse the batch `wire_damaged`,
 and nothing it decoded is a value to use. What does NOT stop is EVOLUTION: an unknown field is stepped over exactly, by the
 width its announced shape gives it, and counted, which is the case that actually
 happens between two builds.
@@ -845,10 +828,10 @@ Two sharp edges come with it, and both are the same fact seen twice.
 ## The text form
 
 The text form is JSON keyed by *names*. It carries no version, no schema
-reference and no envelope, and reads with the wire's own tolerance: absent
-keys keep their defaults, unknown keys are skipped and counted, values outside
-a range clamp and count, so a text and a wire loaded from the same data land
-the same instance. One consequence to plan for: **the text's identity is the
+reference and no envelope, and reads by the wire's own rules: absent
+keys keep their defaults, unknown keys are skipped and counted, and a value
+outside a range refuses `out_of_range`, so a text and a wire loaded from the
+same data give the same answer. One consequence to plan for: **the text's identity is the
 name, and `was` does not carry it.** A field renamed under `was` is safe on
 the wire and breaks every hand-edited configuration file and editor that
 spelled the old key, unless the rename is paired with `| json = "old"`, which
@@ -1003,8 +986,8 @@ years, and several of the answers are patterns rather than syntax.
   `widened` (SPEC-TABLES.md §4). What is free besides: growing an array bound,
   a string or bytes capacity, loosening a range. **What the widening does not
   do is run backwards**, and that is the whole of the pattern: the OLD build
-  meets `int64` where it declares `int32`, which is a narrowing, and it reads
-  the default and counts `kind_mismatch`. So `int32` to `int64` is a one-way
+  meets `int64` where it declares `int32`, which is a narrowing, and it
+  refuses `kind_mismatch`. So `int32` to `int64` is a one-way
   edit, safe the moment every reader is on the new build and lossy for every
   reader that is not. Flip the whole fleet first and the edit is one line.
   Where a reader can still be old, the pattern is unchanged: `gold2 ?int64`
@@ -1067,19 +1050,17 @@ still open.
   node-table field itself, which is that numbering. An unknown enum variant,
   an unknown union arm and an unknown keyed-array slot, none of which is a
   field the reader can append. And a node record whose type id is unnameable,
-  which is a whole node. A record whose inner structure the resolving walk
-  finds damaged is dropped too, and that never turns the plain read
-  `malformed`.
-- **Retention covers `unknown` and no other counter.** A load that counted
-  `kind_mismatch` or `clamped` still loses what those name on a rewrite, and
-  a `malformed` load is discarded whole, so the never-clobber condition keeps
-  all three beside `retain_lost`.
+  which is a whole node. A field with damage inside it refuses the whole load
+  `wire_damaged`, retention on or off.
+- **Retention covers `unknown` and nothing else**, and nothing else needs it:
+  every other condition refuses the load, so there is no partial value to
+  rewrite.
 - **The widening path runs FORWARD only.** A new build reads an old file's
   narrower integer of the same signedness, and its `float32` as a `float64`,
   exactly, counting `widened`. An OLD build reading a NEW file gets nothing:
-  the narrowing is a `kind_mismatch` and the field reads its default. A rolling
-  deploy that widens a field therefore loses that field on every peer still
-  running the old build, and the baseline refuses the edit until a `--reason`
+  the narrowing refuses the load `kind_mismatch`. A rolling deploy that widens
+  a field therefore stops every peer still running the old build from reading
+  the new files, and the baseline refuses the edit until a `--reason`
   says the fleet is flipped. The pairs are the two integer ladders and the one
   float rung and no others (SPEC-TABLES.md §4), which is what keeps the rest of
   the kind space refusing loudly instead of guessing.
@@ -1123,8 +1104,8 @@ still open.
 - **`T`→`?T` turns every old elided default into an absent field.** The
   value is the default either way; a game that branches on presence sees
   every existing player as "never set."
-- **A tightened range clamps on load and the next save writes the clamped
-  value.** A narrowing is a data edit; back the files up first. A committed
+- **A tightened range refuses every stored file holding a value past it.** A
+  narrowing is a data edit; migrate or back the files up first. A committed
   baseline warns on it, from either end and on a range declared where the
   field had none, but the warning is a report and not a rescue.
 - **`None` means both "unknown variant" and "never set."** A retired variant
