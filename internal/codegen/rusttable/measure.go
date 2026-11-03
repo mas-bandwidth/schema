@@ -45,7 +45,7 @@ func (g *gen) emitNestedMeasureHelper(b *strings.Builder, root *ir.Struct) {
 				}
 				fmt.Fprintf(b, "                (0x%016x, 0x%016x) if kind == %d => {\n", tid, fid, ir.TableKindTable)
 				fmt.Fprintf(b, "                    let Some(n) = leb_read(wire, &mut off) else { break; }; if n > (wire.len() - off) as u64 { break; } let sub = off + n as usize;\n")
-				fmt.Fprintf(b, "                    at = nested_measure(0x%016x, &wire[off..sub], ids, at); if at < 0 { return -1; } off = sub;\n", ir.TableWireId(child.WireName()))
+				fmt.Fprintf(b, "                    at = nested_measure(0x%016x, &wire[off..sub], ids, at); if at < 0 { return at; } off = sub;\n", ir.TableWireId(child.WireName()))
 				fmt.Fprint(b, "                }\n")
 			case classOf(f) == vUnion:
 				g.emitMeasureUnionCase(b, tid, fid, f)
@@ -128,7 +128,18 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
                             let floor = if ek == 13 { 2 } else { table_kind_width(ek).max(1) };
                             if off > sub || count as usize > (sub - off) / floor { return -1; }
 `)
-		fmt.Fprintf(b, "                            %sat += %s;\n", alignStep(align), scaled("count as i64", size))
+		// the storage cap (docs/SPEC-TABLES.md §11): the term is refused
+		// before it is added, so no count times an element size passes it
+		if size > 0 {
+			limit := "TABLE_STORAGE_CAP - at"
+			if size != 1 {
+				limit = fmt.Sprintf("(TABLE_STORAGE_CAP - at) / %d", size)
+			}
+			fmt.Fprintf(b, "                            %sif count as i64 > %s { return TABLE_MEASURE_OVER_CAP; }\n", alignStep(align), limit)
+			fmt.Fprintf(b, "                            at += %s;\n", scaled("count as i64", size))
+		} else {
+			fmt.Fprintf(b, "                            %sat += %s;\n", alignStep(align), scaled("count as i64", size))
+		}
 	}
 	if child != nil {
 		fmt.Fprint(b, "                            for _ in 0..count {\n")
@@ -140,7 +151,7 @@ func (g *gen) emitMeasureArrayCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
 			emitUnboundedMeasure(b, "el", ir.TableRegionAlign(g.unit), "                                ")
 			fmt.Fprint(b, "                                off += el as usize;\n")
 		} else {
-			fmt.Fprintf(b, "                                at = nested_measure(0x%016x, &wire[off..off + el as usize], ids, at); if at < 0 { return -1; } off += el as usize;\n", ir.TableWireId(child.WireName()))
+			fmt.Fprintf(b, "                                at = nested_measure(0x%016x, &wire[off..off + el as usize], ids, at); if at < 0 { return at; } off += el as usize;\n", ir.TableWireId(child.WireName()))
 		}
 		fmt.Fprint(b, "                            }\n")
 	}
@@ -174,7 +185,7 @@ func (g *gen) emitMeasureUnionCase(b *strings.Builder, tid, fid uint64, f *ir.Fi
 		if !ok {
 			continue
 		}
-		fmt.Fprintf(b, "                        0x%016x => { at = nested_measure(0x%016x, &wire[off..sub], ids, at); if at < 0 { return -1; } }\n", ir.TableWireId(v.WireName()), ir.TableWireId(child.WireName()))
+		fmt.Fprintf(b, "                        0x%016x => { at = nested_measure(0x%016x, &wire[off..sub], ids, at); if at < 0 { return at; } }\n", ir.TableWireId(v.WireName()), ir.TableWireId(child.WireName()))
 	}
 	fmt.Fprint(b, `                        _ => {}
                     }
