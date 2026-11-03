@@ -57,11 +57,23 @@ type Item
     score float32 = 0.0
 }
 
+union Choice
+{
+    a int32
+}
+
+table Node
+{
+    v int32 = 0
+}
+
 table Root
 {
-    flag  bool = false
-    items []Item
-    score float32 = 0.0
+    flag    bool = false
+    items   []Item
+    score   float32 = 0.0
+    choices [..2]Choice
+    ptr     *Node
 }
 `)
 	files := generateElixir(t, u)
@@ -126,6 +138,27 @@ end
 case Fuzzprobe.Table.load_retain("Root", bad_bool_wire, store, empty) do
   {:error, :malformed, %{malformed: true}, _rt} -> :ok
   other -> raise("expected retain malformed on bool byte 0x11, got " <> inspect(other))
+end
+
+# 6. Node table riding twice (framing N7): last occurrence wins even if earlier
+# occurrence had a mismatched inner node count.
+node_id = 0xFFFFFFFFFFFFFFFF
+node_table_twice_wire = <<1, 1, 12, 1, 99, 1, 12, 1, 0, 0, node_id::little-64, 1::little-64>>
+case Fuzzprobe.Table.load("Root", node_table_twice_wire) do
+  {:ok, _v, %{malformed: false}} -> :ok
+  other -> raise("expected clean load when second node_table overwrites damaged first, got " <> inspect(other))
+end
+
+# 7. Unknown union arm inside a union array with L past remaining bytes is malformed.
+choices_id = Enum.find(Fuzzprobe.Table.descriptors()["Root"].fields, &(&1.name == "choices")).id
+bad_unknown_arm_wire = <<1, 1, 14, 6, 15, 1, 2, 8, 55, 0, 0, choices_id::little-64, unknown_id::little-64, 2::little-64>>
+case Fuzzprobe.Table.load("Root", bad_unknown_arm_wire) do
+  {:error, :malformed, %{malformed: true}} -> :ok
+  other -> raise("expected plain malformed on truncated unknown union arm, got " <> inspect(other))
+end
+case Fuzzprobe.Table.load_retain("Root", bad_unknown_arm_wire, store, empty) do
+  {:error, :malformed, %{malformed: true}, _rt} -> :ok
+  other -> raise("expected retain malformed on truncated unknown union arm, got " <> inspect(other))
 end
 
 IO.puts("WIRE_FUZZ_REGRESSIONS_OK")
