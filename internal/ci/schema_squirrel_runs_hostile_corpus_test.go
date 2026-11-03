@@ -233,14 +233,29 @@ func squirrelHostileKey(schema string) string {
 	return strings.NewReplacer("/", "_", ".", "_").Replace(schema)
 }
 
+// squirrelHostileStrictReason is the name the Squirrel reader owes a refused
+// case. The manifest holds the Go engine's report reason; the wire carrier
+// runs ReadStrict, whose STRICT ERROR IDENTITY answers every form-byte
+// refusal unknown_form (docs/SPEC-TABLES.md §6.5), so a wire row the engine
+// names previous_form, newer_form or message_form_as_file owes unknown_form.
+func squirrelHostileStrictReason(c hostileCase) string {
+	if c.carrier == "wire" {
+		switch c.reason {
+		case "previous_form", "newer_form", "message_form_as_file":
+			return "unknown_form"
+		}
+	}
+	return c.reason
+}
+
 func squirrelHostileFindings(c hostileCase, got hostileResult) []string {
 	if got.verdict != c.verdict {
 		return []string{fmt.Sprintf("%s: verdict %q, manifest %q", c.name, got.verdict, c.verdict)}
 	}
 	switch c.verdict {
 	case "refuse":
-		if got.reason != c.reason {
-			return []string{fmt.Sprintf("%s: refusal %q, manifest %q", c.name, got.reason, c.reason)}
+		if want := squirrelHostileStrictReason(c); got.reason != want {
+			return []string{fmt.Sprintf("%s: refusal %q, manifest %q", c.name, got.reason, want)}
 		}
 	case "accept":
 		if c.digest == "-" {
@@ -430,13 +445,13 @@ func squirrelRunHostileCorpus(t *testing.T, plant func(files map[string][]byte))
 }
 
 // squirrelHostilePlantFrom and squirrelHostilePlantTo are the planted reader
-// bug: the generated strict wire reader names a newer form `wire_damaged`
-// instead of `newer_form`. The plant is applied to the scratch copy of the
-// generated runtime only, never to the embedded source.
+// bug: the generated strict wire reader names a form byte it does not carry
+// `wire_damaged` instead of `unknown_form`. The plant is applied to the
+// scratch copy of the generated runtime only, never to the embedded source.
 const (
 	squirrelHostilePlantFile = "schema_table_refusal.nut"
-	squirrelHostilePlantFrom = `report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "newer_form";`
-	squirrelHostilePlantTo   = `report.reason = form == FORM_MESSAGE ? "message_form_as_file" : "wire_damaged";`
+	squirrelHostilePlantFrom = "if (form != FORM_VARIABLE) {\n    report.reason = \"unknown_form\";"
+	squirrelHostilePlantTo   = "if (form != FORM_VARIABLE) {\n    report.reason = \"wire_damaged\";"
 )
 
 // TestSquirrelRunsHostileCorpusPlant is the planted-bad-pattern control: the
@@ -463,7 +478,7 @@ func TestSquirrelRunsHostileCorpusPlant(t *testing.T) {
 		t.Fatal("a generated reader that names a newer form wire_damaged was NOT caught by the corpus run")
 	}
 	for _, f := range findingLines {
-		if strings.Contains(f, "newer_form") && !strings.Contains(f, "announce-newer-form") {
+		if strings.Contains(f, "unknown_form") {
 			t.Logf("plant caught: %s", f)
 		}
 	}
