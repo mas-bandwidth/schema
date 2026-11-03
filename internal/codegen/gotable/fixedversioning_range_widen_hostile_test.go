@@ -22,7 +22,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "go test (a generated probe package) (it runs the generated NEW reader over the forged file)")
 	corpus := fixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {
-		t.Run(vec.Row, func(t *testing.T) {
+		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			want, err := fixedvector.Read(corpus, vec.File)
 			if err != nil {

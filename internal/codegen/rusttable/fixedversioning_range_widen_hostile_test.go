@@ -35,7 +35,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 		t.Fatalf("the Rust runtime is not beside this tree at %s: %v", serialize, err)
 	}
 	for _, vec := range fixedvector.WriterRange {
-		t.Run(vec.Row, func(t *testing.T) {
+		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			want, err := fixedvector.Read(corpus, vec.File)
 			if err != nil {
@@ -54,7 +54,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 				fmt.Fprintf(&checks, "    assert_eq!(%[1]s.to_string(), %[2]q, \"%[3]s: the forged value clamps to the WRITER's range\");\n",
 					expr, fmt.Sprint(l.Value), l.Path)
 			}
-			fn := "v_" + vec.Row + "_hostile"
+			fn := "v_" + vec.Name + "_hostile"
 			tests := fmt.Sprintf(`
 #[test]
 fn %[1]s() {
@@ -75,7 +75,7 @@ fn %[1]s() {
 }
 `, fn, filepath.Join(corpus, vec.File), vec.File, checks.String(), want.Clamped)
 			root := t.TempDir()
-			name := "probe_" + vec.Row + "_hostile"
+			name := "probe_" + vec.Name + "_hostile"
 			versionWriteCrate(t, root, serialize, versionProbe{
 				name:   name,
 				reader: "VNEW_" + vec.Row,

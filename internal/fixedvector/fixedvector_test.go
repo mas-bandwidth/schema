@@ -54,10 +54,11 @@ func TestLeavesArray(t *testing.T) {
 func TestWriterRangeNamesEveryVector(t *testing.T) {
 	seen := map[string]bool{}
 	for _, v := range WriterRange {
-		if v.File == "" || v.Row == "" || v.Root == "" || seen[v.File] {
+		if v.File == "" || v.Name == "" || v.Row == "" || v.Root == "" || seen[v.File] || seen[v.Name] {
 			t.Errorf("vector %+v is incomplete or repeated", v)
 		}
 		seen[v.File] = true
+		seen[v.Name] = true
 	}
 	for _, f := range []string{RangeWidenHostile, RangeWidenArrayHostile, RangeWidenU64Hostile} {
 		if !seen[f] {

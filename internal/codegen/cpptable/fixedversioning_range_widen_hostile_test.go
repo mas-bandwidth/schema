@@ -23,7 +23,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 	slowtest.Gate(t, "a C++ compiler (it runs the generated NEW reader over the forged file)")
 	corpus := cppFixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {
-		t.Run(vec.Row, func(t *testing.T) {
+		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			want, err := fixedvector.Read(corpus, vec.File)
 			if err != nil {
@@ -34,17 +34,17 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 				t.Fatal(err)
 			}
 			var body strings.Builder
-			fmt.Fprintf(&body, "    if ( n != 1 || r.malformed || r.refused ) { printf( \"%[1]s: n=%%lld malformed=%%d refused=%%d, want one record\\n\", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }\n", vec.Row)
+			fmt.Fprintf(&body, "    if ( n != 1 || r.malformed || r.refused ) { printf( \"%[1]s: n=%%lld malformed=%%d refused=%%d, want one record\\n\", (long long) n, (int) r.malformed, (int) r.refused ); return 1; }\n", vec.Name)
 			for _, l := range leaves {
 				expr := "back[0]." + l.Field
 				if l.Index >= 0 {
 					expr += fmt.Sprintf("[%d]", l.Index)
 				}
 				fmt.Fprintf(&body, "    if ( (long long) %[1]s != %[2]dLL ) { printf( \"%[3]s: %[4]s landed %%lld, want %[2]d: the forged value clamps to the WRITER's range\\n\", (long long) %[1]s ); return 1; }\n",
-					expr, l.Value, vec.Row, l.Path)
+					expr, l.Value, vec.Name, l.Path)
 			}
-			fmt.Fprintf(&body, "    if ( r.clamped != %[1]d ) { printf( \"%[2]s: clamped=%%d, want exactly %[1]d: one forged value, one clamp\\n\", (int) r.clamped ); return 1; }\n", want.Clamped, vec.Row)
-			fmt.Fprintf(&body, "    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 ) { printf( \"%s: a counter that must not move did\\n\" ); return 1; }\n", vec.Row)
+			fmt.Fprintf(&body, "    if ( r.clamped != %[1]d ) { printf( \"%[2]s: clamped=%%d, want exactly %[1]d: one forged value, one clamp\\n\", (int) r.clamped ); return 1; }\n", want.Clamped, vec.Name)
+			fmt.Fprintf(&body, "    if ( r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.duplicate != 0 ) { printf( \"%s: a counter that must not move did\\n\" ); return 1; }\n", vec.Name)
 			out, err := cppRunVersionProbe(t, vec.Row, filepath.Join(corpus, vec.File), body.String(), "")
 			if err != nil {
 				t.Fatalf("%s: %v\n%s", vec.File, err, out)

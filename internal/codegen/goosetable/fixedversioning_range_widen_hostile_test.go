@@ -24,7 +24,7 @@ func TestGooseFixedVersioningRangeWidenHostile(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
 	for _, vec := range fixedvector.WriterRange {
-		t.Run(vec.Row, func(t *testing.T) {
+		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			want, err := fixedvector.Read(corpus, vec.File)
 			if err != nil {

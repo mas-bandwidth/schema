@@ -24,32 +24,34 @@ import (
 const RangeWidenHostile = "hostile_range_widen.bin"
 
 // RangeWidenArrayHostile is the writer's-range vector for a ranged FIXED
-// ARRAY: the OLD writer's `[4]int32 | 0..100` file with `vals[2]` forged to
-// 150, inside the NEW reader's | 0..200. Every element is held to the writer's
+// ARRAY: old_range_widen.bin (`vals [4]int32 | 0..100`) with `vals[2]` forged
+// to 150, inside the NEW reader's | 0..200. Every element is held to the writer's
 // range the same as a scalar, so the NEW reader lands 100 in that slot, the
 // other three as written, and counts `clamped` exactly once.
 const RangeWidenArrayHostile = "hostile_range_widen_array.bin"
 
 // RangeWidenU64Hostile is the writer's-range vector for an UNSIGNED 64-bit
-// field: the OLD writer's `uint64 | 10..1000` file with `v` forged to 2^63 + 7.
+// field: old_range_widen.bin (`u uint64 | 10..1000`) with `u` forged to
+// 2^63 + 7.
 // The comparison is in the field's own type, unsigned, so the NEW reader
 // (| 0..2000) lands the writer's MAX 1000 and counts `clamped` exactly once; a
 // signed comparison reads a negative number and lands the min.
 const RangeWidenU64Hostile = "hostile_range_widen_u64.bin"
 
-// Vector names one writer's-range vector: its corpus file, the versioning row
-// whose pair it reads (VOLD_<Row> in the lineage of the reader VNEW_<Row>),
-// and the fixed root both declare.
+// Vector names one writer's-range vector: its corpus file, a Name that tells
+// it from the others (a leg's subtest), the versioning row whose pair it reads
+// (VOLD_<Row> in the lineage of the reader VNEW_<Row>), and the fixed root
+// both declare.
 type Vector struct {
-	File, Row, Root string
+	File, Name, Row, Root string
 }
 
 // WriterRange is every writer's-range vector (docs/FIXED-FORM-ALGORITHM.md
 // §4.5), the list each leg runs.
 var WriterRange = []Vector{
-	{File: RangeWidenHostile, Row: "range_widen", Root: "RangeWiden"},
-	{File: RangeWidenArrayHostile, Row: "range_widen_array", Root: "RangeWidenArray"},
-	{File: RangeWidenU64Hostile, Row: "range_widen_u64", Root: "RangeWidenU64"},
+	{File: RangeWidenHostile, Name: "range_widen", Row: "range_widen", Root: "RangeWiden"},
+	{File: RangeWidenArrayHostile, Name: "range_widen_array", Row: "range_widen", Root: "RangeWiden"},
+	{File: RangeWidenU64Hostile, Name: "range_widen_u64", Row: "range_widen", Root: "RangeWiden"},
 }
 
 // Expect is one vector's answer: the landed integer values by manifest path

@@ -28,7 +28,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, vec := range fixedvector.WriterRange {
-		t.Run(vec.Row, func(t *testing.T) {
+		t.Run(vec.Name, func(t *testing.T) {
 			t.Parallel()
 			want, err := fixedvector.Read(corpus, vec.File)
 			if err != nil {
@@ -51,7 +51,7 @@ func TestFixedVersioningRangeWidenHostile(t *testing.T) {
             }`, expr, fmt.Sprint(l.Value), l.Path)
 			}
 			dir := t.TempDir()
-			p := csVersionProbe{name: vec.Row + "/hostile", reader: "VNEW_" + vec.Row,
+			p := csVersionProbe{name: vec.Name + "/hostile", reader: "VNEW_" + vec.Row,
 				older: []string{"VOLD_" + vec.Row}, suffix: "h", file: vec.File,
 				body: csVersionHead + fmt.Sprintf(`            _ = want;
             if (n != 1 || r.Refused || r.Malformed || r.Reason != null)
