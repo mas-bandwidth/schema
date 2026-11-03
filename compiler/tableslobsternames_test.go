@@ -175,9 +175,17 @@ func TestLobsterRuntimeFileNamesAreClaimed(t *testing.T) {
 			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, withTable), Options{}); err == nil {
 				t.Fatalf("a schema file named %s beside a table was accepted: the unit would emit %s.lobster twice", base, base)
 			}
-			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, tableFree), Options{}); err != nil {
-				t.Fatalf("a schema file named %s in a table-free unit was refused (%v): a claim costs a schema nothing until it declares a table", base, err)
+			if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, base, tableFree), Options{}); err == nil {
+				t.Fatalf("a schema file named %s collides with the table-free unit registry runtime", base)
 			}
 		})
+	}
+}
+
+func TestLobsterUnitViewFileNameIsClaimed(t *testing.T) {
+	for _, source := range []string{"package probe\ntype Gadget { n int32 }\n", "package probe\ntable Gadget { n int32 }\n"} {
+		if _, err := (lobsterTarget{}).Generate(unitFromNamedSource(t, "probeView", source), Options{}); err == nil || !strings.Contains(err.Error(), "unit registry") {
+			t.Fatalf("registry file collision: %v", err)
+		}
 	}
 }
