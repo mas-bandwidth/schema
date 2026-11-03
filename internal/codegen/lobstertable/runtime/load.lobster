@@ -2052,11 +2052,11 @@ def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
 // strict_reason is docs/SPEC-TABLES.md §6.5's one typed reason for a read,
 // in the order Go's TableReport.Err() applies: a non-finite float first
 // (§3.3), then a count past the int32 storage cap (§2.9), a form refusal,
-// the verdict's damage, missing_required, a damaged body, blob_shared,
-// clamped and kind_mismatch; the empty string on a read whose only counters
-// are unknown or widened, which are not loss. Every damaged wire, the file's
-// framing and a body alike, answers wire_damaged (§4, §6.5); the report keeps
-// its malformed flag.
+// damage, missing_required, blob_shared, clamped and kind_mismatch; the
+// empty string on a read whose only counters are unknown or widened, which
+// are not loss. Every damaged wire, the file's framing and a body alike,
+// answers wire_damaged, ahead of a missing required field, because damage
+// discards the whole load (§4, §6.5); the report keeps its malformed flag.
 def strict_reason(rep:LoadReport) -> string:
     if rep.non_finite_float != "":
         return "non_finite_float"
@@ -2066,10 +2066,10 @@ def strict_reason(rep:LoadReport) -> string:
         return "unknown_form"
     if rep.damaged:
         return "wire_damaged"
-    if rep.missing_required > 0:
-        return "missing_required"
     if rep.malformed:
         return "wire_damaged"
+    if rep.missing_required > 0:
+        return "missing_required"
     if rep.blob_shared > 0:
         return "blob_shared"
     if rep.clamped > 0:
