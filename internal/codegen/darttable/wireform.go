@@ -565,6 +565,7 @@ final class TableWireReport {
   bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
+  bool _storageRefused = false;
   int missingRequired = 0;
   String missingFields = '';
   int retained = 0;
@@ -589,14 +590,16 @@ final class TableWireReport {
   // does not carry is unknown_form, framing the reader cannot follow is
   // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
   // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field; _countRefused records a builder storage refusal without
-  // adding a malformed event. Earlier report events remain available.
+  // stored field; _countRefused records a builder storage refusal and
+  // _storageRefused a wire whose region measure passes the storage cap (§11),
+  // each without adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
     if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
+    if (_storageRefused) return 'storage_over_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
@@ -813,6 +816,11 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
+// _kTableStorageCap is the storage cap (docs/SPEC-TABLES.md §11): a wire whose
+// region measure passes it is refused as storage_over_cap, and no count times
+// an element size is summed past it.
+const int _kTableStorageCap = `+fmt.Sprint(ir.MaxSizeBytes)+`;
+
 // _round is the region's alignment (§6.2, ir.TableRegionAlign).
 int _round(int n) => (n + `+fmt.Sprintf("%d", ir.TableRegionAlign(g.unit)-1)+`) & -`+fmt.Sprintf("%d", ir.TableRegionAlign(g.unit))+`;
 
@@ -914,11 +922,15 @@ final class _MF {
 // out-of-line storage the walked bodies carry (docs/SPEC-TABLES.md §6.2): every
 // map's and list's aligned count-times-size, reached by value through nested
 // tables, element tables, map entries and union arms. A false answer is a
-// count the framing cannot hold; a caller refuses.
+// count the framing cannot hold, or, with overCap set, a list or map term that
+// would take base + at past the storage cap (docs/SPEC-TABLES.md §11); a
+// caller refuses. base is the storage the measure counted before this scan.
 final class _ExtentScan {
   final List<Map<int, _MF>> structs;
   final List<Map<int, _MF>> unions;
   int at = 0;
+  int base = 0;
+  bool overCap = false;
   _ExtentScan(this.structs, this.unions);
 
   // _body reads one length-prefixed payload (extentBody): null, with the
@@ -981,6 +993,11 @@ final class _ExtentScan {
       if (count < 0 || count > 0x7FFFFFFF) return false;
       if (count > (r.limit - r.pos) ~/ _kindFloor(kind)) return false;
       at = (at + f.align - 1) & -f.align;
+      // a term past the storage cap is refused before it is summed (§11)
+      if (count > 0 && f.size > 0 && count > (_kTableStorageCap - base - at) ~/ f.size) {
+        overCap = true;
+        return false;
+      }
       at += count * f.size;
     }
     if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
@@ -3187,13 +3204,14 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tr.report = report;\n")
 	// this read's own refusal (docs/SPEC-TABLES.md §3.3), as the Go leg's
 	// tableOpen clears its NonFiniteFloat
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report._storageRefused) r.report.refused = false;\n\tr.report._storageRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tfinal verdict = r.open();\n")
 	g.pf("\tif (verdict == 1) { r.report.refused = true; return v; }\n")
 	// verdict 3 is framing damage on the root body, not the file's: the body
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
+	g.emitStorageGate(st)
 	g.pf("\ttry {\n")
 	if ir.VariableTables(g.unit)[n] {
 		g.pf("\t\tr.scanNodeTable();\n")
@@ -3378,17 +3396,26 @@ func (g *wireGen) measureSpec(root *ir.Struct) measureSpec {
 // map entries, element tables, nested tables and union arms), every reachable *string blob's storage, the
 // node records of pointer-reachable tables, and one directory entry a node.
 // -1 is a refusal — a form byte this reader does not carry, a trailer it
-// cannot resolve, a body that ends early, or a list whose count the framing
-// cannot hold. It mirrors the other backends' LoadMeasure and the reference
-// tablewire.FileRegionMeasure (internal/tablewire/extent.go).
+// cannot resolve, a body that ends early, a list whose count the framing
+// cannot hold, or a measure past the 2^40-byte storage cap. It mirrors the
+// other backends' LoadMeasure and the reference tablewire.FileRegionMeasure
+// (internal/tablewire/extent.go). <name>WireMeasureReason answers the same
+// size beside the refusal's name: storage_over_cap for the cap (§11), each list
+// and map term checked before it is added and the total after every node
+// record, and ok for every other answer.
 func (g *wireGen) emitMeasure(st *ir.Struct) {
 	spec := g.measureSpec(st)
 	n := st.Name
 	fn := dartName(n) + "WireMeasure"
-	g.pf("int %s(Uint8List data) {\n", fn)
+	g.pf("int %s(Uint8List data) => %sReason(data).$1;\n\n", fn, fn)
+	g.pf("(int, String) %sReason(Uint8List data) {\n", fn)
 	if st.Integrity != "" {
-		g.pf("\tif (data.isNotEmpty && data[0] == 1) {\n\t\tif (!tableIntegrityValid(data, data.length, 5)) return -1;\n\t\tdata = Uint8List.sublistView(data, 0, data.length - 4);\n\t}\n")
+		g.pf("\tif (data.isNotEmpty && data[0] == 1) {\n\t\tif (!tableIntegrityValid(data, data.length, 5)) return (-1, 'ok');\n\t\tdata = Uint8List.sublistView(data, 0, data.length - 4);\n\t}\n")
 	}
+	g.pf("\treturn _%sFramed(data);\n}\n\n", fn)
+	// the measure of a wire whose integrity trailer is already checked and
+	// stripped, which the loads' storage gate calls
+	g.pf("(int, String) _%sFramed(Uint8List data) {\n", fn)
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	// The reference FileRegionMeasure reads the id table from the trailer
 	// (internal/tablewire/extent.go, decode.go trailer) and does NOT walk the
@@ -3396,15 +3423,15 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	// BODY, not a refusal to measure (docs/SPEC-TABLES.md §6.2). A form or
 	// trailer this reader cannot resolve measures 0, exactly as the reference
 	// answers 0, not refused.
-	g.pf("\tif (data.length < 9 || data[0] != 1) return 0;\n")
+	g.pf("\tif (data.length < 9 || data[0] != 1) return (0, 'ok');\n")
 	g.pf("\tfinal idCount = readU64(data, data.length - 8);\n")
-	g.pf("\tif (idCount < 0 || idCount > %d || idCount > (data.length - 9) ~/ 8) return 0;\n", ir.TableWireIdTableBound)
+	g.pf("\tif (idCount < 0 || idCount > %d || idCount > (data.length - 9) ~/ 8) return (0, 'ok');\n", ir.TableWireIdTableBound)
 	g.pf("\tfinal idStart = data.length - 8 - idCount * 8;\n")
-	g.pf("\tif (idStart < 1) return 0;\n")
+	g.pf("\tif (idStart < 1) return (0, 'ok');\n")
 	g.pf("\tfinal idSeen = <int>{};\n")
 	g.pf("\tfor (var k = 0; k < idCount; k++) {\n")
 	g.pf("\t\tfinal id = readU64(data, idStart + k * 8);\n")
-	g.pf("\t\tif (!idSeen.add(id)) return 0;\n")
+	g.pf("\t\tif (!idSeen.add(id)) return (0, 'ok');\n")
 	g.pf("\t\tr.refToId[k + 1] = id;\n")
 	g.pf("\t}\n")
 	g.pf("\tr.entryCount = idCount;\n")
@@ -3413,7 +3440,7 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t// the root body and every node record walk Go's extentScan rule (§6.2):\n")
 	g.pf("\t// map entries, list and array elements, nested tables and union arms\n")
 	g.pf("\tfinal rootScan = _ExtentScan(%s, %s);\n", spec.structsVar, spec.unionsVar)
-	g.pf("\tif (!rootScan.record(r, %d)) return -1;\n", spec.index[st])
+	g.pf("\tif (!rootScan.record(r, %d)) return (-1, rootScan.overCap ? 'storage_over_cap' : 'ok');\n", spec.index[st])
 	g.pf("\tvar total = _round(_round(%d) + rootScan.at);\n", ir.RecordLayout(g.unit, st).Size)
 	reachable := ir.PointerReachable(st)
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(st)
@@ -3456,26 +3483,27 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\t\tif (!r.skipKind(kind)) break;\n")
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
-	g.pf("\tif (unframed) return 0;\n")
+	g.pf("\tif (unframed) return (0, 'ok');\n")
 	g.pf("\tvar records = 0;\n")
 	g.pf("\tvar nodeTotal = 0;\n")
 	g.pf("\tif (seen) {\n")
 	g.pf("\t\tr.pos = pstart;\n")
 	g.pf("\t\tfinal cnt = r.readLeb();\n")
-	g.pf("\t\tif (cnt == null) return 0;\n")
+	g.pf("\t\tif (cnt == null) return (0, 'ok');\n")
 	g.pf("\t\tvar read = 0;\n")
 	g.pf("\t\twhile (r.pos < pend) {\n")
 	g.pf("\t\t\tfinal typeRef = r.readLeb();\n")
-	g.pf("\t\t\tif (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return 0;\n")
+	g.pf("\t\t\tif (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return (0, 'ok');\n")
 	g.pf("\t\t\tfinal blen = r.readLeb();\n")
-	g.pf("\t\t\tif (blen == null || blen < 0 || blen > pend - r.pos) return 0;\n")
+	g.pf("\t\t\tif (blen == null || blen < 0 || blen > pend - r.pos) return (0, 'ok');\n")
 	g.pf("\t\t\tfinal tid = r.refToId[typeRef] ?? 0;\n")
 	g.pf("\t\t\tfinal bodyStart = r.pos;\n")
 	g.pf("\t\t\tfinal sn = nodeSpec[tid];\n")
 	g.pf("\t\t\tif (sn != null) {\n")
 	g.pf("\t\t\t\tfinal over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);\n")
 	g.pf("\t\t\t\tfinal nodeScan = _ExtentScan(%s, %s);\n", spec.structsVar, spec.unionsVar)
-	g.pf("\t\t\t\tif (!nodeScan.record(over, sn[1])) return -1;\n")
+	g.pf("\t\t\t\tnodeScan.base = total + nodeTotal;\n")
+	g.pf("\t\t\t\tif (!nodeScan.record(over, sn[1])) return (-1, nodeScan.overCap ? 'storage_over_cap' : 'ok');\n")
 	g.pf("\t\t\t\tnodeTotal += _round(_round(sn[0]) + nodeScan.at);\n")
 	g.pf("\t\t\t} else if (tid == _kBytesBlobId) {\n")
 	if bytesBlob {
@@ -3486,13 +3514,16 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 		g.pf("\t\t\t\tnodeTotal += _round(8 + blen + 1);\n")
 	}
 	g.pf("\t\t\t}\n")
+	g.pf("\t\t\tif (total + nodeTotal > _kTableStorageCap) return (-1, 'storage_over_cap');\n")
 	g.pf("\t\t\tr.pos += blen;\n")
 	g.pf("\t\t\trecords++;\n")
 	g.pf("\t\t\tread++;\n")
 	g.pf("\t\t}\n")
-	g.pf("\t\tif (read != cnt) return 0;\n")
+	g.pf("\t\tif (read != cnt) return (0, 'ok');\n")
 	g.pf("\t}\n")
-	g.pf("\treturn total + nodeTotal + (records + 1) * 16;\n")
+	g.pf("\tfinal size = total + nodeTotal + (records + 1) * 16;\n")
+	g.pf("\tif (size > _kTableStorageCap) return (-1, 'storage_over_cap');\n")
+	g.pf("\treturn (size, 'ok');\n")
 	g.pf("}\n\n")
 }
 

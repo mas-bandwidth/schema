@@ -587,7 +587,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report._storageRefused) r.report.refused = false;\n\tr.report._storageRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.retain = retain;\n")
@@ -599,6 +599,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
+	g.emitStorageGate(st)
 	g.pf("\ttry {\n")
 	g.pf("\t\tr.scanNodeTable();\n")
 	g.pf("\t\tr.pos = 1;\n")
