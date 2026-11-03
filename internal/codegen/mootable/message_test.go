@@ -649,7 +649,7 @@ func TestMooMessageFormEvolvesNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "\t\t\tt.report.kindMismatch += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape) then\n\t\t\t\treturn dmal(t)\n"
+	const anchor = "\t\t\tt.report.kindMismatch += 1\n\t\t\tif not skipEntry(t, entry.kind, entry.shape, 0) then\n\t\t\t\treturn dmal(t)\n"
 	src := string(files["table_message.moo"])
 	if strings.Count(src, anchor) != 1 {
 		t.Fatal("the body's kind-mismatch anchor is not in table_message.moo exactly once")

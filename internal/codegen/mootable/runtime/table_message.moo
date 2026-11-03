@@ -1418,7 +1418,13 @@ local function skipRun(r: any, n: number, width: number): boolean
 	return skipBits(r, n * width)
 end
 
-local function skipBody(t: any): boolean
+-- THE SKIP DEPTH (cpptable message.go TableMessageSkip): an unknown field's
+-- skip is depth 0, and each nested body, union arm and walked element is one
+-- deeper; past 128 is malformed and 128 itself still skips.
+local function skipBody(t: any, depth: number): boolean
+	if depth > 128 then
+		return false
+	end
 	while true do
 		local ref, ok = reference(t)
 		if not ok then
@@ -1428,13 +1434,16 @@ local function skipBody(t: any): boolean
 			return true
 		end
 		local e = entryAt(t, ref)
-		if e == nil or not skipEntry(t, e.kind, e.shape) then
+		if e == nil or not skipEntry(t, e.kind, e.shape, depth) then
 			return false
 		end
 	end
 end
 
-skipEntry = function(t: any, kind: number, shape: any): boolean
+skipEntry = function(t: any, kind: number, shape: any, depth: number): boolean
+	if depth > 128 then
+		return false
+	end
 	local r = t.r
 	if kind == 0 or kind == 32 then
 		return true
@@ -1459,9 +1468,9 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 		if arm == nil then
 			return false
 		end
-		return skipEntry(t, arm.kind, arm.shape)
+		return skipEntry(t, arm.kind, arm.shape, depth + 1)
 	elseif kind == 13 then
-		return skipBody(t)
+		return skipBody(t, depth + 1)
 	elseif kind == 17 then
 		local _, ok = index(t)
 		return ok
@@ -1518,7 +1527,7 @@ skipEntry = function(t: any, kind: number, shape: any): boolean
 					return false
 				end
 			end
-			if not skipEntry(t, shape.elem, inner) then
+			if not skipEntry(t, shape.elem, inner, depth + 1) then
 				return false
 			end
 			if r.off == at then
@@ -1989,14 +1998,14 @@ decodeArm = function(t: any, fd: any): (any, boolean)
 	end
 	if tag == 0 then
 		t.report.unknown += 1
-		return u, skipEntry(t, entry.kind, entry.shape)
+		return u, skipEntry(t, entry.kind, entry.shape, 0)
 	end
 	local arm = un.arms[tag]
 	local mine = mineEntry(slotOf(un, tag))
 	if entry.kind ~= mine.kind or entry.shape.elem ~= mine.shape.elem then
 		if not widens(entry, mine.kind, mine.shape.elem) then
 			t.report.kindMismatch += 1
-			return u, skipEntry(t, entry.kind, entry.shape)
+			return u, skipEntry(t, entry.kind, entry.shape, 0)
 		end
 		t.report.widened += 1
 	end
@@ -2030,7 +2039,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 		local hit = byId[entry.id]
 		if hit == nil then
 			t.report.unknown += 1
-			if not skipEntry(t, entry.kind, entry.shape) then
+			if not skipEntry(t, entry.kind, entry.shape, 0) then
 				return dmal(t)
 			end
 			continue
@@ -2049,7 +2058,7 @@ decodeBody = function(t: any, d: any, v: any): boolean
 				continue
 			end
 			t.report.kindMismatch += 1
-			if not skipEntry(t, entry.kind, entry.shape) then
+			if not skipEntry(t, entry.kind, entry.shape, 0) then
 				return dmal(t)
 			end
 			continue
