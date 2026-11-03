@@ -205,3 +205,72 @@ func TestDispatchRefusesATruncatedRoster(t *testing.T) {
 		t.Fatal("a truncated roster was accepted")
 	}
 }
+
+// stallingLeg claims its unit's entries and never replies to a mutant: a
+// leg spinning on its input. release ends it as a kill would.
+func stallingLeg(t *testing.T, unit string) (*child, func()) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		entries := decodeRoster(t, inR)
+		answer := make([]byte, len(entries))
+		for i, e := range entries {
+			if e.unit == unit {
+				answer[i] = 1
+			}
+		}
+		_, _ = outW.Write(answer)
+		_, _ = io.Copy(io.Discard, inR)
+		done <- nil
+	}()
+	release := func() { _ = outW.Close(); _ = inR.Close() }
+	return &child{name: unit + " stalled", in: inW, out: bufio.NewReader(outR),
+		wait: func() error { return <-done }, kill: release}, release
+}
+
+// A stalled leg leaves every earlier reply delivered: the harness then names
+// the mutant that stalled, never one the dispatcher still held buffered.
+func TestDispatchDeliversEveryReplyBeforeAStall(t *testing.T) {
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	stalled, release := stallingLeg(t, "s")
+	start := func(unit, arm string) (*child, error) {
+		if arm != "builder" {
+			return nil, nil
+		}
+		if unit == "s" {
+			return stalled, nil
+		}
+		return fakeLeg(t, unit, arm, variable), nil
+	}
+	finished := make(chan error, 1)
+	go func() { finished <- dispatch(inR, outW, start); _ = outW.Close() }()
+	go func() {
+		_, _ = inW.Write(encodeRoster([]rosterEntry{{"a", "VList", 1, 0}, {"s", "VList", 1, 0}}))
+		_, _ = inW.Write(mutant(0, "first"))
+		_, _ = inW.Write(mutant(1, "stalls"))
+		_, _ = inW.Write(mutant(0, "queued"))
+	}()
+	answer := make([]byte, 2)
+	if _, err := io.ReadFull(outR, answer); err != nil {
+		t.Fatal(err)
+	}
+	head := make([]byte, replyHead)
+	if _, err := io.ReadFull(outR, head); err != nil {
+		t.Fatal(err)
+	}
+	saved := make([]byte, binary.LittleEndian.Uint64(head[replyHead-8:]))
+	if _, err := io.ReadFull(outR, saved); err != nil {
+		t.Fatal(err)
+	}
+	if string(saved) != "a/builder:first" {
+		t.Errorf("first reply %q", saved)
+	}
+	release()
+	_ = inW.Close()
+	go func() { _, _ = io.Copy(io.Discard, outR) }()
+	if err := <-finished; err == nil {
+		t.Error("a leg that never replied ended the run clean")
+	}
+}

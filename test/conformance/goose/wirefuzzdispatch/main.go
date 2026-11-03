@@ -258,10 +258,17 @@ func routeMutants(in io.Reader, route []*child, pending chan<- *child) error {
 }
 
 // relay copies each routed mutant's reply from the child that owes it, in
-// routing order, flushing whenever no further reply is already owed.
+// routing order. Everything relayed is flushed before a read that may block,
+// so when a leg stalls, the harness holds every reply before the stalled
+// one and names the mutant that stalled, not an earlier one.
 func relay(pending <-chan *child, w *bufio.Writer) error {
 	head := make([]byte, replyHead)
 	for c := range pending {
+		if c.out.Buffered() < replyHead {
+			if err := w.Flush(); err != nil {
+				return err
+			}
+		}
 		if _, err := io.ReadFull(c.out, head); err != nil {
 			return fmt.Errorf("%s did not reply: %w", c.name, err)
 		}
@@ -272,11 +279,6 @@ func relay(pending <-chan *child, w *bufio.Writer) error {
 		if n > 0 {
 			if _, err := io.CopyN(w, c.out, n); err != nil {
 				return fmt.Errorf("%s replied short: %w", c.name, err)
-			}
-		}
-		if len(pending) == 0 {
-			if err := w.Flush(); err != nil {
-				return err
 			}
 		}
 	}
