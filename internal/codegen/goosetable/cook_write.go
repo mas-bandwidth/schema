@@ -17,12 +17,16 @@
 // writes nothing — the value is walked once dry, then the extent is zeroed
 // and walked again.
 //
-// A POINTERED ROOT (a variable closure: pointers, lists, maps, blobs) cooks
-// a REGION, numbered by the depth-first first-visit walk of §3.1 (§7.6). The
-// Goose typed record holds its pointers as references into storage the load
-// or the builder owns, and that numbering is not carried here: a pointered
-// root gets no writer, which the cook-write surface answers as a named absence
-// (test/conformance/goose/accel.goose).
+// A ROOT THE TYPED WRITER DOES NOT CARRY — a POINTERED root (a variable
+// closure: pointers, lists, maps, blobs, unbounded text), or a fixed one whose
+// closure holds a kind the typed writer has no spelling for — cooks a REGION
+// numbered by the depth-first first-visit walk of §3.1 (§7.6), and that
+// writer is runtime/cook_write.goose's: one walk over the table wire's FLAT
+// VALUE TABLE, which is the Goose value of a variable table, reading the
+// unit's layout as data. This file emits that data once per unit, into the
+// cook's package module — CookRegionLayout, its tables and unions parallel to
+// TableUnit's (tablewire.go) — and each such root's <Name>CookMeasure and
+// <Name>Cook over a loaded value.
 package goosetable
 
 import (
@@ -157,6 +161,7 @@ func emitCookWrite(g *goose.Gen, u *ir.Unit, records []*ir.Struct) {
 		g.Pf("    if rec < 0 || !vals[rec].made { return; }\n%s}\n", w.cp.String())
 	}
 	g.Pf("\n")
+	emitCookRegionLayout(g, u)
 }
 
 // field writes one field of a record whose cook storage starts at `at +
@@ -320,14 +325,16 @@ func (w *cookWriter) union(un *ir.Union, src, dst, at, s string, ind int) {
 	}
 }
 
-// emitCookRoot is one FIXED table's write surface (§7.6): the measure, a
-// layout constant, and the write — the header, the record at the data part's
-// base, and the one-entry attribution part.
+// emitCookRoot is one table's write surface (§7.6). A fixed root the typed
+// writer carries gets the measure, a layout constant, and the write — the
+// header, the record at the data part's base, and the one-entry attribution
+// part; every other root gets the region writer's (emitCookRegionRoot).
 func emitCookRoot(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
-	if !st.IsTable || st.IsMapEntry() || ir.VariableTables(u)[st.Name] {
+	if !st.IsTable || st.IsMapEntry() {
 		return
 	}
-	if ok, _ := cookWritable(u, st, map[string]bool{}); !ok {
+	if cookRegionRoot(u, st) {
+		emitCookRegionRoot(g, u, st)
 		return
 	}
 	rt := goose.RuntimeNamespace
@@ -355,4 +362,365 @@ func emitCookRoot(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
 	g.Pf("    %s::cook_put(out, %d, 0x%016x, 8, big);\n", rt, 64+data+8, ir.TableWireId(st.WireName()))
 	g.Pf("    return true;\n")
 	g.Pf("}\n\n")
+}
+
+// cookRegionRoot reports a table whose write side is the region writer: a
+// pointered root, or a fixed one the typed writer does not carry.
+func cookRegionRoot(u *ir.Unit, st *ir.Struct) bool {
+	if !st.IsTable || st.IsMapEntry() {
+		return false
+	}
+	if ir.VariableTables(u)[st.Name] {
+		return true
+	}
+	ok, _ := cookWritable(u, st, map[string]bool{})
+	return !ok
+}
+
+// emitCookRegionRoot is one region root's write surface (§7.6) over a LOADED
+// value — the flat value table, the node table and the input the views read,
+// as schema_rt::load_table builds them: the measure, and the write.
+func emitCookRegionRoot(g *goose.Gen, u *ir.Unit, st *ir.Struct) {
+	rt := goose.RuntimeNamespace
+	n := st.Name
+	g.Import(cookWriteModule)
+	g.Import(UnitModule(u))
+	g.Declare(n + "CookMeasure")
+	g.Declare(n + "Cook")
+	g.Pf("// %sCookMeasure is the whole cooked file's length for one loaded value —\n", n)
+	g.Pf("// `vals`, `nodes` and the `data` their views read, root record `root`, as\n")
+	g.Pf("// schema_rt::load_table builds them — or -1 for a value no cook carries. It\n")
+	g.Pf("// depends on the value: the numbering of §3.1 and every extent (§7.6).\n")
+	g.Pf("fn %sCookMeasure(data: const u8[:], vals: const %s::LoadVal[:], nodes: const %s::LoadNode[:], root: i64) -> i64 {\n", n, rt, rt)
+	g.Pf("    return %s::cook_region_measure(%s, CookRegionLayout, BuildVersion, %sCookRegionTable, data, vals, nodes, root);\n", rt, UnitName, n)
+	g.Pf("}\n")
+	g.Pf("// %sCook writes the cook of one loaded value into out[0..%sCookMeasure(..)]\n", n, n)
+	g.Pf("// in the order `big` names, and nothing at all on a short capacity or a\n")
+	g.Pf("// value no cook carries. The bytes are `schema cook`'s, byte for byte.\n")
+	g.Pf("fn %sCook(data: const u8[:], vals: const %s::LoadVal[:], nodes: const %s::LoadNode[:], root: i64, out: u8[:], big: bool) -> bool {\n", n, rt, rt)
+	g.Pf("    return %s::cook_region_write(%s, CookRegionLayout, BuildVersion, %sCookRegionTable, data, vals, nodes, root, out, big, false) >= 0;\n", rt, UnitName, n)
+	g.Pf("}\n\n")
+}
+
+// cookWriteModule is the region writer's runtime module.
+const cookWriteModule = "cook_write"
+
+// emitCookRegionLayout writes the unit's cook layout as data into the cook's
+// package module, for a unit with a region root: one schema_rt::CookTab per
+// TableUnit table and one schema_rt::CookUni per TableUnit union, in the
+// registry's own order (unitDecls), and each region root's place in them.
+func emitCookRegionLayout(g *goose.Gen, u *ir.Unit) {
+	var roots []*ir.Struct
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if cookRegionRoot(u, st) {
+				roots = append(roots, st)
+			}
+		}
+	}
+	if len(roots) == 0 {
+		return
+	}
+	rt := goose.RuntimeNamespace
+	g.Import(cookWriteModule)
+	structs, unions := unitDecls(u)
+	tabIndex := map[string]int{}
+	for i, st := range structs {
+		tabIndex[st.Name] = i
+	}
+	uniIndex := map[string]int{}
+	for i, un := range unions {
+		uniIndex[un.Name] = i
+	}
+	cl := &cookLayout{u: u, tab: tabIndex, uni: uniIndex}
+	g.Pf("// ---- the region writer's layout (docs/SPEC-TABLES.md §7.2, §7.6) ----\n")
+	g.Pf("// Every record and union of TableUnit, in its order, at the layout\n")
+	g.Pf("// ir.RecordLayout computes: schema_rt::cook_region_write reads it as data.\n")
+	var tabs, unis []string
+	for i, st := range structs {
+		ml := ir.RecordLayout(u, st)
+		var cols []string
+		for _, f := range st.Fields {
+			fl := ml.FieldByName(f.Name)
+			cols = append(cols, cl.col(f, fl.Offset))
+		}
+		sym := fmt.Sprintf("_CookRegionCols%d", i)
+		g.Declare(sym)
+		g.Pf("let %s: %s::CookCol[%d] = [\n", sym, rt, max(len(cols), 1))
+		if len(cols) == 0 {
+			cols = append(cols, rt+"::CookCol { .. }")
+		}
+		g.Pf("    %s,\n];\n", strings.Join(cols, ",\n    "))
+		tabs = append(tabs, fmt.Sprintf("%s::CookTab { record: %d, align: %d, ext: %t, cols: %s[0..%d] }",
+			rt, cookRecordBytes(u, st), cookNodeAlign(u, st), cookRecordHasExtent(u, st), sym, len(st.Fields)))
+	}
+	for i, un := range unions {
+		_, _, tag, arm := ir.UnionLayout(u, un)
+		var cols []string
+		for _, v := range un.Variants {
+			if v.Void() {
+				cols = append(cols, rt+"::CookCol { .. }")
+				continue
+			}
+			af := *v.F
+			af.Name = v.Name
+			cols = append(cols, cl.col(&af, 0))
+		}
+		sym := fmt.Sprintf("_CookRegionArms%d", i)
+		g.Declare(sym)
+		g.Pf("let %s: %s::CookCol[%d] = [\n", sym, rt, max(len(cols), 1))
+		if len(cols) == 0 {
+			cols = append(cols, rt+"::CookCol { .. }")
+		}
+		g.Pf("    %s,\n];\n", strings.Join(cols, ",\n    "))
+		unis = append(unis, fmt.Sprintf("%s::CookUni { tag: %d, arm: %d, cols: %s[0..%d] }", rt, tag, arm, sym, len(un.Variants)))
+	}
+	var l lit
+	if len(tabs) > 0 {
+		g.Declare("_CookRegionTabs")
+		g.Pf("let _CookRegionTabs: %s::CookTab[%d] = [\n    %s,\n];\n", rt, len(tabs), strings.Join(tabs, ",\n    "))
+		l.add("tabs", "_CookRegionTabs")
+	}
+	if len(unis) > 0 {
+		g.Declare("_CookRegionUnis")
+		g.Pf("let _CookRegionUnis: %s::CookUni[%d] = [\n    %s,\n];\n", rt, len(unis), strings.Join(unis, ",\n    "))
+		l.add("unis", "_CookRegionUnis")
+	}
+	l.add("text_align", fmt.Sprint(ir.TableRegionAlign(u)))
+	g.Declare("CookRegionLayout")
+	g.Pf("let CookRegionLayout: %s::CookUnitLayout = %s;\n", rt, l.render("CookUnitLayout"))
+	g.Pf("// each region root's table in TableUnit\n")
+	for _, st := range roots {
+		g.Declare(st.Name + "CookRegionTable")
+		g.Pf("let %sCookRegionTable: i64 = %d;\n", st.Name, tabIndex[st.Name])
+	}
+	g.Pf("\n")
+}
+
+// cookLayout renders the columns of one unit's region layout.
+type cookLayout struct {
+	u   *ir.Unit
+	tab map[string]int
+	uni map[string]int
+}
+
+// col is one field's schema_rt::CookCol, its offsets relative to the record
+// whose storage puts the field at `offset` (an arm's: zero).
+func (cl *cookLayout) col(f *ir.Field, offset int64) string {
+	u := cl.u
+	pieces := ir.FieldPieces(u, f, offset)
+	if len(pieces) == 0 {
+		return goose.RuntimeNamespace + "::CookCol { .. }"
+	}
+	c := cookCol{lenOff: -1, presentOff: -1, tab: -1, uni: -1}
+	c.off, c.size = pieces[0].Offset, pieces[0].Size
+	if f.Type.Optional {
+		c.presentOff = pieces[len(pieces)-1].Offset
+	}
+	elem := *f
+	elem.Array = ir.ArrayNone
+	elem.ArrayBound = 0
+	elem.KeyEnum = ""
+	elem.KeyEnumRef = nil
+	elem.Type.Optional = false
+	switch {
+	case f.IsMap():
+		ml := ir.RecordLayout(u, f.MapEntry)
+		c.stride, c.ealign = ml.Size, max(ml.Align, 1)
+		c.tab = int64(cl.tab[f.MapEntry.Name])
+		c.eext = cookRecordHasExtent(u, f.MapEntry)
+	case f.IsList():
+		c.stride, c.ealign = ir.ListElementLayout(u, f)
+		c.eext = cookFieldHasExtent(u, &elem)
+		cl.elem(&c, &elem)
+	case f.Type.TextUnbounded():
+	case !f.Type.Pointer && f.Array == ir.ArrayNone && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString || f.Type.Kind == ir.TBytes):
+		c.lenOff = pieces[1].Offset
+	case f.Array != ir.ArrayNone || f.KeyEnum != "":
+		c.stride = cookElementBytes(u, f)
+		if f.Array == ir.ArrayCounted {
+			c.lenOff = pieces[1].Offset
+		}
+		cl.elem(&c, &elem)
+	default:
+		cl.elem(&c, &elem)
+	}
+	c.ext = cookFieldHasExtent(u, f)
+	return c.render()
+}
+
+// cookCol is a schema_rt::CookCol under construction.
+type cookCol struct {
+	off, size, lenOff, presentOff, stride, ealign, w, tab, uni int64
+	ext, eext                                                  bool
+}
+
+// render writes the literal in schema_rt::CookCol's declaration order.
+func (c cookCol) render() string {
+	var l lit
+	l.add("off", fmt.Sprint(c.off))
+	l.add("size", fmt.Sprint(c.size))
+	l.add("len_off", fmt.Sprint(c.lenOff))
+	l.add("present_off", fmt.Sprint(c.presentOff))
+	if c.stride != 0 {
+		l.add("stride", fmt.Sprint(c.stride))
+	}
+	if c.ealign != 0 {
+		l.add("ealign", fmt.Sprint(c.ealign))
+	}
+	if c.w != 0 {
+		l.add("w", fmt.Sprint(c.w))
+	}
+	l.add("tab", fmt.Sprint(c.tab))
+	l.add("uni", fmt.Sprint(c.uni))
+	l.flag("ext", c.ext)
+	l.flag("eext", c.eext)
+	return l.render("CookCol")
+}
+
+// elem sets the facts of ONE value of a field's type: its scalar storage
+// width, or the record or union it is.
+func (cl *cookLayout) elem(c *cookCol, f *ir.Field) {
+	t := f.Type
+	switch {
+	case t.Pointer || t.Blob():
+		c.w = 8
+	case t.Kind == ir.TBool:
+		c.w = 1
+	case t.Kind == ir.TFloat32:
+		c.w = 4
+	case t.Kind == ir.TFloat64:
+		c.w = 8
+	case t.Kind == ir.TInt || t.Kind == ir.TFixed:
+		c.w = int64(t.Width) / 8
+	case t.Kind == ir.TBits:
+		c.w = 4
+		if t.Width > 32 {
+			c.w = 8
+		}
+	case t.Kind == ir.TNamed:
+		switch r := t.Ref.(type) {
+		case *ir.Enum:
+			c.w = int64(ir.StorageBitsFor(r.Max)) / 8
+		case *ir.Flags:
+			c.w = 8
+		case *ir.Struct:
+			c.tab = int64(cl.tab[r.Name])
+		case *ir.Union:
+			c.uni = int64(cl.uni[r.Name])
+		}
+	}
+}
+
+// The extent facts are internal/tablecook's (extent.go), the tool's cooker
+// this writer must agree with byte for byte.
+
+// cookRecordHasExtent reports a record with a list, a map or an unbounded
+// text reachable BY VALUE: its node is its storage plus an extent.
+func cookRecordHasExtent(u *ir.Unit, st *ir.Struct) bool {
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
+			return true
+		}
+		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if cookRecordHasExtent(u, ref) {
+				return true
+			}
+		case *ir.Union:
+			if cookUnionHasExtent(u, ref, map[*ir.Union]bool{}) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// cookUnionHasExtent reports a union with a container below an arm held by
+// value; a pointer arm and a byte buffer arm reach nodes, not the extent.
+func cookUnionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
+	if un == nil || seen[un] {
+		return false
+	}
+	seen[un] = true
+	for _, v := range un.Variants {
+		if v.F == nil {
+			continue
+		}
+		if v.F.IsMap() || v.F.IsList() || v.F.Type.TextUnbounded() {
+			return true
+		}
+		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {
+			continue
+		}
+		switch ref := v.F.Type.Ref.(type) {
+		case *ir.Struct:
+			if cookRecordHasExtent(u, ref) {
+				return true
+			}
+		case *ir.Union:
+			if cookUnionHasExtent(u, ref, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// cookFieldHasExtent reports a field whose by-value storage can hold a
+// container (the array spelling aside).
+func cookFieldHasExtent(u *ir.Unit, f *ir.Field) bool {
+	if f.Type.TextUnbounded() {
+		return true
+	}
+	if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
+		return false
+	}
+	switch ref := f.Type.Ref.(type) {
+	case *ir.Struct:
+		return cookRecordHasExtent(u, ref)
+	case *ir.Union:
+		return cookUnionHasExtent(u, ref, map[*ir.Union]bool{})
+	}
+	return false
+}
+
+// cookRecordBytes is a node's record half: its sizeof, rounded to where its
+// extent begins when it can hold one (ir.CookExtentStart).
+func cookRecordBytes(u *ir.Unit, st *ir.Struct) int64 {
+	if !cookRecordHasExtent(u, st) {
+		return ir.RecordLayout(u, st).Size
+	}
+	return ir.CookExtentStart(u, st)
+}
+
+// cookNodeAlign is a node's alignment in the region (ir.CookNodeAlign where
+// it can hold an extent).
+func cookNodeAlign(u *ir.Unit, st *ir.Struct) int64 {
+	if !cookRecordHasExtent(u, st) {
+		return ir.RecordLayout(u, st).Align
+	}
+	return ir.CookNodeAlign(u, st)
+}
+
+// cookElementBytes is the stride of one array slot: the element's own
+// storage, as ir.FieldPieces sizes it.
+func cookElementBytes(u *ir.Unit, f *ir.Field) int64 {
+	single := *f
+	single.Array = ir.ArrayNone
+	single.ArrayBound = 0
+	single.KeyEnum = ""
+	single.KeyEnumRef = nil
+	single.Type.Optional = false
+	var end int64
+	for _, p := range ir.FieldPieces(u, &single, 0) {
+		end = max(end, p.Offset+p.Size)
+	}
+	return end
 }

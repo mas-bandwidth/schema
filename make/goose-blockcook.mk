@@ -30,13 +30,15 @@ tables-goose-block-negative-control:
 # THE ACCELERATORS' HARNESS CONTROLS (group goose-blockcook): one clause of
 # the runtime broken in a copy of the generated units, and the harness must
 # turn red exactly the surfaces it owns — the cook's reserved words (M8),
-# the block's pitch assertion (M7) and the write's byte order (§7.6).
+# the block's pitch assertion (M7), the write's byte order (§7.6) and the
+# region writer's first-visit numbering (§3.1, §7.6).
 .PHONY: tables-goose-accel-negative-control
 tables-goose-accel-negative-control: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control-accel cook-open
 	sh test/conformance/goose/negative-control-accel block-pitch
 	sh test/conformance/goose/negative-control-accel cook-order
+	sh test/conformance/goose/negative-control-accel cook-numbering
 
 # THE FORGERY FUZZER (docs/PORTING.md I3): valid block images and the Go
 # reference's cooks, mutated (a word of the prologue or a triple, a bit, the
