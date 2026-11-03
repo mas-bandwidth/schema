@@ -1,0 +1,168 @@
+// The Goose unit registry's listing program (docs/SPEC-TABLES.md §8.7): it
+// has the generated modules and nothing else, calls UnitView() and prints the
+// whole build in internal/viewlisting's line format. VIEW_PACKAGE and
+// VIEW_MODULE are filled in per unit by the corpus gate.
+import .VIEW_MODULE;
+import .serialize_float;
+
+fn hex16(out: u8[>..]&, v: u64) {
+    var s: u64 = 64;
+    while s > 0 {
+        s -= 4;
+        let d = ((v >> s) & 15) as u8;
+        if d < 10 { out.push('0' + d); } else { out.push('a' + d - 10); }
+    }
+}
+
+fn same(a: const u8[:], b: const u8[:]) -> bool {
+    if a.len != b.len { return false; }
+    var i = 0;
+    while i < a.len {
+        if a[i] != b[i] { return false; }
+        i += 1;
+    }
+    return true;
+}
+
+fn same_tags(a: const (const u8[:])[:], b: const (const u8[:])[:]) -> bool {
+    if a.len != b.len { return false; }
+    var i = 0;
+    while i < a.len {
+        if !same(a[i], b[i]) { return false; }
+        i += 1;
+    }
+    return true;
+}
+
+// ann is a row's tags and its doc, the doc last and FLATTENED to one line:
+// each newline written \n and the escape's own backslash written \\.
+fn ann(out: u8[>..]&, num_tags: i32, doc: const u8[:], tags: const (const u8[:])[:]) {
+    if num_tags != tags.len { format(out, "COUNT MISMATCH num_tags="); format(out, num_tags); }
+    format(out, " tags=[");
+    var i = 0;
+    while i < tags.len {
+        if i > 0 { out.push(','); }
+        format(out, tags[i]);
+        i += 1;
+    }
+    format(out, "] doc=");
+    for c in doc {
+        if c == '\\' { format(out, "\\\\"); } else if c == '\n' { format(out, "\\n"); } else { out.push(c); }
+    }
+    out.push('\n');
+}
+
+fn yes(b: bool) -> const u8[:] { return if b { "yes" } else { "no" }; }
+
+fn vocabulary(out: u8[>..]&, what: const u8[:], row: const u8[:], set: const VIEW_PACKAGE::ViewVocabulary[:]) {
+    for e in set {
+        format(out, what, " ", e.name, " file=", e.file, " max=", e.max, " bits=", e.storage_bits, " variants=", e.num_variants);
+        ann(out, e.num_tags, e.doc, e.tags);
+        if e.num_variants != e.variants.len { format(out, "COUNT MISMATCH ", e.name, "\n"); }
+        for r in e.variants {
+            format(out, what, " ", e.name, " ", row, " ", r.value, " ", r.name, " id=");
+            hex16(out, r.id);
+            ann(out, r.num_tags, r.doc, r.tags);
+        }
+    }
+}
+
+// held is whether some registry declaration has a field of the union's type:
+// the tables in registry order, then the types (internal/viewlisting).
+fn held(v: const VIEW_PACKAGE::UnitViewInfo&, name: const u8[:]) -> bool {
+    for t in v.tables {
+        let d = t.descriptor;
+        guard d else { continue; }
+        for f in d.fields {
+            if same(f.ref, name) { return true; }
+            let e = f.elem;
+            if e { if same(e.ref, name) { return true; } }
+        }
+    }
+    for t in v.types {
+        let d = t.descriptor;
+        guard d else { continue; }
+        for f in d.fields {
+            if same(f.ref, name) { return true; }
+            let e = f.elem;
+            if e { if same(e.ref, name) { return true; } }
+        }
+    }
+    return false;
+}
+
+fn unions(out: u8[>..]&, v: const VIEW_PACKAGE::UnitViewInfo&) {
+    for u in v.unions {
+        format(out, "union ", u.name, " file=", u.file, " max=", u.max, " bits=", u.storage_bits, " variants=", u.num_variants);
+        ann(out, u.num_tags, u.doc, u.tags);
+        let h = held(v, u.name);
+        for a in u.variants {
+            format(out, "union ", u.name, " arm ", a.value, " ", a.name, " id=");
+            hex16(out, a.id);
+            format(out, " payload=");
+            if a.payload_name.len == 0 { format(out, "-"); } else { format(out, a.payload_name); }
+            let p = a.payload;
+            format(out, " record=", yes(p != null));
+            let f = a.field;
+            format(out, " field=", yes(f != null));
+            if f {
+                // §8.1: kind is the ELEMENT kind on an array line, and a byte
+                // buffer is an array of u8
+                var kind = f.kind as i64;
+                if f.shape == schema_rt::ShapeArr || f.shape == schema_rt::ShapeMap || f.shape == schema_rt::ShapeBytes { kind = f.ek as i64; }
+                var bound = f.bound;
+                if f.shape == schema_rt::ShapeMap || (f.shape == schema_rt::ShapeArr && f.array == schema_rt::ArrayList) { bound = 0; }
+                format(out, " kind=", kind, " bound=", bound, " overlay=");
+                if h { format(out, f.arm_offset - u.payload_offset); } else { format(out, "-"); }
+                // THE GENERAL ARM PAIR (§8.7): the field descriptor and the
+                // registry row carry one annotation
+                if !same(f.doc, a.doc) || !same_tags(f.tags, a.tags) { format(out, " ARM ANNOTATION MISMATCH"); }
+            } else {
+                format(out, " kind=- bound=- overlay=-");
+            }
+            ann(out, a.num_tags, a.doc, a.tags);
+        }
+    }
+}
+
+fn declarations(out: u8[>..]&, what: const u8[:], set: const VIEW_PACKAGE::ViewType[:]) {
+    for r in set {
+        let d = r.descriptor;
+        guard d else { format(out, what, " ", r.name, " NO DESCRIPTOR\n"); continue; }
+        format(out, what, " ", r.name, " file=", r.file, " fields=", d.fields.len);
+        // THE TYPE PAIR (§8.7): the registry row and its descriptor carry one
+        // annotation
+        if !same(r.doc, d.doc) || !same_tags(r.tags, d.tags) || r.num_tags != d.num_tags { format(out, " TYPE ANNOTATION MISMATCH"); }
+        ann(out, r.num_tags, r.doc, r.tags);
+        for f in d.fields {
+            format(out, what, " ", r.name, " field ", f.name, " json=");
+            if f.json.len == 0 { format(out, "-"); } else { format(out, f.json); }
+            format(out, " type=", f.type_name, " id=");
+            hex16(out, f.id);
+            format(out, " optional=", f.optional);
+            ann(out, f.num_tags, f.doc, f.tags);
+        }
+    }
+}
+
+fn main() {
+    let v .= VIEW_PACKAGE::UnitView();
+    var out: u8[>..] = [];
+    format(out, "unit package=", v.package, " protocol=");
+    hex16(out, v.protocol_id);
+    out.push('\n');
+    if v.num_types != v.types.len || v.num_tables != v.tables.len || v.num_enums != v.enums.len || v.num_flags != v.flags.len || v.num_unions != v.unions.len || v.num_constants != v.constants.len {
+        format(out, "REGISTRY COUNT MISMATCH\n");
+    }
+    for c in v.constants {
+        format(out, "constant ", c.name, " file=", c.file, " type=", c.type_name, " float=", c.is_float, " int=", c.int_value, " real=");
+        hex16(out, serialize_f64_bits(c.float_value));
+        ann(out, c.num_tags, c.doc, c.tags);
+    }
+    vocabulary(out, "enum", "variant", v.enums);
+    vocabulary(out, "flags", "bit", v.flags);
+    unions(out, v);
+    declarations(out, "type", v.types);
+    declarations(out, "table", v.tables);
+    print(out[0..out.len - 1]);
+}
