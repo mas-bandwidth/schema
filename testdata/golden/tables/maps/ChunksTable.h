@@ -12955,7 +12955,7 @@ inline int64_t ChunksMeasureWireRetain( const Ctx & ctx, const Chunks & root, Ta
         }
         return -1;
     };
-    if ( ChunksNumberFrom( ctx, numbering, root ) )
+    if ( ChunksNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13009,7 +13009,7 @@ inline int64_t ChunksSaveWireRetain( const Ctx & ctx, const Chunks & root, Table
         }
         return false;
     };
-    if ( !ChunksNumberFrom( ctx, numbering, root ) )
+    if ( !ChunksNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

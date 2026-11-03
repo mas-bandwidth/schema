@@ -19032,7 +19032,7 @@ inline int64_t SaveMeasureWireRetain( const Ctx & ctx, const Save & root, TableR
         }
         return -1;
     };
-    if ( SaveNumberFrom( ctx, numbering, root ) )
+    if ( SaveNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -19081,7 +19081,7 @@ inline int64_t SaveSaveWireRetain( const Ctx & ctx, const Save & root, TableReta
         }
         return false;
     };
-    if ( !SaveNumberFrom( ctx, numbering, root ) )
+    if ( !SaveNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -19496,7 +19496,7 @@ inline int64_t MixedMeasureWireRetain( const Ctx & ctx, const Mixed & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( MixedNumberFrom( ctx, numbering, root ) )
+    if ( MixedNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -19537,7 +19537,7 @@ inline int64_t MixedSaveWireRetain( const Ctx & ctx, const Mixed & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !MixedNumberFrom( ctx, numbering, root ) )
+    if ( !MixedNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

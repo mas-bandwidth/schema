@@ -21146,7 +21146,7 @@ inline int64_t ListNodeMeasureWireRetain( const Ctx & ctx, const ListNode & root
         }
         return -1;
     };
-    if ( ListNodeNumberFrom( ctx, numbering, root ) )
+    if ( ListNodeNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -21195,7 +21195,7 @@ inline int64_t ListNodeSaveWireRetain( const Ctx & ctx, const ListNode & root, T
         }
         return false;
     };
-    if ( !ListNodeNumberFrom( ctx, numbering, root ) )
+    if ( !ListNodeNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -21495,7 +21495,7 @@ inline int64_t TreeNodeMeasureWireRetain( const Ctx & ctx, const TreeNode & root
         }
         return -1;
     };
-    if ( TreeNodeNumberFrom( ctx, numbering, root ) )
+    if ( TreeNodeNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -21544,7 +21544,7 @@ inline int64_t TreeNodeSaveWireRetain( const Ctx & ctx, const TreeNode & root, T
         }
         return false;
     };
-    if ( !TreeNodeNumberFrom( ctx, numbering, root ) )
+    if ( !TreeNodeNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -21844,7 +21844,7 @@ inline int64_t LayerMeasureWireRetain( const Ctx & ctx, const Layer & root, Tabl
         }
         return -1;
     };
-    if ( LayerNumberFrom( ctx, numbering, root ) )
+    if ( LayerNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -21893,7 +21893,7 @@ inline int64_t LayerSaveWireRetain( const Ctx & ctx, const Layer & root, TableRe
         }
         return false;
     };
-    if ( !LayerNumberFrom( ctx, numbering, root ) )
+    if ( !LayerNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -22197,7 +22197,7 @@ inline int64_t SceneMeasureWireRetain( const Ctx & ctx, const Scene & root, Tabl
         }
         return -1;
     };
-    if ( SceneNumberFrom( ctx, numbering, root ) )
+    if ( SceneNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -22250,7 +22250,7 @@ inline int64_t SceneSaveWireRetain( const Ctx & ctx, const Scene & root, TableRe
         }
         return false;
     };
-    if ( !SceneNumberFrom( ctx, numbering, root ) )
+    if ( !SceneNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -22550,7 +22550,7 @@ inline int64_t DepotMeasureWireRetain( const Ctx & ctx, const Depot & root, Tabl
         }
         return -1;
     };
-    if ( DepotNumberFrom( ctx, numbering, root ) )
+    if ( DepotNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -22599,7 +22599,7 @@ inline int64_t DepotSaveWireRetain( const Ctx & ctx, const Depot & root, TableRe
         }
         return false;
     };
-    if ( !DepotNumberFrom( ctx, numbering, root ) )
+    if ( !DepotNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -22903,7 +22903,7 @@ inline int64_t AlbumMeasureWireRetain( const Ctx & ctx, const Album & root, Tabl
         }
         return -1;
     };
-    if ( AlbumNumberFrom( ctx, numbering, root ) )
+    if ( AlbumNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -22956,7 +22956,7 @@ inline int64_t AlbumSaveWireRetain( const Ctx & ctx, const Album & root, TableRe
         }
         return false;
     };
-    if ( !AlbumNumberFrom( ctx, numbering, root ) )
+    if ( !AlbumNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

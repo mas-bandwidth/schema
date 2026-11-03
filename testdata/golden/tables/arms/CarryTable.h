@@ -16846,7 +16846,7 @@ inline int64_t LeafMeasureWireRetain( const Ctx & ctx, const Leaf & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( LeafNumberFrom( ctx, numbering, root ) )
+    if ( LeafNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -16887,7 +16887,7 @@ inline int64_t LeafSaveWireRetain( const Ctx & ctx, const Leaf & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !LeafNumberFrom( ctx, numbering, root ) )
+    if ( !LeafNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -17302,7 +17302,7 @@ inline int64_t HolderMeasureWireRetain( const Ctx & ctx, const Holder & root, Ta
         (void) type_id;
         return -1;
     };
-    if ( HolderNumberFrom( ctx, numbering, root ) )
+    if ( HolderNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -17343,7 +17343,7 @@ inline int64_t HolderSaveWireRetain( const Ctx & ctx, const Holder & root, Table
         (void) type_id;
         return false;
     };
-    if ( !HolderNumberFrom( ctx, numbering, root ) )
+    if ( !HolderNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -17758,7 +17758,7 @@ inline int64_t HandMeasureWireRetain( const Ctx & ctx, const Hand & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( HandNumberFrom( ctx, numbering, root ) )
+    if ( HandNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -17799,7 +17799,7 @@ inline int64_t HandSaveWireRetain( const Ctx & ctx, const Hand & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !HandNumberFrom( ctx, numbering, root ) )
+    if ( !HandNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -18214,7 +18214,7 @@ inline int64_t ChainMeasureWireRetain( const Ctx & ctx, const Chain & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( ChainNumberFrom( ctx, numbering, root ) )
+    if ( ChainNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -18255,7 +18255,7 @@ inline int64_t ChainSaveWireRetain( const Ctx & ctx, const Chain & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !ChainNumberFrom( ctx, numbering, root ) )
+    if ( !ChainNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

@@ -21062,7 +21062,7 @@ inline int64_t RowMeasureWireRetain( const Ctx & ctx, const Row & root, TableRet
         (void) type_id;
         return -1;
     };
-    if ( RowNumberFrom( ctx, numbering, root ) )
+    if ( RowNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -21103,7 +21103,7 @@ inline int64_t RowSaveWireRetain( const Ctx & ctx, const Row & root, TableRetain
         (void) type_id;
         return false;
     };
-    if ( !RowNumberFrom( ctx, numbering, root ) )
+    if ( !RowNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -21524,7 +21524,7 @@ inline int64_t SheetMeasureWireRetain( const Ctx & ctx, const Sheet & root, Tabl
         }
         return -1;
     };
-    if ( SheetNumberFrom( ctx, numbering, root ) )
+    if ( SheetNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -21573,7 +21573,7 @@ inline int64_t SheetSaveWireRetain( const Ctx & ctx, const Sheet & root, TableRe
         }
         return false;
     };
-    if ( !SheetNumberFrom( ctx, numbering, root ) )
+    if ( !SheetNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -21988,7 +21988,7 @@ inline int64_t SquadMeasureWireRetain( const Ctx & ctx, const Squad & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( SquadNumberFrom( ctx, numbering, root ) )
+    if ( SquadNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -22029,7 +22029,7 @@ inline int64_t SquadSaveWireRetain( const Ctx & ctx, const Squad & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !SquadNumberFrom( ctx, numbering, root ) )
+    if ( !SquadNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -22444,7 +22444,7 @@ inline int64_t ArmyMeasureWireRetain( const Ctx & ctx, const Army & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( ArmyNumberFrom( ctx, numbering, root ) )
+    if ( ArmyNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -22485,7 +22485,7 @@ inline int64_t ArmySaveWireRetain( const Ctx & ctx, const Army & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !ArmyNumberFrom( ctx, numbering, root ) )
+    if ( !ArmyNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -22900,7 +22900,7 @@ inline int64_t DeckMeasureWireRetain( const Ctx & ctx, const Deck & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( DeckNumberFrom( ctx, numbering, root ) )
+    if ( DeckNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -22941,7 +22941,7 @@ inline int64_t DeckSaveWireRetain( const Ctx & ctx, const Deck & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !DeckNumberFrom( ctx, numbering, root ) )
+    if ( !DeckNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

@@ -12168,7 +12168,7 @@ inline int64_t GateMeasureWireRetain( const Ctx & ctx, const Gate & root, TableR
         }
         return -1;
     };
-    if ( GateNumberFrom( ctx, numbering, root ) )
+    if ( GateNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -12224,7 +12224,7 @@ inline int64_t GateSaveWireRetain( const Ctx & ctx, const Gate & root, TableReta
         }
         return false;
     };
-    if ( !GateNumberFrom( ctx, numbering, root ) )
+    if ( !GateNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
