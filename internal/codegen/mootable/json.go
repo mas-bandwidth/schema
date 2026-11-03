@@ -61,7 +61,7 @@ func jsonPart(g *Gen) error {
 			fmt.Fprintf(&extras, "_json.extra(%s, { flags = { %s } })\n", target, strings.Join(names, ", "))
 		}
 		if f.IsTextList() {
-			// an unbounded element text (§2.13.1) has no capacity: -1
+			// an unbounded element's bound is -1: the reader never clamps it
 			bound := ir.TextListValue(f).Type.Size
 			if ir.TextListValue(f).Type.TextUnbounded() {
 				bound = -1

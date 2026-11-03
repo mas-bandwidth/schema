@@ -178,7 +178,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 		g.pf("\tvar ok bool\n\tif data, ok = tableIntegrityOpen(data, report); !ok { %sReset(value); return false }\n", n)
 	}
 	g.pf("\tr, verdict := tableOpen(data, report); report.Verdict = verdict; report.Reason = \"\"\n")
-	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"newer_form\"; if len(data) > 0 { if data[0] == 2 { report.Reason = \"message_form_as_file\" } else if data[0] == 0 { report.Reason = \"previous_form\" } } }\n") // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
+	g.pf("\tif verdict == TableOpenRefused { report.Reason = \"newer_form\"; if len(data) > 0 && data[0] == 2 { report.Reason = \"message_form_as_file\" } }\n") // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
 	g.pf("\tif verdict != TableOpenOk { %sReset(value); if verdict == TableOpenDamaged { report.Malformed = true }; return false }\n", n)
 	g.pf("\t// The root read answers its own early end after the walk, not before it.\n")
 	g.pf("\t// A body that returned at its zero reference left the cursor on the byte\n")
