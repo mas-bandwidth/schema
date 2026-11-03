@@ -3857,8 +3857,7 @@ defmodule Bench.Table do
   end
 
   defp written_value(%{t: :wstring} = f, v) do
-    units = if is_binary(v), do: utf16(v), else: nil
-    if not is_binary(units) or div(byte_size(units), 2) > f.size, do: throw(:invalid_value)
+    if not is_binary(v) or utf16_units(v, 0) > f.size, do: throw(:invalid_value)
   end
 
   defp written_value(%{t: :list} = f, elements) do
@@ -3866,19 +3865,36 @@ defmodule Bench.Table do
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
 
-    if not Map.get(f, :text_list, false),
-      do: Enum.each(elements, &written_element(f, &1))
+    if not Map.get(f, :text_list, false), do: written_elements(f, elements)
   end
 
   defp written_value(%{t: :keyed} = f, slots) do
     if not is_map(slots), do: throw(:invalid_value)
 
-    Enum.each(f.key_names, fn name ->
-      written_value(f.item, Map.get(slots, name, f.item.default))
-    end)
+    written_slots(f.item, f.key_names, slots)
   end
 
   defp written_value(_f, _v), do: :ok
+
+  # the UTF-16 code units a UTF-8 text spells, counted without building it
+  defp utf16_units(<<c::utf8, rest::binary>>, n) when c >= 0x10000, do: utf16_units(rest, n + 2)
+  defp utf16_units(<<_c::utf8, rest::binary>>, n), do: utf16_units(rest, n + 1)
+  defp utf16_units(<<>>, n), do: n
+  defp utf16_units(_invalid, _n), do: throw(:invalid_value)
+
+  defp written_slots(_item, [], _slots), do: :ok
+
+  defp written_slots(item, [name | rest], slots) do
+    written_value(item, Map.get(slots, name, item.default))
+    written_slots(item, rest, slots)
+  end
+
+  defp written_elements(_f, []), do: :ok
+
+  defp written_elements(f, [e | rest]) do
+    written_element(f, e)
+    written_elements(f, rest)
+  end
 
   # one union value: None, or an arm the union declares holding a payload the
   # arm's type can hold
@@ -3945,12 +3961,47 @@ defmodule Bench.Table do
 
   defp required_value(_f, _v), do: :ok
 
-  defp required_integer(v, bits, signed) do
+  # the storage domains as literals, so the check on every written integer
+  # builds no bignum bound
+  defp required_integer(v, 8, true) when is_integer(v) and v >= -128 and v <= 127, do: :ok
+  defp required_integer(v, 16, true) when is_integer(v) and v >= -32768 and v <= 32767, do: :ok
+
+  defp required_integer(v, 32, true)
+       when is_integer(v) and v >= -2_147_483_648 and v <= 2_147_483_647,
+       do: :ok
+
+  defp required_integer(v, 64, true)
+       when is_integer(v) and v >= -9_223_372_036_854_775_808 and
+              v <= 9_223_372_036_854_775_807,
+       do: :ok
+
+  defp required_integer(v, 8, false) when is_integer(v) and v >= 0 and v <= 255, do: :ok
+  defp required_integer(v, 16, false) when is_integer(v) and v >= 0 and v <= 65535, do: :ok
+
+  defp required_integer(v, 32, false) when is_integer(v) and v >= 0 and v <= 4_294_967_295,
+    do: :ok
+
+  defp required_integer(v, 64, false)
+       when is_integer(v) and v >= 0 and v <= 18_446_744_073_709_551_615,
+       do: :ok
+
+  defp required_integer(v, 128, true)
+       when is_integer(v) and v >= -170_141_183_460_469_231_731_687_303_715_884_105_728 and
+              v <= 170_141_183_460_469_231_731_687_303_715_884_105_727,
+       do: :ok
+
+  defp required_integer(v, 128, false)
+       when is_integer(v) and v >= 0 and v <= 340_282_366_920_938_463_463_374_607_431_768_211_455,
+       do: :ok
+
+  defp required_integer(v, bits, signed) when bits not in [8, 16, 32, 64, 128] do
     {lo, hi} =
       if signed, do: {-(1 <<< (bits - 1)), (1 <<< (bits - 1)) - 1}, else: {0, (1 <<< bits) - 1}
 
     if not is_integer(v) or v < lo or v > hi, do: throw(:invalid_value)
   end
+
+  defp required_integer(_v, _bits, _signed), do: throw(:invalid_value)
 
   defp compatible_payload?(%{t: t, elem_kind: expected} = f, payload)
        when t in [:list, :map, :keyed] do
@@ -4191,10 +4242,17 @@ defmodule Bench.Table do
   defp clamp_int(v, %{min: _lo, max: hi}, report) when v > hi,
     do: {hi, %{report | clamped: report.clamped + 1}}
 
+  # a bits(N) with no declared range clamps to its N bits (§4), the domain
+  # the write refuses past
+  defp clamp_int(v, %{bits: bits}, report) when is_integer(v) and v > (1 <<< bits) - 1,
+    do: {(1 <<< bits) - 1, %{report | clamped: report.clamped + 1}}
+
   defp clamp_int(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)
+
+  defp clamp_list_int(v, %{elem_bits: bits}, report), do: clamp_int(v, %{bits: bits}, report)
 
   defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
 
