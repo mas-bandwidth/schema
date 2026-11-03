@@ -4902,8 +4902,8 @@ one document rather than two.
   enum cannot name is §4's ordinary `unknown`**: the field reads `None` and
   one event counts. The kind closes the edit a shared integer kind left open:
   an enum field respelled as its raw `uint16`, or the reverse, moves between
-  kind `30` and kind `7` and is an ordinary kind mismatch in both directions,
-  counted, the field taking its default. That is what a kind number buys
+  kind `30` and kind `7` and is an ordinary kind mismatch in both directions:
+  the read refuses `kind_mismatch`. That is what a kind number buys
   (§4.1), and it cost no bytes.
 
   **KIND `32` IS THE PAYLOAD-FREE KIND**, and the arm position is the only
@@ -6597,8 +6597,12 @@ The five ways a batch is damaged, at bit granularity:
 - **A QUANTIZED INDEX ABOVE `count`.** The width can spell it whenever `count`
   is not one less than a power of two, and the packet wire rejects it (SPEC.md
   §4.3), so this form rejects it too, since the quantized float has one rule on
-  both wires (above). A ranged integer's offset above the sender's `max`
-  refuses `out_of_range` (above).
+  both wires (above). **It is framing damage, `wire_damaged`, and a ranged
+  integer's offset above the sender's `max` is a value, `out_of_range` (above),
+  for one reason**: an index past `count` names no grid point, so there is no
+  value to decode at all, while an offset past `max` decodes to a definite
+  number (`base` plus the offset) that only the range rules out. The first is
+  in the `wire_damaged` rank group, the second in the values group (§6.5).
 - **A REFERENCE NAMING AN ENTRY OF THE WRONG SORT**, which is a variant
   reference on an entry that is not kind `0` and an arm reference on one that
   is (above). The entry resolved and it contradicts the position it was used
@@ -9935,7 +9939,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `wrong_build_version` | the cook's `build_version` word is not this build's (§20). The announcement's own strict refusal is the typed `build_version_mismatch` below |
   | `reserved_not_zero` | a reserved word or byte that must be zero is not (§3, §7, §21.3) |
   | `bad_alignment` | the `alignment` word is not a power of two, is outside 8 through 64, or is not a multiple of the root node's required alignment, including its extent (§6.2) (§7) |
-  | `truncated` | a file or buffer shorter than its framing, or a fixed record whose inputs run past the bytes given (§3, §7) |
+  | `truncated` | the FIXED form's and the accelerators' short input, where those forms define it: no first byte, a fixed header under twenty bytes, a ragged record tail, a fixed record whose inputs run past the bytes given (§3.4, §7). A short VARIABLE-form buffer is not `truncated`: it is framing damage, `wire_damaged` (§3) |
   | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
   | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
   | `unknown_form` | a form byte THIS CALL does not carry (§3). A file's measure answers it for any byte that is not the variable form, form `2` included, because a batch belongs to the message surface (§3.3); the `Load` beside it answers `message_form_as_file` for `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
@@ -16535,8 +16539,8 @@ standard alphabet nor `=`, a missing, extra or misplaced `=`, and any text
 that does not decode. A decoded wire the binary
 reader refuses is the
 wire reader's own refusal — a form byte this build does not carry, `unknown_form`
-(§3, THE FIRST BYTE), and framing damage, `wire_damaged` or `truncated`
-(§3); a JSON document the JSON reader refuses is `malformed` (§16.2). A
+(§3, THE FIRST BYTE), and framing damage, `wire_damaged` (§3; `truncated` only
+where the fixed form defines it, §3.4); a JSON document the JSON reader refuses is `malformed` (§16.2). A
 reader never guesses at an unnameable byte.
 
 **The shape follows the class's own binary pair.** For a fixed table,
@@ -17728,7 +17732,7 @@ committed file whenever one is there, and:
   capacity shrunk from every count to N; a field changed between a map and the
   `[..N]Pair` its
   entries already are (§2.8), because the read gains the order check and a
-  wire whose pairs were not ascending reads short; a declared
+  wire whose pairs were not ascending refuses `wire_damaged`; a declared
   RANGE tightened, from either end, or declared where the field or the ARM
   had none; a text list's `total=` lowered, or declared where the list had
   none (§2.13); an

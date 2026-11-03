@@ -169,11 +169,10 @@ the VERDICT is this page's row and never the manifest's**, which is the one plac
 oracle for what comes BACK. `manifest_case` still holds — every `.bin` in the corpus has a line and every
 `root=` names a table the generator emitted.
 
-**Row 9's corpus files carry ONE record each, deliberately.** §5.3's loop lands record `k` before it checks
-record `k+1`'s hash, so in a two-record file the refusal arrives with record 0 already written and "not one
-destination byte" cannot be read literally. A one-record file has no such question, and **what a multi-record
-`no_layout` may leave in `out[0..k-1]` is an OPEN QUESTION for the bill, not a thing a leg should guess** —
-named here rather than answered.
+**Row 9's corpus files carry ONE record each, and the multi-record answer is settled.** FIXED-FORM-ALGORITHM
+§5.3 checks every record's hash in its CHECK loop before any record lands, so a multi-record `no_layout`
+leaves `out[0..k-1]` exactly as untouched as `out[k]`: not one destination byte is written. A two-record
+file asserts the same untouched storage as a one-record file.
 
 **Row 11's handed-in entry is the probe's, in one line, and it is the only unlawful thing in the corpus.**
 §5.9 #30 withdrew the owed lawful row because no lawful lineage can move the census; the entry is therefore
