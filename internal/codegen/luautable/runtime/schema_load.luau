@@ -984,7 +984,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		-- takes this element, and the first element that would carry it past
 		-- the total is dropped with every later element, clamped counted once.
 		if fd.total ~= nil then
-			spent = spent + text_elem_bytes(fd.e, dst[i])
+			spent = spent + text_elem_bytes(fd.e, dst[i], if lens ~= nil then lens[i] else nil)
 			if spent > fd.total then
 				report.clamped = report.clamped + 1
 				if fd.array == "list" then dst[i] = nil end
@@ -1014,9 +1014,11 @@ end
 -- the bytes one text-list element contributes to its total
 -- (docs/SPEC-TABLES.md §2.13): a plain element's buffer length, or a ?element's value
 -- when present, zero when absent.
-text_elem_bytes = function(e: any, x: any): number
+text_elem_bytes = function(e: any, x: any, used: number?): number
 	if e == nil or x == nil then return 0 end
 	if e.s == "str" or e.s == "text" then
+		-- a plain string element's USED bytes ride in its length companion
+		if used ~= nil then return used end
 		if typeof(x) == "buffer" then return buffer.len(x) end
 		return 0
 	end
@@ -1351,6 +1353,160 @@ read_field = function(fd: any, r: any, v: any): any
 end
 
 
+-- ---- THE CYCLE CHECK (§3.1, §4; internal/tablewire decodenodes.go cyclic) --
+--
+-- No writer produces a cyclic wire, so a cycle in the LOADED graph is damage
+-- and the whole load is refused. The vertices are the root and every record
+-- the load placed; the edges are every pointer slot a vertex's by-value
+-- closure stores, a slot under a false guard included, because the load
+-- stored it. A byte buffer is no vertex. A cycle anywhere refuses, one the
+-- root never reaches included.
+
+-- the live count of a stored array: a list's length, a counted array's count
+-- beside it, a fixed array's bound (§2.9)
+local function stored_count(fd: any, holder: any, val: any): number
+	if type(val) ~= "table" then
+		return 0
+	end
+	if fd.array == "list" then
+		return #val
+	end
+	if fd.array == "counted" then
+		local c = holder[fd.slot .. "Count"]
+		if type(c) ~= "number" then
+			return 0
+		end
+		return math.min(c, fd.bound)
+	end
+	return fd.bound or 0
+end
+
+local stored_edges: any
+
+local function stored_arm_edges(fd: any, u: any, index: { [any]: number }, out: { number })
+	if type(u) ~= "table" or u.Type == nil or u.Type == 0 then
+		return
+	end
+	local arm = S.lookup(fd.t).arms[u.Type]
+	if arm == nil or arm.slot == nil then
+		return
+	end
+	local val = u[arm.slot]
+	local shape = arm.s
+	if shape == "ptr" then
+		if val then
+			out[#out + 1] = index[val]
+		end
+	elseif shape == "tab" then
+		stored_edges(S.lookup(arm.t), val, index, out)
+	elseif shape == "union" then
+		stored_arm_edges(arm, val, index, out)
+	elseif shape == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
+		for i = 1, stored_count(arm, u, val) do
+			if val[i] then
+				out[#out + 1] = index[val[i]]
+			end
+		end
+	end
+end
+
+-- stored_edges appends the vertex index of every pointer target v's by-value
+-- closure stores. The recursion is by-value nesting only, whose depth the
+-- schema fixes (§2); it never follows a pointer.
+stored_edges = function(d: any, v: any, index: { [any]: number }, out: { number }): { number }
+	if type(v) ~= "table" then
+		return out
+	end
+	for _, fd in d.fields do
+		if fd.slot == nil or (fd.present ~= nil and not v[fd.present]) then
+			continue
+		end
+		local val = v[fd.slot]
+		local s = fd.s
+		if s == "ptr" then
+			if val then
+				out[#out + 1] = index[val]
+			end
+		elseif s == "tab" then
+			stored_edges(S.lookup(fd.t), val, index, out)
+		elseif s == "union" then
+			stored_arm_edges(fd, val, index, out)
+		elseif s == "map" then
+			if type(val) == "table" then
+				local entry = S.lookup(fd.t)
+				for _, ev in val do
+					stored_edges(entry, ev, index, out)
+				end
+			end
+		elseif s == "arr" and type(val) == "table" and fd.e ~= nil then
+			local e = fd.e
+			local n = stored_count(fd, v, val)
+			if e.s == "ptr" then
+				for i = 1, n do
+					if val[i] then
+						out[#out + 1] = index[val[i]]
+					end
+				end
+			elseif e.s == "union" then
+				for i = 1, n do
+					stored_arm_edges(e, val[i], index, out)
+				end
+			elseif e.s == "tab" then
+				local td = S.lookup(e.t)
+				for i = 1, n do
+					stored_edges(td, val[i], index, out)
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- cyclic reports whether the loaded graph holds a cycle. Each vertex carries
+-- one of three marks and is ENTERED ONCE: a pointer to an OPEN vertex is a
+-- cycle, and a pointer to a CLOSED one is a legal share. The walk holds its
+-- own stack, so it is linear in vertices plus slots and a pointer chain is
+-- never a recursion depth.
+local function cyclic(): boolean
+	local verts: { any } = { { d = _rootDesc, v = _rootValue } }
+	local index: { [any]: number } = { [_rootValue] = 1 }
+	for _, n in _nodes do
+		if n.kind == "t" and index[n.v] == nil then
+			verts[#verts + 1] = { d = n.desc, v = n.v }
+			index[n.v] = #verts
+		end
+	end
+	local mark: { number } = table.create(#verts, 0) -- 0 unvisited, 1 open, 2 closed
+	local stack: { any } = {}
+	for start = 1, #verts do
+		if mark[start] ~= 0 then
+			continue
+		end
+		mark[start] = 1
+		stack[1] = { at = start, out = stored_edges(verts[start].d, verts[start].v, index, {}), i = 0 }
+		while #stack > 0 do
+			local top = stack[#stack]
+			if top.i >= #top.out then
+				mark[top.at] = 2
+				stack[#stack] = nil
+			else
+				top.i += 1
+				local t = top.out[top.i]
+				if t ~= nil then
+					if mark[t] == 1 then
+						return true
+					end
+					if mark[t] == 0 then
+						mark[t] = 1
+						stack[#stack + 1] = { at = t, out = stored_edges(verts[t].d, verts[t].v, index, {}), i = 0 }
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
 -- RESOLUTION (§3.1): 0 is null, 1 is the root, k + 1 is record k. A record of
 -- another kind than the slot declares is a kind mismatch, an index past the
 -- numbering is malformed, and a numbering that could not be read resolves
@@ -1562,6 +1718,11 @@ local function loadOpened(root: string, bytes: buffer, report: any, o: any): any
 	-- a count past the storage cap answers the report as it stood at the
 	-- refusal (§2.9)
 	if _countRefused then restoreCount(report) end
+	-- A CYCLIC WIRE IS DAMAGE (§3.1, §4): the stored graph is checked once
+	-- every index has resolved
+	if _numberingGood and not _countRefused and not report.malformed and cyclic() then
+		report.malformed = true
+	end
 	-- A NaN OR AN INFINITY REFUSES THE READ, TOLERANT AND STRICT ALIKE
 	-- (docs/SPEC-TABLES.md §3.3): nothing of the value lands, and the report
 	-- names the field, non_finite_float: <Owner>.<field>.
@@ -1584,10 +1745,32 @@ end
 
 -- loadTolerant returns a value only when the wire is whole. Tolerant
 -- evolution is not damage: malformed input is discarded on every read (§4).
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
+local integrityOpen: (buffer) -> buffer?
+
+-- loadBody is the tolerant read of a file whose integrity trailer, if its
+-- root declares one, is already off: the id table, the node table and the
+-- root body.
+local function loadBody(root: string, bytes: buffer, report: any): any
 	local o = open(bytes, report)
 	if o == nil then return nil end
 	return loadOpened(root, bytes, report, o)
+end
+
+-- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
+-- trailer first, as the strict read does; a trailer that does not match is the
+-- whole-file damage named integrity_mismatch.
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local d = S.lookup(root)
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(bytes)
+		if body == nil then
+			report.malformed = true
+			report.reason = "integrity_mismatch"
+			return nil
+		end
+		bytes = body
+	end
+	return loadBody(root, bytes, report)
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
@@ -1650,7 +1833,7 @@ end
 -- trailer before any field is decoded. A file too short to hold one, or whose
 -- last four bytes are not the CRC-32C of the bytes before them, is the
 -- whole-file damage named integrity_mismatch; otherwise the trailer comes off.
-local function integrityOpen(b: buffer): buffer?
+integrityOpen = function(b: buffer): buffer?
 	local n = buffer.len(b)
 	if n < 5 or buffer.readu32(b, n - 4) ~= crc32c(b, n - 4) then return nil end
 	local out = buffer.create(n - 4)
@@ -1794,7 +1977,7 @@ local function witness(root: string, b: buffer, k: string): string?
 
 	local function probe(wire: string): boolean
 		local rep = fresh()
-		L.loadTolerant(root, buffer.fromstring(wire), rep)
+		loadBody(root, buffer.fromstring(wire), rep)
 		return moved(rep, k)
 	end
 

@@ -75,15 +75,7 @@ type squirrelExpectedHostileMismatch struct {
 // wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
 // SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
 // refuses the NaN as non_finite_float, the manifest's verdict.
-//
-// The three text-list total rows (docs/SPEC-TABLES.md §2.13) are carried: the
-// Squirrel readers, text and wire, keep every element of a list past its
-// total, so the decoded value's digest is not the engine's prefix.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
-	{"conformance-text-total-after-clamp", "inputs/conformance-text-total-after-clamp.json", "accept -", "accept -", "schema-squirrel-text-list-total-r"},
-	{"conformance-text-total-past", "inputs/conformance-text-total-past.json", "accept -", "accept -", "schema-squirrel-text-list-total-r"},
-	{"wire-text-total-past", "inputs/wire-text-total-past.bin", "accept -", "accept -", "schema-squirrel-text-list-total-r"},
-}
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))
@@ -555,6 +547,14 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     local R = schema.require("schema_table_refusal");
     local rr = {};
     v = R.ReadStrict(T, root, inputs[name], rr);
+    if (v == null && (named(rr, "") == "clamped" || named(rr, "") == "kind_mismatch")) {
+      // THE CORPUS CARRIES THE TOLERANT ANSWER (docs/HOSTILE-CORPUS.md): a
+      // strict refusal that names only a counter is a read the tolerant load
+      // keeps, so its value is the one digested.
+      rr = fresh();
+      v = schema.require("schema_table_load").loadTolerant(T, root, inputs[name], rr);
+      if (v != null && ("malformed" in rr) && rr.malformed) v = null;
+    }
     if (v == null) {
       local why = named(rr, "wire_damaged");
       if (why == "wire_damaged" || why == "malformed") why = "damaged";

@@ -317,6 +317,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 			(s == "wire" && $1 == "instance" && $3 == k) ||
 			(s == "report" && $1 == "report" && $3 == k) ||
+			(s == "framing" && $1 == "framing" && $3 == k) ||
 			(s == "strict-reason" && ($1 == "report" || $1 == "framing") && $3 == k) ||
 			((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
 			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) { print $2 " absent" }' "$1" >>"$out"

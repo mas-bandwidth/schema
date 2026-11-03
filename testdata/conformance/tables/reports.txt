@@ -58,6 +58,7 @@ r1_ping_as_r2      0,0,0,0,0,false,read
 r2_cfg_as_r1       0,0,0,0,0,false,read
 scalars_edges_as_2 1,2,0,2,0,false,read
 scalars_full_as_2  2,2,0,2,0,false,read
+text_total_and_count 0,0,0,2,0,false,read
 trace_count_past_bound 0,0,0,1,0,false,read
 trace_elem_kind    0,1,0,0,0,false,read
 v1_cfg_as_v2       1,1,0,1,0,false,read

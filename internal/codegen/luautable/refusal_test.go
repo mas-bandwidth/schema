@@ -123,7 +123,7 @@ type emittedRoot struct {
 	layout bool
 }
 
-var descriptorRe = regexp.MustCompile(`(?m)^_T\.(\w+)Descriptor = _schema_tables\.table\(\{\n\tname = "(\w+)",\n(?:\t.*\n)*?\ttable = true,\n\tfixed = (true|false),`)
+var descriptorRe = regexp.MustCompile(`(?m)^_T\.(\w+)Descriptor = _schema_tables\.table\(\{\n\tname = "(\w+)",\n(?:\t.*\n)*?\ttable = true,\n(?:\tforms = .*\n)?\tfixed = (true|false),`)
 
 // emittedRoots reads every TABLE descriptor (table = true: a packet type or a
 // map entry a table reaches is not a root) and fixed layout the unit's modules
@@ -225,6 +225,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		"p1_as_p2":                 "link",
 		"p3_as_p2":                 "link",
 		"parts_elem_kind":          "parts",
+		"text_total_and_count":     "labels",
 		"parts_count_past_bound":   "parts",
 		"parts_index_out_of_range": "parts",
 		// mutant 235: the root's first field reference 1 (one) bumped to 11
