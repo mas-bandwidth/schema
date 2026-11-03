@@ -1974,6 +1974,11 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	expr := "v." + name
 	id := fieldId(f)
+	present := ""
+	if f.Type.Optional {
+		present = "v." + hasMember(f)
+	}
+	g.pf("%s", writeCheckAsserts(f, expr, present, ind))
 	g.pf("%s", requiredRangeCheck(f, expr, ind, "throw StateError('invalid_value: required field "+f.Name+" out of range');"))
 	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
 	if f.Type.TextUnbounded() {
