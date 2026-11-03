@@ -56,7 +56,7 @@ conformance-negative-control-goose-walk: build/conformance-harness build/conform
 # unit — `label` the writer's `&node` (json-write) and `share` the reader's
 # reference resolution (json-read) on graphdemo, `total` the read's hold of a
 # text list's total (json-hostile, §2.13) on featurewitnesses.
-.PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total
+.PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total conformance-negative-control-goose-json-count
 conformance-negative-control-goose-json-label: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/json-value-negative-control label
@@ -66,7 +66,10 @@ conformance-negative-control-goose-json-share: build/conformance-harness build/c
 conformance-negative-control-goose-json-total: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/json-value-negative-control total
+conformance-negative-control-goose-json-count: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-value-negative-control count
 
 # The leg gate reaches the conformance gate and its four controls, so the
 # PORTING register's I11 and M14 cells cite targets `make test` runs.
-test-goose: tables-goose-json-conformance conformance-negative-control-goose-walk conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total
+test-goose: tables-goose-json-conformance conformance-negative-control-goose-walk conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share conformance-negative-control-goose-json-total conformance-negative-control-goose-json-count

@@ -1814,6 +1814,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
     var placed: i64 = 0;
     var spent: i64 = 0;
     var full = false;
+    var seen: i64 = 0; // the elements spelled once the total is reached
     var ok = true;
     loop {
         let ch = json_peek(c.jr);
@@ -1827,6 +1828,10 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
         }
         let got = json_shape(c.jr);
         if full {
+            // the total dropped this element; one past [..N] is counted as
+            // well, as the wire counts its count clamp (§2.13)
+            seen += 1;
+            if seen > bound { c.jr.rep.clamped += 1; }
             if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
         } else if placed >= bound {
             c.jr.rep.clamped += 1;
@@ -1852,6 +1857,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
                 c.jr.rep.clamped += 1;
                 json_clamped(c.jr.rep, owner, d.name);
                 full = true;
+                seen = placed + 1;
             } else {
                 spent += n;
                 c.scratch.push(t);

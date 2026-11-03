@@ -1449,7 +1449,7 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
   local bound = fd.list and 0x7fffffff or (fd.bound or 0)
   local cap = vf.bound or -1
   local total = fd.total or 0
-  local placed, spent, full = 0, 0, false
+  local placed, spent, full, seen = 0, 0, false, 0
   while true do
     local c = peek(inp)
     if c == "]" then
@@ -1460,7 +1460,11 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
       inp.bad = true
       return false
     end
+    seen = seen + 1
     if full then
+      -- the total dropped this element; one past [..N] is counted as well, as
+      -- the wire counts its count clamp beside the total (§2.13)
+      if seen > bound then report.clamped = report.clamped + 1 end
       if not skip_value(inp, depth + 1, graph) then return false end
     elseif placed >= bound then
       report.clamped = report.clamped + 1
