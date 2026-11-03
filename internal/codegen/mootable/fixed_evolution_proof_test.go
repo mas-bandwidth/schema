@@ -376,14 +376,17 @@ func TestMooFixedEvolutionCompiledPlans(t *testing.T) {
 	g := fixedUnit(t, u3, lineage)
 	src := string(g.files["ProbeTable.moo"])
 	// R1: oldest first, own last; R2: each body is the handed record less eight
-	at := -1
+	at := strings.Index(src, "\tlineage = {\n")
+	if at < 0 {
+		t.Fatalf("R1: no lineage in the static data")
+	}
 	for _, e := range []mootable.FixedLineageEntry{e0, eBig, e1, e2, e3} {
 		line := fmt.Sprintf("recordBytes = %d, retired = %v, layout = ", e.Record-8, e.Retired)
-		i := strings.Index(src, fmt.Sprintf("-- 0x%016x\n", e.Wire))
-		if i < 0 || i <= at || !strings.Contains(src[max(at, 0):i], line) {
+		i := strings.Index(src[at:], fmt.Sprintf("-- 0x%016x\n", e.Wire))
+		if i < 0 || !strings.Contains(src[at:at+i], line) {
 			t.Fatalf("R1/R2: the lineage entry 0x%016x is not laid down in order with %q", e.Wire, line)
 		}
-		at = i
+		at += i + 1
 	}
 	if !strings.Contains(src, "\tfloor = 1,\n") || !strings.Contains(src, "\trecordBytes = 16,\n") {
 		t.Fatalf("R1: the floor or the own record body is not the static data's")
