@@ -112,8 +112,8 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 // `report` and whose answer was `root` (docs/SPEC-TABLES.md §6.5; gotable's
 // TableReport.Err and <T>ReadStrict, in their order): a non-finite float,
 // then a form byte this reader does not carry (unknown_form, whose report
-// names which), a failed integrity trailer, damage the verdict names
-// (wire_damaged) apart from a malformed body (malformed), then a builder's
+// names which), a failed integrity trailer, damage (wire_damaged: the
+// verdict's framing damage and a malformed body alike), then a builder's
 // count past the int32 storage cap (count_over_extent_cap, §2.9), then
 // blob_shared, clamped and kind_mismatch. A load that read nothing whole (no
 // root, or a walk that stopped) and whose report names none of them is
@@ -124,8 +124,7 @@ fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.non_finite { return LoadRefuseNonFiniteFloat; }
     if report.reason == LoadRefuseNewerForm || report.reason == LoadRefuseMessageFormAsFile { return LoadRefuseUnknownForm; }
     if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
-    if report.damaged { return LoadRefuseWireDamaged; }
-    if report.malformed { return LoadRefuseMalformed; }
+    if report.damaged || report.malformed { return LoadRefuseWireDamaged; }
     if report.count_refused { return LoadRefuseCountOverExtentCap; }
     if report.blob_shared > 0 { return LoadRefuseBlobShared; }
     if report.clamped > 0 { return LoadRefuseClamped; }

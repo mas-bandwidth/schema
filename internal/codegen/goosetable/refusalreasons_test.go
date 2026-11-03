@@ -138,7 +138,7 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 	for _, r := range reasonRows(t) {
 		reasons[r.strict] = true
 	}
-	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "count_over_extent_cap", "kind_mismatch", "clamped", "non_finite_float"} {
+	for _, want := range []string{"ok", "wire_damaged", "unknown_form", "count_over_extent_cap", "kind_mismatch", "clamped", "non_finite_float"} {
 		if !reasons[want] {
 			t.Errorf("no pin row answers %s", want)
 		}
@@ -150,10 +150,11 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 
 // TestGooseLoadRefusalReasonsNegativeControl:
 //
-//   - the verdict's damage no longer names wire_damaged: the rows whose
-//     framing failed, and the fixed root's damage its walk read past, answer
-//     malformed and go red; the count-cap rows, refused by name and not
-//     damaged, stay green;
+//   - damage no longer names wire_damaged: every damaged row, the framing's
+//     and the body's, answers malformed and goes red; the count-cap rows,
+//     refused by name and not damaged, stay green;
+//   - a malformed body is named apart from the frame's damage: the body-damage
+//     rows answer malformed and go red, and only they;
 //   - a form byte this reader does not carry no longer answers unknown_form:
 //     the form rows go red, and only they;
 //   - a count past the int32 storage cap no longer answers
@@ -168,8 +169,13 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 		name, from, to string
 		red            []string
 	}{
-		{"damage-verdict", "    if report.damaged { return LoadRefuseWireDamaged; }\n", "",
-			[]string{"cut_last", "empty", "fixed_bool_two", "fixed_dup_ids", "fixed_early_end", "form_only"}},
+		{"damage-verdict", "    if report.damaged || report.malformed { return LoadRefuseWireDamaged; }\n",
+			"    if report.malformed { return LoadRefuseMalformed; }\n",
+			[]string{"cut_last", "empty", "fixed_bool_two", "fixed_dup_ids", "fixed_early_end", "form_only",
+				"entries_over_length", "fixed_cut_payload", "values_over_length"}},
+		{"body-damage", "    if report.damaged || report.malformed { return LoadRefuseWireDamaged; }\n",
+			"    if report.damaged { return LoadRefuseWireDamaged; }\n    if report.malformed { return LoadRefuseMalformed; }\n",
+			[]string{"entries_over_length", "fixed_cut_payload", "values_over_length"}},
 		{"form-reason", "        LoadRefuseUnknownForm => \"unknown_form\",\n", "",
 			[]string{"form0", "form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
 		{"count-cap", "    if report.count_refused { return LoadRefuseCountOverExtentCap; }\n", "",
