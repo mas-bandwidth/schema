@@ -43,4 +43,3 @@ func storageGateBytes(u *ir.Unit, root *ir.Struct) int64 {
 	}
 	return (ir.MaxSizeBytes - fixed) / each
 }
-

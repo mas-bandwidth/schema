@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -35,6 +36,7 @@ const (
 // run on an at vector, which would build 2^40 bytes.
 func TestStorageCapRefusedDart(t *testing.T) {
 	slowtest.Gate(t, "dart")
+	memceiling.Guard(t, memceiling.Default)
 	if out, err := runStorageCapDart(t, nil); err != nil {
 		t.Fatalf("storage cap probe: %v\n%s", err, out)
 	}
@@ -46,6 +48,7 @@ func TestStorageCapRefusedDart(t *testing.T) {
 // Big's sentinel stops a load that passes the gate, so no control allocates.
 func TestStorageCapDartNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "dart")
+	memceiling.Guard(t, memceiling.Default)
 	const (
 		term  = "count > (_kTableStorageCap - base - at) ~/ f.size"
 		node  = "if (total + nodeTotal > _kTableStorageCap) return (-1, 'storage_over_cap');"
@@ -152,7 +155,9 @@ func runStorageCapDart(t *testing.T, edit func(string) string) ([]byte, error) {
 	if err := os.WriteFile(filepath.Join(work, "probe.dart"), []byte(probe), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(dartBinary(t), "--enable-asserts", "probe.dart")
+	// the heap cap ends a VM that builds what it should refuse with an
+	// out-of-memory error, below memceiling.Guard's ceiling
+	cmd := exec.Command(dartBinary(t), "--old_gen_heap_size=3072", "--enable-asserts", "probe.dart")
 	cmd.Dir = work
 	return cmd.CombinedOutput()
 }

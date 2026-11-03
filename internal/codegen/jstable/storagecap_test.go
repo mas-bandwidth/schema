@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -35,6 +36,7 @@ const (
 // load is never run on an at vector, which would build 2^40 bytes.
 func TestStorageCapRefusedJavaScript(t *testing.T) {
 	slowtest.Gate(t, "node (it runs the generated module)")
+	memceiling.Guard(t, memceiling.Default)
 	if out, err := runStorageCapJS(t, nil); err != nil {
 		t.Fatalf("storage cap probe: %v\n%s", err, out)
 	}
@@ -47,6 +49,7 @@ func TestStorageCapRefusedJavaScript(t *testing.T) {
 // allocates.
 func TestStorageCapJavaScriptNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "node (it runs the generated module)")
+	memceiling.Guard(t, memceiling.Default)
 	const (
 		term  = "n > Math.floor((TableStorageCap - at) / fd.esz)"
 		node  = `if (data > TableStorageCap) { return [-1, "storage_over_cap"]; }`
@@ -145,7 +148,9 @@ func runStorageCapJS(t *testing.T, edit func(string) string) ([]byte, error) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command(jsNode(t), "probe.mjs")
+	// the heap cap ends a node that builds what it should refuse with an
+	// out-of-memory error, below memceiling.Guard's ceiling
+	cmd := exec.Command(jsNode(t), "--max-old-space-size=3072", "probe.mjs")
 	cmd.Dir = work
 	return cmd.CombinedOutput()
 }
