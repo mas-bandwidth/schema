@@ -61,8 +61,13 @@ func jsonPart(g *Gen) error {
 			fmt.Fprintf(&extras, "_json.extra(%s, { flags = { %s } })\n", target, strings.Join(names, ", "))
 		}
 		if f.IsTextList() {
+			// an unbounded element text (§2.13.1) has no capacity: -1
+			bound := ir.TextListValue(f).Type.Size
+			if ir.TextListValue(f).Type.TextUnbounded() {
+				bound = -1
+			}
 			fmt.Fprintf(&extras, "_json.extra(%s, { tl = { opt = %v, bound = %d, rec = %q } })\n",
-				path, ir.TextListOptional(f), ir.TextListValue(f).Type.Size, f.TextListElem().Name)
+				path, ir.TextListOptional(f), bound, f.TextListElem().Name)
 		}
 	}
 	structExtras := func(d *ir.Struct) {

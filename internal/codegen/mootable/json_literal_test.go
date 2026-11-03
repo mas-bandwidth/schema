@@ -241,6 +241,14 @@ func (l *literal) field(rec string, fv *tabletext.Field) {
 	name := ir.GoExportName(f.Name)
 	at := rec + "." + name
 	elem := func(i int) string {
+		if ir.TextListPlain(f) {
+			// a plain text list's element is its text (docs/SPEC-TABLES.md
+			// §2.13), the element record's one value
+			if tab := fv.Elems[i].Tab; tab != nil {
+				return mooString(tab.Fields[0].Cell.Str)
+			}
+			return `""`
+		}
 		e := *f
 		e.Array = ir.ArrayNone
 		return l.scalarExpr(&e, &fv.Elems[i])
