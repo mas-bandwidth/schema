@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -91,6 +92,59 @@ print("constant omission detected")
 				t.Fatal(out)
 			}
 
+		})
+	}
+}
+
+// Compare names, source files and declaration kinds against the compiler IR;
+// totals alone can miss a duplicated registration replacing a missing one.
+func TestLobsterUnitViewCorpus(t *testing.T) {
+	for _, source := range []string{"examples", "bench/corpus/BenchTable.schema"} {
+		t.Run(source, func(t *testing.T) {
+			g, err := generateLoadUnit(t, []string{filepath.Join(root, source)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var want []string
+			add := func(kind, name string) { want = append(want, kind+" "+name+" "+g.u.DeclFile[name]) }
+			for name := range g.u.Structs {
+				add("types", name)
+			}
+			for name, d := range g.u.Tables {
+				if !d.IsMapEntry() {
+					add("tables", name)
+				}
+			}
+			for name := range g.u.Enums {
+				add("enums", name)
+			}
+			for name := range g.u.Flags {
+				add("flags", name)
+			}
+			for name := range g.u.Unions {
+				add("unions", name)
+			}
+			for name := range g.u.TableUnions {
+				add("unions", name)
+			}
+			for name := range g.u.Consts {
+				add("constants", name)
+			}
+			var program strings.Builder
+			fmt.Fprintf(&program, "import .%sView\nlet v = %s.UnitView()\n", g.u.Package, g.u.Package)
+			for _, kind := range []string{"types", "tables", "enums", "flags", "unions", "constants"} {
+				fmt.Fprintf(&program, "for(v.%s) d:\n    print(\"%s \" + d.name + \" \" + d.file)\n", kind, kind)
+			}
+			if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0644); err != nil {
+				t.Fatal(err)
+			}
+			got := strings.Split(strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))), "\n")
+			sort.Strings(want)
+			sort.Strings(got)
+			if strings.Join(got, "\n") != strings.Join(want, "\n") {
+				t.Fatalf("registry differs from IR:\ngot:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+			}
+			t.Logf("%d declarations match IR by kind, name and source file", len(want))
 		})
 	}
 }
