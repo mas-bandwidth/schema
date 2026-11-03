@@ -42,6 +42,14 @@ foreach (byte[] bytes in caps) {
    bad += ProbeLog.Fail("count refusal poisoned a clean read");
  }
 }
+foreach (byte[] bytes in caps) {
+ using (var builder = new Probe.RootBuilder()) {
+  var report = new Probe.TableReport { Unknown = 3 };
+  if (Probe.Schema.RootLoadBuilder(builder, bytes, report) || !report.Refused ||
+      report.Reason != "count_over_extent_cap" || report.Malformed || report.Unknown != 3)
+   bad += ProbeLog.Fail("the builder load must refuse a count cap by name, without damage or counters");
+ }
+}
 var damage = new Probe.TableReport();
 if (Probe.Schema.RootLoad(new Probe.Root(), shortBody, damage) || !damage.Malformed || damage.Refused)
  bad += ProbeLog.Fail("INT32_MAX short body must remain damage");

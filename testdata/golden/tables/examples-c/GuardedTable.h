@@ -5935,7 +5935,7 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder_tolerant(tabledemo_patrol
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x1c182e1c2529027b);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } tabledemo_table_release(builder->arena.allocator,directory); tabledemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_tabledemo_patrol_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed) { report->refused=1; report->reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9) */ tabledemo_table_release(builder->arena.allocator,directory); tabledemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { tabledemo_patrol_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }
