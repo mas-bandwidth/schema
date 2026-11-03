@@ -1,0 +1,29 @@
+{
+  "sequence": 1,
+  "body": {
+    "transact": {
+      "reason": "x",
+      "edits": [
+        {
+          "revision": 1,
+          "body": {
+            "insert": {
+              "at": {
+                "line": 0,
+                "column": 0
+              },
+              "text": "t",
+              "origin": {},
+              "origins": []
+            }
+          }
+        }
+      ],
+      "pending": [
+        {},
+        {}
+      ]
+    }
+  },
+  "history": []
+}

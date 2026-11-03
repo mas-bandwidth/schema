@@ -75,6 +75,13 @@ func TestBOMEntryCorpusOracle(t *testing.T) {
 				if !bytes.Equal(encoded, canonical) {
 					t.Fatal("one leading BOM changes the canonical value")
 				}
+				golden, err := os.ReadFile(row.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(golden, encoded) {
+					t.Fatalf("%s: the value golden is not the oracle's value", row.Value)
+				}
 			}
 		})
 	}

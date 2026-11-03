@@ -1,0 +1,33 @@
+{
+  "tilt": 0.0,
+  "angle": 0.0,
+  "position": 0.0,
+  "reach": 0.0,
+  "ticks": 0.0,
+  "ratio": 0.0,
+  "speed": 0.0,
+  "span": 0.0,
+  "mass": 0.0,
+  "frames": 0.0,
+  "flux": 0,
+  "energy": -250,
+  "entity_id": 0,
+  "scale": 1.0,
+  "samples": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "weights": [],
+  "axes": {
+    "X": 0.0,
+    "Y": 0.0,
+    "Z": 0.0
+  },
+  "seeds": [],
+  "pose": {
+    "x": 0.5,
+    "y": 0.0,
+    "heading": 0.0
+  }
+}

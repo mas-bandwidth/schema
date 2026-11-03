@@ -1,0 +1,43 @@
+{
+  "one": {
+    "roster": {}
+  },
+  "many": [
+    {
+      "roster": {
+        "1": {
+          "count": 11
+        }
+      }
+    },
+    {
+      "roster": {
+        "2": {
+          "count": 22
+        }
+      }
+    }
+  ],
+  "keyed": {
+    "Alpha": {
+      "roster": {
+        "5": {
+          "count": 55
+        }
+      }
+    },
+    "Beta": {
+      "roster": {}
+    }
+  },
+  "arm": {
+    "squad": {
+      "roster": {
+        "7": {
+          "count": 77
+        }
+      }
+    }
+  },
+  "past": 9
+}

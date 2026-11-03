@@ -632,12 +632,27 @@ defmodule Driver do
     end
   end
 
+  # The report line, then the §16 text of the value the read left when the
+  # read reads (test/conformance/README.md), as `framing` answers a row that
+  # owes its value.
   defp run("report", rows, outdir) do
     for [name, unit, root, wire] <- rows(rows, "report") do
-      case report_line(table_module(unit), root, wire) do
+      mod = table_module(unit)
+
+      case report_line(mod, root, wire) do
         :absent -> write_absent(outdir, name)
+        {line, value} -> write(outdir, name, line <> value_text(mod, root, value, name))
         line -> write(outdir, name, line)
       end
+    end
+  end
+
+  # The §16 text of a value a read left: the value half of a `report` and
+  # `json-hostile` answer.
+  defp value_text(mod, root, value, name) do
+    case mod.to_json(root, value) do
+      {:ok, text} -> IO.iodata_to_binary(text)
+      _ -> raise "#{name}: to_json refused the value"
     end
   end
 
@@ -700,7 +715,8 @@ defmodule Driver do
               case mod.save(root, value) do
                 {:ok, wire} ->
                   {:ok, _back, _r2} = mod.load(root, wire)
-                  write(outdir, name, report_counters(report) <> ",read\n")
+                  line = report_counters(report) <> ",read\n"
+                  write(outdir, name, line <> value_text(mod, root, value, name))
 
                 {:error, _} ->
                   write(outdir, name, "refused\n")
@@ -908,8 +924,9 @@ defmodule Driver do
   # reports.txt spells as a read with malformed set.
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
-      {:ok, _value, report} ->
-        report_counters(report) <> ",read\n"
+      {:ok, value, report} ->
+        line = report_counters(report) <> ",read\n"
+        if Map.get(report, :malformed, false), do: line, else: {line, value}
 
       {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"

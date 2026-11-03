@@ -67,20 +67,32 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				local _, r, _, _, refused = loadWire(f)
-				ctx.say(
-					f[2],
-					string.format(
-						"%d,%d,%d,%d,%d,%s,%s\n",
-						r.unknown,
-						r.kindMismatch,
-						r.widened,
-						r.clamped,
-						r.duplicate,
-						tostring(r.malformed),
-						if refused then "refused" else "read"
-					)
+				-- the report line, then the §16 text of the value when the read
+				-- reads; a unit with no text module answers the line alone beside
+				-- its absence, so the verdict is held and the value is the missing
+				-- feature (test/conformance/README.md)
+				local v, r, _, schema, refused = loadWire(f)
+				local malformed = r.malformed or (v == nil and not refused)
+				local text = string.format(
+					"%d,%d,%d,%d,%d,%s,%s\n",
+					r.unknown,
+					r.kindMismatch,
+					r.widened,
+					r.clamped,
+					r.duplicate,
+					tostring(malformed),
+					if refused then "refused" else "read"
 				)
+				if not refused and not malformed then
+					local J: any = ctx.module(f[3], "json")
+					if J == nil then
+						ctx.say(f[2], text)
+						ctx.say(f[2], nil)
+						continue
+					end
+					text ..= J.toJson(schema.lookup(f[4]), v)
+				end
+				ctx.say(f[2], text)
 			end
 		end,
 	}

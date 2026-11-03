@@ -1,0 +1,18 @@
+{
+  "grade": "Argent",
+  "effect": {
+    "pong": null
+  },
+  "buff": {
+    "mult": 1.5
+  },
+  "grades": [
+    "Argent",
+    "Gold"
+  ],
+  "tally": {
+    "Bronze": 0,
+    "Argent": 7,
+    "Gold": 0
+  }
+}
