@@ -68,7 +68,8 @@ build/schema-squirrel: $(GO_SOURCES)
 # refuses is written to REFUSED.txt with its refusal rather than failing the
 # build: the refusal is the leg's answer for that unit until a card lifts it
 # (docs/PORT-SQUIRREL.md, THE REGISTER).
-build/conformance-squirrel: build/schema-squirrel testdata/conformance/tables/MANIFEST.txt
+build/conformance-squirrel: build/schema-squirrel testdata/conformance/tables/MANIFEST.txt $(CONFORMANCE_UNIT_SCHEMAS) \
+	$(filter internal/codegen/squirrel/% internal/codegen/squirreltable/%,$(EMBED_SOURCES))
 	@rm -rf $@ && mkdir -p $@
 	@: > $@/REFUSED.txt
 	@grep '^unit ' testdata/conformance/tables/MANIFEST.txt | while read -r _ key paths; do \

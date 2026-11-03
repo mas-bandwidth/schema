@@ -85,6 +85,12 @@ GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 # bin/schema stale and every generate re-emitted the old runtime.
 # bin-schema-embeds checks it against `go list`'s own EmbedFiles.
 EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go')
+# every .schema file the tables conformance manifest's units name (a unit path
+# is a file or a directory of them): the input of each build/conformance-<leg>
+# that generates the units itself, beside the compiler and the runtimes it
+# embeds, so an edit to any of the three regenerates the leg's units.
+CONFORMANCE_UNIT_PATHS := $(shell [ -f testdata/conformance/tables/MANIFEST.txt ] && awk '/^unit[ \t]/ { for (i = 3; i <= NF; i++) print $$i }' testdata/conformance/tables/MANIFEST.txt)
+CONFORMANCE_UNIT_SCHEMAS := $(foreach p,$(CONFORMANCE_UNIT_PATHS),$(if $(filter %.schema,$(p)),$(p),$(wildcard $(p)/*.schema)))
 SCHEMAS      := $(wildcard examples/*.schema)
 SCHEMAS128   := $(wildcard examples128/*.schema)
 # the WIDE TEXT unit (examples-wide/) — wstring(N) and the string(N) read-side

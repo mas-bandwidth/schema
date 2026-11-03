@@ -1812,3 +1812,7 @@ conformance-negative-control-dart-text-boundary: conformance-dart-text-boundary
 	sh test/conformance/dart/negative-control-text-boundary reader "$(DART)"
 
 test-dart: conformance-dart-text-boundary
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

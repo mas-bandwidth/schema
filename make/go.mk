@@ -1313,3 +1313,7 @@ tables-go-discard-negative-control:
 	@echo "negative control: removing either Go discard guard turns TestDamageDiscardsTheWholeLoadGo RED"
 
 test-go: tables-go-discard-negative-control
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-go/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
