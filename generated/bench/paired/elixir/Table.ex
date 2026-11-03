@@ -21,6 +21,8 @@ defmodule Bench.Table do
   @string_id 0x704BE0D8FAAFFC58
   @bytes_id 0x2F2EC0474F1C4FE4
   @region_align 16
+  @storage_cap 1_099_511_627_776
+  @storage_scale 1632
   @tables %{
     "BenchMixed" => %{
       name: "BenchMixed",
@@ -2121,7 +2123,7 @@ defmodule Bench.Table do
   def load(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
-    case open(data) do
+    case open_within_cap(table, data) do
       {:error, reason} ->
         {:error, reason, reasoned(empty_report(), reason)}
 
@@ -2192,11 +2194,32 @@ defmodule Bench.Table do
   defp reasoned(report, :count_over_extent_cap),
     do: Map.put(report, :reason, "count_over_extent_cap")
 
+  defp reasoned(report, :storage_over_cap), do: Map.put(report, :reason, "storage_over_cap")
+
   defp reasoned(report, {:non_finite_float, name}),
     do: Map.put(report, :reason, "non_finite_float: " <> name)
 
   defp reasoned(report, _damage),
     do: Map.put(%{report | malformed: true}, :reason, "wire_damaged")
+
+  # open_within_cap is open/1 behind THE STORAGE CAP (docs/SPEC-TABLES.md
+  # §11), checked before anything is built: one empty body of a large fixed
+  # table commands its whole storage, and the load builds it. No wire byte
+  # commands more than @storage_scale bytes, so a wire shorter than the cap
+  # divided by it cannot pass the cap and is not measured; a longer one is
+  # measured first and refused as storage_over_cap past it.
+  defp open_within_cap(table, data) do
+    if storage_over_cap?(table, data) do
+      {:error, :storage_over_cap}
+    else
+      open(data)
+    end
+  end
+
+  defp storage_over_cap?(table, data) do
+    byte_size(data) >= div(@storage_cap, @storage_scale) and
+      load_measure_reason(table, data) == {:error, :storage_over_cap}
+  end
 
   # open reads the form byte and the id trailer (docs/SPEC-TABLES.md §3).
   defp open(<<>>), do: {:error, :malformed}
@@ -6142,24 +6165,52 @@ defmodule Bench.Table do
   # each node record's storage, and the attribution directory of one u64 pair
   # per record plus the root (§6.3). It is the number the Go, C, C++ and C#
   # backends answer, so a caller sizes a region and the harness's oracle holds
-  # the measure to the framing's bound. A wire this reader cannot open, or a
-  # list count past the storage cap, answers -1.
+  # the measure to the framing's bound. A wire this reader cannot open, a list
+  # count past the int32 count cap, or a measure past the storage cap answers
+  # -1.
 
   def load_measure(table, data) when is_binary(data) do
+    case load_measure_reason(table, data) do
+      {:ok, size} -> size
+      {:error, _} -> -1
+    end
+  end
+
+  # load_measure_reason/2 is load_measure/2 with the refusal named: {:ok, size},
+  # {:error, :storage_over_cap} for a wire whose measure passes the 2^40-byte
+  # storage cap (docs/SPEC-TABLES.md §11), {:error, :malformed} otherwise. Each
+  # list and map term is checked against the cap before it is added, and the
+  # running total after every node record.
+  def load_measure_reason(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
       {:error, _} ->
-        -1
+        {:error, :malformed}
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
-             {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
+             root = region_round(region_round(desc.size) + at),
+             based = Map.put(desc, :storage_base, root),
+             {:ok, count, blobs} <- measure_nodes(body, ids, based) do
+          total = root + blobs + (count + 1) * 16
+          if total > @storage_cap, do: {:error, :storage_over_cap}, else: {:ok, total}
         else
-          _ -> -1
+          _ -> {:error, :malformed}
         end
     end
+  catch
+    :storage_over_cap -> {:error, :storage_over_cap}
+  end
+
+  # a list or map term: count elements of size bytes at align. A term past the
+  # storage cap (docs/SPEC-TABLES.md §11) is refused before it is added.
+  defp storage_term(at, count, size, align) do
+    start = align_to(at, align)
+
+    if count > 0 and size > 0 and count > div(@storage_cap - start, size),
+      do: throw(:storage_over_cap),
+      else: start + count * size
   end
 
   defp region_round(n), do: div(n + @region_align - 1, @region_align) * @region_align
@@ -6204,7 +6255,7 @@ defmodule Bench.Table do
         :error
       else
         entry = Map.fetch!(@tables, name)
-        next = align_to(at, entry.align) + count * entry.size
+        next = storage_term(at, count, entry.size, entry.align)
         elements_extent(entry, elems, count, ids, next)
       end
     else
@@ -6343,10 +6394,7 @@ defmodule Bench.Table do
       if list and (count > 0x7FFFFFFF or count > div(byte_size(elems), floor)) do
         :error
       else
-        at =
-          if field.array == :list,
-            do: align_to(at, field.elem_align) + count * field.elem_size,
-            else: at
+        at = if list, do: storage_term(at, count, field.elem_size, field.elem_align), else: at
 
         cond do
           kind == 13 ->
@@ -6494,8 +6542,15 @@ defmodule Bench.Table do
       end
 
     case added do
-      {:ok, bytes} -> measure_records(rest, ids, desc, count + 1, blobs + bytes)
-      :error -> :error
+      {:ok, bytes} ->
+        # the running total is checked after every node record (§11)
+        if Map.get(desc, :storage_base, 0) + blobs + bytes > @storage_cap,
+          do: throw(:storage_over_cap)
+
+        measure_records(rest, ids, desc, count + 1, blobs + bytes)
+
+      :error ->
+        :error
     end
   end
 
