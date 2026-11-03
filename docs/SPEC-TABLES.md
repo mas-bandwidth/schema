@@ -8851,11 +8851,22 @@ tolerance is the versioning model:
   own `L` runs past the map's `L` is damage; a map whose `L` runs past the
   body carrying it is damage, even when a key mismatch came first; otherwise
   the key-kind mismatch is one `kind_mismatch` and the map is skipped by its
-  `L`. A reader may stop at the first damage;
-  where it stops and what it read on the way are not observable, and no
-  conformance row or fuzz comparison looks at them: on damaged input the
-  `framing` rows owe the verdict `malformed` and no value, and the wire
-  fuzzer compares only that both sides say `malformed`. **EVOLUTION IS NOT
+  `L`. **DAMAGE ENDS THE BODY IT IS MET IN, THE ENCLOSING BODY STEPS OVER IT
+  BY ITS `L` AND READS ON, AND A NON-FINITE FLOAT ANYWHERE THE READ REACHES
+  REFUSES IT AS `non_finite_float` (§3.3), WHATEVER DAMAGE THE READ ALSO
+  MET.** Framing damage ends the body whose framing it breaks: nothing after
+  it in that body is read, and an `L` that runs past the body carrying it is
+  damage in that body. Damage to a value whose width or `L` still frames it —
+  a bool byte other than `0` or `1`, ill-formed text — ends nothing, and the
+  body reads on past it. So a NaN after damage in the same body is never
+  reached and the read answers `malformed`, while a NaN after damage in a
+  nested body, or in an earlier element of the same array, is reached and
+  the read refuses; which floats a read reaches is the same in every port,
+  and the wire fuzzer compares it (§4.2,
+  `testdata/wire/tables/fuzz-vectors/INDEX.txt`, the `reach_` vectors). On
+  damaged input with no non-finite float reached, the `framing` rows owe the
+  verdict `malformed` and no value, and the wire fuzzer compares that both
+  sides say `malformed` and neither refuses. **EVOLUTION IS NOT
   DAMAGE** and every other row of this section stands: an unknown field,
   variant, arm or slot skipped and counted, a kind mismatch, a widening, a
   clamp, a duplicate key, an inert short array body; the load succeeds and
