@@ -1,0 +1,24 @@
+#!/bin/sh
+# THE GOOSE CARD DRIVER (tables/cards/conformance/FORMAT.md).
+#
+# The facade (cards.goose) and the driver program (driver.goose) sit in the
+# generated Card unit (CARDS_GOOSE_GENERATED, which `make cards-goose-generate`
+# writes and copies them into), so every module of the unit is beside them,
+# and run there under the pinned compiler (`goose run`, the in-process TinyCC);
+# the program's arguments follow `--`. CARDS_GOOSE_SABOTAGE names the one surface
+# a negative control damages (render, upgrade, hash).
+#
+# The working directory is the repository root, which is the contract: every
+# path in the manifest is repo-relative, so this driver never resolves one.
+#
+# usage: driver <manifest> list
+#        driver <manifest> <surface> <outdir>
+goose=${GOOSE:-dist/goose-v2026.2-linux-x64/goose}
+unit=${CARDS_GOOSE_GENERATED:-build/tables-generated-goose/cards}
+mkdir -p build/cards-goose-driver
+log=build/cards-goose-driver/$$.log
+"$goose" run "$unit/driver.goose" -- "$@" ${CARDS_GOOSE_SABOTAGE:-} 2>"$log"
+status=$?
+if [ $status -ne 0 ] && [ $status -ne 2 ]; then cat "$log" >&2; fi
+rm -f "$log"
+exit $status

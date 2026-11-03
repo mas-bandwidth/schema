@@ -153,6 +153,16 @@
       "lua": "5.4.8"
     },
     {
+      "name": "goose-cards",
+      "when": "pull-request",
+      "why": "the Goose port's card driver controls (make/goose-cards.mk): render, upgrade and taskhash each damaged through the driver's test-only CARDS_GOOSE_SABOTAGE switch, the harness required red on that surface and every other surface required green. They need Go, the pinned Goose compiler (make dist-goose), the harness and the Card unit generated for goose; three harness runs over 43 small cases.",
+      "targets": [
+        "cards-goose-conformance-hash-negative-control",
+        "cards-goose-conformance-negative-control",
+        "cards-goose-conformance-upgrade-negative-control"
+      ]
+    },
+    {
       "name": "lua-cards-docs",
       "when": "pull-request",
       "why": "the Lua port's card driver controls (render, upgrade and taskhash each damaged through a test-only switch, the harness required red on that surface and on no other), the documented-surface control (two edited copies of docs/USAGE.md, one calling a renamed runtime function and one walking nothing, each required to fail the usage gate) and the bench leg's corpus control (a flipped golden byte and a flipped variant byte, each required to fail the bench correctness gate by name). They need the pinned interpreter (make dist-lua), bin/schema, the harness and the Card unit generated for Lua, and no compile weight of their own: the card controls are three harness runs over 43 small cases.",
