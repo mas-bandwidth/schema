@@ -729,6 +729,8 @@ public final class Driver {
         }
         Object report() throws ReflectiveOperationException { return reportType.getConstructor().newInstance(); }
         Object load(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("load", byte[].class, reportType).invoke(null, data, report); }
+        Object readStrict(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("readStrict", byte[].class, reportType).invoke(null, data, report); }
+        Object err(Object report) throws ReflectiveOperationException { return reportType.getMethod("err").invoke(report); }
         Object fromJson(byte[] data, Object report) throws ReflectiveOperationException { return codec.getMethod("fromJson", byte[].class, reportType).invoke(null, data, report); }
         byte[] save(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("save", valueType).invoke(null, value); }
         byte[] toJson(Object value) throws ReflectiveOperationException { return (byte[]) codec.getMethod("toJson", valueType).invoke(null, value); }
@@ -894,14 +896,26 @@ public final class Driver {
     }
 
     // strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md
-    // §6.5) for every wire a `report` or `framing` line names. The Java runtime
-    // carries no strict read: its variable load is the tolerant read, and its
-    // report has no reason for what the strict rule refuses (clamped,
-    // kind_mismatch, malformed, wire_damaged), so every case is answered
-    // absent rather than spelled from the tolerant read.
+    // §6.5) for every wire a `report` or `framing` line names: the generated
+    // <Root>Variable.readStrict at that line's unit and root, and the member
+    // report.err() names, spelled as the table spells it, or `ok`. The reason
+    // is the runtime's own; this driver prints what it is told. A root the
+    // unit does not carry is answered absent.
     private static int surfaceStrictReason(String out) throws IOException {
-        for (String[] f : kind("report")) spillAbsent(out, f[1]);
-        for (String[] f : kind("framing")) spillAbsent(out, f[1]);
+        for (String kindName : new String[] {"report", "framing"}) {
+            for (String[] f : kind(kindName)) {
+                try {
+                    VariableCodec codec = variableCodec(f[2], f[3]);
+                    if (codec == null) { spillAbsent(out, f[1]); continue; }
+                    Object report = codec.report();
+                    Object value = codec.readStrict(Files.readAllBytes(Paths.get(f[4])), report);
+                    Object why = codec.err(report);
+                    if (value == null && why == null) return failInt(f[1] + ": readStrict handed back nothing and named no reason");
+                    String name = why == null ? "ok" : (String) why.getClass().getField("spelling").get(why);
+                    spill(out, f[1], (name + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                } catch (ReflectiveOperationException failure) { return failInt(f[1] + ": strict read failed: " + failure); }
+            }
+        }
         return 0;
     }
 

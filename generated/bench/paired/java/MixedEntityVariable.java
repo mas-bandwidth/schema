@@ -1033,6 +1033,27 @@ public final class MixedEntityVariable {
         return v;
     }
 
+    /**
+     * readStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5): the value, or null
+     * with the one reason the strict rule refuses it with on report.err(). The report is reset and
+     * holds this read's report.
+     */
+    public static Value readStrict(byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        } else {
+            report.reset();
+        }
+        Value v = load(data, report);
+        if (report.err() != null) {
+            return null;
+        }
+        if (v == null) {
+            report.malformed = true;
+        }
+        return v;
+    }
+
     // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 64;
