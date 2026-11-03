@@ -246,9 +246,9 @@ export class TableFixedPlan {
     this.hostile = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
-    // THE GUARD CHAIN of the arm being compiled, OUTERMOST FIRST (§4.1): one
-    // (guard, arg, argw) link per enclosing union, pushed on the way into an
-    // arm and popped on the way out; chainAt is where it was laid in the pool,
+    // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
+    // (guard, arg, argw) link per enclosing union arm or optional payload.
+    // Optional links use arg = -1 for nonzero presence; chainAt is its pool offset,
     // once per arm, or -1. Sized once for the layout's 64.
     this.chain = new Int32Array(65 * 3);
     this.chainLen = 0;
@@ -401,8 +401,11 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     const guard = e[b + TableFixedLaneGuard];
     // an entry belonging to an ARM runs only under its own tag, compared at
     // ArgW bytes, never as a prefix
-    if (guard !== TableFixedNoGuard &&
-        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (e[b + TableFixedLaneArg] >>> 0)) {
+    // A negative expected tag is an optional presence guard: any nonzero
+    // byte is present. Union guards retain their exact ordinal comparison.
+    const expected = e[b + TableFixedLaneArg];
+    if (guard !== TableFixedNoGuard && (expected === -1 ? src[srcAt + guard] === 0 :
+        TableFixedTagAt(src, srcAt + guard, e[b + TableFixedLaneArgW]) !== (expected >>> 0))) {
       continue;
     }
     // AN ARM INSIDE AN ARM ANSWERS TO EVERY OUTER TAG TOO (§4.1, the guard
@@ -411,7 +414,9 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
     if (links > 1) {
       let holds = true;
       for (let j = 0, at = e[b + TableFixedLaneGuards]; j < links - 1; j++, at += 3) {
-        if (TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (remap[at + 1] >>> 0)) { holds = false; break; }
+        const expected = remap[at + 1];
+        if (expected === -1 ? src[srcAt + remap[at]] === 0 :
+            TableFixedTagAt(src, srcAt + remap[at], remap[at + 2]) !== (expected >>> 0)) { holds = false; break; }
       }
       if (!holds) { continue; }
     }
@@ -542,7 +547,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       case TableFixedOpConst: {
         const v = e[b + TableFixedLaneAux];
         for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
-        // AN UNGUARDED None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
+        // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
         // that set lands None (already written just above) and COUNTS, so the
         // compiled plan counts it exactly as the identity plan's decode bound
         // does and the SAME forged bytes land the SAME clamped == 1 on either
@@ -551,7 +556,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // record bound at all, so the entry that reads a record byte carries
         // its own.
         const arms = e[b + TableFixedLaneMeta] & 0xff;
-        if (v === 0 && arms !== 0 && guard === TableFixedNoGuard && s + size <= src.length) {
+        if (v === 0 && arms !== 0 && s + size <= src.length) {
           let raw = 0;
           for (let k = 0; k < size; k++) { raw += src[s + k] * Math.pow(2, 8 * k); }
           if (raw > arms) { report.clamped++; }
@@ -975,8 +980,8 @@ function TableFixedPush(plan, op, src, dst, size, aux, guard, arg, meta) {
   e[b + TableFixedLaneArgW] = w;
   e[b + TableFixedLaneGuards] = 0;
   e[b + TableFixedLaneGuardCount] = 0;
-  // THE GUARD CHAIN (§4.1): an entry beneath a union answers to EVERY enclosing
-  // tag. Its guard lane is the chain's innermost link, and a chain past one is
+  // THE GUARD CHAIN (§4.1): an entry answers to EVERY enclosing union tag
+  // and presence flag. Its guard lane is the innermost link; a chain past one is
   // laid into the pool, once per arm, as offset+count.
   if (guard !== TableFixedNoGuard && plan.chainLen > 0) {
     const c = plan.chain;
@@ -1120,9 +1125,22 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
     return;
   }
   switch (myKind) {
-    case 35: { // the OPTIONAL wrapper: the present byte, then the payload whole
+    case 35: { // the OPTIONAL wrapper: payload ops run only when present
       TableFixedPush(plan, TableFixedOpCopy, theirAt, auxAt, 1, 0, guard, arg, 0);
-      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, guard, arg, report);
+      if (plan.chainLen >= 65) { plan.overflow = true; return; }
+      const savedAt = plan.chainAt;
+      const savedArgw = plan.argw;
+      const l = plan.chainLen * 3;
+      plan.chain[l] = theirAt;
+      plan.chain[l + 1] = -1; // any nonzero presence byte, not ordinal 1
+      plan.chain[l + 2] = 1;
+      plan.chainLen++;
+      plan.chainAt = -1;
+      plan.argw = 1;
+      TableFixedCompileEntry(plan, theirs, ti + 1, theirAt + 1, mine, mi + 1, dst, myAt, theirAt, -1, report);
+      plan.chainLen--;
+      plan.chainAt = savedAt;
+      plan.argw = savedArgw;
       break;
     }
     case 13: { // a nested table: match its fields
