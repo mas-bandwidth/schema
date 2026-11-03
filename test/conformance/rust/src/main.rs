@@ -163,7 +163,7 @@ impl Drop for Aligned {
 
 use blockdemo::TableBlockInfo;
 
-unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u32) -> String {
+unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u64) -> String {
     unsafe {
         match kind {
             1 => {
