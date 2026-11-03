@@ -163,7 +163,7 @@ func TestMapsAreRefusedByNonCarriers(t *testing.T) {
 func TestMapCarriers(t *testing.T) {
 	// squirrel registers from compiler/target_squirrel_maps.go, which carries
 	// no build tag, so it is a carrier in every build.
-	want := withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"})
+	want := withMooLeg(withGooseLeg([]string{"c", "cpp", "cs", "dart", "elixir", "go", "java", "js", "lobster", "lua", "luau", "rust", "squirrel"}))
 	if !slices.Equal(gooseLegOrdered(mapTargets), want) {
 		t.Fatalf("mapTargets = %v, want %v", mapTargets, want)
 	}
