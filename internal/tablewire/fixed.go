@@ -322,11 +322,18 @@ func decodeFixed(m *tabletext.Model, inst *tabletext.Instance, data []byte, repo
 	}
 	layout := data[tableFixedHeaderBytes+4 : tableFixedHeaderBytes+4+layoutBytes]
 	mine, hash := fixedLayout(st)
-	if binary.LittleEndian.Uint64(data[tableFixedHashAt:]) != hash {
-		// OUTSIDE THIS BUILD'S OWN LAYOUT IS layout_unknown (§21.3): the
-		// engine holds the identity plan and no lineage, so a file another
-		// layout wrote is one it does not read
-		return refuse(FixedReasonLayoutUnknown)
+	if got := binary.LittleEndian.Uint64(data[tableFixedHashAt:]); got != hash {
+		// ANOTHER LAYOUT IS READ THROUGH THE LOCK OR NOT AT ALL (§21): an
+		// older writer the unit's lineage holds, under the lock's layout bytes
+		reason, damaged := decodeFixedLineage(m, inst, got, layout, data[tableFixedHeaderBytes+4+layoutBytes:], report)
+		if damaged {
+			return damage(reason)
+		}
+		if reason != "" {
+			m.Clear(inst)
+			return refuse(reason)
+		}
+		return true, nil
 	}
 	if !bytes.Equal(layout, mine) {
 		return refuse(FixedReasonLayoutMalformed)
