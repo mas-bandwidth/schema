@@ -2102,8 +2102,9 @@ end
 -- refuses this wire, and nil when it accepts it. It reads the FORM BYTE FIRST
 -- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
 -- filled: count_over_extent_cap (§2.9), a refused form, integrity_mismatch,
--- wire_damaged, missing_required, malformed, then the
--- counters blob_shared, clamped and kind_mismatch; a non-finite float
+-- wire_damaged for every damage the report flags (framing or body, §4),
+-- missing_required, then the counters blob_shared, clamped and kind_mismatch;
+-- a non-finite float
 -- (§3.3) outranks every one the walk reaches. The set is the one refusal.lua's ReadStrict
 -- owns; unknown, widened and duplicate ALONE are evolution, exact decoding and
 -- data identity, not loss (§6.5), so they read clean. This entry reads the
@@ -2122,9 +2123,8 @@ local function strict_refusal(bytes, report, root)
   -- A NON-FINITE FLOAT outranks every verdict the walk could reach after it
   -- (§3.3): no read keeps one.
   if report.nonFiniteFloat ~= nil then return "non_finite_float" end
-  if report.wireDamaged then return "wire_damaged" end
+  if report.wireDamaged or report.malformed then return "wire_damaged" end
   if (report.missingRequired or 0) > 0 then return "missing_required" end
-  if report.malformed then return report.reason or "malformed" end
   if (report.blobShared or 0) > 0 then return "blob_shared" end
   if report.clamped > 0 then return "clamped" end
   if report.kindMismatch > 0 then return "kind_mismatch" end

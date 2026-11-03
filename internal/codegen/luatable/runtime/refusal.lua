@@ -7,8 +7,8 @@
 -- and over the fixed form's reader (runtime/fixed.lua, form 3). It refuses,
 -- with ONE typed reason in TableReport.Err()'s order, a read that is of an
 -- unknown form, integrity-mismatched, carrying a `[]` or map count above the
--- int32 storage cap (count_over_extent_cap, §2.9), wire-damaged, missing a required field,
--- malformed, blob-shared, clamped or kind-mismatched, or that holds a float
+-- int32 storage cap (count_over_extent_cap, §2.9), wire-damaged (every damage, framing or body), missing a
+-- required field, blob-shared, clamped or kind-mismatched, or that holds a float
 -- whose bits are a NaN or an infinity (non_finite_float, which every read
 -- refuses and which outranks every later verdict; §6.5, §11, §2.3, §2.5,
 -- §3.3). Unknown, widened and duplicate
@@ -86,9 +86,10 @@ end
 -- ReadStrict(T, name, bytes [, integrity]) reads one root strictly
 -- (docs/SPEC-TABLES.md §6.5). It returns the root or raises an error whose
 -- message begins with the refusal's name: count_over_extent_cap,
--- unknown_form, integrity_mismatch,
--- wire_damaged, missing_required, malformed, blob_shared, clamped,
--- kind_mismatch or non_finite_float.
+-- unknown_form, integrity_mismatch, wire_damaged, missing_required,
+-- blob_shared, clamped, kind_mismatch or non_finite_float. Every damage the
+-- load reaches, framing or body, is the one strict name wire_damaged; the
+-- report's malformed flag is the tolerant read's (§4, §6.5).
 -- The form-byte reasons previous_form, newer_form and message_form_as_file are
 -- the REPORT's reasons; TableReport.Err() folds them all into unknown_form.
 -- `integrity` is the root's declared check (§2.14), "crc32c" when the unit
@@ -143,15 +144,16 @@ function R.ReadStrict(T, name, bytes, integrity)
   -- TableReport.Err()'s order (§6.5): a count past the int32 storage cap
   -- (§2.9; it sets refused, so it is named first), unknown form, integrity mismatch, a
   -- non-finite float (§3.3: it outranks every verdict the walk reached after
-  -- it), wire damage, missing_required, malformed, blob_shared, clamped,
-  -- kind_mismatch.
+  -- it), wire damage, missing_required, blob_shared, clamped, kind_mismatch.
+  -- Damage is every condition the report flags malformed, at the framing or
+  -- in a body, and the strict read names all of it wire_damaged (§4: damage
+  -- discards the whole load).
   if report.reason == "count_over_extent_cap" then refuse("count_over_extent_cap", name) end
   if report.refused ~= 0 then refuse("unknown_form", name) end
   if report.reason == "integrity_mismatch" then refuse("integrity_mismatch", name) end
   if report.nonFiniteFloat ~= nil then refuse("non_finite_float", report.nonFiniteFloat) end
-  if report.wireDamaged then refuse("wire_damaged", name) end
+  if report.wireDamaged or report.malformed then refuse("wire_damaged", first.malformed or name) end
   if report.missingRequired > 0 then refuse("missing_required", first.missingRequired or name) end
-  if report.malformed then refuse("malformed", first.malformed or name) end
   for _, c in ipairs(counters) do
     if report[c.key] > 0 then refuse(c.name, first[c.key] or name) end
   end
