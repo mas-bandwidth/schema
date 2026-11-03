@@ -1429,6 +1429,17 @@ conformance-negative-control-js-walk: build/conformance-harness build/tables-gen
 
 test-js: conformance-negative-control-js-walk
 
+# THE JAVASCRIPT LEG's WRITE-REFUSAL NEGATIVE CONTROL: the variable writer's
+# ranged-integer refusal is dropped in a COPY of build/tables-generated-js, and
+# the driver is aimed at the copy. The matrix must go red on
+# `js / write-refusal` (wref_range_high, wref_range_low) while `wire` stays
+# green. Nothing tracked is written to.
+.PHONY: conformance-negative-control-js-write-refusal
+conformance-negative-control-js-write-refusal: build/conformance-harness build/tables-generated-js/.stamp
+	sh test/conformance/js/negative-control write-refusal
+
+test-js: conformance-negative-control-js-write-refusal
+
 # THE JAVASCRIPT LEG's FRAMING NEGATIVE CONTROL (docs/LAYERS/1-framing.md): one
 # framing rule of the generated variable reader is dropped in a COPY of
 # build/tables-generated-js, and the framing surface must go red on exactly the
