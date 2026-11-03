@@ -183,16 +183,16 @@ final class AllocPaths {
                 continue;
             }
             if (f.counted) {
-                sink += blockdemo.TableBytes.i32(data, at + f.countOffset);
+                sink += blockdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset));
             }
             int slots = f.isArray ? f.arrayBound : 1;
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 blockdemo.TableBlockInfo element = f.element();
                 if (element != null) {
                     readBlockRecord(data, value, element);
                 } else if (f.elemSize > 0) {
-                    switch (f.elemSize) {
+                    switch (Math.toIntExact(f.elemSize)) {
                         case 1: sink += blockdemo.TableBytes.u8(data, value); break;
                         case 2: sink += blockdemo.TableBytes.u16(data, value); break;
                         case 4: sink += blockdemo.TableBytes.u32(data, value); break;
@@ -201,7 +201,7 @@ final class AllocPaths {
                 }
             }
             if (f.optional) {
-                sink += blockdemo.TableBytes.bool(data, at + f.presentOffset) ? 1 : 0;
+                sink += blockdemo.TableBytes.bool(data, Math.toIntExact(at + f.presentOffset)) ? 1 : 0;
             }
         }
     }
@@ -286,7 +286,7 @@ final class AllocPaths {
         for (graphdemo.TableCookFieldInfo f : info.fields) {
             int slots = f.isArray ? f.arrayBound : 1;
             if (f.countOffset >= 0) {
-                int used = graphdemo.TableBytes.i32(data, at + f.countOffset);
+                int used = graphdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset));
                 sink += used;
                 if (f.isArray && used >= 0 && used < slots) {
                     slots = used;
@@ -294,7 +294,7 @@ final class AllocPaths {
             }
             graphdemo.TableCookInfo record = f.record();
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 if (f.isPointer) {
                     if (record == null) {
                         continue;
@@ -306,7 +306,7 @@ final class AllocPaths {
                 } else if (record != null) {
                     readCookRecord(cook, value, record, depth + 1);
                 } else {
-                    switch (f.elemSize) {
+                    switch (Math.toIntExact(f.elemSize)) {
                         case 1: sink += graphdemo.TableBytes.u8(data, value); break;
                         case 2: sink += graphdemo.TableBytes.u16(data, value); break;
                         case 4: sink += graphdemo.TableBytes.u32(data, value); break;
@@ -315,7 +315,7 @@ final class AllocPaths {
                 }
             }
             if (f.presentOffset >= 0) {
-                sink += graphdemo.TableBytes.bool(data, at + f.presentOffset) ? 1 : 0;
+                sink += graphdemo.TableBytes.bool(data, Math.toIntExact(at + f.presentOffset)) ? 1 : 0;
             }
         }
     }

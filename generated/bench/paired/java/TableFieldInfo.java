@@ -45,16 +45,16 @@ public final class TableFieldInfo {
      * the field's byte offset in the COOKED record (§7.2, the layout <Name>Row reads); 0 for every
      * union arm, which all overlay the payload.
      */
-    public int offset;
+    public long offset;
 
     /** one element's cooked size: the scalar, one array element, one list element. */
-    public int elementSize;
+    public long elementSize;
 
     /** the count/length companion's cooked offset, or -1. */
-    public int countOffset;
+    public long countOffset;
 
     /** the presence companion's cooked offset (an optional field), or -1. */
-    public int presentOffset;
+    public long presentOffset;
 
     public String doc;
     public String[] tags;
@@ -160,10 +160,10 @@ public final class TableFieldInfo {
     TableFieldInfo at(
             boolean isArray,
             boolean counted,
-            int offset,
-            int elementSize,
-            int countOffset,
-            int presentOffset) {
+            long offset,
+            long elementSize,
+            long countOffset,
+            long presentOffset) {
         this.isArray = isArray;
         this.counted = counted;
         this.offset = offset;

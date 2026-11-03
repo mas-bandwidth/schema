@@ -234,7 +234,7 @@ public final class TableBlockInfo {
 
     public String name;
     public long buildVersion; // the unit's (docs/SPEC-TABLES.md §20)
-    public int size;          // the record's own size: a projection's, or a row's
+    public long size;         // the record's own size: a projection's, or a row's
     public int align;
     public int numFields;
     public TableBlockFieldInfo[] fields;
@@ -258,17 +258,17 @@ public final class TableBlockFieldInfo {
     }
 
     public String name;
-    public int offset; // the field's offset in the record this descriptor describes
-    public int size; // its size there
+    public long offset; // the field's offset in the record this descriptor describes
+    public long size; // its size there
     public int kind; // the table-wire kind, as TableFieldInfo carries it
     public boolean outOfLine; // an out-of-line array: the triple's three members are live
-    public int offsetOfOffset; // the triple's offset_of member, or -1
+    public long offsetOfOffset; // the triple's offset_of member, or -1
     // The COUNT COMPANION, and it is one column doing one job in both spellings:
     // the triple's count member for an out-of-line array, the int32 used length
     // of a string or a bytes inline, -1 when the field has none.
-    public int countOffset;
-    public int strideOffset; // the triple's stride member, or -1
-    public int stride; // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    public long countOffset;
+    public long strideOffset; // the triple's stride member, or -1
+    public long stride; // THIS BUILD's pitch, to assert against — never to index with (§19.2)
     // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
     // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node and
     // a block row without learning a second one.
@@ -276,8 +276,8 @@ public final class TableBlockFieldInfo {
     public boolean counted; // countOffset names a used-length companion
     public boolean optional; // presentOffset names a bool presence companion
     public int arrayBound; // inline slots, or a string's declared maximum; 0 for a plain scalar
-    public int elemSize; // ONE slot's size; the field's own when it holds one value
-    public int presentOffset; // the presence companion, or -1
+    public long elemSize; // ONE slot's size; the field's own when it holds one value
+    public long presentOffset; // the presence companion, or -1
     public InfoRef elementRef;
 
     public TableBlockInfo element() {
@@ -287,16 +287,16 @@ public final class TableBlockFieldInfo {
     /** one INLINE field. */
     public static TableBlockFieldInfo of(
             String name,
-            int offset,
-            int size,
+            long offset,
+            long size,
             int kind,
-            int countOffset,
+            long countOffset,
             boolean isArray,
             boolean counted,
             boolean optional,
             int arrayBound,
-            int elemSize,
-            int presentOffset,
+            long elemSize,
+            long presentOffset,
             InfoRef element) {
         TableBlockFieldInfo f = new TableBlockFieldInfo();
         f.name = name;
@@ -321,13 +321,13 @@ public final class TableBlockFieldInfo {
     /** one OUT-OF-LINE array: its triple, and the row it names. */
     public static TableBlockFieldInfo array(
             String name,
-            int offset,
-            int size,
+            long offset,
+            long size,
             int kind,
-            int offsetOfOffset,
-            int countOffset,
-            int strideOffset,
-            int stride,
+            long offsetOfOffset,
+            long countOffset,
+            long strideOffset,
+            long stride,
             int max,
             InfoRef element) {
         TableBlockFieldInfo f = new TableBlockFieldInfo();
@@ -422,13 +422,13 @@ func (g *blockGen) emit() {
 	g.f("    public static final long blockMaxBytes = %dL;\n\n", bl.MaxBytes)
 	g.f("    /** the PROJECTION's own size, prologue included, and the offsets this\n")
 	g.f("     *  class's accessors read at (§19.3). */\n")
-	g.f("    public static final int projectionSize = %d;\n", bl.Projection.Size)
-	g.f("    static final int[] projectionOffsets = {")
+	g.f("    public static final long projectionSize = %s;\n", javaSize(bl.Projection.Size))
+	g.f("    static final long[] projectionOffsets = {")
 	for i, fl := range bl.Projection.Fields {
 		if i > 0 {
 			g.f(",")
 		}
-		g.f(" %d", fl.Offset)
+		g.f(" %s", javaSize(fl.Offset))
 	}
 	g.f(" };\n\n")
 	g.f("    public byte[] data() { return data; }\n")
@@ -484,9 +484,9 @@ func (g *blockGen) emitBuild() {
 	g.f("        TableBytes.put(storage, base + 16, TableBlockInfo.byteOrder, 8, false);\n")
 	for _, a := range g.bl.Arrays {
 		f := member(a.Field)
-		g.f("        TableBytes.put(storage, base + %d, %sStart, 8, false);\n", a.OffsetOfOffset, f)
-		g.f("        TableBytes.put(storage, base + %d, counts.%s, 4, false);\n", a.CountOffset, f)
-		g.f("        TableBytes.put(storage, base + %d, %dL, 4, false);\n", a.StrideOffset, a.Stride)
+		g.f("        TableBytes.put(storage, %s, %sStart, 8, false);\n", javaPos("base + %d", a.OffsetOfOffset), f)
+		g.f("        TableBytes.put(storage, %s, counts.%s, 4, false);\n", javaPos("base + %d", a.CountOffset), f)
+		g.f("        TableBytes.put(storage, %s, %dL, 4, false);\n", javaPos("base + %d", a.StrideOffset), a.Stride)
 	}
 	g.f("        return new %sBlock(storage, base, used);\n    }\n\n", name)
 	g.f("    public static %sBlock begin(byte[] storage, Counts counts, Refusal refusal) {\n", name)
@@ -506,34 +506,34 @@ func (g *blockGen) emitProjectionAccessors() {
 		pieces := ir.BlockFieldPieceOffsets(g.unit, f, fl.Offset, true)
 		switch {
 		case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
-			g.f("    public static int %sAt(int at) { return at + %d; }\n", name, pieces[0].Offset)
+			g.f("    public static int %sAt(int at) { return %s; }\n", name, javaPos("at + %d", pieces[0].Offset))
 			g.f("    public static int %sLength(byte[] data, int at) {\n", name)
-			g.f("        int used = TableBytes.i32(data, at + %d);\n", pieces[1].Offset)
+			g.f("        int used = TableBytes.i32(data, %s);\n", javaPos("at + %d", pieces[1].Offset))
 			g.f("        return used < 0 || used > %d ? 0 : used;\n", f.Type.Size)
 			g.f("    }\n\n")
 		case f.KeyEnum != "" || f.Array != ir.ArrayNone:
 			elem := javaRecordType(f.Type)
 			elemSize := pieces[0].Size / f.ArrayBound
 			if isClassRef(f.Type) {
-				g.f("    public static int %sAt(int at, int i) { return at + %d + i * %d; }\n\n", name, pieces[0].Offset, elemSize)
+				g.f("    public static int %sAt(int at, int i) { return %s; }\n\n", name, javaPos("at + %d + i * %d", pieces[0].Offset, elemSize))
 			} else {
 				g.f("    public static %s %s(byte[] data, int at, int i) { return %s; }\n\n",
-					elem, name, readCall(elem, fmt.Sprintf("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
+					elem, name, readCall(elem, javaPos("at + %d + i * %d", pieces[0].Offset, elemSize), g.fieldName(f)))
 			}
 			if f.Array == ir.ArrayCounted {
-				g.f("    public static int %sCount(byte[] data, int at) { return TableBytes.i32(data, at + %d); }\n\n",
-					name, pieces[1].Offset)
+				g.f("    public static int %sCount(byte[] data, int at) { return TableBytes.i32(data, %s); }\n\n",
+					name, javaPos("at + %d", pieces[1].Offset))
 			}
 		case isClassRef(f.Type):
-			g.f("    public static int %sAt(int at) { return at + %d; }\n\n", name, pieces[0].Offset)
+			g.f("    public static int %sAt(int at) { return %s; }\n\n", name, javaPos("at + %d", pieces[0].Offset))
 		default:
 			typ := javaRecordType(f.Type)
 			g.f("    public static %s %s(byte[] data, int at) { return %s; }\n\n",
-				typ, name, readCall(typ, fmt.Sprintf("at + %d", pieces[0].Offset), g.fieldName(f)))
+				typ, name, readCall(typ, javaPos("at + %d", pieces[0].Offset), g.fieldName(f)))
 		}
 		if f.Type.Optional {
-			g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, at + %d); }\n\n",
-				name, pieces[len(pieces)-1].Offset)
+			g.f("    public static boolean %sPresent(byte[] data, int at) { return TableBytes.bool(data, %s); }\n\n",
+				name, javaPos("at + %d", pieces[len(pieces)-1].Offset))
 		}
 	}
 }
@@ -550,22 +550,22 @@ func (g *blockGen) emitArrays() {
 		g.f("    // count and one row's OFFSET, both read from the INSTANCE at the pitch it\n")
 		g.f("    // gives. The pitch is still inside rather than at the call site, which is\n")
 		g.f("    // the property §19.2 asks for; what is not here is an object per call.\n")
-		g.f("    public int %sCount() { return TableBytes.i32(data, base + %d); }\n\n", field, a.CountOffset)
+		g.f("    public int %sCount() { return TableBytes.i32(data, %s); }\n\n", field, javaPos("base + %d", a.CountOffset))
 		g.f("    public int %sAt(int index) {\n", field)
-		g.f("        int count = TableBytes.i32(data, base + %d);\n", a.CountOffset)
+		g.f("        int count = TableBytes.i32(data, %s);\n", javaPos("base + %d", a.CountOffset))
 		g.f("        if (index < 0 || index >= count) {\n")
 		g.f("            throw new IndexOutOfBoundsException(\"%s row \" + index + \" of \" + count);\n", a.Field.Name)
 		g.f("        }\n")
-		g.f("        long offsetOf = TableBytes.i64(data, base + %d);\n", a.OffsetOfOffset)
-		g.f("        int stride = TableBytes.i32(data, base + %d);\n", a.StrideOffset)
+		g.f("        long offsetOf = TableBytes.i64(data, %s);\n", javaPos("base + %d", a.OffsetOfOffset))
+		g.f("        int stride = TableBytes.i32(data, %s);\n", javaPos("base + %d", a.StrideOffset))
 		g.f("        return base + (int) offsetOf + index * stride;\n")
 		g.f("    }\n\n")
 		g.f("    // and the CONVENIENCE, which carries the three numbers together and costs\n")
 		g.f("    // one record per call — read a row with %sRow's accessors.\n", a.ElemName)
 		g.f("    public TableBlockRows %s() {\n", field)
-		g.f("        long offsetOf = TableBytes.i64(data, base + %d);\n", a.OffsetOfOffset)
-		g.f("        int count = TableBytes.i32(data, base + %d);\n", a.CountOffset)
-		g.f("        int stride = TableBytes.i32(data, base + %d);\n", a.StrideOffset)
+		g.f("        long offsetOf = TableBytes.i64(data, %s);\n", javaPos("base + %d", a.OffsetOfOffset))
+		g.f("        int count = TableBytes.i32(data, %s);\n", javaPos("base + %d", a.CountOffset))
+		g.f("        int stride = TableBytes.i32(data, %s);\n", javaPos("base + %d", a.StrideOffset))
 		g.f("        return new TableBlockRows(data, base + (int) offsetOf, count, stride);\n")
 		g.f("    }\n\n")
 	}
@@ -612,7 +612,7 @@ func (g *blockGen) emitOpen() {
 	g.f("    // missing array or a negative offset is the reference's null base.\n")
 	g.f("    private static long openCheck(byte[] data, int offset, long bytes) {\n")
 	g.f("        if (data == null || offset < 0) { return -7; } // unaligned_base\n")
-	g.f("        if (bytes < %d) { return -6; } // truncated\n", bl.Projection.Size)
+	g.f("        if (bytes < %s) { return -6; } // truncated\n", javaSize(bl.Projection.Size))
 	g.f("        // the caller's CLAIM must be storage the caller actually has: a claim\n")
 	g.f("        // past the array is a caller-side error, and refusing is the only answer\n")
 	g.f("        // that cannot read memory it was not given\n")
@@ -623,7 +623,7 @@ func (g *blockGen) emitOpen() {
 	g.f("        }\n")
 	g.f("        if (TableBytes.i64(data, offset + 16) != TableBlockInfo.byteOrder) { return -1; } // not_a_cook\n")
 	g.f("        if (TableBytes.i64(data, offset + 8) != BuildVersion.value) { return -3; } // wrong_build_version\n")
-	g.f("        long used = %d;\n", bl.Projection.Size)
+	g.f("        long used = %s;\n", javaSize(bl.Projection.Size))
 	for _, a := range bl.Arrays {
 		field := member(a.Field)
 		alignment := int64(ir.BlockAlign)
@@ -631,17 +631,17 @@ func (g *blockGen) emitOpen() {
 			alignment = a.ElemAlign()
 		}
 		g.f("        {\n")
-		g.f("            long offsetOf = TableBytes.i64(data, offset + %d);\n", a.OffsetOfOffset)
-		g.f("            long count = TableBytes.u32(data, offset + %d);\n", a.CountOffset)
-		g.f("            long stride = TableBytes.u32(data, offset + %d);\n", a.StrideOffset)
+		g.f("            long offsetOf = TableBytes.i64(data, %s);\n", javaPos("offset + %d", a.OffsetOfOffset))
+		g.f("            long count = TableBytes.u32(data, %s);\n", javaPos("offset + %d", a.CountOffset))
+		g.f("            long stride = TableBytes.u32(data, %s);\n", javaPos("offset + %d", a.StrideOffset))
 		g.f("            if (stride != %sStride) { return -8; } // bad_layout\n", field)
 		g.f("            // past the DECLARED MAXIMUM: Begin refuses this on the producer\n")
 		g.f("            // side and Open refuses it here, because a consumer that sizes\n")
 		g.f("            // anything by the maximum would overflow on a count the maximum\n")
 		g.f("            // does not bound\n")
 		g.f("            if (count > %sMax) { return -8; }\n", field)
-		g.f("            if (Long.compareUnsigned(offsetOf, %d) < 0 || (offsetOf & %d) != 0) { return -8; }\n",
-			bl.Projection.Size, alignment-1)
+		g.f("            if (Long.compareUnsigned(offsetOf, %s) < 0 || (offsetOf & %d) != 0) { return -8; }\n",
+			javaSize(bl.Projection.Size), alignment-1)
 		g.f("            if (Long.compareUnsigned(offsetOf, bytes) > 0) { return -8; }\n")
 		g.f("            long rows = count * stride; // both bounded above: this cannot carry\n")
 		g.f("            if (rows > bytes - offsetOf) { return -8; }\n")
@@ -701,8 +701,8 @@ func (g *blockGen) emitType() {
 	g.f("        static final TableBlockInfo INFO = build();\n\n")
 	g.f("        private static TableBlockInfo build() {\n")
 	g.f("            TableBlockInfo info = new TableBlockInfo();\n")
-	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %d; info.align = %d; info.numFields = %d;\n",
-		name, bl.Projection.Size, bl.Projection.Align, len(bl.Projection.Fields))
+	g.f("            info.name = %q; info.buildVersion = BuildVersion.value; info.size = %s; info.align = %d; info.numFields = %d;\n",
+		name, javaSize(bl.Projection.Size), bl.Projection.Align, len(bl.Projection.Fields))
 	g.f("            TableBlockFieldInfo[] fields = new TableBlockFieldInfo[%d];\n", len(bl.Projection.Fields))
 	for i, fl := range bl.Projection.Fields {
 		if a := bl.ArrayByName(fl.Field.Name); a != nil {
@@ -763,13 +763,13 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
 		fmt.Fprintf(&b, "        record(\"%sBlock projection\", %sBlock.projectionSize, %d, %sBlock.projectionOffsets, %sBlock.type());\n",
 			t, t, bl.Projection.Align, t, t)
 		for _, a := range bl.Arrays {
-			fmt.Fprintf(&b, "        number(\"%sBlock.%sStride\", (int) %sBlock.%sStride, %sRow.size);\n",
+			fmt.Fprintf(&b, "        number(\"%sBlock.%sStride\", %sBlock.%sStride, %sRow.size);\n",
 				t, member(a.Field), t, member(a.Field), a.ElemName)
 		}
 	}
 	b.WriteString("        checked = true;\n")
 	b.WriteString("    }\n\n")
-	b.WriteString(`    private static void record(String what, int size, int align, int[] offsets, TableBlockInfo info) {
+	b.WriteString(`    private static void record(String what, long size, int align, long[] offsets, TableBlockInfo info) {
         number(what + " size", size, info.size);
         number(what + " align", align, info.align);
         number(what + " field count", offsets.length, info.numFields);
@@ -778,7 +778,7 @@ func emitBlockLayoutFile(u *ir.Unit, blocks *ir.BlockUnit, set *records) []byte 
         }
     }
 
-    private static void number(String what, int accessors, int descriptors) {
+    private static void number(String what, long accessors, long descriptors) {
         if (accessors != descriptors) {
             throw new IllegalStateException(
                     "schema block layout: "

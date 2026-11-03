@@ -21,14 +21,14 @@ public final class TableCookFieldInfo {
 
     public String name;
     public String sourceName; // generated Java Value member (§7.6)
-    public int offset; // the field's offset in the record this descriptor describes
-    public int size; // its whole storage there, companions included
-    public int elemSize; // one element's size, for an array; the field's own otherwise
+    public long offset; // the field's offset in the record this descriptor describes
+    public long size; // its whole storage there, companions included
+    public long elemSize; // one element's size, for an array; the field's own otherwise
     public boolean isArray;
     public int arrayBound; // the DECLARED bound: a counted array's N, a string's or bytes' length
     public boolean isPointer; // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-    public int countOffset; // the count companion's offset, or -1 when the field has none
-    public int presentOffset; // an optional's presence bool, or -1
+    public long countOffset; // the count companion's offset, or -1 when the field has none
+    public long presentOffset; // an optional's presence bool, or -1
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
     public int tag; // a union ARM's tag (§7.2); 0 for a record's field
@@ -37,7 +37,7 @@ public final class TableCookFieldInfo {
      * a LIST or MAP holder: one element's size and alignment in the node extent, and the element as
      * a field at offset zero (a map's is its entry record).
      */
-    public int extentSize;
+    public long extentSize;
 
     public int extentAlign;
     public TableCookFieldInfo element;
@@ -55,14 +55,14 @@ public final class TableCookFieldInfo {
     public static TableCookFieldInfo of(
             String name,
             String sourceName,
-            int offset,
-            int size,
-            int elemSize,
+            long offset,
+            long size,
+            long elemSize,
             boolean isArray,
             int arrayBound,
             boolean isPointer,
-            int countOffset,
-            int presentOffset,
+            long countOffset,
+            long presentOffset,
             TableCookStorage storage,
             InfoRef record) {
         TableCookFieldInfo f = new TableCookFieldInfo();
@@ -82,7 +82,7 @@ public final class TableCookFieldInfo {
     }
 
     /** this field as a LIST or MAP holder over elements of the given size and alignment. */
-    public TableCookFieldInfo extent(int size, int align, TableCookFieldInfo element) {
+    public TableCookFieldInfo extent(long size, int align, TableCookFieldInfo element) {
         this.extentSize = size;
         this.extentAlign = align;
         this.element = element;

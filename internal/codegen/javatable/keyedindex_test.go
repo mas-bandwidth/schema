@@ -148,9 +148,9 @@ public final class Driver {
         // the slot form, over a byte[] wider than the row so a missing bound
         // reads silently rather than throwing
         final int at = 8;
-        final byte[] row = new byte[at + ScoresRow.size + 8];
+        final byte[] row = new byte[Math.toIntExact(at + ScoresRow.size + 8)];
         for (int k = 1; k <= 3; k++) {
-            int off = at + ScoresRow.offsets[0] + (k - 1) * 4;
+            int off = Math.toIntExact(at + ScoresRow.offsets[0] + (k - 1) * 4);
             java.nio.ByteBuffer.wrap(row).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(off, 200 + k);
         }
         for (int key : new int[] { 0, -1 }) {

@@ -307,7 +307,7 @@ public final class TableCookInfo {
      *  extent begins at the record's size rounded to the greater of this and
      *  eight (§7.6). 1 for a record with no extent. */
     public int extentAlign = 1;
-    public int size;
+    public long size;
     public int align;
     public int numFields;
     public TableCookFieldInfo[] fields;
@@ -330,20 +330,20 @@ public final class TableCookFieldInfo {
 
     public String name;
     public String sourceName; // generated Java Value member (§7.6)
-    public int offset; // the field's offset in the record this descriptor describes
-    public int size; // its whole storage there, companions included
-    public int elemSize; // one element's size, for an array; the field's own otherwise
+    public long offset; // the field's offset in the record this descriptor describes
+    public long size; // its whole storage there, companions included
+    public long elemSize; // one element's size, for an array; the field's own otherwise
     public boolean isArray;
     public int arrayBound; // the DECLARED bound: a counted array's N, a string's or bytes' length
     public boolean isPointer; // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-    public int countOffset; // the count companion's offset, or -1 when the field has none
-    public int presentOffset; // an optional's presence bool, or -1
+    public long countOffset; // the count companion's offset, or -1 when the field has none
+    public long presentOffset; // an optional's presence bool, or -1
     public TableCookStorage storage; // what one slot HOLDS, at elemSize bytes
     public InfoRef recordRef;
     public int tag; // a union ARM's tag (§7.2); 0 for a record's field
     /** a LIST or MAP holder: one element's size and alignment in the node extent,
      *  and the element as a field at offset zero (a map's is its entry record). */
-    public int extentSize;
+    public long extentSize;
     public int extentAlign;
     public TableCookFieldInfo element;
 
@@ -360,14 +360,14 @@ public final class TableCookFieldInfo {
     public static TableCookFieldInfo of(
             String name,
             String sourceName,
-            int offset,
-            int size,
-            int elemSize,
+            long offset,
+            long size,
+            long elemSize,
             boolean isArray,
             int arrayBound,
             boolean isPointer,
-            int countOffset,
-            int presentOffset,
+            long countOffset,
+            long presentOffset,
             TableCookStorage storage,
             InfoRef record) {
         TableCookFieldInfo f = new TableCookFieldInfo();
@@ -387,7 +387,7 @@ public final class TableCookFieldInfo {
     }
 
     /** this field as a LIST or MAP holder over elements of the given size and alignment. */
-    public TableCookFieldInfo extent(int size, int align, TableCookFieldInfo element) {
+    public TableCookFieldInfo extent(long size, int align, TableCookFieldInfo element) {
         this.extentSize = size;
         this.extentAlign = align;
         this.element = element;
@@ -650,7 +650,7 @@ func (g *cookGen) emitAt() {
 	g.f("    //\n")
 	g.f("    // It answers the TARGET's offset, or -1, which is null AND a delta whose\n")
 	g.f("    // record does not lie wholly inside the region.\n")
-	g.f("    public int at(int slot, int size) {\n")
+	g.f("    public int at(int slot, long size) {\n")
 	g.f("        long delta = TableBytes.i64(data, slot);\n")
 	g.f("        if (delta == 0 || size < 0) { return -1; }\n")
 	g.f("        // written as bounds ON THE DELTA so no addition can wrap: the two limits\n")
@@ -704,7 +704,7 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
 	}
 	b.WriteString("        checked = true;\n")
 	b.WriteString("    }\n\n")
-	b.WriteString(`    private static void record(String what, int size, int align, int[] offsets, TableCookInfo info) {
+	b.WriteString(`    private static void record(String what, long size, int align, long[] offsets, TableCookInfo info) {
         number(what + " size", size, info.size);
         number(what + " align", align, info.align);
         number(what + " field count", offsets.length, info.numFields);
@@ -713,7 +713,7 @@ func emitCookLayoutFile(u *ir.Unit, ck *cookUnit, set *records, withBlock bool) 
         }
     }
 
-    private static void number(String what, int accessors, int descriptors) {
+    private static void number(String what, long accessors, long descriptors) {
         if (accessors != descriptors) {
             throw new IllegalStateException(
                     "schema cook layout: "

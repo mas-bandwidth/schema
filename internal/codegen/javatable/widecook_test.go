@@ -33,7 +33,7 @@ public final class WideCookProbe {
                 if (!widecook.CaptionCook.cookFrom(value, out, order)) throw new AssertionError("write");
                 ByteBuffer bytes = ByteBuffer.wrap(out).order(order == 1 ? ByteOrder.LITTLE_ENDIAN : ByteOrder.BIG_ENDIAN);
                 int at = widecook.CaptionRow.textAt(64);
-                int lengthAt = 64 + widecook.CaptionRow.cookInfo().fields[0].countOffset;
+                int lengthAt = Math.toIntExact(64 + widecook.CaptionRow.cookInfo().fields[0].countOffset);
                 if (bytes.getInt(lengthAt) != text.length()) throw new AssertionError("unit count");
                 for (int i = 0; i < text.length(); i++) {
                     if (bytes.getChar(at + 2 * i) != text.charAt(i)) throw new AssertionError("UTF-16 order");

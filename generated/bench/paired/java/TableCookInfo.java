@@ -73,7 +73,7 @@ public final class TableCookInfo {
      */
     public int extentAlign = 1;
 
-    public int size;
+    public long size;
     public int align;
     public int numFields;
     public TableCookFieldInfo[] fields;

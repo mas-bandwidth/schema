@@ -29,7 +29,7 @@ public final class CookFindProbe {
         int ships = cook.at(mapdemo.FleetRow.shipsSlot(root), n * mapdemo.FleetRow.shipsStride);
         if (n < 2 || ships < 0) throw new AssertionError("ships: " + n);
         for (int i = 0; i < n; i++) {
-            int at = ships + i * mapdemo.FleetRow.shipsStride;
+            int at = Math.toIntExact(ships + i * mapdemo.FleetRow.shipsStride);
             int k = mapdemo.FleetShipsEntryRow.keyAt(at), len = mapdemo.FleetShipsEntryRow.keyLength(data, at);
             byte[] key = java.util.Arrays.copyOfRange(data, k, k + len);
             if (mapdemo.FleetRow.shipsFind(data, ships, n, key) != at) throw new AssertionError("ships find " + i);
@@ -39,7 +39,7 @@ public final class CookFindProbe {
         int tiers = cook.at(mapdemo.FleetRow.tiersSlot(root), m * mapdemo.FleetRow.tiersStride);
         if (m < 2 || tiers < 0) throw new AssertionError("tiers: " + m);
         for (int i = 0; i < m; i++) {
-            int at = tiers + i * mapdemo.FleetRow.tiersStride;
+            int at = Math.toIntExact(tiers + i * mapdemo.FleetRow.tiersStride);
             short key = mapdemo.FleetTiersEntryRow.key(data, at);
             if (mapdemo.FleetRow.tiersFind(data, tiers, m, key) != at) throw new AssertionError("tiers find " + i);
         }
