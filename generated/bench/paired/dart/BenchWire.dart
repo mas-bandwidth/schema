@@ -71,6 +71,32 @@ final class TableWireReport {
     refused = true;
   }
 
+  // countRefused is a builder storage refusal (count_over_extent_cap), apart
+  // from the refused verdict it rides with.
+  bool get countRefused => _countRefused;
+
+  // reset returns the report to a fresh read's state, so one report object
+  // describes one read at a time: the strict read's report is the report of
+  // that read alone (docs/SPEC-TABLES.md §6.5).
+  void reset() {
+    unknown = 0;
+    kindMismatch = 0;
+    widened = 0;
+    clamped = 0;
+    clampedField = '';
+    duplicate = 0;
+    blobShared = 0;
+    malformed = false;
+    integrityMismatch = false;
+    refused = false;
+    _countRefused = false;
+    missingRequired = 0;
+    missingFields = '';
+    retained = 0;
+    retainLost = 0;
+    nonFiniteFloat = '';
+  }
+
   // reason is the read's refusal BY NAME, in the reference leg's vocabulary
   // (internal/codegen/gotable/refusal.go, the TableRefuse* Error() strings;
   // docs/SPEC-TABLES.md §3, §4): a non-finite float is non_finite_float naming

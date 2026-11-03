@@ -164,6 +164,9 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 		return nil, err
 	}
 	maps.Copy(out, wire)
+	// THE STRICT READ (docs/SPEC-TABLES.md §6.5) of each form-1 root, in its
+	// own library over the variable form and the accelerator home's enum.
+	maps.Copy(out, generateStrictFiles(u, out))
 	// The §8 unit registry is a separate, optional Dart library: a card
 	// reader may inspect every declaration, not only the wire closure.
 	maps.Copy(out, generateUnitViewFiles(u))
