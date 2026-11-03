@@ -50,7 +50,7 @@ RETIRED = {'TestFixedFormPlanPath': ('retired by docs/FIXED-FORM-ALGORITHM.md §
                                 'TestFixedVersioningHash/hash_known_bytes_differ')])}
 # Exact native markers independently mapped against949. Provenance mapping SHA:
 # f2ab4c44bc164fd8e482cb943ad9b5520d534bd2f5bdf33252746dddf23b6978.
-# Every entry needs actual replacement pass events from THIS run. Four unresolved
+# Every entry needs actual replacement pass events from THIS run. Two unresolved
 # historical controls are deliberately absent; no retirement keyword exemption.
 RETIRED_NATIVE = {}
 for _lang, _marker, _needs in json.loads(r'''[
@@ -69,6 +69,7 @@ for _lang, _marker, _needs in json.loads(r'''[
     ["cs","SKIPPED: TestFixedPCase — §5.6 retires the compiled read of another generation's layout; the coverage moves to the lineage harness",[["internal/codegen/cstable","TestFixedVersioning"]]],
     ["cs","SKIPPED: TestFixedNegativeControlForwardRead — §5.6 retires the forward read; the coverage moves to the lineage harness",[["internal/codegen/cstable","TestFixedVersioning"]]],
     ["cs","SKIPPED: TestFixedLayoutValidation — §5.6 retires the run-time walk of a stranger's layout; §1.1's seven rules move to the LOCK's validation of what it records",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/cstable","TestFixedVersioning/hash_known_bytes_differ"]]],
+    ["dart","RETIRED by §5.6: fuCase — text under an arm on a compiled plan: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningSecondArmText/FU1"],["internal/codegen/darttable","TestFixedVersioningSecondArmText/FU2"]]],
     ["dart","RETIRED by §5.6: fxCase — the plan path, FX1 <-> FX2 both ways: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
     ["dart","RETIRED by §5.6: vCase — a variant, an arm and a keyed slot mid-list: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
     ["dart","RETIRED by §5.6: pCase — a value against ?T across two schemas: the coverage is owed by internal/codegen/darttable/fixedversioning_test.go, both columns of every row of docs/FIXED-FORM-VERSIONING-TESTS.md, run by `make tables-dart-versioning`",[["internal/codegen/darttable","TestFixedVersioningNewReadsOld"],["internal/codegen/darttable","TestFixedVersioningOldRefusesNew"]]],
@@ -81,6 +82,8 @@ for _lang, _marker, _needs in json.loads(r'''[
     ["rust","SKIP a_newer_writer: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FX1 reading FX2's file is the FORWARD read §5 replaced outright — a reader never steps over an unknown entry from the wire — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
     ["rust","SKIP an_optional: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — P3 reading P1's file is a cross-schema read, so `?T` against `T` is no longer a kind the load compiles — it is `layout_newer` — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
     ["rust","SKIP the_ordinal_slide, both halves: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's file and FE1 reading FE2's are both cross-schema reads, and the remap of a slid ordinal is a lineage plan's work, not a load's — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningNewReadsOld"],["internal/codegen/rusttable","TestFixedVersioningOldRefusesNew"]]],
+    ["rust", "SKIP the_text_under_an_arm's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's file is a cross-schema read; the two-lane entry it watches is now laid down at BUILD time and the harness proves it there — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.", [["internal/codegen/rusttable", "TestFixedVersioningTextUnderArm"]]],
+    ["rust", "SKIP the_text_under_an_arm's compiled stray-true-bytes half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FU2 reading FU1's forged file is a cross-schema read; the identity half above still holds the `!= 0` ruling on both bytes — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.", [["internal/codegen/rusttable", "TestFixedVersioningTextUnderArmTrueBytes"]]],
     ["rust","SKIP the_enum_extent's compiled half: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — FE2 reading FE1's forged file is a cross-schema read, so the `ordinal` op's clamp is the lineage plan's to prove — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which hands the lock's entries in and holds both read columns of every row.",[["internal/codegen/rusttable","TestFixedVersioningForgedOrdinalBothPlans"]]],
     ["rust","SKIP the_negative_controls' plan_too_large case: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a one-entry plan slice is unreachable through a cross-schema load now — FX2 reading FX1's file refuses `layout_newer` before a plan is ever sized, and the name is the contract, not the argument (§5.9 #5) — and the coverage now lives in the lineage harness internal/codegen/rusttable/fixedversioning_test.go, run by `make tables-rust-versioning`, which owes the refusal where a plan that does not fit can still be reached.",[["internal/codegen/rusttable","TestFixedRoadmapT01Framing/rust/R13"]]],
     ["rust","SKIP RULE: the entry count fits the layout length exactly: docs/FIXED-FORM-ALGORITHM.md §5.6 retired it — a §1.1 malformation under a KNOWN hash is ONE name now — `layout_malformed`, a lie about a known version — and the reader compares the lock's layout bytes instead of walking the wire's — and the coverage now lives in the LOCK's validation of what it records, plus the oracle's validation of the corpus.",[["internal/lockfile","TestRecordedLayoutRule1CountMismatch"],["internal/lockfile","TestRecordedLayoutRule2KindUnknown"],["internal/lockfile","TestRecordedLayoutRule3SizeMismatch"],["internal/lockfile","TestRecordedLayoutRule4KindInvalid"],["internal/lockfile","TestRecordedLayoutRule5TreeUnclosed"],["internal/lockfile","TestRecordedLayoutRule6RecordTooLarge"],["internal/lockfile","TestRecordedLayoutRule7TooDeep"],["internal/lockfile","TestRecordedLayoutResidueMalformed"],["internal/codegen/rusttable","TestFixedVersioningHash/hash_known_bytes_differ"]]],
@@ -170,6 +173,8 @@ def required_phases(lang):
                      for shape in ("normal", "ludicrous") for mode in range(modes)}
     required |= {"wire-" + arm + "-" + str(seed)
                  for arm in ("plain", "retain") for seed in (1, 2, 3)}
+    if lang == "cs":
+        required |= {"wire-builder-" + str(seed) for seed in (1, 2, 3)}
     if lang == "c":
         required |= {"retain-c-plant", "retain-c"}
     elif lang == "go":
@@ -288,14 +293,14 @@ def implementation_result(text, lang):
     return []
 
 
-def fuzz_result(text, arm, seed, lang=""):
+def fuzz_result(text, arm, seed, lang="", builder=False):
     """The harness's old exit-0 permits absent roots; readiness does not."""
     errors = []
     if re.search(r"seeds absent|non-finite mutants not compared|finite-owed", text):
         errors.append("wire roster or finite-value exemption was reported")
-    if arm != "retain" and "seeds outside the arm" in text:
+    if arm != "retain" and not builder and "seeds outside the arm" in text:
         errors.append("plain wire-fuzz unexpectedly excluded seeds")
-    prefix = "wire-fuzz" + ("-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
+    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in ("dart", "js") else "") + (" retain" if arm == "retain" else "")
     pattern = (r"^" + re.escape(prefix) + r": seed (\d+), (\d+) seeds over (\d+) roots"
                r"(?:, \d+ seeds outside the arm)?, (\d+) enumerated \+ (\d+) random = "
                r"(\d+) mutants, 0 divergences, [0-9.]+ s, [0-9.]+ mutants/s$")
@@ -531,12 +536,13 @@ def run_external(runner, lang):
     runner.make("external-table-gates", FIXED_GATES[lang], makefile=makefile)
 
 
-def driver_command(root, lang):
+def driver_command(root, lang, builder=False):
     if lang in ("cpp", "c"):
         return "./build/wire-fuzz-" + lang
     if lang == "cs":
         return shlex.join(tool("DOTNET", "dotnet") +
-                          ["test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll", "wire-fuzz"])
+                          ["test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll",
+                           "wire-fuzz-builder" if builder else "wire-fuzz-region"])
     if lang == "java":
         return shlex.join(tool("JAVA", "java") + ["-cp", str(root / "build/conformance-java"), "TablesWireFuzz"])
     if lang == "rust":
@@ -555,10 +561,10 @@ def run_fuzz(runner, lang):
                     "--driver", driver_command(runner.root, lang),
                     "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
                     "--failed", str(runner.out / (name + ".bin"))]
-            # Dart exposes the mutable builder load; its count-cap verdict
-            # follows Decode, not the immutable region-measure profile.
-            if lang == "dart":
-                args.append("--builder")
+            # Dart and JavaScript use mutable variable-file loads, with the full fixed/message
+            # roster still exercising its existing form-specific readers.
+            if lang in ("dart", "js"):
+                args.append("--mixed-builder")
             if arm == "retain":
                 args.append("--retain")
             # No --finite-owed, absent-root exclusion, replay-only pass or custom
@@ -566,6 +572,19 @@ def run_fuzz(runner, lang):
             # also the known default-roster variable-root/message mismatch;
             # this script does not silently delete either kind of input.
             runner.run(name, args, validate=lambda text, a=arm, s=seed: fuzz_result(text, a, s, lang))
+
+
+    if lang == "cs":
+        # C# also exposes a mutable builder. Its plain reader follows Decode's
+        # count-cap contract; retention above uses the actual region API.
+        for seed in SEEDS:
+            name = "wire-builder-" + str(seed)
+            args = ["./build/conformance-harness", "wire-fuzz", "--builder",
+                    "--driver", driver_command(runner.root, lang, builder=True),
+                    "--seed", str(seed), "--n", str(RANDOM_MUTANTS),
+                    "--failed", str(runner.out / (name + ".bin"))]
+            runner.run(name, args,
+                       validate=lambda text, s=seed: fuzz_result(text, "plain", s, lang, builder=True))
 
 
 def overlay_control(runner, name, source, test, package, expected, sabotage=None,

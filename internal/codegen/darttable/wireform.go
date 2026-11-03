@@ -1152,7 +1152,7 @@ final class TableWireReader {
       edges = parent.edges,
       nodeIndex = parent.nodeIndex;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  bool has(int n) => n >= 0 && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -1324,6 +1324,7 @@ final class TableWireReader {
       if (id == keyId) {
         mapKeyAt = s.pos - 1;
         if (kind != keyKind && keyWidens.contains(kind)) {
+          kindBad = false; // the final key occurrence replaces its prior kind
           widened = 4;
           if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
           continue;
@@ -3441,9 +3442,8 @@ func (g *wireGen) emitMeasure(st *ir.Struct) {
 	g.pf("\t\t\tseen = true;\n")
 	g.pf("\t\t\tif (kind != 12) { unframed = true; continue; }\n")
 	g.pf("\t\t\tfinal len = r.readLeb();\n")
-	g.pf("\t\t\tif (len == null) { unframed = true; continue; }\n")
+	g.pf("\t\t\tif (len == null || !r.has(len)) { unframed = true; continue; }\n")
 	g.pf("\t\t\tfinal end = r.pos + len;\n")
-	g.pf("\t\t\tif (end > r.limit) { unframed = true; continue; }\n")
 	g.pf("\t\t\tpstart = r.pos;\n")
 	g.pf("\t\t\tpend = end;\n")
 	g.pf("\t\t\tr.pos = end;\n")

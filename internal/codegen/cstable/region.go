@@ -218,7 +218,7 @@ const tableRegionSource = `
             if (!body.Has(1)) { return false; }
             byte kind = body.Byte();
             if (id != field.Id) { if (!body.Skip(kind)) { return false; } continue; }
-            if (kind != field.Kind && Widen(kind, field.Kind)) { widened = true; }
+            if (kind != field.Kind && Widen(kind, field.Kind)) { mismatch = false; widened = true; }
             else
             {
                 mismatch = kind != field.Kind;
@@ -614,6 +614,12 @@ const tableRegionSource = `
         if (f.Dynamic) { f.EnsureCount(target, n); }
         if (f.NativeCountOffset >= 0) { f.SetCount(target, source.Count(f)); }
         if (f.Optional) { f.SetPresent(target, source.Base[source.At + f.NativePresentOffset] != 0); }
+        if (f.Unbounded)
+        {
+            ReadOnlySpan<byte> text = source.Buffer(f);
+            f.EnsureCount(target, text.Length); f.SetCount(target, text.Length);
+            text.CopyTo(f.GetBuffer(target)); return;
+        }
         if (f.GetBuffer != null) { source.Buffer(f).Slice(0, f.GetBuffer(target).Length).CopyTo(f.GetBuffer(target)); return; }
         if (f.GetChars != null) { source.Chars(f).Slice(0, f.GetChars(target).Length).CopyTo(f.GetChars(target)); return; }
         for (int i = 0; i < n; i++)

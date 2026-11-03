@@ -3756,7 +3756,7 @@ namespace Bench
                     if (!body.Has(1)) { return false; }
                     byte kind = body.Byte();
                     if (id != k.Id) { if (!body.Skip(kind)) { return false; } continue; }
-                    if (kind != k.Kind && Widen(kind, k.Kind)) { widened = true; }
+                    if (kind != k.Kind && Widen(kind, k.Kind)) { mismatch = false; widened = true; }
                     else
                     {
                         mismatch = kind != k.Kind;

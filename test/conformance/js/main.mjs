@@ -1206,32 +1206,34 @@ async function wireFuzz() {
     const report = { reason: "", unknown: 0, kindMismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, refused: 0, retained: 0, retainLost: 0 };
     if (codec !== null) {
       measure = codec.loadMeasure(wire);
-      if (measure >= 0) {
-        const rep = codec.report();
-        let card = null;
-        if (codec.retain) {
-          const retainStore = codec.retainStore();
-          card = codec.loadRetain(wire, retainStore, rep);
-          loaded = card !== null;
-          if (loaded) {
-            saved = codec.saveRetain(card, retainStore, rep);
-          }
-        } else {
-          card = codec.load(wire, rep);
-          loaded = card !== null;
-          if (loaded) { saved = codec.save(card); }
+      // Measurement and loading are independent observations; even an
+      // unframed file must reach Load so its damage report is preserved.
+      const rep = codec.report();
+      let card = null;
+      if (codec.retain) {
+        const retainStore = codec.retainStore();
+        card = codec.loadRetain(wire, retainStore, rep);
+        loaded = card !== null;
+        if (loaded) {
+          saved = codec.saveRetain(card, retainStore, rep);
         }
-        report.unknown = rep.unknown;
-        report.kindMismatch = rep.kindMismatch;
-        report.widened = rep.widened;
-        report.clamped = rep.clamped;
-        report.duplicate = rep.duplicate;
-        report.malformed = rep.malformed;
-        report.refused = rep.refused;
-        report.retained = rep.retained;
-        report.retainLost = rep.retainLost;
-        report.reason = rep.reason;
+      } else {
+        card = codec.load(wire, rep);
+        loaded = card !== null;
+        if (loaded) { saved = codec.save(card); }
       }
+      report.unknown = rep.unknown;
+      report.kindMismatch = rep.kindMismatch;
+      report.widened = rep.widened;
+      report.clamped = rep.clamped;
+      report.duplicate = rep.duplicate;
+      report.malformed = rep.malformed;
+      // Storage-cap rejection is an out-of-band builder failure, not a
+      // wire-form refusal in the shared report protocol.
+      report.refused = rep.refused && rep.reason !== "count_over_extent_cap";
+      report.retained = rep.retained;
+      report.retainLost = rep.retainLost;
+      report.reason = rep.reason;
     }
 
     // EVERY REPLY IS FLUSHED BEFORE THE NEXT MUTANT IS READ

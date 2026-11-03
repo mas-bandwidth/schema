@@ -2423,13 +2423,14 @@ defmodule Bench.Table do
 
                     :error ->
                       # a kind this reader cannot skip, or a length its body
-                      # cannot hold: the field still counts — unknown when the id
-                      # is not this body's, a kind mismatch when it is — and the
-                      # walk stops (§3, §4)
+                      # cannot hold: preserve the header for unknown/kind
+                      # accounting, but no payload exists to decode. The walk
+                      # stops here and the enclosing body owns the damage (§3, §4).
                       if id == @node_id and transport == true do
                         {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
                       else
-                        {:stop, Enum.reverse([{id, kind, <<>>} | acc]), nodes, byte_size(rest2)}
+                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), nodes,
+                         byte_size(rest2)}
                       end
                   end
                 end
@@ -2756,6 +2757,18 @@ defmodule Bench.Table do
 
           f ->
             cond do
+              payload == :unframed ->
+                # The field header was read, but its payload never framed.
+                # Count only a genuine kind mismatch; never feed fabricated
+                # empty bytes to a scalar reader. The enclosing body owns
+                # the damage and discards this incomplete field.
+                report =
+                  if kind == f.kind or widens?(kind, f),
+                    do: report,
+                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
+
+                {:halt, {value, report}}
+
               kind == f.kind and not compatible_payload?(f, payload) ->
                 {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
 
@@ -3459,26 +3472,21 @@ defmodule Bench.Table do
         read_list_elements(f, after_sub, n - 1, nodes, ids, [nil | acc], report)
 
       {vref, after_sub} ->
-        value =
-          case resolve(ids, vref) do
-            :error ->
-              nil
+        case resolve(ids, vref) do
+          :error ->
+            # A reference outside the id table is framing damage (§3, §4),
+            # not None or an id this enum does not declare.
+            {Enum.reverse(acc), %{report | malformed: true}}
 
-            variant_id ->
+          variant_id ->
+            {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> name
-                :error -> :unknown
+                {:ok, name} -> {name, report}
+                :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
-          end
 
-        # an element naming a variant this reader cannot name reads None and
-        # counts unknown (docs/SPEC-TABLES.md §4)
-        {value, report} =
-          if value == :unknown,
-            do: {nil, %{report | unknown: report.unknown + 1}},
-            else: {value, report}
-
-        read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+        end
 
       :error ->
         {Enum.reverse(acc), %{report | malformed: true}}
@@ -7345,7 +7353,7 @@ defmodule Bench.Table do
           nil ->
             # an unknown FIELD id is the retained class (§6.6): the resolved walk
             # decides, and the six excluded classes count one retain_lost.
-            if payload == <<>> do
+            if payload in [<<>>, :unframed] do
               # a field the plain read could not delimit — its slice failed — has
               # no bytes to retain: §6.6's capture never runs, one unknown counts
               # and the enclosing read's malformed does (§3, §4).
@@ -7387,6 +7395,17 @@ defmodule Bench.Table do
 
           f ->
             cond do
+              payload == :unframed ->
+                # Array elements keep prefix events even when framing stops.
+                # As in decode/4, an incomplete payload is never a value and
+                # cannot enter either the scalar reader or retained capture.
+                report =
+                  if kind == f.kind or widens?(kind, f),
+                    do: report,
+                    else: %{report | kind_mismatch: report.kind_mismatch + 1}
+
+                {:halt, {value, report, retain}}
+
               kind == f.kind and not compatible_payload?(f, payload) ->
                 {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
 
@@ -7587,6 +7606,12 @@ defmodule Bench.Table do
     end
   end
 
+  # A union array uses the element index followed by the arm ordinal, exactly
+  # as its retaining writer does. Walk once with an explicit index.
+  defp read_payload_retain(%{t: :list, elem_kind: 15} = f, p, ns, ids, r, rt, path) do
+    read_union_list_retain(f, p, ns, ids, r, rt, path)
+  end
+
   # a union field: the arm is the step pair {ordinal, arm ordinal}.
   defp read_payload_retain(%{t: :union} = f, payload, nodes, ids, report, retain, path) do
     retain = retain_reset(retain, path, f.ordinal, nil)
@@ -7646,6 +7671,23 @@ defmodule Bench.Table do
     end
   end
 
+  # Unknown enum references in known array slots are excluded just like a
+  # known scalar enum field (§6.6). Only that array's new unknowns count.
+  defp read_payload_retain(
+         %{t: :list, elem_kind: 30} = f,
+         payload,
+         nodes,
+         ids,
+         report,
+         retain,
+         _path
+       ) do
+    unknown_before = report.unknown
+    {:cont, value, report} = read_payload(f, payload, nodes, ids, report)
+    report = %{report | retain_lost: report.retain_lost + report.unknown - unknown_before}
+    {:cont, value, report, retain}
+  end
+
   defp read_payload_retain(f, payload, nodes, ids, report, retain, _path) do
     {:cont, v, report} = read_payload(f, payload, nodes, ids, report)
     {:cont, v, report, retain}
@@ -7671,6 +7713,60 @@ defmodule Bench.Table do
 
       _ ->
         {%{}, %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_union_list_retain(f, payload, nodes, ids, report, retain, path) do
+    retain = retain_reset(retain, path, f.ordinal, nil)
+
+    with {_len, <<15, count_rest::binary>>} <- leb(payload),
+         {n, elems} <- leb(count_rest) do
+      check_wire_count(n, f, report)
+      {n, report} = clamp_count(n, f, report)
+
+      {value, report, retain} =
+        read_unions_retain(f, elems, n, nodes, ids, [], report, retain, path, 0)
+
+      clamp_retain(value, f, report, retain)
+    else
+      {_len, _other} -> {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+      _ -> {:cont, [], %{report | malformed: true}, retain}
+    end
+  end
+
+  defp read_unions_retain(_f, _rest, 0, _nodes, _ids, acc, report, retain, _path, _index),
+    do: {Enum.reverse(acc), report, retain}
+
+  defp read_unions_retain(f, rest, n, nodes, ids, acc, report, retain, path, index) do
+    case slice(rest, 15) do
+      {:ok, header, after_sub} ->
+        {_, value, report, retain} =
+          read_arm_retain(
+            f.elem,
+            f.ordinal,
+            header,
+            nodes,
+            ids,
+            report,
+            retain,
+            path ++ [{f.ordinal, index}]
+          )
+
+        read_unions_retain(
+          f,
+          after_sub,
+          n - 1,
+          nodes,
+          ids,
+          [value | acc],
+          report,
+          retain,
+          path,
+          index + 1
+        )
+
+      :error ->
+        {Enum.reverse(acc), %{report | malformed: true}, retain}
     end
   end
 
@@ -7816,7 +7912,14 @@ defmodule Bench.Table do
         slot
       )
     else
+      unknown_before = report.unknown
       {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+
+      report =
+        if f.elem_kind == 30,
+          do: %{report | retain_lost: report.retain_lost + report.unknown - unknown_before},
+          else: report
+
       {v, report, retain}
     end
   end

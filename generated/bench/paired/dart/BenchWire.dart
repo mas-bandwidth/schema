@@ -641,7 +641,7 @@ final class TableWireReader {
       edges = parent.edges,
       nodeIndex = parent.nodeIndex;
 
-  bool has(int n) => n >= 0 && pos + n <= limit;
+  bool has(int n) => n >= 0 && n <= limit - pos;
 
   int readByte() {
     final v = data[pos];
@@ -813,6 +813,7 @@ final class TableWireReader {
       if (id == keyId) {
         mapKeyAt = s.pos - 1;
         if (kind != keyKind && keyWidens.contains(kind)) {
+          kindBad = false; // the final key occurrence replaces its prior kind
           widened = 4;
           if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
           continue;
@@ -4548,9 +4549,8 @@ int fixedTableWireMeasure(Uint8List data) {
       seen = true;
       if (kind != 12) { unframed = true; continue; }
       final len = r.readLeb();
-      if (len == null) { unframed = true; continue; }
+      if (len == null || !r.has(len)) { unframed = true; continue; }
       final end = r.pos + len;
-      if (end > r.limit) { unframed = true; continue; }
       pstart = r.pos;
       pend = end;
       r.pos = end;

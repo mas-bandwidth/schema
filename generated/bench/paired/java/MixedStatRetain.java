@@ -16,6 +16,9 @@ public final class MixedStatRetain {
     // loss, never retained silently.
     public static MixedStatVariable.Value loadRetain(
             byte[] data, TableRetain retain, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
         if (retain == null) {
             return MixedStatVariable.load(data, report);
         }

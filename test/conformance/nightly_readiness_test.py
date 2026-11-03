@@ -24,8 +24,8 @@ def native(package="gotable", name="TestReady", action="pass", output=""):
         {"Package":pkg,"Action":"pass"}])
 
 
-def fuzz(arm="plain", seed=1, lang=""):
-    prefix = "wire-fuzz" + ("-builder" if lang == "dart" else "") + (" retain" if arm == "retain" else "")
+def fuzz(arm="plain", seed=1, lang="", builder=False):
+    prefix = "wire-fuzz" + ("-builder" if builder else "-mixed-builder" if lang in ("dart", "js") else "") + (" retain" if arm == "retain" else "")
     return f"{prefix}: seed {seed}, 41 seeds over 20 roots, 30 enumerated + 100000 random = 100030 mutants, 0 divergences, 1.0 s, 100030 mutants/s"
 
 
@@ -54,6 +54,8 @@ class FakeRunner(m.Runner):
         elif name.startswith("wire-plain-") or (name.startswith("wire-retain-") and name[-1:].isdigit()):
             _,arm,seed = name.split("-")
             text = fuzz(arm,int(seed),self.lang)
+        elif name.startswith("wire-builder-"):
+            text = fuzz("plain", int(name.rsplit("-", 1)[1]), self.lang, builder=True)
         elif name.startswith("packet-"):
             text = "OK"
             if name == "packet-schema_test_random":
@@ -124,14 +126,15 @@ class Contracts(unittest.TestCase):
             for seed in (1,2,3):
                 self.assertEqual(m.fuzz_result(fuzz(arm,seed),arm,seed),[])
 
-    def test_dart_builder_profile_is_required_and_not_accepted_for_other_languages(self):
+    def test_dart_mixed_builder_profile_is_required_and_not_accepted_for_other_languages(self):
         for arm in ("plain", "retain"):
             for seed in (1, 2, 3):
                 builder = fuzz(arm, seed, "dart")
                 self.assertEqual(m.fuzz_result(builder, arm, seed, "dart"), [])
                 self.assertTrue(m.fuzz_result(fuzz(arm, seed), arm, seed, "dart"))
+                self.assertTrue(m.fuzz_result(builder.replace("-mixed-builder", "-builder"), arm, seed, "dart"))
                 for lang in m.LANGUAGES:
-                    if lang != "dart":
+                    if lang not in ("dart", "js"):
                         self.assertTrue(m.fuzz_result(builder, arm, seed, lang))
                 for text in ("", builder + "\n" + builder,
                              builder.replace("41 seeds", "0 seeds"),
@@ -142,6 +145,25 @@ class Contracts(unittest.TestCase):
                              builder.replace("20 roots,", "20 roots, 1 seeds absent,"),
                              builder.replace("20 roots,", "20 roots, 1 non-finite mutants not compared,")):
                     self.assertTrue(m.fuzz_result(text, arm, seed, "dart"))
+
+    def test_dart_mixed_profile_requires_full_plain_roster(self):
+        for seed in (1, 2, 3):
+            plain = fuzz("plain", seed, "dart").replace("20 roots,", "20 roots, 4 seeds outside the arm,")
+            self.assertTrue(m.fuzz_result(plain, "plain", seed, "dart"))
+            retain = fuzz("retain", seed, "dart").replace("20 roots,", "20 roots, 4 seeds outside the arm,")
+            self.assertEqual(m.fuzz_result(retain, "retain", seed, "dart"), [])
+
+    def test_javascript_mixed_profile_keeps_full_roster_and_exact_counts(self):
+        for arm in ("plain", "retain"):
+            for seed in (1, 2, 3):
+                text = fuzz(arm, seed, "js")
+                self.assertEqual(m.fuzz_result(text, arm, seed, "js"), [])
+                for broken in (fuzz(arm, seed), text.replace("-mixed-builder", "-builder"),
+                               text.replace("100000 random", "0 random"),
+                               text.replace("20 roots", "0 roots")):
+                    self.assertTrue(m.fuzz_result(broken, arm, seed, "js"))
+                if arm == "plain":
+                    self.assertTrue(m.fuzz_result(text.replace("20 roots,", "20 roots, 1 seeds outside the arm,"), arm, seed, "js"))
 
     def test_retaining_outside_domain_is_not_missing_codec(self):
         text=fuzz("retain").replace("20 roots,", "20 roots, 4 seeds outside the arm,")
@@ -244,11 +266,49 @@ class Contracts(unittest.TestCase):
                         self.assertIn("-timeout=0",argv,(name,argv))
                     if name.startswith("wire-plain-") or (name.startswith("wire-retain-") and name[-1:].isdigit()):
                         self.assertNotIn("--finite-owed",argv)
-                        self.assertEqual("--builder" in argv, lang == "dart")
+                        self.assertEqual("--mixed-builder" in argv, lang in ("dart", "js"))
+                        self.assertNotIn("--builder", argv)
                         self.assertEqual(argv[argv.index("--n")+1],"100000")
                 runner.temporary.cleanup()
         finally:
             m.Runner=real
+
+    def test_cs_profiles_are_distinct_and_both_mandatory(self):
+        runner = FakeRunner(ROOT, "cs")
+        try:
+            m.run_fuzz(runner, "cs")
+            region = [(name, argv) for name, argv, _ in runner.calls
+                      if name.startswith(("wire-plain-", "wire-retain-"))]
+            builder = [(name, argv) for name, argv, _ in runner.calls
+                       if name.startswith("wire-builder-")]
+            self.assertEqual(len(region), 6)
+            self.assertEqual(len(builder), 3)
+            for name, argv in region:
+                self.assertIn("wire-fuzz-region", argv[argv.index("--driver")+1])
+                self.assertNotIn("--builder", argv)
+                self.assertEqual("--retain" in argv, name.startswith("wire-retain-"))
+            for name, argv in builder:
+                self.assertIn("wire-fuzz-builder", argv[argv.index("--driver")+1])
+                self.assertIn("--builder", argv)
+                self.assertNotIn("--retain", argv)
+                self.assertEqual(argv[argv.index("--n")+1], "100000")
+                self.assertIn(name, m.required_phases("cs"))
+            for seed in m.SEEDS:
+                region_text = fuzz("plain", seed)
+                builder_text = fuzz("plain", seed, builder=True)
+                self.assertEqual(m.fuzz_result(builder_text, "plain", seed, "cs", builder=True), [])
+                self.assertTrue(m.fuzz_result(region_text, "plain", seed, "cs", builder=True))
+                self.assertTrue(m.fuzz_result(builder_text, "plain", seed, "cs"))
+                outside = builder_text.replace("20 roots,", "20 roots, 120 seeds outside the arm,")
+                self.assertEqual(m.fuzz_result(outside, "plain", seed, "cs", builder=True), [])
+                self.assertTrue(m.fuzz_result(outside, "plain", seed, "cs"))
+                for text in ("", builder_text+"\n"+builder_text,
+                             builder_text.replace("100000 random", "0 random"),
+                             builder_text.replace("20 roots,", "20 roots, 1 seeds absent,"),
+                             builder_text.replace("20 roots,", "20 roots, 1 non-finite mutants not compared,")):
+                    self.assertTrue(m.fuzz_result(text, "plain", seed, "cs", builder=True))
+        finally:
+            runner.temporary.cleanup()
 
     def test_omitted_native_fuzz_or_controls_fail_actual_main_contract(self):
         real_runner=m.Runner
@@ -300,7 +360,7 @@ class Contracts(unittest.TestCase):
         self.assertTrue(m.packet_result("OK (0 iterations, seed 2)",random=True))
 
     def test_every_native_retirement_requires_exact_marker_and_current_replacement(self):
-        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),49)
+        self.assertEqual(sum(map(len,m.RETIRED_NATIVE.values())),52)
         for lang, entries in m.RETIRED_NATIVE.items():
             for marker, required in entries.items():
                 with self.subTest(lang=lang,marker=marker), contextlib.redirect_stdout(io.StringIO()):
