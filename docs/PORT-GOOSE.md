@@ -155,8 +155,18 @@ generic parameters, and everything is monomorphized. So the ONE runtime walk
 per form is a generic function in that form's runtime file, specialized per
 table at compile time: it reads the descriptor for every decision (kinds,
 bounds, defaults, ids, keys) and reaches the record's storage through a
-per-table accessor the form's card emits (a `match` on the field ordinal),
-the only per-table code a form writes.
+per-table accessor the form's card emits (a `match` on the field ordinal).
+Goose bounds a chain of one generic declaration's specializations at 16 on
+one call path (its spec's §7.8), so a walk whose generic container reader
+calls the accessor, which calls the container reader for the next level,
+compiles only 16 levels deep. The JSON text form, whose depth reaches
+json_max_depth (128), therefore inverts the call: each table and union gets
+its own reader and writer (`_<T>JsonReadTable`, `_<U>JsonReadUnion` and
+their writers), a loop that asks the runtime's non-generic container steps
+(`json_table_next`, `json_array_next`, `json_keyed_next`,
+`json_union_open`) for the next key or slot and calls the accessor in
+between. A nested value is then a plain call to its type's reader, and no
+runtime function calls back into generated code.
 
 ## THE NUMBER MODEL
 

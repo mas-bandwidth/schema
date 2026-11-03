@@ -1303,59 +1303,100 @@ fn json_read_flags<T>(jr: JsonIn&, slot: T&, names: const (const u8[:])[:], dept
     return true;
 }
 
-// json_read_array places a [N]T or a [..N]T: the caller has put every slot
+// THE CONTAINER STEPS. The walk never calls back into a table's accessor: a
+// container is read by a loop the accessor itself runs, asking a step
+// function for the next slot or key and placing the value in between. So
+// nesting depth is a chain of plain calls through the per-type readers, never
+// a chain of generic specializations, and a schema nests as deep as
+// JsonMaxDepth allows (Goose bounds a chain of one generic declaration's
+// specializations at 16, §7.8).
+
+// JsonSeq is one array's or keyed object's read in progress: placed is the
+// slots placed (the array's count), index the slot the caller fills next,
+// after whether a value was read that the separator check still follows,
+// and ok the read's verdict once the step answers false.
+struct JsonSeq {
+    open: bool,
+    after: bool,
+    ok: bool,
+    placed: i64,
+    index: i64,
+    seen: u64[8],
+}
+
+// json_array_next steps a [N]T or a [..N]T: the caller has put every slot
 // back at its default (a repeated key replaces the whole array); past the
 // bound the excess is dropped and counted, a wrong-shaped element is
-// kind_mismatch and keeps its slot, and the count is the elements placed
-// (§16.2). F(jr, index, depth) reads one element.
-fn json_read_array<F>(jr: JsonIn&, count: i32&, bound: i64, shape: u8, depth: i64) -> bool {
-    if !json_expect(jr, '[') { return false; }
-    var placed: i64 = 0;
+// kind_mismatch and keeps its slot, and placed is the count (§16.2). True
+// asks the caller to read element s.index at depth + 1; false ends the
+// array, with s.ok the verdict.
+fn json_array_next(jr: JsonIn&, s: JsonSeq&, bound: i64, shape: u8, depth: i64) -> bool {
+    if !s.open {
+        s.open = true;
+        if !json_expect(jr, '[') { return false; }
+    }
     loop {
+        if s.after {
+            s.after = false;
+            if !json_after_value(jr, ']') {
+                s.ok = !jr.bad;
+                return false;
+            }
+        }
         let c = json_peek(jr);
         if c == ']' {
             jr.pos += 1;
-            break;
+            s.ok = true;
+            return false;
         }
         if c == 0 { return json_fail(jr); }
-        if placed >= bound {
+        s.after = true;
+        if s.placed >= bound {
             jr.rep.clamped += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else if json_shape(jr) != shape {
             jr.rep.kind_mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
-            placed += 1;
+            s.placed += 1;
         } else {
-            if !F(jr, placed, depth + 1) { return false; }
-            placed += 1;
-        }
-        if !json_after_value(jr, ']') {
-            if jr.bad { return false; }
-            break;
+            s.index = s.placed;
+            s.placed += 1;
+            return true;
         }
     }
-    count = placed as! i32;
-    return true;
 }
 
-// json_read_keyed places an [E]T, an object keyed by VARIANT NAME: slot i
+// json_keyed_next steps an [E]T, an object keyed by VARIANT NAME: slot i
 // holds the key i + 1 (nothing is stored for None, so "None" names no slot);
 // a repeated variant is last-wins and counted, an unknown one counted
-// (§16.2). The caller has put every slot back at its default.
-fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
-    if !json_expect(jr, '{') { return false; }
-    var seen: u64[8] = [0; 8];
+// (§16.2). The caller has put every slot back at its default. True asks the
+// caller to read slot s.index at depth + 1; false ends the object, with s.ok
+// the verdict.
+fn json_keyed_next(jr: JsonIn&, s: JsonSeq&, names: const (const u8[:])[:], shape: u8, depth: i64) -> bool {
+    if !s.open {
+        s.open = true;
+        if !json_expect(jr, '{') { return false; }
+    }
     loop {
+        if s.after {
+            s.after = false;
+            if !json_after_value(jr, '}') {
+                s.ok = !jr.bad;
+                return false;
+            }
+        }
         let c = json_peek(jr);
         if c == '}' {
             jr.pos += 1;
-            break;
+            s.ok = true;
+            return false;
         }
         if c == 0 { return json_fail(jr); }
         var key: u8[256] = [0; 256];
         let n, ok = json_key(jr, key);
         if !ok { return false; }
         if !json_expect(jr, ':') { return false; }
+        s.after = true;
         var slot: i64 = -1;
         var v: i64 = 0;
         while v < names.len {
@@ -1367,8 +1408,8 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         }
         if slot >= 0 && slot < 512 {
             let bit = (1 as u64) << ((slot & 63) as! u64);
-            if (seen[slot >> 6] & bit) != 0 { jr.rep.duplicate += 1; }
-            seen[slot >> 6] |= bit;
+            if (s.seen[slot >> 6] & bit) != 0 { jr.rep.duplicate += 1; }
+            s.seen[slot >> 6] |= bit;
         }
         if slot < 0 {
             jr.rep.unknown += 1;
@@ -1376,26 +1417,32 @@ fn json_read_keyed<F>(jr: JsonIn&, names: const (const u8[:])[:], shape: u8, dep
         } else if json_shape(jr) != shape {
             jr.rep.kind_mismatch += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
-        } else if !F(jr, slot, depth + 1) {
-            return false;
-        }
-        if !json_after_value(jr, '}') {
-            if jr.bad { return false; }
-            break;
+        } else {
+            s.index = slot;
+            return true;
         }
     }
-    return true;
 }
 
-// json_read_union places a union: an object with ONE key, the arm's name;
-// `{}` is None, an unknown arm counts unknown, an arm value of the wrong
-// shape is kind_mismatch, and two keys is malformed (§16.2). F(jr, u, tag,
-// op, depth) reads an arm (JsonOpRead) or sets the tag (JsonOpTag).
-fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const u8[:], depth: i64) -> bool {
+// JsonArm is one union's read in progress: tag is the arm the text names (0
+// for none), read whether the caller places its value at depth + 1, and
+// empty whether the text was `{}`.
+struct JsonArm {
+    tag: i64,
+    read: bool,
+    empty: bool,
+}
+
+// json_union_open reads a union's `{` and its key (§16.2): `{}` is None, an
+// unknown arm counts unknown, an arm value of the wrong shape is
+// kind_mismatch, and both are skipped. On true the caller sets the tag to
+// None, reads arm s.tag when s.read, sets the tag to s.tag when it is not 0,
+// and ends with json_union_close.
+fn json_union_open(jr: JsonIn&, s: JsonArm&, d: const UnionDesc&, shapes: const u8[:], depth: i64) -> bool {
     if !json_expect(jr, '{') { return false; }
-    if !F(jr, u, 0, JsonOpTag, depth) { return false; }
     if json_peek(jr) == '}' {
         jr.pos += 1;
+        s.empty = true;
         return true;
     }
     var key: u8[256] = [0; 256];
@@ -1413,18 +1460,22 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
     }
     if tag == 0 {
         jr.rep.unknown += 1;
-        if !json_skip_value(jr, depth + 1) { return false; }
-    } else if json_shape(jr) != shapes[a] {
-        jr.rep.kind_mismatch += 1;
-        if !json_skip_value(jr, depth + 1) { return false; }
-    } else {
-        if shapes[a] == 'z' {
-            if !json_literal(jr, "null") { return false; }
-        } else if !F(jr, u, tag, JsonOpRead, depth + 1) {
-            return false;
-        }
-        if !F(jr, u, tag, JsonOpTag, depth) { return false; }
+        return json_skip_value(jr, depth + 1);
     }
+    if json_shape(jr) != shapes[a] {
+        jr.rep.kind_mismatch += 1;
+        return json_skip_value(jr, depth + 1);
+    }
+    s.tag = tag;
+    if shapes[a] == 'z' { return json_literal(jr, "null"); }
+    s.read = true;
+    return true;
+}
+
+// json_union_close ends a union's object: one key, so a second is malformed
+// (§16.2).
+fn json_union_close(jr: JsonIn&, s: const JsonArm&) -> bool {
+    if s.empty { return true; }
     var c = json_peek(jr);
     if c == ',' {
         jr.pos += 1;
@@ -1437,31 +1488,58 @@ fn json_read_union<U, F>(jr: JsonIn&, u: U&, d: const UnionDesc&, shapes: const 
     return json_fail(jr);
 }
 
-// json_read_table places one object into one record: keys in any order,
+// JsonFields is one table's read in progress: index is the field the caller
+// acts on next and op what it does (JsonOpRead, JsonOpAbsent or
+// JsonOpPresent), present whether a read is followed by JsonOpPresent (an
+// optional), and ok the read's verdict once the step answers false.
+struct JsonFields {
+    open: bool,
+    after: bool,
+    ok: bool,
+    whole: bool,
+    present: bool,
+    index: i64,
+    op: i64,
+    seen: u64[8],
+}
+
+// json_table_next steps one object into one record: keys in any order,
 // unknown keys skipped and counted, a repeated key last-wins and counted
 // (fields below index 512), an `&` key malformed (it is the form's, §16.7),
 // a key of the wrong JSON type kind_mismatch, an optional's null ABSENT
-// (docs/SPEC-TABLES.md §16.2). F(jr, rec, ordinal, op, depth) is the
-// table's accessor; shapes[i] is field i's JSON type.
-fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: const u8[:], depth: i64) -> bool {
-    if depth > JsonMaxDepth { return json_fail(jr); }
-    if d.json_array && d.fields.len == 1 {
-        if json_peek(jr) != '[' { return json_fail(jr); }
-        if !F(jr, rec, 0, JsonOpRead, depth) {
-            if jr.zero && jr.rep.reason == 0 {
-                jr.rep.reason = JsonReasonHoldsZero;
-            }
-            return false;
+// (docs/SPEC-TABLES.md §16.2); shapes[i] is field i's JSON type. A
+// `json = "array"` table with one field is that field's array. True asks the
+// caller to apply s.op to field s.index at depth; false ends the object, with
+// s.ok the verdict. A refused read goes through json_table_refused.
+fn json_table_next(jr: JsonIn&, s: JsonFields&, d: const TableDesc&, shapes: const u8[:], depth: i64) -> bool {
+    if !s.open {
+        s.open = true;
+        if depth > JsonMaxDepth { return json_fail(jr); }
+        if d.json_array && d.fields.len == 1 {
+            if json_peek(jr) != '[' { return json_fail(jr); }
+            s.whole = true;
+            s.index = 0;
+            s.op = JsonOpRead;
+            return true;
         }
-        return true;
+        if !json_expect(jr, '{') { return false; }
+    } else if s.whole {
+        s.ok = true;
+        return false;
     }
-    if !json_expect(jr, '{') { return false; }
-    var seen: u64[8] = [0; 8];
     loop {
+        if s.after {
+            s.after = false;
+            if !json_after_value(jr, '}') {
+                s.ok = !jr.bad;
+                return false;
+            }
+        }
         let c = json_peek(jr);
         if c == '}' {
             jr.pos += 1;
-            return true;
+            s.ok = true;
+            return false;
         }
         if c == 0 { return json_fail(jr); }
         var key: u8[256] = [0; 256];
@@ -1481,39 +1559,51 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
             jr.rep.reason = JsonReasonReservedKey;
             return json_fail(jr);
         }
+        s.after = true;
         if index < 0 {
             jr.rep.unknown += 1;
             if !json_skip_value(jr, depth + 1) { return false; }
         } else {
             if index < 512 {
                 let bit = (1 as u64) << ((index & 63) as! u64);
-                if (seen[index >> 6] & bit) != 0 { jr.rep.duplicate += 1; }
-                seen[index >> 6] |= bit;
+                if (s.seen[index >> 6] & bit) != 0 { jr.rep.duplicate += 1; }
+                s.seen[index >> 6] |= bit;
             }
             let got = json_shape(jr);
             let optional = d.fields[index].optional;
+            s.index = index;
+            s.present = false;
             if optional && got == 'z' {
                 if !json_literal(jr, "null") { return false; }
-                if !F(jr, rec, index, JsonOpAbsent, depth) { return false; }
-            } else if got != shapes[index] {
+                s.op = JsonOpAbsent;
+                return true;
+            }
+            if got != shapes[index] {
                 // the wrong JSON type for the kind: skipped and counted, and
                 // the KEY is still presence (§16.2), so an optional field is
                 // present at the value it already held
                 jr.rep.kind_mismatch += 1;
                 if !json_skip_value(jr, depth + 1) { return false; }
-                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }
-            } else {
-                if !F(jr, rec, index, JsonOpRead, depth) {
-                    if jr.zero && jr.rep.reason == 0 {
-                        jr.rep.reason = JsonReasonHoldsZero;
-                    }
-                    return false;
+                if optional {
+                    s.op = JsonOpPresent;
+                    return true;
                 }
-                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }
+            } else {
+                s.op = JsonOpRead;
+                s.present = optional;
+                return true;
             }
         }
-        if !json_after_value(jr, '}') { return !jr.bad; }
     }
+}
+
+// json_table_refused ends a table's read whose value read was refused: a
+// value its kind cannot hold at zero names that reason (§16.3).
+fn json_table_refused(jr: JsonIn&, s: const JsonFields&) -> bool {
+    if s.op == JsonOpRead && jr.zero && jr.rep.reason == 0 {
+        jr.rep.reason = JsonReasonHoldsZero;
+    }
+    return false;
 }
 
 // json_finish closes a read: whitespace and comments after the root object
@@ -1707,127 +1797,105 @@ fn json_write_flags<T>(out: u8[>..]&, v: T, names: const (const u8[:])[:], depth
     return true;
 }
 
-// json_write_array writes count elements in index order; F(out, i, depth)
-// writes one.
-fn json_write_array<F>(out: u8[>..]&, count: i64, depth: i64) -> bool {
-    if count == 0 {
-        out.append("[]");
-        return true;
-    }
-    out.push('[');
-    var i: i64 = 0;
-    while i < count {
-        if i > 0 { out.push(','); }
-        json_line(out, depth + 1);
-        if !F(out, i, depth + 1) { return false; }
-        i += 1;
-    }
-    json_line(out, depth);
-    out.push(']');
-    return true;
+// The writes run the same way: the accessor loops over a container and calls
+// these to place the punctuation, so no write calls back into it either.
+
+// json_write_open begins an array or object of count entries, or writes the
+// whole empty one, `[]` or `{}`.
+fn json_write_open(out: u8[>..]&, count: i64, open: u8, close: u8) {
+    out.push(open);
+    if count == 0 { out.push(close); }
 }
 
-// json_write_keyed writes an [E]T as an object keyed by variant name, one
-// entry per slot (§16.2).
-fn json_write_keyed<F>(out: u8[>..]&, names: const (const u8[:])[:], depth: i64) -> bool {
-    if names.len == 0 {
+// json_write_item begins entry i of an open array: its separator and line.
+fn json_write_item(out: u8[>..]&, i: i64, depth: i64) {
+    if i > 0 { out.push(','); }
+    json_line(out, depth + 1);
+}
+
+// json_write_key begins entry i of an open object: its separator, line and
+// key.
+fn json_write_key(out: u8[>..]&, i: i64, name: const u8[:], depth: i64) {
+    if i > 0 { out.push(','); }
+    json_line(out, depth + 1);
+    json_put_string(out, name);
+    out.append(": ");
+}
+
+// json_write_field begins a table's n-th written key, the first opening the
+// object (§16.1, §16.2): a table writes every field in declaration order,
+// defaults included, an absent optional as no key.
+fn json_write_field(out: u8[>..]&, n: i64, name: const u8[:], depth: i64) {
+    if n == 0 { out.push('{'); }
+    json_write_key(out, n, name, depth);
+}
+
+// json_write_fields_end ends a table's object of n keys; none is `{}`.
+fn json_write_fields_end(out: u8[>..]&, n: i64, depth: i64) {
+    if n == 0 {
         out.append("{}");
-        return true;
-    }
-    out.push('{');
-    var i: i64 = 0;
-    while i < names.len {
-        if i > 0 { out.push(','); }
-        json_line(out, depth + 1);
-        json_put_string(out, names[i]);
-        out.append(": ");
-        if !F(out, i, depth + 1) { return false; }
-        i += 1;
+        return;
     }
     json_line(out, depth);
     out.push('}');
-    return true;
 }
 
-// json_write_union writes a union as an object with ONE key, the arm's name,
-// and `{}` for None; a tag no arm names is refused (§16.2, §16.3).
-fn json_write_union<U, F>(out: u8[>..]&, u: const U&, d: const UnionDesc&, tag: i64, depth: i64) -> bool {
+// json_write_close ends an array or object of count entries begun by
+// json_write_open.
+fn json_write_close(out: u8[>..]&, count: i64, close: u8, depth: i64) {
+    if count == 0 { return; }
+    json_line(out, depth);
+    out.push(close);
+}
+
+// json_write_arm begins a union as an object with ONE key, the arm's name:
+// tag 0 (None) is `{}` and a payload-free arm's value is null, both written
+// whole (answer 0); a tag no arm names is refused (answer -1, §16.2, §16.3);
+// otherwise the caller writes the arm's value at depth + 1 and closes with
+// json_write_close (answer 1).
+fn json_write_arm(out: u8[>..]&, d: const UnionDesc&, tag: i64, depth: i64) -> i64 {
     if tag == 0 {
         out.append("{}");
-        return true;
+        return 0;
     }
     var a: i64 = 0;
     while a < d.arms.len && d.arms[a].tag != tag { a += 1; }
-    if a >= d.arms.len { return false; }
+    if a >= d.arms.len { return -1; }
     out.push('{');
-    json_line(out, depth + 1);
-    json_put_string(out, d.arms[a].name);
-    out.append(": ");
+    json_write_key(out, 0, d.arms[a].name, depth);
     if d.arms[a].shape == ShapeVoid {
         out.append("null");
-    } else if !F(out, u, tag, depth + 1) {
-        return false;
+        json_write_close(out, 1, '}', depth);
+        return 0;
     }
-    json_line(out, depth);
-    out.push('}');
-    return true;
-}
-
-// json_write_table writes one record as one object, every field in
-// declaration order, defaults included, an absent optional as no key
-// (§16.1, §16.2). F(out, rec, ordinal, op, depth) is the table's accessor:
-// JsonOpAsk answers whether the key is written, JsonOpWrite writes its value.
-fn json_write_table<T, F>(out: u8[>..]&, rec: const T&, d: const TableDesc&, depth: i64) -> bool {
-    if depth > JsonMaxDepth { return false; }
-    if d.json_array && d.fields.len == 1 {
-        return F(out, rec, 0, JsonOpWrite, depth);
-    }
-    var any = false;
-    var i: i64 = 0;
-    while i < d.fields.len {
-        if F(out, rec, i, JsonOpAsk, depth) {
-            if any { out.push(','); } else { out.push('{'); }
-            any = true;
-            json_line(out, depth + 1);
-            json_put_string(out, d.fields[i].json);
-            out.append(": ");
-            if !F(out, rec, i, JsonOpWrite, depth + 1) { return false; }
-        }
-        i += 1;
-    }
-    if !any {
-        out.append("{}");
-        return true;
-    }
-    json_line(out, depth);
-    out.push('}');
-    return true;
+    return 1;
 }
 
 // json_from reads one root from one text, tolerantly (docs/SPEC-TABLES.md
 // §16.1): false (and report.malformed) when the text is not JSON or a value
 // is refused by name; the caller then puts the record back at its defaults.
-fn json_from<T, F>(rec: T&, d: const TableDesc&, shapes: const u8[:], text: const u8[:], report: JsonReport&) -> bool {
+// F(jr, rec, depth) is the root table's reader.
+fn json_from<T, F>(rec: T&, text: const u8[:], report: JsonReport&) -> bool {
     var jr = json_in(text);
-    let ok = json_read_table(jr, rec, d, shapes, 0, F);
+    let ok = F(jr, rec, 0);
     return json_finish(jr, ok, report);
 }
 
 // json_to appends one record's canonical text, ending in exactly one newline,
 // and answers its length, or -1 (nothing appended) for a value the form
-// cannot spell (§16.1, §16.3).
-fn json_to<T, F>(rec: const T&, d: const TableDesc&, out: u8[>..]&) -> i64 {
+// cannot spell (§16.1, §16.3). F(out, rec, depth) is the root table's writer.
+fn json_to<T, F>(rec: const T&, out: u8[>..]&) -> i64 {
     var text: u8[>..] = [];
-    if !json_write_table(text, rec, d, 0, F) { return -1; }
+    if !F(text, rec, 0) { return -1; }
     text.push('\n');
     out.append(text);
     return text.len;
 }
 
 // json_measure is json_to's exact length, or -1.
-fn json_measure<T, F>(rec: const T&, d: const TableDesc&) -> i64 {
+fn json_measure<T, F>(rec: const T&) -> i64 {
     var text: u8[>..] = [];
-    if !json_write_table(text, rec, d, 0, F) { return -1; }
+    if !F(text, rec, 0) { return -1; }
     return text.len + 1;
 }
 
