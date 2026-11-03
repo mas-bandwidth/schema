@@ -79,6 +79,7 @@ struct LoadReport {
 // answers the strict read's one reason for any load.
 let LoadRefuseOk: i64 = 0;
 let LoadRefuseUnknownForm: i64 = 9;
+let LoadRefuseCountOverExtentCap: i64 = 11;
 let LoadRefuseWireDamaged: i64 = 16;
 let LoadRefuseMalformed: i64 = 17;
 let LoadRefuseClamped: i64 = 18;
@@ -93,6 +94,7 @@ let LoadRefuseMessageFormAsFile: i64 = 27;
 fn load_refusal_name(code: i64) -> const u8[:] {
     return match code {
         LoadRefuseUnknownForm => "unknown_form",
+        LoadRefuseCountOverExtentCap => "count_over_extent_cap",
         LoadRefuseWireDamaged => "wire_damaged",
         LoadRefuseMalformed => "malformed",
         LoadRefuseClamped => "clamped",
@@ -111,10 +113,11 @@ fn load_refusal_name(code: i64) -> const u8[:] {
 // TableReport.Err and <T>ReadStrict, in their order): a non-finite float,
 // then a form byte this reader does not carry (unknown_form, whose report
 // names which), a failed integrity trailer, damage the verdict names
-// (wire_damaged) apart from a malformed body (malformed), then blob_shared,
-// clamped and kind_mismatch. A load that read nothing whole (no root, or a
-// walk that stopped: §2.9's count past the storage cap is one) and whose
-// report names none of them is wire_damaged, as ReadStrict answers it. It is
+// (wire_damaged) apart from a malformed body (malformed), then a builder's
+// count past the int32 storage cap (count_over_extent_cap, §2.9), then
+// blob_shared, clamped and kind_mismatch. A load that read nothing whole (no
+// root, or a walk that stopped) and whose report names none of them is
+// wire_damaged, as ReadStrict answers it. It is
 // 0 for a load the strict read keeps: a clean one, or one whose only events
 // are unknown, widened, duplicate or retained.
 fn load_error(report: const LoadReport&, root: i64) -> i64 {
@@ -123,6 +126,7 @@ fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.reason == LoadRefuseIntegrityMismatch { return LoadRefuseIntegrityMismatch; }
     if report.damaged { return LoadRefuseWireDamaged; }
     if report.malformed { return LoadRefuseMalformed; }
+    if report.count_refused { return LoadRefuseCountOverExtentCap; }
     if report.blob_shared > 0 { return LoadRefuseBlobShared; }
     if report.clamped > 0 { return LoadRefuseClamped; }
     if report.kind_mismatch > 0 { return LoadRefuseKindMismatch; }

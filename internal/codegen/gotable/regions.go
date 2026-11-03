@@ -295,7 +295,7 @@ func (a *TableArena) grab(bytes int64) (int64,int64) {
  if a.segments[first].Load()==nil { a.mutex.Lock();if a.segments[first].Load()==nil { n:=(last-first+1)*tableArenaSegmentBytes;if first==0 && a.first>0 && last==0 {n=a.first};data:=a.Allocator.alloc(n);if data==nil {a.mutex.Unlock();return 0,0};clear(data);for i:=first;i<=last;i++ {a.storage[i]=tableArenaSegment{data:data[(i-first)*tableArenaSegmentBytes:],owned:i==first};a.segments[i].Store(&a.storage[i])} };a.mutex.Unlock() }
  return int64(at),int64(end)
 }
-type TableWorker struct { Arena *TableArena; front,end int64; refused bool }
+type TableWorker struct { Arena *TableArena; front,end int64; refused TableRefuseReason }
 func (w *TableWorker) Alloc(n int64) (unsafe.Pointer,TableRef) { if w==nil || w.Arena==nil || w.Arena.Locked || n<=0 {return nil,0};n=tableRegionRound(n);if n>tableArenaSlabBytes {at,_:=w.Arena.grab(n);return w.Arena.At(at),at};if w.front+n>w.end {w.front,w.end=w.Arena.grab(n);if w.front==0{return nil,0}};at:=w.front;w.front+=n;return w.Arena.At(at),at }
 func tableOptionalArena(a []*TableArena) *TableArena { if len(a)>0 {return a[0]};return nil }
 func tableRefAt(slot *TableRef,a *TableArena) unsafe.Pointer { if slot==nil || *slot==0 {return nil};if a!=nil{return a.At(*slot)};return unsafe.Add(unsafe.Pointer(slot),*slot) }
@@ -436,15 +436,15 @@ func TableStringEmplace(worker *TableWorker,slot *TableRef,text []byte) []byte {
 // the builder's allocator and never becomes part of the packed region.
 const tableBuilderLoadSource = `
 func tableBuilderLoad(p unsafe.Pointer,ref TableRef,worker *TableWorker,wire []byte,root *TableTypeInfo,nodeType func(uint64)*TableTypeInfo,blobs int,report *TableReport) (loaded bool) {
- if report==nil {var ignored TableReport;report=&ignored};pre:=report.Malformed;report.Malformed=false;defer func(){if !loaded&&p!=nil{root.Reset(p)};report.Malformed=report.Malformed||pre}();r,verdict:=tableOpenFramed(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged {report.Malformed=true}else{report.Reason="newer_form";if len(wire)>0&&wire[0]==2{report.Reason="message_form_as_file"}};return false};if p==nil||worker==nil||worker.Arena==nil||worker.Arena.Locked {report.Malformed=true;return false};worker.refused=false // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
+ if report==nil {var ignored TableReport;report=&ignored};pre:=report.Malformed;report.Malformed=false;defer func(){if !loaded&&p!=nil{root.Reset(p)};if !loaded&&report.Verdict==TableOpenOk&&!report.Malformed&&worker.refused==TableRefuseCountOverExtentCap{report.Reason=TableRefuseCountOverExtentCap.Error()};report.Malformed=report.Malformed||pre}();r,verdict:=tableOpenFramed(wire,report);report.Verdict=verdict;if verdict!=TableOpenOk {if verdict==TableOpenDamaged {report.Malformed=true}else{report.Reason="newer_form";if len(wire)>0&&wire[0]==2{report.Reason="message_form_as_file"}};return false};if p==nil||worker==nil||worker.Arena==nil||worker.Arena.Locked {report.Malformed=true;return false};worker.refused=TableRefuseOk // docs/SPEC-TABLES.md §3 (THE FIRST BYTE), §6.5
  scan:=tableNodeScanBegin(r);for {_,_,ok:=scan.next();if !ok{break}};count:=int64(scan.records+1);memory:=worker.Arena.Allocator.alloc(count*16);if memory==nil {report.Malformed=true;return false};defer worker.Arena.Allocator.free(memory);clear(memory);directory:=unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])),int(count));directory[0]=TableNodeDirEntry{uint64(ref),root.ID};nodes:=TableNodeMap{Entries:directory,Arena:true};nodes.Once=true;nodes.Indexed=true
  scan=tableNodeScanBegin(r);k:=1;unknown:=int32(0)
  for {id,body,ok:=scan.next();if !ok{break};directory[k]=TableNodeDirEntry{^uint64(0),id};t:=nodeType(id);isblob:=id==tableBytesTypeID&&blobs&1!=0||id==tableStringTypeID&&blobs&2!=0
  if t==nil&&!isblob {unknown++;k++;continue};if id==tableStringTypeID&&!tableUTF8Valid(body.Buffer) {report.Malformed=true;k++;continue};size:=int64(0);if t!=nil {size=int64(t.Size)}else{if uint64(len(body.Buffer))>math.MaxUint32{return false};size=8+int64(len(body.Buffer));if id==tableStringTypeID{size++}};node,at:=worker.Alloc(size);if node==nil {report.Malformed=true;return false};directory[k].Offset=uint64(at);if t!=nil{t.Reset(node)}else{*(*TableBlob)(node)=TableBlob{Length:uint32(uint64(len(body.Buffer)))};copy(unsafe.Slice((*byte)(unsafe.Add(node,8)),len(body.Buffer)),body.Buffer)};k++ }
  nodes.Good=scan.whole();if nodes.Good{report.Unknown+=unknown}else{report.Malformed=true}
- if nodes.Good {scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset)));if worker.refused{return false}}};k++}}
+ if nodes.Good {scan=tableNodeScanBegin(r);k=1;for {id,body,ok:=scan.next();if !ok{break};if directory[k].Offset!=^uint64(0) {if t:=nodeType(id);t!=nil {body.Nodes=nodes;t.LoadBody(body,worker.Arena.At(int64(directory[k].Offset)));if worker.refused!=TableRefuseOk{return false}}};k++}}
  r.Nodes=nodes;r.Nested=false;ok:=root.LoadBody(r,p);if tableNonFiniteRefused(report){return false}
- if ok&&!worker.refused&&!report.Malformed&&!tableCycleCheck(p,root,worker.Arena,directory,nodeType){report.Malformed=true}
- return ok&&!worker.refused&&!report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4)
+ if ok&&worker.refused==TableRefuseOk&&!report.Malformed&&!tableCycleCheck(p,root,worker.Arena,directory,nodeType){report.Malformed=true}
+ return ok&&worker.refused==TableRefuseOk&&!report.Malformed // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4)
 }
 `

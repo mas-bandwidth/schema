@@ -182,6 +182,9 @@ if r.Reason=="truncated" {if r.Malformed {return tableTruncatedMalformed{}};retu
 if r.Reason=="reserved_not_zero" {return TableRefuseReservedNotZero}
 if r.Verdict==TableOpenRefused || r.Reason=="previous_form" || r.Reason=="newer_form" || r.Reason=="message_form_as_file" {return TableRefuseUnknownForm}
 if r.Reason=="integrity_mismatch" {return TableRefuseIntegrityMismatch}
+// A builder load that met a count above the int32 storage cap refused it by
+// name (docs/SPEC-TABLES.md §2.9): not damage, so Malformed stays false.
+if r.Reason=="count_over_extent_cap" {return TableRefuseCountOverExtentCap}
 if r.Verdict==TableOpenDamaged {return TableRefuseWireDamaged}
 if r.MissingRequired>0 {const p="missing_required: ";f:=r.Reason;if len(f)>=len(p)&&f[:len(p)]==p{f=f[len(p):]};return TableMissingRequired{Fields:f}}
 if r.Malformed {const p="malformed: ";if len(r.Reason)>len(p)&&r.Reason[:len(p)]==p{return TableMalformedField{Field:r.Reason[len(p):]}};return TableRefuseMalformed}
