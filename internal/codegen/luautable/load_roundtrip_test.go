@@ -471,9 +471,11 @@ func sameLoadedValue(got, want any) bool {
 		if !ok {
 			return false
 		}
-		g64, gexact := gv.Float64()
+		// the probe prints the double's shortest round-trip spelling, so the
+		// nearest double to it is the value it printed
+		g64, _ := gv.Float64()
 		w32, _ := wv.Float32()
-		return gexact && float64(w32) == g64
+		return float64(w32) == g64
 	case map[string]any:
 		w, ok := want.(map[string]any)
 		if !ok || len(w) != len(g) {
