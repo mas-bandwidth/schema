@@ -24,6 +24,8 @@
 //   wire         load every instance and save it back, byte for byte
 //   report       load every report row, print §4's counters and verdict,
 //                then the §16 text of the value when the read reads
+//   framing      load every framing row, print §4's counters and verdict and,
+//                for a clean read the row owes a value, the §16 text after it
 //   retain       load with retention (§6.6), print the load's three counters
 //                and the save's retain_lost
 //   retain-save  the bytes that retaining save writes back
@@ -122,6 +124,38 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
             text.append(json);
         }
         answer(f[1], text);
+    }
+}
+
+// surface_framing: the framing vectors (docs/LAYERS/1-framing.md): §4's
+// counters and verdict, then the §16 text of the value a clean read leaves,
+// unless the row is marked `no-value`. Damaged input owes the report line
+// alone, because damage discards the whole load (§4).
+fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || f[0] != "framing" || f[2] != unit { continue; }
+        var no_value = false;
+        for mark in f { if mark == "no-value" { no_value = true; } }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var report = schema_rt::LoadReport { .. };
+        let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        var out: u8[>..] = [];
+        out.append(str(report.unknown, ",", report.kind_mismatch, ",", report.widened, ",", report.clamped, ",",
+                       report.duplicate, ",", bool_word(report.malformed), ",",
+                       if report.refused || report.non_finite { "refused" } else { "read" }, "\n"));
+        if !no_value && root >= 0 && !report.malformed && !report.refused && !report.non_finite {
+            var json: u8[>..] = [];
+            if conformance_json_write(f[3], data, vals, nodes, root, json) < 0 {
+                write_stderr(str("driver: ", f[1], " JSON writer refused\n"));
+                exit(1);
+            }
+            out.append(json);
+        }
+        answer(f[1], out);
     }
 }
 
@@ -338,7 +372,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\nstrict-reason\n");
+        write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nstrict-reason\n");
         return;
     }
     if argv.len != 4 {
@@ -350,6 +384,7 @@ fn main() {
     let lines = split(text, '\n');
     let unit = argv[3];
     if argv[1] == "report" { surface_report(lines, unit); return; }
+    if argv[1] == "framing" { surface_framing(lines, unit); return; }
     if argv[1] == "wire" { surface_wire(lines, unit); return; }
     if argv[1] == "message" { surface_message(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }

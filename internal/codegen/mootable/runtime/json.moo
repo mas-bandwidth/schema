@@ -2788,7 +2788,7 @@ end
 -- the element record, whose presence frames it. An unbounded element
 -- (tl.bound < 0) is never clamped. A list with a total keeps the prefix whose
 -- bytes fit it: the first element past the total is dropped, counted clamped
--- once, and every later element skipped.
+-- once, and every later element skipped, an element past [..N] still counted.
 local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number): boolean
 	if peek(r) ~= 91 then
 		r.bad = true
@@ -2815,6 +2815,7 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 	local placed = 0
 	local spent = 0
 	local full = false
+	local seen = 0
 	local bound = if list then 2147483647 else fd.bound
 	while true do
 		local c = peek(r)
@@ -2831,7 +2832,12 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 		end
 		local before = placed
 		local s = valueShape(r)
+		seen += 1
 		if full then
+			-- the total dropped this element; one past [..N] is counted as well
+			if seen > bound then
+				r.report.clamped += 1
+			end
 			if not skipValue(r, depth + 1) then
 				return false
 			end

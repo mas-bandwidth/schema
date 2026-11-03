@@ -31,7 +31,7 @@ func TestDartTextListTotalNative(t *testing.T) {
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Totals"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(input), &r) || r.Clamped != 8 {
+	if !m.Read(v, []byte(input), &r) || r.Clamped != 10 {
 		t.Fatalf("independent JSON prefix %+v", r)
 	}
 	expected := m.New(u.Tables["Totals"])
@@ -72,7 +72,7 @@ Uint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.p
 void main(){
 `)
 	fmt.Fprintf(&b, `final expected=bytes(%q);final jr=w.TableTextReport();final v=w.totalsFromJson(%q,jr);
-check(jr.clamped==8&&jr.clampedField=='Totals.a'&&hex(w.totalsWireSave(v))==hex(expected),'shared JSON total prefix');
+check(jr.clamped==10&&jr.clampedField=='Totals.a'&&hex(w.totalsWireSave(v))==hex(expected),'shared JSON total prefix');
 final wr=w.TableWireReport();final back=w.totalsWireLoad(bytes(%q),wr);
 check(!wr.malformed&&!wr.refused&&wr.clamped==10&&wr.clampedField=='Totals.a'&&hex(w.totalsWireSave(back))==hex(expected),'wire count plus element plus total clamps');
 final store=w.TableRetain(4096,List.filled(4096,0));final rr=w.TableWireReport();final retained=w.totalsWireLoadRetain(bytes(%q),store,rr);

@@ -23,8 +23,12 @@
 #           dropping the 4096 bound (docs/LAYERS/1-framing.md F6): exactly
 #           `lobster / framing` red, on its frame_entries_4097 row; `wire`,
 #           `report` and `retain` green.
+#   cycle   load.lobster's cycle check is taken out: a cyclic wire loads
+#           instead of being refused as malformed (docs/SPEC-TABLES.md §3.1,
+#           §4), so exactly `lobster / framing` goes red, on its node_cycle_*
+#           rows; `wire`, `report` and `retain` green.
 #
-# usage: test/conformance/lobster/negative-control <report|walk|framing>
+# usage: test/conformance/lobster/negative-control <report|walk|framing|cycle>
 set -eu
 
 mode=$1
@@ -40,6 +44,10 @@ report)
 framing)
     source=internal/codegen/lobstertable/runtime/load.lobster
     sed 's/^    if count < 0 or count > 4096 or count > size \/ 8:$/    if count < 0 or count > size \/ 8:/' "$source" > "$out/runtime.lobster"
+    ;;
+cycle)
+    source=internal/codegen/lobstertable/runtime/load.lobster
+    sed 's/^        if not st\.report\.malformed and load_cyclic(st, root):$/        if false and load_cyclic(st, root):/' "$source" > "$out/runtime.lobster"
     ;;
 walk)
     source=internal/codegen/lobstertable/runtime/json.lobster
@@ -80,6 +88,7 @@ red=$(grep -oE '^ *lobster / [a-z-]+' "$out/log" | sed 's/^ *lobster \/ //' | so
 case "$mode" in
 report) want="framing report retain " ; green="wire json-read retain-save" ;;
 framing) want="framing " ; green="wire report retain" ;;
+cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 esac
 if [ "$red" != "$want" ]; then
