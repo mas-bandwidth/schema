@@ -327,9 +327,15 @@ function M.announceRead(v: any, data: buffer, report: any): boolean
 	-- ir.TableWireIdTableBound), whatever the buffer would hold
 	if count > 4096 then report.malformed = true; return false end
 	local start = len - 8 - count * 8
+	-- and a table carrying one id twice is malformed (§3), as the file read
+	-- holds it
 	local ids = {}
+	local seen: { [integer]: boolean } = {}
 	for i = 0, count - 1 do
-		ids[i + 1] = buffer.readinteger(data, start + i * 8)
+		local id = buffer.readinteger(data, start + i * 8)
+		if seen[id] then report.malformed = true; return false end
+		seen[id] = true
+		ids[i + 1] = id
 	end
 	local r = { b = data, at = 1, e = start, bad = false }
 	local versions = 0

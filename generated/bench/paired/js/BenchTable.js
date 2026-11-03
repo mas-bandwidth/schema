@@ -1636,7 +1636,17 @@ function TableMessageOpen(data) {
   if (data.length < 9) { return [null, TableMessageOpenDamaged]; }
   const n = TableMessageRead64(data, data.length - 8);
   if (n > BigInt(Math.floor((data.length - 9) / 8))) { return [null, TableMessageOpenDamaged]; }
+  // THE DISTINCTNESS CHECK IS BOUNDED WORK (§3): a table above 4096 entries is
+  // malformed whatever the buffer would hold, and so is one that names an id
+  // twice, found on a sorted copy in O(n log n) for any ids
+  if (n > 4096n) { return [null, TableMessageOpenDamaged]; }
   const start = data.length - 8 - Number(n) * 8;
+  const sorted = new BigUint64Array(Number(n));
+  for (let i = 0; i < sorted.length; i++) { sorted[i] = TableMessageRead64(data, start + i * 8); }
+  sorted.sort();
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === sorted[i - 1]) { return [null, TableMessageOpenDamaged]; }
+  }
   return [new TableMessageReader(data.subarray(1, start), data.subarray(start, data.length - 8)), TableMessageOpenOk];
 }
 function TableMessageOpenFramed(data) {

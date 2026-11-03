@@ -352,17 +352,11 @@ def message_open(data:string, rep:LoadReport) -> Reader?, int:
         return nil, 2
     if data[0] != 1:
         return nil, 1
-    if size < 9:
+    // the announcement is a file, so its id table is a file's (§3, §3.3):
+    // bounded at 4096 entries and distinct, or malformed
+    let ids, start, tok = trailer(data)
+    if not tok:
         return nil, 2
-    let n = read_int64_le(data, size - 8)
-    if ult((size - 9) / 8, n):
-        return nil, 2
-    let start = size - 8 - n * 8
-    let ids:[int] = []
-    var i = 0
-    while i < n:
-        push(ids, read_int64_le(data, start + i * 8))
-        i++
     let st = LoadState { data: data, ids: ids, report: rep }
     let r = reader(st, 1, start)
     // the framing pre-walk, on a scratch report

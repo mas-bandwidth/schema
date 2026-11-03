@@ -660,45 +660,63 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     end
     return n
   end
-  if mag_sat(digits) then sat = true end
-  local v = dec_integer(digits == "" and "0" or digits, false)
-  if neg then
-    if fd.signed == false then report.clamped = report.clamped + 1; v = 0i
-    else v = integer.sub(0i, v) end
+  -- THE ENGINE'S ORDER (internal/tabletext placeInteger): a magnitude past 64
+  -- bits saturates at 2^64-1 and counts clamped; then the declared range, then
+  -- the storage domain, which counts once however far the value moved. v holds
+  -- a uint64 at or past 2^63 as a negative 64-bit integer, so every bound of an
+  -- unsigned field is compared unsigned.
+  local unsigned = fd.signed == false
+  if mag_sat(digits) then report.clamped = report.clamped + 1 end
+  local mag = if mag_sat(digits) then -1i else dec_integer(digits == "" and "0" or digits, false)
+  local min64 = integer.bnot(0x7fffffffffffffffi)
+  local v = mag
+  local moved = false
+  if unsigned then
+    if neg then v = 0i; moved = true end
+  elseif neg then
+    if integer.ult(min64, mag) then v = min64; moved = true else v = integer.sub(0i, mag) end
+  elseif integer.ult(0x7fffffffffffffffi, mag) then
+    v = 0x7fffffffffffffffi; moved = true
   end
-  if sat then report.clamped = report.clamped + 1 end
   local function cmp(a: any, b: any): number
     if typeof(a) == "integer" and typeof(b) == "integer" then
+      if unsigned then
+        if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 else return 0 end
+      end
       if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 else return 0 end
     end
     local x: number = if typeof(a) == "integer" then integer.tonumber(a) else a
     local y: number = if typeof(b) == "integer" then integer.tonumber(b) else b
     if x < y then return -1 elseif x > y then return 1 else return 0 end
   end
+  -- a declared range (or a bits width) holds the value inside the domain, so
+  -- a clamp to it supersedes the domain's move
   if fd.lo ~= nil and fd.hi ~= nil then
-    if cmp(v, fd.lo) < 0 then v = fd.lo; report.clamped = report.clamped + 1
-    elseif cmp(v, fd.hi) > 0 then v = fd.hi; report.clamped = report.clamped + 1 end
-  end
-  if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
+    if moved and neg and not unsigned then v = fd.lo; moved = false; report.clamped = report.clamped + 1
+    elseif moved and not neg then v = fd.hi; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, fd.lo) < 0 then v = fd.lo; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, fd.hi) > 0 then v = fd.hi; moved = false; report.clamped = report.clamped + 1 end
+  elseif fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
-    if integer.gt(v, bmax) then v = bmax; report.clamped = report.clamped + 1 end
+    if neg then
+      v = 0i; moved = false; report.clamped = report.clamped + 1
+    elseif moved or cmp(v, bmax) > 0 then
+      v = bmax; moved = false; report.clamped = report.clamped + 1
+    end
   end
   local width = fd.width or 8
-  if fd.signed then
-    local high = 0x7fffffffffffffffi
-    local low = integer.bnot(high)
-    if width < 8 then
-      high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
-      low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+  if width < 8 then
+    if fd.signed then
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
+      local low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+      if integer.lt(v, low) then v = low; moved = true
+      elseif integer.gt(v, high) then v = high; moved = true end
+    else
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i)
+      if integer.ult(high, v) then v = high; moved = true end
     end
-    if integer.lt(v, low) then v = low; report.clamped = report.clamped + 1
-    elseif integer.gt(v, high) then v = high; report.clamped = report.clamped + 1 end
-  else
-    if fd.signed == false and integer.lt(v, 0i) then v = 0i; report.clamped = report.clamped + 1 end
-    local high = -1i
-    if width < 8 then high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i) end
-    if integer.ult(high, v) then v = high; report.clamped = report.clamped + 1 end
   end
+  if moved then report.clamped = report.clamped + 1 end
   if fd.dom == "number" then return integer.tonumber(v) end
   return v
 end
@@ -2947,16 +2965,19 @@ to_lua = function(desc: any, v: any, A: any, memo: any): any
   memo.l2v[out] = v
   for _, fd in desc.fields do
     local luau_slot = fd.raw.slot or fd.raw.name
-    if fd.raw.s == "str" or fd.raw.s == "bytes" then
+    -- a slot the value does not hold (an absent optional, a list the read
+    -- never placed) has no length or count to carry: a Lua table cannot be
+    -- indexed by nil
+    local held = v[luau_slot]
+    if held ~= nil and (fd.raw.s == "str" or fd.raw.s == "bytes") then
       memo.len = memo.len or {}
-      memo.len[v[luau_slot]] = v[luau_slot .. "Length"] or 0
+      memo.len[held] = v[luau_slot .. "Length"] or 0
     end
-    if fd.raw.s == "arr" then
+    if held ~= nil and fd.raw.s == "arr" then
       memo.count = memo.count or {}
-      local av = v[luau_slot]
-      if fd.raw.array == "counted" then memo.count[av] = v[luau_slot .. "Count"] or 0
-      elseif fd.raw.array == "list" then memo.count[av] = av ~= nil and (av.n or #av) or 0
-      elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[av] = fd.raw.bound or 0 end
+      if fd.raw.array == "counted" then memo.count[held] = v[luau_slot .. "Count"] or 0
+      elseif fd.raw.array == "list" then memo.count[held] = held.n or #held
+      elseif fd.raw.array == "fixed" or fd.raw.array == "keyed" then memo.count[held] = fd.raw.bound or 0 end
     end
     if fd.optional then
       if v[fd.raw.present] then

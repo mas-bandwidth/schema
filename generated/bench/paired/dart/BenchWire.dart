@@ -4780,11 +4780,18 @@ String _jsonStringField(dynamic val, int bound, TableTextReport r, [String def =
 }
 
 // _jsonIntField reads one int field (§16.2): an integer token, or an integral
-// float, placed and range-clamped; anything else is a kind mismatch.
+// float, placed and range-clamped; anything else is a kind mismatch. lo and hi
+// are the declared range, or the storage width below 64 bits; an unsigned
+// field's bounds are 64-bit patterns. A token an int holds is placed by int
+// compares. Every other integral value (a token at or past +-2^63, a negative
+// token in an unsigned field, an integral float) is placed EXACTLY as the
+// engine places it (internal/tabletext interpretInteger, integerInDomain): its
+// sign and magnitude, saturated at 2^64-1 and counted; the declared range;
+// then the 64-bit storage domain, each move counted.
 int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsigned = false, int def = 0]) {
-  int clamp(int v) {
+  if (val is int && (!unsigned || val >= 0)) {
+    var v = val;
     if (unsigned) {
-      if (v < 0 && hi != null && hi >= 0) { v = lo ?? 0; r.clamped++; }
       if (lo != null && _u64Below(v, lo)) { v = lo; r.clamped++; }
       if (hi != null && _u64Above(v, hi)) { v = hi; r.clamped++; }
     } else {
@@ -4793,28 +4800,47 @@ int _jsonIntField(dynamic val, TableTextReport r, int? lo, int? hi, [bool unsign
     }
     return v;
   }
-  if (val is int) return clamp(val);
-  if (unsigned && val is _JNum && (hi == null || hi < 0)) {
-    final wide = BigInt.tryParse(val.token);
-    if (wide != null && wide >= BigInt.zero && wide <= BigInt.parse('18446744073709551615')) {
-      final signed = wide > BigInt.from(9223372036854775807)
-          ? wide - (BigInt.one << 64) : wide;
-      return clamp(signed.toInt());
+  BigInt wide;
+  if (val is int) {
+    wide = BigInt.from(val);
+  } else if (val is _JNum && val.integral) {
+    wide = BigInt.parse(val.token);
+  } else {
+    final d = val is _JNum ? val.d : (val is num ? val.toDouble() : double.nan);
+    if (!d.isFinite || d != d.truncateToDouble()) {
+      r.kindMismatch++;
+      return def;
     }
+    wide = d.abs() >= 18446744073709551616.0 ? (d.isNegative ? -_jsonU64Span : _jsonU64Span) : BigInt.from(d);
   }
-  if (val is num && val.isFinite && val.toDouble() == val.toDouble().truncateToDouble()) {
-    if (val.toDouble() > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.toDouble() < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
-    return clamp(val.toInt());
+  if (wide.abs() > _jsonU64Max) {
+    wide = wide.isNegative ? -_jsonU64Max : _jsonU64Max;
+    r.clamped++;
   }
-  if (val is _JNum && val.d.isFinite && val.d == val.d.truncateToDouble()) {
-    if (val.d > 9223372036854775807.0) { r.clamped++; return clamp(9223372036854775807); }
-    if (val.d < -9223372036854775808.0) { r.clamped++; return clamp(-9223372036854775808); }
-    return clamp(val.d.toInt());
+  BigInt bound(int b) => unsigned ? BigInt.from(b).toUnsigned(64) : BigInt.from(b);
+  if (lo != null && wide < bound(lo)) {
+    wide = bound(lo);
+    r.clamped++;
+  } else if (hi != null && wide > bound(hi)) {
+    wide = bound(hi);
+    r.clamped++;
   }
-  r.kindMismatch++;
-  return def;
+  if (unsigned) {
+    if (wide.isNegative) { wide = BigInt.zero; r.clamped++; }
+  } else if (wide < _jsonI64Min) {
+    wide = _jsonI64Min;
+    r.clamped++;
+  } else if (wide > _jsonI64Max) {
+    wide = _jsonI64Max;
+    r.clamped++;
+  }
+  return wide.toSigned(64).toInt();
 }
+
+final _jsonU64Span = BigInt.one << 64;
+final _jsonU64Max = _jsonU64Span - BigInt.one;
+final _jsonI64Min = -(BigInt.one << 63);
+final _jsonI64Max = (BigInt.one << 63) - BigInt.one;
 
 // _jsonFloat spells a float at the shortest precision that reads back the same
 // value AT ITS OWN WIDTH (§16.2): a float32 from six significant digits up to
@@ -5248,11 +5274,16 @@ String _jsonPrepare(String text, TableTextReport r) {
 }
 
 // _JNum is a JSON number the int type cannot hold exactly, kept as its
-// token so a wide field reads it without rounding (docs/SPEC-TABLES.md §16.2).
+// token so a wide or 64-bit field reads it without rounding
+// (docs/SPEC-TABLES.md §16.2). integral is the token's spelling: no fraction
+// and no exponent.
 final class _JNum {
   final String token;
   final double d;
-  _JNum(this.token) : d = double.parse(token);
+  final bool integral;
+  _JNum(this.token)
+      : d = double.parse(token),
+        integral = !token.contains('.') && !token.contains('e') && !token.contains('E');
 }
 
 final class _JObj {
@@ -5371,7 +5402,9 @@ final class _JParse {
       }
     }
     final token = number.group(0)!;
-    if (!token.contains('.') && !token.contains('e') && !token.contains('E')) {
+    // -0 stays a _JNum: an int has no negative zero, and a float field owes
+    // the sign the token spells (§16.2)
+    if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
       final n = int.tryParse(token);
       if (n != null) return n;
     }

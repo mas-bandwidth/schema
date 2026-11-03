@@ -2263,23 +2263,29 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
   final view = ByteData.sublistView(bytes);
   // the trailer: a run of u64 ids and a u64 count at the very end
   final trailerCount = view.getUint64(bytes.length - 8, Endian.little);
-  if (trailerCount > (bytes.length - 9) ~/ 8) {
+  if (trailerCount < 0 || trailerCount > (bytes.length - 9) ~/ 8) {
+    report.Damage();
+    return false;
+  }
+  // THE ENTRY COUNT HAS A MAXIMUM (docs/SPEC-TABLES.md §3, THE DISTINCTNESS
+  // CHECK IS BOUNDED WORK): a table above 4096 entries is malformed, whatever
+  // the buffer would hold, as the file read's open() holds it.
+  if (trailerCount > 4096) {
     report.Damage();
     return false;
   }
   final end = bytes.length - 8 - trailerCount * 8;
   // A BODY'S REFERENCES RESOLVE against the trailer's ids, which begin here.
+  // An id named twice is malformed.
   final ids = <int>[];
+  final seenIds = <int>{};
   for (var i = end; i < end + trailerCount * 8; i += 8) {
-    ids.add(view.getUint64(i, Endian.little));
-  }
-  for (var i = 0; i < ids.length; i++) {
-    for (var j = 0; j < i; j++) {
-      if (ids[i] == ids[j]) {
-        report.Damage();
-        return false;
-      }
+    final id = view.getUint64(i, Endian.little);
+    if (!seenIds.add(id)) {
+      report.Damage();
+      return false;
     }
+    ids.add(id);
   }
   // THE BODY walks references into those ids. THE TWO STRICT CHECKS: exactly
   // one build-version field and exactly one vocabulary field, both answered
