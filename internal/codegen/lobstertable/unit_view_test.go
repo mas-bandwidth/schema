@@ -140,7 +140,7 @@ func TestLobsterUnitViewCorpus(t *testing.T) {
 			}
 			var program strings.Builder
 			fmt.Fprintf(&program, "import .%sView\nlet v = %s.UnitView()\n", g.u.Package, g.u.Package)
-			for _, kind := range []string{"types", "tables", "enums", "flags", "unions", "constants"} {
+			for _, kind := range []string{"constants", "enums", "flags", "tables", "types", "unions"} {
 				fmt.Fprintf(&program, "for(v.%s) d:\n    print(\"%s \" + d.name + \" \" + d.file)\n", kind, kind)
 			}
 			if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0644); err != nil {
@@ -148,11 +148,30 @@ func TestLobsterUnitViewCorpus(t *testing.T) {
 			}
 			got := strings.Split(strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))), "\n")
 			sort.Strings(want)
-			sort.Strings(got)
 			if strings.Join(got, "\n") != strings.Join(want, "\n") {
 				t.Fatalf("registry differs from IR:\ngot:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 			}
 			t.Logf("%d declarations match IR by kind, name and source file", len(want))
+			if source == "examples" {
+				runtimePath := filepath.Join(g.dir, "descriptors.lobster")
+				raw, err := os.ReadFile(runtimePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				const sorting = "types: view_sorted_types(view_types)"
+				if strings.Count(string(raw), sorting) != 1 {
+					t.Fatal("type sorting anchor must occur once")
+				}
+				patched := strings.Replace(string(raw), sorting, "types: view_types", 1)
+				if err := os.WriteFile(runtimePath, []byte(patched), 0644); err != nil {
+					t.Fatal(err)
+				}
+				control := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil)))
+				if control == strings.Join(want, "\n") {
+					t.Fatal("removing declaration-name sorting did not break the ordered registry check")
+				}
+			}
+
 		})
 	}
 }

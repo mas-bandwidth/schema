@@ -88,8 +88,42 @@ def view_vocabulary(name:string, file:string, doc:string, tags:[string], variant
 def view_constant(name:string, file:string, type_name:string, is_float:bool, int_value:int, float_value:float, doc:string, tags:[string]):
     push(view_constants, ViewConstant { name: name, file: file, type_name: type_name, is_float: is_float, int_value: int_value, float_value: float_value, doc: doc, tags: tags })
 
+// UnitView sets are ordered by declaration name (SPEC-TABLES §8.3).
+def view_name_before(a:string, b:string) -> bool:
+    for(min(length(a), length(b))) i:
+        if a[i] != b[i]:
+            return a[i] < b[i]
+    return length(a) < length(b)
+
+def view_sorted_types(items:[ViewType]) -> [ViewType]:
+    let result:[ViewType] = []
+    for(items) item:
+        var at = length(result)
+        while at > 0 and view_name_before(item.name, result[at - 1].name):
+            at--
+        insert(result, at, item)
+    return result
+
+def view_sorted_vocabulary(items:[ViewVocabulary]) -> [ViewVocabulary]:
+    let result:[ViewVocabulary] = []
+    for(items) item:
+        var at = length(result)
+        while at > 0 and view_name_before(item.name, result[at - 1].name):
+            at--
+        insert(result, at, item)
+    return result
+
+def view_sorted_constants(items:[ViewConstant]) -> [ViewConstant]:
+    let result:[ViewConstant] = []
+    for(items) item:
+        var at = length(result)
+        while at > 0 and view_name_before(item.name, result[at - 1].name):
+            at--
+        insert(result, at, item)
+    return result
+
 def unit_view() -> UnitView:
-    return UnitView { package: view_package, protocol_id: view_protocol, types: view_types, tables: view_tables, enums: view_enums, flags: view_flags, unions: view_unions, constants: view_constants }
+    return UnitView { package: view_package, protocol_id: view_protocol, types: view_sorted_types(view_types), tables: view_sorted_types(view_tables), enums: view_sorted_vocabulary(view_enums), flags: view_sorted_vocabulary(view_flags), unions: view_sorted_vocabulary(view_unions), constants: view_sorted_constants(view_constants) }
 
 // THE ANNOTATION COLUMNS (§8.1): a field's doc and tags live beside its
 // descriptor, keyed by its owner and name, so no second descriptor class is
