@@ -19,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -88,7 +87,7 @@ type evolutionUnit struct {
 func evolutionLoad(t *testing.T, schema string) *ir.Unit {
 	t.Helper()
 	path := filepath.Join(fixedRoot, filepath.FromSlash(schema))
-	u, err := compiler.New().Load([]string{path})
+	u, err := loadSchemaPaths([]string{path})
 	if err != nil {
 		t.Fatalf("load %s: %v", schema, err)
 	}
@@ -233,7 +232,7 @@ fixed table Census
 	if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	newer, err := compiler.New().Load([]string{path})
+	newer, err := loadSchemaPaths([]string{path})
 	if err != nil {
 		t.Fatalf("load kind_mismatch: %v", err)
 	}
