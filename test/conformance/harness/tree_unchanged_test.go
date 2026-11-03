@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -17,7 +18,10 @@ import (
 // file, before the tests run and again after, and any file added, removed or
 // changed fails the run by name.
 func TestMain(m *testing.M) {
-	root := filepath.Join("..", "..", "..", "testdata")
+	// the tree is found from this file, not from the working directory: a test
+	// that re-runs this binary from elsewhere still checks the one tree
+	_, here, _, _ := runtime.Caller(0)
+	root := filepath.Join(filepath.Dir(here), "..", "..", "..", "testdata")
 	before, err := treeFingerprint(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
