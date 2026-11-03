@@ -1943,6 +1943,7 @@ end
 ----------------------------------------------------------------------------
 
 local St = require("./schema_tables")
+local V = require("./table_values")
 
 -- EXTRA: the facts the text form needs beyond the descriptor, keyed by the
 -- field (or element, or arm) descriptor they belong to: a flags set's variant
@@ -3757,6 +3758,14 @@ end
 writeFields = function(w: W, d: any, rec: any, depth: number, any: boolean): (boolean, boolean)
 	for _, fd in d.fields do
 		if written(fd, rec) then
+			-- `| required` (§2.3): a required integer whose declared range
+			-- excludes its stored value has no text, as on the wire
+			if fd.required == true and fd.s == "int" and fd.lo ~= nil then
+				local x = V.toRaw(fd, rec[fd.slot])
+				if x ~= nil and (V.rawCmp(x, fd.lo, fd.kw, fd.signed == true) < 0 or V.rawCmp(x, fd.hi, fd.kw, fd.signed == true) > 0) then
+					return fail(w, "invalid_value: " .. fd.name .. " is outside its required range"), any
+				end
+			end
 			emit(w, if any then "," else "{")
 			any = true
 			line(w, depth + 1)
