@@ -393,6 +393,7 @@ func init() {
 		Name{Name: "TableRefuseBase64NotCanonical", What: "a base64 text-transport body that decodes but is not canonical (docs/SPEC-TABLES.md §16.8)"},
 		Name{Name: "TableRefuseIntegrityMismatch", What: "a declaring root's file whose CRC-32C trailer does not match (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "TableRefuseBlobShared", What: "one blob record named from two slots, refused by every writer and the strict read (docs/SPEC-TABLES.md §2.5)"},
+		Name{Name: "TableRefuseMissingRequired", What: "strict read refusal of a record lacking a | required field (docs/SPEC-TABLES.md §2.3, §6.5)"},
 		Name{Name: "tableIntegrityTable", What: "the integrity trailer's CRC-32C table (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityOpen", What: "the integrity trailer's check on read (docs/SPEC-TABLES.md §2.14)"},
 		Name{Name: "tableIntegrityHolds", What: "the integrity trailer's CRC-32C comparison, both forms (docs/SPEC-TABLES.md §2.14, §3.4)"},

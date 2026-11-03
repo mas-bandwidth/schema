@@ -62,15 +62,17 @@ int main()
     region = (uint8_t *) malloc((size_t) need);
     TableReport strict;
     CHECK(TLoad(region, need, buffer, m, &strict) == NULL);
-    CHECK(strict.missing_required == 1);
+    CHECK(strict.missing_required == 1 && strict.refuse_reason == missing_required);
     free(region);
+    TableRefuseReason why = ok;
+    CHECK(TReadStrict(buffer, m, &why) == NULL && why == missing_required);
     // Builder tolerant and strict both refuse
     TBuilder btol; TableReport bmiss;
     CHECK(!TLoadBuilderTolerant(btol, buffer, m, &bmiss));
     CHECK(bmiss.missing_required == 1 && !bmiss.malformed);
     TBuilder bstr; TableReport bstrict;
     CHECK(!TLoadBuilder(bstr, buffer, m, &bstrict));
-    CHECK(bstrict.missing_required == 1);
+    CHECK(bstrict.missing_required == 1 && bstrict.refuse_reason == missing_required);
     // JSON missing b refuses in both tolerant and strict modes without marking malformed
     const char * bad_json = "{\"a\":7,\"c\":4}";
     TBuilder jtol; TableReport jmiss;
@@ -78,7 +80,7 @@ int main()
     CHECK(jmiss.missing_required == 1 && !jmiss.malformed && strcmp(jmiss.missing_required_fields, "b") == 0);
     TBuilder jstr; TableReport jstrict;
     CHECK(!TFromJson(jstr, bad_json, (int64_t) strlen(bad_json), &jstrict));
-    CHECK(jstrict.missing_required == 1 && !jstrict.malformed && strcmp(jstrict.missing_required_fields, "b") == 0);
+    CHECK(jstrict.missing_required == 1 && !jstrict.malformed && jstrict.refuse_reason == TableRefuseReason::missing_required && strcmp(jstrict.missing_required_fields, "b") == 0);
     return failures == 0 ? 0 : 1;
 }
 `

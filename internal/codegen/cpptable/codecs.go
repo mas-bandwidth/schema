@@ -2323,6 +2323,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	g.pf("        if ( out->refuse_reason == ok )\n        {\n")
 	g.pf("            if ( out->refused ) { out->refuse_reason = unknown_form; }\n")
 	g.pf("            else if ( verdict == TableOpenDamaged || out->malformed ) { out->refuse_reason = wire_damaged; }\n")
+	g.pf("            else if ( out->missing_required ) { out->refuse_reason = missing_required; }\n")
 	g.pf("            else if ( out->clamped ) { out->refuse_reason = clamped; }\n")
 	g.pf("            else if ( out->kind_mismatch ) { out->refuse_reason = kind_mismatch; }\n")
 	g.pf("            else\n            {\n                out->refuse_reason = wire_damaged;\n            }\n")

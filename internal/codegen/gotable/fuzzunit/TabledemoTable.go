@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xa9a32f918d49425e)
-const _ = uint64(0xa9a32f918d49425e - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x1f2ceeb8586f448d)
+const _ = uint64(0x1f2ceeb8586f448d - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -69,6 +69,7 @@ const TableRefuseBase64NotCanonical = goruntime.TableRefuseBase64NotCanonical
 const TableRefuseIntegrityMismatch = goruntime.TableRefuseIntegrityMismatch
 const TableRefuseNonFiniteFloat = goruntime.TableRefuseNonFiniteFloat
 const TableRefuseBlobShared = goruntime.TableRefuseBlobShared
+const TableRefuseMissingRequired = goruntime.TableRefuseMissingRequired
 const TableRefusePreviousForm = goruntime.TableRefusePreviousForm
 const TableRefuseNewerForm = goruntime.TableRefuseNewerForm
 const TableRefuseMessageFormAsFile = goruntime.TableRefuseMessageFormAsFile

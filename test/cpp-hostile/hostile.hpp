@@ -51,6 +51,7 @@
         HC_CPP_REASON( kind_mismatch ) \
         HC_CPP_REASON( integrity_mismatch ) \
         HC_CPP_REASON( blob_shared ) \
+        HC_CPP_REASON( missing_required ) \
         HC_CPP_REASON( previous_form ) \
         HC_CPP_REASON( unknown_form ) \
         HC_CPP_REASON( text_ill_formed ) \
