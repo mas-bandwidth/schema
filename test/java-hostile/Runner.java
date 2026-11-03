@@ -83,7 +83,8 @@ public final class Runner {
                     "tables/stream", "streamdemo",
                     "tables/maps", "mapdemo",
                     "tables/lists", "listdemo",
-                    "schemas/probe.schema", "probe");
+                    "schemas/probe.schema", "probe",
+                    "testdata/conformance/feature-witnesses/full/Features.schema", "featurewitnesses");
 
     // A verdict: "accept <digest>" or "refuse <reason>"; anything else (a
     // throw, a value the runner cannot canonicalise) is its own text and never
