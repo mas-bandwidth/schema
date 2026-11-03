@@ -73,7 +73,7 @@ runs may use N=0; they never stand in for the six positive release runs.
 
 - Native JSON events, not a package's exit code alone, identify executed tests.
   Empty lists, missing terminal events, failing tests and skips are incomplete.
-- The three named Go test retirements and 52 exact native-program retirement
+- The three named Go test retirements and 59 exact native-program retirement
   messages have explicit replacement test requirements in the script. Every
   replacement must actually pass in the current run, including the lockfile
   validation rules; a historical receipt is not acceptance. Retirements are
@@ -82,9 +82,9 @@ runs may use N=0; they never stand in for the six positive release runs.
   Dart's fuCase requires both FU1 identity and FU2 compiled native passes in
   TestFixedVersioningSecondArmText, including an actual wrong-guard control.
   C's fixed_fx2_bytes_row_control still lacks an established equivalent and is
-  not an allowed exception. Rust's two text-under-an-arm retirements require
-  actual current-run FU1-to-FU2 lineage probes: second-arm text/neighbors and
-  noncanonical bool/presence bytes, with zero-byte controls.
+  not an allowed exception. Rust's two text-under-an-arm retirements and Java's
+  seven §5.6 fixed-form retirements require actual current-run FU1-to-FU2
+  lineage, plan-capacity, and lockfile replacement probes.
 - Each strict fuzz summary must name the requested arm/seed, nonempty roots and
   seeds, a nonempty enumerated pass, exactly 100000 random mutants, consistent
   totals and zero divergences. An absent seed or finite exemption is incomplete.
