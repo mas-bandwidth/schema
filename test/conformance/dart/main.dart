@@ -2446,16 +2446,13 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
           retain: _retainCodec(TableRetain.new, TableWireReport.new, cardWireMeasure, cardWireLoadRetain, cardWireSaveRetain));
     case 'backenddemo LoginRequest':
       return _FuzzRoot(
-          _plainCodec(backenddemo.TableWireReport.new, backenddemo.loginRequestWireMeasure, backenddemo.loginRequestWireLoad, backenddemo.loginRequestWireSave),
-          retain: _retainCodec(backenddemo.TableRetain.new, backenddemo.TableWireReport.new, backenddemo.loginRequestWireMeasure, backenddemo.loginRequestWireLoadRetain, backenddemo.loginRequestWireSaveRetain));
+          _plainCodec(backenddemo.TableWireReport.new, backenddemo.loginRequestWireMeasure, backenddemo.loginRequestWireLoad, backenddemo.loginRequestWireSave));
     case 'backenddemo MatchResult':
       return _FuzzRoot(
-          _plainCodec(backenddemo.TableWireReport.new, backenddemo.matchResultWireMeasure, backenddemo.matchResultWireLoad, backenddemo.matchResultWireSave),
-          retain: _retainCodec(backenddemo.TableRetain.new, backenddemo.TableWireReport.new, backenddemo.matchResultWireMeasure, backenddemo.matchResultWireLoadRetain, backenddemo.matchResultWireSaveRetain));
+          _plainCodec(backenddemo.TableWireReport.new, backenddemo.matchResultWireMeasure, backenddemo.matchResultWireLoad, backenddemo.matchResultWireSave));
     case 'backenddemo StorePurchase':
       return _FuzzRoot(
-          _plainCodec(backenddemo.TableWireReport.new, backenddemo.storePurchaseWireMeasure, backenddemo.storePurchaseWireLoad, backenddemo.storePurchaseWireSave),
-          retain: _retainCodec(backenddemo.TableRetain.new, backenddemo.TableWireReport.new, backenddemo.storePurchaseWireMeasure, backenddemo.storePurchaseWireLoadRetain, backenddemo.storePurchaseWireSaveRetain));
+          _plainCodec(backenddemo.TableWireReport.new, backenddemo.storePurchaseWireMeasure, backenddemo.storePurchaseWireLoad, backenddemo.storePurchaseWireSave));
     case 'blobdemo Catalog':
       return _FuzzRoot(
           _plainCodec(blobdemo.TableWireReport.new, blobdemo.catalogWireMeasure, blobdemo.catalogWireLoad, blobdemo.catalogWireSave),
@@ -2538,96 +2535,76 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
           retain: _retainCodec(mapdemo.TableRetain.new, mapdemo.TableWireReport.new, mapdemo.trailsWireMeasure, mapdemo.trailsWireLoadRetain, mapdemo.trailsWireSaveRetain));
     case 'messagedemo ToolMessage':
       return _FuzzRoot(
-          _plainCodec(messagedemo.TableWireReport.new, messagedemo.toolMessageWireMeasure, messagedemo.toolMessageWireLoad, messagedemo.toolMessageWireSave),
-          retain: _retainCodec(messagedemo.TableRetain.new, messagedemo.TableWireReport.new, messagedemo.toolMessageWireMeasure, messagedemo.toolMessageWireLoadRetain, messagedemo.toolMessageWireSaveRetain));
+          _plainCodec(messagedemo.TableWireReport.new, messagedemo.toolMessageWireMeasure, messagedemo.toolMessageWireLoad, messagedemo.toolMessageWireSave));
     case 'scalars SimState':
       return _FuzzRoot(
-          _plainCodec(scalardemo.TableWireReport.new, scalardemo.simStateWireMeasure, scalardemo.simStateWireLoad, scalardemo.simStateWireSave),
-          retain: _retainCodec(scalardemo.TableRetain.new, scalardemo.TableWireReport.new, scalardemo.simStateWireMeasure, scalardemo.simStateWireLoadRetain, scalardemo.simStateWireSaveRetain));
+          _plainCodec(scalardemo.TableWireReport.new, scalardemo.simStateWireMeasure, scalardemo.simStateWireLoad, scalardemo.simStateWireSave));
     case 'streamdemo Feed':
       return _FuzzRoot(
           _plainCodec(streamdemo.TableWireReport.new, streamdemo.feedWireMeasure, streamdemo.feedWireLoad, streamdemo.feedWireSave),
           retain: _retainCodec(streamdemo.TableRetain.new, streamdemo.TableWireReport.new, streamdemo.feedWireMeasure, streamdemo.feedWireLoadRetain, streamdemo.feedWireSaveRetain));
     case 'tabledemo ArchiveConfig':
       return _FuzzRoot(
-          _plainCodec(tabledemo.TableWireReport.new, tabledemo.archiveConfigWireMeasure, tabledemo.archiveConfigWireLoad, tabledemo.archiveConfigWireSave),
-          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.archiveConfigWireMeasure, tabledemo.archiveConfigWireLoadRetain, tabledemo.archiveConfigWireSaveRetain));
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.archiveConfigWireMeasure, tabledemo.archiveConfigWireLoad, tabledemo.archiveConfigWireSave));
     case 'tabledemo KeyedConfig':
       return _FuzzRoot(
-          _plainCodec(tabledemo.TableWireReport.new, tabledemo.keyedConfigWireMeasure, tabledemo.keyedConfigWireLoad, tabledemo.keyedConfigWireSave),
-          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.keyedConfigWireMeasure, tabledemo.keyedConfigWireLoadRetain, tabledemo.keyedConfigWireSaveRetain));
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.keyedConfigWireMeasure, tabledemo.keyedConfigWireLoad, tabledemo.keyedConfigWireSave));
     case 'tabledemo LoadoutConfig':
       return _FuzzRoot(
-          _plainCodec(tabledemo.TableWireReport.new, tabledemo.loadoutConfigWireMeasure, tabledemo.loadoutConfigWireLoad, tabledemo.loadoutConfigWireSave),
-          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.loadoutConfigWireMeasure, tabledemo.loadoutConfigWireLoadRetain, tabledemo.loadoutConfigWireSaveRetain));
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.loadoutConfigWireMeasure, tabledemo.loadoutConfigWireLoad, tabledemo.loadoutConfigWireSave));
     case 'tabledemo ProfileConfig':
       return _FuzzRoot(
-          _plainCodec(tabledemo.TableWireReport.new, tabledemo.profileConfigWireMeasure, tabledemo.profileConfigWireLoad, tabledemo.profileConfigWireSave),
-          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.profileConfigWireMeasure, tabledemo.profileConfigWireLoadRetain, tabledemo.profileConfigWireSaveRetain));
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.profileConfigWireMeasure, tabledemo.profileConfigWireLoad, tabledemo.profileConfigWireSave));
     case 'tabledemo RootConfig':
       return _FuzzRoot(
-          _plainCodec(tabledemo.TableWireReport.new, tabledemo.rootConfigWireMeasure, tabledemo.rootConfigWireLoad, tabledemo.rootConfigWireSave),
-          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.rootConfigWireMeasure, tabledemo.rootConfigWireLoadRetain, tabledemo.rootConfigWireSaveRetain));
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.rootConfigWireMeasure, tabledemo.rootConfigWireLoad, tabledemo.rootConfigWireSave));
     case 'tabledemo WideBlob':
       return _FuzzRoot(
-          _plainCodec(tabledemo.TableWireReport.new, tabledemo.wideBlobWireMeasure, tabledemo.wideBlobWireLoad, tabledemo.wideBlobWireSave),
-          retain: _retainCodec(tabledemo.TableRetain.new, tabledemo.TableWireReport.new, tabledemo.wideBlobWireMeasure, tabledemo.wideBlobWireLoadRetain, tabledemo.wideBlobWireSaveRetain));
+          _plainCodec(tabledemo.TableWireReport.new, tabledemo.wideBlobWireMeasure, tabledemo.wideBlobWireLoad, tabledemo.wideBlobWireSave));
     case 'tbla2 Root':
       return _FuzzRoot(
-          _plainCodec(tbla2.TableWireReport.new, tbla2.rootWireMeasure, tbla2.rootWireLoad, tbla2.rootWireSave),
-          retain: _retainCodec(tbla2.TableRetain.new, tbla2.TableWireReport.new, tbla2.rootWireMeasure, tbla2.rootWireLoadRetain, tbla2.rootWireSaveRetain));
+          _plainCodec(tbla2.TableWireReport.new, tbla2.rootWireMeasure, tbla2.rootWireLoad, tbla2.rootWireSave));
     case 'tblg1 Guarded':
       return _FuzzRoot(
           _plainCodec(tblg1.TableWireReport.new, tblg1.guardedWireMeasure, tblg1.guardedWireLoad, tblg1.guardedWireSave),
           retain: _retainCodec(tblg1.TableRetain.new, tblg1.TableWireReport.new, tblg1.guardedWireMeasure, tblg1.guardedWireLoadRetain, tblg1.guardedWireSaveRetain));
     case 'tblk1 Root':
       return _FuzzRoot(
-          _plainCodec(tblk1.TableWireReport.new, tblk1.rootWireMeasure, tblk1.rootWireLoad, tblk1.rootWireSave),
-          retain: _retainCodec(tblk1.TableRetain.new, tblk1.TableWireReport.new, tblk1.rootWireMeasure, tblk1.rootWireLoadRetain, tblk1.rootWireSaveRetain));
+          _plainCodec(tblk1.TableWireReport.new, tblk1.rootWireMeasure, tblk1.rootWireLoad, tblk1.rootWireSave));
     case 'tblk2 Root':
       return _FuzzRoot(
-          _plainCodec(tblk2.TableWireReport.new, tblk2.rootWireMeasure, tblk2.rootWireLoad, tblk2.rootWireSave),
-          retain: _retainCodec(tblk2.TableRetain.new, tblk2.TableWireReport.new, tblk2.rootWireMeasure, tblk2.rootWireLoadRetain, tblk2.rootWireSaveRetain));
+          _plainCodec(tblk2.TableWireReport.new, tblk2.rootWireMeasure, tblk2.rootWireLoad, tblk2.rootWireSave));
     case 'tblm1 Msg':
       return _FuzzRoot(
-          _plainCodec(tblm1.TableWireReport.new, tblm1.msgWireMeasure, tblm1.msgWireLoad, tblm1.msgWireSave),
-          retain: _retainCodec(tblm1.TableRetain.new, tblm1.TableWireReport.new, tblm1.msgWireMeasure, tblm1.msgWireLoadRetain, tblm1.msgWireSaveRetain));
+          _plainCodec(tblm1.TableWireReport.new, tblm1.msgWireMeasure, tblm1.msgWireLoad, tblm1.msgWireSave));
     case 'tblm2 Msg':
       return _FuzzRoot(
-          _plainCodec(tblm2.TableWireReport.new, tblm2.msgWireMeasure, tblm2.msgWireLoad, tblm2.msgWireSave),
-          retain: _retainCodec(tblm2.TableRetain.new, tblm2.TableWireReport.new, tblm2.msgWireMeasure, tblm2.msgWireLoadRetain, tblm2.msgWireSaveRetain));
+          _plainCodec(tblm2.TableWireReport.new, tblm2.msgWireMeasure, tblm2.msgWireLoad, tblm2.msgWireSave));
     case 'tblp1 Chain':
       return _FuzzRoot(
-          _plainCodec(tblp1.TableWireReport.new, tblp1.chainWireMeasure, tblp1.chainWireLoad, tblp1.chainWireSave),
-          retain: _retainCodec(tblp1.TableRetain.new, tblp1.TableWireReport.new, tblp1.chainWireMeasure, tblp1.chainWireLoadRetain, tblp1.chainWireSaveRetain));
+          _plainCodec(tblp1.TableWireReport.new, tblp1.chainWireMeasure, tblp1.chainWireLoad, tblp1.chainWireSave));
     case 'tblp2 Chain':
       return _FuzzRoot(
           _plainCodec(tblp2.TableWireReport.new, tblp2.chainWireMeasure, tblp2.chainWireLoad, tblp2.chainWireSave),
           retain: _retainCodec(tblp2.TableRetain.new, tblp2.TableWireReport.new, tblp2.chainWireMeasure, tblp2.chainWireLoadRetain, tblp2.chainWireSaveRetain));
     case 'tblp3 Chain':
       return _FuzzRoot(
-          _plainCodec(tblp3.TableWireReport.new, tblp3.chainWireMeasure, tblp3.chainWireLoad, tblp3.chainWireSave),
-          retain: _retainCodec(tblp3.TableRetain.new, tblp3.TableWireReport.new, tblp3.chainWireMeasure, tblp3.chainWireLoadRetain, tblp3.chainWireSaveRetain));
+          _plainCodec(tblp3.TableWireReport.new, tblp3.chainWireMeasure, tblp3.chainWireLoad, tblp3.chainWireSave));
     case 'tblr1 Cfg':
       return _FuzzRoot(
-          _plainCodec(tblr1.TableWireReport.new, tblr1.cfgWireMeasure, tblr1.cfgWireLoad, tblr1.cfgWireSave),
-          retain: _retainCodec(tblr1.TableRetain.new, tblr1.TableWireReport.new, tblr1.cfgWireMeasure, tblr1.cfgWireLoadRetain, tblr1.cfgWireSaveRetain));
+          _plainCodec(tblr1.TableWireReport.new, tblr1.cfgWireMeasure, tblr1.cfgWireLoad, tblr1.cfgWireSave));
     case 'tblr2 Cfg':
       return _FuzzRoot(
-          _plainCodec(tblr2.TableWireReport.new, tblr2.cfgWireMeasure, tblr2.cfgWireLoad, tblr2.cfgWireSave),
-          retain: _retainCodec(tblr2.TableRetain.new, tblr2.TableWireReport.new, tblr2.cfgWireMeasure, tblr2.cfgWireLoadRetain, tblr2.cfgWireSaveRetain));
+          _plainCodec(tblr2.TableWireReport.new, tblr2.cfgWireMeasure, tblr2.cfgWireLoad, tblr2.cfgWireSave));
     case 'tblscalars2 SimState':
       return _FuzzRoot(
-          _plainCodec(scalardemo2.TableWireReport.new, scalardemo2.simStateWireMeasure, scalardemo2.simStateWireLoad, scalardemo2.simStateWireSave),
-          retain: _retainCodec(scalardemo2.TableRetain.new, scalardemo2.TableWireReport.new, scalardemo2.simStateWireMeasure, scalardemo2.simStateWireLoadRetain, scalardemo2.simStateWireSaveRetain));
+          _plainCodec(scalardemo2.TableWireReport.new, scalardemo2.simStateWireMeasure, scalardemo2.simStateWireLoad, scalardemo2.simStateWireSave));
     case 'tblv1 Cfg':
       return _FuzzRoot(
-          _plainCodec(tblv1.TableWireReport.new, tblv1.cfgWireMeasure, tblv1.cfgWireLoad, tblv1.cfgWireSave),
-          retain: _retainCodec(tblv1.TableRetain.new, tblv1.TableWireReport.new, tblv1.cfgWireMeasure, tblv1.cfgWireLoadRetain, tblv1.cfgWireSaveRetain));
+          _plainCodec(tblv1.TableWireReport.new, tblv1.cfgWireMeasure, tblv1.cfgWireLoad, tblv1.cfgWireSave));
     case 'tblv2 Cfg':
       return _FuzzRoot(
-          _plainCodec(tblv2.TableWireReport.new, tblv2.cfgWireMeasure, tblv2.cfgWireLoad, tblv2.cfgWireSave),
-          retain: _retainCodec(tblv2.TableRetain.new, tblv2.TableWireReport.new, tblv2.cfgWireMeasure, tblv2.cfgWireLoadRetain, tblv2.cfgWireSaveRetain));
+          _plainCodec(tblv2.TableWireReport.new, tblv2.cfgWireMeasure, tblv2.cfgWireLoad, tblv2.cfgWireSave));
     case 'tblw1 Fleet':
       return _FuzzRoot(
           _plainCodec(tblw1.TableWireReport.new, tblw1.fleetWireMeasure, tblw1.fleetWireLoad, tblw1.fleetWireSave),
@@ -2638,28 +2615,22 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
           retain: _retainCodec(tblw2.TableRetain.new, tblw2.TableWireReport.new, tblw2.fleetWireMeasure, tblw2.fleetWireLoadRetain, tblw2.fleetWireSaveRetain));
     case 'vocab9demo Wide00':
       return _FuzzRoot(
-          _plainCodec(vocab9demo.TableWireReport.new, vocab9demo.wide00WireMeasure, vocab9demo.wide00WireLoad, vocab9demo.wide00WireSave),
-          retain: _retainCodec(vocab9demo.TableRetain.new, vocab9demo.TableWireReport.new, vocab9demo.wide00WireMeasure, vocab9demo.wide00WireLoadRetain, vocab9demo.wide00WireSaveRetain));
+          _plainCodec(vocab9demo.TableWireReport.new, vocab9demo.wide00WireMeasure, vocab9demo.wide00WireLoad, vocab9demo.wide00WireSave));
     case 'vocab9demo Wide19':
       return _FuzzRoot(
-          _plainCodec(vocab9demo.TableWireReport.new, vocab9demo.wide19WireMeasure, vocab9demo.wide19WireLoad, vocab9demo.wide19WireSave),
-          retain: _retainCodec(vocab9demo.TableRetain.new, vocab9demo.TableWireReport.new, vocab9demo.wide19WireMeasure, vocab9demo.wide19WireLoadRetain, vocab9demo.wide19WireSaveRetain));
+          _plainCodec(vocab9demo.TableWireReport.new, vocab9demo.wide19WireMeasure, vocab9demo.wide19WireLoad, vocab9demo.wide19WireSave));
     case 'vocabdemo Wide00':
       return _FuzzRoot(
-          _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide00WireMeasure, vocabdemo.wide00WireLoad, vocabdemo.wide00WireSave),
-          retain: _retainCodec(vocabdemo.TableRetain.new, vocabdemo.TableWireReport.new, vocabdemo.wide00WireMeasure, vocabdemo.wide00WireLoadRetain, vocabdemo.wide00WireSaveRetain));
+          _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide00WireMeasure, vocabdemo.wide00WireLoad, vocabdemo.wide00WireSave));
     case 'vocabdemo Wide09':
       return _FuzzRoot(
-          _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoad, vocabdemo.wide09WireSave),
-          retain: _retainCodec(vocabdemo.TableRetain.new, vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoadRetain, vocabdemo.wide09WireSaveRetain));
+          _plainCodec(vocabdemo.TableWireReport.new, vocabdemo.wide09WireMeasure, vocabdemo.wide09WireLoad, vocabdemo.wide09WireSave));
     case 'widedemo Caption':
       return _FuzzRoot(
-          _plainCodec(widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoad, widedemo.captionWireSave),
-          retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoadRetain, widedemo.captionWireSaveRetain));
+          _plainCodec(widedemo.TableWireReport.new, widedemo.captionWireMeasure, widedemo.captionWireLoad, widedemo.captionWireSave));
     case 'widedemo Stamp':
       return _FuzzRoot(
-          _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave),
-          retain: _retainCodec(widedemo.TableRetain.new, widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoadRetain, widedemo.stampWireSaveRetain));
+          _plainCodec(widedemo.TableWireReport.new, widedemo.stampWireMeasure, widedemo.stampWireLoad, widedemo.stampWireSave));
     case 'widelist Wide':
       return _FuzzRoot(
           _plainCodec(widelist.TableWireReport.new, widelist.wideWireMeasure, widelist.wideWireLoad, widelist.wideWireSave),
