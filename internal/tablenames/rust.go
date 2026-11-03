@@ -77,6 +77,8 @@ func init() {
 		Name{Name: "TableMessageVocabularyFieldId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)", RustConst: true},
 		Name{Name: "TableMessageMaxBytes", What: "the announcement's conforming byte bound (§3.3)", RustConst: true},
 		Name{Name: "TableReason", What: "the message form's refusal reasons, each one by name"},
+		Name{Name: "TableStorageCap", What: "the 2^40-byte storage cap a wire region measure is refused past (docs/SPEC-TABLES.md §11)", RustConst: true},
+		Name{Name: "TableMeasureOverCap", What: "the node storage answer that names the storage cap (docs/SPEC-TABLES.md §11)", RustConst: true},
 		Name{Name: "TableFiniteF32", What: "the raw-bits test every read runs before a float32's bits become a value (§3.3)", Scoped: true},
 		Name{Name: "TableFiniteF64", What: "the raw-bits test every read runs before a float64's bits become a value (§3.3)", Scoped: true},
 		// THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3): the bit stream,

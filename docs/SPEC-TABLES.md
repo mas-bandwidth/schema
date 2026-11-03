@@ -13540,9 +13540,13 @@ in build version (§20.5).
   region `Load` refuses it before it writes; each extent term (a count times
   an element size) is checked against the cap before it is added, so the
   measure never overflows. It sits far below where an int64 size stops being
-  exact. The C++ reference and the Go port hold it, on the shared vectors in
-  `testdata/wire/tables/storage-cap`; the other ports and the Go oracle
-  (`internal/tablewire`) do not yet, and each is owed it.
+  exact. A port whose read builds values rather than a region measures
+  before it builds, so a wire past the cap is refused without materializing
+  any of it; the Go oracle (`internal/tablewire`) refuses it the same way.
+  C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua and Squirrel
+  hold it on the shared vectors in `testdata/wire/tables/storage-cap`, each
+  through its measure and its strict read; Goose, MOO, Luau and Lobster are
+  owed it.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a
@@ -13885,7 +13889,7 @@ in build version (§20.5).
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadMeasureFramed  LoadBuilder  TableType  Builder
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
