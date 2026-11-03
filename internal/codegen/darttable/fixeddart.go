@@ -1065,7 +1065,10 @@ func (g *fixedGen) emitDecodeFloat(f *ir.Field, at, expr, ind string) {
 // range is a fact about THIS READER's field and about no layout at all, so a
 // plan entry for it would have to be compiled twice — once into the identity
 // plan and once into every stranger's — and the two could drift. One clamp,
-// after the copy, in the projection every path runs, holds on both.
+// after the copy, in the projection every path runs, holds on both. It is
+// THIS READER's range: a compiled lane's image was already held to its
+// WRITER's range (fixedwriterbounds.go, docs/FIXED-FORM-ALGORITHM.md §4.6), so
+// this clamp is the second of two.
 //
 // A FIXED-POINT VALUE RIDES RAW AT ITS STORAGE WIDTH on this form: the storage
 // is the scaled integer and NOTHING HERE DIVIDES BY 2^F. So the bound compared
