@@ -455,10 +455,10 @@ func (g *fixedGen) writeElement(f *ir.Field, name string) []wseg {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			// A NESTED TYPE WHOSE IMAGE IS A RUN OF BYTES IS INLINED, which is
-			// what makes a record of scalars and nested scalars ONE append and
-			// not a chain of them.
-			if fixedFlatType(r) {
+			// A NESTED TYPE WHOSE IMAGE IS A RUN OF BYTES IS INLINED, up to
+			// fixedInlineDepth levels, which is what makes a record of scalars
+			// and nested scalars ONE append and not a chain of them.
+			if fixedInlineType(r) {
 				return g.writeType(r, name)
 			}
 			return []wseg{{stmt: g.intoStmt(fmt.Sprintf("%s%s_fixed_write_into(%s, acc)", g.moduleOf(r), ir.RustSnake(r.Name), name))}}
@@ -536,7 +536,7 @@ func (g *fixedGen) emitRangeAttrs(here []*ir.Struct, unions []*ir.Union) {
 	var one func(owner string, f *ir.Field)
 	one = func(owner string, f *ir.Field) {
 		if f.Type.Kind == ir.TNamed {
-			if r, ok := f.Type.Ref.(*ir.Struct); ok && fixedFlatType(r) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
+			if r, ok := f.Type.Ref.(*ir.Struct); ok && fixedInlineType(r) && f.Array == ir.ArrayNone && f.KeyEnum == "" {
 				for _, sub := range r.Fields {
 					one(owner, sub)
 				}
@@ -947,12 +947,12 @@ type leafList struct {
 }
 
 // readElement binds ONE element, inlining a nested type whose image is a run of
-// leaves so the whole projection stays ONE binary pattern match.
+// leaves (fixedInlineType) so the projection stays ONE binary pattern match.
 func (g *fixedGen) readElement(out *rseg, f *ir.Field, v, field string) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if fixedFlatType(r) {
+			if fixedInlineType(r) {
 				sub := g.readType(r, v+"_")
 				out.match = append(out.match, sub.match...)
 				out.post = append(out.post, sub.post...)
@@ -1111,7 +1111,7 @@ func (g *fixedGen) emitListHelpers(st *ir.Struct, snake string, size int64, r rs
 	g.pf("  # THE UNROLLED CLAUSE IS THE SAME CLAUSE k TIMES — the same clamps, the same\n")
 	g.pf("  # counters — so it saves the match and the call and never a bound.\n")
 	g.emitForwardListBase("def", snake+"_fixed_list")
-	if fixedFlatType(st) {
+	if fixedInlineType(st) {
 		if k := listUnrollK(size); k > 1 {
 			g.emitUnrolledFlatList(st, snake, r, k)
 		}
