@@ -327,6 +327,10 @@ func emit(m *Module) {
 	m.Printf("local _M = {}\n\n")
 	m.Printf("_M.Package = %q\n", u.Package)
 	m.Printf("_M.RegionAlign = %d\n", regionAlign)
+	// the most storage one wire byte can command (docs/SPEC-TABLES.md §11):
+	// the load measures a wire against the storage cap before it builds
+	// anything only where the wire is long enough to pass it
+	m.Printf("_M.StorageScale = %d\n", ir.TableStorageScale(u))
 	// the cook's Open needs the build version it was written for and the two
 	// reserved blob type ids a directory names (§7.1, §7.4, §6.3)
 	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
