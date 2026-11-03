@@ -79,11 +79,16 @@ func (g *wireGen) textFlags() []*ir.Flags {
 // §16.3), once per unit.
 func (g *wireGen) emitTextMoreRuntime() {
 	g.pf(`// _JNum is a JSON number the int type cannot hold exactly, kept as its
-// token so a wide field reads it without rounding (docs/SPEC-TABLES.md §16.2).
+// token so a wide or 64-bit field reads it without rounding
+// (docs/SPEC-TABLES.md §16.2). integral is the token's spelling: no fraction
+// and no exponent.
 final class _JNum {
   final String token;
   final double d;
-  _JNum(this.token) : d = double.parse(token);
+  final bool integral;
+  _JNum(this.token)
+      : d = double.parse(token),
+        integral = !token.contains('.') && !token.contains('e') && !token.contains('E');
 }
 
 final class _JObj {
