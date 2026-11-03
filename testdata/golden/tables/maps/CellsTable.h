@@ -12829,7 +12829,7 @@ inline int64_t CellsMeasureWireRetain( const Ctx & ctx, const Cells & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( CellsNumberFrom( ctx, numbering, root ) )
+    if ( CellsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -12870,7 +12870,7 @@ inline int64_t CellsSaveWireRetain( const Ctx & ctx, const Cells & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !CellsNumberFrom( ctx, numbering, root ) )
+    if ( !CellsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

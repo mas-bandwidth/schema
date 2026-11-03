@@ -14430,7 +14430,7 @@ inline int64_t TextMeasureWireRetain( const Ctx & ctx, const Text & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( TextNumberFrom( ctx, numbering, root ) )
+    if ( TextNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -14471,7 +14471,7 @@ inline int64_t TextSaveWireRetain( const Ctx & ctx, const Text & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !TextNumberFrom( ctx, numbering, root ) )
+    if ( !TextNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

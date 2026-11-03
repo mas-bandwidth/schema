@@ -13008,7 +13008,7 @@ inline int64_t DocsMeasureWireRetain( const Ctx & ctx, const Docs & root, TableR
         }
         return -1;
     };
-    if ( DocsNumberFrom( ctx, numbering, root ) )
+    if ( DocsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13062,7 +13062,7 @@ inline int64_t DocsSaveWireRetain( const Ctx & ctx, const Docs & root, TableReta
         }
         return false;
     };
-    if ( !DocsNumberFrom( ctx, numbering, root ) )
+    if ( !DocsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
