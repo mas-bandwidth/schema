@@ -31,7 +31,7 @@ func dumpSlot(path string, slot int32) string {
 // dumpScalar spells one value. A FLOAT is its IEEE-754 BIT PATTERN: a block row
 // is a byte-identical projection, so its bits are the fact, and a decimal
 // spelling would be a rounding rule two languages have to agree on for no gain.
-func dumpScalar(out *strings.Builder, at unsafe.Pointer, kind uint8, width uint32) {
+func dumpScalar(out *strings.Builder, at unsafe.Pointer, kind uint8, width int64) {
 	switch kind {
 	case 1: // bool
 		if *(*byte)(at) != 0 {

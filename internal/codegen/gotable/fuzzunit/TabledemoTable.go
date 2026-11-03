@@ -28,18 +28,18 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x06b0de47a4334bb0)
-const _ = uint64(0x06b0de47a4334bb0 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x47dd492b76f04c4d)
+const _ = uint64(0x47dd492b76f04c4d - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
 const TableDocNone = goruntime.TableDocNone
 
-func tableJSONGetRaw(a0 unsafe.Pointer, a1 uint32) uint64 { return goruntime.TableJSONGetRaw(a0, a1) }
+func tableJSONGetRaw(a0 unsafe.Pointer, a1 int64) uint64 { return goruntime.TableJSONGetRaw(a0, a1) }
 
-func tableJSONSetRaw(a0 unsafe.Pointer, a1 uint32, a2 uint64) { goruntime.TableJSONSetRaw(a0, a1, a2) }
+func tableJSONSetRaw(a0 unsafe.Pointer, a1 int64, a2 uint64) { goruntime.TableJSONSetRaw(a0, a1, a2) }
 
-func tableJSONGetSigned(a0 unsafe.Pointer, a1 uint32) int64 {
+func tableJSONGetSigned(a0 unsafe.Pointer, a1 int64) int64 {
 	return goruntime.TableJSONGetSigned(a0, a1)
 }
 
@@ -673,7 +673,7 @@ func tableLayoutField[T any](name string) reflect.StructField {
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
-	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
+	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset int64
 	List, Map                                                    bool // unbounded by-value containers
 	// UnboundedContainer is the ONE TELL of a container with no declared bound
 	// (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
@@ -693,11 +693,11 @@ type TableFieldInfo struct {
 	Counted            bool  // a <Name>Count/<Name>Length int32 companion exists
 	Optional           bool  // a ?T field: a <Name>Present bool decides whether it rides
 
-	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	ArrayBound    int32 // array capacity / string max length; 0 for plain scalars
+	Offset        int64 // unsafe.Offsetof the storage member
+	ElemSize      int64 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset   int64 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset int64 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits         uint8 // fixed-point binary scale
 	WideRange        bool
@@ -775,16 +775,16 @@ type TableUnionArmInfo struct {
 	Field  TableFieldInfo               // arm shape; offsets are relative to union storage
 	Void   bool                         // a selected payload-free arm
 	Reset  func(storage unsafe.Pointer) // establish selected payload defaults
-	Offset uint32                       // unsafe.Offsetof the arm's payload within the union storage
+	Offset int64                        // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo        // the arm payload's descriptor
 }
 
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
-	CookTagSize uint32
-	TagOffset   uint32 // unsafe.Offsetof the tag within the union storage
-	TagSize     uint32 // unsafe.Sizeof the tag
+	CookTagSize int64
+	TagOffset   int64 // unsafe.Offsetof the tag within the union storage
+	TagSize     int64 // unsafe.Sizeof the tag
 	Arms        []TableUnionArmInfo
 }
 
@@ -792,9 +792,9 @@ type TableUnionInfo struct {
 type TableTypeInfo struct {
 	SaveBodyRetain      func(*TableRetainWriter, unsafe.Pointer) bool
 	LoadBodyRetain      func(TableRetainReader, unsafe.Pointer) bool
-	CookSize, CookAlign uint32
+	CookSize, CookAlign int64
 	Name                string // schema type name
-	Size                uint32 // unsafe.Sizeof the storage struct
+	Size                int64  // unsafe.Sizeof the storage struct
 	ID                  uint64
 	Variable            bool
 	CycleIndex          uint64

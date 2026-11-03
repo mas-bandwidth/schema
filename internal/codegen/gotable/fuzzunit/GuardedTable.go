@@ -899,7 +899,7 @@ func (b *PatrolBuilder) Shutdown() {
 // PatrolTableFields is Patrol's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PatrolTableFields = []TableFieldInfo{
 	{Name: "active", JSON: "active", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x6580790b036f0c6f, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[Patrol]("Active")), ElemSize: uint32(tableMemberSizeof[Patrol]("Active")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[Patrol]("Active")), ElemSize: int64(tableMemberSizeof[Patrol]("Active")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -911,7 +911,7 @@ var PatrolTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "speed", JSON: "speed", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x2281498aa0200e40, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[Patrol]("Speed")), ElemSize: uint32(tableMemberSizeof[Patrol]("Speed")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[Patrol]("Speed")), ElemSize: int64(tableMemberSizeof[Patrol]("Speed")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -923,7 +923,7 @@ var PatrolTableFields = []TableFieldInfo{
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "has_target", JSON: "has_target", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x247f0e7f55aacfbd, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[Patrol]("HasTarget")), ElemSize: uint32(tableMemberSizeof[Patrol]("HasTarget")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[Patrol]("HasTarget")), ElemSize: int64(tableMemberSizeof[Patrol]("HasTarget")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -935,7 +935,7 @@ var PatrolTableFields = []TableFieldInfo{
 		Guard: "active", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "target_id", JSON: "target_id", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xb7bc9ac015a25050, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[Patrol]("TargetID")), ElemSize: uint32(tableMemberSizeof[Patrol]("TargetID")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[Patrol]("TargetID")), ElemSize: int64(tableMemberSizeof[Patrol]("TargetID")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -947,7 +947,7 @@ var PatrolTableFields = []TableFieldInfo{
 		Guard: "active && has_target", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "wander", JSON: "wander", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb8c758d8bd1845d4, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[Patrol]("Wander")), ElemSize: uint32(tableMemberSizeof[Patrol]("Wander")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[Patrol]("Wander")), ElemSize: int64(tableMemberSizeof[Patrol]("Wander")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -959,7 +959,7 @@ var PatrolTableFields = []TableFieldInfo{
 		Guard: "active && !has_target", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "note", JSON: "note", TypeName: "string", DeclaredTypeName: "string", ID: 0x3bf8fbbad1587cdd, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(tableOffsetof[Patrol]("Note")), ElemSize: uint32(tableMemberSizeof[Patrol]("Note")), CountOffset: uint32(tableOffsetof[Patrol]("NoteLength")), PresentOffset: 0xffffffff,
+		ArrayBound: 8, Offset: int64(tableOffsetof[Patrol]("Note")), ElemSize: int64(tableMemberSizeof[Patrol]("Note")), CountOffset: int64(tableOffsetof[Patrol]("NoteLength")), PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 1, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -976,7 +976,7 @@ var PatrolTableFields = []TableFieldInfo{
 var PatrolTableInfo TableTypeInfo
 
 func init() {
-	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(tableSizeof[Patrol]()), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CycleIndex: 12, CycleType: tableCycleType, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
+	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: int64(tableSizeof[Patrol]()), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CycleIndex: 12, CycleType: tableCycleType, CookSize: 36, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil

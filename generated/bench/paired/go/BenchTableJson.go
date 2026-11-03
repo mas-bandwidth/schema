@@ -2262,7 +2262,7 @@ func (v *tableJSONWide) div(d uint32) uint32 {
 	v[1] = limbs[2] | limbs[3]<<32
 	return uint32(rem)
 }
-func tableJSONWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJSONWide {
+func tableJSONWideLoad(storage unsafe.Pointer, width int64, signed bool) tableJSONWide {
 	if width == 16 {
 		return *(*tableJSONWide)(storage)
 	}
@@ -2276,7 +2276,7 @@ func tableJSONWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJ
 	}
 	return tableJSONWide{tableJSONGetRaw(storage, width), 0}
 }
-func tableJSONWideStore(storage unsafe.Pointer, width uint32, v tableJSONWide) {
+func tableJSONWideStore(storage unsafe.Pointer, width int64, v tableJSONWide) {
 	if width == 16 {
 		*(*tableJSONWide)(storage) = v
 	} else {

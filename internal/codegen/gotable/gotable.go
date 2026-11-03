@@ -1038,7 +1038,7 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
- CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
+ CookOffset, CookElemSize, CookCountOffset, CookPresentOffset int64
  List, Map bool // unbounded by-value containers
  // UnboundedContainer is the ONE TELL of a container with no declared bound
  // (docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
@@ -1059,10 +1059,10 @@ type TableFieldInfo struct {
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
 
 	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	Offset        int64 // unsafe.Offsetof the storage member
+	ElemSize      int64 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset   int64 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset int64 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits uint8 // fixed-point binary scale
  WideRange bool
@@ -1140,24 +1140,24 @@ type TableUnionArmInfo struct {
  Field TableFieldInfo // arm shape; offsets are relative to union storage
  Void bool // a selected payload-free arm
  Reset func(storage unsafe.Pointer) // establish selected payload defaults
-	Offset uint32               // unsafe.Offsetof the arm's payload within the union storage
+	Offset int64                // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo // the arm payload's descriptor
 }
 
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
-	CookTagSize uint32
-	TagOffset uint32 // unsafe.Offsetof the tag within the union storage
-	TagSize   uint32 // unsafe.Sizeof the tag
+	CookTagSize int64
+	TagOffset   int64 // unsafe.Offsetof the tag within the union storage
+	TagSize     int64 // unsafe.Sizeof the tag
 	Arms      []TableUnionArmInfo
 }
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
-	CookSize, CookAlign uint32
+	CookSize, CookAlign int64
 	Name      string // schema type name
-	Size      uint32 // unsafe.Sizeof the storage struct
+	Size      int64  // unsafe.Sizeof the storage struct
  Id uint64
  Variable bool
  CycleIndex uint64
@@ -1193,7 +1193,7 @@ type tableJSONGraphNode struct { refs int; label uint64; written bool }
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a copy into the low bytes of a wider word
 
-func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func tableJSONGetRaw(storage unsafe.Pointer, width int64) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -1207,7 +1207,7 @@ func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func tableJSONSetRaw(storage unsafe.Pointer, width int64, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -1220,7 +1220,7 @@ func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func tableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+func tableJSONGetSigned(storage unsafe.Pointer, width int64) int64 {
 	raw := tableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)

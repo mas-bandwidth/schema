@@ -100,14 +100,14 @@ const (
 // against, and the record it names.
 type TableCookFieldInfo struct {
 	Name          string
-	Offset        int32 // the field's offset in the record this descriptor describes
-	Size          int32 // its whole storage there, companions included
-	ElemSize      int32 // one element's size, for an array; the field's own otherwise
+	Offset        int64 // the field's offset in the record this descriptor describes
+	Size          int64 // its whole storage there, companions included
+	ElemSize      int64 // one element's size, for an array; the field's own otherwise
 	IsArray       bool
 	ArrayBound    int32 // the DECLARED bound: a counted array's N, a string's or bytes' length
 	IsPointer     bool  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-	CountOffset   int32 // the count companion's offset, or -1 when the field has none
-	PresentOffset int32 // an optional's presence bool, or -1
+	CountOffset   int64 // the count companion's offset, or -1 when the field has none
+	PresentOffset int64 // an optional's presence bool, or -1
 	Storage       TableCookStorage
 	// Record is the record this field NAMES, behind a function so the table
 	// stays constructible in any order — Go refuses an initialisation cycle
@@ -123,7 +123,7 @@ type TableCookFieldInfo struct {
 // TableCookInfo is one cooked record's layout as DATA.
 type TableCookInfo struct {
 	Name      string
-	Size      int32
+	Size      int64
 	Align     int32
 	NumFields int32
 	Fields    []TableCookFieldInfo
@@ -637,7 +637,7 @@ type tableCookWriter struct {
 	at     int64
 }
 
-func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
+func (w *tableCookWriter) put(at int64, value uint64, width int64) {
 	if w.buffer == nil {
 		return
 	}

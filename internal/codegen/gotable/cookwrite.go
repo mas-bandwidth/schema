@@ -104,7 +104,7 @@ const goCookWriteRuntime = `
 type TableByteOrder uint8
 const (TableByteOrderLittle TableByteOrder=1;TableByteOrderBig TableByteOrder=2)
 type tableCookWriter struct { buffer []byte; order TableByteOrder; at int64 }
-func(w *tableCookWriter) put(at int64,value uint64,width uint32){if w.buffer==nil{return};for i := range width {shift:=i;if w.order==TableByteOrderBig{shift=width-1-i};w.buffer[at+int64(i)]=byte(value>>(shift*8))}}
+func(w *tableCookWriter) put(at int64,value uint64,width int64){if w.buffer==nil{return};for i := range width {shift:=i;if w.order==TableByteOrderBig{shift=width-1-i};w.buffer[at+int64(i)]=byte(value>>(shift*8))}}
 func(w *tableCookWriter) header(data,nodes,align int64){w.put(0,0x4b4f4f434d484353,8);w.put(8,tableCookBuildVersion,8);w.put(16,uint64(w.order),8);w.put(24,uint64(data),8);w.put(32,uint64(nodes)*16,8);w.put(40,uint64(align),8)}
 func(w *tableCookWriter) record(p unsafe.Pointer,t *TableTypeInfo,at int64,live bool)bool {
  for i:=range t.Fields {f:=&t.Fields[i];rides:=live&&tableJSONGuardHolds(p,t,f.Guard);if f.Optional {rides=rides&&*(*bool)(unsafe.Add(p,f.PresentOffset))};if !w.field(p,f,at,rides){return false}};return true

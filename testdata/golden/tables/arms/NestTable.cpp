@@ -133,7 +133,7 @@ inline bool TableJsonFinite( double v )
     return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
 }
 
-inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
+inline uint64_t TableJsonGetRaw( const void * storage, int64_t width )
 {
     switch ( width )
     {
@@ -165,7 +165,7 @@ inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
     return 0;
 }
 
-inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
+inline void TableJsonSetRaw( void * storage, int64_t width, uint64_t value )
 {
     switch ( width )
     {
@@ -196,7 +196,7 @@ inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
     }
 }
 
-inline int64_t TableJsonGetSigned( const void * storage, uint32_t width )
+inline int64_t TableJsonGetSigned( const void * storage, int64_t width )
 {
     uint64_t raw = TableJsonGetRaw( storage, width );
     if ( width < 8 )
@@ -312,7 +312,7 @@ inline uint32_t TableJsonWideDiv( TableJsonWide * v, uint32_t d )
 // pair — native __int128 in the host's byte order, or the emulated struct with
 // its low lane first — so the lanes are read in the host's order; a narrower
 // storage is one lane, sign-extended for a signed kind.
-inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bool is_signed )
+inline TableJsonWide TableJsonWideLoad( const void * storage, int64_t width, bool is_signed )
 {
     TableJsonWide v = { 0, 0 };
     if ( width == 16 )
@@ -330,7 +330,7 @@ inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bo
     return v;
 }
 
-inline void TableJsonWideStore( void * storage, uint32_t width, TableJsonWide v )
+inline void TableJsonWideStore( void * storage, int64_t width, TableJsonWide v )
 {
     if ( width == 16 )
     {

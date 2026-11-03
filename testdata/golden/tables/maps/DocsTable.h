@@ -337,7 +337,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -345,15 +345,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -397,10 +397,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -488,7 +488,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -5983,8 +5983,8 @@ struct TableWorker
         static_assert( alignof( T ) <= kTableAlign, "a table node's alignment must fit the arena's" );
         TableSlot<T> slot;
         if ( arena == NULL || arena->locked ) { return slot; }
+        if ( sizeof( T ) > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split, and never truncated to 32 bits
         uint32_t bytes = TableAlignUp( (uint32_t) sizeof( T ) );
-        if ( bytes > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split
         if ( end == 0 || next + bytes > end )
         {
             uint32_t offset = TableArenaGrabSlab( *arena );
@@ -13759,17 +13759,17 @@ extern const TableTypeInfo DocsPagesEntryTableInfo;
 extern const TableTypeInfo DocsTableInfo;
 
 inline const TableFieldInfo DocsPagesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( DocsPagesEntry, key ), (uint32_t) sizeof( DocsPagesEntry::key ), (uint32_t) offsetof( DocsPagesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "string", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( DocsPagesEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (int64_t) offsetof( DocsPagesEntry, key ), (int64_t) sizeof( DocsPagesEntry::key ), (int64_t) offsetof( DocsPagesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "value", "value", "string", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (int64_t) offsetof( DocsPagesEntry, value ), (int64_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
-inline const TableTypeInfo DocsPagesEntryTableInfo = { "DocsPagesEntry", (uint32_t) sizeof( DocsPagesEntry ), 2, DocsPagesEntryTableFields, +[]( void * p ) { DocsPagesEntryReset( *(DocsPagesEntry *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo DocsPagesEntryTableInfo = { "DocsPagesEntry", (int64_t) sizeof( DocsPagesEntry ), 2, DocsPagesEntryTableFields, +[]( void * p ) { DocsPagesEntryReset( *(DocsPagesEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DocsPagesEntryTableType() { return &DocsPagesEntryTableInfo; }
 
 inline const TableFieldInfo DocsTableFields[] = {
-    { "pages", "pages", "map[string(8)]*string", 0xab01daa76a48769full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Docs, pages ), (uint32_t) sizeof( DocsPagesEntry ), (uint32_t) offsetof( Docs, pages.count ), 0xffffffffu, &DocsPagesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<DocsPagesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Docs, past ), (uint32_t) sizeof( Docs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "pages", "pages", "map[string(8)]*string", 0xab01daa76a48769full, 13, true, false, NULL, NULL, true, false, 0, (int64_t) offsetof( Docs, pages ), (int64_t) sizeof( DocsPagesEntry ), (int64_t) offsetof( Docs, pages.count ), 0xffffffffu, &DocsPagesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<DocsPagesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Docs, past ), (int64_t) sizeof( Docs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
-inline const TableTypeInfo DocsTableInfo = { "Docs", (uint32_t) sizeof( Docs ), 2, DocsTableFields, +[]( void * p ) { DocsReset( *(Docs *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo DocsTableInfo = { "Docs", (int64_t) sizeof( Docs ), 2, DocsTableFields, +[]( void * p ) { DocsReset( *(Docs *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DocsTableType() { return &DocsTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

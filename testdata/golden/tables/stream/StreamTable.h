@@ -330,7 +330,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -338,15 +338,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -390,10 +390,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -474,7 +474,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -5122,8 +5122,8 @@ struct TableWorker
         static_assert( alignof( T ) <= kTableAlign, "a table node's alignment must fit the arena's" );
         TableSlot<T> slot;
         if ( arena == NULL || arena->locked ) { return slot; }
+        if ( sizeof( T ) > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split, and never truncated to 32 bits
         uint32_t bytes = TableAlignUp( (uint32_t) sizeof( T ) );
-        if ( bytes > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split
         if ( end == 0 || next + bytes > end )
         {
             uint32_t offset = TableArenaGrabSlab( *arena );
@@ -14364,26 +14364,26 @@ extern const TableTypeInfo ChunkTableInfo;
 extern const TableTypeInfo FeedTableInfo;
 
 inline const TableFieldInfo HeaderTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Header, name ), (uint32_t) sizeof( Header::name ), (uint32_t) offsetof( Header, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (int64_t) offsetof( Header, name ), (int64_t) sizeof( Header::name ), (int64_t) offsetof( Header, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
-inline const TableTypeInfo HeaderTableInfo = { "Header", (uint32_t) sizeof( Header ), 1, HeaderTableFields, +[]( void * p ) { HeaderReset( *(Header *) p ); }, false, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo HeaderTableInfo = { "Header", (int64_t) sizeof( Header ), 1, HeaderTableFields, +[]( void * p ) { HeaderReset( *(Header *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * HeaderTableType() { return &HeaderTableInfo; }
 
 inline const TableFieldInfo ChunkTableFields[] = {
-    { "data", "data", "bytes", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Chunk, data ), (uint32_t) sizeof( Chunk::data[0] ), (uint32_t) offsetof( Chunk, data_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "next", "next", "Chunk", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Chunk, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "links", "links", "Chunk", 0x5cc201a9f1b8274eull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Chunk, links ), (uint32_t) sizeof( Chunk::links[0] ), (uint32_t) offsetof( Chunk, links_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "data", "data", "bytes", 0x855b556730a34a05ull, 6, true, false, NULL, NULL, true, false, 8, (int64_t) offsetof( Chunk, data ), (int64_t) sizeof( Chunk::data[0] ), (int64_t) offsetof( Chunk, data_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "next", "next", "Chunk", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (int64_t) offsetof( Chunk, next ), (int64_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "links", "links", "Chunk", 0x5cc201a9f1b8274eull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (int64_t) offsetof( Chunk, links ), (int64_t) sizeof( Chunk::links[0] ), (int64_t) offsetof( Chunk, links_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
-inline const TableTypeInfo ChunkTableInfo = { "Chunk", (uint32_t) sizeof( Chunk ), 3, ChunkTableFields, +[]( void * p ) { ChunkReset( *(Chunk *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo ChunkTableInfo = { "Chunk", (int64_t) sizeof( Chunk ), 3, ChunkTableFields, +[]( void * p ) { ChunkReset( *(Chunk *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ChunkTableType() { return &ChunkTableInfo; }
 
 inline const TableFieldInfo FeedTableFields[] = {
-    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Feed, id ), (uint32_t) sizeof( Feed::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "frame", "frame", "Frame", 0xd8d4335628b35226ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Feed, frame ), (uint32_t) sizeof( Feed::frame ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "header"; case 2: return "chunk"; case 3: return "link"; case 4: return "tag"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3a506cb501761960ull; case 2: return 0x0f838176873c8e22ull; case 3: return 0xbf4b9bad694f4809ull; case 4: return 0x56d7ab194448a4f3ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Frame[] = { { "link", "link", "Chunk", 0xbf4b9bad694f4809ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Frame, link ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "tag", "tag", "uint32", 0x56d7ab194448a4f3ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Frame, tag ), (uint32_t) sizeof( Frame::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Frame, header ), &HeaderTableInfo, NULL, 24 }, { (uint32_t) offsetof( Frame, chunk ), &ChunkTableInfo, NULL, 48 }, { (uint32_t) offsetof( Frame, link ), NULL, &arm_fields_Frame[0], 8 }, { (uint32_t) offsetof( Frame, tag ), NULL, &arm_fields_Frame[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Frame, type ), (uint32_t) sizeof( Frame::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "parts", "parts", "Chunk", 0x0c519da7a1f958c5ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 4, (uint32_t) offsetof( Feed, parts ), (uint32_t) sizeof( Feed::parts[0] ), (uint32_t) offsetof( Feed, parts_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "pair", "pair", "Chunk", 0x0369250deb889a31ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 2, (uint32_t) offsetof( Feed, pair ), (uint32_t) sizeof( Feed::pair[0] ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Feed, id ), (int64_t) sizeof( Feed::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "frame", "frame", "Frame", 0xd8d4335628b35226ull, 15, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Feed, frame ), (int64_t) sizeof( Feed::frame ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "header"; case 2: return "chunk"; case 3: return "link"; case 4: return "tag"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3a506cb501761960ull; case 2: return 0x0f838176873c8e22ull; case 3: return 0xbf4b9bad694f4809ull; case 4: return 0x56d7ab194448a4f3ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Frame[] = { { "link", "link", "Chunk", 0xbf4b9bad694f4809ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (int64_t) offsetof( Frame, link ), (int64_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "tag", "tag", "uint32", 0x56d7ab194448a4f3ull, 8, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Frame, tag ), (int64_t) sizeof( Frame::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Frame, header ), &HeaderTableInfo, NULL, 24 }, { (int64_t) offsetof( Frame, chunk ), &ChunkTableInfo, NULL, 48 }, { (int64_t) offsetof( Frame, link ), NULL, &arm_fields_Frame[0], 8 }, { (int64_t) offsetof( Frame, tag ), NULL, &arm_fields_Frame[1], 4 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Frame, type ), (int64_t) sizeof( Frame::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "parts", "parts", "Chunk", 0x0c519da7a1f958c5ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, true, false, 4, (int64_t) offsetof( Feed, parts ), (int64_t) sizeof( Feed::parts[0] ), (int64_t) offsetof( Feed, parts_count ), 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "pair", "pair", "Chunk", 0x0369250deb889a31ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) ChunkAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ChunkEmplace( worker, *(TableRef *) slot ); }, false, false, 2, (int64_t) offsetof( Feed, pair ), (int64_t) sizeof( Feed::pair[0] ), 0xffffffffu, 0xffffffffu, &ChunkTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
-inline const TableTypeInfo FeedTableInfo = { "Feed", (uint32_t) sizeof( Feed ), 4, FeedTableFields, +[]( void * p ) { FeedReset( *(Feed *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo FeedTableInfo = { "Feed", (int64_t) sizeof( Feed ), 4, FeedTableFields, +[]( void * p ) { FeedReset( *(Feed *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * FeedTableType() { return &FeedTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----
