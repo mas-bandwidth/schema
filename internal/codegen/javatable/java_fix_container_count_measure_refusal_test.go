@@ -16,11 +16,12 @@ import (
 )
 
 // A map count that runs past its body (wire fuzzer cause C3, the count pass)
-// makes the oracle's LoadMeasure refuse with count_over_length; no Load runs
-// (docs/SPEC-TABLES.md §2.9, §6.5). The Java leg used to accept the count and
-// load a short map. Each case is the fuzzer's own mutant at seed 24845619678,
-// for the affected unit's root, embedded as hex: the Java answer must be the
-// oracle's refusal.
+// makes the oracle's LoadMeasure answer count_over_length; no Load runs
+// (docs/SPEC-TABLES.md §2.9, §6.5). The count is damage, not a refusal (§4):
+// the Java load lands no value with malformed set and refused not set, never a
+// short map, and the strict read answers wire_damaged. Each case is the
+// fuzzer's own mutant at seed 24845619678, for the affected unit's root,
+// embedded as hex.
 func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -42,9 +43,9 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 			if _, _, refused := tablewire.FileRegionMeasure(u, u.Tables[c.root], mutant); !refused {
 				t.Fatalf("test setup: the oracle does not refuse the %s mutant", c.root)
 			}
-			measure, report, _, loaded := javaCountMeasureVerdict(t, u, c.root, mutant)
-			if measure != "-1" || loaded || !strings.HasSuffix(report, ",true") {
-				t.Errorf("%s.%s: java loadMeasure=%s report=%s loaded=%t, oracle refuses (count_over_length)", c.dir, c.root, measure, report, loaded)
+			measure, report, _, loaded, strict := javaCountMeasureVerdict(t, u, c.root, mutant)
+			if measure != "-1" || loaded || !strings.HasSuffix(report, ",true,false") || strict != "wire_damaged" {
+				t.Errorf("%s.%s: java loadMeasure=%s report=%s loaded=%t strict=%s, want -1, damage (malformed, not refused), no value, wire_damaged", c.dir, c.root, measure, report, loaded, strict)
 			}
 		})
 	}
@@ -52,9 +53,9 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 
 // javaCountMeasureVerdict generates and compiles the unit's Java, then answers
 // the root's loadMeasure, the load report (unknown, kindMismatch, widened,
-// clamped, duplicate, malformed, refused), the report's reason and whether
-// load returned a value.
-func javaCountMeasureVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (measure, report, reason string, loaded bool) {
+// clamped, duplicate, malformed, refused), the report's reason, whether load
+// returned a value, and the strict read's reason.
+func javaCountMeasureVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (measure, report, reason string, loaded bool, strict string) {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -102,6 +103,10 @@ public final class Driver {
         System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
         System.out.println("N " + report.reason);
         System.out.println(v == null ? "V null" : "V loaded");
+        %[1]s.TableVariable.Report strictReport = new %[1]s.TableVariable.Report();
+        %[1]s.%[2]sVariable.readStrict(wire, strictReport);
+        %[1]s.TableVariable.TableRefuseReason why = strictReport.err();
+        System.out.println("S " + (why == null ? "ok" : why.spelling));
     }
 }
 `, pkg, root)
@@ -131,12 +136,14 @@ public final class Driver {
 			reason, seen = strings.TrimPrefix(line, "N "), seen+1
 		case strings.HasPrefix(line, "V "):
 			loaded, seen = line == "V loaded", seen+1
+		case strings.HasPrefix(line, "S "):
+			strict, seen = strings.TrimPrefix(line, "S "), seen+1
 		}
 	}
-	if seen != 4 {
+	if seen != 5 {
 		t.Fatalf("driver output:\n%s", out)
 	}
-	return measure, report, reason, loaded
+	return measure, report, reason, loaded, strict
 }
 
 // javaPinSchemas are the units of internal/codegen/goosetable/testdata/
@@ -155,14 +162,15 @@ type javaPin struct {
 
 // javaPinVerdict is what the Java leg answers for one wire: loadMeasure, the
 // load report (unknown, kindMismatch, widened, clamped, duplicate, malformed,
-// refused), the report's reason and whether load returned a value.
+// refused), the report's reason, whether load returned a value, and the
+// strict read's reason (readStrict, Report.err()).
 type javaPinVerdict struct {
-	measure, report, reason string
-	loaded                  bool
+	measure, report, reason, strict string
+	loaded                          bool
 }
 
 // javaPinVerdicts compiles the unit's Java once and reads every wire through
-// Root's loadMeasure and load.
+// Root's loadMeasure, load and readStrict.
 func javaPinVerdicts(t *testing.T, u *ir.Unit, wires [][]byte) []javaPinVerdict {
 	t.Helper()
 	files, err := Generate(u)
@@ -212,9 +220,13 @@ public final class Driver {
             byte[] wire = Files.readAllBytes(Paths.get(a));
             %[1]s.TableVariable.Report report = new %[1]s.TableVariable.Report();
             %[1]s.RootVariable.Value v = %[1]s.RootVariable.load(wire, report);
+            %[1]s.TableVariable.Report strictReport = new %[1]s.TableVariable.Report();
+            %[1]s.RootVariable.readStrict(wire, strictReport);
+            %[1]s.TableVariable.TableRefuseReason why = strictReport.err();
             System.out.println("P " + %[1]s.RootVariable.loadMeasure(wire)
                 + "|" + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused
-                + "|" + report.reason + "|" + (v == null ? "null" : "loaded"));
+                + "|" + report.reason + "|" + (v == null ? "null" : "loaded")
+                + "|" + (why == null ? "ok" : why.spelling));
         }
     }
 }
@@ -239,10 +251,10 @@ public final class Driver {
 			continue
 		}
 		f := strings.Split(strings.TrimPrefix(line, "P "), "|")
-		if len(f) != 4 {
+		if len(f) != 5 {
 			t.Fatalf("driver line %q", line)
 		}
-		got = append(got, javaPinVerdict{measure: f[0], report: f[1], reason: f[2], loaded: f[3] == "loaded"})
+		got = append(got, javaPinVerdict{measure: f[0], report: f[1], reason: f[2], loaded: f[3] == "loaded", strict: f[4]})
 	}
 	if len(got) != len(wires) {
 		t.Fatalf("%d driver lines for %d wires:\n%s", len(got), len(wires), out)
@@ -251,27 +263,24 @@ public final class Driver {
 }
 
 // javaPinFault answers how the Java leg's answer differs from one pin row, or
-// "" when it agrees. The leg has no strict read and no measure reason, so the
-// strict column is held through the load (docs/SPEC-TABLES.md §6.5): a row the
-// strict read keeps or refuses only for an evolution counter loads with that
-// counter moved, damage discards the value with malformed set, and a refusal
-// discards it with its name. The measure column is held as its verdict, a size
-// or -1, and the form column as the report's reason. A count its body cannot
-// cover is the one row class where the load answers the measure rather than
-// the strict read: the load refuses wherever loadMeasure answers -1.
+// "" when it agrees. The strict column is held twice (docs/SPEC-TABLES.md
+// §6.5): by readStrict's reason, where the strict read names every damage
+// wire_damaged, and through the tolerant load: a row the strict read keeps or
+// refuses only for an evolution counter loads with that counter moved, damage
+// discards the value with malformed set, and a refusal discards it with its
+// name. The measure column is held as its verdict, a size or -1, and the form
+// column as the report's reason. The leg has no measure reason.
 func javaPinFault(p javaPin, v javaPinVerdict) string {
 	bad := func(want string) string {
-		return fmt.Sprintf("measure=%s report=%s reason=%s loaded=%t, want %s", v.measure, v.report, v.reason, v.loaded, want)
+		return fmt.Sprintf("measure=%s report=%s reason=%s loaded=%t strict=%s, want %s", v.measure, v.report, v.reason, v.loaded, v.strict, want)
 	}
 	r := strings.Split(v.report, ",")
-	if p.measure == "count_over_length" {
-		// THE LOAD REFUSES WHERE loadMeasure ANSWERS -1 (TestJavaFixContainer
-		// CountMeasureRefusal): a count its body cannot cover is the measure's
-		// refusal, and no value lands
-		if v.loaded || v.measure != "-1" || r[5] != "false" || r[6] != "true" {
-			return bad("no value, refused as loadMeasure refuses, not malformed")
-		}
-		return ""
+	strict := p.strict
+	if strict == "malformed" {
+		strict = "wire_damaged"
+	}
+	if v.strict != strict {
+		return bad("the strict read's reason " + strict)
 	}
 	switch p.strict {
 	case "ok":
@@ -284,8 +293,8 @@ func javaPinFault(p javaPin, v javaPinVerdict) string {
 			return bad("a value with " + p.strict + " counted")
 		}
 	case "malformed", "wire_damaged":
-		if v.loaded || r[5] != "true" {
-			return bad("no value, malformed")
+		if v.loaded || r[5] != "true" || r[6] != "false" {
+			return bad("no value, malformed, not refused")
 		}
 	case "unknown_form":
 		if v.loaded || r[6] != "true" || r[5] != "false" {

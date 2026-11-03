@@ -446,9 +446,11 @@ public final class MixedStatVariable {
         }
         TableVariable.Measure measure = new TableVariable.Measure();
         if (loadMeasure(data, measure) < 0) {
-            report.refused = true;
             if (measure.report.reason != null) {
+                report.refused = true;
                 report.reason = measure.report.reason;
+            } else {
+                report.malformed = true;
             }
             return null;
         }
@@ -471,6 +473,27 @@ public final class MixedStatVariable {
         if (TableVariable.cyclic(nt)) {
             report.malformed = true;
             return null;
+        }
+        return v;
+    }
+
+    /**
+     * readStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5): the value, or null
+     * with the one reason the strict rule refuses it with on report.err(). The report is reset and
+     * holds this read's report.
+     */
+    public static Value readStrict(byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        } else {
+            report.reset();
+        }
+        Value v = load(data, report);
+        if (report.err() != null) {
+            return null;
+        }
+        if (v == null) {
+            report.malformed = true;
         }
         return v;
     }

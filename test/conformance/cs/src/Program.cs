@@ -82,6 +82,9 @@ static partial class Program
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
         public Func<byte[], Report, object> Load;   // null on refusal
+        // THE STRICT READ (<Root>ReadStrict): the member name of the one typed
+        // reason it refuses with, or "ok"
+        public Func<byte[], string> ReadStrict;
         public Func<object, long> Measure;
         public LoadMeasureOf LoadMeasure;
         public Func<object, byte[], long> Save;
@@ -546,6 +549,7 @@ static partial class Program
                 Fill(report, copy(inner));
                 return ok ? (object)value : null;
             },
+            ReadStrict = BindReadStrict<TValue, TReport>(load.Method, make),
             Measure = v => measure((TValue)v),
             Save = (v, buffer) => save((TValue)v, buffer),
             FromJson = (text, report) =>
@@ -559,6 +563,28 @@ static partial class Program
             ToJsonMeasure = v => toJsonMeasure((TValue)v),
             ToJson = (v, buffer) => toJson((TValue)v, buffer),
         };
+    }
+
+    // Each unit declares its own TableRefuseReason, so the row's strict read is
+    // bound beside its <Root>Load on the same generated Schema class: the
+    // <Root>ReadStrict every table root's wire surface carries. A row without
+    // one is a driver error, never a silent absent.
+    delegate bool ReadStrictOf<TValue, TReport, TReason>(TValue value, ReadOnlySpan<byte> bytes, TReport report, out TReason reason);
+    static Func<byte[], string> BindReadStrict<TValue, TReport>(System.Reflection.MethodInfo load, Func<TReport> make)
+        where TValue : new()
+    {
+        string name = load.Name.EndsWith("Load", StringComparison.Ordinal) ? load.Name.Substring(0, load.Name.Length - 4) + "ReadStrict" : null;
+        System.Reflection.MethodInfo strict = name == null ? null : load.DeclaringType.GetMethod(name);
+        if (strict == null) { throw new InvalidOperationException("driver: " + load.DeclaringType + "." + load.Name + " has no ReadStrict beside it"); }
+        Type reason = strict.GetParameters()[3].ParameterType.GetElementType();
+        return (Func<byte[], string>)typeof(Program).GetMethod(nameof(BindReadStrictTyped), System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+            .MakeGenericMethod(typeof(TValue), typeof(TReport), reason).Invoke(null, new object[] { strict, make });
+    }
+    static Func<byte[], string> BindReadStrictTyped<TValue, TReport, TReason>(System.Reflection.MethodInfo strict, Func<TReport> make)
+        where TValue : new() where TReason : struct, Enum
+    {
+        var read = strict.CreateDelegate<ReadStrictOf<TValue, TReport, TReason>>();
+        return bytes => read(new TValue(), bytes, make(), out TReason why) ? "ok" : why.ToString();
     }
 
     static Codec Demo<T>(string root,
@@ -913,17 +939,22 @@ static partial class Program
     }
 
     // strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md
-    // §6.5) for every wire a `report` or `framing` line names. The C# runtime
-    // carries no strict read: its plain Load is the tolerant read, and its
-    // report has no reason for what the strict rule refuses (clamped,
-    // kind_mismatch, malformed, wire_damaged), so every case is answered
-    // absent rather than spelled from the tolerant read.
+    // §6.5) for every wire a `report` or `framing` line names. The runtime
+    // decides the reason (<Root>ReadStrict, TableReport.Err); the driver spells
+    // the member's name, or `ok` for a read the strict rule accepts. A root
+    // with no codec here is answered absent.
     static int SurfaceStrictReason(string outDir)
     {
         foreach (string[] f in lines)
         {
             if (f[0] != "report" && f[0] != "framing") { continue; }
-            SpillAbsent(outDir, f[1]);
+            Codec codec = Find(f[2], f[3]);
+            if (codec == null)
+            {
+                SpillAbsent(outDir, f[1]);
+                continue;
+            }
+            File.WriteAllText(Path.Combine(outDir, f[1]), codec.ReadStrict(File.ReadAllBytes(f[4])) + "\n");
         }
         return 0;
     }

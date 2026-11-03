@@ -231,6 +231,22 @@ namespace Tabledemo
             return GunnerSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // GunnerSettingsReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool GunnerSettingsReadStrict(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = GunnerSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            GunnerSettingsTableType().Reset(value);
+            return false;
+        }
+
         public static long GunnerSettingsMeasureMessages(GunnerSettings[] values) { return TableWire.MessageSave(values, GunnerSettingsTableType(), Span<byte>.Empty, true); }
         public static long GunnerSettingsSaveMessages(GunnerSettings[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, GunnerSettingsTableType(), bytes, false); }
         public static TableWire.Verdict GunnerSettingsLoadMessages(GunnerSettings[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, GunnerSettingsTableType(), bytes, vocabulary, report, out count); }
@@ -355,6 +371,22 @@ namespace Tabledemo
             return ShipEntryLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // ShipEntryReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool ShipEntryReadStrict(ShipEntry value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = ShipEntryLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            ShipEntryTableType().Reset(value);
+            return false;
+        }
+
         public static long ShipEntryMeasureMessages(ShipEntry[] values) { return TableWire.MessageSave(values, ShipEntryTableType(), Span<byte>.Empty, true); }
         public static long ShipEntrySaveMessages(ShipEntry[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ShipEntryTableType(), bytes, false); }
         public static TableWire.Verdict ShipEntryLoadMessages(ShipEntry[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ShipEntryTableType(), bytes, vocabulary, report, out count); }
@@ -463,6 +495,22 @@ namespace Tabledemo
         public static bool GlobalSettingsLoad(GlobalSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return GlobalSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // GlobalSettingsReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool GlobalSettingsReadStrict(GlobalSettings value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = GlobalSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            GlobalSettingsTableType().Reset(value);
+            return false;
         }
 
         public static long GlobalSettingsMeasureMessages(GlobalSettings[] values) { return TableWire.MessageSave(values, GlobalSettingsTableType(), Span<byte>.Empty, true); }
@@ -605,6 +653,22 @@ namespace Tabledemo
         public static bool PackConfigLoad(PackConfig value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return PackConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // PackConfigReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool PackConfigReadStrict(PackConfig value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = PackConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            PackConfigTableType().Reset(value);
+            return false;
         }
 
         public static long PackConfigMeasureMessages(PackConfig[] values) { return TableWire.MessageSave(values, PackConfigTableType(), Span<byte>.Empty, true); }

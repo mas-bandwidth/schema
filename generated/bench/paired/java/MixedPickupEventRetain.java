@@ -73,9 +73,11 @@ public final class MixedPickupEventRetain {
         }
         TableVariable.Measure measure = new TableVariable.Measure();
         if (MixedPickupEventVariable.loadMeasure(data, measure) < 0) {
-            report.refused = true;
             if (measure.report.reason != null) {
+                report.refused = true;
                 report.reason = measure.report.reason;
+            } else {
+                report.malformed = true;
             }
             retain.used = 0;
             retain.idUsed = 0;

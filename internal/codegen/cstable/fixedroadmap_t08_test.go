@@ -303,7 +303,7 @@ else
 // only under `hash != own`; the record loop's single Run call runs both, so a
 // record this build wrote and a record an endpoint wrote are read by one path.
 func t08P1(t *testing.T) {
-	_, _, src := t08Emit(t, t08Flat)
+	_, st, src := t08Emit(t, t08Flat)
 	n := t02Norm(src)
 
 	t02Has(t, src, "ReadOnlySpan<TableFixedEntry> entries = TFixedPlan;",
@@ -318,8 +318,18 @@ func t08P1(t *testing.T) {
 	if got := strings.Count(src, "TableFixedWire.Run(entries, "); got != 1 {
 		t.Errorf("P1: TableFixedWire.Run(entries, occurs %d times in the load, want its one record loop", got)
 	}
+	// the fixed load is its overloads, from the first declaration to the end
+	// of the last; the files form-1 ReadStrict is a different forms read
+	start := strings.Index(src, "public static long "+st.Name+"FixedLoad(")
+	if start < 0 {
+		t.Fatalf("P1: the generated source declares no %sFixedLoad", st.Name)
+	}
+	load := src[start:]
+	last := strings.LastIndex(load, "public static long "+st.Name+"FixedLoad(")
+	load = load[:last+strings.Index(load[last:], "\n}\n")]
+	t02Has(t, load, "ReadOnlySpan<TableFixedEntry> entries = TFixedPlan;", "P1 the scanned load holds its record loop")
 	for _, forbidden := range []string{"strict", "identity_plan", "compiled_plan"} {
-		if strings.Contains(strings.ToLower(n), forbidden) {
+		if strings.Contains(strings.ToLower(t02Norm(load)), forbidden) {
 			t.Errorf("P1: the emitted load carries a %q, which is a second reader", forbidden)
 		}
 	}

@@ -825,291 +825,291 @@ fn surface_cook(manifest: &Manifest, out: &str) {
 // report type is inferred from the generated load, so the driver names no
 // runtime type that two of a unit's runtimes both export.
 macro_rules! with_root {
-    ($unit:expr, $root:expr, |$load:ident, $save:ident, $to_json:ident, $from_json:ident| $body:expr) => {{
+    ($unit:expr, $root:expr, |$load:ident, $save:ident, $to_json:ident, $from_json:ident, $read_strict:ident| $body:expr) => {{
         match ($unit, $root) {
             ("scalars", "SimState") => {
                 #[allow(unused_imports)]
-                use scalars::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json};
+                use scalars::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json, sim_state_read_strict as $read_strict};
                 Some($body)
             }
             ("tblscalars2", "SimState") => {
                 #[allow(unused_imports)]
-                use tblscalars2::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json};
+                use tblscalars2::{sim_state_from_json_bytes as $from_json, sim_state_load as $load, sim_state_save_checked as $save, sim_state_to_json_checked as $to_json, sim_state_read_strict as $read_strict};
                 Some($body)
             }
             ("graphdemo", "Scene") => {
                 #[allow(unused_imports)]
-                use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json};
+                use graphdemo::{scene_from_json_bytes as $from_json, scene_load as $load, scene_save_checked as $save, scene_to_json_checked as $to_json, scene_read_strict as $read_strict};
                 Some($body)
             }
             ("blobdemo", "Catalog") => {
                 #[allow(unused_imports)]
-                use blobdemo::{catalog_from_json_bytes as $from_json, catalog_load as $load, catalog_save_checked as $save, catalog_to_json_checked as $to_json};
+                use blobdemo::{catalog_from_json_bytes as $from_json, catalog_load as $load, catalog_save_checked as $save, catalog_to_json_checked as $to_json, catalog_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Cells") => {
                 #[allow(unused_imports)]
-                use mapdemo::{cells_from_json_bytes as $from_json, cells_load as $load, cells_save_checked as $save, cells_to_json_checked as $to_json};
+                use mapdemo::{cells_from_json_bytes as $from_json, cells_load as $load, cells_save_checked as $save, cells_to_json_checked as $to_json, cells_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Chunks") => {
                 #[allow(unused_imports)]
-                use mapdemo::{chunks_from_json_bytes as $from_json, chunks_load as $load, chunks_save_checked as $save, chunks_to_json_checked as $to_json};
+                use mapdemo::{chunks_from_json_bytes as $from_json, chunks_load as $load, chunks_save_checked as $save, chunks_to_json_checked as $to_json, chunks_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Crews") => {
                 #[allow(unused_imports)]
-                use mapdemo::{crews_from_json_bytes as $from_json, crews_load as $load, crews_save_checked as $save, crews_to_json_checked as $to_json};
+                use mapdemo::{crews_from_json_bytes as $from_json, crews_load as $load, crews_save_checked as $save, crews_to_json_checked as $to_json, crews_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Depth") => {
                 #[allow(unused_imports)]
-                use mapdemo::{depth_from_json_bytes as $from_json, depth_load as $load, depth_save_checked as $save, depth_to_json_checked as $to_json};
+                use mapdemo::{depth_from_json_bytes as $from_json, depth_load as $load, depth_save_checked as $save, depth_to_json_checked as $to_json, depth_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Docs") => {
                 #[allow(unused_imports)]
-                use mapdemo::{docs_from_json_bytes as $from_json, docs_load as $load, docs_save_checked as $save, docs_to_json_checked as $to_json};
+                use mapdemo::{docs_from_json_bytes as $from_json, docs_load as $load, docs_save_checked as $save, docs_to_json_checked as $to_json, docs_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Fleet") => {
                 #[allow(unused_imports)]
-                use mapdemo::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                use mapdemo::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json, fleet_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Pairs") => {
                 #[allow(unused_imports)]
-                use mapdemo::{pairs_from_json_bytes as $from_json, pairs_load as $load, pairs_save_checked as $save, pairs_to_json_checked as $to_json};
+                use mapdemo::{pairs_from_json_bytes as $from_json, pairs_load as $load, pairs_save_checked as $save, pairs_to_json_checked as $to_json, pairs_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Slots") => {
                 #[allow(unused_imports)]
-                use mapdemo::{slots_from_json_bytes as $from_json, slots_load as $load, slots_save_checked as $save, slots_to_json_checked as $to_json};
+                use mapdemo::{slots_from_json_bytes as $from_json, slots_load as $load, slots_save_checked as $save, slots_to_json_checked as $to_json, slots_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Spans") => {
                 #[allow(unused_imports)]
-                use mapdemo::{spans_from_json_bytes as $from_json, spans_load as $load, spans_save_checked as $save, spans_to_json_checked as $to_json};
+                use mapdemo::{spans_from_json_bytes as $from_json, spans_load as $load, spans_save_checked as $save, spans_to_json_checked as $to_json, spans_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Trails") => {
                 #[allow(unused_imports)]
-                use mapdemo::{trails_from_json_bytes as $from_json, trails_load as $load, trails_save_checked as $save, trails_to_json_checked as $to_json};
+                use mapdemo::{trails_from_json_bytes as $from_json, trails_load as $load, trails_save_checked as $save, trails_to_json_checked as $to_json, trails_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Runs") => {
                 #[allow(unused_imports)]
-                use mapdemo::{runs_from_json_bytes as $from_json, runs_load as $load, runs_save_checked as $save, runs_to_json_checked as $to_json};
+                use mapdemo::{runs_from_json_bytes as $from_json, runs_load as $load, runs_save_checked as $save, runs_to_json_checked as $to_json, runs_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "RootConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{root_config_from_json_bytes as $from_json, root_config_load as $load, root_config_save_checked as $save, root_config_to_json_checked as $to_json};
+                use tabledemo::{root_config_from_json_bytes as $from_json, root_config_load as $load, root_config_save_checked as $save, root_config_to_json_checked as $to_json, root_config_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "PackConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{pack_config_from_json_bytes as $from_json, pack_config_load as $load, pack_config_save_checked as $save, pack_config_to_json_checked as $to_json};
+                use tabledemo::{pack_config_from_json_bytes as $from_json, pack_config_load as $load, pack_config_save_checked as $save, pack_config_to_json_checked as $to_json, pack_config_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "LoadoutConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_save_checked as $save, loadout_config_to_json_checked as $to_json};
+                use tabledemo::{loadout_config_from_json_bytes as $from_json, loadout_config_load as $load, loadout_config_save_checked as $save, loadout_config_to_json_checked as $to_json, loadout_config_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "ProfileConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{profile_config_from_json_bytes as $from_json, profile_config_load as $load, profile_config_save_checked as $save, profile_config_to_json_checked as $to_json};
+                use tabledemo::{profile_config_from_json_bytes as $from_json, profile_config_load as $load, profile_config_save_checked as $save, profile_config_to_json_checked as $to_json, profile_config_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "ArchiveConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{archive_config_from_json_bytes as $from_json, archive_config_load as $load, archive_config_save_checked as $save, archive_config_to_json_checked as $to_json};
+                use tabledemo::{archive_config_from_json_bytes as $from_json, archive_config_load as $load, archive_config_save_checked as $save, archive_config_to_json_checked as $to_json, archive_config_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "KeyedConfig") => {
                 #[allow(unused_imports)]
-                use tabledemo::{keyed_config_from_json_bytes as $from_json, keyed_config_load as $load, keyed_config_save_checked as $save, keyed_config_to_json_checked as $to_json};
+                use tabledemo::{keyed_config_from_json_bytes as $from_json, keyed_config_load as $load, keyed_config_save_checked as $save, keyed_config_to_json_checked as $to_json, keyed_config_read_strict as $read_strict};
                 Some($body)
             }
             ("tabledemo", "WideBlob") => {
                 #[allow(unused_imports)]
-                use tabledemo::{wide_blob_from_json_bytes as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json};
+                use tabledemo::{wide_blob_from_json_bytes as $from_json, wide_blob_load as $load, wide_blob_save_checked as $save, wide_blob_to_json_checked as $to_json, wide_blob_read_strict as $read_strict};
                 Some($body)
             }
             ("tblg1", "Guarded") => {
                 #[allow(unused_imports)]
-                use tblg1::{guarded_from_json_bytes as $from_json, guarded_load as $load, guarded_save_checked as $save, guarded_to_json_checked as $to_json};
+                use tblg1::{guarded_from_json_bytes as $from_json, guarded_load as $load, guarded_save_checked as $save, guarded_to_json_checked as $to_json, guarded_read_strict as $read_strict};
                 Some($body)
             }
             ("streamdemo", "Feed") => {
                 #[allow(unused_imports)]
-                use streamdemo::{feed_from_json_bytes as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json};
+                use streamdemo::{feed_from_json_bytes as $from_json, feed_load as $load, feed_save_checked as $save, feed_to_json_checked as $to_json, feed_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Ints") => {
                 #[allow(unused_imports)]
-                use listdemo::{ints_from_json_bytes as $from_json, ints_load as $load, ints_save_checked as $save, ints_to_json_checked as $to_json};
+                use listdemo::{ints_from_json_bytes as $from_json, ints_load as $load, ints_save_checked as $save, ints_to_json_checked as $to_json, ints_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Bounded") => {
                 #[allow(unused_imports)]
-                use listdemo::{bounded_from_json_bytes as $from_json, bounded_load as $load, bounded_save_checked as $save, bounded_to_json_checked as $to_json};
+                use listdemo::{bounded_from_json_bytes as $from_json, bounded_load as $load, bounded_save_checked as $save, bounded_to_json_checked as $to_json, bounded_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Squad") => {
                 #[allow(unused_imports)]
-                use listdemo::{squad_from_json_bytes as $from_json, squad_load as $load, squad_save_checked as $save, squad_to_json_checked as $to_json};
+                use listdemo::{squad_from_json_bytes as $from_json, squad_load as $load, squad_save_checked as $save, squad_to_json_checked as $to_json, squad_read_strict as $read_strict};
                 Some($body)
             }
             ("graphdemo", "ListNode") => {
                 #[allow(unused_imports)]
-                use graphdemo::{list_node_from_json_bytes as $from_json, list_node_load as $load, list_node_save_checked as $save, list_node_to_json_checked as $to_json};
+                use graphdemo::{list_node_from_json_bytes as $from_json, list_node_load as $load, list_node_save_checked as $save, list_node_to_json_checked as $to_json, list_node_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Album") => {
                 #[allow(unused_imports)]
-                use listdemo::{album_from_json_bytes as $from_json, album_load as $load, album_save_checked as $save, album_to_json_checked as $to_json};
+                use listdemo::{album_from_json_bytes as $from_json, album_load as $load, album_save_checked as $save, album_to_json_checked as $to_json, album_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Army") => {
                 #[allow(unused_imports)]
-                use listdemo::{army_from_json_bytes as $from_json, army_load as $load, army_save_checked as $save, army_to_json_checked as $to_json};
+                use listdemo::{army_from_json_bytes as $from_json, army_load as $load, army_save_checked as $save, army_to_json_checked as $to_json, army_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Mixed") => {
                 #[allow(unused_imports)]
-                use listdemo::{mixed_from_json_bytes as $from_json, mixed_load as $load, mixed_save_checked as $save, mixed_to_json_checked as $to_json};
+                use listdemo::{mixed_from_json_bytes as $from_json, mixed_load as $load, mixed_save_checked as $save, mixed_to_json_checked as $to_json, mixed_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Save") => {
                 #[allow(unused_imports)]
-                use listdemo::{save_from_json_bytes as $from_json, save_load as $load, save_save_checked as $save, save_to_json_checked as $to_json};
+                use listdemo::{save_from_json_bytes as $from_json, save_load as $load, save_save_checked as $save, save_to_json_checked as $to_json, save_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Sheet") => {
                 #[allow(unused_imports)]
-                use listdemo::{sheet_from_json_bytes as $from_json, sheet_load as $load, sheet_save_checked as $save, sheet_to_json_checked as $to_json};
+                use listdemo::{sheet_from_json_bytes as $from_json, sheet_load as $load, sheet_save_checked as $save, sheet_to_json_checked as $to_json, sheet_read_strict as $read_strict};
                 Some($body)
             }
             ("listdemo", "Unbounded") => {
                 #[allow(unused_imports)]
-                use listdemo::{unbounded_from_json_bytes as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json};
+                use listdemo::{unbounded_from_json_bytes as $from_json, unbounded_load as $load, unbounded_save_checked as $save, unbounded_to_json_checked as $to_json, unbounded_read_strict as $read_strict};
                 Some($body)
             }
             ("widelist", "Wide") => {
                 #[allow(unused_imports)]
-                use widelistdemo::{wide_from_json_bytes as $from_json, wide_load as $load, wide_save_checked as $save, wide_to_json_checked as $to_json};
+                use widelistdemo::{wide_from_json_bytes as $from_json, wide_load as $load, wide_save_checked as $save, wide_to_json_checked as $to_json, wide_read_strict as $read_strict};
                 Some($body)
             }
             ("messagedemo", "ToolMessage") => {
                 #[allow(unused_imports)]
-                use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json};
+                use messagedemo::{tool_message_from_json_bytes as $from_json, tool_message_load as $load, tool_message_save_checked as $save, tool_message_to_json_checked as $to_json, tool_message_read_strict as $read_strict};
                 Some($body)
             }
             ("backenddemo", "LoginRequest") => {
                 #[allow(unused_imports)]
-                use backenddemo::{login_request_from_json_bytes as $from_json, login_request_load as $load, login_request_save_checked as $save, login_request_to_json_checked as $to_json};
+                use backenddemo::{login_request_from_json_bytes as $from_json, login_request_load as $load, login_request_save_checked as $save, login_request_to_json_checked as $to_json, login_request_read_strict as $read_strict};
                 Some($body)
             }
             ("backenddemo", "MatchResult") => {
                 #[allow(unused_imports)]
-                use backenddemo::{match_result_from_json_bytes as $from_json, match_result_load as $load, match_result_save_checked as $save, match_result_to_json_checked as $to_json};
+                use backenddemo::{match_result_from_json_bytes as $from_json, match_result_load as $load, match_result_save_checked as $save, match_result_to_json_checked as $to_json, match_result_read_strict as $read_strict};
                 Some($body)
             }
             ("backenddemo", "StorePurchase") => {
                 #[allow(unused_imports)]
-                use backenddemo::{store_purchase_from_json_bytes as $from_json, store_purchase_load as $load, store_purchase_save_checked as $save, store_purchase_to_json_checked as $to_json};
+                use backenddemo::{store_purchase_from_json_bytes as $from_json, store_purchase_load as $load, store_purchase_save_checked as $save, store_purchase_to_json_checked as $to_json, store_purchase_read_strict as $read_strict};
                 Some($body)
             }
             ("vocabdemo", "Wide00") => {
                 #[allow(unused_imports)]
-                use vocabdemo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                use vocabdemo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json, wide00_read_strict as $read_strict};
                 Some($body)
             }
             ("vocabdemo", "Wide09") => {
                 #[allow(unused_imports)]
-                use vocabdemo::{wide09_from_json_bytes as $from_json, wide09_load as $load, wide09_save_checked as $save, wide09_to_json_checked as $to_json};
+                use vocabdemo::{wide09_from_json_bytes as $from_json, wide09_load as $load, wide09_save_checked as $save, wide09_to_json_checked as $to_json, wide09_read_strict as $read_strict};
                 Some($body)
             }
             ("vocab9demo", "Wide00") => {
                 #[allow(unused_imports)]
-                use vocab9demo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json};
+                use vocab9demo::{wide00_from_json_bytes as $from_json, wide00_load as $load, wide00_save_checked as $save, wide00_to_json_checked as $to_json, wide00_read_strict as $read_strict};
                 Some($body)
             }
             ("vocab9demo", "Wide19") => {
                 #[allow(unused_imports)]
-                use vocab9demo::{wide19_from_json_bytes as $from_json, wide19_load as $load, wide19_save_checked as $save, wide19_to_json_checked as $to_json};
+                use vocab9demo::{wide19_from_json_bytes as $from_json, wide19_load as $load, wide19_save_checked as $save, wide19_to_json_checked as $to_json, wide19_read_strict as $read_strict};
                 Some($body)
             }
             ("tblv1", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblv1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblv1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json, cfg_read_strict as $read_strict};
                 Some($body)
             }
             ("tblv2", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblv2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblv2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json, cfg_read_strict as $read_strict};
                 Some($body)
             }
             ("tblp1", "Chain") => {
                 #[allow(unused_imports)]
-                use tblp1::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                use tblp1::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json, chain_read_strict as $read_strict};
                 Some($body)
             }
             ("tblp2", "Chain") => {
                 #[allow(unused_imports)]
-                use tblp2::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                use tblp2::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json, chain_read_strict as $read_strict};
                 Some($body)
             }
             ("tblp3", "Chain") => {
                 #[allow(unused_imports)]
-                use tblp3::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json};
+                use tblp3::{chain_from_json_bytes as $from_json, chain_load as $load, chain_save_checked as $save, chain_to_json_checked as $to_json, chain_read_strict as $read_strict};
                 Some($body)
             }
             ("tblm1", "Msg") => {
                 #[allow(unused_imports)]
-                use tblm1::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                use tblm1::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json, msg_read_strict as $read_strict};
                 Some($body)
             }
             ("tblm2", "Msg") => {
                 #[allow(unused_imports)]
-                use tblm2::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json};
+                use tblm2::{msg_from_json_bytes as $from_json, msg_load as $load, msg_save_checked as $save, msg_to_json_checked as $to_json, msg_read_strict as $read_strict};
                 Some($body)
             }
             ("tbla2", "Root") => {
                 #[allow(unused_imports)]
-                use tbla2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                use tbla2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json, root_read_strict as $read_strict};
                 Some($body)
             }
             ("tblk1", "Root") => {
                 #[allow(unused_imports)]
-                use tblk1::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                use tblk1::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json, root_read_strict as $read_strict};
                 Some($body)
             }
             ("tblk2", "Root") => {
                 #[allow(unused_imports)]
-                use tblk2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
+                use tblk2::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json, root_read_strict as $read_strict};
                 Some($body)
             }
             ("tblw1", "Fleet") => {
                 #[allow(unused_imports)]
-                use tblw1::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                use tblw1::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json, fleet_read_strict as $read_strict};
                 Some($body)
             }
             ("tblw2", "Fleet") => {
                 #[allow(unused_imports)]
-                use tblw2::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json};
+                use tblw2::{fleet_from_json_bytes as $from_json, fleet_load as $load, fleet_save_checked as $save, fleet_to_json_checked as $to_json, fleet_read_strict as $read_strict};
                 Some($body)
             }
             ("tblr1", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblr1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblr1::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json, cfg_read_strict as $read_strict};
                 Some($body)
             }
             ("tblr2", "Cfg") => {
                 #[allow(unused_imports)]
-                use tblr2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json};
+                use tblr2::{cfg_from_json_bytes as $from_json, cfg_load as $load, cfg_save_checked as $save, cfg_to_json_checked as $to_json, cfg_read_strict as $read_strict};
                 Some($body)
             }
             // wstring(N) ON THE TABLE WIRE (docs/SPEC-TABLES.md §3 kind 33,
@@ -1119,17 +1119,17 @@ macro_rules! with_root {
             // and Stamp beside it; map_text is the kind as a MAP VALUE (§2.8)
             ("widedemo", "Caption") => {
                 #[allow(unused_imports)]
-                use widedemo::{caption_from_json_bytes as $from_json, caption_load as $load, caption_save_checked as $save, caption_to_json_checked as $to_json};
+                use widedemo::{caption_from_json_bytes as $from_json, caption_load as $load, caption_save_checked as $save, caption_to_json_checked as $to_json, caption_read_strict as $read_strict};
                 Some($body)
             }
             ("widedemo", "Stamp") => {
                 #[allow(unused_imports)]
-                use widedemo::{stamp_from_json_bytes as $from_json, stamp_load as $load, stamp_save_checked as $save, stamp_to_json_checked as $to_json};
+                use widedemo::{stamp_from_json_bytes as $from_json, stamp_load as $load, stamp_save_checked as $save, stamp_to_json_checked as $to_json, stamp_read_strict as $read_strict};
                 Some($body)
             }
             ("mapdemo", "Text") => {
                 #[allow(unused_imports)]
-                use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
+                use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json, text_read_strict as $read_strict};
                 Some($body)
             }
             _ => None,
@@ -1148,7 +1148,7 @@ fn no_text(f: &[String]) -> bool {
 fn surface_wire(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         let data = slurp(&f[4]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, save, _to, _from, _read_strict| {
             let mut report = Default::default();
             match load(&data, &mut report) {
                 // the writer's NAMED refusal (docs/SPEC-TABLES.md §2.5, §3): a
@@ -1170,7 +1170,7 @@ fn surface_report(manifest: &Manifest, out: &str) {
         let data = slurp(&f[4]);
         // the report line, then the §16 text of the value the read left when
         // the read reads (test/conformance/README.md)
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from, _read_strict| {
             let mut report = Default::default();
             let value = load(&data, &mut report);
             let malformed = report.malformed || (value.is_none() && !report.refused);
@@ -1204,7 +1204,7 @@ fn surface_framing(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("framing") {
         let data = slurp(&f[4]);
         let no_value = f.len() > 5 && f[5] == "no-value";
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from, _read_strict| {
             let mut report = Default::default();
             let value = load(&data, &mut report);
             let malformed = report.malformed || (value.is_none() && !report.refused);
@@ -1230,13 +1230,22 @@ fn surface_framing(manifest: &Manifest, out: &str) {
 
 // THE STRICT READ'S REASON (docs/SPEC-TABLES.md §6.5, §11): the one typed
 // reason a strict read names for each wire a `report` or `framing` line names.
-// The Rust runtime's reads are the tolerant load and the fixed-form load; it
-// carries no strict read that names a reason, so every case answers
-// `<case>.absent`, a feature this leg lacks. The driver never derives a reason
-// from the tolerant report's counters.
+// The runtime decides the reason (`<root>_read_strict`, TableReport::err); the
+// driver spells the member's name, or `ok` for a read the strict rule accepts.
 fn surface_strict_reason(manifest: &Manifest, out: &str) {
     for f in manifest.lines.iter().filter(|f| f[0] == "report" || f[0] == "framing") {
-        spill_absent(out, &f[1]);
+        let data = slurp(&f[4]);
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, _to, _from, read_strict| {
+            let mut report = Default::default();
+            match read_strict(&data, &mut report) {
+                Ok(_) => "ok",
+                Err(why) => why.name(),
+            }
+        });
+        match answer {
+            Some(name) => spill(out, &f[1], format!("{name}\n").as_bytes()),
+            None => spill_absent(out, &f[1]),
+        }
     }
 }
 
@@ -1294,7 +1303,7 @@ fn surface_json_read(manifest: &Manifest, out: &str) {
             continue;
         }
         let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, save, _to, from_json| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, save, _to, from_json, _read_strict| {
             let text = match fs::read_to_string(&path) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),
@@ -1318,7 +1327,7 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
             continue;
         }
         let data = slurp(&f[4]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from, _read_strict| {
             let mut report = Default::default();
             match load(&data, &mut report) {
                 Some(v) => match to_json(&v) {
@@ -1344,7 +1353,7 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
 fn surface_json_hostile(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("json-hostile") {
         let path = format!("{}/{}.json", f[4], f[3]);
-        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, to_json, from_json| {
+        let answer = with_root!(f[2].as_str(), f[3].as_str(), |_load, _save, to_json, from_json, _read_strict| {
             let text = match fs::read(&path) {
                 Ok(t) => t,
                 Err(e) => fail(&format!("cannot read {path}: {e}")),

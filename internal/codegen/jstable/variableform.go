@@ -241,7 +241,11 @@ function TableVariableRound(n, a) {
 // widened counter counts it (§4.1), and reason stays empty, exactly as Go's
 // does for a file read. Damage is the malformed flag, never a reason.
 export class TableVariableReport {
-  constructor() {
+  constructor() { this.reset(); }
+
+  // reset puts every field back to a fresh report's value, so a caller reuses
+  // one report across reads without allocating another.
+  reset() {
     this.reason = "";
     this.malformed = false;
     this.refused = 0;
@@ -259,7 +263,47 @@ export class TableVariableReport {
     // (docs/SPEC-TABLES.md §3.3): the read refuses, reason non_finite_float
     this.nonFiniteFloat = "";
   }
+
+  // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+  // error identity", §11): null when the strict rule accepts the read this
+  // report describes, else the one TableRefuseReason member it refuses with.
+  // A form byte the read does not carry is unknown_form whichever
+  // form-specific name the tolerant reason holds; then integrity_mismatch, a
+  // non-finite float, any damage as wire_damaged, a missing required field, a
+  // storage cap by its own name, a blob named from two slots, clamped, and
+  // kind_mismatch, in that order. unknown, widened, retained and duplicate
+  // alone never refuse. No string is built: the answer is a frozen member.
+  err() {
+    const reason = this.reason;
+    if (reason === "newer_form" || reason === "message_form_as_file") { return TableRefuseReason.UnknownForm; }
+    if (reason === "integrity_mismatch") { return TableRefuseReason.IntegrityMismatch; }
+    if (this.nonFiniteFloat !== "") { return TableRefuseReason.NonFiniteFloat; }
+    if (this.malformed) { return TableRefuseReason.WireDamaged; }
+    if (this.missingRequired > 0) { return TableRefuseReason.MissingRequired; }
+    if (this.refused) {
+      return reason === "count_over_extent_cap" ? TableRefuseReason.CountOverExtentCap : TableRefuseReason.UnknownForm;
+    }
+    if (this.blobShared > 0) { return TableRefuseReason.BlobShared; }
+    if (this.clamped > 0) { return TableRefuseReason.Clamped; }
+    if (this.kindMismatch > 0) { return TableRefuseReason.KindMismatch; }
+    return null;
+  }
 }
+
+// THE STRICT READ'S REASONS (docs/SPEC-TABLES.md §6.5, the refusal-names
+// table): each member's value is the enum's own value name, so a reason
+// compares by identity and spells itself with no lookup.
+export const TableRefuseReason = Object.freeze({
+  UnknownForm: "unknown_form",
+  IntegrityMismatch: "integrity_mismatch",
+  NonFiniteFloat: "non_finite_float",
+  WireDamaged: "wire_damaged",
+  MissingRequired: "missing_required",
+  CountOverExtentCap: "count_over_extent_cap",
+  BlobShared: "blob_shared",
+  Clamped: "clamped",
+  KindMismatch: "kind_mismatch",
+});
 
 // Ids intern a writer's ids in FIRST-USE order (docs/SPEC-TABLES.md §3), each a
 // BigInt, returning the 1-based reference. First-use order follows the write
@@ -1160,6 +1204,17 @@ func (g *variableGen) emitRootCodec(st *ir.Struct) {
 	g.pf("}\n\n")
 	g.pf("export function %sLoad(bytes, report) {\n", st.Name)
 	g.pf("  return TableVariableLoad(%s, bytes, report, null);\n", c)
+	g.pf("}\n\n")
+	// THE STRICT READ (docs/SPEC-TABLES.md §6.5): the value, or null with the
+	// one reason report.err() names. The report is reset first, so the reason
+	// is this read's alone; a read that hands back nothing and names no reason
+	// met damage, and the report says so.
+	g.pf("export function %sReadStrict(bytes, report) {\n", st.Name)
+	g.pf("  if (report === undefined || report === null) { report = new TableVariableReport(); } else { report.reset(); }\n")
+	g.pf("  const v = TableVariableLoad(%s, bytes, report, null);\n", c)
+	g.pf("  if (report.err() !== null) { return null; }\n")
+	g.pf("  if (v === null) { report.malformed = true; }\n")
+	g.pf("  return v;\n")
 	g.pf("}\n\n")
 	if st.CarriesForm("json") {
 		g.pf("export function %sToJson(v) {\n", st.Name)

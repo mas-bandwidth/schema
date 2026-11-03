@@ -679,6 +679,22 @@ namespace Blockdemo
             return RenderFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RenderFrameReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderFrameReadStrict(RenderFrame value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderFrameTableType().Reset(value);
+            return false;
+        }
+
         public static long RenderFrameMeasureMessages(RenderFrame[] values) { return TableWire.MessageSave(values, RenderFrameTableType(), Span<byte>.Empty, true); }
         public static long RenderFrameSaveMessages(RenderFrame[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderFrameTableType(), bytes, false); }
         public static TableWire.Verdict RenderFrameLoadMessages(RenderFrame[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderFrameTableType(), bytes, vocabulary, report, out count); }
@@ -807,6 +823,22 @@ namespace Blockdemo
         public static bool RenderCameraLoad(RenderCamera value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RenderCameraLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RenderCameraReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderCameraReadStrict(RenderCamera value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderCameraLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderCameraTableType().Reset(value);
+            return false;
         }
 
         public static long RenderCameraMeasureMessages(RenderCamera[] values) { return TableWire.MessageSave(values, RenderCameraTableType(), Span<byte>.Empty, true); }
@@ -967,6 +999,22 @@ namespace Blockdemo
             return RenderShipLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RenderShipReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderShipReadStrict(RenderShip value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderShipLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderShipTableType().Reset(value);
+            return false;
+        }
+
         public static long RenderShipMeasureMessages(RenderShip[] values) { return TableWire.MessageSave(values, RenderShipTableType(), Span<byte>.Empty, true); }
         public static long RenderShipSaveMessages(RenderShip[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderShipTableType(), bytes, false); }
         public static TableWire.Verdict RenderShipLoadMessages(RenderShip[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderShipTableType(), bytes, vocabulary, report, out count); }
@@ -1118,6 +1166,22 @@ namespace Blockdemo
             return RenderTurretLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RenderTurretReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderTurretReadStrict(RenderTurret value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderTurretLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderTurretTableType().Reset(value);
+            return false;
+        }
+
         public static long RenderTurretMeasureMessages(RenderTurret[] values) { return TableWire.MessageSave(values, RenderTurretTableType(), Span<byte>.Empty, true); }
         public static long RenderTurretSaveMessages(RenderTurret[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderTurretTableType(), bytes, false); }
         public static TableWire.Verdict RenderTurretLoadMessages(RenderTurret[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderTurretTableType(), bytes, vocabulary, report, out count); }
@@ -1245,6 +1309,22 @@ namespace Blockdemo
         public static bool RenderMissileLoad(RenderMissile value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RenderMissileLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RenderMissileReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderMissileReadStrict(RenderMissile value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderMissileLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderMissileTableType().Reset(value);
+            return false;
         }
 
         public static long RenderMissileMeasureMessages(RenderMissile[] values) { return TableWire.MessageSave(values, RenderMissileTableType(), Span<byte>.Empty, true); }
@@ -1376,6 +1456,22 @@ namespace Blockdemo
             return RenderDynamicPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RenderDynamicPropReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderDynamicPropReadStrict(RenderDynamicProp value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderDynamicPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderDynamicPropTableType().Reset(value);
+            return false;
+        }
+
         public static long RenderDynamicPropMeasureMessages(RenderDynamicProp[] values) { return TableWire.MessageSave(values, RenderDynamicPropTableType(), Span<byte>.Empty, true); }
         public static long RenderDynamicPropSaveMessages(RenderDynamicProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderDynamicPropTableType(), bytes, false); }
         public static TableWire.Verdict RenderDynamicPropLoadMessages(RenderDynamicProp[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderDynamicPropTableType(), bytes, vocabulary, report, out count); }
@@ -1504,6 +1600,22 @@ namespace Blockdemo
         public static bool RenderStaticPropLoad(RenderStaticProp value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RenderStaticPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RenderStaticPropReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderStaticPropReadStrict(RenderStaticProp value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderStaticPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderStaticPropTableType().Reset(value);
+            return false;
         }
 
         public static long RenderStaticPropMeasureMessages(RenderStaticProp[] values) { return TableWire.MessageSave(values, RenderStaticPropTableType(), Span<byte>.Empty, true); }
@@ -1644,6 +1756,22 @@ namespace Blockdemo
             return RenderCosmeticPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RenderCosmeticPropReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderCosmeticPropReadStrict(RenderCosmeticProp value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderCosmeticPropLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderCosmeticPropTableType().Reset(value);
+            return false;
+        }
+
         public static long RenderCosmeticPropMeasureMessages(RenderCosmeticProp[] values) { return TableWire.MessageSave(values, RenderCosmeticPropTableType(), Span<byte>.Empty, true); }
         public static long RenderCosmeticPropSaveMessages(RenderCosmeticProp[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderCosmeticPropTableType(), bytes, false); }
         public static TableWire.Verdict RenderCosmeticPropLoadMessages(RenderCosmeticProp[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderCosmeticPropTableType(), bytes, vocabulary, report, out count); }
@@ -1764,6 +1892,22 @@ namespace Blockdemo
         public static bool RenderLaserLoad(RenderLaser value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RenderLaserLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RenderLaserReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderLaserReadStrict(RenderLaser value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderLaserLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderLaserTableType().Reset(value);
+            return false;
         }
 
         public static long RenderLaserMeasureMessages(RenderLaser[] values) { return TableWire.MessageSave(values, RenderLaserTableType(), Span<byte>.Empty, true); }
@@ -1896,6 +2040,22 @@ namespace Blockdemo
             return RenderExplosionLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RenderExplosionReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderExplosionReadStrict(RenderExplosion value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderExplosionLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderExplosionTableType().Reset(value);
+            return false;
+        }
+
         public static long RenderExplosionMeasureMessages(RenderExplosion[] values) { return TableWire.MessageSave(values, RenderExplosionTableType(), Span<byte>.Empty, true); }
         public static long RenderExplosionSaveMessages(RenderExplosion[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RenderExplosionTableType(), bytes, false); }
         public static TableWire.Verdict RenderExplosionLoadMessages(RenderExplosion[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RenderExplosionTableType(), bytes, vocabulary, report, out count); }
@@ -2003,6 +2163,22 @@ namespace Blockdemo
         public static bool RenderVector3Load(RenderVector3 value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RenderVector3LoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RenderVector3ReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderVector3ReadStrict(RenderVector3 value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderVector3LoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderVector3TableType().Reset(value);
+            return false;
         }
 
         public static long RenderVector3MeasureMessages(RenderVector3[] values) { return TableWire.MessageSave(values, RenderVector3TableType(), Span<byte>.Empty, true); }
@@ -2121,6 +2297,22 @@ namespace Blockdemo
         public static bool RenderQuaternionLoad(RenderQuaternion value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RenderQuaternionLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RenderQuaternionReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RenderQuaternionReadStrict(RenderQuaternion value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RenderQuaternionLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RenderQuaternionTableType().Reset(value);
+            return false;
         }
 
         public static long RenderQuaternionMeasureMessages(RenderQuaternion[] values) { return TableWire.MessageSave(values, RenderQuaternionTableType(), Span<byte>.Empty, true); }

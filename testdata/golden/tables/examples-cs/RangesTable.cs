@@ -291,6 +291,22 @@ namespace Tabledemo
             return RangedSignedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RangedSignedReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RangedSignedReadStrict(RangedSigned value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RangedSignedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RangedSignedTableType().Reset(value);
+            return false;
+        }
+
         public static long RangedSignedMeasureMessages(RangedSigned[] values) { return TableWire.MessageSave(values, RangedSignedTableType(), Span<byte>.Empty, true); }
         public static long RangedSignedSaveMessages(RangedSigned[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RangedSignedTableType(), bytes, false); }
         public static TableWire.Verdict RangedSignedLoadMessages(RangedSigned[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RangedSignedTableType(), bytes, vocabulary, report, out count); }
@@ -511,6 +527,22 @@ namespace Tabledemo
             return RangedUnsignedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // RangedUnsignedReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RangedUnsignedReadStrict(RangedUnsigned value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RangedUnsignedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RangedUnsignedTableType().Reset(value);
+            return false;
+        }
+
         public static long RangedUnsignedMeasureMessages(RangedUnsigned[] values) { return TableWire.MessageSave(values, RangedUnsignedTableType(), Span<byte>.Empty, true); }
         public static long RangedUnsignedSaveMessages(RangedUnsigned[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, RangedUnsignedTableType(), bytes, false); }
         public static TableWire.Verdict RangedUnsignedLoadMessages(RangedUnsigned[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, RangedUnsignedTableType(), bytes, vocabulary, report, out count); }
@@ -639,6 +671,22 @@ namespace Tabledemo
         public static bool RangedWidthsLoad(RangedWidths value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return RangedWidthsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // RangedWidthsReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool RangedWidthsReadStrict(RangedWidths value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = RangedWidthsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            RangedWidthsTableType().Reset(value);
+            return false;
         }
 
         public static long RangedWidthsMeasureMessages(RangedWidths[] values) { return TableWire.MessageSave(values, RangedWidthsTableType(), Span<byte>.Empty, true); }

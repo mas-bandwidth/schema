@@ -21,24 +21,35 @@ import '../../../build/tables-generated-dart/cards/CardsWire.dart';
 import '../../../build/tables-generated-dart/pointers/GraphdemoCook.dart';
 import '../../../build/tables-generated-dart/pointers/GraphCook.dart' as ck;
 import '../../../build/tables-generated-dart/pointers/GraphdemoWire.dart' as graphdemo;
+import '../../../build/tables-generated-dart/pointers/GraphdemoStrict.dart' as graphdemo;
 import '../../../build/tables-generated-dart/blobs/BlobdemoWire.dart' as blobdemo;
 import '../../../build/tables-generated-dart/blobs/AssetsCook.dart' as assets;
 import '../../../build/tables-generated-dart/lists/ListdemoWire.dart' as listdemo;
+import '../../../build/tables-generated-dart/lists/ListdemoStrict.dart' as listdemo;
 import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
+import '../../../build/tables-generated-dart/maps/MapdemoStrict.dart' as mapdemo;
 import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
+import '../../../build/tables-generated-dart/messages/MessagedemoStrict.dart' as messagedemo;
 import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
 import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
+import '../../../build/tables-generated-dart/stream/StreamdemoStrict.dart' as streamdemo;
 import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
 import '../../../build/tables-generated-dart/wide/WideWire.dart' as widedemo;
 import '../../../build/tables-generated-dart/v1/Tblv1Wire.dart' as tblv1;
+import '../../../build/tables-generated-dart/v1/Tblv1Strict.dart' as tblv1;
 import '../../../build/tables-generated-dart/v2/Tblv2Wire.dart' as tblv2;
+import '../../../build/tables-generated-dart/v2/Tblv2Strict.dart' as tblv2;
 import '../../../build/tables-generated-dart/w1/Tblw1Wire.dart' as tblw1;
+import '../../../build/tables-generated-dart/w1/Tblw1Strict.dart' as tblw1;
 import '../../../build/tables-generated-dart/w2/Tblw2Wire.dart' as tblw2;
+import '../../../build/tables-generated-dart/w2/Tblw2Strict.dart' as tblw2;
 import '../../../build/tables-generated-dart/r1/Tblr1Wire.dart' as tblr1;
+import '../../../build/tables-generated-dart/r1/Tblr1Strict.dart' as tblr1;
 import '../../../build/tables-generated-dart/r2/Tblr2Wire.dart' as tblr2;
+import '../../../build/tables-generated-dart/r2/Tblr2Strict.dart' as tblr2;
 import '../../../build/tables-generated-dart/backend/BackenddemoFixed.dart' as backenddemo_fixed;
 import '../../../build/tables-generated-dart/backend/BackendFixed.dart' as backend;
 import '../../../build/tables-generated-dart/vocab/VocabdemoFixed.dart' as vocabdemo_fixed;
@@ -47,14 +58,23 @@ import '../../../build/tables-generated-dart/vocab9/Vocab9demoFixed.dart' as voc
 import '../../../build/tables-generated-dart/vocab9/Vocab9Fixed.dart' as vocab9;
 import '../../../build/tables-generated-dart/g1/Tblg1Wire.dart' as tblg1;
 import '../../../build/tables-generated-dart/m1/Tblm1Wire.dart' as tblm1;
+import '../../../build/tables-generated-dart/m1/Tblm1Strict.dart' as tblm1;
 import '../../../build/tables-generated-dart/m2/Tblm2Wire.dart' as tblm2;
+import '../../../build/tables-generated-dart/m2/Tblm2Strict.dart' as tblm2;
 import '../../../build/tables-generated-dart/p1/Tblp1Wire.dart' as tblp1;
+import '../../../build/tables-generated-dart/p1/Tblp1Strict.dart' as tblp1;
 import '../../../build/tables-generated-dart/p3/Tblp3Wire.dart' as tblp3;
+import '../../../build/tables-generated-dart/p3/Tblp3Strict.dart' as tblp3;
 import '../../../build/tables-generated-dart/p2/Tblp2Wire.dart' as tblp2;
+import '../../../build/tables-generated-dart/p2/Tblp2Strict.dart' as tblp2;
 import '../../../build/tables-generated-dart/k1/Tblk1Wire.dart' as tblk1;
+import '../../../build/tables-generated-dart/k1/Tblk1Strict.dart' as tblk1;
 import '../../../build/tables-generated-dart/k2/Tblk2Wire.dart' as tblk2;
+import '../../../build/tables-generated-dart/k2/Tblk2Strict.dart' as tblk2;
 import '../../../build/tables-generated-dart/a2/Tbla2Wire.dart' as tbla2;
+import '../../../build/tables-generated-dart/a2/Tbla2Strict.dart' as tbla2;
 import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Wire.dart' as scalardemo2;
+import '../../../build/tables-generated-dart-scalars/scalars2/Scalardemo2Strict.dart' as scalardemo2;
 import '../../../build/tables-generated-dart/examples/TablesCook.dart' as tablescook;
 import '../../../build/tables-generated-dart/examples/NestedCook.dart' as nestedcook;
 import '../../../build/tables-generated-dart/examples/KeyedCook.dart' as keyedcook;
@@ -1153,17 +1173,81 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 }
 
 // strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5,
-// §11) for every wire a `report` or `framing` line names. The Dart runtime
-// carries no strict read: its wire load is the tolerant read, and its report's
-// reason names no refusal for what the strict rule refuses (clamped,
-// kind_mismatch), so every case is answered absent rather than spelled from
-// the tolerant read.
+// §11) for every wire a `report` or `framing` line names, spelled as the
+// TableRefuseReason member's word. The runtime decides the reason: each root's
+// <root>WireReadStrict answers it, and a root it does not carry stays absent.
 int surfaceStrictReason(String outDir) {
   for (final f in lines) {
     if (f[0] != 'report' && f[0] != 'framing') continue;
-    spillAbsent(outDir, f[1]);
+    final why = strictReason(f[2], f[3], File(f[4]).readAsBytesSync());
+    if (why == null) {
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync('$why\n');
   }
   return 0;
+}
+
+// strictReason is one root's strict read of one wire: the reason its
+// <root>WireReadStrict answers, as its word (ok included), or null for a
+// root it does not carry.
+String? strictReason(String unit, String root, Uint8List wire) {
+  switch ('$unit $root') {
+    case 'graphdemo ListNode':
+      return graphdemo.listNodeWireReadStrict(wire).$2.word;
+    case 'graphdemo Scene':
+      return graphdemo.sceneWireReadStrict(wire).$2.word;
+    case 'listdemo Army':
+      return listdemo.armyWireReadStrict(wire).$2.word;
+    case 'listdemo Bounded':
+      return listdemo.boundedWireReadStrict(wire).$2.word;
+    case 'listdemo Ints':
+      return listdemo.intsWireReadStrict(wire).$2.word;
+    case 'listdemo Save':
+      return listdemo.saveWireReadStrict(wire).$2.word;
+    case 'listdemo Squad':
+      return listdemo.squadWireReadStrict(wire).$2.word;
+    case 'mapdemo Chunks':
+      return mapdemo.chunksWireReadStrict(wire).$2.word;
+    case 'mapdemo Depth':
+      return mapdemo.depthWireReadStrict(wire).$2.word;
+    case 'messagedemo ToolMessage':
+      return messagedemo.toolMessageWireReadStrict(wire).$2.word;
+    case 'streamdemo Feed':
+      return streamdemo.feedWireReadStrict(wire).$2.word;
+    case 'tbla2 Root':
+      return tbla2.rootWireReadStrict(wire).$2.word;
+    case 'tblk1 Root':
+      return tblk1.rootWireReadStrict(wire).$2.word;
+    case 'tblk2 Root':
+      return tblk2.rootWireReadStrict(wire).$2.word;
+    case 'tblm1 Msg':
+      return tblm1.msgWireReadStrict(wire).$2.word;
+    case 'tblm2 Msg':
+      return tblm2.msgWireReadStrict(wire).$2.word;
+    case 'tblp1 Chain':
+      return tblp1.chainWireReadStrict(wire).$2.word;
+    case 'tblp2 Chain':
+      return tblp2.chainWireReadStrict(wire).$2.word;
+    case 'tblp3 Chain':
+      return tblp3.chainWireReadStrict(wire).$2.word;
+    case 'tblr1 Cfg':
+      return tblr1.cfgWireReadStrict(wire).$2.word;
+    case 'tblr2 Cfg':
+      return tblr2.cfgWireReadStrict(wire).$2.word;
+    case 'tblscalars2 SimState':
+      return scalardemo2.simStateWireReadStrict(wire).$2.word;
+    case 'tblv1 Cfg':
+      return tblv1.cfgWireReadStrict(wire).$2.word;
+    case 'tblv2 Cfg':
+      return tblv2.cfgWireReadStrict(wire).$2.word;
+    case 'tblw1 Fleet':
+      return tblw1.fleetWireReadStrict(wire).$2.word;
+    case 'tblw2 Fleet':
+      return tblw2.fleetWireReadStrict(wire).$2.word;
+  }
+  return null;
 }
 
 String? loadReport(String unit, String root, Uint8List wire) {
@@ -2267,8 +2351,8 @@ const String surfaces =
     // retain-save carry RT1's retaining round trip (§6.6). The
     // accelerators and the forgery surfaces stay, and cook-reason and
     // block-reason name each forgery's first failing clause (§7, §19.2).
-    // strict-reason answers every case absent: this runtime has no strict
-    // read (§6.5). The wire fuzzer's roots are another card's.
+    // strict-reason names the strict read's one typed reason (§6.5). The
+    // wire fuzzer's roots are another card's.
     ''
     'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'

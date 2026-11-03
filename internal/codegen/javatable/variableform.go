@@ -42,6 +42,10 @@ public final class TableVariable {
         if (report.reason == null) {
             report.reason = "non_finite_float: " + field;
         }
+        // of two refusals in one read, the first in read order names it (§2.9)
+        if (report.strict == null && !report.refused) {
+            report.strict = TableRefuseReason.nonFiniteFloat;
+        }
         report.refused = true;
     }
 
@@ -61,6 +65,88 @@ public final class TableVariable {
     public static final long BUILD_ID = 0xFFFFFFFFFFFFFFFEL;
     public static final long VOCAB_ID = 0xFFFFFFFFFFFFFFFDL;
 
+    // THE REFUSAL NAMES (docs/SPEC-TABLES.md §6.5, the refusal-names table), in
+    // the table's order after ok. Each member's spelling is its bare name as
+    // the table writes it, held as a constant so naming a reason builds no
+    // string.
+    public enum TableRefuseReason {
+        ok("ok"),
+        notACook("not_a_cook"),
+        foreignOrder("foreign_order"),
+        wrongBuildVersion("wrong_build_version"),
+        reservedNotZero("reserved_not_zero"),
+        badAlignment("bad_alignment"),
+        truncated("truncated"),
+        unalignedBase("unaligned_base"),
+        badLayout("bad_layout"),
+        unknownForm("unknown_form"),
+        countOverLength("count_over_length"),
+        countOverExtentCap("count_over_extent_cap"),
+        blobOverSizeCap("blob_over_size_cap"),
+        dataCycle("data_cycle"),
+        invalidValue("invalid_value"),
+        allocationFailed("allocation_failed"),
+        wireDamaged("wire_damaged"),
+        malformed("malformed"),
+        clamped("clamped"),
+        kindMismatch("kind_mismatch"),
+        base64Damaged("base64_damaged"),
+        base64NotCanonical("base64_not_canonical"),
+        integrityMismatch("integrity_mismatch"),
+        nonFiniteFloat("non_finite_float"),
+        blobShared("blob_shared"),
+        buildVersionMismatch("build_version_mismatch"),
+        missingRequired("missing_required"),
+        previousForm("previous_form"),
+        newerForm("newer_form"),
+        messageFormAsFile("message_form_as_file"),
+        layoutUnknown("layout_unknown"),
+        layoutUnsupported("layout_unsupported"),
+        layoutNewer("layout_newer"),
+        layoutMalformed("layout_malformed"),
+        layoutCountMismatch("layout_count_mismatch"),
+        layoutKindUnknown("layout_kind_unknown"),
+        layoutKindInvalid("layout_kind_invalid"),
+        layoutSizeMismatch("layout_size_mismatch"),
+        layoutTreeUnclosed("layout_tree_unclosed"),
+        layoutTooDeep("layout_too_deep"),
+        layoutRecordTooLarge("layout_record_too_large"),
+        planTooLarge("plan_too_large"),
+        noLayout("no_layout"),
+        batchTooLarge("batch_too_large"),
+        textIllFormed("text_ill_formed"),
+        countOverBound("count_over_bound"),
+        lengthOverBound("length_over_bound"),
+        noVocabulary("no_vocabulary"),
+        secondAnnouncement("second_announcement"),
+        vocabularyTooLarge("vocabulary_too_large"),
+        textUnknownKey("text_unknown_key"),
+        textDuplicateKey("text_duplicate_key"),
+        textBound("text_bound"),
+        textUnterminated("text_unterminated"),
+        textSyntax("text_syntax"),
+        textKindMismatch("text_kind_mismatch"),
+        textUnknownVariant("text_unknown_variant"),
+        textEncoding("text_encoding"),
+        textTimestamp("text_timestamp"),
+        textMissingRequired("text_missing_required"),
+        textInactiveField("text_inactive_field"),
+        textReference("text_reference"),
+        textLimit("text_limit"),
+        textEditConflict("text_edit_conflict"),
+        jsonRootNotArray("json_root_not_array"),
+        textHoldsZero("text_holds_zero"),
+        timestampNotRfc3339("timestamp_not_rfc3339"),
+        timestampOutOfRange("timestamp_out_of_range");
+
+        /** the member's bare name as docs/SPEC-TABLES.md §6.5 spells it. */
+        public final String spelling;
+
+        TableRefuseReason(String spelling) {
+            this.spelling = spelling;
+        }
+    }
+
     // The report counters of §4: unknown, kind mismatch, clamp, malformed and
     // widened. A refusal (an unknown form byte) moves none of them. Retained and
     // retain_lost (§6.6) accumulate across a retained load and save.
@@ -77,6 +163,11 @@ public final class TableVariable {
         public String reason;
         public int retained;
         public int retainLost;
+        // THE REFUSAL THE STRICT READ NAMES BEFORE DAMAGE (docs/SPEC-TABLES.md
+        // §6.5): a form byte this read does not carry, an integrity trailer
+        // that does not match, or a non-finite float, set where the read meets
+        // it and null on every other path. err() reads it first.
+        TableRefuseReason strict;
         // THE NUMBERING this load reads against, set when the node table is
         // read, and the root's type: every node reference is JUDGED as it is
         // read (judge, below), and a damaged table resolves nothing (§3.1).
@@ -99,9 +190,49 @@ public final class TableVariable {
             reason = null;
             retained = 0;
             retainLost = 0;
+            strict = null;
             nodeRecs = null;
             nodesGood = false;
             rootTypeId = 0;
+        }
+
+        /**
+         * THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+         * error identity"): null when the strict rule accepts the read this
+         * report describes, else the one reason it refuses. A form byte the read
+         * does not carry is unknownForm whichever form-specific name reason
+         * holds; then integrityMismatch, nonFiniteFloat, any damage as
+         * wireDamaged (a count past its body's length included), missingRequired,
+         * countOverExtentCap for a count past the int32 storage cap, blobShared,
+         * clamped and kindMismatch, in that order.
+         * unknown, widened, retained and duplicate alone never refuse. It reads
+         * the report and allocates nothing.
+         */
+        public TableRefuseReason err() {
+            if (strict != null) {
+                return strict;
+            }
+            if (malformed) {
+                return TableRefuseReason.wireDamaged;
+            }
+            if (missingRequired > 0) {
+                return TableRefuseReason.missingRequired;
+            }
+            if (refused) {
+                return "count_over_extent_cap".equals(reason)
+                        ? TableRefuseReason.countOverExtentCap
+                        : TableRefuseReason.wireDamaged;
+            }
+            if (blobShared > 0) {
+                return TableRefuseReason.blobShared;
+            }
+            if (clamped > 0) {
+                return TableRefuseReason.clamped;
+            }
+            if (kindMismatch > 0) {
+                return TableRefuseReason.kindMismatch;
+            }
+            return null;
         }
     }
 
@@ -756,6 +887,7 @@ public final class TableVariable {
             // is the malformed flag and names no reason.
             report.refused = true;
             report.reason = form == 2 ? "message_form_as_file" : "newer_form";
+            report.strict = TableRefuseReason.unknownForm;
             return -1;
         }
         if (data.length < 9) {
@@ -830,6 +962,7 @@ public final class TableVariable {
         if (report != null) {
             report.malformed = true;
             report.reason = "integrity_mismatch";
+            report.strict = TableRefuseReason.integrityMismatch;
         }
         return null;
     }
@@ -3657,17 +3790,23 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		// the stop, but the oracle framing walk does (internal/tablewire
 		// extent.go FileRegionMeasure): a LIST COUNT whose elements cannot fit
 		// its own L inside a MAP VALUE the read abandoned is still
-		// count_over_length, and the file is refused, not loaded (docs/SPEC-TABLES.md
-		// §6.5 "The two load paths", §6.2, §3.3; §2.8, §2.9). The stop is not
+		// count_over_length, and the file is damaged, not loaded (docs/SPEC-TABLES.md
+		// §6.5 "The two load paths", §6.2, §3.3, §4; §2.8, §2.9). The stop is not
 		// always counted as malformed: a value ref that resolves to the wrong
 		// kind stops the entry as kind_mismatch, and the list past it is never
 		// read either. So the walk runs on every load that has not refused:
-		// measureFields IS the oracle walk, and the load refuses exactly where
-		// loadMeasure answers -1, whatever the read reported.
+		// measureFields IS the oracle walk, and the load lands nothing exactly
+		// where loadMeasure answers -1, whatever the read reported. A -1 that
+		// names a reason is that refusal (count_over_extent_cap); one that names
+		// none is damage, so the report says malformed and not refused.
 		fmt.Fprintf(&b, "        TableVariable.Measure measure = new TableVariable.Measure();\n")
 		fmt.Fprintf(&b, "        if (loadMeasure(data, measure) < 0) {\n")
-		fmt.Fprintf(&b, "            report.refused = true;\n")
-		fmt.Fprintf(&b, "            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		fmt.Fprintf(&b, "            if (measure.report.reason != null) {\n")
+		fmt.Fprintf(&b, "                report.refused = true;\n")
+		fmt.Fprintf(&b, "                report.reason = measure.report.reason;\n")
+		fmt.Fprintf(&b, "            } else {\n")
+		fmt.Fprintf(&b, "                report.malformed = true;\n")
+		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "            return null;\n")
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        nt.from = 1;\n")
@@ -3688,6 +3827,24 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	}
+
+	// THE STRICT READ (docs/SPEC-TABLES.md §6.5): the value the tolerant load
+	// hands back when the report names no reason, else null with the one
+	// typed reason on report.err(). A load that hands back nothing and names
+	// no reason met damage, so its report says malformed and err() answers
+	// wireDamaged.
+	fmt.Fprintf(&b, "    /**\n")
+	fmt.Fprintf(&b, "     * readStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5): the value,\n")
+	fmt.Fprintf(&b, "     * or null with the one reason the strict rule refuses it with on report.err(). The\n")
+	fmt.Fprintf(&b, "     * report is reset and holds this read's report.\n")
+	fmt.Fprintf(&b, "     */\n")
+	fmt.Fprintf(&b, "    public static Value readStrict(byte[] data, TableVariable.Report report) {\n")
+	fmt.Fprintf(&b, "        if (report == null) { report = new TableVariable.Report(); } else { report.reset(); }\n")
+	fmt.Fprintf(&b, "        Value v = load(data, report);\n")
+	fmt.Fprintf(&b, "        if (report.err() != null) { return null; }\n")
+	fmt.Fprintf(&b, "        if (v == null) { report.malformed = true; }\n")
+	fmt.Fprintf(&b, "        return v;\n")
+	fmt.Fprintf(&b, "    }\n\n")
 
 	writeLoadMeasure(&b, u, st)
 	if unitCarriesForm(u, "json") {
@@ -5022,7 +5179,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else { report.malformed = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5110,7 +5267,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else { report.malformed = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5235,7 +5392,7 @@ func floatOwnerName(st *ir.Struct, f *ir.Field) string {
 func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	refusePrefix := func(widthExpr string) string {
 		if f.Array == ir.ArrayList {
-			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
+			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.malformed = true; } else ", widthExpr)
 		}
 		return ""
 	}
