@@ -1018,9 +1018,11 @@ recursive fn load_array(c: LoadCtx&, r: Rd&, slot: i64, d: FieldDesc, framed: i6
         }
         if counted {
             if d.array == ArrayCounted {
-                // the slots the previous occurrence made live are reset (§7.2)
+                // the slots the previous occurrence made live are reset (§7.2),
+                // and their retained records die with them (§6.6)
                 let first = c.vals[slot].first;
                 for k in decoded..c.vals[slot].len {
+                    if c.retaining { forget_rec(c, first + k); }
                     c.vals[first + k] = LoadVal { shape: c.vals[first + k].shape, .. };
                 }
             }
