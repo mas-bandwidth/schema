@@ -118,8 +118,15 @@ func TestLuaWideFixedPointVariableForm(t *testing.T) {
 				t.Fatalf("the Go engine refused its own wire: ok=%v err=%v report=%+v", ok, err, goReport)
 			}
 
+			// a value past its declared range is refused by the Lua writer by
+			// name (docs/SPEC-TABLES.md §3, invalid_value); the reader's clamp is
+			// held on the Go engine's wire of the same value
 			var want strings.Builder
-			fmt.Fprintf(&want, "%x\n", wire)
+			if goReport.Clamped > 0 {
+				want.WriteString("refused invalid_value\n")
+			} else {
+				fmt.Fprintf(&want, "%x\n", wire)
+			}
 			for _, name := range []string{"a", "b"} {
 				fmt.Fprintf(&want, "%s %d\n", name, wide128Cell(t, back, name).Int64())
 			}
@@ -133,8 +140,12 @@ local load = require("load")
 local inputs = require("inputs")
 local v = T.NewRoot()
 ` + strings.Join(saveValues, "\n") + `
-local wire = save.Save(T, "Root", v)
-print((wire:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
+local wire, why = save.Save(T, "Root", v)
+if wire == nil then
+  print("refused " .. tostring(why):match("^[%w_]+"))
+else
+  print((wire:gsub(".", function(c) return string.format("%02x", c:byte()) end)))
+end
 local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 local back = load.LoadTolerant(T, "Root", inputs.wire, report)
 for _, name in ipairs({ "a", "b" }) do
