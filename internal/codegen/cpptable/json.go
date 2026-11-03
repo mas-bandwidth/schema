@@ -684,7 +684,7 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("    const bool malformed_before = to->malformed;\n")
 		g.pf("    to->malformed = false;\n")
 		g.pf("    const bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, to );\n", st.Name)
-		g.pf("    if ( !ok || to->malformed )\n    {\n        to->malformed = true;\n        %[1]sTableType()->reset( root );\n        return false;\n    } // damage discards the whole load (§4)\n", st.Name)
+		g.pf("    if ( !ok || to->malformed )\n    {\n        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }\n        %[1]sTableType()->reset( root );\n        return false;\n    } // damage discards the whole load (§4)\n", st.Name)
 		g.pf("    to->malformed = malformed_before;\n")
 		g.pf("    return true;\n}\n\n")
 		// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers
@@ -700,11 +700,11 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 		g.pf("    if ( root == NULL )\n    {\n        if ( report != NULL ) { *report = TableReport(); }\n        return false;\n    } // locked: the report stays empty\n")
 		g.pf("    TableReport read;\n")
 		g.pf("    bool ok = TableJsonReadGraph( builder.main, root, %sTableType(), text, bytes, &read );\n", st.Name)
-		g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+		g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )\n")
 		g.pf("    {\n")
-		g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
+		g.pf("        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
 		g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
-		g.pf("        else\n        {\n            read.refuse_reason = TableRefuseReason::kind_mismatch;\n        }\n")
+		g.pf("        else if ( read.kind_mismatch != 0 )\n        {\n            read.refuse_reason = TableRefuseReason::kind_mismatch;\n        }\n")
 		g.pf("        %sTableType()->reset( root );\n", st.Name)
 		g.pf("        if ( report != NULL ) { *report = read; }\n")
 		g.pf("        return false;\n")
@@ -728,7 +728,7 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	g.pf("    const bool malformed_before = to->malformed;\n")
 	g.pf("    to->malformed = false;\n")
 	g.pf("    const bool ok = TableJsonRead( &value, %sTableType(), text, bytes, to );\n", st.Name)
-	g.pf("    if ( !ok || to->malformed )\n    {\n        to->malformed = true;\n        %sTableType()->reset( &value );\n        return false;\n    } // damage discards the whole load (§4)\n", st.Name)
+	g.pf("    if ( !ok || to->malformed )\n    {\n        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }\n        %sTableType()->reset( &value );\n        return false;\n    } // damage discards the whole load (§4)\n", st.Name)
 	g.pf("    to->malformed = malformed_before;\n")
 	g.pf("    return true;\n}\n\n")
 	// The plain read is STRICT (docs/SPEC-TABLES.md §6.5, §16.2): it answers false
@@ -741,11 +741,11 @@ func (g *tableGen) emitJsonDefinitions(st *ir.Struct) {
 	g.pf("bool %sFromJson( %s & value, const char * text, int64_t bytes, TableReport * report )\n{\n", st.Name, st.Name)
 	g.pf("    TableReport read;\n")
 	g.pf("    bool ok = TableJsonRead( &value, %sTableType(), text, bytes, &read );\n", st.Name)
-	g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )\n")
+	g.pf("    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )\n")
 	g.pf("    {\n")
-	g.pf("        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
+	g.pf("        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }\n")
 	g.pf("        else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }\n")
-	g.pf("        else\n        {\n            read.refuse_reason = TableRefuseReason::kind_mismatch;\n        }\n")
+	g.pf("        else if ( read.kind_mismatch != 0 )\n        {\n            read.refuse_reason = TableRefuseReason::kind_mismatch;\n        }\n")
 	g.pf("        %sTableType()->reset( &value );\n", st.Name)
 	g.pf("        if ( report != NULL ) { *report = read; }\n")
 	g.pf("        return false;\n")
@@ -2200,6 +2200,39 @@ struct TableJsonIn
     bool bad;     // the text is not JSON: the walk stops and the read is discarded whole
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
+
+// TableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3; oracle internal/codegen/gotable/json.go
+// tableJsonRequireSeen) must have been named, and one that was not is refused
+// as missing_required, in declaration order, exactly as the binary reader
+// refuses a record that omitted it. A required field inside an if guard is
+// demanded only while its guard holds: with the branch off it is absent and
+// no refusal is owed. The bounded seen bitmap is the duplicate tracker; a
+// table with more than 4096 fields keeps its old reading past the window.
+inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
+{
+    bool missing = false;
+    for ( int32_t i = 0; i < info->num_fields; i++ )
+    {
+        const TableFieldInfo * f = &info->fields[i];
+        if ( i >= 4096 || !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( uint64_t( 1 ) << ( i & 63 ) ) ) != 0 ) { continue; }
+        if ( !missing ) { in.report->missing_required_fields[0] = 0; }
+        if ( missing && strlen( in.report->missing_required_fields ) + 2 + strlen( f->name ) < sizeof( in.report->missing_required_fields ) )
+        {
+            strcat( in.report->missing_required_fields, ", " );
+        }
+        if ( strlen( in.report->missing_required_fields ) + strlen( f->name ) < sizeof( in.report->missing_required_fields ) )
+        {
+            strcat( in.report->missing_required_fields, f->name );
+        }
+        missing = true;
+    }
+    if ( !missing ) { return true; }
+    in.report->missing_required++;
+    return false;
+}
 
 inline void TableJsonSpace( TableJsonIn & in )
 {
@@ -4266,7 +4299,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
 {
     // duplicate tracking, bounded and allocation-free: a table with more
     // fields than this still reads, its repeats simply stop being counted
-    uint64_t seen[8] = {};
+    uint64_t seen[64] = {};
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
@@ -4282,7 +4315,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( c == '}' )
             {
                 in.pos++;
-                return true;
+                return TableJsonRequireSeen( in, base, info, seen );
             }
             if ( c == 0 )
             {
@@ -4329,7 +4362,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         else
         {
             const TableFieldInfo * f = &info->fields[index];
-            if ( index < 512 )
+            if ( index < 4096 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( index & 63 );
                 if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->duplicate++; }
@@ -4405,7 +4438,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         if ( c == '}' )
         {
             in.pos++;
-            return true;
+            return TableJsonRequireSeen( in, base, info, seen );
         }
         in.bad = true;
         return false;
@@ -4431,6 +4464,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         return false;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    const int32_t missing_before = in.report->missing_required;
     bool ok = TableJsonReadTable( in, value, info, 0 );
     if ( ok )
     {
@@ -4439,7 +4473,8 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = true;
+        // a missing required field is its own refusal (§2.3), not damage
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = true; }
         return false;
     }
     return true;
@@ -4723,7 +4758,8 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
             in.bad = true;
             return false;
         } // the arena refused
-        return true;
+        uint64_t empty_seen[64] = {};
+        return TableJsonRequireSeen( in, node, f->table, empty_seen );
     }
     if ( c == 0 )
     {
@@ -5002,6 +5038,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
         return false;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    const int32_t missing_before = in.report->missing_required;
     bool ok = TableJsonReadTable( in, root, info, 0 );
     if ( ok )
     {
@@ -5011,7 +5048,7 @@ inline bool TableJsonReadGraph( TableWorker & worker, void * root, const TableTy
     TableJsonGraphMapShutdown( graph.labels );
     if ( in.bad || !ok )
     {
-        in.report->malformed = true;
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = true; }
         return false;
     }
     return true;

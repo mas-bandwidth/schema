@@ -1128,6 +1128,44 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
     return TableTextFormScalar( n, f, out, why, path, spans );
 }
 
+inline bool tableTextFormGuard( const char * guard, const TableTextFormNode & rec, const TableTypeInfo * info, const std::vector<int32_t> & seen_idx, const std::vector<size_t> & seen_val )
+{
+    if ( guard == NULL || guard[0] == 0 ) { return true; }
+    const char * p = guard;
+    for ( ;; )
+    {
+        while ( *p == ' ' || *p == '&' ) { p++; }
+        if ( *p == 0 ) { return true; }
+        bool want = true;
+        if ( *p == '!' )
+        {
+            want = false;
+            p++;
+        }
+        const char * start = p;
+        while ( *p != 0 && *p != ' ' && *p != '&' ) { p++; }
+        const std::string name( start, (size_t) ( p - start ) );
+        bool val = false;
+        for ( int32_t j = 0; j < info->num_fields; j++ )
+        {
+            if ( name == info->fields[j].name )
+            {
+                for ( size_t k = 0; k < seen_idx.size(); k++ )
+                {
+                    if ( seen_idx[k] == j )
+                    {
+                        const TableTextFormNode & vn = rec.items[seen_val[k]];
+                        val = ( vn.kind == 't' );
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+        if ( val != want ) { return false; }
+    }
+}
+
 inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
     tableTextFormMark( spans, path, n );
@@ -1138,6 +1176,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
     }
     out += '{';
     std::vector<int32_t> seen;
+    std::vector<size_t> seen_val;
     for ( size_t i = 0; i < n.items.size(); i += 2 )
     {
         const TableTextFormNode & key = n.items[i];
@@ -1174,12 +1213,37 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
             }
         }
         seen.push_back( found );
+        seen_val.push_back( i + 1 );
         const std::string fp = tableTextFormJoin( path, info->fields[found].json );
         tableTextFormMark( spans, fp, key );
         if ( i > 0 ) { out += ','; }
         TableTextFormJsonString( out, info->fields[found].json );
         out += ':';
         if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why, fp, spans ) ) { return false; }
+    }
+    for ( int32_t j = 0; j < info->num_fields; j++ )
+    {
+        const TableFieldInfo * f = &info->fields[j];
+        const bool active = tableTextFormGuard( f->guard, n, info, seen, seen_val );
+        bool is_seen = false;
+        for ( size_t k = 0; k < seen.size(); k++ )
+        {
+            if ( seen[k] == j )
+            {
+                is_seen = true;
+                break;
+            }
+        }
+        if ( is_seen && !active )
+        {
+            *why = "text_inactive_field";
+            return false;
+        }
+        if ( !is_seen && active && f->required )
+        {
+            *why = "text_missing_required";
+            return false;
+        }
     }
     out += '}';
     return true;

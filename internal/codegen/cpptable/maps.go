@@ -1098,7 +1098,7 @@ func (g *tableGen) emitMapMeasureField(f *ir.Field) {
 	g.pf("        // %s: a kind %d array of kind %d elements, ASCENDING (§2.8)\n", f.Name, tkArray, tkTable)
 	g.pf("        TableMapCursor<%s> order_%s = TableMapOrder( ctx, value.%s );\n", entry.Name, f.Name, f.Name)
 	g.pf("        if ( !order_%s.ok ) { return -1; } // the sort could not run\n", f.Name)
-	if f.Type.Optional {
+	if f.Type.Optional || f.Required {
 		// A PRESENT EMPTY MAP RIDES (docs/SPEC-TABLES.md §2.8): the field header
 		// and the two-byte array body 0d 00 under L = 2. Only ABSENT elides; the
 		// oracle is internal/codegen/gotable/mappresence_test.go TestGoMapPresence.
@@ -1129,7 +1129,7 @@ func (g *tableGen) emitMapWriteField(f *ir.Field) {
 	g.pf("    {\n")
 	g.pf("        TableMapCursor<%s> order_%s = TableMapOrder( ctx, value.%s ); // %s\n", entry.Name, f.Name, f.Name, f.Name)
 	g.pf("        if ( !order_%s.ok ) { return false; }\n", f.Name)
-	if f.Type.Optional {
+	if f.Type.Optional || f.Required {
 		// A PRESENT EMPTY MAP RIDES (docs/SPEC-TABLES.md §2.8): the field header
 		// and the two-byte array body 0d 00 under L = 2. Only ABSENT elides; the
 		// oracle is internal/codegen/gotable/mappresence_test.go TestGoMapPresence.

@@ -262,6 +262,12 @@ class Contracts(unittest.TestCase):
                     self.assertIn("cards-dart-generate", prerequisites)
                     native_index = next(i for i, call in enumerate(runner.calls) if call[0] == "native-list-darttable")
                     self.assertLess(prerequisite_index, native_index)
+                if lang == "elixir":
+                    prerequisite_index = next(i for i, call in enumerate(runner.calls) if call[0] == "prerequisites")
+                    prerequisites = runner.calls[prerequisite_index][1]
+                    self.assertIn("build/elixir-tables-ebin/.stamp", prerequisites)
+                    native_index = next(i for i, call in enumerate(runner.calls) if call[0] == "native-list-elixirtable")
+                    self.assertLess(prerequisite_index, native_index)
                 prerequisite_index = next(i for i, call in enumerate(runner.calls) if call[0] == "prerequisites")
                 self.assertIn("build/fixedform-corpus/.stamp", runner.calls[prerequisite_index][1])
                 self.assertLess(prerequisite_index, next(i for i, call in enumerate(runner.calls) if call[0].startswith("native-")))

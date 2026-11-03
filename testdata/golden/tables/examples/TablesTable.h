@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -461,6 +468,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -9862,7 +9872,10 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBody( TableReader & r, WeaponConfig 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10195,7 +10208,7 @@ inline bool WeaponConfigLoad( WeaponConfig & value, const uint8_t * buffer, int6
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = WeaponConfigLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -10902,7 +10915,10 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBody( TableReader & r, LoadoutConfi
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11371,7 +11387,7 @@ inline bool LoadoutConfigLoad( LoadoutConfig & value, const uint8_t * buffer, in
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = LoadoutConfigLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -12069,7 +12085,10 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBody( TableReader & r, ProfileConfi
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -12672,7 +12691,7 @@ inline bool ProfileConfigLoad( ProfileConfig & value, const uint8_t * buffer, in
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = ProfileConfigLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -13555,7 +13574,10 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBody( TableReader & r, RootConfig & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -13832,7 +13854,7 @@ inline bool RootConfigLoad( RootConfig & value, const uint8_t * buffer, int64_t 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = RootConfigLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -14189,7 +14211,10 @@ TABLEDEMO_TABLE_INLINE bool AttachmentLoadBody( TableReader & r, Attachment & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -14372,7 +14397,7 @@ inline bool AttachmentLoad( Attachment & value, const uint8_t * buffer, int64_t 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = AttachmentLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -14671,7 +14696,10 @@ TABLEDEMO_TABLE_INLINE bool BuffLoadBody( TableReader & r, Buff & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -14812,7 +14840,7 @@ inline bool BuffLoad( Buff & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = BuffLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -15049,7 +15077,10 @@ TABLEDEMO_TABLE_INLINE bool DebuffLoadBody( TableReader & r, Debuff & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -15203,7 +15234,7 @@ inline bool DebuffLoad( Debuff & value, const uint8_t * buffer, int64_t bytes, T
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = DebuffLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -18682,7 +18713,10 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigLoadBodyRetain( TableReader & r, WeaponC
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -19177,7 +19211,10 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigLoadBodyRetain( TableReader & r, Loadou
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -19752,7 +19789,10 @@ TABLEDEMO_TABLE_INLINE bool ProfileConfigLoadBodyRetain( TableReader & r, Profil
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20403,7 +20443,10 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBodyRetain( TableReader & r, RootConfi
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20658,7 +20701,10 @@ TABLEDEMO_TABLE_INLINE bool AttachmentLoadBodyRetain( TableReader & r, Attachmen
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20807,7 +20853,10 @@ TABLEDEMO_TABLE_INLINE bool BuffLoadBodyRetain( TableReader & r, Buff & value, T
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20912,7 +20961,10 @@ TABLEDEMO_TABLE_INLINE bool DebuffLoadBodyRetain( TableReader & r, Debuff & valu
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -21826,69 +21878,69 @@ extern const TableTypeInfo DebuffTableInfo;
 inline const char * const WeaponConfig_damage_tags[] = { "ui_slider", "hot", "tuning" };
 inline const char * const WeaponConfig_tags[] = { "designer_facing" };
 inline const TableFieldInfo WeaponConfigTableFields[] = {
-    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, damage ), (uint32_t) sizeof( WeaponConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", 3, WeaponConfig_damage_tags, false },
-    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, speed ), (uint32_t) sizeof( WeaponConfig::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( WeaponConfig::penetration ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10.0, 0ll, 10ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( WeaponConfig::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 63.0, 0, 0, 0, 63ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xffb5be9be2e469ccull; case 2: return 0x13cdc5ede73d2fd7ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Effect, buff ), &BuffTableInfo, NULL, 4 }, { (uint32_t) offsetof( Effect, debuff ), &DebuffTableInfo, NULL, 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false },
+    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, damage ), (uint32_t) sizeof( WeaponConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", 3, WeaponConfig_damage_tags, false, false },
+    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, speed ), (uint32_t) sizeof( WeaponConfig::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( WeaponConfig::penetration ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10.0, 0ll, 10ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( WeaponConfig::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 63.0, 0, 0, 0, 63ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xffb5be9be2e469ccull; case 2: return 0x13cdc5ede73d2fd7ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Effect, buff ), &BuffTableInfo, NULL, 4 }, { (uint32_t) offsetof( Effect, debuff ), &DebuffTableInfo, NULL, 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo WeaponConfigTableInfo = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, WeaponConfigTableFields, +[]( void * p ) { WeaponConfigReset( *(WeaponConfig *) p ); }, false, "One weapon's tuning. A designer edits this table and nothing else.", 1, WeaponConfig_tags, false };
 inline const TableTypeInfo * WeaponConfigTableType() { return &WeaponConfigTableInfo; }
 
 inline const TableFieldInfo LoadoutConfigTableFields[] = {
-    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, grade ), (uint32_t) sizeof( LoadoutConfig::grade ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( LoadoutConfig, grades ), (uint32_t) sizeof( LoadoutConfig::grades[0] ), (uint32_t) offsetof( LoadoutConfig, grades_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( LoadoutConfig, podium ), (uint32_t) sizeof( LoadoutConfig::podium[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, perks ), (uint32_t) sizeof( LoadoutConfig::perks ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerks( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, primary ), (uint32_t) sizeof( LoadoutConfig::primary ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( LoadoutConfig::backups[0] ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( LoadoutConfig::attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &AttachmentTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, grade ), (uint32_t) sizeof( LoadoutConfig::grade ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( LoadoutConfig, grades ), (uint32_t) sizeof( LoadoutConfig::grades[0] ), (uint32_t) offsetof( LoadoutConfig, grades_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( LoadoutConfig, podium ), (uint32_t) sizeof( LoadoutConfig::podium[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, perks ), (uint32_t) sizeof( LoadoutConfig::perks ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerks( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, primary ), (uint32_t) sizeof( LoadoutConfig::primary ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( LoadoutConfig::backups[0] ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( LoadoutConfig::attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &AttachmentTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo LoadoutConfigTableInfo = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, LoadoutConfigTableFields, +[]( void * p ) { LoadoutConfigReset( *(LoadoutConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LoadoutConfigTableType() { return &LoadoutConfigTableInfo; }
 
 inline const TableFieldInfo ProfileConfigTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( ProfileConfig, name ), (uint32_t) sizeof( ProfileConfig::name ), (uint32_t) offsetof( ProfileConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, true, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( ProfileConfig, icon ), (uint32_t) sizeof( ProfileConfig::icon[0] ), (uint32_t) offsetof( ProfileConfig, icon_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, experience ), (uint32_t) sizeof( ProfileConfig::experience ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, tilt ), (uint32_t) sizeof( ProfileConfig::tilt ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, heading ), (uint32_t) sizeof( ProfileConfig::heading ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, timestamp ), (uint32_t) sizeof( ProfileConfig::timestamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, badge ), (uint32_t) sizeof( ProfileConfig::badge ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, port ), (uint32_t) sizeof( ProfileConfig::port ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, epoch ), (uint32_t) sizeof( ProfileConfig::epoch ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ProfileConfig::precision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, true, false, NULL, NULL, false, false, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ProfileConfig::ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ProfileConfig::has_loadout ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ProfileConfig::loadout ), 0xffffffffu, 0xffffffffu, &LoadoutConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( ProfileConfig, name ), (uint32_t) sizeof( ProfileConfig::name ), (uint32_t) offsetof( ProfileConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, true, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( ProfileConfig, icon ), (uint32_t) sizeof( ProfileConfig::icon[0] ), (uint32_t) offsetof( ProfileConfig, icon_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, experience ), (uint32_t) sizeof( ProfileConfig::experience ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, tilt ), (uint32_t) sizeof( ProfileConfig::tilt ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, heading ), (uint32_t) sizeof( ProfileConfig::heading ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, timestamp ), (uint32_t) sizeof( ProfileConfig::timestamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, badge ), (uint32_t) sizeof( ProfileConfig::badge ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, port ), (uint32_t) sizeof( ProfileConfig::port ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, epoch ), (uint32_t) sizeof( ProfileConfig::epoch ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ProfileConfig::precision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, true, false, NULL, NULL, false, false, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ProfileConfig::ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ProfileConfig::has_loadout ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ProfileConfig::loadout ), 0xffffffffu, 0xffffffffu, &LoadoutConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo ProfileConfigTableInfo = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, ProfileConfigTableFields, +[]( void * p ) { ProfileConfigReset( *(ProfileConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ProfileConfigTableType() { return &ProfileConfigTableInfo; }
 
 inline const TableFieldInfo RootConfigTableFields[] = {
-    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( RootConfig::version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( RootConfig::weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( RootConfig::profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &ProfileConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( RootConfig::version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( RootConfig::weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( RootConfig::profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &ProfileConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo RootConfigTableInfo = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, RootConfigTableFields, +[]( void * p ) { RootConfigReset( *(RootConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RootConfigTableType() { return &RootConfigTableInfo; }
 
 inline const TableFieldInfo AttachmentTableFields[] = {
-    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( Attachment::slot ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( Attachment::power ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( Attachment::slot ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( Attachment::power ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo AttachmentTableInfo = { "Attachment", (uint32_t) sizeof( Attachment ), 2, AttachmentTableFields, +[]( void * p ) { AttachmentReset( *(Attachment *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AttachmentTableType() { return &AttachmentTableInfo; }
 
 inline const TableFieldInfo BuffTableFields[] = {
-    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( Buff::multiplier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( Buff::multiplier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo BuffTableInfo = { "Buff", (uint32_t) sizeof( Buff ), 1, BuffTableFields, +[]( void * p ) { BuffReset( *(Buff *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BuffTableType() { return &BuffTableInfo; }
 
 inline const TableFieldInfo DebuffTableFields[] = {
-    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( Debuff::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( Debuff::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo DebuffTableInfo = { "Debuff", (uint32_t) sizeof( Debuff ), 1, DebuffTableFields, +[]( void * p ) { DebuffReset( *(Debuff *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DebuffTableType() { return &DebuffTableInfo; }

@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -461,6 +468,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -8200,7 +8210,10 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -8387,7 +8400,7 @@ inline bool StampLoad( Stamp & value, const uint8_t * buffer, int64_t bytes, Tab
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = StampLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -8694,7 +8707,10 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBody( TableReader & r, Colour & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -8875,7 +8891,7 @@ inline bool ColourLoad( Colour & value, const uint8_t * buffer, int64_t bytes, T
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = ColourLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -9570,7 +9586,10 @@ GRAPHDEMO_TABLE_INLINE bool StampLoadBodyRetain( TableReader & r, Stamp & value,
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -9733,7 +9752,10 @@ GRAPHDEMO_TABLE_INLINE bool ColourLoadBodyRetain( TableReader & r, Colour & valu
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10090,16 +10112,16 @@ extern const TableTypeInfo StampTableInfo;
 extern const TableTypeInfo ColourTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }

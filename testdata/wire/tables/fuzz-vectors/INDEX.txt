@@ -249,6 +249,19 @@ enum_array_ref_outside tabledemo RootConfig testdata/wire/tables/fuzz-vectors/en
 # An unknown enum variant in a known array slot is excluded retention loss.
 enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_foreign_variant.bin
 
+# A nested union arm retains unknown fields in its selected inner table body.
+retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin
+
+# A known numeric union arm widens identically in plain and retaining reads.
+retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin
+
+# A keyed scalar element kind widens once and preserves every named slot.
+keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin
+inert_byte_array_header streamdemo Feed testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin
+blob_field_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_field_replaced.bin
+blob_table_owner_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_table_owner_replaced.bin
+union_array_element_kind messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin
+
 # Replacing a table array supersedes retained inline records without save loss.
 retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
 retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
