@@ -141,11 +141,13 @@ struct ManifestRow
     long long records = 0;
     std::vector<std::string> values;
     std::string forged; // the forged=<path>@<byte>=<value> field, empty when none
+    std::string expect; // the expect=<path>=<value>,...,clamped=<n> field, empty when none
 };
 
 static std::vector<ManifestRow> g_manifest;     // the rows, in the order written
 static std::vector<std::string> g_values;       // the row being written
 static std::string g_forged;                    // the pending row's forged= field, if any
+static std::string g_expect;                    // the pending row's expect= field, if any
 
 // `v[0].nested.a` -> `r0.nested.a`, and a subscript that is a LOOP VARIABLE or
 // an enum takes the value the call site hands over, in order, so the path holds
@@ -407,6 +409,8 @@ static void man_finish( const char * file, const char * root, long long records 
     man_row_and_side( r.file, r.row, r.side );
     r.forged = g_forged;
     g_forged.clear();
+    r.expect = g_expect;
+    g_expect.clear();
     r.values.swap( g_values );
     g_manifest.push_back( r );
 }
@@ -429,6 +433,14 @@ static bool man_write( const char * dir )
                            r.file.c_str(), r.row.c_str(), r.side.c_str(), r.root.c_str(), r.records, r.forged.c_str() );
         }
         text += head;
+        // `expect=` is what the NEW reader LANDS from a forged file: the values
+        // the reference read back and the `clamped` count its report holds. It
+        // sits between the head and `values=`, so a parser that knows only the
+        // head fields still finds `values=` where it always was.
+        if ( !r.expect.empty() )
+        {
+            text.insert( text.size() - std::strlen( "values=" ), "expect=" + r.expect + " " );
+        }
         for ( size_t k = 0; k < r.values.size(); ++k )
         {
             if ( k != 0 ) { text += ","; }
@@ -910,6 +922,59 @@ static bool versioning_numbers_files( const char * dir )
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 100 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     VROW( vnew_range_widen, RangeWiden, "new_range_widen.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 150 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+
+    // THE WRITER'S RANGE IS THE BOUND (docs/FIXED-FORM-ALGORITHM.md §4.5, bill
+    // §12.5). hostile_range_widen.bin is old_range_widen's bytes with `v`
+    // forged to 150: outside the OLD writer's | 0..100, INSIDE the NEW reader's
+    // | 0..200, so only damage can put it there. The NEW reader clamps it to the
+    // WRITER's max 100 and counts `clamped` exactly once; a reader that clamps
+    // to its own range lands 150 uncounted. The lock refuses a narrowed range,
+    // so the writer's range always lies inside the reader's and this is the one
+    // place the two readings part. Unlike a compressed float (the cfloat rows
+    // above), an integer range is carried in the plan, so the writer's bound
+    // survives the resolve.
+    //
+    // `values=` is what the OLD writer wrote, before the forge; `expect=` is
+    // what this reference's own NEW reader landed from the forged bytes, and
+    // the dump refuses to write the row unless that is 100, counted once.
+    {
+        std::vector<vold_range_widen::RangeWiden> v( 1 );
+        vold_range_widen::RangeWidenReset( v[0] );
+        MS( v[0].lead, 1u );
+        MS( v[0].v, 100 );
+        MS( v[0].trail, 2u );
+        const int64_t v_at = vold_range_widen::kTableFixedHeaderBytes + 4
+                           + vold_range_widen::RangeWidenFixedLayoutBytes + 8 + 4;
+        std::vector<uint8_t> out( (size_t) vold_range_widen::RangeWidenFixedMeasure( 1 ) );
+        if ( vold_range_widen::RangeWidenFixedSave( v.data(), 1, out.data(), (int64_t) out.size() ) != (int64_t) out.size() )
+        {
+            std::fprintf( stderr, "hostile_range_widen.bin: save refused\n" );
+            g_values.clear();
+            return false;
+        }
+        const int32_t forged = 150;
+        vold_range_widen::TableFixedPut32( out.data() + v_at, (uint32_t) forged );
+        vnew_range_widen::RangeWiden back;
+        vnew_range_widen::RangeWidenReset( back );
+        vnew_range_widen::TableReport r;
+        std::vector<vnew_range_widen::TableFixedEntry> plan( 4096 );
+        const int64_t n = vnew_range_widen::RangeWidenFixedLoadTolerant( &back, 1, out.data(), (int64_t) out.size(),
+                                                                         plan.data(), 4096, NULL, &r );
+        if ( n != 1 || back.v != 100 || r.clamped != 1 || back.lead != 1 || back.trail != 2 )
+        {
+            std::fprintf( stderr, "hostile_range_widen.bin: the reference's NEW reader landed n=%lld v=%d clamped=%lld, want 1 record, v == 100 (the WRITER's max), clamped == 1\n",
+                          (long long) n, (int) back.v, (long long) r.clamped );
+            g_values.clear();
+            return false;
+        }
+        char forge[96];
+        std::snprintf( forge, sizeof( forge ), "r0.v@%lld=%s", (long long) v_at, man_text( forged ).c_str() );
+        g_forged = forge;
+        g_expect = "r0.lead=" + man_text( back.lead ) + ",r0.v=" + man_text( back.v )
+                 + ",r0.trail=" + man_text( back.trail ) + ",clamped=" + man_text( (long long) r.clamped );
+        man_finish( "hostile_range_widen.bin", "RangeWiden", 1 );
+        if ( !spill( dir, "hostile_range_widen.bin", out ) ) { return false; }
+    }
 
     // §5.8 — `cfloat_range_widen`: a compressed float's range widened -1..1 to
     // -2..2. The field rides AS THE FLOAT (SPEC §3.4), so min, max and
