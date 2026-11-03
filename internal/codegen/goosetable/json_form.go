@@ -55,9 +55,10 @@ func init() {
 const TextUnitName = "TextUnit"
 
 // emitJSONUnit writes TextUnit: a flags field's variant names, a timestamp
-// array's elements, a text list's fields, and the tables declared without the json form (§2.12),
-// which have no text. Every unit with a table gets one, so a program that
-// reads any root's text through json_value.goose names it the same way.
+// array's elements, a text list's fields (§2.13), and the tables declared
+// without the json form (§2.12), which have no text.
+// Every unit with a table gets one, so a program that reads any root's text
+// through json_value.goose names it the same way.
 func emitJSONUnit(g *goose.Gen) error {
 	g.Import("json_value")
 	structs, unions := unitDecls(g.Unit)

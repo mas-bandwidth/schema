@@ -690,7 +690,7 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     return std::string( buffer );
 }
 
-inline bool TableTextFormTimestampParse( const std::string & s, int64_t * out )
+inline bool tableTextFormTimestampParse( const std::string & s, int64_t * out )
 {
     int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
     int index = 0;              // 0..18 over "YYYY-MM-DDTHH:MM:SS"
@@ -840,6 +840,29 @@ inline bool TableTextFormTimestampParse( const std::string & s, int64_t * out )
 
 inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldInfo * f, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
+    if ( f->text_list != 0 )
+    {
+        if ( f->text_list == 2 && n.kind == 'z' )
+        {
+            out += "null";
+            tableTextFormCanon( spans, path, "null" );
+            return true;
+        }
+        if ( n.kind != '"' )
+        {
+            *why = "text_kind_mismatch";
+            return false;
+        }
+        const TableFieldInfo * val = &f->table->fields[0];
+        if ( !val->unbounded && val->array_bound != 0 && (int64_t) n.text.size() > val->array_bound )
+        {
+            *why = "text_bound";
+            return false;
+        }
+        TableTextFormJsonString( out, n.text );
+        tableTextFormCanon( spans, path, n.text );
+        return true;
+    }
     if ( f->optional && n.kind == 'z' )
     {
         out += "null";
@@ -870,7 +893,20 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             tableTextFormMark( spans, tableTextFormIndex( pp, 0 ), pair.items[0] );
             tableTextFormCanon( spans, tableTextFormIndex( pp, 0 ), pair.items[0].text );
             if ( i > 0 ) { out += ','; }
-            if ( key->kind == 12 ) { TableTextFormJsonString( out, pair.items[0].text ); }
+            if ( key->kind == 12 )
+            {
+                if ( pair.items[0].kind != '"' )
+                {
+                    *why = "text_kind_mismatch";
+                    return false;
+                }
+                if ( !key->unbounded && key->array_bound != 0 && (int64_t) pair.items[0].text.size() > key->array_bound )
+                {
+                    *why = "text_bound";
+                    return false;
+                }
+                TableTextFormJsonString( out, pair.items[0].text );
+            }
             else
             {
                 TableTextFormJsonString( out, pair.items[0].text );
@@ -897,13 +933,16 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             *why = "text_kind_mismatch";
             return false;
         }
+        TableFieldInfo element = *f;
+        element.is_array = false;
+        element.optional = false;
         out += '[';
         for ( size_t i = 0; i < n.items.size(); i++ )
         {
             if ( i > 0 ) { out += ','; }
             const std::string ip = tableTextFormIndex( path, i );
             tableTextFormMark( spans, ip, n.items[i] );
-            if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
+            if ( !TableTextFormScalar( n.items[i], &element, out, why, ip, spans ) ) { return false; }
         }
         out += ']';
         return true;
@@ -1145,7 +1184,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
             return false;
         }
         int64_t nanos = 0;
-        if ( !TableTextFormTimestampParse( n.text, &nanos ) )
+        if ( !tableTextFormTimestampParse( n.text, &nanos ) )
         {
             *why = "text_timestamp";
             return false;
@@ -1163,7 +1202,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
         }
         int64_t size = (int64_t) n.text.size();
         if ( f->kind == 33 ) { size = TableUtf16Length( n.text ); }
-        if ( f->array_bound != 0 && size > f->array_bound )
+        if ( !f->unbounded && f->array_bound != 0 && size > f->array_bound )
         {
             *why = "text_bound";
             return false;
@@ -1261,6 +1300,39 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
             tableTextFormCanon( spans, path, n.text );
             return true;
         }
+        if ( f->text_list != 0 )
+        {
+            if ( n.kind != '(' )
+            {
+                *why = "text_kind_mismatch";
+                return false;
+            }
+            if ( !f->unbounded_container && n.items.size() > (size_t) f->array_bound )
+            {
+                *why = "text_bound";
+                return false;
+            }
+            out += '[';
+            int64_t spent = 0;
+            for ( size_t i = 0; i < n.items.size(); i++ )
+            {
+                if ( i > 0 ) { out += ','; }
+                const std::string ip = tableTextFormIndex( path, i );
+                tableTextFormMark( spans, ip, n.items[i] );
+                if ( !TableTextFormScalar( n.items[i], f, out, why, ip, spans ) ) { return false; }
+                if ( n.items[i].kind == '"' )
+                {
+                    spent += (int64_t) n.items[i].text.size();
+                    if ( f->text_total > 0 && spent > f->text_total )
+                    {
+                        *why = "text_bound";
+                        return false;
+                    }
+                }
+            }
+            out += ']';
+            return true;
+        }
         if ( f->array_bound != 0 && f->key_name == NULL )
         {
             if ( n.kind != '(' )
@@ -1339,7 +1411,9 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         *why = "text_kind_mismatch";
         return false;
     }
-    out += '{';
+    const bool array_root = info->json_array && info->num_fields == 1;
+    if ( !array_root ) { out += '{'; }
+    bool wrote = false;
     std::vector<int32_t> seen;
     std::vector<size_t> seen_val;
     for ( size_t i = 0; i < n.items.size(); i += 2 )
@@ -1381,10 +1455,18 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
         seen_val.push_back( i + 1 );
         const std::string fp = tableTextFormJoin( path, info->fields[found].json );
         tableTextFormMark( spans, fp, key );
-        if ( i > 0 ) { out += ','; }
-        TableTextFormJsonString( out, info->fields[found].json );
-        out += ':';
+        if ( !array_root )
+        {
+            if ( wrote ) { out += ','; }
+            TableTextFormJsonString( out, info->fields[found].json );
+            out += ':';
+        }
         if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why, fp, spans ) ) { return false; }
+        wrote = true;
+    }
+    if ( array_root && !wrote )
+    {
+        out += "[]";
     }
     for ( int32_t j = 0; j < info->num_fields; j++ )
     {
@@ -1410,7 +1492,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
             return false;
         }
     }
-    out += '}';
+    if ( !array_root ) { out += '}'; }
     return true;
 }
 
@@ -1636,7 +1718,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 		g.pf("    TableReport report;\n")
 		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-		g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %sBuilder & builder, const char ** refusal )\n{\n", st.Name, st.Name)
 		loadDoc("builder")
@@ -1650,7 +1732,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 		g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 		g.pf("    TableReport report;\n")
 		g.pf("    if ( !%sFromJson( builder, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-		g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+		g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 		g.pf("    return true;\n}\n\n")
 		return
 	}
@@ -1659,7 +1741,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    if ( !TableTextFormToJson( text, bytes, %sTableType(), json, refusal ) ) { return false; }\n", st.Name)
 	g.pf("    TableReport report;\n")
 	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-	g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 	g.pf("bool %sLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, %s & value, const char ** refusal )\n{\n", st.Name, st.Name)
 	loadDoc("value")
@@ -1673,7 +1755,7 @@ func (g *tableGen) emitTextFormDefinitions(st *ir.Struct) {
 	g.pf("    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }\n")
 	g.pf("    TableReport report;\n")
 	g.pf("    if ( !%sFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.malformed || report.unknown != 0 || report.kind_mismatch != 0 || report.duplicate != 0 || report.clamped != 0 )\n", st.Name)
-	g.pf("    {\n        *refusal = \"text_kind_mismatch\";\n        return false;\n    }\n")
+	g.pf("    {\n        *refusal = report.clamped != 0 ? \"text_bound\" : \"text_kind_mismatch\";\n        return false;\n    }\n")
 	g.pf("    return true;\n}\n\n")
 }
 

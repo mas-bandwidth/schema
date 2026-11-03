@@ -29,7 +29,7 @@ var unboundedTextProbes = func() []unchangedProbe {
 		if u == nil {
 			return false
 		}
-		err := refuseTextForms(u, "cpp")
+		err := refuseTextForms(u, "unregistered")
 		return err != nil && strings.Contains(err.Error(), "§2.13.1")
 	}
 	keep := []string{"Lists"}

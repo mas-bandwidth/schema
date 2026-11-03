@@ -117,10 +117,12 @@ const tableLoadMeasureSource = `
         if (bytes.Length < 9) { return -1; }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }
+        // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+        // claims more than 4096 entries is malformed.
+        if (count > 4096) { return -1; }
         int end = bytes.Length - 8 - (int)count * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-        for (int i = 0; i < ids.Length; i += 8)
-        { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { return -1; } } }
+        if (!DistinctVocabulary(ids)) { return -1; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
         if (EndsEarly(root)) { return -1; }
         long extent = 0;

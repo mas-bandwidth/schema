@@ -1048,6 +1048,9 @@ inline const char TableDocNone[1] = "";
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -1935,7 +1938,8 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 	anyKeyed := unitHasKeyedArray(u, closure)
 	anyMap := unitHasMap(u, closure)
 	anyList := unitHasList(u, closure)
-	anyExtent := anyMap || anyList
+	anyTextList := ir.UnitHasTextLists(u)
+	anyExtent := anyMap || anyList || ir.UnitHasUnboundedText(u)
 	// WIDE TEXT is a unit-level fact, not a per-file one, because the
 	// primitives block sits behind ONE package-scoped guard: whichever
 	// <Base>Table.h a translation unit includes first defines the runtime for
@@ -2153,10 +2157,10 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 		// else (docs/SPEC-TABLES.md §3.4): a text field's used length and a
 		// counted array's live count, checked debug-only, with no abort behind
 		// them. A unit of plain scalars declares neither and gets no hook.
-		if !anyKeyed && !anyList && ir.TableFixedHasWriteBound(u) {
+		if !anyKeyed && !anyList && !anyTextList && ir.TableFixedHasWriteBound(u) {
 			h.WriteString(tableAssertHook)
 		}
-		if anyKeyed || anyList {
+		if anyKeyed || anyList || anyTextList {
 			// ENUM-KEYED arrays and UNBOUNDED arrays only: indexing a keyed array
 			// by None, or a list past its count, is a program error in EVERY
 			// configuration, and the accessor is where a runtime key or index can

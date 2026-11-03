@@ -1830,7 +1830,7 @@ defmodule WireFuzz do
           # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
           # damage discards the whole load): its report, malformed among it,
           # is the answer the oracle compares
-          stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
+          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
       end
     end
   end

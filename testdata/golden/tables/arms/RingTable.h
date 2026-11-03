@@ -478,6 +478,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -7614,6 +7617,189 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
@@ -7888,6 +8074,21 @@ inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, Ta
     if ( element == NULL ) { return NULL; }
     new ( element ) Element(); // value-init: the declared defaults, and null for a slot
     return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
 }
 
 // ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
@@ -9292,6 +9493,8 @@ inline bool NodeLoadMessages( Node * values, int64_t * count, const TableVocabul
 template <typename Ctx>
 inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Ring & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // items: a kind 14 array of kind 15 elements, INDEX order (§2.9)
@@ -9345,6 +9548,8 @@ inline int64_t RingMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool RingSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Ring & value )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Slot> cursor_items = TableListElements( ctx, value.items ); // items
         if ( !cursor_items.ok ) { return false; }
@@ -9449,6 +9654,7 @@ inline bool RingSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     RingReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -9546,6 +9752,7 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
                             Slot * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -9712,6 +9919,8 @@ inline bool RingLoadBody( TableReader & r, const TableNodeMap & nodes, Ring & va
 template <typename Ctx>
 inline int64_t RackMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Rack & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // items: a kind 14 array of kind 15 elements, INDEX order (§2.9)
@@ -9770,6 +9979,8 @@ inline int64_t RackMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool RackSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Rack & value )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items ); // items
         if ( !cursor_items.ok ) { return false; }
@@ -9890,6 +10101,7 @@ inline bool RackSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     RackReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -9987,6 +10199,7 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
                             Slots * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -10165,6 +10378,8 @@ inline bool RackLoadBody( TableReader & r, const TableNodeMap & nodes, Rack & va
 template <typename Ctx>
 inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Tray & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
     if ( value.entries_count > 0 )
@@ -10219,6 +10434,8 @@ inline int64_t TrayMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool TraySaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Tray & value )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
     if ( value.entries_count > 0 )
     {
@@ -10336,6 +10553,7 @@ inline bool TraySaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool TrayLoadBody( TableReader & r, const TableNodeMap & nodes, Tray & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     TrayReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -12780,8 +12998,15 @@ inline bool RingLoadBuilderTolerant( RingBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -13748,8 +13973,15 @@ inline bool RackLoadBuilderTolerant( RackBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -14716,8 +14948,15 @@ inline bool TrayLoadBuilderTolerant( TrayBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -14943,6 +15182,8 @@ ARMDEMO_TABLE_INLINE bool NodeLoadBodyRetain( TableReader & r, Node & value, Tab
 template <typename Ctx>
 inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // items: a kind 14 array of kind 15 elements, INDEX order (§2.9)
@@ -14997,6 +15238,8 @@ inline int64_t RingMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool RingSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Ring & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Slot> cursor_items = TableListElements( ctx, value.items ); // items
         if ( !cursor_items.ok ) { return false; }
@@ -15102,6 +15345,7 @@ inline bool RingSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Ring & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     RingReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -15207,6 +15451,7 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
                             Slot * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -15373,6 +15618,8 @@ inline bool RingLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rin
 template <typename Ctx>
 inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // items: a kind 14 array of kind 15 elements, INDEX order (§2.9)
@@ -15432,6 +15679,8 @@ inline int64_t RackMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool RackSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Rack & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Slots> cursor_items = TableListElements( ctx, value.items ); // items
         if ( !cursor_items.ok ) { return false; }
@@ -15553,6 +15802,7 @@ inline bool RackSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rack & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     RackReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -15658,6 +15908,7 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
                             Slots * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -15836,6 +16087,8 @@ inline bool RackLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Rac
 template <typename Ctx>
 inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return -1; } // storage invariant
     if ( value.entries_count > 0 )
@@ -15891,6 +16144,8 @@ inline int64_t TrayMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool TraySaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Tray & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; } // storage invariant
     if ( value.entries_count > 0 )
     {
@@ -16009,6 +16264,7 @@ inline bool TraySaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool TrayLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Tray & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     TrayReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -18743,28 +18999,28 @@ extern const TableTypeInfo RackTableInfo;
 extern const TableTypeInfo TrayTableInfo;
 
 inline const TableFieldInfo NodeTableFields[] = {
-    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Node, v ), (uint32_t) sizeof( Node::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Node, v ), (uint32_t) sizeof( Node::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo NodeTableInfo = { "Node", (uint32_t) sizeof( Node ), 1, NodeTableFields, +[]( void * p ) { NodeReset( *(Node *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * NodeTableType() { return &NodeTableInfo; }
 
 inline const TableFieldInfo RingTableFields[] = {
-    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "vertex"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "vertex", "vertex", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, vertex ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, vertex ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, past ), (uint32_t) sizeof( Ring::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "vertex"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "vertex", "vertex", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, vertex ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, vertex ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Slot> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, past ), (uint32_t) sizeof( Ring::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo RingTableInfo = { "Ring", (uint32_t) sizeof( Ring ), 2, RingTableFields, +[]( void * p ) { RingReset( *(Ring *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RingTableType() { return &RingTableInfo; }
 
 inline const TableFieldInfo RackTableFields[] = {
-    { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, past ), (uint32_t) sizeof( Rack::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Slots> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, past ), (uint32_t) sizeof( Rack::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo RackTableInfo = { "Rack", (uint32_t) sizeof( Rack ), 2, RackTableFields, +[]( void * p ) { RackReset( *(Rack *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RackTableType() { return &RackTableInfo; }
 
 inline const TableFieldInfo TrayTableFields[] = {
-    { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, past ), (uint32_t) sizeof( Tray::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, past ), (uint32_t) sizeof( Tray::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo TrayTableInfo = { "Tray", (uint32_t) sizeof( Tray ), 2, TrayTableFields, +[]( void * p ) { TrayReset( *(Tray *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrayTableType() { return &TrayTableInfo; }

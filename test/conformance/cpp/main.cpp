@@ -32,6 +32,7 @@
 #include "TablesTable.h"
 #include "WideTable.h"
 #include "CaptionTable.h" // the WIDE TEXT unit (examples-wide): kind 33
+#include "FeaturesTable.h"
 #include "NestedTable.h"
 #include "KeyedTable.h"
 #include "PackTable.h"
@@ -422,6 +423,8 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblg1", tblg1, Guarded ),
     VARCODEC( "tblw1", tblw1, Fleet ),
     VARCODEC( "tblw2", tblw2, Fleet ),
+    VARCODEC( "featurewitnesses", featurewitnesses, Root ),
+    VARCODEC( "featurewitnesses", featurewitnesses, ArrayRoot ),
 };
 
 // ---------------------------------------------------------------------------

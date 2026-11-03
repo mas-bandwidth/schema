@@ -1987,12 +1987,15 @@ def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
 
 // strict_reason is docs/SPEC-TABLES.md §6.5's one typed reason for a read,
 // in the order Go's TableReport.Err() applies: a non-finite float first
-// (§3.3), then a form refusal, missing_required, malformed, blob_shared,
-// clamped and kind_mismatch; the empty string on a read whose only counters
-// are unknown or widened, which are not loss.
+// (§3.3), then a count past the int32 storage cap (§2.9), a form refusal,
+// missing_required, malformed, blob_shared, clamped and kind_mismatch; the
+// empty string on a read whose only counters are unknown or widened, which
+// are not loss.
 def strict_reason(rep:LoadReport) -> string:
     if rep.non_finite_float != "":
         return "non_finite_float"
+    if rep.reason == "count_over_extent_cap":
+        return "count_over_extent_cap"
     if rep.refused or rep.reason == "form" or rep.reason == "message_form_as_file":
         return "unknown_form"
     if rep.missing_required > 0:
@@ -2132,6 +2135,7 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     decode_variable(st, rec, first)
     if st.count_refused:
         report.refused = true
+        report.reason = "count_over_extent_cap"
         report.stopped = true
         return nil
     if report.missing_required > 0:

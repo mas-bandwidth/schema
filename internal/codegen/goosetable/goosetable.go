@@ -546,6 +546,9 @@ func fieldDescWire(g *goose.Gen, owner string, f *ir.Field, ordinal, tag int, wi
 	if f.IsMap() || f.Array != ir.ArrayNone {
 		v.writeTail(&l, f, tag)
 		annotateField(g, &l, owner, f, ordinal, tag)
+		if f.IsTextList() && f.TextTotal > 0 {
+			l.add("text_total", fmt.Sprint(f.TextTotal))
+		}
 		return l.render("FieldDesc")
 	}
 	v.writeRest(&l)

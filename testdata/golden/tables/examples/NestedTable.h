@@ -472,6 +472,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -11376,8 +11379,8 @@ inline const TableTypeInfo * ArchiveConfigTableType();
 extern const TableTypeInfo ArchiveConfigTableInfo;
 
 inline const TableFieldInfo ArchiveConfigTableFields[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo ArchiveConfigTableInfo = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, ArchiveConfigTableFields, +[]( void * p ) { ArchiveConfigReset( *(ArchiveConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ArchiveConfigTableType() { return &ArchiveConfigTableInfo; }

@@ -1585,25 +1585,44 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # unknown (§4). It is :nested for every other body (a by-value table, an
   # element, an entry, a node record), where the id is malformed: a second
   # numbering cannot exist.
-  defp entries(bin, ids, allowed, transport),
-    do: entries(bin, ids, allowed, transport, [], [])
+  defp entries(bin, ids, allowed, transport) do
+    case entries(bin, ids, allowed, transport, [], nil) do
+      {:ok, fields, nil} ->
+        {:ok, fields, []}
+
+      {:ok, fields, node_bin} ->
+        case node_table(node_bin, ids, allowed) do
+          {:ok, ns} -> {:ok, fields, ns}
+          :error -> {:stop, fields, [], 0}
+        end
+
+      {:stop, fields, nil, rem} ->
+        {:stop, fields, [], rem}
+
+      {:stop, fields, node_bin, rem} ->
+        case node_table(node_bin, ids, allowed) do
+          {:ok, ns} -> {:stop, fields, ns, rem}
+          :error -> {:stop, fields, [], rem}
+        end
+    end
+  end
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, allowed, transport, acc, nodes) do
+  defp entries(bin, ids, allowed, transport, acc, node_bin) do
     case leb(bin) do
       :error ->
-        {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
+        {:stop, Enum.reverse(acc), node_bin, byte_size(bin)}
 
       {0, _rest} ->
-        {:ok, Enum.reverse(acc), nodes}
+        {:ok, Enum.reverse(acc), node_bin}
 
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
-            {:stop, Enum.reverse(acc), nodes, byte_size(rest)}
+            {:stop, Enum.reverse(acc), node_bin, byte_size(rest)}
 
           id ->
             case rest do
@@ -1614,7 +1633,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                   # else (§3.3), and the node id is a root's alone (§3.1): one
                   # in a body that is not its transport is malformed, the walk
                   # stops there and no field after it is read
-                  {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                  {:stop, Enum.reverse(acc), node_bin, byte_size(rest2)}
                 else
                   case slice(rest2, kind) do
                     {:ok, payload, rest3} ->
@@ -1624,17 +1643,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                         # kind damages the numbering and discards the load.
                         # A fixed root has no such transport arm.
                         if kind == 12 do
-                          case node_table(payload, ids, allowed) do
-                            {:ok, ns} ->
-                              # a node table riding twice: the LAST is the
-                              # numbering (§3 last-wins; framing N7)
-                              entries(rest3, ids, allowed, transport, acc, ns)
-
-                            :error ->
-                              {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
-                          end
+                          # a node table riding twice: the LAST is the
+                          # numbering (§3 last-wins; framing N7)
+                          entries(rest3, ids, allowed, transport, acc, payload)
                         else
-                          {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                          {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
                         end
                       else
                         entries(
@@ -1643,7 +1656,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                           allowed,
                           transport,
                           [{id, kind, payload} | acc],
-                          nodes
+                          node_bin
                         )
                       end
 
@@ -1653,16 +1666,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
                       # accounting, but no payload exists to decode. The walk
                       # stops here and the enclosing body owns the damage (§3, §4).
                       if id == @node_id and transport == true do
-                        {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                        {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
                       else
-                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), nodes,
+                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), node_bin,
                          byte_size(rest2)}
                       end
                   end
                 end
 
               _ ->
-                {:stop, Enum.reverse(acc), nodes, 0}
+                {:stop, Enum.reverse(acc), node_bin, 0}
             end
         end
     end
@@ -2307,9 +2320,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       {:cont, :map_key_mismatch, report} ->
         {:cont, %{}, report}
 
-      {:cont, :map_entry_halt, report} ->
-        {:halt, %{}, report}
-
       {:cont, :inert, report} ->
         {:cont, :inert, report}
 
@@ -2579,7 +2589,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
             case Map.fetch(un.by_id, arm_id) do
               :error ->
-                {:cont, nil, %{report | unknown: report.unknown + 1}}
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l ->
+                    {:cont, nil, %{report | unknown: report.unknown + 1}}
+
+                  _ ->
+                    {:halt, nil, %{report | malformed: true}}
+                end
 
               {:ok, name} ->
                 a = Map.fetch!(un.by_name, name)
@@ -2887,25 +2903,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             )
 
           {:keep, desc, report} ->
-            {status, value, elem_report} =
+            {:cont, value, elem_report} =
               carry_count_report(report, fn -> read_element(desc, sub, nodes, ids) end)
 
             f = Map.put(f, :map_widened, Map.get(desc, :map_widened, false))
 
             report = map_duplicate_report(desc, merge_report(report, elem_report))
 
-            if status == :halt do
-              if Map.get(f, :map_entry, false),
-                do: {:map_entry_halt, report},
-                else: {Enum.reverse(acc), report}
-            else
-              case text_list_keep(f, value, report) do
-                {:keep, f, report} ->
-                  read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+            case text_list_keep(f, value, report) do
+              {:keep, f, report} ->
+                read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
-                {:drop, report} ->
-                  {Enum.reverse(acc), report}
-              end
+              {:drop, report} ->
+                {Enum.reverse(acc), report}
             end
         end
 
@@ -3051,11 +3061,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp read_list_elements(_f, _rest, _n, _nodes, _ids, acc, report),
     do: {Enum.reverse(acc), report}
 
-  # read_element decodes one []T element (docs/SPEC-TABLES.md §2.9, §4). A body
-  # that cannot be read whole — its L does not frame it, its terminator is not
-  # its last byte, or its walk stops on damage — reads the element's DECLARED
-  # DEFAULTS and one malformed counts, and the list reads on past it. A clean
-  # body reads its value, and an event inside it folds into the list's report.
+  # read_element decodes one L-framed nested body: a []T element, a by-value
+  # table, a keyed slot, a map entry or a table arm (docs/SPEC-TABLES.md §2.9,
+  # §4). DAMAGE ENDS THE BODY IT IS MET IN (§4): a body that cannot be read
+  # whole — its L does not frame it, its terminator is not its last byte, or
+  # its walk stops on damage — reads its DECLARED DEFAULTS, one malformed
+  # counts, and the enclosing body steps over it by its L and reads on, so the
+  # status is always :cont. A clean body reads its value, and an event inside
+  # it folds into the enclosing report.
   defp read_element(desc, sub, nodes, ids) do
     case entries(sub, ids, false, :nested) do
       {:ok, fields, []} ->
@@ -3067,25 +3080,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         # declared defaults, and one malformed counts.
         {status, value, report} = decode(desc, fields, nodes, ids, true)
 
-        if ends_early?(sub, ids),
-          do: {status, %{}, %{report | malformed: true}},
-          else: {status, value, report}
-
-      {:stop, fields, [], 0} ->
-        # the element's body ran off its own end with no terminator: the
-        # prefix decoded stands, and one malformed counts (§3)
-        {_status, value, report} = decode(desc, fields, nodes, ids, false)
-        {:halt, value, %{report | malformed: true}}
+        if status == :halt or ends_early?(sub, ids),
+          do: {:cont, %{}, %{report | malformed: true}},
+          else: {:cont, value, report}
 
       {:stop, fields, [], _remaining} ->
-        # the element's body is damaged mid-walk: the events its prefix
-        # already earned count, the element reads its declared defaults, and
-        # one malformed counts (§3, §4)
+        # the element's body is damaged mid-walk or runs off its own end: the
+        # events its prefix already earned count, the element reads its
+        # declared defaults, and one malformed counts (§3, §4)
         {_status, _value, report} = decode(desc, fields, nodes, ids, false)
-        {:halt, %{}, %{report | malformed: true}}
+        {:cont, %{}, %{report | malformed: true}}
 
       _ ->
-        {:halt, %{}, malformed_report()}
+        {:cont, %{}, malformed_report()}
     end
   end
 
@@ -6557,9 +6564,6 @@ const variableRetainSource = `
       {:cont, :map_key_mismatch, report, retain} ->
         {:cont, %{}, report, retain}
 
-      {:cont, :map_entry_halt, report, retain} ->
-        {:halt, %{}, report, retain}
-
       {:cont, entries, report, retain} ->
         [kf, vf | _] = Map.fetch!(@tables, f.elem).fields
         # DESCENDING keys are not a map any conforming writer produced: damage,
@@ -6695,20 +6699,21 @@ const variableRetainSource = `
         {status, value, report, retain} =
           decode_retain(desc, fields, nodes, ids, retain, report, path, true)
 
-        # a body whose terminator is not the last byte of its L is damage (§3),
+        # damage ends this body and the enclosing body reads on, and a body
+        # whose terminator is not the last byte of its L is damage (§3, §4),
         # as the plain read's read_element holds it
-        if ends_early?(body, ids),
-          do: {status, %{}, %{report | malformed: true}, retain},
-          else: {status, value, report, retain}
+        if status == :halt or ends_early?(body, ids),
+          do: {:cont, %{}, %{report | malformed: true}, retain},
+          else: {:cont, value, report, retain}
 
       {:stop, fields, [], _} ->
         {_status, _value, report, retain} =
           decode_retain(desc, fields, nodes, ids, retain, report, path, false)
 
-        {:halt, %{}, %{report | malformed: true}, retain}
+        {:cont, %{}, %{report | malformed: true}, retain}
 
       _ ->
-        {:halt, %{}, %{report | malformed: true}, retain}
+        {:cont, %{}, %{report | malformed: true}, retain}
     end
   end
 
@@ -6789,9 +6794,15 @@ const variableRetainSource = `
 
             case Map.fetch(un.by_id, arm_id) do
               :error ->
-                {:cont, nil,
-                 %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
-                 retain}
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l ->
+                    {:cont, nil,
+                     %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1},
+                     retain}
+
+                  _ ->
+                    {:halt, nil, %{report | malformed: true}, retain}
+                end
 
               {:ok, name} ->
                 a = Map.fetch!(un.by_name, name)
@@ -7102,36 +7113,30 @@ const variableRetainSource = `
             )
 
           {:keep, desc, report} ->
-            {status, value, report, retain} =
+            {:cont, value, report, retain} =
               read_element_retain(desc, sub, nodes, ids, report, retain, path, ordinal, index)
 
             report = map_duplicate_report(desc, report)
 
-            if status == :halt do
-              if Map.get(desc, :map_entry, false),
-                do: {:map_entry_halt, report, retain},
-                else: {Enum.reverse(acc), report, retain}
-            else
-              case text_list_keep(desc, value, report) do
-                {:keep, desc, report} ->
-                  read_elements_retain(
-                    desc,
-                    after_sub,
-                    n - 1,
-                    nodes,
-                    ids,
-                    [value | acc],
-                    report,
-                    retain,
-                    ordinal,
-                    path,
-                    index + 1
-                  )
+            case text_list_keep(desc, value, report) do
+              {:keep, desc, report} ->
+                read_elements_retain(
+                  desc,
+                  after_sub,
+                  n - 1,
+                  nodes,
+                  ids,
+                  [value | acc],
+                  report,
+                  retain,
+                  ordinal,
+                  path,
+                  index + 1
+                )
 
-                {:drop, report} ->
-                  retain = retain_reset(retain, path, ordinal, index)
-                  {Enum.reverse(acc), report, retain}
-              end
+              {:drop, report} ->
+                retain = retain_reset(retain, path, ordinal, index)
+                {Enum.reverse(acc), report, retain}
             end
         end
 
@@ -7148,24 +7153,19 @@ const variableRetainSource = `
         {status, value, report, retain} =
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path, true)
 
-        if ends_early?(sub, ids),
-          do: {status, %{}, %{report | malformed: true}, retain},
-          else: {status, value, report, retain}
-
-      {:stop, fields, [], 0} ->
-        {_status, value, report, retain} =
-          decode_retain(desc, fields, nodes, ids, retain, report, elem_path, false)
-
-        {:halt, value, %{report | malformed: true}, retain}
+        # damage ends this body and the enclosing body reads on (§4)
+        if status == :halt or ends_early?(sub, ids),
+          do: {:cont, %{}, %{report | malformed: true}, retain},
+          else: {:cont, value, report, retain}
 
       {:stop, fields, [], _remaining} ->
         {_status, _value, report, retain} =
           decode_retain(desc, fields, nodes, ids, retain, report, elem_path, false)
 
-        {:halt, %{}, %{report | malformed: true}, retain}
+        {:cont, %{}, %{report | malformed: true}, retain}
 
       _ ->
-        {:halt, %{}, %{report | malformed: true}, retain}
+        {:cont, %{}, %{report | malformed: true}, retain}
     end
   end
 

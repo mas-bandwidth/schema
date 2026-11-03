@@ -42,7 +42,7 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 			if _, _, refused := tablewire.FileRegionMeasure(u, u.Tables[c.root], mutant); !refused {
 				t.Fatalf("test setup: the oracle does not refuse the %s mutant", c.root)
 			}
-			measure, report, loaded := javaCountMeasureVerdict(t, u, c.root, mutant)
+			measure, report, _, loaded := javaCountMeasureVerdict(t, u, c.root, mutant)
 			if measure != "-1" || loaded || !strings.HasSuffix(report, ",true") {
 				t.Errorf("%s.%s: java loadMeasure=%s report=%s loaded=%t, oracle refuses (count_over_length)", c.dir, c.root, measure, report, loaded)
 			}
@@ -52,8 +52,9 @@ func TestJavaFixContainerCountMeasureRefusal(t *testing.T) {
 
 // javaCountMeasureVerdict generates and compiles the unit's Java, then answers
 // the root's loadMeasure, the load report (unknown, kindMismatch, widened,
-// clamped, duplicate, malformed, refused) and whether load returned a value.
-func javaCountMeasureVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (measure, report string, loaded bool) {
+// clamped, duplicate, malformed, refused), the report's reason and whether
+// load returned a value.
+func javaCountMeasureVerdict(t *testing.T, u *ir.Unit, root string, wire []byte) (measure, report, reason string, loaded bool) {
 	t.Helper()
 	files, err := Generate(u)
 	if err != nil {
@@ -99,6 +100,7 @@ public final class Driver {
         %[1]s.TableVariable.Report report = new %[1]s.TableVariable.Report();
         %[1]s.%[2]sVariable.Value v = %[1]s.%[2]sVariable.load(wire, report);
         System.out.println("R " + report.unknown + "," + report.kindMismatch + "," + report.widened + "," + report.clamped + "," + report.duplicate + "," + report.malformed + "," + report.refused);
+        System.out.println("N " + report.reason);
         System.out.println(v == null ? "V null" : "V loaded");
     }
 }
@@ -125,12 +127,47 @@ public final class Driver {
 			measure, seen = strings.TrimPrefix(line, "M "), seen+1
 		case strings.HasPrefix(line, "R "):
 			report, seen = strings.TrimPrefix(line, "R "), seen+1
+		case strings.HasPrefix(line, "N "):
+			reason, seen = strings.TrimPrefix(line, "N "), seen+1
 		case strings.HasPrefix(line, "V "):
 			loaded, seen = line == "V loaded", seen+1
 		}
 	}
-	if seen != 3 {
+	if seen != 4 {
 		t.Fatalf("driver output:\n%s", out)
 	}
-	return measure, report, loaded
+	return measure, report, reason, loaded
+}
+
+// TestJavaCountCapRefusal holds the load to the pinned answer for a `[]` or
+// map count above the int32 storage cap (docs/SPEC-TABLES.md §2.9): no value,
+// refused by the name count_over_extent_cap, malformed not set and no counter
+// moved, on the cap rows of internal/codegen/goosetable/testdata/
+// load_refusal_reasons.tsv, whose measure unit this is.
+func TestJavaCountCapRefusal(t *testing.T) {
+	t.Parallel()
+	data, err := os.ReadFile("../goosetable/testdata/load_refusal_reasons.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := unitFrom(t, "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n")
+	rows := 0
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) != 6 || f[1] != "measure" || !strings.Contains(f[0], "_cap3") {
+			continue
+		}
+		rows++
+		wire, err := hex.DecodeString(f[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		measure, report, reason, loaded := javaCountMeasureVerdict(t, u, "Root", wire)
+		if measure != "-1" || loaded || report != "0,0,0,0,0,false,true" || reason != f[3] {
+			t.Errorf("%s: java loadMeasure=%s report=%s reason=%s loaded=%t, want -1, 0,0,0,0,0,false,true, %s, no value", f[0], measure, report, reason, loaded, f[3])
+		}
+	}
+	if rows != 4 {
+		t.Fatalf("%d cap rows, want 4", rows)
+	}
 }

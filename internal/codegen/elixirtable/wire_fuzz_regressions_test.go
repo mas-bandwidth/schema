@@ -2,6 +2,7 @@ package elixirtable
 
 import (
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,9 +22,10 @@ import (
 //     (mapdemo.Chunks retain mutant 68,210).
 //  3. Retaining capture requires exact content consumption in nested bodies
 //     and arrays (listdemo.Save retain mutant 87,889).
-//  4. A damaged child table element halts the enclosing array walk before a
-//     later element's non-finite float is reached (listdemo.Save retain mutant
-//     91,390, testdata/wire/tables/fuzz-vectors/list_damaged_child_stop.bin).
+//  4. A damaged child table element ends there, and the array reads on to a
+//     later element's non-finite float, which refuses the read
+//     (docs/SPEC-TABLES.md §4; listdemo.Save retain mutant 91,390,
+//     testdata/wire/tables/fuzz-vectors/list_damaged_child_reads_on.bin).
 //  5. A bool payload byte above 1 sets malformed=true and discards the load
 //     (tabledemo.ProfileConfig mutant 162,022,
 //     testdata/wire/tables/fuzz-vectors/bool_byte_above_one.bin).
@@ -36,7 +38,7 @@ func TestWireFuzzRegressionsElixir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	damagedChildStop, err := os.ReadFile(filepath.Join(rootDir, "testdata", "wire", "tables", "fuzz-vectors", "list_damaged_child_stop.bin"))
+	damagedChild, err := os.ReadFile(filepath.Join(rootDir, "testdata", "wire", "tables", "fuzz-vectors", "list_damaged_child_reads_on.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +47,9 @@ func TestWireFuzzRegressionsElixir(t *testing.T) {
 	listRoot := listModel.Lookup("Save")
 	var listRep tabletext.Report
 	listRetain := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: (1 << 20) / 8}
-	if ok, err := tablewire.DecodeRetain(listModel, listModel.New(listRoot), damagedChildStop, listRetain, &listRep); ok || err != nil || !listRep.Malformed {
-		t.Fatalf("oracle DecodeRetain(list_damaged_child_stop) = (%v, %v, %+v), want ok=false err=nil malformed=true", ok, err, listRep)
+	ok, err := tablewire.DecodeRetain(listModel, listModel.New(listRoot), damagedChild, listRetain, &listRep)
+	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](err); ok || !refused {
+		t.Fatalf("oracle DecodeRetain(list_damaged_child_reads_on) = (%v, %v, %+v), want ok=false and the non_finite_float refusal", ok, err, listRep)
 	}
 
 	u := unitFrom(t, `package fuzzprobe
@@ -57,11 +60,23 @@ type Item
     score float32 = 0.0
 }
 
+union Choice
+{
+    a int32
+}
+
+table Node
+{
+    v int32 = 0
+}
+
 table Root
 {
-    flag  bool = false
-    items []Item
-    score float32 = 0.0
+    flag    bool = false
+    items   []Item
+    score   float32 = 0.0
+    choices [..2]Choice
+    ptr     *Node
 }
 `)
 	files := generateElixir(t, u)
@@ -105,16 +120,16 @@ case Fuzzprobe.Table.load_retain("Root", early_term_unknown_wire, store, empty) 
   other -> raise("expected retain_lost=1 on early-terminated unknown body, got " <> inspect(other))
 end
 
-# 4. list_damaged_child_stop vector: damaged child body in a table array stops
-# the array walk before a subsequent element is reached.
-damaged_child_wire = Base.decode16!("` + hex.EncodeToString(damagedChildStop) + `", case: :lower)
+# 4. list_damaged_child_reads_on vector: a damaged child body in a table array
+# ends there, and the array reads on to a later element's non-finite float.
+damaged_child_wire = Base.decode16!("` + hex.EncodeToString(damagedChild) + `", case: :lower)
 case Listdemo.Table.load("Save", damaged_child_wire) do
-  {:error, :malformed, %{malformed: true}} -> :ok
-  other -> raise("expected plain malformed on list_damaged_child_stop, got " <> inspect(other))
+  {:error, :non_finite_float, _} -> :ok
+  other -> raise("expected plain non_finite_float on list_damaged_child_reads_on, got " <> inspect(other))
 end
 case Listdemo.Table.load_retain("Save", damaged_child_wire, store, empty) do
-  {:error, :malformed, %{malformed: true}, _rt} -> :ok
-  other -> raise("expected retain malformed on list_damaged_child_stop, got " <> inspect(other))
+  {:error, :non_finite_float, _, _rt} -> :ok
+  other -> raise("expected retain non_finite_float on list_damaged_child_reads_on, got " <> inspect(other))
 end
 
 # 5. Bool payload byte above 1 (0x11) sets malformed=true and discards the load.
@@ -126,6 +141,27 @@ end
 case Fuzzprobe.Table.load_retain("Root", bad_bool_wire, store, empty) do
   {:error, :malformed, %{malformed: true}, _rt} -> :ok
   other -> raise("expected retain malformed on bool byte 0x11, got " <> inspect(other))
+end
+
+# 6. Node table riding twice (framing N7): last occurrence wins even if earlier
+# occurrence had a mismatched inner node count.
+node_id = 0xFFFFFFFFFFFFFFFF
+node_table_twice_wire = <<1, 1, 12, 1, 99, 1, 12, 1, 0, 0, node_id::little-64, 1::little-64>>
+case Fuzzprobe.Table.load("Root", node_table_twice_wire) do
+  {:ok, _v, %{malformed: false}} -> :ok
+  other -> raise("expected clean load when second node_table overwrites damaged first, got " <> inspect(other))
+end
+
+# 7. Unknown union arm inside a union array with L past remaining bytes is malformed.
+choices_id = Enum.find(Fuzzprobe.Table.descriptors()["Root"].fields, &(&1.name == "choices")).id
+bad_unknown_arm_wire = <<1, 1, 14, 6, 15, 1, 2, 8, 55, 0, 0, choices_id::little-64, unknown_id::little-64, 2::little-64>>
+case Fuzzprobe.Table.load("Root", bad_unknown_arm_wire) do
+  {:error, :malformed, %{malformed: true}} -> :ok
+  other -> raise("expected plain malformed on truncated unknown union arm, got " <> inspect(other))
+end
+case Fuzzprobe.Table.load_retain("Root", bad_unknown_arm_wire, store, empty) do
+  {:error, :malformed, %{malformed: true}, _rt} -> :ok
+  other -> raise("expected retain malformed on truncated unknown union arm, got " <> inspect(other))
 end
 
 IO.puts("WIRE_FUZZ_REGRESSIONS_OK")
