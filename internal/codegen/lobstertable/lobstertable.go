@@ -68,11 +68,10 @@ func Register(name string, fn Part) {
 }
 
 // Generate returns <Base>Table.lobster for every file that declares a table
-// or a table-closure union (or a packet type a table reaches), plus the
-// runtime modules; a table-free unit gets nothing, so its output is the type
-// surface's alone (docs/PORTING.md I10).
+// or any other declaration, plus the runtime modules and unit registry.
+// Table-free files participate in reflection without changing packet codecs.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
-	if len(u.Tables) == 0 {
+	if len(u.Files) == 0 {
 		return map[string][]byte{}, nil
 	}
 	if err := Refuse(u); err != nil {
@@ -109,6 +108,14 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := lobster.ImportCycle(graph, order, "the table surface"); err != nil {
 		return nil, err
 	}
+	view := lobster.NewGen(u, u.Files[0])
+	view.Kind = "unit registry"
+	view.Runtimes = []string{"descriptors"}
+	for _, f := range u.Files {
+		view.Import(f.Base + "Table")
+	}
+	view.Pf("def UnitView() -> schema_rt.UnitView:\n    return schema_rt.unit_view()\n")
+	out[u.Package+"View.lobster"] = view.Assemble()
 	maps.Copy(out, Runtime())
 	return out, nil
 }
@@ -126,6 +133,9 @@ func Refuse(u *ir.Unit) error {
 		bases[strings.ToLower(f.Base)] = true
 	}
 	for _, f := range u.Files {
+		if strings.EqualFold(f.Base, u.Package+"View") || strings.EqualFold(f.Base+"Table", u.Package+"View") {
+			return fmt.Errorf("schema file %s collides with the Lobster unit registry %sView.lobster; rename the file", f.Base, u.Package)
+		}
 		if bases[strings.ToLower(f.Base+"Table")] {
 			return fmt.Errorf("schema files %s and %sTable collide — the Lobster table surface writes %sTable.lobster as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
@@ -202,27 +212,12 @@ func reachFrom(u *ir.Unit, root func(*ir.Struct) bool, unions bool) map[string]b
 	return seen
 }
 
-// moduleFiles is the files that get a table module: those with a table or a
-// table-closure union, and those declaring a packet type a table reaches.
-func moduleFiles(u *ir.Unit, reach map[string]bool) map[string]bool {
+// Every source file participates in the unit registry, even if no table
+// reaches its declarations. Packet codecs remain in their own modules.
+func moduleFiles(u *ir.Unit, _ map[string]bool) map[string]bool {
 	out := map[string]bool{}
 	for _, f := range u.Files {
-		if len(f.Tables) > 0 || len(f.TableUnions) > 0 {
-			out[f.Base] = true
-			continue
-		}
-		for _, d := range f.Decls {
-			switch d := d.(type) {
-			case *ir.Struct:
-				if reach[d.Name] {
-					out[f.Base] = true
-				}
-			case *ir.Union:
-				if reach[d.Name] {
-					out[f.Base] = true
-				}
-			}
-		}
+		out[f.Base] = true
 	}
 	return out
 }
