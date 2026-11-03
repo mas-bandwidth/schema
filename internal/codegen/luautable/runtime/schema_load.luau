@@ -984,7 +984,7 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 		-- takes this element, and the first element that would carry it past
 		-- the total is dropped with every later element, clamped counted once.
 		if fd.total ~= nil then
-			spent = spent + text_elem_bytes(fd.e, dst[i])
+			spent = spent + text_elem_bytes(fd.e, dst[i], if lens ~= nil then lens[i] else nil)
 			if spent > fd.total then
 				report.clamped = report.clamped + 1
 				if fd.array == "list" then dst[i] = nil end
@@ -1014,9 +1014,11 @@ end
 -- the bytes one text-list element contributes to its total
 -- (docs/SPEC-TABLES.md §2.13): a plain element's buffer length, or a ?element's value
 -- when present, zero when absent.
-text_elem_bytes = function(e: any, x: any): number
+text_elem_bytes = function(e: any, x: any, used: number?): number
 	if e == nil or x == nil then return 0 end
 	if e.s == "str" or e.s == "text" then
+		-- a plain string element's USED bytes ride in its length companion
+		if used ~= nil then return used end
 		if typeof(x) == "buffer" then return buffer.len(x) end
 		return 0
 	end
@@ -1743,10 +1745,32 @@ end
 
 -- loadTolerant returns a value only when the wire is whole. Tolerant
 -- evolution is not damage: malformed input is discarded on every read (§4).
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
+local integrityOpen: (buffer) -> buffer?
+
+-- loadBody is the tolerant read of a file whose integrity trailer, if its
+-- root declares one, is already off: the id table, the node table and the
+-- root body.
+local function loadBody(root: string, bytes: buffer, report: any): any
 	local o = open(bytes, report)
 	if o == nil then return nil end
 	return loadOpened(root, bytes, report, o)
+end
+
+-- A ROOT THAT DECLARES INTEGRITY (docs/SPEC-TABLES.md §2.14) opens its
+-- trailer first, as the strict read does; a trailer that does not match is the
+-- whole-file damage named integrity_mismatch.
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local d = S.lookup(root)
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(bytes)
+		if body == nil then
+			report.malformed = true
+			report.reason = "integrity_mismatch"
+			return nil
+		end
+		bytes = body
+	end
+	return loadBody(root, bytes, report)
 end
 
 -- the counters that refuse, in TableReport.Err()'s order (docs/SPEC-TABLES.md
@@ -1806,7 +1830,7 @@ end
 -- trailer before any field is decoded. A file too short to hold one, or whose
 -- last four bytes are not the CRC-32C of the bytes before them, is the
 -- whole-file damage named integrity_mismatch; otherwise the trailer comes off.
-local function integrityOpen(b: buffer): buffer?
+integrityOpen = function(b: buffer): buffer?
 	local n = buffer.len(b)
 	if n < 5 or buffer.readu32(b, n - 4) ~= crc32c(b, n - 4) then return nil end
 	local out = buffer.create(n - 4)
@@ -1950,7 +1974,7 @@ local function witness(root: string, b: buffer, k: string): string?
 
 	local function probe(wire: string): boolean
 		local rep = fresh()
-		L.loadTolerant(root, buffer.fromstring(wire), rep)
+		loadBody(root, buffer.fromstring(wire), rep)
 		return moved(rep, k)
 	end
 

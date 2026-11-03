@@ -236,6 +236,13 @@ local function caseResult(c)
     -- A COUNT PAST THE INT32 STORAGE CAP is the port's count_over_extent_cap
     -- (§2.9), which the corpus names count_refusal.
     if r.reason == "count_over_extent_cap" then return "refuse", "count_refusal", nil end
+    if value == nil and (r.reason == "clamped" or r.reason == "kind_mismatch") then
+      -- THE CORPUS CARRIES THE TOLERANT ANSWER (docs/HOSTILE-CORPUS.md): a
+      -- strict refusal that names only a counter is a read the tolerant load
+      -- keeps, so its value is the one digested.
+      r = report()
+      value = L.LoadTolerant(T, c[4], payload, r)
+    end
     if r.refused > 0 then
       local form = #payload > 0 and payload:byte(1) or 0
       return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
@@ -379,9 +386,6 @@ func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	// Accepted by both, but the subnormal float's canonical text differs: a
 	// reader/writer spelling bug in the Lua float32 path.
 	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}
-	// A text list past its total on the wire (docs/SPEC-TABLES.md §2.13): the
-	// Lua load refuses the whole file where the engine keeps the prefix.
-	out["wire-text-total-past"] = luaHostileCarried{"refuse", "damaged", "schema-lua-wire-text-list-total-r"}
 	return out
 }
 
