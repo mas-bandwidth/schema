@@ -15,3 +15,6 @@ MCFramingHeaderByChildL.cfg	Framing	counterexample	HeaderAgainstParent	21	15	2	1
 MCFramingOffByOneAtL.cfg	Framing	counterexample	NoReadPastBuffer	9	9	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCFramingResumeAtCursor.cfg	Framing	counterexample	ResumeAtEnd	21	15	2	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
 MCFramingResumeAfterDamage.cfg	Framing	counterexample	DamageEndsLoad	97	43	3	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCNodeNumbering.cfg	NodeNumbering	exhaustive	-	1496688	1496688	14	0	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCNodeNumberingReverse.cfg	NodeNumbering	counterexample	MatchesPreOrder	1491882	1491882	11	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
+MCNodeNumberingBreadthFirst.cfg	NodeNumbering	counterexample	MatchesPreOrder	1947590	1947590	14	12	21.0.12.1	2.19 (2024-08-08, rev 5a47802)
