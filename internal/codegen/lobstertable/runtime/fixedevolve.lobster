@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 import .schema_runtime
+import .schema_tables
 import .fixed
 
 namespace schema_rt

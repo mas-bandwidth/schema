@@ -117,4 +117,36 @@ print("message integrity passed")
 	if strings.TrimSpace(string(out)) != "message integrity passed" {
 		t.Fatalf("%s", out)
 	}
+	// Removing only the checksum comparison must accept a checksum-only
+	// corruption; a parser crash or a different refusal is not a control pass.
+	runtime := filepath.Join(g.dir, "schema_tables.lobster")
+	srcRuntime, err := os.ReadFile(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const anchor = "    if read_uint32_le(data, n) != wire_crc32c(data, n):\n"
+	if strings.Count(string(srcRuntime), anchor) != 1 {
+		t.Fatal("checksum comparison must occur once")
+	}
+	patched := strings.Replace(string(srcRuntime), anchor, "    if false:\n", 1)
+	if err := os.WriteFile(runtime, []byte(patched), 0644); err != nil {
+		t.Fatal(err)
+	}
+	control := `import .BatchTable
+import .message
+let good = read_file("Checked3")
+assert good
+let bad = write_int8_le(good, length(good) - 1, good[length(good) - 1] ^ 1)
+let rep = schema_rt.LoadReport {}
+let values, n, ok = schema_rt.load_messages("Checked", schema_rt.own_vocabulary(), bad, rep, 256)
+assert ok and n == 3 and length(values) == 3
+print("checksum accepted")
+`
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(control), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if out := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", inputs))); out != "checksum accepted" {
+		t.Fatal(out)
+	}
+
 }

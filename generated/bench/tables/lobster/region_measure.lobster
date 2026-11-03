@@ -185,8 +185,10 @@ def region_size(st:LoadState, d:TableDescriptor, lo:int, hi:int) -> int, bool:
 // failure answers 0, not whole; a checksum mismatch answers -1 and refuses
 // before any record is measured. Diagnostics are not a conformance value.
 def load_measure(root:string, data:string) -> int, bool, bool, string:
-    if length(data) == 0 or data[0] != 1:
+    if length(data) == 0:
         return 0, false, false, "wire_damaged"
+    if data[0] != 1:
+        return 0, false, false, "unknown_form"
     let d = table_of(root)
     let wire, intact = wire_integrity_body(d, data)
     if not intact:
@@ -197,7 +199,7 @@ def load_measure(root:string, data:string) -> int, bool, bool, string:
     let st = LoadState { data: wire, ids: ids, report: LoadReport {}, variable: false, good: false, root: nil, nodes: [], named: [], count_refused: false }
     var total, rok = region_size(st, d, 1, first)
     if not rok:
-        return -1, true, true, "storage_over_cap"
+        return -1, true, true, "count_over_extent_cap"
     let plo, phi, present, framed = node_table_bytes(st, first)
     if present and not framed:
         return 0, false, false, "wire_damaged"
@@ -216,12 +218,12 @@ def load_measure(root:string, data:string) -> int, bool, bool, string:
         if placed:
             let n, nok = region_size(st, placed, rec.lo, rec.hi)
             if not nok:
-                return -1, true, true, "storage_over_cap"
+                return -1, true, true, "count_over_extent_cap"
             total += n
         elif (rec.tid == bytes_blob_id and d.place_bytes) or (rec.tid == string_blob_id and d.place_str):
             let size = rec.hi - rec.lo
             if size > 0xFFFFFFFF:
-                return -1, true, true, "storage_over_cap"
+                return -1, true, true, "blob_over_size_cap"
             var n = 8 + size
             if rec.tid == string_blob_id:
                 n++
