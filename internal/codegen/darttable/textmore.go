@@ -202,7 +202,9 @@ final class _JParse {
       }
     }
     final token = number.group(0)!;
-    if (!token.contains('.') && !token.contains('e') && !token.contains('E')) {
+    // -0 stays a _JNum: an int has no negative zero, and a float field owes
+    // the sign the token spells (§16.2)
+    if (token != '-0' && !token.contains('.') && !token.contains('e') && !token.contains('E')) {
       final n = int.tryParse(token);
       if (n != null) return n;
     }
