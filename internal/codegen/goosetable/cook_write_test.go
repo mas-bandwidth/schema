@@ -417,9 +417,9 @@ table Uncooked | forms = "wire" {
 }
 
 // boundsProgram loads the `variable` case's populated wire and hands the
-// region writer two malformed loaded values: a pointer slot naming the wire
-// node nodes.len+2, past the node table, and a root table one past
-// TableUnit's. Each must measure -1 and cook false with a poisoned buffer
+// region writer three malformed loaded values: a pointer slot naming the
+// wire node nodes.len+2, a root table past TableUnit's, and a union tag whose
+// high bit would become a negative index. Each must refuse with a poisoned buffer
 // left untouched; it prints one line per check.
 const boundsProgram = `import os;
 import .all;
@@ -467,6 +467,19 @@ fn main() {
     let measured = schema_rt::cook_region_measure(probe::TableUnit, probe::CookRegionLayout, probe::BuildVersion, tab, data, vals2, nodes2, root2);
     let cooked = schema_rt::cook_region_write(probe::TableUnit, probe::CookRegionLayout, probe::BuildVersion, tab, data, vals2, nodes2, root2, out, false, false) >= 0;
     verdict("table", measured, cooked, out);
+
+    var vals3: schema_rt::LoadVal[>..] = [];
+    var nodes3: schema_rt::LoadNode[>..] = [];
+    let root3 = load(data, vals3, nodes3);
+    var changed = false;
+    for v, i in vals3 {
+        if !changed && v.shape == schema_rt::ShapeUnion && v.state == schema_rt::ValPresent {
+            vals3[i].bits = schema_rt::Int128 { lo: 0xFFFFFFFFFFFFFFFF, hi: 0 };
+            changed = true;
+        }
+    }
+    if !changed { write_stdout("bad no union slot\n"); exit(1); }
+    verdict("union", probe::RootCookMeasure(data, vals3, nodes3, root3), probe::RootCook(data, vals3, nodes3, root3, out, false), out);
 }
 `
 
@@ -522,7 +535,7 @@ func cookBounds(t *testing.T, override map[string][]byte) (string, bool) {
 func TestGooseCookRegionWriterBoundsCallerIndices(t *testing.T) {
 	t.Parallel()
 	out, ok := cookBounds(t, nil)
-	if want := "pointer refused\ntable refused\n"; !ok || out != want {
+	if want := "pointer refused\ntable refused\nunion refused\n"; !ok || out != want {
 		t.Fatalf("the bounds program answered %q (ran to its end: %t), want %q", out, ok, want)
 	}
 }
@@ -570,6 +583,13 @@ func TestGooseCookRegionWriterNegativeControl(t *testing.T) {
 		bad := cookProbe(t, "wstring", cookSabotage(t, "lo | (hi << 8)", "hi | (lo << 8)"))
 		if len(bad) == 0 {
 			t.Fatal("swapped code-unit bytes left the wstring case green")
+		}
+	})
+	t.Run("union-tag-bound", func(t *testing.T) {
+		t.Parallel()
+		out, ok := cookBounds(t, cookSabotage(t, "    if tag < 0 { c.refused = true; return; }\n", ""))
+		if ok && strings.Contains(out, "union refused") {
+			t.Fatalf("without the union tag bound the writer still refused: %q", out)
 		}
 	})
 	t.Run("pointer-bound", func(t *testing.T) {

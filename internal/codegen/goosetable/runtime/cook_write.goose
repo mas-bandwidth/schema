@@ -282,6 +282,7 @@ recursive fn cook_edges_value(c: CookCtx&, s: i64, d: const FieldDesc&) {
 recursive fn cook_edges_arm(c: CookCtx&, s: i64, name: const u8[:]) {
     let tag = c.vals[s].bits.lo as! i64;
     if c.vals[s].state != ValPresent || tag == 0 { return; }
+    if tag < 0 { c.refused = true; return; }
     var u: i64 = -1;
     for x, i in c.unit.unions { if x.name == name { u = i; break; } }
     if u < 0 || tag > c.unit.unions[u].arms.len { return; }
