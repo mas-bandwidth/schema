@@ -4203,6 +4203,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         int32_t placed = 0;
         int64_t spent = 0;
         bool total_clamped = false;
+        int32_t seen = 0; // the elements spelled once the total is reached
         for ( ;; )
         {
             char c = TableJsonPeek( in );
@@ -4210,7 +4211,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( c == 0 ) { in.bad = true; return false; }
             if ( total_clamped || placed >= f->array_bound )
             {
-                if ( !total_clamped ) { in.report->clamped++; }
+                // an element past [..N] counts, the total having dropped it
+                // or not, as the wire counts its count clamp (§2.13)
+                if ( !total_clamped || ++seen > f->array_bound ) { in.report->clamped++; }
                 if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
             }
             else
@@ -4223,6 +4226,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                     in.report->clamped++;
                     f->table->reset( element );
                     total_clamped = true;
+                    seen = placed + 1;
                 }
                 else
                 {

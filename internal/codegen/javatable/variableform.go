@@ -4758,6 +4758,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		if f.TextTotal > 0 {
 			b.WriteString("                    long spent = 0;\n")
 			b.WriteString("                    boolean full = false;\n")
+			b.WriteString("                    int seen = 0;\n")
 		}
 		b.WriteString("                    while (true) {\n")
 		b.WriteString("                        int ec = in.peek();\n")
@@ -4765,7 +4766,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		b.WriteString("                        if (ec == 0) { in.bad = true; break; }\n")
 		if f.TextTotal > 0 {
 			b.WriteString("                        int before = placed;\n")
+			b.WriteString("                        seen++;\n")
 			b.WriteString("                        if (full) {\n")
+			// the total dropped this element; one past [..N] is counted as
+			// well, as the wire counts its count clamp beside the total (§2.13)
+			b.WriteString("                            if (ab >= 0 && seen > ab) { in.rep.clamped++; }\n")
 			b.WriteString("                            in.skipValue();\n")
 			b.WriteString("                        } else if (ab >= 0 && placed >= ab) {\n")
 		} else {

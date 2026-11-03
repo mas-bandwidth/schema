@@ -1820,13 +1820,23 @@ readTextArray = function(T, c, fd, r, v, depth) {
   local bound = fd.list ? 0x7fffffff : fd.bound;
   local vf = ed.fields[0];
   local capacity = (!vf.unbounded && vf.bound > 0) ? vf.bound : -1;
+  // A TEXT LIST'S TOTAL (§2.13): the longest prefix whose bytes fit is kept;
+  // the element that would cross it and every later one are dropped, clamped
+  // counted once, and an element past [..N] is counted as well.
+  local total = ("total" in fd) ? fd.total : -1;
+  local spent = 0, full = false, seen = 0;
   for (;;) {
     local ch = peek(r);
     if (ch == ']') { r.p++; break; }
     if (ch == 0) { r.bad = true; return false; }
     local rec = ed.make();
     local vs = valueShape(r);
-    if (out.len() >= bound) {
+    local before = out.len();
+    seen++;
+    if (full) {
+      if (seen > bound) r.report.clamped++;
+      if (!skipValue(r, depth + 1)) return false;
+    } else if (out.len() >= bound) {
       r.report.clamped++;
       if (!skipValue(r, depth + 1)) return false;
     } else if (fd.textlist == 2 && vs == 'z') {
@@ -1845,6 +1855,17 @@ readTextArray = function(T, c, fd, r, v, depth) {
       rec.Value = bytesToString(s[0]);
       if (fd.textlist == 2) rec.ValuePresent = true;
       out.append(rec);
+    }
+    if (total >= 0 && out.len() > before) {
+      local last = out[out.len() - 1];
+      local n = (fd.textlist == 2 && !last.ValuePresent) ? 0 : last.Value.len();
+      if (n <= total - spent) {
+        spent += n;
+      } else {
+        out.pop();
+        r.report.clamped++;
+        full = true;
+      }
     }
     ch = peek(r);
     if (ch == ',') { r.p++; continue; }

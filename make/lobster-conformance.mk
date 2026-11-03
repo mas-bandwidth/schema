@@ -19,7 +19,9 @@
 # conformance-negative-control-lobster-framing the id table's 4096 entry bound
 #                                            (docs/LAYERS/1-framing.md F6:
 #                                            framing red alone)
-.PHONY: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing
+# conformance-negative-control-lobster-cycle   the cycle check (docs/SPEC-TABLES.md
+#                                            §3.1, §4: framing red alone)
+.PHONY: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle
 conformance-negative-control-lobster: lobster-dist-present build/conformance-harness
 	sh test/conformance/lobster/negative-control report
 
@@ -29,5 +31,8 @@ conformance-negative-control-lobster-walk: lobster-dist-present build/conformanc
 conformance-negative-control-lobster-framing: lobster-dist-present build/conformance-harness
 	sh test/conformance/lobster/negative-control framing
 
+conformance-negative-control-lobster-cycle: lobster-dist-present build/conformance-harness
+	sh test/conformance/lobster/negative-control cycle
+
 # The controls ride the leg: `make test` reaches them through test-lobster.
-test-lobster: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing
+test-lobster: conformance-negative-control-lobster conformance-negative-control-lobster-walk conformance-negative-control-lobster-framing conformance-negative-control-lobster-cycle

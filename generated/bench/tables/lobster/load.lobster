@@ -124,9 +124,6 @@ class Record:
     // held marks a node record the root reaches, for the one pass at the end
     // of a variable load that unlinks the records it does not (RELEASE)
     held:bool = false
-    // cmark is the cycle check's mark (load_cyclic): 0 unvisited, 1 open,
-    // 2 closed; it is 0 outside the check
-    cmark:int = 0
 
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
@@ -1979,8 +1976,6 @@ def decode_variable(st:LoadState, root:Record, hi:int):
             body_at(reader(st, rec.lo, rec.hi), nr, true, false)
     if not st.count_refused:
         st.report.stopped = not body_at(reader(st, 1, hi), root, false, false)
-    if not st.count_refused and not st.report.malformed and load_cyclic(st, root):
-        st.report.malformed = true // a cyclic wire is damage (§3.1, §4)
     if length(st.nodes) > 0:
         unlink_unreached(st, root)
 
@@ -2043,10 +2038,9 @@ def load(root:string, data:string, report:LoadReport) -> Record?:
     return rec
 
 // RELEASE (docs/PORT-LOBSTER.md, THE LOAD). Lobster frees by reference
-// counting, so a cycle of Records outlives every reference the caller holds.
-// A cyclic wire is damage (§3.1, §4; load_cyclic), so no load hands a cycle
-// to its caller, but a refused load has already placed one, and a shared
-// record is still held once per pointer. Two rules keep a load from leaking:
+// counting, and a pointer graph is legal with a cycle (§3.1): a tolerant load
+// places it, and a cycle of Records outlives every reference the caller
+// holds. Two rules keep a load from leaking:
 //
 // - THE LOAD OWNS WHAT THE ROOT DOES NOT REACH. At the end of a variable
 //   load, a node record no pointer path from the root reaches (an orphan,
@@ -2090,62 +2084,6 @@ def value_edges(stack:[Record], nodes:[Record], v:Value, clear:bool) -> void:
     let a = v.arm
     if a:
         slot_edges(stack, nodes, a, clear)
-
-// load_cyclic is THE CYCLE CHECK over the loaded graph (docs/SPEC-TABLES.md
-// §3.1, §4; Go's decodeState.cyclic). No writer produces a cyclic wire, so
-// a cycle is damage and the whole load is refused. The vertices are the root
-// and every record the load placed, the edges every pointer a record's
-// by-value closure stores (rec_edges), so a cycle the root never reaches is
-// found too. Each record is ENTERED ONCE and carries one of three marks in
-// cmark: a pointer to an OPEN record (1) is a cycle, and a pointer to a
-// CLOSED record (2) is a share and is never re-entered, so the check is
-// linear in records plus slots on a diamond chain as on a list. The walk
-// keeps an explicit stack, and every mark it set is cleared before it
-// returns.
-def load_cyclic(st:LoadState, root:Record) -> bool:
-    let starts:[Record] = [root]
-    for(st.nodes) node:
-        let nr = node.rec
-        if nr:
-            push(starts, nr)
-    let entered:[Record] = []
-    var cyclic = false
-    for(starts) start:
-        if not cyclic and start.cmark == 0:
-            start.cmark = 1
-            push(entered, start)
-            let recs:[Record] = [start]
-            let kids:[[Record]] = [pointer_targets(start)]
-            let nexts:[int] = [0]
-            while not cyclic and length(recs) > 0:
-                let top = length(recs) - 1
-                let ks = kids[top]
-                if nexts[top] == length(ks):
-                    recs[top].cmark = 2
-                    pop(recs)
-                    pop(kids)
-                    pop(nexts)
-                else:
-                    let t = ks[nexts[top]]
-                    nexts[top] = nexts[top] + 1
-                    if t.cmark == 1:
-                        cyclic = true
-                    else:
-                        if t.cmark == 0:
-                            t.cmark = 1
-                            push(entered, t)
-                            push(recs, t)
-                            push(kids, pointer_targets(t))
-                            push(nexts, 0)
-    for(entered) r:
-        r.cmark = 0
-    return cyclic
-
-// pointer_targets is every record one record's by-value closure points at.
-def pointer_targets(r:Record) -> [Record]:
-    let found:[Record] = []
-    rec_edges(r, found, false)
-    return found
 
 // unlink_unreached is the load's own pass: mark what the root reaches, unlink
 // every node record it does not, then clear the marks.
