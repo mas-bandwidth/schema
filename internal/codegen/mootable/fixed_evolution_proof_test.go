@@ -342,7 +342,8 @@ print(bad)
 // the hash reported only for layout_unknown and layout_unsupported; a layout
 // past the runtime's plan bound refuses plan_too_large BY NAME on that entry
 // alone; every emitted root's own plan compiles; and every member the save
-// writes sits at the offset the compiler's record walk gives it.
+// writes sits at the offset the compiler's layout walk gives it (moo's storage
+// is its values, so the plan's constant offsets are the record's own).
 func TestMooFixedEvolutionCompiledPlans(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted fixed-form runtime)")
 	t.Parallel()
