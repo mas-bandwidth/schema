@@ -589,6 +589,8 @@ func main() {
 		run = surfaceMessage
 	case "wire":
 		run = surfaceWire
+	case "write-refusal":
+		run = surfaceWriteRefusal
 	case "report":
 		run = surfaceReport
 	case "framing":
