@@ -243,6 +243,11 @@ end
 -- string key by its bytes, a signed integer key signed, every other unsigned
 
 local function key_less(keyfd: any, a: any, b: any): boolean
+	-- an entry that is not a record ranks first, so the order stays total and
+	-- the walk that follows refuses it rather than the sort indexing it
+	if type(a) ~= "table" or type(b) ~= "table" then
+		return type(a) ~= "table" and type(b) == "table"
+	end
 	local ka = a[keyfd.slot]
 	local kb = b[keyfd.slot]
 	if type(ka) == "string" and type(kb) == "string" then
@@ -1242,6 +1247,13 @@ end
 -- number is the numbering (§3.1), shared with the message form's writer
 -- (table_message.moo), so both forms number one graph one way
 S.number = number
+
+-- mapOrder, keyLess and guardHolds are the map order and the guard the
+-- numbering walks by, shared with the cook's writer (table_cookwrite.moo), so
+-- the save and the cook place a map's entries and elide a field one way
+S.mapOrder = map_order
+S.keyLess = key_less
+S.guardHolds = guard_holds
 
 -- setRetain installs (or, with nil, clears) RETAIN-UNKNOWN's save hook
 -- (table_retain.moo).

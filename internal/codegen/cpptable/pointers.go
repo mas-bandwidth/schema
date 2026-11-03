@@ -1212,8 +1212,10 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( out->missing_required != missing_before ) { ok = false; }\n")
 	if g.anyExtent {
 		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
-		g.pf("    // §2.9): the same whole-load outcome as damage, the root reset below\n")
+		g.pf("    // §2.9): the whole-load outcome of damage, the root reset below, named\n")
+		g.pf("    // count_over_extent_cap and not damage, so malformed is not set\n")
 		g.pf("    ok = ok && !nodes.refused;\n")
+		g.pf("    if ( nodes.refused && !out->malformed )\n    {\n        out->refused = true;\n        out->reason = count_over_extent_cap;\n        out->refuse_reason = count_over_extent_cap;\n    }\n")
 	}
 	g.pf("    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)\n")
 	g.pf("    if ( ok && !out->malformed && nodes.good )\n    {\n")

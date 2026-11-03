@@ -99,8 +99,8 @@ func mooManifestUnits(t *testing.T) []*ir.Unit {
 	return units
 }
 
-// mooDeclaredKey reports whether a key of a generated <Base>Table.moo module
-// is one the emitter spells from a declaration's own name: the name itself,
+// mooDeclaredKey reports whether a key of a generated <Base>Table.moo module,
+// or of the unit's <Package>View.moo, is one the emitter spells from a declaration's own name: the name itself,
 // New<Name>, or the name followed by a suffix (<Name>Descriptor,
 // <Name>ToJson, ...). A schema reaches a module table through these and
 // nothing else, so they claim nothing a schema does not already own.
@@ -127,7 +127,7 @@ func mooEmittedKeys(t *testing.T, units []*ir.Unit) map[string]bool {
 		decls := slices.Collect(maps.Keys(u.DeclFile))
 		for file, data := range files {
 			for _, k := range mooModuleKeys(string(data)) {
-				if strings.HasSuffix(file, "Table.moo") && mooDeclaredKey(k, decls) {
+				if (strings.HasSuffix(file, "Table.moo") || file == mootable.ViewModule(u)+".moo") && mooDeclaredKey(k, decls) {
 					continue
 				}
 				emitted[k] = true

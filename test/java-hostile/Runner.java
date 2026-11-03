@@ -191,7 +191,8 @@ public final class Runner {
         String verdict(Object value, Object report) throws ReflectiveOperationException, NoSuchAlgorithmException {
             if (flag(report, "refused")) {
                 String r = reason(report);
-                return refuse(r == null || r.isEmpty() ? "damaged" : r);
+                // the corpus names a count past the int32 storage cap count_refusal
+                return refuse(r == null || r.isEmpty() ? "damaged" : r.equals("count_over_extent_cap") ? "count_refusal" : r);
             }
             if (flag(report, "malformed") || value == null) {
                 return refuse("damaged");

@@ -15030,8 +15030,15 @@ inline bool RowLoadBuilderTolerant( RowBuilder & builder, const uint8_t * wire_f
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -16001,8 +16008,15 @@ inline bool SheetLoadBuilderTolerant( SheetBuilder & builder, const uint8_t * wi
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -16943,8 +16957,15 @@ inline bool SquadLoadBuilderTolerant( SquadBuilder & builder, const uint8_t * wi
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -17885,8 +17906,15 @@ inline bool ArmyLoadBuilderTolerant( ArmyBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -18827,8 +18855,15 @@ inline bool DeckLoadBuilderTolerant( DeckBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {

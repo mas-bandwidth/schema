@@ -811,6 +811,11 @@ func (r *TableReport) Err() error {
 	if r.Reason == "integrity_mismatch" {
 		return TableRefuseIntegrityMismatch
 	}
+	// A builder load that met a count above the int32 storage cap refused it by
+	// name (mas-bandwidth/schema docs/SPEC-TABLES.md §2.9): not damage, so Malformed stays false.
+	if r.Reason == "count_over_extent_cap" {
+		return TableRefuseCountOverExtentCap
+	}
 	if r.Verdict == TableOpenDamaged {
 		return TableRefuseWireDamaged
 	}

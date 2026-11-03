@@ -81,7 +81,7 @@ const tableBuilderLoadSource = `
                 if (offset != -1 && node != null) { NativeReadBody(ref state, ref body, new NativeValue(data, offset) { Mutable = true }, node, report, true); }
             }
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);
-            if (state.Refused) { return false; }
+            if (state.Refused && !report.Refused) { return false; }
             // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
             if (NonFiniteRefused(report) || report.Refused) { NativeReset(new NativeValue(data, 0) { Mutable = true }, type); Finish(report, Verdict.Refused); return false; }
             // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)

@@ -891,11 +891,11 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, store: any): any
 		b = body
 	end
 	if store == nil then
-		return L.loadTolerant(root, b, report)
+		return L.loadOpened(root, b, report)
 	end
 	reset_store(store)
 	L.setRetain(make_hook(store))
-	local ok, v = pcall(L.loadTolerant, root, b, report)
+	local ok, v = pcall(L.loadOpened, root, b, report)
 	L.setRetain(nil)
 	if not ok then
 		error(v, 0)

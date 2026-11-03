@@ -302,3 +302,6 @@ integrity_short_body_mismatch featurewitnesses Root testdata/wire/tables/fuzz-ve
 
 # A framed node record with an impossible collection count refuses region sizing.
 node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/node_record_list_count_refusal.bin
+
+# An unknown enum-keyed array slot in variable form skips its length-framed element without decoding inside it (§3.2, §6.6).
+unknown_keyed_slot_length_skip tblv2 Cfg testdata/wire/tables/fuzz-vectors/unknown_keyed_slot_length_skip.bin

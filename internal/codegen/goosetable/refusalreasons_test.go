@@ -10,16 +10,16 @@ package goosetable_test
 //	    strict read's one reason (load_error, Go's <T>ReadStrict) and the
 //	    form refusal the report names (report.reason, Go's
 //	    TableReport.Reason)
-//	TestGooseLoadRefusalReasonsNegativeControl  breaks the verdict's damage
-//	    and the form refusal's mapping, each of which must turn exactly its
-//	    own rows red
+//	TestGooseLoadRefusalReasonsNegativeControl  breaks the verdict's damage,
+//	    the form refusal's mapping and the count cap's refusal, each of which
+//	    must turn exactly its own rows red
 //
 // The rows reach every reason Go's TestMeasureRefusalReasons proves that has
 // a load-time meaning. The file a measure refuses count_over_length is a
 // load's malformed body, and the one it refuses count_over_extent_cap is a
-// load that answers no root and names nothing, which the strict read answers
-// wire_damaged (§2.9's table: "damage: malformed counts" and "LoadBuilder
-// answers NULL"); wire_damaged and unknown_form are the load's own. The other
+// load that refuses by that same name, malformed not set (§2.9's table:
+// "damage: malformed counts" and the builder's count_over_extent_cap);
+// wire_damaged and unknown_form are the load's own. The other
 // three are a writer's or an allocator's and read no wire: data_cycle, "the
 // AUTHORING side's -1 and the one value here that is not about a wire" (a
 // cyclic WIRE is damage, §3.1); invalid_value, "a writer handed a value
@@ -128,7 +128,7 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 	for _, r := range reasonRows(t) {
 		reasons[r.strict] = true
 	}
-	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "kind_mismatch", "clamped", "non_finite_float"} {
+	for _, want := range []string{"ok", "wire_damaged", "malformed", "unknown_form", "count_over_extent_cap", "kind_mismatch", "clamped", "non_finite_float"} {
 		if !reasons[want] {
 			t.Errorf("no pin row answers %s", want)
 		}
@@ -142,10 +142,13 @@ func TestGooseLoadRefusalReasons(t *testing.T) {
 //
 //   - the verdict's damage no longer names wire_damaged: the rows whose
 //     framing failed, and the fixed root's damage its walk read past, answer
-//     malformed and go red; the count-cap rows, wire_damaged by the strict
-//     read's fallback, stay green;
+//     malformed and go red; the count-cap rows, refused by name and not
+//     damaged, stay green;
 //   - a form byte this reader does not carry no longer answers unknown_form:
-//     the form rows go red, and only they.
+//     the form rows go red, and only they;
+//   - a count past the int32 storage cap no longer answers
+//     count_over_extent_cap: the four cap rows fall to the strict read's
+//     wire_damaged and go red, and only they.
 func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 	t.Parallel()
 	for _, ctl := range []struct {
@@ -155,7 +158,9 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 		{"damage-verdict", "    if report.damaged { return LoadRefuseWireDamaged; }\n", "",
 			[]string{"cut_last", "empty", "fixed_bool_two", "fixed_dup_ids", "fixed_early_end", "form_only"}},
 		{"form-reason", "        LoadRefuseUnknownForm => \"unknown_form\",\n", "",
-			[]string{"form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
+			[]string{"form0", "form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
+		{"count-cap", "    if report.count_refused { return LoadRefuseCountOverExtentCap; }\n", "",
+			[]string{"entries_cap31", "entries_cap32", "values_cap31", "values_cap32"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()

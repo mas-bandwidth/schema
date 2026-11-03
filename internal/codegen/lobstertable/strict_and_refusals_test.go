@@ -2,6 +2,7 @@ package lobstertable_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,6 +76,9 @@ func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 		// engine on main spells it non_finite until the finite-tables
 		// oracle lands, and this port spells it non_finite_float already
 		return "non_finite_float"
+	case errors.As(err, new(*tablewire.CountRefusal)):
+		// a count past the int32 storage cap is refused by name (§2.9)
+		return "count_over_extent_cap"
 	case err != nil:
 		return "unknown_form"
 	case strings.HasPrefix(rep.Reason, "missing_required"):

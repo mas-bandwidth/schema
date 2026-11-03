@@ -1,7 +1,10 @@
 # THE LOAD'S REFUSAL REASONS, BY INPUT (docs/SPEC-TABLES.md §6.5, §2.9, §3, §4):
 # one row per file, each answered by the Go leg's generated reader and held
-# there by gotable's TestLoadRefusalReasonPins, and by the Goose load by
-# goosetable's TestGooseLoadRefusalReasons. Columns, tab-separated:
+# there by gotable's TestLoadRefusalReasonPins, by the Goose load by
+# goosetable's TestGooseLoadRefusalReasons, and by the moo load by mootable's
+# TestMooLoadRefusalReasons (moo's ReadStrict answers one name: the form
+# column's where it pins one, the strict column's otherwise). Columns,
+# tab-separated:
 #
 #   name     the case
 #   schema   measure: TestMeasureRefusalReasons's unit (Child; Root with
@@ -18,21 +21,21 @@
 #   measure  <T>LoadMeasureReason over the same bytes (measure rows only),
 #            "ok" for a size, "-" where not asked
 #
-# A form byte 0 is not pinned: Go's variable Load names it previous_form, and
 # §6.5's table gives previous_form to the fixed reader alone and newer_form to
-# the file Load for every byte but 2, which is Goose's answer. Both answer the
-# strict unknown_form.
+# the file Load for every byte it does not carry but 2; both answer the strict
+# unknown_form.
 values_over_length	measure	01010e02040100fb674d1acf7b27210100000000000000	malformed	-	count_over_length
 entries_over_length	measure	01010e020d010053a245082ca7b2c50100000000000000	malformed	-	count_over_length
-values_cap31	measure	01010e0604808080800800fb674d1acf7b27210100000000000000	wire_damaged	-	count_over_extent_cap
-entries_cap31	measure	01010e060d80808080080053a245082ca7b2c50100000000000000	wire_damaged	-	count_over_extent_cap
-values_cap32	measure	01010e0604808080801000fb674d1acf7b27210100000000000000	wire_damaged	-	count_over_extent_cap
-entries_cap32	measure	01010e060d80808080100053a245082ca7b2c50100000000000000	wire_damaged	-	count_over_extent_cap
+values_cap31	measure	01010e0604808080800800fb674d1acf7b27210100000000000000	count_over_extent_cap	-	count_over_extent_cap
+entries_cap31	measure	01010e060d80808080080053a245082ca7b2c50100000000000000	count_over_extent_cap	-	count_over_extent_cap
+values_cap32	measure	01010e0604808080801000fb674d1acf7b27210100000000000000	count_over_extent_cap	-	count_over_extent_cap
+entries_cap32	measure	01010e060d80808080100053a245082ca7b2c50100000000000000	count_over_extent_cap	-	count_over_extent_cap
 empty	measure	-	wire_damaged	-	wire_damaged
 form_only	measure	01	wire_damaged	-	wire_damaged
 cut_last	measure	01010e0604010900000000fb674d1acf7b272101000000000000	wire_damaged	-	wire_damaged
 form2_alone	measure	02	unknown_form	message_form_as_file	unknown_form
 form255_alone	measure	ff	unknown_form	newer_form	unknown_form
+form0	measure	00010e0604010900000000fb674d1acf7b27210100000000000000	unknown_form	newer_form	unknown_form
 form2	measure	02010e0604010900000000fb674d1acf7b27210100000000000000	unknown_form	message_form_as_file	unknown_form
 form3	measure	03010e0604010900000000fb674d1acf7b27210100000000000000	unknown_form	newer_form	unknown_form
 form9	measure	09010e0604010900000000fb674d1acf7b27210100000000000000	unknown_form	newer_form	unknown_form

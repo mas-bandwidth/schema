@@ -162,7 +162,7 @@ const tableRegionSource = `
     {
         if (state.Worker != null)
         {
-            if (count > int.MaxValue) { state.Refused = true; return false; }
+            if (count > int.MaxValue) { state.Refused = true; return CollectionCap(report); }
             return true; // allocate only the prefix that actually decodes
         }
         long at = Align(state.Next, f.StorageAlign);
