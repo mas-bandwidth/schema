@@ -222,6 +222,11 @@ func runWireSurfaces(t *testing.T, c *wireCorpus, surfaces []string, override ma
 							continue
 						}
 						if rest, absent := strings.CutPrefix(h, "absent"); absent {
+							// a row that answered its line and then names its
+							// value absent keeps the line, as the harness does
+							if _, answered := got[s][name]; answered {
+								continue
+							}
 							got[s][name] = "absent " + strings.TrimPrefix(rest, " ")
 							continue
 						}
@@ -243,7 +248,15 @@ func runWireSurfaces(t *testing.T, c *wireCorpus, surfaces []string, override ma
 func failing(c *wireCorpus, got map[string]map[string]string, surface string) []string {
 	var out []string
 	for name, want := range c.want[surface] {
-		if got[surface][name] != want {
+		g := got[surface][name]
+		if surface == "report" {
+			// the counters line; the value text after it is held against
+			// the row's value golden by the conformance harness
+			if i := strings.IndexByte(g, '\n'); i >= 0 {
+				g = g[:i+1]
+			}
+		}
+		if g != want {
 			out = append(out, name)
 		}
 	}
