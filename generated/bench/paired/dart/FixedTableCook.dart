@@ -1097,7 +1097,7 @@ final class FixedTableCookWire {
             size = 8;
             alignment = 4;
         }
-        if (!_writeNode(id, node, c, 0)) {
+        if (!_writeNode(id, node, c, 0) || !c.valid) {
           if (report != null) report.reason = 'invalid_value';
           return -1;
         }
