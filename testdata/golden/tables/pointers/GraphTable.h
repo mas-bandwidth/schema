@@ -8661,6 +8661,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
+        schema_assert( value.build >= 0 && value.build <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
@@ -9155,6 +9156,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
+        schema_assert( value.quality >= 0 && value.quality <= 4 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
@@ -10121,6 +10123,7 @@ inline bool LayerSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
+        schema_assert( value.depth >= 0 && value.depth <= 64 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -10391,6 +10394,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
+        schema_assert( value.version >= 0 && value.version <= 99 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -18641,6 +18645,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
+        schema_assert( value.build >= 0 && value.build <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.build ) );
     }
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
@@ -18804,6 +18809,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
+        schema_assert( value.quality >= 0 && value.quality <= 4 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.quality ) );
     }
     if ( value.label_length < 0 || value.label_length > 16 ) { return false; } // storage invariant
@@ -19461,6 +19467,7 @@ inline bool LayerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
+        schema_assert( value.depth >= 0 && value.depth <= 64 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -19738,6 +19745,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
+        schema_assert( value.version >= 0 && value.version <= 99 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.version ) );
     }
     {

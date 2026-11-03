@@ -8278,6 +8278,7 @@ GRAPHDEMO_TABLE_INLINE bool TallySaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.hits != 0 )
     {
         w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
+        schema_assert( value.hits >= 0 && value.hits <= 10000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.hits ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -10253,6 +10254,7 @@ GRAPHDEMO_TABLE_INLINE bool TallySaveBodyRetain( TableWriter & w, TableRetainIds
     if ( value.hits != 0 )
     {
         w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
+        schema_assert( value.hits >= 0 && value.hits <= 10000 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.hits ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

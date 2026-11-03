@@ -9803,11 +9803,13 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
     if ( value.penetration != 1 )
     {
         w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
+        schema_assert( value.penetration >= 0 && value.penetration <= 10 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
+        schema_assert( value.channel <= 63ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
@@ -14180,6 +14182,7 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, TableIds & ids,
     if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
+        schema_assert( value.slot >= 0 && value.slot <= 7 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.slot ) );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -15052,6 +15055,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( value.amount >= 0 && value.amount <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -18649,11 +18653,13 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBodyRetain( TableWriter & w, TableRe
     if ( value.penetration != 1 )
     {
         w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
+        schema_assert( value.penetration >= 0 && value.penetration <= 10 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
+        schema_assert( value.channel <= 63ull ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
@@ -20675,6 +20681,7 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBodyRetain( TableWriter & w, TableReta
     if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
+        schema_assert( value.slot >= 0 && value.slot <= 7 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.slot ) );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -20941,6 +20948,7 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBodyRetain( TableWriter & w, TableRetainId
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
+        schema_assert( value.amount >= 0 && value.amount <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
         w.put32( uint32_t( value.amount ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
