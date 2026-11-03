@@ -11291,7 +11291,7 @@ inline int64_t PatrolMeasureWireRetain( const Ctx & ctx, const Patrol & root, Ta
         (void) type_id;
         return -1;
     };
-    if ( PatrolNumberFrom( ctx, numbering, root ) )
+    if ( PatrolNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -11332,7 +11332,7 @@ inline int64_t PatrolSaveWireRetain( const Ctx & ctx, const Patrol & root, Table
         (void) type_id;
         return false;
     };
-    if ( !PatrolNumberFrom( ctx, numbering, root ) )
+    if ( !PatrolNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

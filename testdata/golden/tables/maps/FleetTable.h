@@ -18847,7 +18847,7 @@ inline int64_t FleetMeasureWireRetain( const Ctx & ctx, const Fleet & root, Tabl
         }
         return -1;
     };
-    if ( FleetNumberFrom( ctx, numbering, root ) )
+    if ( FleetNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -18896,7 +18896,7 @@ inline int64_t FleetSaveWireRetain( const Ctx & ctx, const Fleet & root, TableRe
         }
         return false;
     };
-    if ( !FleetNumberFrom( ctx, numbering, root ) )
+    if ( !FleetNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
