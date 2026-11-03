@@ -252,7 +252,7 @@ func TestOriginalNineCoverageWorkflowReportsBeforeFailure(t *testing.T) {
 		if !guarded {
 			run = strings.ReplaceAll(run, "--require-original-nine", "")
 		}
-		cmd := exec.Command("bash", "-c", run)
+		cmd := exec.Command("bash", "--noprofile", "--norc", "-c", run)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+":"+os.Getenv("PATH"), "GITHUB_STEP_SUMMARY="+summary)
 		out, err := cmd.CombinedOutput()
