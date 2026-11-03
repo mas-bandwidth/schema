@@ -34,7 +34,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -130,7 +129,7 @@ func jsonUnitFiles(t *testing.T, key string, paths []string) (*ir.Unit, map[stri
 		}
 		abs = append(abs, path)
 	}
-	u, err := compiler.New().Load(abs)
+	u, err := loadSchemaPaths(abs)
 	if err != nil {
 		t.Fatalf("unit %s: load: %v", key, err)
 	}
