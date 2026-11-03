@@ -1827,6 +1827,63 @@ fn acyclic(c: LoadCtx&) -> bool {
     return released == vertices;
 }
 
+// IdTableBound is the id table's maximum entry count (docs/SPEC-TABLES.md
+// §3, THE DISTINCTNESS CHECK IS BOUNDED WORK; kTableProbeBound in the
+// generated C++).
+let IdTableBound: i64 = 4096;
+
+// ids_sift moves ids[root] down the max-heap ids[0..n] to its place.
+fn ids_sift(ids: u64[:], root: i64, n: i64) {
+    var i = root;
+    loop {
+        var c = 2 * i + 1;
+        if c >= n { return; }
+        if c + 1 < n && ids[c] < ids[c + 1] { c += 1; }
+        if !(ids[i] < ids[c]) { return; }
+        let t = ids[i];
+        ids[i] = ids[c];
+        ids[c] = t;
+        i = c;
+    }
+}
+
+// ids_distinct proves the id table's n entries at `first` distinct (§3), n at
+// most IdTableBound. Under eight entries a pairwise scan is at most 21
+// comparisons; from eight up the entries are copied into a fixed stack array
+// and heapsorted (in place, no allocation, at most about 2 n log2 n
+// comparisons whatever the ids are), and a repeat sits beside its twin. No
+// hostile table costs quadratic work.
+fn ids_distinct(file: const u8[:], first: i64, n: i64) -> bool {
+    if n < 8 {
+        for i in n {
+            let a = le_at(file, first + i * 8, 8);
+            for j in i {
+                if le_at(file, first + j * 8, 8) == a { return false; }
+            }
+        }
+        return true;
+    }
+    var ids: u64[IdTableBound] = [0; IdTableBound];
+    for i in n { ids[i] = le_at(file, first + i * 8, 8); }
+    var i = n / 2;
+    while i > 0 {
+        i -= 1;
+        ids_sift(ids, i, n);
+    }
+    var end = n;
+    while end > 1 {
+        end -= 1;
+        let t = ids[0];
+        ids[0] = ids[end];
+        ids[end] = t;
+        ids_sift(ids, 0, end);
+    }
+    for i in n - 1 {
+        if ids[i] == ids[i + 1] { return false; }
+    }
+    return true;
+}
+
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
@@ -1859,14 +1916,12 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     if count > (file.len / 8) as! u64 { report.malformed = true; report.damaged = true; return -1; }
     let span = (count as! i64) * 8 + 8;
     if span + 1 > file.len { report.malformed = true; report.damaged = true; return -1; }
+    // THE BOUNDED-WORK CONTRACT (§3): a table that claims more than
+    // IdTableBound entries is malformed, whatever the buffer would hold
+    if count > IdTableBound as! u64 { report.malformed = true; report.damaged = true; return -1; }
     let first = file.len - span;
-    for i in count as! i64 {
-        let a = le_at(file, first + i * 8, 8);
-        for j in i {
-            // ONE ID IN TWO ENTRIES: the whole wire is malformed (§3)
-            if le_at(file, first + j * 8, 8) == a { report.malformed = true; report.damaged = true; return -1; }
-        }
-    }
+    // ONE ID IN TWO ENTRIES: the whole wire is malformed (§3)
+    if !ids_distinct(file, first, count as! i64) { report.malformed = true; report.damaged = true; return -1; }
     c.ids_at = first;
     c.ids_n = count as! i64;
     let body = Rd { off: 1, end: first };

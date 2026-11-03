@@ -202,10 +202,12 @@ const tableMessageSource = `
         if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
         ulong count = Read64(bytes, bytes.Length - 8);
         if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+        // claims more than 4096 entries is malformed.
+        if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
         int end = bytes.Length - 8 - (int)count * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-        for (int i = 0; i < ids.Length; i += 8)
-        { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+        if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), ids);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
