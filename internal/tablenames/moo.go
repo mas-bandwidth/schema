@@ -47,7 +47,7 @@ var mooModuleKeys = map[string][]string{
 	"table_cookread.moo":  {"layout", "open", "read", "record", "union", "unionLayout", "unit", "version"},
 	"table_cookwrite.moo": {"cook", "measure"},
 	"table_fixed.moo":     {"Names", "check", "fixed", "load", "measure", "save"},
-	"table_load.moo": {"ReadStrict", "integrityOpen", "load", "loadTolerant", "newReport", "nonFinite",
+	"table_load.moo": {"ReadStrict", "integrityOpen", "load", "loadOpened", "loadTolerant", "newReport", "nonFinite",
 		"resetReport", "setRetain"},
 	"table_message.moo": {"AnnounceRead", "LoadMessages", "MeasureMessages", "NewVocabulary", "SaveMessages",
 		"resetReport", "slots", "unit"},
