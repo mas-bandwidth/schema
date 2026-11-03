@@ -1,9 +1,7 @@
 package mootable_test
 
 import (
-	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,14 +80,7 @@ func goOracleWire(t *testing.T, u *ir.Unit, root, text string) []byte {
 	if err != nil {
 		t.Fatalf("the Go engine does not write it: %v", err)
 	}
-	if st.Integrity == "crc32c" {
-		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14): the CRC-32C of
-		// every byte before it, little-endian, which the engine's Encode
-		// leaves to the emitted writers; hash/crc32's Castagnoli table is the
-		// independent sum
-		wire = binary.LittleEndian.AppendUint32(wire, crc32.Checksum(wire, crc32.MakeTable(crc32.Castagnoli)))
-	}
-	return wire
+	return wire // a sealed root's trailer (docs/SPEC-TABLES.md §2.14) is the engine's own
 }
 
 func unitFromSource(t *testing.T, src string) *ir.Unit {
