@@ -647,15 +647,6 @@ defmodule Driver do
     end
   end
 
-  # The §16 text of a value a read left: the value half of a `report` and
-  # `json-hostile` answer.
-  defp value_text(mod, root, value, name) do
-    case mod.to_json(root, value) do
-      {:ok, text} -> IO.iodata_to_binary(text)
-      _ -> raise "#{name}: to_json refused the value"
-    end
-  end
-
   # THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
   # `report` surface prints it, then the §16 text of the value the read left,
   # unless the row says `no-value` or the read was refused. A derived line is
@@ -915,6 +906,15 @@ defmodule Driver do
   # write <case>.absent (docs/SPEC-TABLES.md §11). A line that says "absent"
   # is a wrong answer against the reference's "read"; the sidecar is the
   # absence the harness already counts as a missing feature.
+  # The §16 text of a value a read left: the value half of a `report` and
+  # `json-hostile` answer.
+  defp value_text(mod, root, value, name) do
+    case mod.to_json(root, value) do
+      {:ok, text} -> IO.iodata_to_binary(text)
+      _ -> raise "#{name}: to_json refused the value"
+    end
+  end
+
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
