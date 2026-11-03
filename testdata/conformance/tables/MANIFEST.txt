@@ -1122,6 +1122,19 @@ retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bi
 retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full full 0,1,1 0 -
 retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full full 0,1,1 0 -
 
+# THE RESOLVING WALK'S DEPTH CAP, retain_walk_depth = 64 (docs/SPEC-TABLES.md
+# §6.6), at the bound and one past it. The wire is one field RT1 cannot name
+# whose payload is a chain of nested table bodies with a scalar at the bottom.
+# The cap counts FRAMED CONTENTS: the field's own payload is not a level, its
+# body is level 1, and each nested body one more. Sixty-four is retained and
+# the save writes the wire back byte for byte. Sixty-five is dropped as one
+# retain_lost with the load ACCEPTED, never malformed: the plain read skips the
+# field by its framing either way, so `unknown` is 1 on both, and the save is
+# the empty root. The wires are internal/tablewire's `deepWire`, which
+# TestRetainWalkDepthCap holds them equal to.
+retain retain_walk_depth_64 tblrt1 Node testdata/wire/tables/retain_walk_depth_64.bin full full 1,0,1 0 testdata/wire/tables/retain_walk_depth_64.bin
+retain retain_walk_depth_65 tblrt1 Node testdata/wire/tables/retain_walk_depth_65.bin full full 0,1,1 0 testdata/wire/tables/retain_walk_depth_65_save.bin
+
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.
 unit listdemo tables/lists
