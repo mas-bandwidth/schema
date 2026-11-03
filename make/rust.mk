@@ -1425,6 +1425,55 @@ conformance-negative-control-rust-walk: build/conformance-harness
 
 test-rust: conformance-negative-control-rust-walk
 
+# THE RUST LEG's WRITE-REFUSAL NEGATIVE CONTROL (docs/SPEC-TABLES.md §3, the
+# write contract): the variable-form save refuses a ranged integer off its
+# min/max with a debug_assert!. A COPY of build/tables-generated-rust has the
+# one assert on WeaponConfig.penetration (tabledemo) deleted, the conformance
+# driver is rebuilt against the copy in the dev profile (its own target
+# directory, so the normal driver is not touched), and the matrix must go red
+# on `rust / write-refusal` while `wire` stays green. No tracked file is
+# written to.
+RUST_CONFORMANCE_WREF := build/rust-conformance-wref-control
+RUST_WREF_ANCHOR := debug_assert!((0i32..=10i32).contains(&v.penetration),
+.PHONY: conformance-negative-control-rust-write-refusal
+conformance-negative-control-rust-write-refusal: build/conformance-harness build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_CONFORMANCE_WREF) && mkdir -p $(RUST_CONFORMANCE_WREF)/driver
+	@cp -R build/tables-generated-rust $(RUST_CONFORMANCE_WREF)/generated
+	@for toml in $(RUST_CONFORMANCE_WREF)/generated/*/Cargo.toml; do \
+		sed -i.orig 's|path = "\.\./\.\./\.\./|path = "../../../../|' $$toml && rm -f $$toml.orig || exit 1; \
+	done
+	@file=$(RUST_CONFORMANCE_WREF)/generated/tabledemo/src/tables_table.rs; \
+	n=$$(grep -cF '$(RUST_WREF_ANCHOR)' $$file); \
+	[ "$$n" = 1 ] || { echo "NEGATIVE CONTROL: the ranged-int assert anchor matched $$n times in $$file, want exactly 1"; exit 1; }; \
+	awk -v a='$(RUST_WREF_ANCHOR)' 'index($$0, a) { sub(/debug_assert!\([^;]*\); /, "") } { print }' \
+		build/tables-generated-rust/tabledemo/src/tables_table.rs > $$file; \
+	if cmp -s build/tables-generated-rust/tabledemo/src/tables_table.rs $$file || grep -qF '$(RUST_WREF_ANCHOR)' $$file; then \
+		echo "NEGATIVE CONTROL: the ranged-int assert was not removed"; exit 1; \
+	fi
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(RUST_CONFORMANCE_WREF)/generated/|' \
+		test/conformance/rust/Cargo.toml > $(RUST_CONFORMANCE_WREF)/driver/Cargo.toml
+	cd $(RUST_CONFORMANCE_WREF)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(RUST_CONFORMANCE_WREF)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(RUST_CONFORMANCE_WREF)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(RUST_CONFORMANCE_WREF)/driver/driver && chmod +x $(RUST_CONFORMANCE_WREF)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(RUST_CONFORMANCE_WREF)" > $(RUST_CONFORMANCE_WREF)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(RUST_CONFORMANCE_WREF)/drivers.txt \
+			--work $(RUST_CONFORMANCE_WREF)/work > $(RUST_CONFORMANCE_WREF)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a save without the ranged-int refusal left the Rust matrix green"; \
+		cat $(RUST_CONFORMANCE_WREF)/log; exit 1; \
+	fi
+	@cat $(RUST_CONFORMANCE_WREF)/log
+	@grep -q 'rust / write-refusal' $(RUST_CONFORMANCE_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on rust / write-refusal"; exit 1; }
+	@grep -Eq '^ *write-refusal +FAIL' $(RUST_CONFORMANCE_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: write-refusal is not marked FAIL"; exit 1; }
+	@grep -Eq '^ *wire +pass' $(RUST_CONFORMANCE_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: wire did not stay green"; exit 1; }
+	@echo "Rust write-refusal negative control: a save that writes a ranged integer off its range is detected by rust / write-refusal, and wire stays green"
+
+test-rust: conformance-negative-control-rust-write-refusal
+
 # I4 (docs/PORTING.md): PER-CASE ABSENT. A case this driver cannot answer on a
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
