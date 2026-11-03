@@ -551,8 +551,6 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap)
 		if count > 0x7FFFFFFF then
 			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
 			r.at = endpos
 			return true
 		end
@@ -860,8 +858,6 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	if fd.array == "list" then
 		if count > 0x7FFFFFFF then
 			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
 			return false
 		end
 	elseif fd.bound ~= nil and count > fd.bound then
@@ -1658,6 +1654,15 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		report.damaged = true
 	end
 	resolve(report)
+	-- A COUNT ABOVE THE int32 STORAGE CAP (§2.9, §2.2) refuses the load: no
+	-- value, the report at rest but for the refusal and its name,
+	-- count_over_extent_cap, malformed not set
+	if _countRefused then
+		reset(report)
+		report.refused = 1
+		report.reason = "count_over_extent_cap"
+		return nil
+	end
 	if report.nonFiniteField ~= nil then
 		report.reason = "non_finite_float: " .. report.nonFiniteField
 		return nil
@@ -2045,9 +2050,10 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.field = rep.nonFiniteField
 		return nil
 	end
-	-- a count past the int32 extent cap (§2.9) is the load's own refusal
+	-- a count past the int32 extent cap (§2.9) is the load's own refusal,
+	-- named as the tolerant load names it
 	if _countRefused then
-		rep.reason = "count_refusal"
+		rep.reason = "count_over_extent_cap"
 		return nil
 	end
 	-- THE VERDICT'S DAMAGE IS wire_damaged, and a malformed body behind good

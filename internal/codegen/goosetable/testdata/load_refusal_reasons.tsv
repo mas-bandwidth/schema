@@ -3,8 +3,7 @@
 # there by gotable's TestLoadRefusalReasonPins, by the Goose load by
 # goosetable's TestGooseLoadRefusalReasons, and by the moo load by mootable's
 # TestMooLoadRefusalReasons (moo's ReadStrict answers one name: the form
-# column's where it pins one, the strict column's otherwise; the count-cap
-# rows, an open question, are named in that test's mooReasonGaps). Columns,
+# column's where it pins one, the strict column's otherwise). Columns,
 # tab-separated:
 #
 #   name     the case
