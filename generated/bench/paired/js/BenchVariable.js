@@ -443,7 +443,7 @@ function TableVariableRetainResolveBody(r, table, out, depth, end) {
     out.u64(id);
     if (rd.at >= end) { return false; }
     const k = rd.u8(); out.u8(k);
-    if (!TableVariableRetainResolve(rd, table, k, out, depth + 1)) { return false; }
+    if (!TableVariableRetainResolve(rd, table, k, out, depth)) { return false; }
     if (rd.at > end) { return false; }
   }
 }
@@ -498,7 +498,7 @@ function TableVariableRetainResolveElements(r, table, kind, out, depth, end) {
       if (rd.at !== eend) { return false; }
       const bytes = out.len - mark - 4;
       out.b[mark] = bytes & 0xff; out.b[mark + 1] = (bytes >>> 8) & 0xff; out.b[mark + 2] = (bytes >>> 16) & 0xff; out.b[mark + 3] = (bytes >>> 24) & 0xff;
-    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth + 1)) {
+    } else if (!TableVariableRetainResolve(rd, table, ek, out, depth)) {
       return false;
     }
     if (rd.at > end) { return false; }
