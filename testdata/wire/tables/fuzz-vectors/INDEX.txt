@@ -422,3 +422,11 @@ retain_node_past_root_fields graphdemo Scene testdata/wire/tables/fuzz-vectors/r
 # lost and record 3's lands under node 2. A record held by its load index lands
 # in the wrong body.
 retain_orphan_node_first graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_orphan_node_first.bin
+
+# A RETAINED ARRAY'S SCALAR ELEMENTS ARE NOT FRAMED (§3, §6.6). A field the
+# reader cannot name inside a union arm's table holds `06 01 01`: element kind
+# 6, one element, the byte 01. Only a table element carries its own L. The Luau
+# capture read an L before every element, ran past the array, and dropped the
+# record as retain_lost. From streamdemo.Feed stream_chain, mutant 45085 of the
+# reference pass (every seed).
+retain_scalar_array_elements streamdemo Feed testdata/wire/tables/fuzz-vectors/retain_scalar_array_elements.bin

@@ -162,6 +162,7 @@ local resolve_payload: any
 local resolve_arm: any
 local resolve_content: any
 local patch_len: any
+local resolve_elements: any
 
 -- one body's fields, each with its reference widened to an id (§6.6)
 resolve_body = function(r: any, ids: { any }, out: any, depth: number, e: number): boolean
@@ -228,19 +229,9 @@ resolve_payload = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
 		if r.at + 1 > e then return false end
-		local ek = r_u8(r); o_byte(out, ek)
-		local count = r_leb(r); if r.bad then return false end
-		o_leb(out, count)
-		for _ = 1, count do
-			local elen = r_leb(r); if r.bad or r.at + elen > e then return false end
-			local ee = r.at + elen
-			local mark, startLen = #out.parts + 1, out.len
-			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
-			if not patch_len(out, mark, startLen) then return false end
-			r.at = ee
-		end
-		return r.at == e
+		local sub = new_reader(r.b, r.at, e)
+		r.at = e
+		return resolve_elements(sub, ids, out, depth)
 	elseif kind == 16 then
 		local n = r_leb(r); if r.bad or r.at + n > r.e then return false end
 		local e = r.at + n
@@ -304,19 +295,7 @@ resolve_arm = function(r: any, ids: { any }, kind: number, out: any, depth: numb
 		if not resolve_body(r, ids, out, depth + 1, r.e) then return false end
 		return patch_len(out, mark, startLen)
 	elseif kind == 14 then
-		local ek = r_u8(r); o_byte(out, ek)
-		local count = r_leb(r); if r.bad then return false end
-		o_leb(out, count)
-		for _ = 1, count do
-			local elen = r_leb(r); if r.bad or r.at + elen > r.e then return false end
-			local ee = r.at + elen
-			local mark, startLen = #out.parts + 1, out.len
-			o_u32(out, 0)
-			if not resolve_content(r, ids, ek, out, depth + 1, ee) then return false end
-			if not patch_len(out, mark, startLen) then return false end
-			r.at = ee
-		end
-		return r.at == r.e
+		return resolve_elements(r, ids, out, depth)
 	elseif kind == 17 then
 		return false
 	end
@@ -333,6 +312,30 @@ resolve_content = function(r: any, ids: { any }, kind: number, out: any, depth: 
 		return resolve_payload(r, ids, 15, out, depth + 1) and r.at == e
 	end
 	return resolve_payload(r, ids, kind, out, depth + 1) and r.at == e
+end
+
+-- THE ELEMENTS OF A POSITIONAL ARRAY (§3; internal/tablewire retain.go
+-- walkContent): the element kind, the count, then each element as a payload
+-- of that kind. Only a table element is framed by its own L, which its payload
+-- carries; a scalar is its width, a string its own length, and a union its arm
+-- header. Each element is held behind a u32 length, which a table element's
+-- payload already is. The content is consumed exactly.
+resolve_elements = function(r: any, ids: { any }, out: any, depth: number): boolean
+	local ek = r_u8(r); if r.bad then return false end
+	o_byte(out, ek)
+	local count = r_leb(r); if r.bad then return false end
+	o_leb(out, count)
+	for _ = 1, count do
+		if ek == 13 then
+			if not resolve_payload(r, ids, 13, out, depth + 1) then return false end
+		else
+			local mark, startLen = #out.parts + 1, out.len
+			o_u32(out, 0)
+			if not resolve_payload(r, ids, ek, out, depth + 1) then return false end
+			if not patch_len(out, mark, startLen) then return false end
+		end
+	end
+	return r.at == r.e
 end
 
 patch_len = function(out: any, mark: number, startLen: number): boolean

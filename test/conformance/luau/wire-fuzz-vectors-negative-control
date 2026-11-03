@@ -93,3 +93,5 @@ plant retain_node_past_root_fields \
 	's/elseif saved ~= nil and nodesField ~= nil and saved - 1 <= #nodesField\.node\.nodes then/elseif saved ~= nil and nodesField ~= nil and saved <= #rootBody.fields + 1 and saved - 1 <= #nodesField.node.nodes then/' retain
 plant retain_orphan_node_first \
 	's/saved = if nv ~= nil then numbering\.index\[nv\] else nil/saved = node/' retain
+plant retain_scalar_array_elements \
+	's/\t\tif ek == 13 then\n\t\t\tif not resolve_payload\(r, ids, 13, out, depth \+ 1\) then return false end\n\t\telse\n/\t\tif true then\n\t\t\tlocal elen = r_leb(r); if r.bad or r.at + elen > r.e then return false end\n\t\t\tr.at = r.at + elen\n\t\telse\n/' retain
