@@ -534,8 +534,10 @@ bodyRead = function(c, r, T, table, v, report, st, nested) {
       foreach (fd in c.fields) {
         if (!fd.required || (fd.member in carried)) continue;
         if (!guardHolds(fd, v)) continue;
-        report.malformed = true;
+        // missingRequired first: the strict read's witness takes the
+        // malformed that follows it as this refusal's, not as damage
         report.missingRequired = true;
+        report.malformed = true;
         return false;
       }
       return true;

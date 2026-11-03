@@ -174,6 +174,15 @@ local witness = function(store, first) {
       if (!(k in store)) throw null;
       local moved = typeof v == "bool" ? (v && !store[k]) : (v > store[k]);
       store[k] = v;
+      // DAMAGE APART FROM A MISSING REQUIRED FIELD (docs/SPEC-TABLES.md §6.5):
+      // the load sets malformed for a missing required field right after
+      // missingRequired, so that malformed is the refusal's; every other
+      // malformed is damage, which the strict read ranks first
+      if (k == "missingRequired" && v == true) store.missingPending = true;
+      if (k == "malformed" && v == true) {
+        if (store.missingPending) store.missingPending = false;
+        else store.damaged = true;
+      }
       if (!moved || (k in first)) return;
       local name = null;
       local idName = null;
@@ -284,6 +293,8 @@ _M.ReadStrict <- function(T, root, bytes, report) {
   local store = {};
   foreach (k, _ in COUNTERS) store[k] <- report[k];
   store.missingRequired <- false;
+  store.missingPending <- false;
+  store.damaged <- false;
   local first = {};
   // the trailer was opened above (§2.14), so the load must not strip it again
   local v = _load.loadTolerant(T, root, bytes, witness(store, first), null, true);
@@ -306,10 +317,17 @@ _M.ReadStrict <- function(T, root, bytes, report) {
     report.field = ("countRefusal" in first) ? first.countRefusal : null;
     return null;
   }
+  // DAMAGE OUTRANKS A MISSING REQUIRED FIELD (docs/SPEC-TABLES.md §4, §6.5):
+  // damage discards the whole load, so a wire that carries both answers
+  // wire_damaged
+  if (store.damaged) {
+    report.reason = "wire_damaged";
+    report.field = ("malformed" in first) ? first.malformed : null;
+    return null;
+  }
   // A MISSING REQUIRED FIELD IS ITS OWN NAME (docs/SPEC-TABLES.md §2.3): the
   // load sets malformed for the refusal, and this slot says why, so the strict
-  // caller answers missing_required with the field rather than a bare
-  // malformed or wire_damaged.
+  // caller answers missing_required with the field rather than wire_damaged.
   if (store.missingRequired) {
     report.reason = "missing_required";
     report.field = ("missingRequired" in first) ? first.missingRequired : null;
