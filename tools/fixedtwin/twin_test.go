@@ -206,6 +206,15 @@ func TestRuntimeExtractionEndsBeforeSeparateIntegrity(t *testing.T) {
 	if err != nil || got != prefix {
 		t.Fatalf("fixed runtime boundary: got %q, error %v", got, err)
 	}
+	for _, late := range []string{
+		"inline void TableFixedNewOperation() { keep_this(); }",
+		"struct TableFixedNewRecord { int value; };",
+		"constexpr uint8_t kTableFixedNewKind = 42;",
+	} {
+		if _, err := extractRuntime(src + late + "\n"); err == nil {
+			t.Fatalf("fixed declaration beyond the boundary silently disappeared: %s", late)
+		}
+	}
 	changed := strings.Replace(prefix, "keep_this", "changed_operation", 1)
 	if len(diffLines("fixed", canonicalize(prefix), canonicalize(changed))) == 0 {
 		t.Fatal("a fixed-runtime operation change disappeared from the comparison")

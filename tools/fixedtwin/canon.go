@@ -786,6 +786,12 @@ func extractRuntime(src string) (string, error) {
 	// integrity primitives before this slice. End at that boundary instead
 	// of deleting an expanding list of integrity function names afterward.
 	if i := strings.Index(body, "inline uint32_t schema_crc32c("); i >= 0 {
+		// Calls from integrity helpers into the fixed runtime are expected;
+		// a fixed declaration moved past this boundary must not disappear.
+		fixedDecl := regexp.MustCompile(`(?m)^\s*(?:inline\s+[^\n{;]*\b(?:TableFixed\w*|TableBits\w*|TableFloat\w*)\s*\(|(?:struct|class|enum)\s+(?:TableFixed\w*|TableBits\w*)\b|constexpr\s+[^\n{;=]*\s+kTableFixed\w*\s*=)`)
+		if fixedDecl.MatchString(body[i:]) {
+			return "", fmt.Errorf("fixed-runtime declaration after separate integrity runtime boundary")
+		}
 		body = body[:i]
 	}
 	// C ends at table_bits_to_float (after the 128-bit pair). C++ ends at the
