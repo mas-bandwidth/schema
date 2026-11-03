@@ -26,7 +26,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -102,10 +103,37 @@ func fixedManifestRecords(t *testing.T, corpus string) map[string]int {
 	return out
 }
 
+func loadSchemaPaths(paths []string) (*ir.Unit, error) {
+	var files []check.SourceFile
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		name := filepath.Base(p)
+		f, perrs := parser.Parse(p, data)
+		if len(perrs) > 0 {
+			return nil, perrs[0]
+		}
+		files = append(files, check.SourceFile{
+			Path:  p,
+			Name:  name,
+			Base:  strings.TrimSuffix(name, ".schema"),
+			Bytes: data,
+			AST:   f,
+		})
+	}
+	u, cerrs := check.Unit(files)
+	if len(cerrs) > 0 {
+		return nil, cerrs[0]
+	}
+	return u, nil
+}
+
 func fixedUnit(t *testing.T, schema string) *ir.Unit {
 	t.Helper()
 	path := filepath.Join(fixedRoot, filepath.FromSlash(schema))
-	u, err := compiler.New().Load([]string{path})
+	u, err := loadSchemaPaths([]string{path})
 	if err != nil {
 		t.Fatalf("load %s: %v", schema, err)
 	}
@@ -367,7 +395,7 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 	}
 	var roots atomic.Int64
 	for _, path := range paths {
-		u, err := compiler.New().Load([]string{path})
+		u, err := loadSchemaPaths([]string{path})
 		if err != nil {
 			continue // a multi-file unit or a fixture of a refusal: not a unit of its own
 		}
