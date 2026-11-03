@@ -660,15 +660,36 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     end
     return n
   end
-  if mag_sat(digits) then sat = true end
-  local v = dec_integer(digits == "" and "0" or digits, false)
-  if neg then
-    if fd.signed == false then report.clamped = report.clamped + 1; v = 0i
-    else v = integer.sub(0i, v) end
+  -- the token's magnitude as 64 bits, then its 64-bit domain: a magnitude
+  -- past that domain saturates at the end its sign names and counts clamped
+  -- once (§16.2); the range checks below clamp on to the field's own width
+  local mag = dec_integer(digits == "" and "0" or digits, false)
+  local v = mag
+  if fd.signed == false then
+    if neg then
+      v = 0i; sat = true
+    elseif mag_sat(digits) then
+      v = -1i; sat = true
+    end
+  elseif neg then
+    if mag_sat(digits) or integer.ult(integer.bnot(0x7fffffffffffffffi), mag) then
+      v = integer.bnot(0x7fffffffffffffffi); sat = true
+    else
+      v = integer.sub(0i, mag)
+    end
+  elseif mag_sat(digits) or integer.ult(0x7fffffffffffffffi, mag) then
+    v = 0x7fffffffffffffffi; sat = true
   end
   if sat then report.clamped = report.clamped + 1 end
+  -- AN UNSIGNED FIELD COMPARES UNSIGNED: v holds a uint64 at or past 2^63 as
+  -- a negative 64-bit integer, which a signed compare would read as below
+  -- every bound (§16.2: an integral token in range is that integer)
+  local unsigned = fd.signed == false
   local function cmp(a: any, b: any): number
     if typeof(a) == "integer" and typeof(b) == "integer" then
+      if unsigned then
+        if integer.ult(a, b) then return -1 elseif integer.ult(b, a) then return 1 else return 0 end
+      end
       if integer.lt(a, b) then return -1 elseif integer.gt(a, b) then return 1 else return 0 end
     end
     local x: number = if typeof(a) == "integer" then integer.tonumber(a) else a
@@ -681,7 +702,7 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
   end
   if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
-    if integer.gt(v, bmax) then v = bmax; report.clamped = report.clamped + 1 end
+    if cmp(v, bmax) > 0 then v = bmax; report.clamped = report.clamped + 1 end
   end
   local width = fd.width or 8
   if fd.signed then
@@ -694,7 +715,6 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     if integer.lt(v, low) then v = low; report.clamped = report.clamped + 1
     elseif integer.gt(v, high) then v = high; report.clamped = report.clamped + 1 end
   else
-    if fd.signed == false and integer.lt(v, 0i) then v = 0i; report.clamped = report.clamped + 1 end
     local high = -1i
     if width < 8 then high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i) end
     if integer.ult(high, v) then v = high; report.clamped = report.clamped + 1 end
