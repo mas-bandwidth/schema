@@ -204,6 +204,8 @@ func init() {
 		Name{Name: "tableMessageCount", What: "the message bit codec: read a count under its shape"},
 		Name{Name: "tableMessageSkip", What: "the message bit codec: step over one unknown field's payload"},
 		Name{Name: "tableMessageSkipBody", What: "the message bit codec: step over one unknown body"},
+		Name{Name: "tableMessageUtf8Valid", What: "validate the message text UTF-8 payload"},
+		Name{Name: "tableMessageUtf8Clamp", What: "clamp message text on a UTF-8 boundary"},
 		Name{Name: "tableMessageReadScalar", What: "the message bit codec: read one scalar under its shape"},
 		Name{Name: "tableMessageWriteScalar", What: "the message bit codec: write one scalar under its shape"},
 		Name{Name: "tableMessageBatchOpen", What: "the message bit codec: the batch's open"},

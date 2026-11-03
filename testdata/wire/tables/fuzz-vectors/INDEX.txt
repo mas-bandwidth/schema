@@ -271,3 +271,22 @@ retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain
 # input. Discovered by the Elixir wire pass; TestPinnedMapKeyKindElixir fails
 # against the pre-admission-scan emitter and passes with the repaired scanner.
 map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind_unknown.bin
+
+# Unknown key fields leave two equal default keys: last wins and duplicate counts.
+map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin
+
+# UTF-16 NUL is malformed even though the host Unicode converter accepts it.
+wide_text_zero_unit widedemo Caption testdata/wire/tables/fuzz-vectors/wide_text_zero_unit.bin
+
+# A bounded byte count clamps before payload extent checks.
+bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/bytes_count_clamped_prefix.bin
+
+# A POINTER CYCLE THROUGH NODES THE ROOT REACHES (§3.1, §4). Each is its seed
+# with one pointer's node index lowered to 2 (stream_chain, blob_small,
+# graph_tree), which closes a cycle in the stored pointer graph. A cyclic
+# wire is damage on every read, the builder and retaining reads included: the
+# oracle discards the load as malformed. The Goose load stored the edges and
+# returned the root; its save then refused the data cycle.
+stream_chain_link_cycle streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_chain_link_cycle.bin
+blob_catalog_cycle blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_catalog_cycle.bin
+graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin

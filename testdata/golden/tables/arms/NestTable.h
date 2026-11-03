@@ -13197,7 +13197,7 @@ inline int64_t TwigMeasureWireRetain( const Ctx & ctx, const Twig & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( TwigNumberFrom( ctx, numbering, root ) )
+    if ( TwigNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13238,7 +13238,7 @@ inline int64_t TwigSaveWireRetain( const Ctx & ctx, const Twig & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !TwigNumberFrom( ctx, numbering, root ) )
+    if ( !TwigNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -13653,7 +13653,7 @@ inline int64_t NestMeasureWireRetain( const Ctx & ctx, const Nest & root, TableR
         (void) type_id;
         return -1;
     };
-    if ( NestNumberFrom( ctx, numbering, root ) )
+    if ( NestNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13694,7 +13694,7 @@ inline int64_t NestSaveWireRetain( const Ctx & ctx, const Nest & root, TableReta
         (void) type_id;
         return false;
     };
-    if ( !NestNumberFrom( ctx, numbering, root ) )
+    if ( !NestNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

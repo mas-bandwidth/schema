@@ -47,14 +47,14 @@ func TestWireFuzzAllTargetJavaScript(t *testing.T) {
 	if !strings.Contains(s, "test-js: tables-js-wire-fuzz-all") {
 		t.Fatal("test-js does not run tables-js-wire-fuzz-all")
 	}
-	// The absent set (the 14 message-form seeds the arm does not bind) is
-	// pinned, so a roster root dropping to absent fails the target. tblg1
-	// Guarded's four answer: the target carries an optional over a variable
-	// closure (docs/SPEC-TABLES.md §2.3).
-	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 14\n") {
-		t.Error("make/js.mk does not pin the absent set at the 14 message-form seeds")
+	// The absent set is pinned at 0 (every file-form and message-form seed
+	// in the default roster is bound), so a roster root dropping to absent
+	// fails the target. tblg1 Guarded's four answer: the target carries an
+	// optional over a variable closure (docs/SPEC-TABLES.md §2.3).
+	if !strings.Contains(s, "TABLES_JS_WIRE_FUZZ_ABSENT := 0\n") {
+		t.Error("make/js.mk does not pin the absent set at 0 seeds")
 	}
-	if !strings.Contains(target, "', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent '") {
+	if !strings.Contains(target, "! grep -qE '[0-9]+ seeds absent '") {
 		t.Errorf("tables-js-wire-fuzz-all does not check the pinned absent count:\n%s", target)
 	}
 	// The four form-1 roster roots no other unit carries are generated for

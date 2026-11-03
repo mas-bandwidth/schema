@@ -13119,7 +13119,7 @@ inline int64_t CrewsMeasureWireRetain( const Ctx & ctx, const Crews & root, Tabl
         }
         return -1;
     };
-    if ( CrewsNumberFrom( ctx, numbering, root ) )
+    if ( CrewsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13168,7 +13168,7 @@ inline int64_t CrewsSaveWireRetain( const Ctx & ctx, const Crews & root, TableRe
         }
         return false;
     };
-    if ( !CrewsNumberFrom( ctx, numbering, root ) )
+    if ( !CrewsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

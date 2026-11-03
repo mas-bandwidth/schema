@@ -80,6 +80,14 @@ struct FieldDesc {
     def_b: bool,
     def_s: const u8[:],
     tag: i64,                 // a union arm's tag
+    type_name: const u8[:],   // the declared type's spelling (docs/SPEC-TABLES.md §8.1)
+    arm_offset: i64,          // a union arm's offset in the union's storage at the
+                              // record layout: the tag at 0, every arm at the one
+                              // payload base (§7.2, §8.1); 0 on every other field
+    doc: const u8[:],         // the `///` block above it, verbatim (SPEC §4.1);
+                              // TableDocNone when there is none
+    num_tags: i32,            // its tags (SPEC §4.2), in DECLARED order; 0 and an
+    tags: const (const u8[:])[:], // empty list when there are none
 }
 
 // TableDesc is one table — or a packet type a table reaches by value, which
@@ -96,7 +104,15 @@ struct TableDesc {
     place_str: bool,
     place_bytes: bool,
     fields: const FieldDesc[:],
+    doc: const u8[:],         // the declaration's own `///` block (§8.1)
+    num_tags: i32,            // and its tags, in DECLARED order
+    tags: const (const u8[:])[:],
 }
+
+// TableDocNone is THE ONE EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every
+// descriptor of a declaration or a field with no `///` block names it, so the
+// emitted text defines the empty doc once against every row that has none.
+let TableDocNone: const u8[:] = "";
 
 // UnionDesc is one union as data: one entry per arm, in tag order (§2.6).
 struct UnionDesc {

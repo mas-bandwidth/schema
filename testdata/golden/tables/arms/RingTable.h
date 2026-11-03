@@ -16649,7 +16649,7 @@ inline int64_t RingMeasureWireRetain( const Ctx & ctx, const Ring & root, TableR
         }
         return -1;
     };
-    if ( RingNumberFrom( ctx, numbering, root ) )
+    if ( RingNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -16698,7 +16698,7 @@ inline int64_t RingSaveWireRetain( const Ctx & ctx, const Ring & root, TableReta
         }
         return false;
     };
-    if ( !RingNumberFrom( ctx, numbering, root ) )
+    if ( !RingNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -17120,7 +17120,7 @@ inline int64_t RackMeasureWireRetain( const Ctx & ctx, const Rack & root, TableR
         }
         return -1;
     };
-    if ( RackNumberFrom( ctx, numbering, root ) )
+    if ( RackNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -17169,7 +17169,7 @@ inline int64_t RackSaveWireRetain( const Ctx & ctx, const Rack & root, TableReta
         }
         return false;
     };
-    if ( !RackNumberFrom( ctx, numbering, root ) )
+    if ( !RackNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -17591,7 +17591,7 @@ inline int64_t TrayMeasureWireRetain( const Ctx & ctx, const Tray & root, TableR
         }
         return -1;
     };
-    if ( TrayNumberFrom( ctx, numbering, root ) )
+    if ( TrayNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -17640,7 +17640,7 @@ inline int64_t TraySaveWireRetain( const Ctx & ctx, const Tray & root, TableReta
         }
         return false;
     };
-    if ( !TrayNumberFrom( ctx, numbering, root ) )
+    if ( !TrayNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

@@ -13914,7 +13914,7 @@ inline int64_t UnboundedMeasureWireRetain( const Ctx & ctx, const Unbounded & ro
         (void) type_id;
         return -1;
     };
-    if ( UnboundedNumberFrom( ctx, numbering, root ) )
+    if ( UnboundedNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13955,7 +13955,7 @@ inline int64_t UnboundedSaveWireRetain( const Ctx & ctx, const Unbounded & root,
         (void) type_id;
         return false;
     };
-    if ( !UnboundedNumberFrom( ctx, numbering, root ) )
+    if ( !UnboundedNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

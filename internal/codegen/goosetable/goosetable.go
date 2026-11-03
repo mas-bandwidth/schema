@@ -387,8 +387,6 @@ func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 	}
 	bytesEdge, stringEdge := ir.PointerReachableBlobs(t)
 	g.Declare(t.Name + "Descriptor")
-	g.Pf("// %sDescriptor — %s as data: node type id, class, and one entry per field\n", t.Name, t.Name)
-	g.Pf("// (docs/SPEC-TABLES.md §3, §8.1)\n")
 	var lit lit
 	lit.add("name", fmt.Sprintf("%q", t.Name))
 	lit.add("id", fmt.Sprintf("0x%016x", ir.TableWireId(t.WireName())))
@@ -405,6 +403,9 @@ func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 	if len(entries) > 0 {
 		lit.add("fields", "_"+t.Name+"Fields")
 	}
+	annotate(g, &lit, "_"+t.Name+"Tags", t.Doc, t.Tags)
+	g.Pf("// %sDescriptor — %s as data: node type id, class, and one entry per field\n", t.Name, t.Name)
+	g.Pf("// (docs/SPEC-TABLES.md §3, §8.1)\n")
 	g.Pf("let %sDescriptor: %s::TableDesc = %s;\n\n", t.Name, goose.RuntimeNamespace, lit.render("TableDesc"))
 }
 
@@ -419,11 +420,12 @@ func emitUnionDescriptor(g *goose.Gen, un *ir.Union) {
 			l.add("name", fmt.Sprintf("%q", v.Name))
 			l.add("shape", fmt.Sprintf("%s::ShapeVoid", goose.RuntimeNamespace))
 			l.add("tag", fmt.Sprint(i+1))
+			annotate(g, &l, tagsName(un.Name, i), v.Doc, v.Tags)
 			entries[i] = l.render("FieldDesc")
 			continue
 		}
 		f := *v.F
-		f.Name = v.Name
+		f.Name, f.Doc, f.Tags = v.Name, v.Doc, v.Tags
 		entries[i] = fieldDesc(g, un.Name, &f, i, i+1)
 	}
 	g.Declare("_" + un.Name + "Arms")
@@ -480,11 +482,22 @@ func (l *lit) render(typ string) string {
 // schema_rt::FieldDesc's declaration order. tag is a union arm's tag, 0 for a
 // field.
 func fieldDesc(g *goose.Gen, owner string, f *ir.Field, ordinal, tag int) string {
+	return fieldDescWire(g, owner, f, ordinal, tag, true)
+}
+
+// fieldDescWire is fieldDesc; a field of a type no table closure reaches
+// (wire false) carries no table-wire identity, its id 0 and its text key
+// empty (docs/SPEC-TABLES.md §8.2).
+func fieldDescWire(g *goose.Gen, owner string, f *ir.Field, ordinal, tag int, wire bool) string {
 	var l lit
-	l.add("id", fmt.Sprintf("0x%016x", ir.TableFieldWireId(f)))
+	id, json := ir.TableFieldWireId(f), ir.TableFieldJsonKey(f)
+	if !wire {
+		id, json = 0, ""
+	}
+	l.add("id", fmt.Sprintf("0x%016x", id))
 	l.add("name", fmt.Sprintf("%q", f.Name))
 	l.add("slot", fmt.Sprintf("%q", ir.GoExportName(f.Name)))
-	l.add("json", fmt.Sprintf("%q", ir.TableFieldJsonKey(f)))
+	l.add("json", fmt.Sprintf("%q", json))
 	l.add("ordinal", fmt.Sprint(ordinal))
 	l.add("kind", fmt.Sprint(ir.TableWireFieldKind(f)))
 	v := valueFacts(g, f, true)
@@ -532,10 +545,12 @@ func fieldDesc(g *goose.Gen, owner string, f *ir.Field, ordinal, tag int) string
 	}
 	if f.IsMap() || f.Array != ir.ArrayNone {
 		v.writeTail(&l, f, tag)
+		annotateField(g, &l, owner, f, ordinal, tag)
 		return l.render("FieldDesc")
 	}
 	v.writeRest(&l)
 	v.writeTail(&l, f, tag)
+	annotateField(g, &l, owner, f, ordinal, tag)
 	return l.render("FieldDesc")
 }
 

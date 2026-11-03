@@ -1101,19 +1101,16 @@ cards-js-retain-fuzz: build/conformance-harness cards-js-generate
 # the harness owns the roster, and the coverage greps make an empty JS roster a
 # named failure instead of a green no-op.
 #
-# THE ABSENT SET IS PINNED. The driver opens every form-1 (file-form) root of
-# the roster and fails by name on one it names but cannot open; what it answers
-# absent are the message-form (form-2) entries, which this leg's wire-fuzz arm
-# does not bind: backenddemo LoginRequest, MatchResult and StorePurchase,
-# vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, 14 seeds. The
-# message form is fixed tables only (docs/SPEC-TABLES.md §3.3), so the variable
-# roots graphdemo Scene and blobdemo Catalog carry no message-form seed. tblg1 Guarded's four answer since the target
-# carries an optional over a variable closure (§2.3). The count is pinned exactly, so a root
-# that drops to absent (or a new message-form root) fails the target by name
-# rather than shrinking the run unseen; it does not depend on SEED or N.
-TABLES_JS_WIRE_FUZZ_ABSENT := 14
+# THE ABSENT SET IS PINNED AT ZERO. The driver opens every form-1 (file-form)
+# and form-2 (message-form) root of the roster and fails by name on one it names
+# but cannot open: backenddemo LoginRequest, MatchResult and StorePurchase,
+# vocabdemo Wide00 and Wide09, vocab9demo Wide00 and Wide19, and tblg1 Guarded
+# all answer. The count is pinned at 0 (no `seeds absent` in the summary line),
+# so a root that drops to absent fails the target by name rather than shrinking
+# the run unseen; it does not depend on SEED or N.
+TABLES_JS_WIRE_FUZZ_ABSENT := 0
 tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz \
+	@./build/conformance-harness wire-fuzz --mixed-builder \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all.log; \
@@ -1121,9 +1118,9 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-all.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-all.log
-	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-all.log || { \
-		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) message-form seeds pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
-	@./build/conformance-harness wire-fuzz --retain \
+	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-all.log || { \
+		echo 'tables-js-wire-fuzz-all FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk; a roster root dropped to absent or the roster changed'; exit 1; }
+	@./build/conformance-harness wire-fuzz --mixed-builder --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-all-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-all-retain.log; \
@@ -1141,7 +1138,7 @@ tables-js-wire-fuzz-all: build/conformance-harness build/tables-generated-js/.st
 # arm reads the absent pin through the variable, so the pin lives in one place.
 .PHONY: tables-js-wire-fuzz-plain tables-js-wire-fuzz-retain
 tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-plain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-plain.log; \
@@ -1149,11 +1146,11 @@ tables-js-wire-fuzz-plain: build/conformance-harness build/tables-generated-js/.
 	@grep -qE '(^|[^0-9])0 divergences' build/tables-js-wire-fuzz-plain.log
 	@grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' build/tables-js-wire-fuzz-plain.log
 	@grep -qE '[1-9][0-9]* mutants' build/tables-js-wire-fuzz-plain.log
-	@grep -qE ', $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds absent ' build/tables-js-wire-fuzz-plain.log || { \
-		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not the $(TABLES_JS_WIRE_FUZZ_ABSENT) seeds pinned in make/js.mk'; exit 1; }
+	@! grep -qE '[0-9]+ seeds absent ' build/tables-js-wire-fuzz-plain.log || { \
+		echo 'tables-js-wire-fuzz-plain FAILED: the absent set is not $(TABLES_JS_WIRE_FUZZ_ABSENT) as pinned in make/js.mk'; exit 1; }
 
 tables-js-wire-fuzz-retain: build/conformance-harness build/tables-generated-js/.stamp cards-js-generate
-	@./build/conformance-harness wire-fuzz --finite-owed tables-finite/js --retain \
+	@./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js --retain \
 		--driver 'test/conformance/js/driver wire-fuzz' --seed $(SEED) --n $(N) \
 		> build/tables-js-wire-fuzz-retain.log 2>&1; \
 		status=$$?; cat build/tables-js-wire-fuzz-retain.log; \
@@ -1182,7 +1179,7 @@ tables-js-wire-fuzz-negative-control: build/conformance-harness build/tables-gen
 	done
 	@grep -q 'SABOTAGED enum reference range' build/js-wire-fuzz-sabotage/generated/examples/TabledemoVariable.js || \
 		{ echo 'NEGATIVE CONTROL FAILED: the enum reference range sabotage patched nothing'; exit 1; }
-	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --finite-owed tables-finite/js \
+	@if SCHEMA_JS_GENERATED=$(CURDIR)/build/js-wire-fuzz-sabotage/generated ./build/conformance-harness wire-fuzz --mixed-builder --finite-owed tables-finite/js \
 			--driver 'test/conformance/js/driver wire-fuzz' --seed 1 --n 0 --failed build/js-wire-fuzz-sabotage/failed.bin \
 			> build/js-wire-fuzz-sabotage/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: an enum reference past the id table was read as unknown and the differential stayed green'; exit 1; \

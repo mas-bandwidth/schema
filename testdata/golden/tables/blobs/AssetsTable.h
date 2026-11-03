@@ -11566,7 +11566,7 @@ inline int64_t AssetMeasureWireRetain( const Ctx & ctx, const Asset & root, Tabl
         }
         return -1;
     };
-    if ( AssetNumberFrom( ctx, numbering, root ) )
+    if ( AssetNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -11629,7 +11629,7 @@ inline int64_t AssetSaveWireRetain( const Ctx & ctx, const Asset & root, TableRe
         }
         return false;
     };
-    if ( !AssetNumberFrom( ctx, numbering, root ) )
+    if ( !AssetNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -11941,7 +11941,7 @@ inline int64_t CatalogMeasureWireRetain( const Ctx & ctx, const Catalog & root, 
         }
         return -1;
     };
-    if ( CatalogNumberFrom( ctx, numbering, root ) )
+    if ( CatalogNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -12004,7 +12004,7 @@ inline int64_t CatalogSaveWireRetain( const Ctx & ctx, const Catalog & root, Tab
         }
         return false;
     };
-    if ( !CatalogNumberFrom( ctx, numbering, root ) )
+    if ( !CatalogNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

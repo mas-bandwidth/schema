@@ -210,7 +210,8 @@
       "when": "pull-request",
       "why": "The complete C wire roster rebuilt with a permissive LEB reader took about 99 seconds on run 34186742566. Keep that compile in its own job within the control-time budget.",
       "targets": [
-        "tables-c-wire-fuzz-negative-control"
+        "tables-c-wire-fuzz-negative-control",
+        "tables-c-widelist-extent-align16-negative-control"
       ]
     },
     {
@@ -1415,7 +1416,8 @@
         "tables-goose-message-form-negative-control",
         "tables-goose-message-peer-negative-control",
         "tables-goose-versioning-negative-control",
-        "tables-goose-damage-negative-control"
+        "tables-goose-damage-negative-control",
+        "tables-goose-view-negative-controls"
       ]
     },
     {

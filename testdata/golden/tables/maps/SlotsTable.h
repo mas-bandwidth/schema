@@ -12992,7 +12992,7 @@ inline int64_t SlotsMeasureWireRetain( const Ctx & ctx, const Slots & root, Tabl
         (void) type_id;
         return -1;
     };
-    if ( SlotsNumberFrom( ctx, numbering, root ) )
+    if ( SlotsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13033,7 +13033,7 @@ inline int64_t SlotsSaveWireRetain( const Ctx & ctx, const Slots & root, TableRe
         (void) type_id;
         return false;
     };
-    if ( !SlotsNumberFrom( ctx, numbering, root ) )
+    if ( !SlotsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

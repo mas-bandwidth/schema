@@ -111,11 +111,12 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control load
 
-# Whole-load discard (§4), including retaining reads. The control removes
-# the emitted runtime's discard and requires the damaged roots to escape.
+# Whole-load discard (§4), including retaining reads, and the cyclic wire as
+# damage (§3.1). The controls remove the emitted runtime's discard and its
+# cycle check, and require the damaged and the cyclic roots to escape.
 .PHONY: tables-goose-damage tables-goose-damage-negative-control
 tables-goose-damage: toolchain-goose
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadReturnsNoRoot$$'
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadReturnsNoRoot|TestGooseCyclicWireIsDamage)$$'
 tables-goose-damage-negative-control: toolchain-goose
-	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseDamagedLoadNegativeControl$$'
+	SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/goosetable -run '^(TestGooseDamagedLoadNegativeControl|TestGooseCyclicWireNegativeControl)$$'
 test-goose: tables-goose-damage tables-goose-damage-negative-control
