@@ -292,6 +292,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 		typ = "alignas( 16 ) " + typ
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    TableRef %s; // string — an unbounded text slot in the node extent (§2.13.1)\n", f.Name)
 	case f.Type.Kind == ir.TString && hasByteDefault(f):
 		g.pf("    char %s[%d + 1] = %s; // string(%d): max length, used length beside it; the declared default\n", f.Name, f.Type.Size, cStringLit(f.DefBytes), f.Type.Size)
 		g.pf("    int32_t %s_length = %d;\n", f.Name, len(f.DefBytes))
@@ -446,6 +448,8 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 	}
 	typ, selfInit := g.cppFieldType(f.Type)
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("    %s.value = 0;\n", expr)
 	case f.Type.Kind == ir.TString && hasByteDefault(f):
 		g.pf("    memset( %s, 0, sizeof( %s ) );\n", expr, expr)
 		g.pf("    memcpy( %s, %s, %d ); // the declared default\n", expr, cStringLit(f.DefBytes), len(f.DefBytes))
@@ -838,9 +842,7 @@ func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline int64_t %s( const Ctx & ctx, const TableNumbering & numbering, %s & ids, const %s & value%s )\n{\n",
 			g.verb(st.Name, "MeasureBody"), g.idsType(), st.Name, g.retainParams())
-		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx;\n    (void) numbering;\n")
-		}
+		g.pf("    (void) ctx;\n    (void) numbering;\n")
 	} else {
 		g.pf("inline int64_t %s( %s & ids, const %s & value%s )\n{\n",
 			g.verb(st.Name, "MeasureBody"), g.idsType(), st.Name, g.retainParams())
@@ -901,8 +903,44 @@ func (g *tableGen) emitArrayBodyMeasure(f *ir.Field, elemKind int, into, n, acce
 	was := g.elemIndex
 	g.elemIndex = i
 	defer func() { g.elemIndex = was }()
+	if f.IsTextList() && f.TextTotal > 0 {
+		tIdx := "total_i" + sfx
+		elemExpr := fmt.Sprintf(access, tIdx)
+		g.pf("%s{\n%s    int64_t spent%s = 0;\n", ind, ind, sfx)
+		g.pf("%s    for ( int32_t %s = 0; %s < %s; %s++ )\n%s    {\n", ind, tIdx, tIdx, n, tIdx, ind)
+		if ir.TextListUnbounded(f) {
+			if ir.TextListOptional(f) {
+				g.pf("%s        if ( ( %s ).value_present ) { int32_t tlen%s = 0; if ( schema_table_text_at_( ctx, ( %s ).value, tlen%s ) == NULL ) { %s } if ( tlen%s > 0 ) { spent%s += (int64_t) tlen%s; } }\n", ind, elemExpr, sfx, elemExpr, sfx, onBad, sfx, sfx, sfx)
+			} else {
+				g.pf("%s        int32_t tlen%s = 0; if ( schema_table_text_at_( ctx, ( %s ).value, tlen%s ) == NULL ) { %s } if ( tlen%s > 0 ) { spent%s += (int64_t) tlen%s; }\n", ind, sfx, elemExpr, sfx, onBad, sfx, sfx, sfx)
+			}
+		} else {
+			if ir.TextListOptional(f) {
+				g.pf("%s        if ( ( %s ).value_present && ( %s ).value_length > 0 ) { spent%s += (int64_t) ( %s ).value_length; }\n", ind, elemExpr, elemExpr, sfx, elemExpr)
+			} else {
+				g.pf("%s        if ( ( %s ).value_length > 0 ) { spent%s += (int64_t) ( %s ).value_length; }\n", ind, elemExpr, sfx, elemExpr)
+			}
+		}
+		g.pf("%s    }\n", ind)
+		g.pf("%s    if ( spent%s > %d ) { %s } // | total = %d (§2.13)\n%s}\n", ind, sfx, f.TextTotal, onBad, f.TextTotal, ind)
+	}
 	g.pf("%s%s += 1 + TableLebBytes( (uint64_t) ( %s ) ); // the element kind byte and the count\n", ind, into, n)
 	switch elemKind {
+	case tkString:
+		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
+		elemExpr := fmt.Sprintf(access, i)
+		if ir.TextListUnbounded(f) {
+			g.pf("%s    int32_t elem_len%s = 0;\n", ind, sfx)
+			g.pf("%s    const char * elem_text%s = schema_table_text_at_( ctx, ( %s ).value, elem_len%s );\n", ind, sfx, elemExpr, sfx)
+			g.pf("%s    if ( elem_text%s == NULL ) { %s }\n", ind, sfx, onBad)
+			g.pf("%s    %s += %s;\n", ind, into, framed("elem_len"+sfx))
+		} else {
+			m := ir.TextListValue(f).Type.Size
+			g.pf("%s    if ( ( %s ).value_length < 0 || ( %s ).value_length > %d ) { %s }\n", ind, elemExpr, elemExpr, m, onBad)
+			g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) ( %s ).value, (uint64_t) ( %s ).value_length ) ) { %s }\n", ind, elemExpr, elemExpr, onBad)
+			g.pf("%s    %s += %s;\n", ind, into, framed(fmt.Sprintf("( %s ).value_length", elemExpr)))
+		}
+		g.pf("%s}\n", ind)
 	case tkTable:
 		g.pf("%sfor ( int32_t %s = 0; %s < %s; %s++ )\n%s{\n", ind, i, i, n, i, ind)
 		g.pf("%s    const int64_t elem_bytes%s = %s;\n", ind, sfx, g.measureCall(f, f.Type.Name, fmt.Sprintf(access, i)))
@@ -1055,6 +1093,15 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			g.pf("        const int64_t body_%s = %s;\n", f.Name, g.measureCall(f, f.Type.Name, "value."+f.Name))
 			g.pf("        if ( body_%s < 0 ) { return -1; }\n", f.Name)
 			g.pf("        bytes += TableLebBytes( ref_%s ) + 1 + %s; // %s\n", f.Name, framed("body_"+f.Name), f.Name)
+		case f.Type.TextUnbounded():
+			g.pf("        int32_t len_%s = 0;\n", f.Name)
+			g.pf("        const char * text_%s = schema_table_text_at_( ctx, value.%s, len_%s );\n", f.Name, f.Name, f.Name)
+			g.pf("        if ( text_%s == NULL ) { return -1; }\n", f.Name)
+			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("len_%s", f.Name)), f.Name)
+		case f.Type.Kind == ir.TString:
+			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.pf("        if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return -1; } // well-formed, no zero byte (§2.13)\n", f.Name, f.Name)
+			g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		case kind == tkEnum:
 			g.pf("        uint64_t variant_%s = 0;\n", f.Name)
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return -1; } // no variant names this value\n", f.Name)
@@ -1160,6 +1207,16 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        }\n")
 		if f.Required {
 			g.pf("        else { bytes += %s + 1; } // | required: null rides as index 0 (§2.3)\n", g.hdrBytes(id))
+		}
+		g.pf("    }\n")
+	case f.Type.TextUnbounded():
+		g.pf("    {\n        int32_t len_%s = 0;\n", f.Name)
+		g.pf("        const char * text_%s = schema_table_text_at_( ctx, value.%s, len_%s );\n", f.Name, f.Name, f.Name)
+		g.pf("        if ( text_%s == NULL ) { return -1; }\n", f.Name)
+		if f.Required {
+			g.pf("        if ( true ) { bytes += %s + %s; }\n", g.hdrBytes(id), framed(fmt.Sprintf("len_%s", f.Name)))
+		} else {
+			g.pf("        if ( len_%s > 0 ) { bytes += %s + %s; }\n", f.Name, g.hdrBytes(id), framed(fmt.Sprintf("len_%s", f.Name)))
 		}
 		g.pf("    }\n")
 	case f.Type.Kind == ir.TString:
@@ -1409,9 +1466,7 @@ func (g *tableGen) emitTableWrite(st *ir.Struct) {
 		// that still owes its node table (docs/SPEC-TABLES.md §3.1).
 		g.pf("template <typename Ctx>\ninline bool %s( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, %s & ids, const %s & value%s )\n{\n",
 			g.verb(st.Name, "SaveBodyFields"), g.idsType(), st.Name, g.retainParams())
-		if g.noVariableEdges(st) {
-			g.pf("    (void) ctx;\n    (void) numbering;\n")
-		}
+		g.pf("    (void) ctx;\n    (void) numbering;\n")
 	} else {
 		g.pf("%s bool %s( TableWriter & w, %s & ids, const %s & value%s )\n{\n",
 			tableInlineMacro(g.unit.Package), g.verb(st.Name, "SaveBody"), g.idsType(), st.Name, g.retainParams())
@@ -1604,6 +1659,19 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        if ( body_%s < 0 ) return false; // storage invariant, refused as measure refuses it\n", f.Name)
 			g.pf("        w.header( ref_%[1]s, %[2]d );\n            w.putleb( (uint64_t) body_%[3]s ); // %[4]s\n", f.Name, tkTable, f.Name, f.Name)
 			g.pf("        if ( !%s ) return false;\n", g.saveCall(f, f.Type.Name, "value."+f.Name))
+		case f.Type.TextUnbounded():
+			g.pf("        int32_t len_%s = 0;\n", f.Name)
+			g.pf("        const char * text_%s = schema_table_text_at_( ctx, value.%s, len_%s );\n", f.Name, f.Name, f.Name)
+			g.pf("        if ( text_%s == NULL ) { return false; }\n", f.Name)
+			g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkString, f.Name)
+			g.pf("        w.putleb( (uint64_t) len_%s );\n", f.Name)
+			g.pf("        w.raw( text_%s, len_%s );\n", f.Name, f.Name)
+		case f.Type.Kind == ir.TString:
+			g.pf("        if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+			g.pf("        if ( !TableUtf8Valid( (const uint8_t *) value.%s, (uint64_t) value.%s_length ) ) { return false; }\n", f.Name, f.Name)
+			g.pf("        w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkString, f.Name)
+			g.pf("        w.putleb( (uint64_t) value.%s_length );\n", f.Name)
+			g.pf("        w.raw( value.%s, value.%s_length );\n", f.Name, f.Name)
 		case kind == tkEnum:
 			g.pf("        if ( !TableEnumNamed( value.%s ) ) { return false; }\n", f.Name)
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
@@ -1727,6 +1795,18 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			g.pf("        else { w.header( %s, %d ); w.putleb( 0 ); } // | required: null rides as index 0 (§2.3)\n", g.wireRef(id), tkNodeIndex)
 		}
 		g.pf("    }\n")
+	case f.Type.TextUnbounded():
+		g.pf("    {\n        int32_t len_%s = 0;\n", f.Name)
+		g.pf("        const char * text_%s = schema_table_text_at_( ctx, value.%s, len_%s );\n", f.Name, f.Name, f.Name)
+		g.pf("        if ( text_%s == NULL ) { return false; }\n", f.Name)
+		if f.Required {
+			g.pf("        if ( true )\n        {\n")
+		} else {
+			g.pf("        if ( len_%s > 0 )\n        {\n", f.Name)
+		}
+		g.pf("            w.header( %[1]s, %[2]d ); // %[3]s\n", g.wireRef(id), tkString, f.Name)
+		g.pf("            w.putleb( (uint64_t) len_%s );\n", f.Name)
+		g.pf("            w.raw( text_%s, len_%s );\n        }\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
 		if f.Required {
@@ -1905,6 +1985,22 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 		g.pf("%sif ( !TableFloatFinite( %s ) ) { return false; } // a NaN or an infinity is refused (§3.3)\n", ind, expr)
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
 		g.pf("%sw.put64( table_double_to_bits( %s ) );\n", ind, expr)
+	case tkString:
+		g.pf("%s{\n", ind)
+		if ir.TextListUnbounded(f) {
+			g.pf("%s    int32_t elem_len%s = 0;\n", ind, sfx)
+			g.pf("%s    const char * elem_text%s = schema_table_text_at_( ctx, ( %s ).value, elem_len%s );\n", ind, sfx, expr, sfx)
+			g.pf("%s    if ( elem_text%s == NULL ) { return false; }\n", ind, sfx)
+			g.pf("%s    w.putleb( (uint64_t) elem_len%s );\n", ind, sfx)
+			g.pf("%s    w.raw( elem_text%s, elem_len%s );\n", ind, sfx, sfx)
+		} else {
+			m := ir.TextListValue(f).Type.Size
+			g.pf("%s    if ( ( %s ).value_length < 0 || ( %s ).value_length > %d ) { return false; }\n", ind, expr, expr, m)
+			g.pf("%s    if ( !TableUtf8Valid( (const uint8_t *) ( %s ).value, (uint64_t) ( %s ).value_length ) ) { return false; }\n", ind, expr, expr)
+			g.pf("%s    w.putleb( (uint64_t) ( %s ).value_length );\n", ind, expr)
+			g.pf("%s    w.raw( ( %s ).value, ( %s ).value_length );\n", ind, expr, expr)
+		}
+		g.pf("%s}\n", ind)
 	case tkTable:
 		g.pf("%s{\n", ind)
 		if g.elemCache != "" {
@@ -1957,9 +2053,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("inline bool %s( TableReader & r, const TableNodeMap & nodes, %s & value%s )\n{\n",
 			g.verb(st.Name, "LoadBody"), st.Name, g.retainParams())
-		if g.noVariableEdges(st) {
-			g.pf("    (void) nodes;\n")
-		}
+		g.pf("    (void) nodes;\n")
 	} else {
 		g.pf("%s bool %s( TableReader & r, %s & value%s )\n{\n",
 			tableInlineMacro(g.unit.Package), g.verb(st.Name, "LoadBody"), st.Name, g.retainParams())
@@ -2365,6 +2459,20 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s// bounds-checked and resolved through the numbering, never FOLLOWED, so\n", ind)
 		g.pf("%s// there is no traversal here and therefore no traversal bound.\n", ind)
 		g.emitNodeIndexLoad(f, "value."+f.Name, ind, "r", []string{"r.report->malformed = true;", "return false;"}, "", false)
+	case f.Type.TextUnbounded():
+		g.pf("%suint64_t len = 0;\n", ind)
+		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
+		g.pf("%sif ( !TableUtf8Valid( r.buffer + r.offset, len ) )\n%s{\n", ind, ind)
+		g.pf("%s    r.report->malformed = true;\n", ind)
+		savedIndent := g.indent
+		g.indent += ind
+		g.emitTableResetField(f)
+		g.indent = savedIndent
+		g.pf("%s    r.offset += (int64_t) len; break;\n%s}\n", ind, ind)
+		g.pf("%sif ( !schema_table_text_place_( nodes, value.%s, r.buffer + r.offset, (int64_t) len ) )\n%s{\n", ind, f.Name, ind)
+		g.pf("%s    if ( !nodes.refused ) { r.report->malformed = true; }\n", ind)
+		g.pf("%s    return false;\n%s}\n", ind, ind)
+		g.pf("%sr.offset += (int64_t) len;\n", ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%suint64_t len = 0;\n", ind)
 		g.pf("%sif ( !r.getleb( len ) || !r.room( len ) ) { r.report->malformed = true; return false; }\n", ind)
@@ -2453,12 +2561,35 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		if counted {
 			g.pf("%s    uint64_t decoded = 0;\n", ind)
 		}
+		if f.IsTextList() && f.TextTotal > 0 {
+			g.pf("%s    int64_t spent = 0;\n", ind)
+		}
 		g.pf("%s    for ( uint64_t i = 0; i < keep; i++ )\n%s    {\n", ind, ind)
 		g.inStep("i", func() { g.emitTableReadElement(f, kind, ind+"        ") })
+		if f.IsTextList() && f.TextTotal > 0 {
+			elem := fmt.Sprintf("value.%s[(int32_t) i]", f.Name)
+			if ir.TextListUnbounded(f) {
+				if ir.TextListOptional(f) {
+					g.pf("%s        if ( %s.value_present ) { spent += (int64_t) schema_table_text_placed_len_( nodes, %s.value ); }\n", ind, elem, elem)
+				} else {
+					g.pf("%s        spent += (int64_t) schema_table_text_placed_len_( nodes, %s.value );\n", ind, elem)
+				}
+			} else {
+				if ir.TextListOptional(f) {
+					g.pf("%s        if ( %s.value_present && %s.value_length > 0 ) { spent += (int64_t) %s.value_length; }\n", ind, elem, elem, elem)
+				} else {
+					g.pf("%s        if ( %s.value_length > 0 ) { spent += (int64_t) %s.value_length; }\n", ind, elem, elem)
+				}
+			}
+			g.pf("%s        if ( spent > %d ) { r.report->clamped++; %sReset( %s ); break; } // | total = %d (§2.13)\n", ind, f.TextTotal, f.Type.Name, elem, f.TextTotal)
+		}
 		if counted {
 			g.pf("%s        decoded = i + 1;\n", ind)
 		}
 		g.pf("%s    }\n", ind)
+		if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+			g.pf("%s    if ( nodes.refused ) { return false; }\n", ind)
+		}
 		if f.Type.Kind == ir.TBytes {
 			g.pf("%s    value.%s_length = (int32_t) decoded;\n", ind, f.Name)
 		} else if f.Array == ir.ArrayCounted {
@@ -2590,6 +2721,24 @@ func (g *tableGen) emitTableReadElementInto(f *ir.Field, kind int, dst, ind, rdr
 		// one slot of an array of pointers: a node index, bounds-checked and
 		// resolved through the numbering, never followed (§3.1)
 		g.emitNodeIndexLoad(f, dst, ind, rdr, []string{"r.report->malformed = true;", "break;"}, sfx, false)
+	case tkString:
+		g.pf("%suint64_t elem_len%s = 0;\n", ind, sfx)
+		g.pf("%sif ( !%s.getleb( elem_len%s ) || !%s.room( elem_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
+		g.pf("%sif ( !TableUtf8Valid( %s.buffer + %s.offset, elem_len%s ) ) { r.report->malformed = true; %sReset( %s ); %s.offset += (int64_t) elem_len%s; break; }\n",
+			ind, rdr, rdr, sfx, f.Type.Name, dst, rdr, sfx)
+		if ir.TextListUnbounded(f) {
+			g.pf("%sif ( !schema_table_text_place_( nodes, ( %s ).value, %s.buffer + %s.offset, (int64_t) elem_len%s ) ) { if ( !nodes.refused ) { r.report->malformed = true; } break; }\n",
+				ind, dst, rdr, rdr, sfx)
+		} else {
+			m := ir.TextListValue(f).Type.Size
+			g.pf("%suint64_t keep_elem%s = elem_len%s;\n", ind, sfx, sfx)
+			g.pf("%sif ( keep_elem%s > %d ) { keep_elem%s = (uint64_t) TableUtf8Clamp( %s.buffer + %s.offset, elem_len%s, %d ); r.report->clamped++; }\n",
+				ind, sfx, m, sfx, rdr, rdr, sfx, m)
+			g.pf("%smemcpy( ( %s ).value, %s.buffer + %s.offset, (size_t) keep_elem%s );\n", ind, dst, rdr, rdr, sfx)
+			g.pf("%s( %s ).value[keep_elem%s] = 0;\n", ind, dst, sfx)
+			g.pf("%s( %s ).value_length = (int32_t) keep_elem%s;\n", ind, dst, sfx)
+		}
+		g.pf("%s%s.offset += (int64_t) elem_len%s;\n", ind, rdr, sfx)
 	case tkTable:
 		g.pf("%suint64_t elem_len%s = 0;\n", ind, sfx)
 		g.pf("%sif ( !%s.getleb( elem_len%s ) || !%s.room( elem_len%s ) ) { r.report->malformed = true; break; }\n", ind, rdr, sfx, rdr, sfx)
@@ -3047,7 +3196,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	}
 
 	elemSizeOverride := ""
-	if f.Type.Pointer && f.Array == ir.ArrayNone {
+	if (f.Type.Pointer && f.Array == ir.ArrayNone) || f.Type.TextUnbounded() {
 		// a pointer's storage IS the reference slot: offset names it,
 		// elem_size is the slot's width, and there is no companion
 		elemSizeOverride = "(uint32_t) sizeof( TableRef )"
@@ -3250,11 +3399,19 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	// The column is never inferred from array_bound here: zero is a plain
 	// scalar's bound too, and the row must be the one tell a walker reads.
 	unboundedContainer := f.IsMap() || f.IsList()
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v },\n",
+	textList := 0
+	if f.IsTextList() {
+		if ir.TextListOptional(f) {
+			textList = 2
+		} else {
+			textList = 1
+		}
+	}
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required)
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded())
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

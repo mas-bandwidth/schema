@@ -120,6 +120,7 @@ inline bool TableJsonIsList( const TableFieldInfo * f );
 inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth );
 // that array back into the slot, every element the text carries
 inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldInfo * f, int32_t depth );
+inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slot, int32_t * out_len = NULL );
 
 `
 
@@ -172,6 +173,13 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
 inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t depth )
 {
     return TableJsonSkipValue( in, depth + 1 );
+}
+
+inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void *, int32_t * )
+{
+    in.report->malformed = true;
+    in.bad = true;
+    return false;
 }
 `
 
@@ -236,6 +244,13 @@ inline void TableJsonWriteMapKey( TableJsonOut & out, const void * entry, const 
     const uint8_t * storage = (const uint8_t *) entry + key->offset;
     if ( TableJsonMapKeyIsString( key ) )
     {
+        if ( key->unbounded )
+        {
+            int32_t len = 0;
+            const char * str = schema_table_json_unbounded_text_at_( storage, len );
+            TableJsonWriteString( out, str, len );
+            return;
+        }
         // A STRING KEY IS THE STRING (§2.8): every JSON key of a map object is
         // a KEY OF THE MAP and none is a field key, so the ` + "`&`" + ` prefix §16.7
         // reserves for field keys is ordinary data here.
@@ -329,11 +344,55 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         if ( c == '}' ) { in.pos++; break; }
         if ( c == 0 ) { in.bad = true; return false; }
         char token[kTableJsonMaxKey];
+        char * key_heap = NULL;
+        const char * key_str = token;
         int32_t token_length = 0;
         bool key_over = false; // longer than THIS buffer: never truncated into a key
-        if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length, &key_over, true ) ) { return false; }
-        token[token_length] = 0;
-        if ( TableJsonPeek( in ) != ':' ) { in.bad = true; return false; }
+        if ( TableJsonMapKeyIsString( key ) && key->unbounded )
+        {
+            const int64_t mark = in.pos;
+            if ( !TableJsonScanString( in, NULL, 0, &token_length, NULL, true ) ) { return false; }
+            in.pos = mark;
+            if ( (int64_t) token_length > kTableBlobMaxLength )
+            {
+                in.report->malformed = true;
+                in.bad = true;
+                return false;
+            }
+            if ( token_length < kTableJsonMaxKey )
+            {
+                if ( !TableJsonScanString( in, token, token_length, &token_length, NULL, true ) ) { return false; }
+                token[token_length] = 0;
+            }
+            else
+            {
+                key_heap = (char *) table_allocate( graph->worker->arena->allocator, (int64_t) token_length + 1 );
+                if ( key_heap == NULL )
+                {
+                    in.report->malformed = true;
+                    in.bad = true;
+                    return false;
+                }
+                if ( !TableJsonScanString( in, key_heap, token_length, &token_length, NULL, true ) )
+                {
+                    table_release( graph->worker->arena->allocator, key_heap );
+                    return false;
+                }
+                key_heap[token_length] = 0;
+                key_str = key_heap;
+            }
+        }
+        else
+        {
+            if ( !TableJsonScanString( in, token, kTableJsonMaxKey - 1, &token_length, &key_over, true ) ) { return false; }
+            token[token_length] = 0;
+        }
+        if ( TableJsonPeek( in ) != ':' )
+        {
+            if ( key_heap != NULL ) { table_release( graph->worker->arena->allocator, key_heap ); }
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         int64_t key_value = 0;
         bool place = true;
@@ -358,7 +417,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             }
             else if ( !fits ) { in.report->kind_mismatch++; place = false; }
         }
-        else if ( key_over || token_length > key->array_bound )
+        else if ( !key->unbounded && ( key_over || token_length > key->array_bound ) )
         {
             // A KEY LONGER THAN N DROPS ITS ENTRY AND COUNTS clamped, the
             // wire's rule, because a clamped key is a merged entry (§2.8). The
@@ -370,7 +429,8 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             place = false;
         }
         const int32_t before = TableJsonExtentCount( (const void *) slot );
-        void * entry = place ? f->place( *graph->worker, slot, token, token_length, key_value ) : NULL;
+        void * entry = place ? f->place( *graph->worker, slot, key_str, token_length, key_value ) : NULL;
+        if ( key_heap != NULL ) { table_release( graph->worker->arena->allocator, key_heap ); }
         if ( place && entry == NULL )
         {
             // AN ALLOCATION FAILURE IS NOT AN OVERSIZED KEY (§2.8, §16.1). The
@@ -489,7 +549,11 @@ inline bool TableJsonWriteList( TableJsonOut & out, const void * slot, const Tab
         if ( i > 0 ) { out.put( ',' ); }
         out.line( depth + 1 );
         const uint8_t * element = elements + (int64_t) i * f->elem_size;
-        if ( f->kind == 17 )
+        if ( f->text_list != 0 )
+        {
+            if ( !schema_table_json_write_text_element_( out, element, f ) ) { return false; }
+        }
+        else if ( f->kind == 17 )
         {
             // a []*T's elements take the pointer row (§16.7): the pointee's
             // object in place, null, or ` + "`&node`" + ` for a shared one
@@ -530,6 +594,8 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
     TableJsonSetRaw( (uint8_t *) slot, 8, 0 );
     TableJsonSetRaw( (uint8_t *) slot + 8, 4, 0 );
     const char shape = TableJsonElementShape( f );
+    int64_t spent = 0;
+    bool total_clamped = false;
     for ( ;; )
     {
         char c = TableJsonPeek( in );
@@ -543,6 +609,15 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             in.bad = true;
             return false;
         }
+        if ( total_clamped )
+        {
+            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            c = TableJsonPeek( in );
+            if ( c == ',' ) { in.pos++; continue; }
+            if ( c == ']' ) { in.pos++; break; }
+            in.bad = true;
+            return false;
+        }
         void * element = f->place( *graph->worker, slot, NULL, 0, 0 );
         if ( element == NULL )
         {
@@ -553,7 +628,22 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             in.bad = true;
             return false;
         }
-        if ( f->kind == 17 )
+        if ( f->text_list != 0 )
+        {
+            int32_t elem_bytes = 0;
+            if ( !schema_table_json_read_text_element_( in, (uint8_t *) element, f, depth, elem_bytes ) ) { return false; }
+            if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
+            {
+                in.report->clamped++;
+                f->place( *graph->worker, slot, NULL, 0, -1 );
+                total_clamped = true;
+            }
+            else
+            {
+                spent += (int64_t) elem_bytes;
+            }
+        }
+        else if ( f->kind == 17 )
         {
             // an element of a []*T (§2.9): null is a null slot, an object is the
             // pointee in place or an ` + "`&node`" + ` reference (§16.7)
@@ -1115,6 +1205,7 @@ inline bool TableJsonIsEnum( const TableFieldInfo * f )
 inline char TableJsonShape( const TableFieldInfo * f )
 {
     if ( TableJsonIsMap( f ) ) return 'o';     // a MAP: an object keyed by the KEY (§2.8)
+    if ( f->text_list != 0 ) return 'a';       // a TEXT LIST: the plain array of strings (§2.13)
     if ( f->kind == 12 ) return 's';           // string
     if ( f->kind == 33 ) return 's';           // wstring: the same text, transcoded (§16.2)
     if ( TableJsonIsBytes( f ) ) return 's';   // bytes: base64
@@ -1136,6 +1227,7 @@ inline char TableJsonShape( const TableFieldInfo * f )
 // the ELEMENT shape of an array field — the same classifier one level down
 inline char TableJsonElementShape( const TableFieldInfo * f )
 {
+    if ( f->text_list != 0 ) return 's';
     if ( f->arms != NULL ) return 'o';        // an element of an array of unions: one key, the arm (§2.6)
     // an element that is an ARRAY ROOT is its field's array (§16.10)
     if ( f->kind == 13 && f->table != NULL && f->table->json_array ) return 'a';
@@ -1895,6 +1987,38 @@ inline bool TableJsonWriteTimestamp( TableJsonOut & out, const void * storage )
 inline bool TableJsonWriteValue( TableJsonOut & out, const void * base, const TableTypeInfo * info, int32_t depth );
 // a UNION ARM that names no declaration writes through the field walk one key
 // down (docs/SPEC-TABLES.md §2.6, §16.2), which is defined below
+inline const char * schema_table_json_unbounded_text_at_( const void * slot, int32_t & len )
+{
+    int64_t delta = 0;
+    memcpy( &delta, slot, 8 );
+    if ( delta == 0 ) { len = 0; return ""; }
+    const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline bool schema_table_json_write_text_element_( TableJsonOut & out, const uint8_t * element, const TableFieldInfo * f )
+{
+    const TableFieldInfo * value = &f->table->fields[0];
+    if ( f->text_list == 2 && TableJsonGetRaw( element + value->present_offset, 1 ) == 0 )
+    {
+        out.raw( "null", 4 );
+        return true;
+    }
+    const uint8_t * val_storage = element + value->offset;
+    if ( value->unbounded )
+    {
+        int32_t len = 0;
+        const char * s = schema_table_json_unbounded_text_at_( val_storage, len );
+        TableJsonWriteString( out, s, len );
+        return true;
+    }
+    TableJsonWriteString( out, (const char *) val_storage, TableJsonCount( element, value ) );
+    return true;
+}
+
 inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const TableFieldInfo * f, int32_t depth );
 
 // one scalar, at one storage address: a nested object, a union, a
@@ -2040,6 +2164,21 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     {
         return TableJsonWriteList( out, (const void *) storage, f, depth );
     }
+    if ( f->text_list != 0 )
+    {
+        const int32_t count = TableJsonCount( base, f );
+        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        out.put( '[' );
+        for ( int32_t i = 0; i < count; i++ )
+        {
+            if ( i > 0 ) { out.put( ',' ); }
+            out.line( depth + 1 );
+            if ( !schema_table_json_write_text_element_( out, storage + (int64_t) i * f->elem_size, f ) ) { return false; }
+        }
+        out.line( depth );
+        out.put( ']' );
+        return true;
+    }
     if ( f->kind == 17 && !f->is_array )
     {
         return TableJsonWritePointer( out, storage, f, depth );
@@ -2067,6 +2206,13 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     }
     if ( f->kind == 12 )
     {
+        if ( f->unbounded )
+        {
+            int32_t len = 0;
+            const char * str = schema_table_json_unbounded_text_at_( storage, len );
+            TableJsonWriteString( out, str, len );
+            return true;
+        }
         TableJsonWriteString( out, (const char *) storage, TableJsonCount( base, f ) );
         return true;
     }
@@ -4000,6 +4146,40 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
     return true;
 }
 
+inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * element, const TableFieldInfo * f, int32_t depth, int32_t & out_bytes )
+{
+    out_bytes = 0;
+    const TableFieldInfo * value = &f->table->fields[0];
+    const char got = TableJsonValueShape( in );
+    if ( f->text_list == 2 && got == 'z' )
+    {
+        return TableJsonLiteral( in, "null" );
+    }
+    if ( got != 's' )
+    {
+        in.report->kind_mismatch++;
+        return TableJsonSkipValue( in, depth + 1 );
+    }
+    uint8_t * val_storage = element + value->offset;
+    if ( value->unbounded )
+    {
+        if ( !schema_table_json_read_unbounded_text_( in, val_storage, &out_bytes ) ) { return false; }
+    }
+    else
+    {
+        int32_t length = 0;
+        if ( !TableJsonScanString( in, (char *) val_storage, (int32_t) value->array_bound, &length, NULL, true ) ) { return false; }
+        val_storage[length] = 0;
+        TableJsonSetCount( element, value, length );
+        out_bytes = length;
+    }
+    if ( f->text_list == 2 )
+    {
+        TableJsonSetRaw( element + value->present_offset, 1, 1 );
+    }
+    return true;
+}
+
 inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
@@ -4011,9 +4191,61 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         return TableJsonReadList( in, (void *) storage, f, depth );
     }
+    if ( f->text_list != 0 )
+    {
+        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        in.pos++;
+        for ( int32_t i = 0; i < f->array_bound; i++ )
+        {
+            f->table->reset( storage + (int64_t) i * f->elem_size );
+        }
+        TableJsonSetCount( base, f, 0 );
+        int32_t placed = 0;
+        int64_t spent = 0;
+        bool total_clamped = false;
+        for ( ;; )
+        {
+            char c = TableJsonPeek( in );
+            if ( c == ']' ) { in.pos++; break; }
+            if ( c == 0 ) { in.bad = true; return false; }
+            if ( total_clamped || placed >= f->array_bound )
+            {
+                if ( !total_clamped ) { in.report->clamped++; }
+                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            }
+            else
+            {
+                uint8_t * element = storage + (int64_t) placed * f->elem_size;
+                int32_t elem_bytes = 0;
+                if ( !schema_table_json_read_text_element_( in, element, f, depth, elem_bytes ) ) { return false; }
+                if ( f->text_total > 0 && spent + (int64_t) elem_bytes > f->text_total )
+                {
+                    in.report->clamped++;
+                    f->table->reset( element );
+                    total_clamped = true;
+                }
+                else
+                {
+                    spent += (int64_t) elem_bytes;
+                    placed++;
+                }
+            }
+            c = TableJsonPeek( in );
+            if ( c == ',' ) { in.pos++; continue; }
+            if ( c == ']' ) { in.pos++; break; }
+            in.bad = true;
+            return false;
+        }
+        TableJsonSetCount( base, f, placed );
+        return true;
+    }
 
     if ( f->kind == 12 )
     {
+        if ( f->unbounded )
+        {
+            return schema_table_json_read_unbounded_text_( in, storage, NULL );
+        }
         int32_t length = 0;
         if ( !TableJsonScanString( in, (char *) storage, f->array_bound, &length, NULL, true ) ) { return false; }
         storage[length] = 0;
@@ -4499,6 +4731,7 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
+    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -4661,6 +4894,50 @@ inline bool TableJsonScanLabel( TableJsonIn & in, uint64_t & label )
 // and once into the node — so a blob of any size reads with no window and no
 // bound to clamp against. A *bytes body that is not base64 is the wrong shape
 // for the kind: the reference stays null and the event is counted.
+inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void * slot, int32_t * out_len )
+{
+    if ( out_len != NULL ) { *out_len = 0; }
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    if ( graph == NULL || graph->worker == NULL || graph->worker->arena == NULL || graph->worker->arena->locked )
+    {
+        in.report->malformed = true;
+        in.bad = true;
+        return false;
+    }
+    TableRef * ref = (TableRef *) slot;
+    ref->value = 0;
+    const int64_t mark = in.pos;
+    int32_t length = 0;
+    if ( !TableJsonScanString( in, NULL, 0, &length, NULL, true ) ) { return false; }
+    in.pos = mark;
+    if ( length == 0 )
+    {
+        int32_t placed = 0;
+        return TableJsonScanString( in, NULL, 0, &placed, NULL, true );
+    }
+    if ( (int64_t) length > kTableBlobMaxLength )
+    {
+        in.report->malformed = true;
+        in.bad = true;
+        return false;
+    }
+    uint32_t at = 0;
+    TableBlob * blob = graph->worker->AllocBlob( (int64_t) length, true, at );
+    if ( blob == NULL )
+    {
+        in.report->malformed = true;
+        in.bad = true;
+        return false;
+    }
+    char * data = (char *) ( blob + 1 );
+    int32_t placed = 0;
+    if ( !TableJsonScanString( in, data, length, &placed, NULL, true ) ) { return false; }
+    data[length] = 0;
+    ref->value = (int64_t) at;
+    if ( out_len != NULL ) { *out_len = length; }
+    return true;
+}
+
 inline bool TableJsonReadBlob( TableJsonIn & in, void * slot, const TableFieldInfo * f )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
@@ -5094,6 +5371,7 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     if ( !ok ) { return -1; }
     out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
     if ( out.overflow ) { return -1; }
+    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
