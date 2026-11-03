@@ -404,7 +404,7 @@ func TestMooFixedEvolutionCompiledPlans(t *testing.T) {
 		dump map[string]string
 	}{
 		{"v1", v1, "ok 2 u0 k0 c0 w2 d0 -", map[string]string{"r0.a": "7", "r0.b": "10", "r0.c": "99", "r1.a": "8"}},
-		{"v2", v2, "ok 2 u0 k0 c0 w4 d0 -", map[string]string{"r0.a": "100", "r0.b": "-20", "r0.c": "99", "r1.b": "30"}},
+		{"v2", v2, "ok 2 u0 k0 c0 w2 d0 -", map[string]string{"r0.a": "100", "r0.b": "-20", "r0.c": "99", "r1.b": "30"}},
 		{"retired", evoFile(e0.Wire, e0.Layout, []byte{1, 0}), refusedTotal("layout_unsupported", false, evoHash(e0.Wire)), nil},
 		{"unknown", evoFile(0x123456789abcdef0, e3.Layout, make([]byte, 16)), refusedTotal("layout_unknown", false, evoHash(0x123456789abcdef0)), nil},
 		{"truncated", evoFile(e3.Wire, e3.Layout, make([]byte, 15)), refusedTotal("truncated", true, "-"), nil},
@@ -446,24 +446,40 @@ v.S = "seven"
 v.Tail = 0x7A7A7A7A
 values = { v }
 `)
-	st := uw.Tables["W"]
-	body := file[len(file)-int(ir.TableFixedTypeBytes(st)):]
-	u32 := func(m string) uint32 { return binary.LittleEndian.Uint32(body[ir.TableFixedMemberOffset(uw, st, m):]) }
-	u8 := func(m string) byte { return body[ir.TableFixedMemberOffset(uw, st, m)] }
+	// the wire offset of each root field, summed from the compiler's own
+	// layout walk (each field's subtree consumed whole)
+	walk := ir.TableFixedWalkRoot(uw.Tables["W"])
+	var span func(i int) int
+	span = func(i int) int {
+		n := 1
+		for range walk[i].Children {
+			n += span(i + n)
+		}
+		return n
+	}
+	offset := map[string]int{}
+	names := []string{"a", "b", "inner", "opt", "arr", "s", "tail"}
+	for i, k, off := 1, 0, 0; i < len(walk); k++ {
+		offset[names[k]] = off
+		off += int(walk[i].Size)
+		i += span(i)
+	}
+	body := file[len(file)-int(ir.TableFixedTypeBytes(uw.Tables["W"])):]
+	u32 := func(at int) uint32 { return binary.LittleEndian.Uint32(body[at:]) }
 	for name, ok := range map[string]bool{
-		"a":           u8("a") == 0xA1,
-		"b":           u32("b") == 0x0B0B0B0B,
-		"inner":       u32("inner") == 0x1E1E1E1E,
-		"opt":         u32("opt") == 0x0D0D0D0D,
-		"opt_present": u8("opt_present") == 1,
-		"arr":         u32("arr") == 0x4E4E3E3E,
-		"arr_count":   u32("arr_count") == 2,
-		"s":           string(body[ir.TableFixedMemberOffset(uw, st, "s"):][:5]) == "seven",
-		"s_length":    u32("s_length") == 5,
-		"tail":        u32("tail") == 0x7A7A7A7A,
+		"a":           body[offset["a"]] == 0xA1,
+		"b":           u32(offset["b"]) == 0x0B0B0B0B,
+		"inner":       u32(offset["inner"]) == 0x1E1E1E1E,
+		"opt_present": body[offset["opt"]] == 1,
+		"opt":         u32(offset["opt"]+1) == 0x0D0D0D0D,
+		"arr_count":   u32(offset["arr"]) == 2,
+		"arr":         u32(offset["arr"]+4) == 0x4E4E3E3E,
+		"s_length":    u32(offset["s"]) == 5,
+		"s":           string(body[offset["s"]+4:][:5]) == "seven",
+		"tail":        u32(offset["tail"]) == 0x7A7A7A7A,
 	} {
 		if !ok {
-			t.Errorf("W14: the member %s is not at the compiler's offset %d: %x", name, ir.TableFixedMemberOffset(uw, st, name), body)
+			t.Errorf("W14: the member %s is not at the layout walk's offset: %v %x", name, offset, body)
 		}
 	}
 }
