@@ -123,11 +123,11 @@ This work is on main: sprint/schema-vt-core landed on main, and the Go core (spr
 
 Progress checkpoint: 2026-11-02. Completed work is landing incrementally in main through PR #2660 and PR #2666. This roadmap records the current implementation and known gaps; unfinished work no longer holds completed changes on branches. The original nine languages remain the priority.
 
-Registration now covers all 11 active constructs in C#, Go, Rust, Java, JavaScript, Dart and Elixir; C registers 10/11, with unbounded text remaining. The current C++ public registry lists 5/11; its additional landed implementation still needs registry and acceptance reconciliation. These counts describe compiler declarations, not percentages of full Schema completion.
+Registration now covers all 11 active constructs in C, C#, Go, Rust, Java, JavaScript, Dart and Elixir. The current C++ public registry lists 5/11; its additional landed implementation still needs registry and acceptance reconciliation. These counts describe compiler declarations, not percentages of full Schema completion.
 
 Landed: required-field, forms, integrity and text-list implementation across the ports; stronger ordinary-positive-unit coverage; populated feature witnesses; pointer-target and root-closure regressions; neutral repeated-key widening and message-integrity repairs; Rust nested-reader refusal repair; JavaScript helper emission and blob accounting; Dart string identity and retained-record accounting; Elixir measurement, pointer and root-closure repairs. Shared failing inputs stay in the corpus.
 
-Remaining C/C++/Go: C unbounded text; Go repeated-map-key widening repair; C++ active-construct registration and full acceptance reconciliation. The neutral, C++ and C repeated-key repairs have landed (C with four-reader regression coverage and the shared failing input). C text-form/report coverage still needs completion.
+Remaining C/C++/Go: Go repeated-map-key widening repair; C++ active-construct registration and full acceptance reconciliation. C unbounded text (11/11 active constructs and populated feature witnesses) and the neutral, C++ and C repeated-key repairs have landed (C with four-reader regression coverage and the shared failing input). C text-form/report coverage still needs completion.
 
 C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. Remaining: full-roster builder/retaining driver alignment and full nightly acceptance.
 
@@ -169,14 +169,14 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | renaming variants, arms and type fields | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | the 64-bit id-table wire, enum and escape kinds | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | wstring(N) on the table wire (#522) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| unbounded arrays | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
+| unbounded arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | the message form (form byte 2, a bitpacked body) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | retain-unknown | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | doc comments and tags in the descriptors | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 84% | 96% | 93% | 96% | 87% | 96% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 87% | 96% | 93% | 96% | 87% | 96% | 87% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
