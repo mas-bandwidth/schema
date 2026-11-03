@@ -24,8 +24,9 @@ local surface: string = args[1] or ""
 local generated: string = args[2] or "build/conformance-moo"
 -- <stage> is the repo-relative directory the shell driver staged this
 -- surface's source into ($MOO_DRIVER_STAGE/<surface>), so a run beside
--- another (a negative control under make -j) reads only its own
-local staged: string = args[3] or ("build/conformance-moo-driver/" .. surface)
+-- another (a negative control under make -j) reads only its own. It has no
+-- default: a run that names none never reads another run's staging.
+local staged: string? = args[3]
 
 -- require resolves relative to this file, test/conformance/moo/
 local ROOT = "../../../"
@@ -37,7 +38,10 @@ end
 
 -- ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
-local stage = ROOT .. staged .. "/"
+if staged == nil or staged == "" then
+	fail("no stage directory: driver <manifest> <surface> hands main.moo its own")
+end
+local stage = ROOT .. (staged :: string) .. "/"
 local manifestText: string = load(stage .. "manifest")
 
 local lines: { { string } } = {}
