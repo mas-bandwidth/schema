@@ -8,6 +8,7 @@
 // its byte length or -1. T is a unit's table module; root is the root table's
 // schema name.
 local _M = vargv[0];
+local _require = vargv[1];
 
 // THE RESERVED IDS (docs/SPEC-TABLES.md §3.1, §5), the same ones load.nut names.
 local NODE_TABLE_ID = 0xffffffffffffffff;
@@ -225,6 +226,14 @@ local blobEqString = function(b, s) {
 // the numbering's node key for a blob: a *string has no storage identity in
 // Squirrel, and a load hands equal content to equal slots, so content keys it;
 // a *bytes blob is keyed by its bytes for the same reason (blob_shared).
+// a blob's identity for the numbering: a *bytes blob is its object, and a
+// *string is the record token the load noted for its slot, or the string
+// itself (load.nut, stringIdentity)
+local blobIdentity = function(kind, val, holder, key) {
+  if (kind != "s" || holder == null) return val;
+  return _require("schema_table_load").stringIdentity(holder, key, val);
+};
+
 local blobKey = function(kind, val) {
   if (kind == "s") return "s:" + val;
   return "b:" + hexBytes(val);
@@ -269,13 +278,14 @@ local edgesOf;
 local shapeEdges;
 local armEdges;
 
-shapeEdges = function(T, d, val, out) {
+shapeEdges = function(T, d, val, out, holder = null, key = null) {
   if (d.shape == "ptr") {
     if (val != null) out.append({ kind = "t", d = tableDesc(T, d.table), v = val });
     return;
   }
   if (d.shape == "sblob" || d.shape == "bblob") {
-    if (val != null) out.append({ kind = d.shape == "sblob" ? "s" : "b", v = val });
+    local kind = d.shape == "sblob" ? "s" : "b";
+    if (val != null) out.append({ kind = kind, v = val, id = blobIdentity(kind, val, holder, key) });
     return;
   }
   if (d.shape == "tab") {
@@ -293,8 +303,8 @@ shapeEdges = function(T, d, val, out) {
     local vd = d.mapvalue;
     foreach (i in mapWriteOrder(val, kd.member)) {
       local ent = val[i];
-      shapeEdges(T, kd, ent[kd.member], out);
-      shapeEdges(T, vd, ent[vd.member], out);
+      shapeEdges(T, kd, ent[kd.member], out, ent, kd.member);
+      shapeEdges(T, vd, ent[vd.member], out, ent, vd.member);
     }
     return;
   }
@@ -307,8 +317,9 @@ shapeEdges = function(T, d, val, out) {
         if (val[i] != null) out.append({ kind = "t", d = td, v = val[i] });
       }
     } else if (e.shape == "sblob" || e.shape == "bblob") {
+      local kind = e.shape == "sblob" ? "s" : "b";
       for (local i = 0; i < n; i++) {
-        if (val[i] != null) out.append({ kind = e.shape == "sblob" ? "s" : "b", v = val[i] });
+        if (val[i] != null) out.append({ kind = kind, v = val[i], id = blobIdentity(kind, val[i], val, i) });
       }
     } else if (e.shape == "tab") {
       local td = tableDesc(T, e.table);
@@ -327,7 +338,7 @@ edgesOf = function(T, c, v, out) {
     local val = v[fd.member];
     if (fd.shape == "tab" && val == null) continue;
     if (fd.shape == "arr" && val == null) continue;
-    shapeEdges(T, fd, val, out);
+    shapeEdges(T, fd, val, out, v, fd.member);
   }
 };
 
@@ -340,7 +351,7 @@ armEdges = function(T, u, inst, out) {
   if (arm == null) return;
   local p = arm.payload;
   if (p == null) return;
-  shapeEdges(T, p, inst[p.member], out);
+  shapeEdges(T, p, inst[p.member], out, inst, p.member);
 };
 
 local number = function(T, c, root, cook = false) {
@@ -363,17 +374,19 @@ local number = function(T, c, root, cook = false) {
     if (e.kind == "s" || e.kind == "b") {
       // A BLOB IS OWNED BY ONE SLOT (docs/SPEC-TABLES.md §2.5): a second slot
       // naming one blob is refused by name, a record the writer never shares.
-      // A *bytes blob is keyed by its object, and a *string by its value (a
+      // A *bytes blob is keyed by its object, and a *string by its slot's
+      // record token where the load noted one and by its value otherwise (a
       // Squirrel string has no storage identity), so both spot the second
-      // naming of one blob.
-      if (e.v in seenBlobs[e.kind]) {
+      // naming of one blob. The cook keys a *string by its value.
+      local id = cook ? e.v : e.id;
+      if (id in seenBlobs[e.kind]) {
         // Cook attributes a shared blob once; wire ownership still refuses it.
         if (cook) continue;
         _M.SaveReason <- "blob_shared";
         return null;
       }
-      seenBlobs[e.kind][e.v] <- true;
-      nodes.append({ kind = e.kind, v = e.v });
+      seenBlobs[e.kind][id] <- true;
+      nodes.append({ kind = e.kind, v = e.v, id = id });
       continue;
     }
     local target = e.v;
@@ -401,10 +414,11 @@ local indexOfTable = function(nodes, root, val) {
   }
   return -1;
 };
-local indexOfBlob = function(nodes, kind, val) {
+local indexOfBlob = function(nodes, kind, val, holder = null, key = null) {
   if (val == null) return 0;
+  local id = blobIdentity(kind, val, holder, key);
   for (local i = 0; i < nodes.len(); i++) {
-    if (nodes[i].kind == kind && nodes[i].v == val) return i + 2;
+    if (nodes[i].kind == kind && nodes[i].id == id) return i + 2;
   }
   return -1;
 };
@@ -463,7 +477,7 @@ local writeFields = function(T, c, v, w, ids, nodes, root) {
     local val = v[fd.member];
     local prevOwner = w.owner, prevField = w.field;
     w.owner = c.name; w.field = fd.name;
-    local ok = writeValue(T, fd, val, w, ids, nodes, root, true);
+    local ok = writeValue(T, fd, val, w, ids, nodes, root, true, v, fd.member);
     w.owner = prevOwner; w.field = prevField;
     if (!ok) return false;
   }
@@ -500,7 +514,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       local rides = false;
       if (e.shape == "tab") {
         local probe = newWriter();
-        if (!writeBare(T, e, val[i], probe, newIds(), nodes, root)) return -1;
+        if (!writeBare(T, e, val[i], probe, newIds(), nodes, root, val, i)) return -1;
         rides = probe.b.len() > 1;
       } else if (e.shape == "union") {
         rides = val[i] != null && val[i].Type != null && val[i].Type != 0;
@@ -517,7 +531,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       if (!rides) continue;
       local keyRef = idsRef(ids, d.keyvariants[i][1]);
       local payload = newWriter();
-      if (!writeBare(T, e, val[i], payload, ids, nodes, root)) return -1;
+      if (!writeBare(T, e, val[i], payload, ids, nodes, root, val, i)) return -1;
       entries.append({ key = keyRef, payload = payload });
     }
     wleb(w, entries.len());
@@ -545,7 +559,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       wleb(w, idx);
     } else if (e.shape == "sblob" || e.shape == "bblob") {
       local kind = e.shape == "sblob" ? "s" : "b";
-      local idx = indexOfBlob(nodes, kind, v);
+      local idx = indexOfBlob(nodes, kind, v, val, i);
       if (idx < 0) return -1;
       wleb(w, idx);
     } else {
@@ -592,7 +606,7 @@ writeUnionValue = function(T, u, inst, w, ids, nodes, root) {
   if (p == null) { wu8(w, 32); wleb(w, 0); return true; }
   wu8(w, wireKind(p));
   local payload = newWriter();
-  if (!writeValue(T, p, inst[p.member], payload, ids, nodes, root, false)) return false;
+  if (!writeValue(T, p, inst[p.member], payload, ids, nodes, root, false, inst, p.member)) return false;
   wleb(w, payload.b.len());
   appendWriter(w, payload);
   return true;
@@ -600,7 +614,7 @@ writeUnionValue = function(T, u, inst, w, ids, nodes, root) {
 
 // ONE VALUE WITHOUT ITS FIELD FRAMING, for an arm payload or a keyed slot:
 // the arm's or entry's L already frames it (docs/SPEC-TABLES.md §3).
-writeBare = function(T, d, val, w, ids, nodes, root) {
+writeBare = function(T, d, val, w, ids, nodes, root, holder = null, key = null) {
   local shape = d.shape;
   if (shape == "ptr") {
     local idx = indexOfTable(nodes, root, val);
@@ -610,7 +624,7 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
   }
   if (shape == "sblob" || shape == "bblob") {
     local kind = shape == "sblob" ? "s" : "b";
-    local idx = indexOfBlob(nodes, kind, val);
+    local idx = indexOfBlob(nodes, kind, val, holder, key);
     if (idx < 0) return false;
     wleb(w, idx);
     return true;
@@ -675,10 +689,10 @@ writeMapField = function(T, d, val, w, ids, nodes, root) {
 // ONE FIELD (docs/SPEC-TABLES.md §3): elided at its declared default, a
 // pointer and a blob at null, an array when empty, a nested table when its
 // body is its terminator alone; an elided field costs the id table nothing.
-writeValue = function(T, d, val, w, ids, nodes, root, framed) {
+writeValue = function(T, d, val, w, ids, nodes, root, framed, holder = null, key = null) {
   local shape = d.shape;
   local always = d.optional || d.required;
-  if (!framed) return writeBare(T, d, val, w, ids, nodes, root);
+  if (!framed) return writeBare(T, d, val, w, ids, nodes, root, holder, key);
   if (shape == "ptr") {
     if (!always && val == null) return true;
     local idx = indexOfTable(nodes, root, val);
@@ -689,7 +703,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
   if (shape == "sblob" || shape == "bblob") {
     if (!always && val == null) return true;
     local kind = shape == "sblob" ? "s" : "b";
-    local idx = indexOfBlob(nodes, kind, val);
+    local idx = indexOfBlob(nodes, kind, val, holder, key);
     if (idx < 0) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 17); wleb(w, idx);
     return true;
