@@ -2440,7 +2440,7 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		g.pf("%s\t\tfinal len = r.readLeb();\n", ind)
 		g.pf("%s\t\tif (len == null || !r.has(len)) { r.report.malformed = true; return; }\n", ind)
 		g.pf("%s\t\tfinal sub = TableWireReader.sub(r, r.pos, r.pos + len);\n", ind)
-		g.pf("%s\t\tif (%s) v.%s = %s();\n", ind, seenName(f), name, ref.Name)
+		g.pf("%s\t\tif (%s) { r.retain?.forget(v.%s); v.%s = %s(); }\n", ind, seenName(f), name, name, ref.Name)
 		g.pf("%s\t\t%s = true;\n", ind, seenName(f))
 		g.pf("%s\t\t%s(sub, v.%s, true);\n", ind, dartName(ref.Name)+"WireLoadBody", name)
 		g.pf("%s\t\tif (sub.pos != sub.limit) { r.report.malformed = true; v.%s = %s(); }\n", ind, name, ref.Name)

@@ -19,11 +19,12 @@ import (
 func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	for _, tc := range []struct {
-		dir, unit, root, vector                       string
-		unknown, mismatch, retained, lost, savedBytes int
+		dir, unit, root, vector                                  string
+		unknown, mismatch, duplicate, retained, lost, savedBytes int
 	}{
-		{"maps", "Mapdemo", "Depth", "retain_array_replaced", 6, 1, 3, 3, 113},
-		{"lists", "Listdemo", "Save", "retain_list_replaced", 4, 0, 4, 0, 47},
+		{"maps", "Mapdemo", "Depth", "retain_array_replaced", 6, 1, 0, 3, 3, 113},
+		{"lists", "Listdemo", "Save", "retain_list_replaced", 4, 0, 0, 4, 0, 47},
+		{"lists", "Listdemo", "Army", "retain_list_maps_replaced", 8, 0, 4, 8, 0, 133},
 	} {
 		t.Run(tc.vector, func(t *testing.T) {
 			schemas, err := filepath.Glob("../../../tables/" + tc.dir + "/*.schema")
@@ -44,7 +45,7 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
 			v := m.New(u.Tables[tc.root])
 			var r tabletext.Report
 			store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-			if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Malformed || r.Unknown != tc.unknown || r.KindMismatch != tc.mismatch || r.Retained != tc.retained || r.RetainLost != tc.lost {
+			if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Malformed || r.Unknown != tc.unknown || r.KindMismatch != tc.mismatch || r.Duplicate != tc.duplicate || r.Widened != 0 || r.Clamped != 0 || r.Retained != tc.retained || r.RetainLost != tc.lost {
 				t.Fatalf("independent read: %+v %v", r, err)
 			}
 			var sr tabletext.Report
@@ -64,7 +65,7 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
  for(var load=0;load<2;load++){
   final r=w.TableWireReport();
   final v=w.rootWireLoadRetain(data,store,r);
-  check(!r.malformed&&!r.refused&&r.unknown==%d&&r.kindMismatch==%d&&r.retained==%d&&r.retainLost==%d,'array replacement read');
+  check(!r.malformed&&!r.refused&&r.unknown==%d&&r.kindMismatch==%d&&r.duplicate==%d&&r.widened==0&&r.clamped==0&&r.retained==%d&&r.retainLost==%d,'array replacement read');
   check(w.rootToJson(v)==%q,'array replacement values');
   for(var save=0;save<2;save++){
    final sr=w.TableWireReport();
@@ -75,7 +76,7 @@ func TestDartRetainedArrayReplacementGlobalVector(t *testing.T) {
   }
  }
 }
-`, hex.EncodeToString(wire), tc.unknown, tc.mismatch, tc.retained, tc.lost, string(text)+"\n", hex.EncodeToString(saved))
+`, hex.EncodeToString(wire), tc.unknown, tc.mismatch, tc.duplicate, tc.retained, tc.lost, string(text)+"\n", hex.EncodeToString(saved))
 			runFormsProbe(t, files, strings.ReplaceAll(b.String(), "w.root", "w."+dartName(tc.root)))
 		})
 	}
