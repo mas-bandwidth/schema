@@ -319,7 +319,8 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 			(s == "report" && $1 == "report" && $3 == k) ||
 			(s == "framing" && $1 == "framing" && $3 == k) ||
 			((s == "retain" || s == "retain-save") && $1 == "retain" && $3 == k) ||
-			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) { print $2 " absent" }' "$1" >>"$out"
+			(s == "json-hostile" && $1 == "json-hostile" && $3 == k) ||
+			(s == "write-refusal" && $1 == "write-refusal" && $3 == k) { print $2 " absent" }' "$1" >>"$out"
 		continue
 	fi
 	glue "$u"

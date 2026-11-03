@@ -69,6 +69,18 @@ conformance-negative-control-squirrel-cycle: build/conformance-harness build/con
 
 test-squirrel: conformance-negative-control-squirrel-cycle
 
+# THE WRITE CONTRACT (testdata/conformance/tables/FORMAT.md, `write-refusal`):
+# the save forgets an integer's declared set, so the ranged and bits(N) rows
+# write where they owe the refusal and write-refusal goes red, while wire,
+# whose values all sit inside their sets, stays green.
+.PHONY: conformance-negative-control-squirrel-write-refusal
+conformance-negative-control-squirrel-write-refusal: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/negative-control write-refusal save.nut \
+		's/if (d.shape == "int" \&\& !intFits(d, val)) return refuseInvalid();//' \
+		write-refusal wire
+
+test-squirrel: conformance-negative-control-squirrel-write-refusal
+
 # THE EMBEDDED RUNTIME IS A BUILD INPUT. squirreltable.go carries
 # `//go:embed runtime/*.nut`, but the Makefile's GO_SOURCES names only *.go, so
 # without this prerequisite a runtime change leaves build/schema-squirrel — and
@@ -139,6 +151,7 @@ tables-squirrel-release:
 	$(MAKE) conformance-negative-control-squirrel-retain
 	$(MAKE) conformance-negative-control-squirrel-absent
 	$(MAKE) conformance-negative-control-squirrel-framing
+	$(MAKE) conformance-negative-control-squirrel-write-refusal
 	$(MAKE) tables-squirrel-usage-negative-control
 	$(MAKE) tables-squirrel-runtime-home-negative-control
 	$(MAKE) tables-squirrel-release-negative-control

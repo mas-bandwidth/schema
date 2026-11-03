@@ -56,6 +56,8 @@ build/conformance-moo: build/schema-moo $(MOO_CONFORMANCE_MANIFEST) make/moo-con
 # conformance-negative-control-moo-framing  the id table's 4096-entry bound
 #                                        (framing red on frame_entries_4097,
 #                                        wire and report green)
+# conformance-negative-control-moo-write-refusal  the save's integer range
+#                                        (write-refusal red, wire green)
 .PHONY: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing
 conformance-negative-control-moo: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control report
@@ -66,6 +68,10 @@ conformance-negative-control-moo-walk: toolchain-moo build/conformance-harness
 conformance-negative-control-moo-framing: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control framing
 
+.PHONY: conformance-negative-control-moo-write-refusal
+conformance-negative-control-moo-write-refusal: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control write-refusal
+
 # all three ride test-moo (make/moo.mk), as every leg's conformance controls ride its
 # own test target
-test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing
+test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing conformance-negative-control-moo-write-refusal
