@@ -67,7 +67,11 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 # conformance-negative-control-luau-cycle    the cycle check (docs/SPEC-TABLES.md
 #                                            §3.1, §4: framing red on
 #                                            node_cycle_*, wire and report green)
-.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing conformance-negative-control-luau-cycle
+# conformance-negative-control-luau-write-refusal  the writer's declared-range
+#                                            test (docs/SPEC-TABLES.md §3:
+#                                            write-refusal red on wref_range_*,
+#                                            wire and json-read green)
+.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing conformance-negative-control-luau-cycle conformance-negative-control-luau-write-refusal
 conformance-negative-control-luau-emitter: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control report
@@ -83,3 +87,7 @@ conformance-negative-control-luau-framing: build/conformance-harness $(LUAU_CONF
 conformance-negative-control-luau-cycle: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control cycle
+
+conformance-negative-control-luau-write-refusal: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/negative-control write-refusal

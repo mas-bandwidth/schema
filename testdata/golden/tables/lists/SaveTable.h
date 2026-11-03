@@ -12545,6 +12545,7 @@ inline bool MixedSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
             w.putleb( (uint64_t) ( cursor_bounds.count ) );
             for ( int32_t elem_i_bounds = 0; elem_i_bounds < cursor_bounds.count; elem_i_bounds++ )
             {
+                schema_assert( cursor_bounds[elem_i_bounds] >= 0 && cursor_bounds[elem_i_bounds] <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( cursor_bounds[elem_i_bounds] ) );
             }
         }
@@ -18315,6 +18316,7 @@ inline bool MixedSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
             w.putleb( (uint64_t) ( cursor_bounds.count ) );
             for ( int32_t elem_i_bounds = 0; elem_i_bounds < cursor_bounds.count; elem_i_bounds++ )
             {
+                schema_assert( cursor_bounds[elem_i_bounds] >= 0 && cursor_bounds[elem_i_bounds] <= 100 ); // a write keeps the declared bounds (SPEC.md §5.1)
                 w.put32( uint32_t( cursor_bounds[elem_i_bounds] ) );
             }
         }

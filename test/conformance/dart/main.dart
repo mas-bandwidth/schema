@@ -29,6 +29,7 @@ import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as m
 import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
 import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
 import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
+import '../../../build/tables-generated-dart/examples/Tables.dart' as tabletypes show Grade;
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
@@ -2246,6 +2247,106 @@ int surfaceMessage(String outDir) {
   return 0;
 }
 
+// THE WRITE-REFUSAL SURFACE (testdata/conformance/tables/FORMAT.md):
+// write-refusal <case> <unit> <root> <wire> <path> <kind> <value>. Load the
+// wire as the root, set the ONE field the path names, and save through the
+// variable form. The write contract's debug checks are asserts, so the driver
+// script runs this surface from build/conformance-dart-asserts (compiled with
+// --enable-asserts): an AssertionError is the refusal, as is the StateError of
+// an every-build refusal. The setters are per root; a path or kind no setter
+// knows fails the surface loudly.
+int surfaceWriteRefusal(String outDir) {
+  for (final f in kind('write-refusal')) {
+    if (f[2] != 'tabledemo') {
+      stderr.writeln('write-refusal ${f[1]}: no setter for unit ${f[2]}');
+      return 1;
+    }
+    final wire = File(f[4]).readAsBytesSync();
+    void Function() save;
+    String? unknown;
+    switch (f[3]) {
+      case 'RootConfig':
+        final v = tabledemo.rootConfigWireLoad(wire);
+        unknown = setRootConfig(v, f[5], f[6], f[7]);
+        save = () => tabledemo.rootConfigWireSave(v);
+      case 'LoadoutConfig':
+        final v = tabledemo.loadoutConfigWireLoad(wire);
+        unknown = setLoadoutConfig(v, f[5], f[6], f[7]);
+        save = () => tabledemo.loadoutConfigWireSave(v);
+      default:
+        unknown = 'no setter for root ${f[3]}';
+        save = () {};
+    }
+    if (unknown != null) {
+      stderr.writeln('write-refusal ${f[1]}: $unknown');
+      return 1;
+    }
+    var verdict = 'wrote';
+    try {
+      save();
+    } on AssertionError {
+      verdict = 'refused';
+    } on StateError {
+      verdict = 'refused';
+    }
+    File('$outDir/${f[1]}').writeAsStringSync('$verdict\n');
+  }
+  return 0;
+}
+
+double writeRefusalFloat(String value) => switch (value) {
+      'nan' => double.nan,
+      'inf' => double.infinity,
+      '-inf' => double.negativeInfinity,
+      _ => double.parse(value),
+    };
+
+// setRootConfig sets the one field at path by kind, and answers null, or the
+// reason it cannot.
+String? setRootConfig(tabledemo.RootConfig v, String path, String kind, String value) {
+  final key = '$path $kind';
+  switch (key) {
+    case 'weapons count':
+      final n = int.parse(value);
+      if (v.weapons.isEmpty) return 'weapons has no element 0 to copy';
+      final first = v.weapons[0];
+      if (v.weapons.length > n) v.weapons.removeRange(n, v.weapons.length);
+      while (v.weapons.length < n) {
+        v.weapons.add(first);
+      }
+      return null;
+    case 'version_note length':
+      v.versionNote = 'a' * int.parse(value);
+      return null;
+  }
+  const weapon = 'weapons[0].';
+  if (!path.startsWith(weapon)) return 'no RootConfig setter for $key';
+  if (v.weapons.isEmpty) return 'weapons has no element 0';
+  final w = v.weapons[0];
+  switch (key.substring(weapon.length)) {
+    case 'penetration int':
+      w.penetration = int.parse(value);
+    case 'channel int':
+      w.channel = int.parse(value);
+    case 'damage float':
+      w.damage = writeRefusalFloat(value);
+    case 'effect tag':
+      // a lawful tag takes its arm at the arm's declared defaults
+      w.effect = tabledemo.Effect()..armTag = int.parse(value);
+    default:
+      return 'no RootConfig setter for $key';
+  }
+  return null;
+}
+
+String? setLoadoutConfig(tabledemo.LoadoutConfig v, String path, String kind, String value) {
+  if ('$path $kind' == 'grade ordinal') {
+    v.grade = tabletypes.Grade(int.parse(value));
+    return null;
+  }
+  return 'no LoadoutConfig setter for $path $kind';
+}
+
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
@@ -2257,7 +2358,7 @@ const String surfaces =
     ''
     'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
+    'forgery\ncook-forgery\ncook-reason\nblock-reason\nwrite-refusal\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -2759,6 +2860,8 @@ int run(List<String> args) {
       return surfaceReason(out, 'cook');
     case 'block-reason':
       return surfaceReason(out, 'block');
+    case 'write-refusal':
+      return surfaceWriteRefusal(out);
   }
   return 2;
 }

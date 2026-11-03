@@ -1419,13 +1419,12 @@ All compile errors with positions:
   must reach zero.
 
   **A count outside [A, B] on the WRITE is caller error, and it is a
-  write-side contract like every other (§5).** The count asserts in DEBUG
-  ONLY in each target
-  whose language has that idiom — `serialize_assert` in C++ and C,
-  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart,
-  and the checked side of JavaScript's checked/production fork — and is
-  refused in every build only where the language has no such idiom: Go
-  returns `serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`.
+  write-side contract like every other (§5.1, row 3).** The count is
+  refused by each leg's own mechanism in §5.1's table: a debug-only assert
+  where the language's idiom is one (`serialize_assert` in C++ and C,
+  `debug_assert!` in Rust, `Debug.Assert` in C#, `assert` in Java and Dart),
+  and a refusal in every build where it is not (Go returns
+  `serialize.ErrValueOutOfRange`, Elixir raises `ArgumentError`).
   The READ is untouched: a decoded count outside [A, B] fails the read in
   every build, in all nine. What such a write leaves on the wire, where it
   completes at all, is DEFINED BUT UNSPECIFIED: a reader may refuse it, or
@@ -1855,18 +1854,17 @@ union Value
   integer rule. MaxBits = tag bits + the largest payload's MaxBits; a union
   no arm of which carries a payload has MaxBits equal to its tag bits.
   `Write<Union>` ASSERTS the tag before it rides. An out-of-set tag value in
-  storage is caller error like every other write-side value, and it follows
-  §5's tiers exactly: a debug-only assert wherever the language has the
-  idiom (C++, C, C#, Java, Dart, and JavaScript's flat fork), unrepresentable
-  in Rust because the tag IS the enum discriminant, and an every-build
-  refusal only in Go and Elixir, where every write contract is every-build.
-  What a release build handed an out-of-set tag writes is DEFINED BUT
+  storage is a value off its declaration like every other, and it follows
+  §5.1 (row 6) exactly: a debug-only assert wherever the language's idiom is
+  one (C++, C, C#, Java, Dart), unrepresentable in Rust because the tag IS
+  the enum discriminant, and a refusal in every build where the language has
+  no such idiom. What a build whose check is compiled out writes for an
+  out-of-set tag is DEFINED BUT
   UNSPECIFIED, and not bytes every reader is guaranteed to refuse: no arm is
   selected, so the payload the tag names never rides, but C++ writes no tag
   bits at all while C writes the tag unmasked — a 2-bit tag holding 4 rides
   as `00`, a legal `None`, with the spilled bit landing in whatever follows.
-  A shifted-but-legal parse is reachable from either. That is the caller's
-  responsibility, not the writer's to check. The READ rejects a tag above the
+  A shifted-but-legal parse is reachable from either. The READ rejects a tag above the
   count in EVERY build, in all nine.
 - **Selection uses ordinary construction (§4.2).** Selecting an arm with a
   payload constructs it with the declared defaults, recursively. Application
@@ -2398,68 +2396,14 @@ remaining after the last field are the caller's concern, not a validation
 failure — a stream framed over a union ends on the in-band `None` tag by
 design.
 
-**Writes assume trusted data.** The write path is trusted; writing correctly
-is the caller's responsibility. Writer inputs are stated as OBLIGATIONS, not
-defined behaviors: the spec owes a conforming writer exact bytes and owes a
-misbehaving writer nothing. The read side is untouched by this doctrine —
-readers face untrusted data and keep every mandated check above.
-
-Within that doctrine, misuse surfaces by each target's own convention — a
-language verifies correctness the way that language verifies correctness —
-and the list is exhaustive at all nine. **Seven are DEBUG ONLY**, gone from
-release: C++ and C through `serialize_assert` under `NDEBUG`, Rust through
-`debug_assert!`, C# through `Debug.Assert` and `[Conditional("DEBUG")]`, Java
-and Dart through the language's own `assert` under `-ea` and
-`--enable-asserts` (Java's contracts ride one `checkWrite<Name>` predicate
-call, so a dormant assert costs the JIT one inlining slot rather than a
-body), and JavaScript through the checked/production fork its flat writers
-take at module load (§6.1) — the checked writer refuses with `-1`, the
-production writer holds nothing. **Two hold in EVERY BUILD**, because their
-languages have no debug-only idiom to compile out: Go returns
-`serialize.ErrValueOutOfRange` and Elixir raises `ArgumentError`. That is
-deliberate, not an oversight — "For each language, do not force this in. If
-the language simply doesn't have this concept (Golang) then it is not
-something we can do. ... The bottom line is that a user of schema/serialize
-in that languages should feel that the implementation is native to their
-language and how it is used in best practice." (2026-09-07). **No contract
-check panics or throws**: Elixir's raise is the only unwinding path a check
-takes in the nine, and it is the BEAM's own. A contract a release build no
-longer checks is still the caller's to keep, and breaking it is not defined
-to be quiet: in C#, a count past an array's capacity reaches the indexer, and
-the CLR's bounds check throws `IndexOutOfRangeException`.
-
-**There is no exception to the tier split.** Settled 2026-09-07: "No runtime
-should ever promise to keep checks in writing packets (asserts) in release
-build. Removing them is the whole point. ... checks are *DEBUG ONLY*". A
-counted array's COUNT (§4.6) and a union's TAG (§4.8) were the last two
-write-side checks this section held outside the tiers — one by contract, one
-by structure — and neither is one now. Both are writer contracts like every
-other range, asserted in debug and gone in release wherever the language has
-the idiom, and every-build only in Go and Elixir, where every other write
-contract is every-build too. What a release build writes is the
-caller's responsibility, in all nine. (One implementation note, not a rule:
-JavaScript's STREAM tier still refuses from the write in both modes for
-every contract it holds, the count included; the fork the flat tier already
-takes lands there with that tier's own change.)
-
-**A union tag outside its variant set is one of these contracts too, and it
-takes the same tiers.** It had been argued the other way — that dispatch is
-not a guard, so the `switch`'s own `default` may refuse in every build — and
-that argument is retired: the rule has no structural exception any more than
-it has a per-contract one. An out-of-set tag in storage is a value the
-CALLER put there, exactly like a count past its bound or an int outside its
-range, so the write ASSERTS it in debug wherever the language has the idiom
-(C++ and C through `serialize_assert`, C# through `Debug.Assert`, Java and
-Dart through `assert`, JavaScript's flat writers through the checked/
-production fork) and does not check it in release. Rust needs no check at
-all: its tag IS the enum discriminant, so an out-of-set tag cannot be built.
-Go and Elixir keep the every-build refusal, for the same reason they keep
-every other one. What a release build does with an out-of-set tag is defined
-but unspecified — no arm is selected, so the arm's payload never rides, but
-C++ writes no tag bits at all and C writes the tag unmasked, so a reader may
-refuse the result or may accept some other message (§4.8). The READ refuses
-an out-of-set tag in EVERY build, in all nine, and that is the half that
-faces untrusted bytes.
+**Writes refuse what the declaration does not admit, by each language's own
+idiom.** A language verifies correctness the way that language verifies
+correctness: a debug-only assert where that is the language's idiom, a refusal
+in every build where it has none. §5.1 is the whole of it: the contract, the
+mechanism and build per leg, and the conformance surface that holds it. The
+spec owes a conforming writer exact bytes; what a build whose check is
+compiled out writes for a value off its declaration is unspecified, and the
+reader on the other end refuses or clamps it (§4).
 
 **None of this reaches the read side.** "Of course, on read side we MUST
 always do the checks!" (2026-09-07). Every read-side refusal §4 and this
@@ -2468,17 +2412,8 @@ values, union tags, UTF-8 in `string(N)` and UTF-16 in `wstring(N)` — runs
 in EVERY BUILD MODE in all nine targets, and a refusal is terminal. Readers
 face untrusted bytes; writers do not.
 
-The generated
-write code's job is to
-make misuse impossible by construction — bounds come from the schema. Every
-write-side contract
-asserts in DEBUG ONLY, and only where a target carries the idiom at all. Text
-well-formedness is not one of them. UTF-8 in `string(N)` and UTF-16 in
-`wstring(N)` are READ-side refusals in every target (§4.7, §4.12), so the
-guarantee rests on the reader rather than on a write-side check some
-targets carry and others do not. Ranges are trusted
-inputs everywhere: generated code never feeds attacker-influenced values as
-min/max.
+Ranges are trusted inputs everywhere: generated code never feeds
+attacker-influenced values as min/max.
 
 **Read failure leaves the output object in an unspecified state**; callers
 use it only on success. **Read success fully initializes it**: fields in
@@ -2501,6 +2436,120 @@ every accepted read (§4.7, §4.12). Nothing else past a used length or a used
 count is written, in any target. Whole-object comparison in the conformance matrix is
 defined over a fresh output or the used prefix. Write reads only taken
 fields.
+
+### 5.1 The write contract
+
+**Every writer refuses a value its declaration does not admit.** Glenn,
+2026-11-03: "It is our intent to refuse the write of out of range values. In
+low level languages like C/C++ our intent is to do this at debug time for
+speed. Keep that behavior. In languages that do not have asserts it is OK to
+refuse in release build. Some mechanism for refusal of invalid values or write
+must exist." (`docs/rulings.json`, `write-refusal`.) This section is the one
+statement of the rule; [CONTRIBUTING.md](CONTRIBUTING.md),
+[USAGE.md](USAGE.md) and [FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md)
+§3.1 point here.
+
+**The contract**, for every writer of both wires — the packet `Write`, the
+table variable-form `Save` and its `Measure`, the fixed-form `FixedSave`, the
+message-form `SaveMessages` and the text writer — is the closed list of values
+a caller can hold that the declaration does not admit:
+
+| # | the value | the reader's answer to it (§4, SPEC-TABLES §4) |
+|---|---|---|
+| 1 | a ranged integer (scalar, array element, arm payload, map value), or a `fixed`/`ufixed` raw value, off its `min`/`max` | refused or clamped |
+| 2 | a `bits(N)` value wider than `N` bits | refused or clamped |
+| 3 | a counted array's count past its `Max` or below its `Min` (or negative) | refused or clamped |
+| 4 | a `string(N)`, `bytes(N)` or `wstring(N)` length past `N` (or negative) | refused or clamped |
+| 5 | an enum ordinal outside its variant set | refused |
+| 6 | a union tag outside its arm set | refused |
+| 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
+| 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte, a `wstring` with an unpaired surrogate or a zero unit | refused |
+| 9 | a `flags` value with a bit no variant names | refused |
+| 10 | a compressed or ranged float off its range | clamped |
+
+**The mechanism is the language's own, and it decides the build.** A language
+whose established idiom is a debug-only assert checks in its debug build and
+pays nothing in release; a language without one refuses in every build, by its
+own error idiom. No leg silently writes a value off the contract in the build
+where its check is active. A check that guards the WRITER'S OWN STORAGE (a
+count or length that would read past the array it indexes) refuses in every
+build in every leg, because past that point the writer would read memory, not
+a value.
+
+| leg | idiom | build | how a refusal surfaces |
+|---|---|---|---|
+| C++ | `schema_assert` (tables), `serialize_assert` (packets) | debug: `NDEBUG` removes it | the assert; a routed `schema_assert` handler sees it first. A storage guard returns `-1`/`false` in every build |
+| C | `schema_assert`, `serialize_assert` | debug: `NDEBUG` removes it | as C++; a storage guard returns `0`/`-1` |
+| C# | `Debug.Assert`, `[Conditional("DEBUG")]` | debug: a Release build removes it | the assert (a `TraceListener` sees it); a storage guard returns `-1` |
+| Rust | `debug_assert!` | debug: `debug-assertions = false` removes it | a panic; an every-build refusal is `Err` from `_save_checked`. An out-of-set enum or union tag cannot be built: both are native enums |
+| Java | `assert`, one `checkWrite` predicate per type | debug: active under `-ea` | `AssertionError`; an every-build refusal is `null` or `-1` |
+| Dart | `assert` | debug: active under `--enable-asserts`, gone in AOT | `AssertionError`; an every-build refusal is `StateError` or `-1` |
+| Go | none | every build | `-1` and `TableRefuseInvalidValue` (`invalid_value`) from the `...Reason` twin; packets return `serialize.ErrValueOutOfRange` |
+| JavaScript | none | every build | `null` from `Save`, `[-1, "invalid_value"]` from `MeasureReason`, `-1` from `FixedSave` |
+| Elixir | none | every build | `{:error, :invalid_value}` from `save/2`; `ArgumentError` from the fixed and packet writers |
+| Lua | none | every build | `nil, "invalid_value: <Owner>.<field>"` |
+| Luau | none | every build | `nil, { name = "invalid_value", field = "<Owner>.<field>" }` |
+| Squirrel | none | every build | `null`, the reason in `SaveReason` |
+| MOO | none | every build | `nil, { name, field }` |
+| Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
+| Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
+
+**What each writer holds today.** The numbers are the contract's rows. The
+VARIABLE-FORM `Save` is the writer the conformance surface holds (below); it
+holds rows 1–7 in every leg but Lobster:
+
+| leg | variable `Save` and its `Measure` |
+|---|---|
+| C++ | 1–2 debug; 3–7 every build; 8 every build for optional text and text-list elements only; 9–10 unchecked |
+| C | 1–2 debug; 3–7 every build; 8 in the unbounded and blob text setters only; 9–10 unchecked |
+| C# | 1–2 debug; 3–7 every build; 8 every build for `string`, `wstring` unchecked; 9–10 unchecked |
+| Rust | 1–4 debug, and a release build clamps 3; 7 and a `wstring` 4 every build; 5–6 unrepresentable; 8 by type for `string` (a Rust `String`), its zero byte unchecked; 9–10 unchecked |
+| Java | 1–5 debug; 6–7 every build; 8–10 unchecked |
+| Dart | 1–5 debug; 6–7 every build; 10 every build for `required` fields only; 8–9 unchecked |
+| Go | 1–8 and 10 every build; 9 unchecked |
+| JavaScript | 1–7 and 10 every build; 8 for unbounded text and text lists only; 9 not audited |
+| Elixir | 1–6 every build; 7 unrepresentable (a BEAM float holds no NaN or infinity); 8 for unbounded text only; 9–10 unchecked |
+| Lua | 1–7 every build; 8 for text-list elements only; 9–10 not audited |
+| Luau | 1–7 every build; 8–10 not audited |
+| Squirrel | 1–7 every build; 8–10 unchecked |
+| MOO | 1–8 every build; 9–10 unchecked |
+| Goose | 1–7 every build; 8 and 10 unchecked; 9 not audited |
+| Lobster | 7 every build; 1–5 and 8 unchecked; 6 an index fault, not a refusal |
+
+The other writers, over rows 1–7 (rows 8–10 are not audited there):
+
+| leg | `FixedSave` | `SaveMessages` | packet `Write` |
+|---|---|---|---|
+| C++, C | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 3–7 every build; 1–2 masked to the field's width | 1–6 debug; 7 unchecked |
+| C# | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 3–7 every build; 1–2 debug, and they wrap in release | 1, 3–6 debug; 2 and 7 unchecked |
+| Rust | 3–4 debug, then clamped; 7 every build; 1, 2, 5 unchecked | 5–7 every build; 1–3 wrap; 4 unchecked | 1–5 debug; 6 unrepresentable; 7 debug for `float32` |
+| Java | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 3–7 every build; 1–2 masked | 1–7 debug |
+| Dart | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 6–7 every build; 1–5 masked or unchecked | 1–7 debug |
+| Go | 1–7 every build | 3–7 every build; 1 clamped and counted | 1–6 every build; 7 every build on the flat path, a panic on the per-field path |
+| JavaScript | 7 every build; 1 for `required` fields only; 2–6 unchecked | 5–7 every build; 1–4 masked | the flat tier 1–6 while `NODE_ENV` is not `production`; 7 unchecked |
+| Elixir | 1–7 every build (`ArgumentError`) | 7 every build; 6 refused as malformed; 1, 3, 4 unchecked; 5 written raw | 1–7 every build (`ArgumentError`) |
+| Lua | 3, 4, 7 raise rather than return; 1, 2, 5, 6 unchecked | 7 every build; 1, 3–5 masked; 6 an incidental error | 1–6 every build; 7 raises |
+| Luau | 7 raises; 1–6 unchecked | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises |
+| Squirrel | 7 every build; 1–6 unchecked | 3, 4, 7 every build; 1 wraps; 5–6 written as `None` | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises |
+| MOO | 3–7 every build; 1 checks the storage width only; 2 unchecked | 5–7 every build; 1, 3, 4 unchecked | 1–7 every build |
+| Goose | 1–6 every build; 7 for ranged floats only | 3–7 every build; 1 masked | 1–7 every build |
+| Lobster | 1–7 every build (`SaveChecked`) | 2–6 every build; 1 and 7 unchecked | 1–6 debug; 7 traps |
+
+**Held by test**: the conformance surface `write-refusal`
+(test/conformance/README.md) loads one instance, sets one field to a value off
+its declaration and saves through the variable-form `Save`, for a ranged
+integer above and below its range, a `bits(6)` past its width, a count past
+`Max`, a text past `N`, an enum ordinal and a union tag past their sets, and a
+NaN and an infinity (rows 1–7). Every refused row has a lawful twin at the same
+boundary that must be written, so a leg that refused everything would fail.
+An assert leg answers from its DEBUG build — C and C++ fork one child per case
+and read an abort as the refusal, C# installs a throwing `TraceListener`, Rust
+catches the panic, the Java driver runs that surface under `-ea` and the Dart
+leg builds a second binary with `--enable-asserts` — and every other leg
+answers from its ordinary build. Each leg carries a negative control,
+`conformance-negative-control-<lang>-write-refusal`, that removes one check
+from a copy of the generated code and requires `<lang> / write-refusal` to go
+red while `wire` stays green.
 
 ## 6. Generated code
 

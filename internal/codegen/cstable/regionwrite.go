@@ -46,6 +46,8 @@ const tableRegionWriteSource = `
         }
         if (f.RequiredValidRaw != null && !f.RequiredValidRaw(value.Raw(f, i))) { return false; }
         if (f.RequiredValidWide != null && !f.RequiredValidWide(value.Wide(f, i))) { return false; }
+        System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(value.Raw(f, i)), "write refused: an integer outside its declared range");
+        System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(value.Wide(f, i)), "write refused: an integer outside its declared range");
         // a NaN or an infinity is refused by every writer (docs/SPEC-TABLES.md §3.3)
         if (f.Kind == 10 || f.Kind == 11) { return !NonFiniteBits(f.Kind, value.Raw(f, i)); }
         if (f.Kind == 13) { return RegionCollect(value.Child(f, i), f.Table, ref ids); }

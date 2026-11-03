@@ -199,6 +199,116 @@ local function used(v: any, slot: string, wide: boolean?): (buffer?, number)
 	return b, n
 end
 
+-- ---- THE WRITE CONTRACT (docs/SPEC-TABLES.md §3) -------------------------
+-- A writer refuses, in every build, a value its field cannot carry, and writes
+-- nothing: the save and the measure answer nil and the refusal invalid_value
+-- naming <Owner>.<field>. The tests: an integer within its width, its
+-- declared range (raw, a fixed field's bounds shifted by F) and its bits(N);
+-- a string(N), wstring(N) or bytes(N) whose used length is 0..N; a counted
+-- array whose count is 0..its bound; an enum ordinal one of its variants
+-- names; a union tag one of its arms names. A nil is the field's absence.
+local function refuse_invalid(c: any, e: any): boolean
+	if c.why == nil then
+		c.why = { name = "invalid_value", field = (c.owner or "?") .. "." .. (e.name or c.field or "?") }
+	end
+	return false
+end
+
+local function is128(x: any): boolean
+	return typeof(x) == "table" and x.lo ~= nil and x.hi ~= nil
+end
+
+-- the declared range's compare, the load's own (schema_load.luau cmp_lt):
+-- a 128-bit value high half first then the low half unsigned, an integer by
+-- the integer library, a number by its own order
+local function int_less(signed: boolean, a: any, b: any): boolean
+	if is128(a) and is128(b) then
+		if a.hi ~= b.hi then
+			if signed then return integer.lt(a.hi, b.hi) end
+			return integer.ult(a.hi, b.hi)
+		end
+		return integer.ult(a.lo, b.lo)
+	end
+	if typeof(a) == "integer" and typeof(b) == "integer" then
+		if signed then return integer.lt(a, b) end
+		return integer.ult(a, b)
+	end
+	return as_number(a) < as_number(b)
+end
+
+local function bound_shift(v: any, fbits: number): any
+	if is128(v) then
+		if fbits >= 64 then return { lo = 0i, hi = integer.lshift(v.lo, integer.create(fbits - 64)) } end
+		local hi = integer.lshift(v.hi, integer.create(fbits))
+		hi = integer.bor(hi, integer.rshift(v.lo, integer.create(64 - fbits)))
+		return { lo = integer.lshift(v.lo, integer.create(fbits)), hi = hi }
+	end
+	if typeof(v) == "integer" then return integer.lshift(v, integer.create(fbits)) end
+	return v * (2 ^ fbits)
+end
+
+local function int_ok(e: any, val: any): boolean
+	if val == nil then return true end
+	local kw = e.kw
+	local signed = e.signed == true
+	local x = val
+	if kw == 16 then
+		if not is128(x) then return false end
+	elseif typeof(x) == "integer" then
+		if kw < 8 then
+			x = integer.tonumber(x)
+		end
+	elseif typeof(x) ~= "number" or x ~= math.floor(x) then
+		return false
+	end
+	if typeof(x) == "number" and kw < 8 then
+		local top = 2 ^ (kw * 8)
+		if signed then
+			if x < -top / 2 or x >= top / 2 then return false end
+		elseif x < 0 or x >= top then
+			return false
+		end
+	end
+	local lo, hi = e.lo, e.hi
+	if lo ~= nil and hi ~= nil then
+		if e.fbits ~= nil and e.fbits > 0 then lo, hi = bound_shift(lo, e.fbits), bound_shift(hi, e.fbits) end
+		if int_less(signed, x, lo) or int_less(signed, hi, x) then return false end
+	end
+	if e.bits ~= nil and e.bits > 0 and e.bits < kw * 8 then
+		local bmax: any = 2 ^ e.bits - 1
+		if typeof(x) == "integer" then bmax = integer.create(bmax) end
+		if int_less(false, bmax, x) then return false end
+	end
+	return true
+end
+
+-- the used length of a string(N), wstring(N) or bytes(N) slot in its own
+-- units (bytes, or UTF-16 code units for a wide one): the Length beside it,
+-- else the buffer's
+local function used_units(v: any, slot: string, wide: boolean?): number
+	local n = v[slot .. "Length"]
+	if n ~= nil then return n end
+	local b = v[slot]
+	if typeof(b) ~= "buffer" then return 0 end
+	if wide then return buffer.len(b) // 2 end
+	return buffer.len(b)
+end
+
+local function len_ok(e: any, n: number): boolean
+	if n < 0 then return false end
+	local bound = e.bound
+	return bound == nil or bound <= 0 or n <= bound
+end
+
+-- a counted array's count beside it is 0..its bound; a list and a fixed or
+-- keyed array have none to test
+local function count_ok(fd: any, holder: any): boolean
+	if fd.array ~= "counted" then return true end
+	local n = holder[fd.slot .. "Count"]
+	if n == nil then return true end
+	return n >= 0 and n <= fd.bound
+end
+
 local function equals_string(b: buffer?, n: number, def: string?): boolean
 	local d = def or ""
 	if b == nil then return #d == 0 end
@@ -232,9 +342,10 @@ end
 -- the bytes one text-list element contributes to its total
 -- (docs/SPEC-TABLES.md §2.13): a plain element's buffer length, or a ?element's value
 -- when present, zero when absent.
-local function text_elem_used(e: any, x: any): number
+local function text_elem_used(e: any, x: any, used: number?): number
 	if e == nil or x == nil then return 0 end
 	if e.s == "str" or e.s == "text" then
+		if used ~= nil then return used end
 		if typeof(x) == "buffer" then return buffer.len(x) end
 		return 0
 	end
@@ -489,6 +600,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 	if s == "bool" then
 		w_u8(w, val and 1 or 0)
 	elseif s == "int" then
+		if not int_ok(e, val) then return refuse_invalid(c, e) end
 		write_int(w, e, val)
 	elseif s == "float" then
 		if e.f32 then
@@ -501,7 +613,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 		end
 	elseif s == "enum" then
 		local vref = enum_ref(c, e, val)
-		if vref < 0 then return false end
+		if vref < 0 then return refuse_invalid(c, e) end
 		w_leb(w, vref)
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		w_leb(w, not val and 0 or c.nodes.index[val])
@@ -519,6 +631,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 	elseif s == "str" or s == "text" then
 		local n = 0
 		if typeof(val) == "buffer" then n = len or buffer.len(val) end
+		if s == "str" and not len_ok(e, n) then return refuse_invalid(c, e) end
 		if e.wide then n = n * 2 end
 		w_leb(w, n)
 		if n > 0 then w_raw(w, val, 0, n) end
@@ -659,16 +772,19 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	elseif s == "ptr" or s == "sblob" or s == "bblob" then
 		w_leb(w, not val and 0 or c.nodes.index[val])
 	elseif s == "str" then
+		if not len_ok(arm, used_units(u, arm.slot, arm.wide)) then return refuse_invalid(c, arm) end
 		local b, n = used(u, arm.slot, arm.wide)
 		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
 	elseif s == "text" then
 		if typeof(val) == "buffer" then w_raw(w, val, 0, buffer.len(val)) end
 	elseif s == "bytes" then
+		if not len_ok(arm, used_units(u, arm.slot, false)) then return refuse_invalid(c, arm) end
 		local b, n = used(u, arm.slot, false)
 		w_u8(w, 6) -- bytes ride as an array of u8 (§2.5)
 		w_leb(w, n)
 		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
 	elseif s == "arr" then
+		if not count_ok(arm, u) then return refuse_invalid(c, arm) end
 		local count = live_count(arm, u, val)
 		w_u8(w, arm.ek)
 		w_leb(w, count)
@@ -695,7 +811,7 @@ end
 -- arm names has no wire identity, and the save refuses it (§5).
 write_arm_header = function(c: any, un: any, w: any, u: any): boolean
 	local arm = un.arms[u.Type]
-	if arm == nil then return false end
+	if arm == nil then return refuse_invalid(c, {}) end -- named by the field that holds it
 	c.owner, c.field = un.name, arm.name
 	w_leb(w, ref(c.ids, arm.id))
 	if arm.s == "void" then
@@ -736,24 +852,30 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 	local val = v[fd.slot]
 	-- `| required` (docs/SPEC-TABLES.md §2.3): the writer ALWAYS writes the
 	-- field when its guard holds — no default elision — so it rides on every
-	-- record. A required integer whose declared range excludes its stored
-	-- value has no wire value, and the save refuses (nil), as Go's writer does.
+	-- record.
 	local required = fd.required == true
-	if required and s == "int" and fd.lo ~= nil and typeof(fd.lo) ~= "table" and typeof(fd.hi) ~= "table" then
-		local x = as_number(val)
-		local lo, hi = fd.lo, fd.hi
-		if fd.fbits ~= nil and fd.fbits > 0 then lo, hi = lo * (2 ^ fd.fbits), hi * (2 ^ fd.fbits) end
-		if x ~= nil and (x < lo or x > hi) then return false end
+	-- THE WRITE CONTRACT on the field's own storage: an integer is tested
+	-- whether it rides or not (a value at its declared default is lawful), a
+	-- text or bytes length and a count before any byte past them is read.
+	if s == "int" then
+		if not int_ok(fd, val) then return refuse_invalid(c, fd) end
+	elseif s == "str" then
+		if not len_ok(fd, used_units(v, fd.slot, fd.wide)) then return refuse_invalid(c, fd) end
+	elseif s == "bytes" then
+		if not len_ok(fd, used_units(v, fd.slot, false)) then return refuse_invalid(c, fd) end
+	elseif s == "arr" then
+		if not count_ok(fd, v) then return refuse_invalid(c, fd) end
 	end
 	-- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): a list whose element
 	-- bytes sum past the total is refused, as a count past [..N] is.
 	if fd.total ~= nil and s == "arr" then
 		local live = live_count(fd, v, val)
+		local lens = v[fd.slot .. "Length"]
 		local spent = 0
 		for i = 1, live do
-			spent = spent + text_elem_used(fd.e, elem_at(val, i))
+			spent = spent + text_elem_used(fd.e, elem_at(val, i), if type(lens) == "table" then lens[i] else nil)
 		end
-		if spent > fd.total then return false end
+		if spent > fd.total then return refuse_invalid(c, fd) end
 	end
 
 	if s == "ptr" or s == "sblob" or s == "bblob" then
@@ -870,7 +992,7 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			return true
 		end
 		local un = St.lookup(fd.t)
-		if un.arms[val.Type] == nil then return false end
+		if un.arms[val.Type] == nil then return refuse_invalid(c, fd) end
 		w_leb(w, ref(c.ids, fd.id))
 		w_u8(w, 15)
 		return write_arm_header(c, un, w, val)

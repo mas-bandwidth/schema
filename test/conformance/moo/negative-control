@@ -21,8 +21,11 @@
 #           `moo / json-hostile`, which reads through the same index) and
 #           nothing else; `json-write`, `wire` and `cook-write` green, so the
 #           break is the text walk's and the matrix localizes it (I11).
+#   write-refusal  table_save.moo's write_int forgets an integer's declared
+#           range: `moo / write-refusal` red on the ranged rows and nothing
+#           else; `wire`, whose values all sit inside their ranges, green.
 #
-# usage: test/conformance/moo/negative-control <report|walk|framing>
+# usage: test/conformance/moo/negative-control <report|walk|framing|write-refusal>
 set -eu
 
 mode=$1
@@ -42,6 +45,10 @@ framing)
 walk)
     source=internal/codegen/mootable/runtime/json.moo
     sed 's/^\([[:space:]]*\)k\[fd\.json\] = i$/\1if i ~= 1 then k[fd.json] = i end/' "$source" > "$out/runtime.moo"
+    ;;
+write-refusal)
+    source=internal/codegen/mootable/runtime/table_save.moo
+    sed 's/^\([[:space:]]*\)if e\.lo ~= nil and e\.hi ~= nil and (/\1if false and (/' "$source" > "$out/runtime.moo"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -85,6 +92,7 @@ case "$mode" in
 report) want="framing report retain " ; green="wire json-read retain-save" ;;
 framing) want="framing " ; green="wire report" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
+write-refusal) want="write-refusal " ; green="wire" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

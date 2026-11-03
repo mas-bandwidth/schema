@@ -331,7 +331,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -749,9 +749,126 @@ defmodule Driver do
     end
   end
 
+  # THE WRITE CONTRACT (docs/SPEC.md §5.1, testdata/conformance/tables/FORMAT.md):
+  # each row loads its wire as the root, sets the ONE field at the path, and
+  # saves through the variable-form save/2 the `wire` surface uses. The BEAM
+  # has no dormant assert, so the refusal is save's {:error, reason} in every
+  # build. A value is a map, so the path is walked through the descriptors and
+  # the leaf set whatever the representation holds: an enum is its variant
+  # NAME and a union {arm name, payload}, so a raw ordinal or tag outside the
+  # set has no name and is set as the bare integer (a union as {tag, nil}),
+  # which the map holds and the writer must refuse. A BEAM float holds no NaN
+  # and no infinity, so a `float` row is unrepresentable.
+  defp run("write-refusal", rows, outdir) do
+    for [name, unit, root, wire, path, kind, value] <- rows(rows, "write-refusal") do
+      mod = table_module(unit) || raise "write-refusal #{name}: unit #{unit} has no codec"
+      {:ok, loaded, _report} = mod.load(root, File.read!(wire))
+      desc = Map.fetch!(mod.descriptors(), root)
+      view = Module.concat([Macro.camelize(unit_package(unit)), "UnitView"]).unit_view()
+
+      verdict =
+        try do
+          mutated = wref_set(mod, view, desc, loaded, wref_path(path), kind, value)
+
+          case mod.save(root, mutated) do
+            {:ok, _bytes} -> "wrote\n"
+            {:error, reason} when reason in [:invalid_value, :non_finite_float] -> "refused\n"
+            other -> raise "write-refusal #{name}: save answered #{inspect(other)}"
+          end
+        catch
+          :unrepresentable -> "unrepresentable\n"
+        end
+
+      write(outdir, name, verdict)
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
+  end
+
+  # a write-refusal path: dotted field names, each with an optional [i]
+  defp wref_path(path) do
+    for seg <- String.split(path, ".") do
+      case Regex.run(~r/^([A-Za-z0-9_]+)\[([0-9]+)\]$/, seg) do
+        [_, field, i] -> {field, String.to_integer(i)}
+        nil -> {seg, nil}
+      end
+    end
+  end
+
+  defp wref_set(mod, view, desc, value, [{name, index} | rest], kind, raw) do
+    f =
+      Enum.find(desc.fields, &(&1.name == name)) ||
+        raise "write-refusal: #{desc.name} has no field #{name}"
+
+    current = Map.get(value, name, f.default)
+    descs = mod.descriptors()
+
+    new =
+      case {index, rest} do
+        {nil, []} ->
+          wref_leaf(view, f, current, kind, raw)
+
+        {nil, _} ->
+          wref_set(mod, view, Map.fetch!(descs, f.elem), current || %{}, rest, kind, raw)
+
+        {i, []} ->
+          List.replace_at(current, i, wref_leaf(view, f, Enum.at(current, i), kind, raw))
+
+        {i, _} ->
+          inner = Map.fetch!(descs, f.elem)
+
+          List.replace_at(
+            current,
+            i,
+            wref_set(mod, view, inner, Enum.at(current, i), rest, kind, raw)
+          )
+      end
+
+    Map.put(value, name, new)
+  end
+
+  defp wref_leaf(_view, _f, _current, "float", _raw), do: throw(:unrepresentable)
+
+  defp wref_leaf(_view, _f, _current, "int", raw), do: String.to_integer(raw)
+
+  defp wref_leaf(_view, _f, current, "count", raw) do
+    n = String.to_integer(raw)
+    if n < 0, do: throw(:unrepresentable)
+    list = current || []
+
+    if n <= length(list),
+      do: Enum.take(list, n),
+      else: list ++ List.duplicate(hd(list), n - length(list))
+  end
+
+  defp wref_leaf(_view, _f, _current, "length", raw) do
+    n = String.to_integer(raw)
+    if n < 0, do: throw(:unrepresentable)
+    String.duplicate("a", n)
+  end
+
+  defp wref_leaf(view, f, _current, "ordinal", raw) do
+    n = String.to_integer(raw)
+    e = Enum.find(view.enums, &(&1.name == String.trim_trailing(f.type_name, "?")))
+
+    case Enum.find(e.variants, &(&1.value == n)) do
+      %{name: name} -> name
+      nil -> n
+    end
+  end
+
+  defp wref_leaf(view, f, _current, "tag", raw) do
+    n = String.to_integer(raw)
+    u = Enum.find(view.unions, &(&1.name == f.elem))
+
+    case Enum.find(u.variants, &(&1.value == n)) do
+      %{value: 0} -> nil
+      %{name: name} -> {name, nil}
+      nil -> {n, nil}
+    end
   end
 
   # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----

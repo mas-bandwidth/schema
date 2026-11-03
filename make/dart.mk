@@ -657,6 +657,13 @@ build/conformance-dart: build/tables-generated-dart/.stamp cards-dart-generate t
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
+# Its DEBUG twin, the same driver with asserts compiled in: the write-refusal
+# surface answers from it (test/conformance/dart/driver), because the variable
+# writer's write contract is checked by Dart asserts.
+build/conformance-dart-asserts: build/tables-generated-dart/.stamp cards-dart-generate test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) compile exe --enable-asserts -o $@ test/conformance/dart/main.dart >/dev/null
+
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
 # scalars (the WIDE KINDS as array elements) are carried by two pieces of
@@ -1379,7 +1386,7 @@ test-dart: toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp 
 TEST_LEGS         += test-dart
 TOOLCHAIN_LEGS    += dart
 TOOLCHAIN_PINS_dart := DART
-CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
+CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart build/conformance-dart-asserts)
 # Packet UTF-8 content validation, including a compiled mutation control.
 build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
 	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema
@@ -1714,6 +1721,14 @@ conformance-negative-control-dart-share: build/conformance-harness
 .PHONY: conformance-negative-control-dart-absent
 conformance-negative-control-dart-absent: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control absent "$(DART)"
+
+# THE WRITE CONTRACT'S (docs/SPEC.md §5.1): the ranged-integer assert out of a
+# copy of the generated tabledemo library, the driver compiled against it with
+# --enable-asserts, and `write-refusal` red on the two out-of-range rows alone,
+# `wire` green.
+.PHONY: conformance-negative-control-dart-write-refusal
+conformance-negative-control-dart-write-refusal: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal "$(DART)"
 
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.

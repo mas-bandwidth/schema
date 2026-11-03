@@ -26,8 +26,12 @@
 #           of being refused as malformed, so `lua / framing`
 #           (node_cycle_self, node_cycle_to_root, node_cycle_mid) goes red and
 #           nothing else; `wire` and `report` green.
+#   write-refusal  descriptor.lua's declared-range test (D.int_ok) is taken
+#           out: a ranged integer past its min or max is written instead of
+#           refused, so `lua / write-refusal` (wref_range_high, wref_range_low)
+#           goes red and nothing else; `wire` and `json-read` green.
 #
-# usage: test/conformance/lua/negative-control <report|walk|framing|cycle>
+# usage: test/conformance/lua/negative-control <report|walk|framing|cycle|write-refusal>
 set -eu
 
 mode=$1
@@ -51,6 +55,10 @@ framing)
 cycle)
     source=internal/codegen/luatable/runtime/load.lua
     sed 's/^  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then$/  if false then/' "$source" > "$out/runtime.lua"
+    ;;
+write-refusal)
+    source=internal/codegen/luatable/runtime/descriptor.lua
+    sed 's/^      if x < d.lo or x > d.hi then return false end$/      if false then return false end/' "$source" > "$out/runtime.lua"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
 esac
@@ -89,6 +97,7 @@ report) want="framing report retain " ; green="wire json-read retain-save" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 framing) want="framing " ; green="wire report" ;;
 cycle)  want="framing " ; green="wire report" ;;
+write-refusal) want="write-refusal " ; green="wire json-read" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the lua $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

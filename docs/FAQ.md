@@ -270,24 +270,16 @@ hand-crafted hostile bytes in the cross-language test corpus.
 
 ## Do writes validate like reads do?
 
-No. **The guarantee is on reads** — that is where untrusted input arrives, and
-it holds in all nine languages.
-
-On the write side each language uses its own correctness idiom: C++ and C
-have `assert`/`NDEBUG`, a check that disappears in release, so that is what
-they use;
-Go has no assert idiom, so it returns `ErrValueOutOfRange`, and the BEAM has
-no dormant assert at all, so Elixir raises `ArgumentError` in every build.
-Those two are the only every-build write side of the nine. The other seven
-are debug-only: C# through `Debug.Assert`, Rust through `debug_assert!`,
-Dart and Java through the language's own `assert`, and JavaScript through
-the checked/production fork its flat writers take at load. A language should
-verify correctness the way that language verifies correctness — which means
-the write side is not uniform across targets, and you should not build on it.
-Keep values inside their declared bounds when you write them — your code
-already knows they are,
-and in a game shipping at 60 Hz re-checking every field on the write path is a
-cost with no buyer. See
+They refuse what the schema does not admit, each in its own language's idiom
+([SPEC.md](SPEC.md) §5.1). C, C++, C#, Rust, Java and Dart check in DEBUG and
+pay nothing in release (`schema_assert`/`serialize_assert` under `NDEBUG`,
+`Debug.Assert`, `debug_assert!`, `assert`); Go, JavaScript, Elixir, Lua, Luau,
+Squirrel, MOO and Goose have no debug-only idiom and refuse in every build. The
+guarantee that holds in EVERY build of every language is on reads — that is
+where untrusted input arrives. Keep values inside their declared bounds when
+you write them — your code already knows they are, and in a game shipping at
+60 Hz re-checking every field on the write path in release is a cost with no
+buyer. See
 [USAGE.md](USAGE.md#writes-are-the-callers-responsibility).
 
 ## Is everything supported in all nine languages?

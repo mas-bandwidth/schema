@@ -271,11 +271,15 @@ namespace Blockdemo
         public Func<ulong, TableReport, ulong> ClampRaw;
         public Func<ulong, TableReport, ulong> ClampJsonInteger;
         public Func<ulong, bool> RequiredValidRaw;
+        // a non-required ranged integer's or bits(N) field's write-side range,
+        // Debug.Assert-checked by the writer; null where the storage is the range
+        public Func<ulong, bool> WriteValidRaw;
         public UInt128 DefaultWide;
         public int FracBits;
         public bool WideSigned;
         public Func<UInt128, TableReport, UInt128> ClampWide;
         public Func<UInt128, bool> RequiredValidWide;
+        public Func<UInt128, bool> WriteValidWide;
         public Func<object, int, UInt128> GetWide;
         public Action<object, int, UInt128> SetWide;
         public Func<object, char[]> GetChars;
@@ -2924,14 +2928,20 @@ namespace Blockdemo
                     // re-establishment a nested table and a union arm already get.
                     ResetSlots(value, f);
                     PutCount(value, f, 0);
-                    int placed = 0; long textSpent = 0; bool textFull = false;
+                    int placed = 0; long textSpent = 0; bool textFull = false; int textSeen = 0;
                     char shape = ElementShape(f);
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
                         if (c == ']') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
-                        if (textFull) { if (!SkipValue(text,ref input,depth+1)) { return false; } }
+                        if (textFull)
+                        {
+                            // the total dropped this element; one past [..N] is counted
+                            // as well, as the wire counts its count clamp (§2.13)
+                            if (++textSeen > f.ArrayBound) { input.Report.Clamped++; }
+                            if (!SkipValue(text,ref input,depth+1)) { return false; }
+                        }
                         else if (placed >= f.ArrayBound)
                         {
                             // more elements than the reader's bound: the bounded prefix
@@ -2953,7 +2963,7 @@ namespace Blockdemo
                             if(f.TextTotal>0){
                                 object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
                                 int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;}
+                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;textSeen=placed+1;}
                             }
                             if(!textFull){placed++;}
                         }
@@ -3831,10 +3841,12 @@ namespace Blockdemo
                 if (bytes.Length < 9) { return -1; }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { return -1; }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { return -1; } } }
+                if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(root)) { return -1; }
                 long extent = 0;
@@ -4003,10 +4015,12 @@ namespace Blockdemo
                 if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+                if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
@@ -4733,6 +4747,10 @@ namespace Blockdemo
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
+                // a ranged integer or a bits(N) value outside its field is caller
+                // error on the write side: checked in a debug build, gone in release
+                System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i)), "write refused: an integer outside its declared range");
+                System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(f.GetWide(value, i)), "write refused: an integer outside its declared range");
                 // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
                 // §3.3): collect precedes measure and the first output byte, so Measure
                 // and Save both answer -1.
@@ -5570,32 +5588,24 @@ namespace Blockdemo
                     if (field.Optional && placed) { field.SetPresent(value, true); }
                 }
             }
+            // DistinctVocabulary proves the id table's entries distinct (docs/SPEC-TABLES.md
+            // §3, THE DISTINCTNESS CHECK IS BOUNDED WORK); every caller has refused a
+            // table above 4096 entries first. Under sixteen entries a pairwise scan is
+            // at most 120 comparisons. From sixteen up the ids are copied to a stack
+            // array of at most 32 KiB and sorted (MemoryExtensions.Sort, introsort:
+            // O(n log n) whatever the ids are), and a repeat sits beside its twin. A
+            // hash probe would let ids crafted onto one slot cost n(n-1)/2.
             static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
             {
                 int count = vocabulary.Length / 8;
                 if (count >= 16)
                 {
-                    // Slots store ordinal+1, so the identity zero remains an ordinary
-                    // identity. At most 4096 entries occupy 8192 slots: even deliberately
-                    // colliding identities reach an empty slot after at most 4096
-                    // occupied probes, so the whole walk is bounded and allocation-free
-                    // (docs/SPEC-TABLES.md §3, the bounded-work contract).
-                    Span<ushort> slots = stackalloc ushort[8192];
-                    slots.Clear();
-                    for (int i = 0; i < count; i++)
-                    {
-                        ulong id = Read64(vocabulary, i * 8);
-                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 51);
-                        while (slots[slot] != 0)
-                        {
-                            if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
-                            slot = (slot + 1) & 8191;
-                        }
-                        slots[slot] = (ushort)(i + 1);
-                    }
+                    Span<ulong> ids = stackalloc ulong[count];
+                    for (int i = 0; i < count; i++) { ids[i] = Read64(vocabulary, i * 8); }
+                    ids.Sort();
+                    for (int i = 1; i < count; i++) { if (ids[i] == ids[i - 1]) { return false; } }
                     return true;
                 }
-                // Tiny vocabularies avoid scratch initialization.
                 for (int i = 0; i < vocabulary.Length; i += 8)
                 {
                     ulong id = Read64(vocabulary, i);

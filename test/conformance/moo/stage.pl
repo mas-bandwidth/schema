@@ -90,6 +90,7 @@ my %kinds = (
 	"cook-forgery"  => ["forgery"],
 	"block-reason"  => ["refusal", "forgery"],
 	"cook-reason"   => ["refusal", "forgery"],
+	"write-refusal" => ["write-refusal"],
 );
 my %want = map { $_ => 1 } @{ $kinds{$surface} || [] };
 

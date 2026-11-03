@@ -83,6 +83,19 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
+/* THE WRITE CONTRACT's battery (docs/SPEC.md §5.1). The setter lives in the
+ * unit that owns the types and answers 0 for a (root, path, kind) it does not
+ * know; the case runner forks, so an assert's abort is an answer and not the
+ * end of the surface. */
+int conformance_write_refusal_set_tabledemo( const char * root, void * value, const char * path,
+                                             const char * kind, const char * text );
+#define CONFORMANCE_WROTE 1
+#define CONFORMANCE_REFUSED 2
+#define CONFORMANCE_NO_SETTER 3
+#define CONFORMANCE_BROKEN 4
+int conformance_write_refusal_case( const ConformanceCodec * codec, const uint8_t * wire, int64_t bytes,
+                                    const char * root, const char * path, const char * kind, const char * text );
+
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);
 
 /* the per-unit entry points, each defined in that unit's own translation unit */

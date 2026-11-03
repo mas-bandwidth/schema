@@ -24,7 +24,7 @@ import (
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
-	"cook-reason", "block-reason"}
+	"cook-reason", "block-reason", "write-refusal"}
 
 type driver struct {
 	lang string
@@ -257,6 +257,11 @@ func deriveManifest(m *Manifest, path string) error {
 		// reason itself is the expectation and stays withheld
 		fmt.Fprintf(&b, "refusal %s %s\n", r.Forgery, r.Kind)
 	}
+	for _, wr := range m.WriteRefusals {
+		// the verdict is the answer and stays withheld: a driver is handed the
+		// value and owes what its writer does with it (docs/SPEC.md §5.1)
+		fmt.Fprintf(&b, "write-refusal %s %s %s %s %s %s %s\n", wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
+	}
 	return writeFileAtomic(path, []byte(b.String()))
 }
 
@@ -481,6 +486,14 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				continue
 			}
 			out = append(out, expectation{name: r.Forgery, want: []byte(r.Reason + "\n")})
+		}
+	case "write-refusal":
+		// THE WRITE CONTRACT (docs/SPEC.md §5.1): a value its declaration does
+		// not admit is refused, and the lawful value at the same boundary is
+		// written. An assert leg answers from its debug build, where the
+		// check is active; every other leg answers from any build.
+		for _, wr := range m.WriteRefusals {
+			out = append(out, expectation{name: wr.Name, want: []byte(wr.Verdict + "\n")})
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
@@ -783,6 +796,14 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 			r.mark(e.name, outcomeFail)
 			return
 		}
+		r.pass++
+		r.mark(e.name, outcomePass)
+		return
+	}
+	if surface == "write-refusal" && string(e.want) == "refused\n" && string(got) == "unrepresentable\n" {
+		// THE TYPE SYSTEM REFUSED IT FIRST: a leg whose storage cannot hold
+		// the value (a Rust enum is a native enum) has nothing for its writer
+		// to refuse, and says so rather than claiming a refusal it never made.
 		r.pass++
 		r.mark(e.name, outcomePass)
 		return

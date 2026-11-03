@@ -227,10 +227,24 @@ public final class BenchPacketVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((long) v.a < -100 || (long) v.a > 100) return false;
+        if ((long) v.b < 0 || (long) v.b > 65535) return false;
+        if ((long) v.c < -1000000 || (long) v.c > 1000000) return false;
+        if ((v.bits7 >>> 7) != 0) return false;
+        if ((v.bits13 >>> 13) != 0) return false;
+        if ((v.bits23 >>> 23) != 0) return false;
+        if (v.blob.size() > 17) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: BenchPacket";
         return true;
     }
 

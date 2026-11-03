@@ -445,7 +445,37 @@ type Manifest struct {
 	Blocks      []Block
 	Forgeries   []Forgery
 	Refusals    []Refusal
+	// WriteRefusals is the write contract's battery (docs/SPEC.md §5.1): one
+	// value per row that breaks its declaration, or the lawful value at the
+	// same boundary, handed to the variable-form Save.
+	WriteRefusals []WriteRefusal
 }
+
+// WriteRefusal is one row of the `write-refusal` surface (docs/SPEC.md §5.1):
+// load Wire as Root, set the field at Path by Kind to Value, and Save. Verdict
+// is what the save owes: `refused` for a value the declaration does not admit,
+// and `wrote` for the lawful value beside it, which is what keeps a driver
+// that refuses everything from passing.
+//
+// Path is dotted field names with `[i]` element indexes, from the root.
+// Kind says what the value sets: `int` an integer (a ranged scalar or bits),
+// `count` the used count of the array at Path (new elements are copies of
+// element 0), `length` the used length of the text at Path (filled with `a`),
+// `ordinal` an enum by its raw ordinal, `tag` a union by its raw tag, and
+// `float` one of nan, inf or -inf.
+type WriteRefusal struct {
+	Name    string
+	Unit    string
+	Root    string
+	Wire    string
+	Path    string
+	Kind    string
+	Value   string
+	Verdict string
+}
+
+// writeRefusalKinds is the closed set a row's Kind is drawn from.
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true}
 
 // LookupConnection returns the connection a key names.
 func (m *Manifest) LookupConnection(key string) (Connection, error) {
@@ -686,6 +716,23 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: refusal takes a forgery name and a reason", where)
 			}
 			m.Refusals = append(m.Refusals, Refusal{Forgery: f[1], Reason: f[2]})
+		case "write-refusal":
+			// write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+			// The DERIVED manifest carries the line without its verdict.
+			if len(f) != 9 && len(f) != 8 {
+				return nil, fmt.Errorf("%s: write-refusal takes case, unit, root, wire, path, kind, value, verdict", where)
+			}
+			if !writeRefusalKinds[f[6]] {
+				return nil, fmt.Errorf("%s: %q is not a write-refusal kind", where, f[6])
+			}
+			wr := WriteRefusal{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Path: f[5], Kind: f[6], Value: f[7]}
+			if len(f) == 9 {
+				if f[8] != "refused" && f[8] != "wrote" {
+					return nil, fmt.Errorf("%s: %q is not a write verdict: a save is `refused` or `wrote`", where, f[8])
+				}
+				wr.Verdict = f[8]
+			}
+			m.WriteRefusals = append(m.WriteRefusals, wr)
 		case "forgery":
 			// forgery <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label...>
 			if len(f) < 12 {

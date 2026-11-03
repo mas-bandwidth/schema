@@ -11,4 +11,11 @@
 #
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
+#
+# The write-refusal surface answers from the DEBUG build: the write contract's
+# checks are asserts, compiled in by --enable-asserts alone
+# (build/conformance-dart-asserts). Every other surface runs the release build.
+if [ "$2" = "write-refusal" ]; then
+    exec build/conformance-dart-asserts "$@"
+fi
 exec build/conformance-dart "$@"

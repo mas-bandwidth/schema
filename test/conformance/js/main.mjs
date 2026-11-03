@@ -905,6 +905,84 @@ async function surfaceWire(lines, outDir) {
   }
 }
 
+// THE WRITE CONTRACT (testdata/conformance/tables/FORMAT.md, write-refusal):
+// load the wire as its root, set ONE field to a value off its declaration, and
+// save through the variable-form Save the wire surface uses. The JavaScript
+// writer refuses in every build: Save answers null and MeasureReason answers
+// [-1, "invalid_value"] (or "non_finite_float" for a NaN or an infinity).
+//
+// An enum value is its variant's NAME and a union value is { arm, value } with
+// the arm's name, so an ordinal or a tag the declaration does not name is set
+// as the bare number in the name's place: a value no variant or arm names. A
+// lawful tag takes its arm at the arm's declared defaults.
+async function surfaceWriteRefusal(lines, outDir) {
+  for (const f of kind(lines, "write-refusal")) {
+    const [, name, unit, root, wire, path, what, text] = f;
+    const row = wireRows.find((r) => r[0] === unit && r[1] === root);
+    if (row === undefined) { fail(name + ": no variable codec for " + unit + "." + root); }
+    const codec = await codecOf(unit, root, row[2]);
+    const v = codec.load(new Uint8Array(readFileSync(wire)), codec.report());
+    if (v === null) { fail(name + ": load refused " + wire); }
+    writeRefusalSet(await load(row[2]), unit, root, v, path, what, text, name);
+    const saved = codec.save(v);
+    const [size, reason] = codec.measureReason(v);
+    if ((saved === null) !== (size < 0)) { fail(name + ": Save and MeasureReason disagree"); }
+    if (saved === null && reason !== "invalid_value" && reason !== "non_finite_float") {
+      fail(name + ": the save refused with " + reason);
+    }
+    writeFileSync(join(outDir, name), saved === null ? "refused\n" : "wrote\n");
+  }
+}
+
+function writeRefusalNumber(text) {
+  switch (text) {
+    case "nan": return NaN;
+    case "inf": return Infinity;
+    case "-inf": return -Infinity;
+  }
+  const n = Number(text);
+  if (!Number.isInteger(n)) { fail("write-refusal value " + text + " is not an integer"); }
+  return n;
+}
+
+// the one mutation a case names, per root; a path or kind it does not know is
+// a red, never a silent pass
+function writeRefusalSet(m, unit, root, v, path, what, text, name) {
+  const n = writeRefusalNumber(text);
+  const at = unit + "." + root + " " + path + " " + what;
+  switch (at) {
+    case "tabledemo.RootConfig weapons[0].penetration int": v.weapons[0].penetration = n; return;
+    case "tabledemo.RootConfig weapons[0].channel int": v.weapons[0].channel = n; return;
+    case "tabledemo.RootConfig weapons[0].damage float": v.weapons[0].damage = n; return;
+    case "tabledemo.RootConfig weapons[0].effect tag": {
+      const arms = [["buff", m.Buff], ["debuff", m.Debuff]];
+      if (n === 0) { v.weapons[0].effect = null; return; }
+      if (n >= 1 && n <= arms.length) {
+        const [arm, make] = arms[n - 1];
+        v.weapons[0].effect = { arm, value: new make() };
+        return;
+      }
+      v.weapons[0].effect = { arm: n, value: null };
+      return;
+    }
+    case "tabledemo.RootConfig weapons count": {
+      // new elements are copies of element 0
+      const first = v.weapons[0];
+      if (first === undefined) { fail(name + ": the wire holds no element 0 to copy"); }
+      while (v.weapons.length < n) { v.weapons.push(structuredClone(first)); }
+      v.weapons.length = n;
+      return;
+    }
+    case "tabledemo.RootConfig version_note length": v.version_note = "a".repeat(n); return;
+    case "tabledemo.LoadoutConfig grade ordinal": {
+      const variants = ["Bronze", "Silver", "Gold"];
+      v.grade = n === 0 ? "None" : (n <= variants.length ? variants[n - 1] : n);
+      return;
+    }
+  }
+  fail(name + ": no write-refusal mutation for " + at);
+}
+
 // The report line, then the §16 text of the value the read left when the read
 // reads. A root this leg carries no text writer for answers the line alone
 // beside `<case>.absent`: the verdict is held and the value is the missing
@@ -1375,7 +1453,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1389,6 +1467,7 @@ if (args.length < 3) {
 const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
+  case "write-refusal": await surfaceWriteRefusal(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
   case "framing": await surfaceFraming(lines, outDir); break;
   case "retain": await surfaceRetain(lines, outDir, false); break;

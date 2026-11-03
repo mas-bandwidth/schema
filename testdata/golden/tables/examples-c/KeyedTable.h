@@ -2415,6 +2415,10 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_table_integrity_seal_( uint8_t * b
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 typedef int tabledemo_table_refuse_reason_t;
@@ -5124,6 +5128,7 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body( tabledemo_table_writer
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 120, 0xceec99e2d65db674ull, 4 );
+            schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->spawn_count ) );
         }
     }
@@ -7338,8 +7343,10 @@ static SCHEMA_UNUSED int schema_tabledemo_score_board_wire_per_team_( tabledemo_
             tabledemo_table_writer_t probe = tabledemo_table_writer_probe( w );
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
             w = outer; tabledemo_table_writer_rewind(&probe); tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
         }
     }
@@ -9504,6 +9511,8 @@ static SCHEMA_UNUSED int tabledemo_team_config_save_body_retain( tabledemo_table
             }
             tabledemo_table_retain_writer_id( w, 0xceec99e2d65db674ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( value->spawn_count >= 0 && value->spawn_count <= 64 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->spawn_count ) );
         }
     }
@@ -10767,10 +10776,14 @@ static SCHEMA_UNUSED int schema_tabledemo_score_board_wire_per_team__retain( tab
             tabledemo_table_writer_t probe = tabledemo_table_retain_probe( w , retention);
             tabledemo_table_writer_t * outer = w;
             w = &probe;
+            schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
             w = outer;
             tabledemo_table_retain_rewind(&probe, retention);
             tabledemo_table_writer_leb( w, (uint64_t) probe.offset );
+            schema_assert( value->per_team[i] >= 0 && value->per_team[i] <= 100000 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->per_team[i] ) );
         }
     }

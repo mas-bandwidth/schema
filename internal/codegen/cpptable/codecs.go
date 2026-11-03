@@ -992,28 +992,74 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 			ind, expr, formatFloat(f.FMin, isF32), expr, formatFloat(f.FMax, isF32), onBad)
 		return
 	}
+	low, high, bits := tableIntBounds(f)
+	var conds []string
+	if low != "" {
+		conds = append(conds, fmt.Sprintf("%s < %s", expr, low))
+	}
+	if high != "" {
+		conds = append(conds, fmt.Sprintf("%s > %s", expr, high))
+	}
+	if len(conds) > 0 {
+		g.pf("%sif ( %s ) { %s } // | required: out-of-range value refused (§2.3)\n",
+			ind, strings.Join(conds, " || "), onBad)
+	}
+	if bits != "" {
+		g.pf("%sif ( %s > %s ) { %s } // | required: bits(%d) width check (§2.3)\n",
+			ind, expr, bits, onBad, f.Type.Width)
+	}
+}
+
+// tableIntBounds answers the literal ends an integer field's value must stand
+// inside to be written: the declared min and max on the raw scale (each empty
+// where that end sits on the storage width's own limit, which no value can
+// pass), and a bits(N) field's widest value (empty where N is the storage
+// width). Every answer empty is a field the writer has nothing to check on.
+func tableIntBounds(f *ir.Field) (low, high, bits string) {
 	kind := tableScalarKind(f)
 	width := tableKindWidth(kind)
 	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
 	if rlo, rhi, ok := ir.TableRawRange(f); ok {
-		low, high := tableClampEnds(f, width)
-		var conds []string
-		if low {
-			conds = append(conds, fmt.Sprintf("%s < %s", expr, tableIntLit(rlo, signed, width)))
+		lowOn, highOn := tableClampEnds(f, width)
+		if lowOn {
+			low = tableIntLit(rlo, signed, width)
 		}
-		if high {
-			conds = append(conds, fmt.Sprintf("%s > %s", expr, tableIntLit(rhi, signed, width)))
-		}
-		if len(conds) > 0 {
-			g.pf("%sif ( %s ) { %s } // | required: out-of-range value refused (§2.3)\n",
-				ind, strings.Join(conds, " || "), onBad)
+		if highOn {
+			high = tableIntLit(rhi, signed, width)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
-		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif ( %s > %dull ) { %s } // | required: bits(%d) width check (§2.3)\n",
-			ind, expr, maxv, onBad, f.Type.Width)
+		bits = fmt.Sprintf("%dull", (uint64(1)<<f.Type.Width)-1)
 	}
+	return low, high, bits
+}
+
+// emitRangeAssert is the WRITE CONTRACT's debug-only refusal of an integer
+// outside its declaration (docs/SPEC.md §5.1): a ranged value off its min or
+// max, or a bits(N) value wider than N. It is schema_assert, so NDEBUG removes
+// it and a release write pays nothing; a debug write that would put such a
+// value on the wire stops at the assert. A | required field refuses the same
+// value in every build (emitRequiredRangeCheck), so it takes none.
+func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string) {
+	if f.Required || f.HasFloatRange {
+		return
+	}
+	low, high, bits := tableIntBounds(f)
+	var conds []string
+	if low != "" {
+		conds = append(conds, fmt.Sprintf("%s >= %s", expr, low))
+	}
+	if high != "" {
+		conds = append(conds, fmt.Sprintf("%s <= %s", expr, high))
+	}
+	if bits != "" {
+		conds = append(conds, fmt.Sprintf("%s <= %s", expr, bits))
+	}
+	if len(conds) == 0 {
+		return
+	}
+	g.wroteAssert = true
+	g.pf("%sschema_assert( %s ); // a write keeps the declared bounds (SPEC.md §5.1)\n", ind, strings.Join(conds, " && "))
 }
 
 // emitFloatElementCheckAt is that rule over a float ARRAY's elements, the twin
@@ -2034,6 +2080,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind, sfx s
 		g.pf("%s    w.putleb( slot_index%s );\n%s}\n", ind, sfx, ind)
 	default:
 		g.emitRequiredRangeCheck(f, expr, ind, "return false;")
+		g.emitRangeAssert(f, expr, ind)
 		width := tableKindWidth(kind)
 		if width == 16 {
 			// the two lanes of the raw value, low half first — the type

@@ -9572,6 +9572,7 @@ inline bool PatrolSaveBodyFields( const Ctx & ctx, const TableNumbering & number
         if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            schema_assert( value.target_id >= 0 && value.target_id <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
             w.put32( uint32_t( value.target_id ) );
         }
     }
@@ -10771,6 +10772,7 @@ inline bool PatrolSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
         if ( value.target_id != 0 )
         {
             w.header( ids.ref_at( 103, 0xb7bc9ac015a25050ull ), 4 ); // target_id
+            schema_assert( value.target_id >= 0 && value.target_id <= 1000 ); // a write keeps the declared bounds (SPEC.md §5.1)
             w.put32( uint32_t( value.target_id ) );
         }
     }

@@ -667,7 +667,7 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	if ir.TableKindSigned(kind) {
 		t = fmt.Sprintf("i%d", w)
 	}
-	return fmt.Sprintf("%s.extend_from_slice(&%s.to_le_bytes());", dst, rustCast(x, scalarRust(f), t))
+	return intWriteAssert(f, x, g.floatOwner(f)) + fmt.Sprintf("%s.extend_from_slice(&%s.to_le_bytes());", dst, rustCast(x, scalarRust(f), t))
 }
 
 // rustCast renders `(x as to)`, or `(x)` when x's storage type `from` is
@@ -736,6 +736,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
 		}
+		b.WriteString(countWriteAssert(f, x, g.floatOwner(f), inner))
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
@@ -823,6 +824,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			guard = x + ".as_bytes() != " + rustByteArray(f.DefBytes)
 		}
 		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
+		b.WriteString(lenWriteAssert(f, x, g.floatOwner(f), inner))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, %s.len() as u64);\n", inner, x)
@@ -838,6 +840,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			guard = x + ".as_slice() != " + rustByteArray(f.DefBytes)
 		}
 		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, guard))
+		b.WriteString(lenWriteAssert(f, x, g.floatOwner(f), inner))
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		fmt.Fprintf(b, "%sbody.push(%d); // the element kind: u8\n", inner, ir.TableKindU8)

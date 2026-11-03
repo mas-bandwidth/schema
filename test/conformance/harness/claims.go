@@ -229,6 +229,11 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			}
 		}
 	}
+	for _, wr := range m.WriteRefusals {
+		if err := add("write-refusal", wr.Name, wr.Unit, wr.Root); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 

@@ -51,13 +51,15 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
 3. **The wire is law.** A change that moves shipped bytes is a deliberate,
    documented act ([VERSIONING.md](VERSIONING.md)), never a silent
    re-pin of a golden to make a leg go green.
-4. **Write-side checks are DEBUG ONLY.** No runtime ever promises to keep write
-   asserts in a release build — removing them is the point. Seven targets compile
-   them out (`serialize_assert` under `NDEBUG`, `debug_assert!`,
-   `Debug.Assert`/`[Conditional("DEBUG")]`, `assert` under `-ea` and
-   `--enable-asserts`, the JS checked/production fork); Go and Elixir hold theirs
-   in every build because their languages have no debug-only idiom, and that is
-   deliberate. **No target panics and none throws.**
+4. **Every writer refuses a value its declaration does not admit, by its
+   language's own idiom** ([SPEC.md](SPEC.md) §5.1, the one statement of the
+   rule, with the per-leg table). A language whose idiom is a debug-only
+   assert checks in debug and pays nothing in release (C and C++
+   `schema_assert`/`serialize_assert` under `NDEBUG`, Rust `debug_assert!`,
+   C# `Debug.Assert`, Java `assert` under `-ea`, Dart `assert` under
+   `--enable-asserts`); a language without one refuses in every build, by its
+   own error idiom (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose).
+   The conformance surface `write-refusal` holds every leg to it.
 5. **The read side is untouched by that doctrine.** A read faces untrusted data
    and keeps every mandated check, in every build; the tolerant read IS the
    verifier, and the wire fuzzer is the gate on that claim.

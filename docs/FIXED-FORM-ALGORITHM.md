@@ -218,10 +218,11 @@ value nobody wrote (fix 1). **A union** writes the tag and the taken arm only, z
 absent optional** writes flag `0` and **skips the payload store**: a declared default under a clear flag is
 meaning too (fix 13).
 
-**Write-side bound checks are DEBUG ONLY, by rule, in every language that has a debug-only idiom.** `count <= Max`
-and `length <= N` are a caller contract; a release build removes them exactly as it removes `assert`, pays nothing,
-and **clamps nothing**. **Go has no debug-only idiom, so the Go fixed writer REFUSES in every build** (Glenn,
-2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
+**Write-side checks follow [SPEC.md](SPEC.md) §5.1, the one statement of the write contract and its per-leg
+table.** A language whose idiom is a debug-only assert checks `count <= Max`, `length <= N` and the rest of the
+contract in debug; a release build removes them exactly as it removes `assert`, pays nothing, and **clamps
+nothing**. A language without that idiom refuses in every build. **The Go fixed writer REFUSES in every build**
+(Glenn, 2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
 outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`, an ordinal or union tag past its
 set, a `string` whose used bytes are not UTF-8 or hold a NUL, and a `wstring` whose used units are not paired
 UTF-16 or hold a zero unit. The check is over the LIVE extent only (a counted array's `count` elements, an

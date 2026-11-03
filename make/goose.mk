@@ -129,6 +129,15 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control load
 
+# THE WRITE CONTRACT's control: `write-refusal` takes the save's integer-set
+# check out of a copy of the generated units, so the ranged and bits(N) rows
+# write where they owe the refusal and write-refusal goes red while wire stays
+# green.
+.PHONY: conformance-negative-control-goose-write-refusal
+conformance-negative-control-goose-write-refusal: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal
+
 # Whole-load discard (§4), including retaining reads, and the cyclic wire as
 # damage (§3.1). The controls remove the emitted runtime's discard and its
 # cycle check, and require the damaged and the cyclic roots to escape.

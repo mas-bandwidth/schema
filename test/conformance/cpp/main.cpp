@@ -25,7 +25,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdint>
+#include <limits>
 #include <new>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <string>
 #include <vector>
 
@@ -1660,6 +1665,132 @@ static int emit_block_forgeries()
     return 0;
 }
 
+// THE WRITE CONTRACT's battery (docs/SPEC.md §5.1; FORMAT.md, `write-refusal`):
+// load the wire, set ONE field out of (or at the edge of) its declaration, and
+// save through the variable-form Save. C++ refuses two ways, and both answer
+// `refused`: the every-build refusal is Save's -1, and the range of an integer
+// is schema_assert, debug-only, which this driver keeps live (no NDEBUG) and
+// does not route. An assert aborts, so EVERY CASE RUNS IN A CHILD: the child
+// loads, sets, saves and exits with a code for wrote or refused-by-return; the
+// parent reads the status, and death by SIGABRT is the assert's refusal. The
+// child's stderr goes to /dev/null so the assert's text stays out of the log.
+
+enum
+{
+    kWroteExit = 10,
+    kRefusedExit = 11,
+};
+
+// Sets the one field the row names. The set is EXACTLY the rows' (root, path,
+// kind) triples: an unknown one is an error that names itself, so a new row
+// cannot pass by being skipped.
+static bool write_refusal_set( const std::string & root, void * value, const std::string & path,
+                               const std::string & kind, const std::string & text )
+{
+    const long long n = strtoll( text.c_str(), NULL, 10 );
+    if ( root == "RootConfig" )
+    {
+        tabledemo::RootConfig & v = *(tabledemo::RootConfig *) value;
+        if ( v.weapons_count < 1 ) return false; // every weapons[0] path needs element 0
+        tabledemo::WeaponConfig & w0 = v.weapons[0];
+        if ( path == "weapons[0].penetration" && kind == "int" ) { w0.penetration = (int32_t) n; return true; }
+        if ( path == "weapons[0].channel" && kind == "int" ) { w0.channel = (uint32_t) n; return true; }
+        if ( path == "weapons[0].damage" && kind == "float" )
+        {
+            const float inf = std::numeric_limits<float>::infinity();
+            if ( text == "nan" ) w0.damage = std::numeric_limits<float>::quiet_NaN();
+            else if ( text == "inf" ) w0.damage = inf;
+            else if ( text == "-inf" ) w0.damage = -inf;
+            else return false;
+            return true;
+        }
+        if ( path == "weapons[0].effect" && kind == "tag" )
+        {
+            // a lawful tag takes its arm at the arm's declared defaults
+            switch ( n )
+            {
+                case 0: w0.effect.type = tabledemo::EffectType::None; break;
+                case 1: w0.effect.SelectBuff(); break;
+                case 2: w0.effect.SelectDebuff(); break;
+                default: w0.effect.type = (tabledemo::EffectType) n; break;
+            }
+            return true;
+        }
+        if ( path == "weapons" && kind == "count" )
+        {
+            // new elements are copies of element 0; past storage only the count
+            // moves, and the writer must refuse before it reads past the array
+            const int32_t storage = (int32_t) ( sizeof( v.weapons ) / sizeof( v.weapons[0] ) );
+            for ( int32_t i = v.weapons_count; i < (int32_t) n && i < storage; i++ ) v.weapons[i] = v.weapons[0];
+            v.weapons_count = (int32_t) n;
+            return true;
+        }
+        if ( path == "version_note" && kind == "length" )
+        {
+            const int32_t storage = (int32_t) sizeof( v.version_note ) - 1;
+            for ( int32_t i = 0; i < (int32_t) n && i < storage; i++ ) v.version_note[i] = 'a';
+            v.version_note_length = (int32_t) n;
+            return true;
+        }
+    }
+    if ( root == "LoadoutConfig" )
+    {
+        tabledemo::LoadoutConfig & v = *(tabledemo::LoadoutConfig *) value;
+        if ( path == "grade" && kind == "ordinal" ) { v.grade = (tabledemo::Grade) n; return true; }
+    }
+    return false;
+}
+
+static int surface_write_refusal( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "write-refusal" ) continue;
+        // write-refusal <case> <unit> <root> <wire> <path> <kind> <value>
+        if ( f.size() < 8 ) { fprintf( stderr, "driver: short write-refusal line\n" ); return 1; }
+        const Codec * codec = find_codec( f[2], f[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+        std::vector<uint8_t> wire;
+        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        fflush( stdout );
+        fflush( stderr );
+        const pid_t child = fork();
+        if ( child < 0 ) { fprintf( stderr, "driver: fork failed\n" ); return 1; }
+        if ( child == 0 )
+        {
+            void * value = codec->make();
+            codec->reset( value );
+            Report report;
+            if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) ) _exit( 2 );
+            if ( !write_refusal_set( f[3], value, f[5], f[6], f[7] ) ) _exit( 3 );
+            const int quiet = open( "/dev/null", O_WRONLY );
+            if ( quiet >= 0 ) dup2( quiet, 2 );
+            scratch.assign( (size_t) 1 << 20, 0 );
+            const int64_t wrote = codec->save( value, scratch.data(), (int64_t) scratch.size() );
+            _exit( wrote < 0 ? kRefusedExit : kWroteExit );
+        }
+        int status = 0;
+        if ( waitpid( child, &status, 0 ) != child ) { fprintf( stderr, "driver: waitpid failed\n" ); return 1; }
+        const char * verdict = NULL;
+        if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT ) verdict = "refused\n";
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kRefusedExit ) verdict = "refused\n";
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWroteExit ) verdict = "wrote\n";
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == 3 )
+        {
+            fprintf( stderr, "driver: write-refusal %s: no setter for %s %s %s\n", f[1].c_str(), f[3].c_str(), f[5].c_str(), f[6].c_str() );
+            return 1;
+        }
+        else
+        {
+            fprintf( stderr, "driver: write-refusal %s: the child ended with status 0x%x\n", f[1].c_str(), status );
+            return 1;
+        }
+        if ( !spill( out, f[1], verdict, strlen( verdict ) ) ) return 1;
+    }
+    return 0;
+}
+
 int main( int argc, char ** argv )
 {
     if ( argc >= 2 && strcmp( argv[1], "emit-block-forgeries" ) == 0 )
@@ -1676,7 +1807,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
+        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1702,5 +1833,6 @@ int main( int argc, char ** argv )
     if ( surface == "block-dump" ) return surface_block_dump( out );
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
+    if ( surface == "write-refusal" ) return surface_write_refusal( out );
     return 2;
 }

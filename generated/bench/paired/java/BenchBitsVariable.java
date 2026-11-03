@@ -217,10 +217,24 @@ public final class BenchBitsVariable {
         }
     }
 
+    // checkWrite is the write contract buildGraph asserts (-ea): false when
+    // a field of v holds a value its schema cannot (docs/SPEC.md §5.1).
+    static boolean checkWrite(Value v) {
+        if ((v.b7 >>> 7) != 0) return false;
+        if ((v.b13 >>> 13) != 0) return false;
+        if ((v.b23 >>> 23) != 0) return false;
+        if ((v.b3 >>> 3) != 0) return false;
+        if ((v.b11 >>> 11) != 0) return false;
+        if ((v.b19 >>> 19) != 0) return false;
+        if ((v.b48 >>> 48) != 0L) return false;
+        return true;
+    }
+
     public static boolean buildGraph(TableVariable.NodeGraph g, Value v) {
         if (v == null) {
             return true;
         }
+        assert checkWrite(v) : "write contract: BenchBits";
         return true;
     }
 

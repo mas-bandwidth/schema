@@ -207,11 +207,13 @@ func (g *gen) emitOptionalSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, ir.TableKindUnion)
 		g.emitUnionElement(b, f, "opt", "(*out)", ordinal, inner)
 	case vString:
+		b.WriteString(lenWriteAssert(f, "opt", g.floatOwner(f), inner))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, opt.len() as u64);\n", inner)
 		fmt.Fprintf(b, "%sout.extend_from_slice(opt.as_bytes());\n", inner)
 	case vBytes:
+		b.WriteString(lenWriteAssert(f, "opt", g.floatOwner(f), inner))
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		fmt.Fprintf(b, "%sbody.push(%d);\n", inner, ir.TableKindU8)
@@ -339,6 +341,7 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 		case vUnion:
 			g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, "e", "eb", ordinal, ein) })
 		case vString:
+			b.WriteString(lenWriteAssert(f, "e", g.floatOwner(f), ein))
 			fmt.Fprintf(b, "%seb.extend_from_slice(e.as_bytes());\n", ein)
 		default:
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "eb"))
@@ -481,6 +484,7 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		}
 		fmt.Fprintf(b, "%sleb_write(&mut payload, index);\n", ind)
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone:
+		b.WriteString(lenWriteAssert(f, arm, g.floatOwner(f), ind))
 		fmt.Fprintf(b, "%spayload.extend_from_slice(%s.as_bytes());\n", ind, arm)
 	case f.Type.Kind == ir.TWString && f.Array == ir.ArrayNone:
 		// AN ARM'S L IS THE WSTRING'S BYTE LENGTH (docs/SPEC-TABLES.md §3's arm
@@ -516,6 +520,11 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
 	}
+	if f.Array == ir.ArrayCounted {
+		b.WriteString(countWriteAssert(f, x, g.floatOwner(f), ind))
+	} else if f.Array == ir.ArrayNone {
+		b.WriteString(lenWriteAssert(f, x, g.floatOwner(f), ind))
+	}
 	fmt.Fprintf(b, "%s%s.push(%d);\n", ind, dst, ek)
 	fmt.Fprintf(b, "%slet count = %s;\n", ind, count)
 	fmt.Fprintf(b, "%sleb_write(&mut %s, count as u64);\n", ind, dst)
@@ -548,6 +557,7 @@ func (g *gen) emitElementWrite(b *strings.Builder, f *ir.Field, x, dst string, o
 	case vUnion:
 		g.withArmIndex("j as u32", func() { g.emitUnionElement(b, f, x, dst, ordinal, ind) })
 	case vString:
+		b.WriteString(lenWriteAssert(f, x, g.floatOwner(f), ind))
 		fmt.Fprintf(b, "%s%s.extend_from_slice(%s.as_bytes());\n", ind, dst, x)
 	case vBytes:
 		fmt.Fprintf(b, "%s%s.push(*%s);\n", ind, dst, x)
