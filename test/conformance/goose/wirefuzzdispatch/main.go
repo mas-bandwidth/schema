@@ -283,16 +283,31 @@ func relay(pending <-chan *child, w *bufio.Writer) error {
 	return w.Flush()
 }
 
-// execStarter starts <legs>/<unit>/wirefuzz <unit> <arm>, its stderr the
-// dispatcher's own, so the harness keeps every child's diagnostics.
+// stderr is the dispatcher's own stderr, shared by every child's copier.
+type stderr struct{ mu sync.Mutex }
+
+func (s *stderr) Write(b []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return os.Stderr.Write(b)
+}
+
+// execStarter starts <legs>/<unit>/wirefuzz <unit> <arm>. A child's stderr
+// is copied into the dispatcher's own, so the harness keeps every child's
+// diagnostics, yet no child holds the harness's stderr pipe: when the harness
+// kills this dispatcher on a stalled reply, its wait returns even while a
+// child is still spinning (and on Linux the child dies with the dispatcher,
+// procattr_linux.go).
 func execStarter(legs string) starter {
+	var errs stderr
 	return func(unit, arm string) (*child, error) {
 		path := filepath.Join(legs, unit, "wirefuzz")
 		if info, err := os.Stat(path); err != nil || info.IsDir() {
 			return nil, nil
 		}
 		cmd := exec.Command(path, unit, arm)
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = &errs
+		cmd.SysProcAttr = childProcAttr()
 		in, err := cmd.StdinPipe()
 		if err != nil {
 			return nil, err
