@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/moo/moorun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -98,11 +99,19 @@ print("x" .. table.concat(parts))
 `, rootName, capLit)
 }
 
-// evoLoad runs evoProbe over file.
+// evoLoad runs evoProbe over file. A program that raises answers the head
+// "raised" (a negative control's planted break may read past a record); a
+// re-save the runtime refuses lands its refusal under dump["SAVENIL"].
 func evoLoad(t *testing.T, g *generatedUnit, mod, rootName string, file []byte, capacity int) fixedRun {
 	t.Helper()
-	out := g.run(t, evoProbe(g, mod, rootName, capacity), map[string][]byte{"file": file})
-	lines := strings.Split(out, "\n")
+	if err := os.WriteFile(filepath.Join(g.dir, "main.moo"), []byte(evoProbe(g, mod, rootName, capacity)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := moorun.RunErr(t, g.dir, "main.moo", map[string][]byte{"file": file})
+	if err != nil {
+		return fixedRun{head: "raised", dump: map[string]string{}}
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
 	r := fixedRun{head: lines[0], dump: map[string]string{}}
 	for _, l := range lines[1:] {
 		if strings.HasPrefix(l, "x") {
@@ -112,8 +121,9 @@ func evoLoad(t *testing.T, g *generatedUnit, mod, rootName string, file []byte, 
 			}
 			continue
 		}
-		if strings.HasPrefix(l, "SAVENIL") {
-			t.Fatalf("the save refused what the load landed: %s", l)
+		if rest, ok := strings.CutPrefix(l, "SAVENIL "); ok {
+			r.dump["SAVENIL"] = rest
+			continue
 		}
 		k, v, _ := strings.Cut(l, "=")
 		r.dump[k] = v
@@ -346,14 +356,22 @@ func TestMooFixedEvolutionCompiledPlans(t *testing.T) {
 	e0 := e1
 	e0.Wire ^= 0xbeef
 	e0.Retired = true
-	// F11, R25: a layout past the runtime's plan bound, under its own hash
-	var big strings.Builder
-	big.WriteString("package probe\nfixed table Lineage\n{\n")
-	for i := range 4100 {
-		fmt.Fprintf(&big, "    f%d int8\n", i)
+	// F11, R25: a layout past the runtime's plan bound (4096 entries), a root
+	// table of 4100 int8 fields under a hash of its own; the compiler caps a
+	// declared table's plan at the same bound, so only a lineage carries one
+	const bigFields = 4100
+	entry := func(id uint64, kind byte, size, children uint32) []byte {
+		b := binary.LittleEndian.AppendUint64(nil, id)
+		b = append(b, kind)
+		b = binary.LittleEndian.AppendUint32(b, size)
+		return binary.LittleEndian.AppendUint32(b, children)
 	}
-	big.WriteString("}\n")
-	eBig := evoEntry(t, unitFromSource(t, big.String()), "Lineage")
+	bigLayout := binary.LittleEndian.AppendUint32(nil, bigFields+1)
+	bigLayout = append(bigLayout, entry(0x1111, ir.TableKindTable, bigFields, bigFields)...)
+	for i := range bigFields {
+		bigLayout = append(bigLayout, entry(0x2000+uint64(i), ir.TableKindI8, 1, 0)...)
+	}
+	eBig := mootable.FixedLineageEntry{Wire: 0xb16b16b16b16b16b, Layout: bigLayout, Record: 8 + bigFields}
 	lineage := map[string][]mootable.FixedLineageEntry{"Lineage": {e0, eBig, e1, e2}}
 	g := fixedUnit(t, u3, lineage)
 	src := string(g.files["ProbeTable.moo"])
@@ -671,10 +689,18 @@ func TestMooFixedEvolutionRetiredRuntime(t *testing.T) {
 		if got, want := evoLoad(t, g, "VOLD_"+row+"Table", rootName, data, -1).head, refusedTotal("layout_unknown", false, evoHash(fileHash(data))); got != want {
 			t.Errorf("R15 %s: %s, want %s", row, got, want)
 		}
+		// the newer layout under the reader's own hash: compared, never walked
+		// — a layout that differs is layout_malformed; one whose bytes are
+		// the same (the edit moved only the digest) reaches the records,
+		// whose hash still names the stranger
 		own := evoEntry(t, older, rootName)
 		stranger := clone(data)
 		binary.LittleEndian.PutUint64(stranger[8:], own.Wire)
-		if got, want := evoLoad(t, g, "VOLD_"+row+"Table", rootName, stranger, -1).head, refusedTotal("layout_malformed", false, "-"); got != want {
+		want := refusedTotal("layout_malformed", false, "-")
+		if L := int(binary.LittleEndian.Uint32(data[16:20])); bytes.Equal(data[20:20+L], own.Layout) {
+			want = refusedTotal("no_layout", false, "-")
+		}
+		if got := evoLoad(t, g, "VOLD_"+row+"Table", rootName, stranger, -1).head; got != want {
 			t.Errorf("R10 %s: the stranger's layout under the held hash: %s, want %s", row, got, want)
 		}
 	}
@@ -698,7 +724,7 @@ func TestMooFixedEvolutionNumericWidening(t *testing.T) {
 	body = binary.LittleEndian.AppendUint32(body, 0xC49A5200)
 	body = binary.LittleEndian.AppendUint32(body, 6)
 	file := evoFile(eo.Wire, eo.Layout, body, body)
-	want := map[string]string{"r0.lead": "5", "r0.v": "-7", "r0.f": "0xC093480000000000", "r0.trail": "6", "r0.added": "77", "r1.v": "-7"}
+	want := map[string]string{"r0.lead": "5", "r0.v": "-7", "r0.f": "0xC0934A4000000000", "r0.trail": "6", "r0.added": "77", "r1.v": "-7"}
 	run := func(g *generatedUnit) fixedRun { return evoLoad(t, g, "ProbeTable", "N", file, -1) }
 	lineage := map[string][]mootable.FixedLineageEntry{"N": {eo}}
 	got := run(fixedUnit(t, newer, lineage))
@@ -840,7 +866,7 @@ for _ = 1, 2 do
 	print(#(v :: { any }), rep.unknown, rep.clamped, rep.widened, rep.duplicate)
 end
 `, rootOf(t, older))
-	if got := gc.run(t, main, map[string][]byte{"file": corpusFile(t, corpus, "many_unknown_census.bin")}); got != "3 1 0 0 0\n3 1 0 0 0" {
+	if got := strings.Join(strings.Fields(gc.run(t, main, map[string][]byte{"file": corpusFile(t, corpus, "many_unknown_census.bin")})), " "); got != "3 1 0 0 0 3 1 0 0 0" {
 		t.Errorf("R16: the census over three records, loaded twice: %q", got)
 	}
 }
@@ -965,7 +991,7 @@ func TestMooFixedEvolutionScalarBounds(t *testing.T) {
 		}
 	}
 	gc := fixedUnit(t, u, nil)
-	plant(t, gc, "\t\tif f.lo ~= nil then\n\t\t\tif V.rawCmp(x, f.lo, kw, signed) < 0 then\n", "\t\tif false then\n\t\t\tif V.rawCmp(x, f.lo, kw, signed) < 0 then\n")
+	plant(t, gc, "if f.lo ~= nil then", "if false then")
 	if got := evoLoad(t, gc, "ProbeTable", "T", evoFile(e.Wire, e.Layout, body(-100, -600, 5)), -1).head; got == "ok 1 u0 k0 c3 w0 d0 -" {
 		t.Errorf("the negative control: the dropped clamp still counts")
 	}
@@ -1030,7 +1056,7 @@ func TestMooFixedEvolutionOrdinals(t *testing.T) {
 		}
 	}
 	g := fixedUnit(t, uNew, lin)
-	plant(t, g, "\t\t\t\tif tag > #n.children then\n", "\t\t\t\tif false then\n")
+	plant(t, g, "if tag > #n.children then", "if false then")
 	if got := evoLoad(t, g, "ProbeTable", "Lineage", file, -1).head; got == "ok 1 u0 k0 c2 w0 d0 -" {
 		t.Errorf("the negative control: an uncounted tag still counts two")
 	}
@@ -1303,7 +1329,7 @@ func TestMooFixedEvolutionHostileInput(t *testing.T) {
 		t.Errorf("P3: the last record's hash: %s", got)
 	}
 	gc := fixedUnit(t, u, nil)
-	plant(t, gc, "\t\tif f.lo ~= nil then\n\t\t\tif V.rawCmp(x, f.lo, kw, signed) < 0 then\n", "\t\tif false then\n\t\t\tif V.rawCmp(x, f.lo, kw, signed) < 0 then\n")
+	plant(t, gc, "if f.lo ~= nil then", "if false then")
 	if got := gc.run(t, "--!strict\n"+gc.requireAll()+hostSweep, nil); strings.HasPrefix(got, "0\t") {
 		t.Errorf("the negative control: the sweep without the clamp finds nothing: %s", got)
 	}
