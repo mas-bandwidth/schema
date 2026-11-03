@@ -660,31 +660,24 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     end
     return n
   end
-  -- the token's magnitude as 64 bits, then its 64-bit domain: a magnitude
-  -- past that domain saturates at the end its sign names and counts clamped
-  -- once (§16.2); the range checks below clamp on to the field's own width
-  local mag = dec_integer(digits == "" and "0" or digits, false)
-  local v = mag
-  if fd.signed == false then
-    if neg then
-      v = 0i; sat = true
-    elseif mag_sat(digits) then
-      v = -1i; sat = true
-    end
-  elseif neg then
-    if mag_sat(digits) or integer.ult(integer.bnot(0x7fffffffffffffffi), mag) then
-      v = integer.bnot(0x7fffffffffffffffi); sat = true
-    else
-      v = integer.sub(0i, mag)
-    end
-  elseif mag_sat(digits) or integer.ult(0x7fffffffffffffffi, mag) then
-    v = 0x7fffffffffffffffi; sat = true
-  end
-  if sat then report.clamped = report.clamped + 1 end
-  -- AN UNSIGNED FIELD COMPARES UNSIGNED: v holds a uint64 at or past 2^63 as
-  -- a negative 64-bit integer, which a signed compare would read as below
-  -- every bound (§16.2: an integral token in range is that integer)
+  -- THE ENGINE'S ORDER (internal/tabletext placeInteger): a magnitude past 64
+  -- bits saturates at 2^64-1 and counts clamped; then the declared range, then
+  -- the storage domain, which counts once however far the value moved. v holds
+  -- a uint64 at or past 2^63 as a negative 64-bit integer, so every bound of an
+  -- unsigned field is compared unsigned.
   local unsigned = fd.signed == false
+  if mag_sat(digits) then report.clamped = report.clamped + 1 end
+  local mag = if mag_sat(digits) then -1i else dec_integer(digits == "" and "0" or digits, false)
+  local min64 = integer.bnot(0x7fffffffffffffffi)
+  local v = mag
+  local moved = false
+  if unsigned then
+    if neg then v = 0i; moved = true end
+  elseif neg then
+    if integer.ult(min64, mag) then v = min64; moved = true else v = integer.sub(0i, mag) end
+  elseif integer.ult(0x7fffffffffffffffi, mag) then
+    v = 0x7fffffffffffffffi; moved = true
+  end
   local function cmp(a: any, b: any): number
     if typeof(a) == "integer" and typeof(b) == "integer" then
       if unsigned then
@@ -696,29 +689,34 @@ local function place_integer(fd: any, token: string, integral: boolean, report: 
     local y: number = if typeof(b) == "integer" then integer.tonumber(b) else b
     if x < y then return -1 elseif x > y then return 1 else return 0 end
   end
+  -- a declared range (or a bits width) holds the value inside the domain, so
+  -- a clamp to it supersedes the domain's move
   if fd.lo ~= nil and fd.hi ~= nil then
-    if cmp(v, fd.lo) < 0 then v = fd.lo; report.clamped = report.clamped + 1
-    elseif cmp(v, fd.hi) > 0 then v = fd.hi; report.clamped = report.clamped + 1 end
-  end
-  if fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
+    if moved and neg and not unsigned then v = fd.lo; moved = false; report.clamped = report.clamped + 1
+    elseif moved and not neg then v = fd.hi; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, fd.lo) < 0 then v = fd.lo; moved = false; report.clamped = report.clamped + 1
+    elseif cmp(v, fd.hi) > 0 then v = fd.hi; moved = false; report.clamped = report.clamped + 1 end
+  elseif fd.bits ~= nil and fd.bits > 0 and fd.bits < 64 then
     local bmax = integer.sub(integer.lshift(1i, integer.create(fd.bits)), 1i)
-    if cmp(v, bmax) > 0 then v = bmax; report.clamped = report.clamped + 1 end
+    if neg then
+      v = 0i; moved = false; report.clamped = report.clamped + 1
+    elseif moved or cmp(v, bmax) > 0 then
+      v = bmax; moved = false; report.clamped = report.clamped + 1
+    end
   end
   local width = fd.width or 8
-  if fd.signed then
-    local high = 0x7fffffffffffffffi
-    local low = integer.bnot(high)
-    if width < 8 then
-      high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
-      low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+  if width < 8 then
+    if fd.signed then
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8 - 1)), 1i)
+      local low = integer.sub(0i, integer.lshift(1i, integer.create(width * 8 - 1)))
+      if integer.lt(v, low) then v = low; moved = true
+      elseif integer.gt(v, high) then v = high; moved = true end
+    else
+      local high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i)
+      if integer.ult(high, v) then v = high; moved = true end
     end
-    if integer.lt(v, low) then v = low; report.clamped = report.clamped + 1
-    elseif integer.gt(v, high) then v = high; report.clamped = report.clamped + 1 end
-  else
-    local high = -1i
-    if width < 8 then high = integer.sub(integer.lshift(1i, integer.create(width * 8)), 1i) end
-    if integer.ult(high, v) then v = high; report.clamped = report.clamped + 1 end
   end
+  if moved then report.clamped = report.clamped + 1 end
   if fd.dom == "number" then return integer.tonumber(v) end
   return v
 end

@@ -17,11 +17,11 @@ import (
 // §16.2: an integral token in range is that integer; a magnitude past the
 // domain saturates and counts clamped). The Luau text read holds a uint64 at
 // or past 2^63 as a negative 64-bit integer, so every bound it is checked
-// against is compared unsigned; an int64 token past either end saturates at
-// that end. Each row's wire and clamped count are the Go engine's
+// against is compared unsigned; a token past the field's domain lands at the
+// end its sign names, counted as the engine counts it. Each row's wire and clamped count are the Go engine's
 // (internal/tabletext, internal/tablewire) over the same unit. The reversed
 // witness puts the signed compare back and holds that it is red on exactly
-// the unsigned tokens at and past 2^63.
+// the uint64 tokens at and past 2^63.
 const jsonInt64Schema = `package p
 
 table Root
@@ -45,6 +45,8 @@ var jsonInt64Texts = []string{
 	`{"s": 99999999999999999999999}`,
 	`{"w": 4294967296}`,
 	`{"w": 18446744073709551615}`,
+	`{"w": -99999999999999999999999}`,
+	`{"s": -99999999999999999999999}`,
 }
 
 const jsonInt64Probe = `local json = require("./schema_json")
@@ -124,12 +126,12 @@ func TestLuauJsonUint64SignedCompareNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "    local high = -1i\n"
+	const anchor = "  if moved then report.clamped = report.clamped + 1 end\n"
 	if strings.Count(string(src), anchor) != 1 {
 		t.Fatalf("the plant's anchor is not once in schema_json.luau: %q", anchor)
 	}
 	planted := strings.Replace(string(src), anchor,
-		"    if integer.lt(v, 0i) then v = 0i; report.clamped = report.clamped + 1 end\n"+anchor, 1)
+		"  if unsigned and integer.lt(v, 0i) then v = 0i; moved = true end\n"+anchor, 1)
 	if err := os.WriteFile(path, []byte(planted), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +143,7 @@ func TestLuauJsonUint64SignedCompareNegativeControl(t *testing.T) {
 			red = append(red, jsonInt64Texts[i])
 		}
 	}
-	wantRed := []string{jsonInt64Texts[1], jsonInt64Texts[2], jsonInt64Texts[3], jsonInt64Texts[11]}
+	wantRed := []string{jsonInt64Texts[1], jsonInt64Texts[2], jsonInt64Texts[3]}
 	if strings.Join(red, " | ") != strings.Join(wantRed, " | ") {
 		t.Fatalf("the signed compare is red on %q, want exactly %q", red, wantRed)
 	}
