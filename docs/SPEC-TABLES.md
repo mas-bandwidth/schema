@@ -9828,8 +9828,10 @@ surrogate is the reason `malformed` with the text
 
 **THE MESSAGE FORM** (§3.3) takes the same rank over the batch: a reference
 above the entry count `E`, a reference naming an entry of the wrong sort, a
-quantized index past its `count` and ill-formed text are `wire_damaged`; a
-value outside the sender's announced range is `out_of_range`; and an ANNOUNCED
+quantized index past its `count` and ill-formed text are `wire_damaged`,
+because none of them decodes to a value at all; a ranged offset outside the
+sender's announced range decodes to a definite number and is `out_of_range`, a
+value (§3.3); and an ANNOUNCED
 kind that does not match the reader's declaration is `kind_mismatch` when a
 body uses the field.
 
