@@ -561,6 +561,31 @@ class Contracts(unittest.TestCase):
             self.assertTrue(runner.results[-1]["errors"])
             runner.temporary.cleanup()
 
+    def test_real_runner_pwd_matches_each_physical_working_directory(self):
+        # Go honours a valid inherited logical PWD while make CURDIR resolves
+        # it. Their different source spellings silently miss Go overlays.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve()
+            root = base / "physical"
+            root.mkdir()
+            nested = root / "packet"
+            nested.mkdir()
+            link = base / "logical"
+            link.symlink_to(root, target_is_directory=True)
+            with patch.dict(m.os.environ, {"PWD": str(link)}):
+                runner = m.Runner(root, "goose")
+            for name, cwd in (("root", None), ("packet", link / "packet")):
+                with self.subTest(name=name), contextlib.redirect_stdout(io.StringIO()):
+                    text, status = runner.run(name, [m.sys.executable, "-c",
+                        "import os; print(os.environ['PWD']); print(os.getcwd())"], cwd=cwd)
+                    actual = (cwd or root).resolve()
+                    self.assertEqual(status, 0)
+                    self.assertEqual(text.splitlines(), [str(actual), str(actual)])
+                    command = json.loads((runner.out / (name + ".command.json")).read_text())
+                    self.assertEqual(command["cwd"], str(actual))
+                    self.assertEqual(command["PWD"], str(actual))
+            self.assertEqual(runner.env["PWD"], str(link))
+
     def test_real_runner_nonzero_cannot_be_masked_by_valid_summary(self):
         runner=self.runner("go")
         runner.env={}

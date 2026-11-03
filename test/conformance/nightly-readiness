@@ -372,17 +372,21 @@ class Runner:
             self.env["SCHEMA_CERTIFY_INT32_MAX"] = "1"
 
     def run(self, name, argv, cwd=None, validate=None, expected=0):
-        cwd = cwd or self.root
+        cwd = Path(cwd or self.root).resolve()
+        # Go accepts an inherited logical PWD when it names the same inode,
+        # but make CURDIR uses the physical path. Keep source overlay keys
+        # and Go package paths identical, including packet subdirectories.
+        env = dict(self.env, PWD=str(cwd))
         print("\n=== " + name + " ===\n" + shlex.join(argv), flush=True)
         stem = self.out / name
         (stem.with_suffix(".command.json")).write_text(
-            json.dumps({"argv": argv, "cwd": str(cwd),
+            json.dumps({"argv": argv, "cwd": str(cwd), "PWD": env["PWD"],
                         "SCHEMA_SLOW": "1", "SCHEMA_REQUIRE_CORPUS": "1",
                         "GOFLAGS": "-p=2", "GOMAXPROCS": "2"}, indent=2) + "\n")
         start = time.monotonic()
         try:
             with stem.with_suffix(".log").open("w") as log:
-                proc = subprocess.Popen(argv, cwd=cwd, env=self.env, stdout=subprocess.PIPE,
+                proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True, errors="replace")
                 for line in proc.stdout:
                     print(line, end="", flush=True)
