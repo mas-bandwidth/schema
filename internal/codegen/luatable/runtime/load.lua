@@ -142,6 +142,28 @@ local function fits(r, n)
   return r.at <= r.lim and not math.ult(r.lim - r.at, n)
 end
 
+-- THE COUNT-CAP REFUSAL (docs/SPEC-TABLES.md §2.9): a `[]` or map count above
+-- the int32 storage cap refuses the builder load by name,
+-- count_over_extent_cap. It is not damage: malformed is not set and no counter
+-- moves. The walk runs on to its end, so refuse_count keeps the report's
+-- fields as they stood at the first refusal and LoadTolerant puts them back
+-- before it answers nil; nothing the walk met after the refusal reaches the
+-- report.
+local REPORT_FIELDS = {
+  "malformed", "refused", "unknown", "kindMismatch", "clamped", "widened",
+  "duplicate", "blobShared", "missingRequired", "wireDamaged", "reason",
+  "nonFiniteFloat",
+}
+
+local function refuse_count(ctx)
+  if ctx.capped ~= nil then return end
+  local report, held = ctx.report, {}
+  for i, k in ipairs(REPORT_FIELDS) do
+    held[i] = report[k]
+  end
+  ctx.capped = held
+end
+
 local function r_i8(r)
   local v = r_u8(r)
   if v >= 0x80 then return v - 0x100 end
@@ -1062,12 +1084,11 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
       report.kindMismatch = report.kindMismatch + 1
       return nil, true
     end
-    -- PAST THE INT32 STORAGE CAP is the engine's CountRefusal (§2.8, §2.9),
-    -- not damage: the field keeps nothing, the reason is named, and meeting
-    -- the cap adds no malformed event or other counter (decode.go
-    -- collectionCap). A count AT the cap decodes normally.
+    -- PAST THE INT32 STORAGE CAP the load refuses as count_over_extent_cap
+    -- (§2.8, §2.9): not damage, so refuse_count holds the report as it stood
+    -- and the load answers nil. A count AT the cap decodes normally.
     if above(count, 0x7fffffff) then
-      report.reason = "count_refusal"
+      refuse_count(ctx)
       return {}
     end
     local entry = T.Tables[fd.entry]
@@ -1166,7 +1187,9 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
       report.kindMismatch = report.kindMismatch + 1
       return nil, false
     end
-    report.widened = report.widened + 1
+    -- a list past the int32 storage cap refuses below and moves no counter
+    -- (§2.9), the widening included
+    if not (fd.list and above(count, 0x7fffffff)) then report.widened = report.widened + 1 end
   end
 
   if fd.keyed ~= nil then
@@ -1311,12 +1334,11 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
   end
   local keep = count
   if fd.list then
-    -- PAST THE INT32 STORAGE CAP is the engine's CountRefusal (§2.9),
-    -- not damage: the field keeps nothing, the reason is named, and meeting
-    -- the cap adds no malformed event or other counter (decode.go
-    -- collectionCap). A count AT the cap decodes normally.
+    -- PAST THE INT32 STORAGE CAP the load refuses as count_over_extent_cap
+    -- (§2.9): not damage, so refuse_count holds the report as it stood and
+    -- the load answers nil. A count AT the cap decodes normally.
     if above(count, 0x7fffffff) then
-      report.reason = "count_refusal"
+      refuse_count(ctx)
       return {}
     end
   elseif above(count, fd.bound) then
@@ -1987,6 +2009,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   local raw = node_scan(bytes, o, report, desc.variable, state)
   local ctx = state.ctx
   ctx.table, ctx.report, ctx.np, ctx.good, ctx.owner, ctx.field = o.table, report, 0, raw ~= nil, nil, nil
+  ctx.capped = nil
   ctx.nodes = NO_NODES
   if raw ~= nil then
     if #raw > 0 then ctx.nodes = {} end
@@ -2038,6 +2061,25 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   end
   local missingBefore = report.missingRequired or 0
   read_body(T, ctx, desc, point(state.rd, bytes, 1, o.lim), root, false)
+  -- A COUNT PAST THE INT32 STORAGE CAP refuses the load (§2.9): the report
+  -- is the one the walk had written before the refusal, refused is set and
+  -- the reason is count_over_extent_cap. A non-finite float met before the
+  -- refusal still outranks it (§3.3). The partial value is discarded.
+  local held = ctx.capped
+  if held ~= nil then
+    ctx.capped = nil
+    for i, k in ipairs(REPORT_FIELDS) do
+      report[k] = held[i]
+    end
+    if report.nonFiniteFloat ~= nil then
+      report.reason = "non_finite_float: " .. report.nonFiniteFloat
+    else
+      report.refused = 1
+      report.reason = "count_over_extent_cap"
+    end
+    release(ctx)
+    return nil
+  end
   -- A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too, and outranks
   -- any damage the walk met after it (docs/SPEC-TABLES.md §3.3): nothing
   -- lands, and Reason names the float.
@@ -2059,8 +2101,8 @@ end
 -- strict_refusal answers the refusal's §11/§6.5 name when the strict read
 -- refuses this wire, and nil when it accepts it. It reads the FORM BYTE FIRST
 -- in refusal.lua's order (§2.14, §6.5), then the report the tolerant walk just
--- filled: a refused form, integrity_mismatch, a count_refusal (the engine's
--- CountRefusal, §2.9), wire_damaged, missing_required, malformed, then the
+-- filled: count_over_extent_cap (§2.9), a refused form, integrity_mismatch,
+-- wire_damaged, missing_required, malformed, then the
 -- counters blob_shared, clamped and kind_mismatch; a non-finite float
 -- (§3.3) outranks every one the walk reaches. The set is the one refusal.lua's ReadStrict
 -- owns; unknown, widened and duplicate ALONE are evolution, exact decoding and
@@ -2072,14 +2114,14 @@ local function strict_refusal(bytes, report, root)
   if type(bytes) ~= "string" then return "wire_damaged" end
   local form = #bytes >= 1 and bytes:byte(1) or nil
   if form ~= nil and form ~= 1 then return "unknown_form" end
+  -- A COUNT PAST THE INT32 STORAGE CAP (§2.9) sets refused too, so it is
+  -- named before refused is read as a form refusal.
+  if report.reason == "count_over_extent_cap" then return "count_over_extent_cap" end
   if report.refused ~= 0 then return "unknown_form" end
   if report.reason == "integrity_mismatch" then return "integrity_mismatch" end
   -- A NON-FINITE FLOAT outranks every verdict the walk could reach after it
   -- (§3.3): no read keeps one.
   if report.nonFiniteFloat ~= nil then return "non_finite_float" end
-  -- THE WALK'S CountRefusal (§2.9): the builder-path storage refusal is the
-  -- load's own result, so it refuses by name before any damage class does.
-  if report.reason == "count_refusal" then return "count_refusal" end
   if report.wireDamaged then return "wire_damaged" end
   if (report.missingRequired or 0) > 0 then return "missing_required" end
   if report.malformed then return report.reason or "malformed" end

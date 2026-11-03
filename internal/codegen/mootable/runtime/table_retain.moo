@@ -866,7 +866,8 @@ R.FixedClassRefusal = "fixed_class_root: LoadRetain, MeasureRetain and SaveRetai
 
 -- LoadRetain is the tolerant load into a REGION with the caller's store on. It
 -- answers the root as LoadTolerant does, nil when the read is refused. The
--- store is reset; a nil store is the plain tolerant read. THE REPORT
+-- store is reset, and reset again when the load is refused for a count above
+-- the int32 storage cap; a nil store is the plain tolerant read. THE REPORT
 -- ACCUMULATES ACROSS THE PAIR: zero it once, read it after SaveRetain.
 function R.LoadRetain(root: string, bytes: buffer, report: any, store: any): any
 	local d = S.lookup(root)
@@ -899,6 +900,11 @@ function R.LoadRetain(root: string, bytes: buffer, report: any, store: any): any
 	L.setRetain(nil)
 	if not ok then
 		error(v, 0)
+	end
+	-- A COUNT ABOVE THE int32 STORAGE CAP (§2.9) discards the partial load,
+	-- and the records captured before the refusal go with it
+	if v == nil and report.reason == "count_over_extent_cap" then
+		reset_store(store)
 	end
 	return v
 end
