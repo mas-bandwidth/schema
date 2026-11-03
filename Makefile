@@ -6515,10 +6515,9 @@ conformance: build/conformance-harness build/conformance-cpp build/schema_test_c
 # THE STRICT READ'S REASONS (test/conformance/README.md, "strict-reason"):
 # every leg's strict read at every report and framing wire, the refusal reason
 # by its enum name against testdata/conformance/tables/strict-reasons.txt,
-# which conformance-pin takes from the reference leg. It is a gate of its own,
-# beside `conformance` and not a column of it, so a leg's reason disagreements
-# do not turn that leg's conformance job red; it prints the whole disagreement
-# table and exits nonzero on any row.
+# which conformance-pin takes from the reference leg. `conformance` holds it as
+# the strict-reason column; this target runs the same comparison, prints the
+# whole disagreement table and exits nonzero on any row.
 .PHONY: conformance-strict-reasons
 conformance-strict-reasons: build/conformance-harness build/conformance-cpp build/schema_test_cook $(CONFORMANCE_LEGS)
 	$(CONFORMANCE_ENV) ./build/conformance-harness strict-reasons \

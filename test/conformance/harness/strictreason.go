@@ -19,11 +19,11 @@
 // row's reason and refreshes the marker, and drops it once the reference names
 // the spec's reason.
 //
-// It is a gate of its own (`make conformance-strict-reasons`) rather than a
-// column of `harness run`, so a leg's reason disagreements do not turn that
-// leg's per-leg conformance job red. It prints the whole disagreement table —
-// leg, case, expected reason, the leg's reason — so the owners of each leg's
-// reasons have one list to work from.
+// It is a column of `harness run`, so every leg's conformance job holds it.
+// `harness strict-reasons` (`make conformance-strict-reasons`) runs the same
+// comparison and prints the whole disagreement table — leg, case, expected
+// reason, the leg's reason — so the owners of each leg's reasons have one list
+// to work from.
 package main
 
 import (

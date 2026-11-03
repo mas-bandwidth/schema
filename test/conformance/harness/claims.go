@@ -188,6 +188,19 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
+	// the strict read's reason, over every report, strict and framing wire
+	for _, group := range [][]ReportCase{m.Reports, m.Stricts} {
+		for _, r := range group {
+			if err := add(strictReasonSurface, r.Name, r.Unit, r.Root); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, fc := range m.Framings {
+		if err := add(strictReasonSurface, fc.Name, fc.Unit, fc.Root); err != nil {
+			return nil, err
+		}
+	}
 	for _, rc := range m.Retains {
 		unit := rc.Unit
 		if err := add("retain", rc.Name, unit, rc.Root); err != nil {

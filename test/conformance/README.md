@@ -210,7 +210,7 @@ row can compare; a `json-read` instance is silent, so its answer is the same
 either way, and a driver that called the strict read there would be calling a
 different function than `json-hostile` holds to the oracle.
 
-**`strict-reason` IS THE REFUSAL REASON, AND ITS GATE IS ITS OWN.** `report`
+**`strict-reason` IS THE REFUSAL REASON.** `report`
 and `framing` compare the TOLERANT read's six counters and its verdict, and
 nothing there says WHICH refusal a strict read names, so a reason could drift
 by language with every cell green. This surface runs each leg's strict read
@@ -225,11 +225,11 @@ names and decides nothing; a leg whose strict read names no reason answers
 reference leg, except on a row marked `reference=<reason>`: there the C++
 answer is not the spec's, the row holds the spec's reason by hand, and the
 reference goes red on it with every other leg that agrees with C++.
-`make conformance-strict-reasons` (`harness strict-reasons`) runs every leg
-over it and prints the disagreement table — leg, case, expected reason, the
-leg's reason — and exits nonzero on any row. It is not a column of
-`make conformance`, so a leg's reason disagreements do not turn that leg's
-conformance job red.
+It is a column of `harness run`, so `make conformance` and every leg's
+conformance job hold it. `make conformance-strict-reasons`
+(`harness strict-reasons`) runs the same comparison and prints the whole
+disagreement table — leg, case, expected reason, the leg's reason — and exits
+nonzero on any row.
 
 **A `json-hostile` ROW MAY EXEMPT A PORT THAT HAS NOT TAKEN ITS RULE YET**
 (docs/SPEC-TABLES.md §16.3). The manifest line

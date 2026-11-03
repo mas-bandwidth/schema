@@ -24,7 +24,7 @@ import (
 // surfaces, in the order the matrix prints them.
 var surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
-	"cook-reason", "block-reason"}
+	"cook-reason", "block-reason", strictReasonSurface}
 
 type driver struct {
 	lang string
@@ -482,6 +482,26 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 			}
 			out = append(out, expectation{name: r.Forgery, want: []byte(r.Reason + "\n")})
 		}
+	case strictReasonSurface:
+		// THE STRICT READ'S ONE REASON (docs/SPEC-TABLES.md §6.5): the reason
+		// strict-reasons.txt pins for every report, strict and framing wire,
+		// beside reports.txt in the tables directory; a corpus with no such
+		// wire has no expectation to read
+		cases := strictReasonCases(m)
+		if len(cases) == 0 {
+			break
+		}
+		pinned, err := readStrictReasons(filepath.Join(filepath.Dir(jsonDir), "strict-reasons.txt"))
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range cases {
+			row, ok := pinned[c]
+			if !ok {
+				return nil, fmt.Errorf("strict-reasons.txt pins no reason for %q — run: make conformance-pin", c)
+			}
+			out = append(out, expectation{name: c, want: []byte(row.Reason + "\n")})
+		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
 		// reader, and the matrix says which rather than blaming one for the
@@ -559,6 +579,12 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
 	}
+	// the strict-reason surface reads the `strict` lines too, carried as
+	// report lines in a manifest of its own, so no other surface sees them
+	strictDerived := filepath.Join(work, "strict-manifest.txt")
+	if err := deriveStrictManifest(m, strictDerived); err != nil {
+		return false, err
+	}
 
 	want := map[string][]expectation{}
 	for _, s := range surfaces {
@@ -630,7 +656,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			if err := os.MkdirAll(out, 0o755); err != nil {
 				return false, err
 			}
-			code, stderr, err := runDriver(d, derived, s, out)
+			manifest := derived
+			if s == strictReasonSurface {
+				manifest = strictDerived
+			}
+			code, stderr, err := runDriver(d, manifest, s, out)
 			if err != nil {
 				return false, err
 			}
