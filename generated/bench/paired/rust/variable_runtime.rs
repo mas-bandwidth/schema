@@ -51,6 +51,12 @@ pub enum TableReason {
     TimestampNotRfc3339,
     IntegrityMismatch,
     MissingRequired,
+    /// A tolerant read clamped a value to its declared bound; the strict read
+    /// refuses it by this name (docs/SPEC-TABLES.md §4, §6.5).
+    Clamped,
+    /// A wire field whose kind does not match the declaration; the strict read
+    /// refuses it by this name (docs/SPEC-TABLES.md §4, §6.5).
+    KindMismatch,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -90,6 +96,8 @@ impl TableReason {
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
             TableReason::IntegrityMismatch => "integrity_mismatch",
             TableReason::MissingRequired => "missing_required",
+            TableReason::Clamped => "clamped",
+            TableReason::KindMismatch => "kind_mismatch",
         }
     }
 }
@@ -155,6 +163,50 @@ impl TableReport {
     pub fn missing_required_reason(&self) -> Option<String> {
         if self.missing_required_fields.is_empty() { None }
         else { Some(format!("missing_required: {}", self.missing_required_fields)) }
+    }
+
+    /// THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+    /// error identity", §11): None when the strict rule accepts the read this
+    /// report describes, else the one reason it refuses. A form byte the read
+    /// does not carry is unknown_form whichever form-specific name the
+    /// tolerant report holds; then integrity_mismatch, a non-finite float,
+    /// any damage as wire_damaged, a missing required field, a message-surface
+    /// refusal by its own name, a blob named from two slots, clamped, and
+    /// kind_mismatch, in that order. unknown, widened, retained and duplicate
+    /// alone never refuse.
+    pub fn err(&self) -> Option<TableRefuseReason> {
+        match self.reason {
+            TableReason::NewerForm | TableReason::MessageFormAsFile | TableReason::UnknownForm => {
+                return Some(TableReason::UnknownForm);
+            }
+            TableReason::IntegrityMismatch => return Some(TableReason::IntegrityMismatch),
+            _ => {}
+        }
+        if !self.non_finite_float.is_empty() {
+            return Some(TableReason::NonFiniteFloat);
+        }
+        if self.malformed || self.cycle_on_save {
+            return Some(TableReason::WireDamaged);
+        }
+        if self.missing_required > 0 {
+            return Some(TableReason::MissingRequired);
+        }
+        if self.refused {
+            return Some(match self.reason {
+                TableReason::None | TableReason::Ok => TableReason::UnknownForm,
+                named => named,
+            });
+        }
+        if self.blob_shared > 0 {
+            return Some(TableReason::BlobShared);
+        }
+        if self.clamped > 0 {
+            return Some(TableReason::Clamped);
+        }
+        if self.kind_mismatch > 0 {
+            return Some(TableReason::KindMismatch);
+        }
+        None
     }
 
     pub fn refuse(&mut self, reason: TableReason) -> bool {
