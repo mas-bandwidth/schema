@@ -177,3 +177,32 @@ func TestLobsterUnitViewCorpus(t *testing.T) {
 		})
 	}
 }
+
+func TestLobsterUnitViewRuntimePackages(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"report", "cell", "rec", "w", "v", "r", "s", "stella_registry_probe"} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "Root.schema")
+			if err := os.WriteFile(path, []byte("package "+name+"\ntable Root { n int32 }\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			g, err := generateLoadUnit(t, []string{path})
+			if name != "stella_registry_probe" {
+				if err == nil || !strings.Contains(err.Error(), "collides with a runtime binding") {
+					t.Fatalf("package %s: %v", name, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			program := "import .stella_registry_probeView\nlet view_result = stella_registry_probe.UnitView()\nassert length(view_result.tables) == 1\nprint(\"renamed package passed\")\n"
+			if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))); got != "renamed package passed" {
+				t.Fatal(got)
+			}
+		})
+	}
+}
