@@ -73,7 +73,7 @@ func TestGoLayoutCheckRefusesNamingRecordFieldAndBothNumbers(t *testing.T) {
 			src:  block,
 			want: []string{
 				"func init() {",
-				`tableBlockLayoutSize("LeafBlockProjection", unsafe.Sizeof(LeafBlockProjection{}),`,
+				`tableBlockLayoutSize("LeafBlockProjection", tableSizeof[LeafBlockProjection](),`,
 				`tableBlockLayoutOffset("LeafBlockProjection.`,
 				`"schema block layout: %s is %d bytes in this runtime and %d in the schema "`,
 				`"schema block layout: %s sits at %d in this runtime and %d in the schema "`,
@@ -84,7 +84,7 @@ func TestGoLayoutCheckRefusesNamingRecordFieldAndBothNumbers(t *testing.T) {
 			src:  cook,
 			want: []string{
 				"func init() {",
-				`tableCookLayoutSize("NodeRow", unsafe.Sizeof(NodeRow{}),`,
+				`tableCookLayoutSize("NodeRow", tableSizeof[NodeRow](),`,
 				`tableCookLayoutOffset("NodeRow.`,
 				`"schema cook layout: %s is %d bytes in this runtime and %d in the layout "`,
 				`"schema cook layout: %s sits at %d in this runtime and %d in the layout "`,
