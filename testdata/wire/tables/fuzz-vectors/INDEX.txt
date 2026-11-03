@@ -246,3 +246,6 @@ enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vector
 
 # A nested union arm retains unknown fields in its selected inner table body.
 retain_nested_union_arm messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin
+
+# A known numeric union arm widens identically in plain and retaining reads.
+retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin

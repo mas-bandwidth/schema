@@ -6452,7 +6452,9 @@ const variableRetainSource = `
                     end
 
                   {l, content} when byte_size(content) >= l ->
-                    {:cont, nil, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}
+                    inner = binary_part(content, 0, l)
+                    {:cont, value, report} = retyped_arm(a, name, k, inner, report)
+                    {:cont, value, report, retain}
 
                   _ ->
                     {:cont, nil, %{report | malformed: true}, retain}
