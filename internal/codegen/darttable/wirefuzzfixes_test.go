@@ -124,9 +124,9 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 		},
 		{
 			name: "a by-value body is reset when its id comes round again (§4)",
-			text: loadoutLoad, want: "if (seenPrimary) v.primary = WeaponConfig();", gone: "",
+			text: loadoutLoad, want: "if (seenPrimary) { r.retain?.forget(v.primary); v.primary = WeaponConfig(); }", gone: "",
 			revert: func(s string) string {
-				return strings.Replace(s, "if (seenPrimary) v.primary = WeaponConfig();", "", 1)
+				return strings.Replace(s, "if (seenPrimary) { r.retain?.forget(v.primary); v.primary = WeaponConfig(); }", "", 1)
 			},
 		},
 		{
