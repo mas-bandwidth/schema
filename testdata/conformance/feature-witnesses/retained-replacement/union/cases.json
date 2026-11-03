@@ -1,0 +1,35 @@
+[
+  {
+    "name": "replace",
+    "root": "Root",
+    "wire": "01010f080d0d02040700000003080900000000010f080d07020407000000000013a90c4cbf852abe4c89958393317c9e5630b3ead46180d849983bd70d71f7dfffffffffffffffff8db6f6d2c61cbd6602c078e9f45f832b26f4d696c5a041288be145c2cb04da4f8794b696a762b5a00a00000000000000",
+    "saved": "01010f020d07030407000000000013a90c4cbf852abe26f4d696c5a041284c89958393317c9e0300000000000000",
+    "unknown": 1,
+    "kind_mismatch": 0,
+    "retained": 1,
+    "load_lost": 0,
+    "save_lost": 0
+  },
+  {
+    "name": "incompatible_preserves",
+    "root": "Root",
+    "wire": "01010f080d0d020407000000030809000000000108000000000013a90c4cbf852abe4c89958393317c9e5630b3ead46180d849983bd70d71f7dfffffffffffffffff8db6f6d2c61cbd6602c078e9f45f832b26f4d696c5a041288be145c2cb04da4f8794b696a762b5a00a00000000000000",
+    "saved": "01010f020d0d030407000000040809000000000013a90c4cbf852abe26f4d696c5a041284c89958393317c9e5630b3ead46180d80400000000000000",
+    "unknown": 1,
+    "kind_mismatch": 1,
+    "retained": 1,
+    "load_lost": 0,
+    "save_lost": 0
+  },
+  {
+    "name": "partial_or_none",
+    "root": "Root",
+    "wire": "01010f080d0d02040700000003080900000000010f000013a90c4cbf852abe4c89958393317c9e5630b3ead46180d849983bd70d71f7dfffffffffffffffff8db6f6d2c61cbd6602c078e9f45f832b26f4d696c5a041288be145c2cb04da4f8794b696a762b5a00a00000000000000",
+    "saved": "01000000000000000000",
+    "unknown": 1,
+    "kind_mismatch": 0,
+    "retained": 1,
+    "load_lost": 0,
+    "save_lost": 0
+  }
+]
