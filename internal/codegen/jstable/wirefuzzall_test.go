@@ -226,3 +226,69 @@ func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 		}
 	}
 }
+
+// A failed independent measurement must not suppress the managed reader report.
+func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
+	node := jsNode(t)
+	repo, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitForMeasure(t, repo, "tables/lists")
+	wire := []byte{}
+	model := tabletext.NewModel(u)
+	var report tabletext.Report
+	ok, err := tablewire.Decode(model, model.New(model.Lookup("Album")), wire, &report)
+	if ok || err != nil || !report.Malformed {
+		t.Fatalf("builder oracle: ok=%v err=%v report=%+v", ok, err, report)
+	}
+	files, err := generateVariableFiles(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "lists"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(dir, "lists", name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, retaining := range []byte{0, 1} {
+		var input bytes.Buffer
+		binary.Write(&input, binary.LittleEndian, uint32(1))
+		for _, name := range []string{"listdemo", "Album"} {
+			binary.Write(&input, binary.LittleEndian, uint16(len(name)))
+			input.WriteString(name)
+		}
+		input.WriteByte(1)
+		input.WriteByte(retaining)
+		binary.Write(&input, binary.LittleEndian, uint32(0))
+		binary.Write(&input, binary.LittleEndian, uint32(len(wire)))
+		input.Write(wire)
+		cmd := exec.Command(node, "test/conformance/js/main.mjs", "wire-fuzz")
+		cmd.Dir = repo
+		cmd.Env = append(os.Environ(), "SCHEMA_JS_GENERATED="+dir)
+		cmd.Stdin = &input
+		var output, stderr bytes.Buffer
+		cmd.Stdout = &output
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("driver: %v\n%s", err, stderr.String())
+		}
+		data := output.Bytes()
+		if len(data) != 48 || data[0] != 1 {
+			t.Fatalf("retaining=%d protocol len%d %x", retaining, len(data), data)
+		}
+		reply := data[1:]
+		if reply[0] != 0 || reply[21] != 1 || reply[22] != 0 || int64(binary.LittleEndian.Uint64(reply[39:47])) != -1 {
+			t.Fatalf("retaining=%d empty malformed load did not preserve its report: %x", retaining, reply)
+		}
+		for _, off := range []int{1, 5, 9, 13, 17, 31, 35} {
+			if binary.LittleEndian.Uint32(reply[off:off+4]) != 0 {
+				t.Fatalf("unexpected report event at%d", off)
+			}
+		}
+	}
+}
