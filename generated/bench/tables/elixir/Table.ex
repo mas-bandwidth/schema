@@ -3314,41 +3314,46 @@ defmodule Benchtable.Table do
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
+         kid when kid != :error <- resolve(ids, kref),
          {l, r2} when byte_size(r2) >= l <- leb(r1) do
       elem = binary_part(r2, 0, l)
       rest = binary_part(r2, l, byte_size(r2) - l)
       item = Map.put(f.item, :elem_kind, f.elem_kind)
 
-      {v, report} =
-        if f.elem_kind == 13 do
-          {v, elem_report} =
-            carry_count_report(report, fn ->
-              read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
-            end)
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+          read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-          {v, merge_report(report, elem_report)}
-        else
-          case read_list_elements(item, elem, 1, nodes, ids, [], report) do
-            {[v], report} -> {v, report}
-            {_, report} -> {item.default, report}
-          end
-        end
-
-      {acc, report} =
-        case resolve(ids, kref) do
-          :error ->
-            {acc, %{report | malformed: true}}
-
-          kid ->
-            case Map.fetch(f.key_by_id, kid) do
-              {:ok, name} -> {Map.put(acc, name, v), report}
-              :error -> {acc, %{report | unknown: report.unknown + 1}}
-            end
-        end
-
-      read_keyed_pairs(f, rest, n - 1, nodes, ids, acc, report)
+        :error ->
+          read_keyed_pairs(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            acc,
+            %{report | unknown: report.unknown + 1}
+          )
+      end
     else
       _ -> {:cont, acc, %{report | malformed: true}}
+    end
+  end
+
+  defp read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+    if f.elem_kind == 13 do
+      {v, elem_report} =
+        carry_count_report(report, fn ->
+          read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+        end)
+
+      {v, merge_report(report, elem_report)}
+    else
+      case read_list_elements(item, elem, 1, nodes, ids, [], report) do
+        {[v], report} -> {v, report}
+        {_, report} -> {item.default, report}
+      end
     end
   end
 

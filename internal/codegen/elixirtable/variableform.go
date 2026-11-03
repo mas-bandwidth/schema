@@ -2664,41 +2664,46 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
+         kid when kid != :error <- resolve(ids, kref),
          {l, r2} when byte_size(r2) >= l <- leb(r1) do
       elem = binary_part(r2, 0, l)
       rest = binary_part(r2, l, byte_size(r2) - l)
       item = Map.put(f.item, :elem_kind, f.elem_kind)
 
-      {v, report} =
-        if f.elem_kind == 13 do
-          {v, elem_report} =
-            carry_count_report(report, fn ->
-              read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
-            end)
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          {v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
+          read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-          {v, merge_report(report, elem_report)}
-        else
-          case read_list_elements(item, elem, 1, nodes, ids, [], report) do
-            {[v], report} -> {v, report}
-            {_, report} -> {item.default, report}
-          end
-        end
-
-      {acc, report} =
-        case resolve(ids, kref) do
-          :error ->
-            {acc, %{report | malformed: true}}
-
-          kid ->
-            case Map.fetch(f.key_by_id, kid) do
-              {:ok, name} -> {Map.put(acc, name, v), report}
-              :error -> {acc, %{report | unknown: report.unknown + 1}}
-            end
-        end
-
-      read_keyed_pairs(f, rest, n - 1, nodes, ids, acc, report)
+        :error ->
+          read_keyed_pairs(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            acc,
+            %{report | unknown: report.unknown + 1}
+          )
+      end
     else
       _ -> {:cont, acc, %{report | malformed: true}}
+    end
+  end
+
+  defp read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+    if f.elem_kind == 13 do
+      {v, elem_report} =
+        carry_count_report(report, fn ->
+          read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+        end)
+
+      {v, merge_report(report, elem_report)}
+    else
+      case read_list_elements(item, elem, 1, nodes, ids, [], report) do
+        {[v], report} -> {v, report}
+        {_, report} -> {item.default, report}
+      end
     end
   end
 
@@ -6830,44 +6835,39 @@ const variableRetainSource = `
 
   defp read_keyed_retain(f, bin, n, nodes, ids, acc, report, retain, path) do
     with {kref, r1} <- leb(bin),
+         kid when kid != :error <- resolve(ids, kref),
          {l, r2} when byte_size(r2) >= l <- leb(r1) do
       elem = binary_part(r2, 0, l)
       rest = binary_part(r2, l, byte_size(r2) - l)
       item = Map.put(f.item, :elem_kind, f.elem_kind)
 
-      key =
-        case resolve(ids, kref) do
-          :error -> :malformed
-          kid -> Map.fetch(f.key_by_id, kid)
-        end
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          slot = Enum.find_index(f.key_names, &(&1 == name))
+          retain = retain_reset(retain, path, f.ordinal, slot)
 
-      {acc, report, retain} =
-        case key do
-          {:ok, name} ->
-            slot = Enum.find_index(f.key_names, &(&1 == name))
-            retain = retain_reset(retain, path, f.ordinal, slot)
+          {v, report, retain} =
+            read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot)
 
-            {v, report, retain} =
-              read_keyed_elem_retain(f, item, elem, nodes, ids, report, retain, path, slot)
+          read_keyed_retain(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            Map.put(acc, name, v),
+            report,
+            retain,
+            path
+          )
 
-            {Map.put(acc, name, v), report, retain}
-
-          other ->
-            # a slot this reader cannot name is an excluded class (§6.6): the
-            # file's reader steps over its element by the element's length, so
-            # nothing inside it is read, counted or retained
-            report =
-              if other == :malformed do
-                {_v, report} = read_keyed_elem_plain(f, item, elem, nodes, ids, report)
-                %{report | malformed: true}
-              else
-                %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}
-              end
-
-            {acc, report, retain}
-        end
-
-      read_keyed_retain(f, rest, n - 1, nodes, ids, acc, report, retain, path)
+        :error ->
+          # a slot this reader cannot name is an excluded class (§6.6): the
+          # file's reader steps over its element by the element's length, so
+          # nothing inside it is read, counted or retained
+          report = %{report | unknown: report.unknown + 1, retain_lost: report.retain_lost + 1}
+          read_keyed_retain(f, rest, n - 1, nodes, ids, acc, report, retain, path)
+      end
     else
       _ -> {:cont, acc, %{report | malformed: true}, retain}
     end
@@ -6896,22 +6896,6 @@ const variableRetainSource = `
           else: report
 
       {v, report, retain}
-    end
-  end
-
-  defp read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
-    if f.elem_kind == 13 do
-      {v, elem_report} =
-        carry_count_report(report, fn ->
-          read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
-        end)
-
-      {v, merge_report(report, elem_report)}
-    else
-      case read_list_elements(item, elem, 1, nodes, ids, [], report) do
-        {[v], report} -> {v, report}
-        {_, report} -> {item.default, report}
-      end
     end
   end
 
