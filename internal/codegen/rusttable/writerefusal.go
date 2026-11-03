@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -70,7 +71,13 @@ func intWriteAssert(f *ir.Field, x, owner string) string {
 	if !ok {
 		return ""
 	}
-	return fmt.Sprintf("debug_assert!((%s%s..=%s%s).contains(&%s), %q); ", lo, t, hi, t, x,
+	// a dereferenced element `(*e)` is already the reference contains takes
+	// (clippy::borrow_deref_ref refuses `&(*e)`)
+	ref := "&" + x
+	if strings.HasPrefix(x, "(*") && strings.HasSuffix(x, ")") {
+		ref = x[2 : len(x)-1]
+	}
+	return fmt.Sprintf("debug_assert!((%s%s..=%s%s).contains(%s), %q); ", lo, t, hi, t, ref,
 		fmt.Sprintf("%s: value outside %s..=%s, refused on write (docs/SPEC-TABLES.md section 3)", owner, lo, hi))
 }
 
