@@ -6397,7 +6397,7 @@ conformance-negative-control-cpp-write-refusal: build/conformance-harness build/
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on write-refusal"; \
 		  cat $(CONFORMANCE_NEGATIVE_CPP_WREF)/log; exit 1; }
 	@grep -Eq '^wire +pass ' $(CONFORMANCE_NEGATIVE_CPP_WREF)/log || \
-		{ echo "NEGATIVE CONTROL FAILED: wire went red too, so the control localises nothing"; \
+		{ echo "NEGATIVE CONTROL FAILED: wire went red too, so the control localizes nothing"; \
 		  cat $(CONFORMANCE_NEGATIVE_CPP_WREF)/log; exit 1; }
 	@grep -m1 "cpp / write-refusal" $(CONFORMANCE_NEGATIVE_CPP_WREF)/log
 	@echo "negative control: the C++ writer without its range asserts turns the harness RED on write-refusal alone"
