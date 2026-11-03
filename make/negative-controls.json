@@ -1688,6 +1688,7 @@
         "conformance-negative-control-squirrel-absent",
         "conformance-negative-control-squirrel-framing",
         "conformance-negative-control-squirrel-cycle",
+        "conformance-negative-control-squirrel-write-refusal",
         "tables-squirrel-usage-negative-control",
         "tables-squirrel-runtime-home-negative-control",
         "tables-squirrel-release-negative-control",
