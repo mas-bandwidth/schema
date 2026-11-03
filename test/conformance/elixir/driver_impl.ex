@@ -689,13 +689,22 @@ defmodule Driver do
   end
 
   # strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md
-  # §6.5, §11) for every wire a `report` or `framing` line names. The Elixir
-  # runtime carries no strict read: its load is the tolerant read, and a
-  # clamped or kind-mismatched read answers :ok, so every case is answered
-  # absent rather than spelled from the tolerant read.
+  # §6.5, §11) for every wire a `report` or `framing` line names. The runtime
+  # decides the reason (read_strict/2, err/1); the driver spells the atom's
+  # name, or `ok` for a read the strict rule accepts. A unit with no table
+  # module is absent.
   defp run("strict-reason", rows, outdir) do
-    for [name | _] <- rows(rows, "report") ++ rows(rows, "framing") do
-      write_absent(outdir, name)
+    for [name, unit, root, wire | _] <- rows(rows, "report") ++ rows(rows, "framing") do
+      case table_module(unit) do
+        nil ->
+          write_absent(outdir, name)
+
+        mod ->
+          case mod.read_strict(root, File.read!(wire)) do
+            {:ok, _value} -> write(outdir, name, "ok\n")
+            {:error, why} -> write(outdir, name, Atom.to_string(why) <> "\n")
+          end
+      end
     end
   end
 

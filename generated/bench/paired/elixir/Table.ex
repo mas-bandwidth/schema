@@ -2172,6 +2172,42 @@ defmodule Bench.Table do
       {:error, :malformed, reasoned(empty_report(), :malformed)}
   end
 
+  # THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5): {:ok, value},
+  # or {:error, reason} with the one typed reason the strict rule refuses it
+  # with, as err/1 decides it from the tolerant load's report. A load that
+  # hands back nothing and names no reason met damage.
+  def read_strict(table, data) when is_binary(data) do
+    case load(table, data) do
+      {:ok, value, report} ->
+        case err(report) do
+          nil -> {:ok, value}
+          why -> {:error, why}
+        end
+
+      {:error, _refusal, report} ->
+        {:error, err(report) || :wire_damaged}
+    end
+  end
+
+  # THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+  # error identity", §11): nil when the strict rule accepts the read a report
+  # describes, else the refusal-names member as a bare atom. A form byte the
+  # read does not carry is :unknown_form; then :integrity_mismatch, a
+  # non-finite float, any damage as :wire_damaged, a missing required field, a
+  # refusal by its own name, a blob named from two slots, :clamped and
+  # :kind_mismatch, in that order. unknown, widened, retained and duplicate
+  # alone never refuse. The clauses are the precedence; nothing is built.
+  def err(%{reason: "unknown_form"}), do: :unknown_form
+  def err(%{reason: "integrity_mismatch"}), do: :integrity_mismatch
+  def err(%{reason: "non_finite_float" <> _}), do: :non_finite_float
+  def err(%{malformed: true}), do: :wire_damaged
+  def err(%{missing_required: n}) when n > 0, do: :missing_required
+  def err(%{reason: "count_over_extent_cap"}), do: :count_over_extent_cap
+  def err(%{blob_shared: n}) when n > 0, do: :blob_shared
+  def err(%{clamped: n}) when n > 0, do: :clamped
+  def err(%{kind_mismatch: n}) when n > 0, do: :kind_mismatch
+  def err(_report), do: nil
+
   # THE REASON IN THE REPORT (docs/SPEC-TABLES.md §4, §4.2): the load's one
   # verdict word beside its counters, spelled with the reference leg's
   # TableRefuseReason names (internal/codegen/gotable/refusal.go) exactly as
