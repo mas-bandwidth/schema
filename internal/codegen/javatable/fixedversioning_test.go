@@ -120,6 +120,7 @@ type manifestRow struct {
 	Records int64
 	Values  map[string]string
 	Forged  map[string]string
+	Expect  map[string]string // what the reference's reader landed from a forged file, `clamped` included
 }
 
 // readManifest is THE one reader of a manifest line's entries: it parses every
@@ -138,6 +139,7 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 		var r manifestRow
 		r.Values = map[string]string{}
 		r.Forged = map[string]string{}
+		r.Expect = map[string]string{}
 		// `values=` is the LAST entry of a line and its text may hold spaces
 		// (`r0.note="first build"`), so the line is cut there and never split
 		// on white space past it; the identity entries before it carry none.
@@ -160,6 +162,8 @@ func readManifest(corpus string) (map[string]manifestRow, error) {
 				r.Records, _ = strconv.ParseInt(v, 10, 64)
 			case "forged":
 				collectManifestPairs(v, r.Forged)
+			case "expect":
+				collectManifestPairs(v, r.Expect)
 			}
 		}
 		if hasVals {

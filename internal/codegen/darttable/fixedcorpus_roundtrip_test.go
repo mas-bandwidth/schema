@@ -7,7 +7,7 @@ package darttable
 // §3.1: the write is a template and a store, and the cell stores what the
 // record held; docs/SPEC-TABLES.md §3: no float is canonicalised).
 //
-// FOUR FILES ARE NOT IDENTITY ROWS, AND EACH SAYS WHY BY CITATION. Their bytes
+// FIVE FILES ARE NOT IDENTITY ROWS, AND EACH SAYS WHY BY CITATION. Their bytes
 // hold a value the reader's own declaration does not, so the standard asks the
 // read to CLAMP it, or the file was written by an OLDER writer whose layout the
 // rewrite (always in the reader's own layout) does not restore. For those the
@@ -34,6 +34,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/dart"
+	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -84,6 +85,15 @@ var fixedCorpusContracts = map[string]fixedCorpusContract{
 			at, forged := fixedCorpusForgedAim(t, corpus, "hostile_cfloat_range_widen.bin")
 			return fixedCorpusNewWithAim(t, corpus, data, at, forged)
 		},
+	},
+	// The shared cross-version vector (internal/fixedvector): an OLD writer's
+	// | 0..100 bytes with v forged to 150, inside the NEW reader's | 0..200. It
+	// clamps to the WRITER's max and counts once; the manifest's `expect=`
+	// says what lands, and the rewrite is in the reader's own layout.
+	"hostile_range_widen.bin": {
+		reader: "VNEW_range_widen", older: []string{"VOLD_range_widen"}, clamped: 1,
+		cite:   "docs/FIXED-FORM-ALGORITHM.md §4.5 (a ranged scalar clamps to the writer's range for its lineage entry)",
+		expect: fixedCorpusRangeWidenHostile,
 	},
 	// The same old file with aim forged to 5.0, past the reader's [-2, 2] as
 	// well: it clamps to the READER's 2.0 and counts once (same citation).
@@ -333,6 +343,41 @@ func fixedCorpusForgedAim(t *testing.T, corpus, file string) (int, uint32) {
 	}
 	t.Fatalf("the manifest carries no forged aim for %s", file)
 	return 0, 0
+}
+
+// fixedCorpusRangeWidenHostile is the rewrite of hostile_range_widen.bin: the
+// reference's NEW-generation header and record hash, and the forged record
+// body with v set to what the manifest's `expect=` says lands. The clamp
+// count the contract row asserts is checked against `expect=` here too.
+func fixedCorpusRangeWidenHostile(t *testing.T, corpus string, old []byte) []byte {
+	t.Helper()
+	want, err := fixedvector.Read(corpus, fixedvector.RangeWidenHostile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want.Clamped != 1 {
+		t.Fatalf("the contract row counts 1 clamp and the manifest's expect= %d", want.Clamped)
+	}
+	v, err := want.Int("r0.v")
+	if err != nil {
+		t.Fatal(err)
+	}
+	nu, err := os.ReadFile(filepath.Join(corpus, "new_range_widen.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nu) != len(old) {
+		t.Fatalf("the new file is %d bytes and the old %d: the layouts are not one size", len(nu), len(old))
+	}
+	st := versionRoot(t, versionSchema(t, "VNEW_range_widen"))
+	body := len(nu) - int(fixedTypeBytes(st))
+	at := body + 4 // lead, then v
+	if binary.LittleEndian.Uint32(old[at:]) != 150 {
+		t.Fatalf("hostile_range_widen.bin: v at byte %d is %d, not the forged 150", at, binary.LittleEndian.Uint32(old[at:]))
+	}
+	out := append(slices.Clone(nu[:body]), old[body:]...)
+	binary.LittleEndian.PutUint32(out[at:], uint32(v))
+	return out
 }
 
 // fixedCorpusNewWithAim is the reference's NEW-generation file — the reader's

@@ -162,6 +162,7 @@ leg asserts the exact one.
 | `hostile_array_bounded_grow.bin` | `old_array_bounded_grow.bin`'s bytes, then the `vals_count` word OVERWRITTEN with `7` after the save | `file=hostile_array_bounded_grow.bin row=array_bounded_grow side=hostile root=ArrayBoundedGrow records=1 forged=r0.vals_count@<abs byte>=7 values=r0.lead=2863311530,r0.vals_count=4,r0.vals[0]=1000,r0.vals[1]=1001,r0.vals[2]=1002,r0.vals[3]=1003,r0.trail=3149642683` |
 | `nolayout_nested_append.bin` | `old_nested_append.bin`'s bytes, then record 0's first eight bytes (its per-record hash) bitwise INVERTED; the header's hash at file+8 untouched | `file=nolayout_nested_append.bin row=nested_append side=nolayout root=Lineage records=1 forged=r0.record_hash@<abs byte>=~<hash> values=r0.v.x=…,r0.v.y=…,r0.v.z=…,r0.seq=…` |
 | `hostile_enum_append.bin` | `old_enum_append.bin`'s bytes, then `r0.tier` OVERWRITTEN with `4` | `file=hostile_enum_append.bin row=enum_append side=hostile root=Lineage records=1 forged=r0.tier@<abs byte>=4 values=r0.tier=3,r0.seq=9` |
+| `hostile_range_widen.bin` | `old_range_widen.bin`'s layout written with `lead = 1`, `v = 100`, `trail = 2`, then `v` OVERWRITTEN with `150`; the dump reads it back through the NEW reader and refuses to write the row unless `v == 100` and `clamped == 1` | `file=hostile_range_widen.bin row=range_widen side=hostile root=RangeWiden records=1 forged=r0.v@<abs byte>=150 expect=r0.lead=1,r0.v=100,r0.trail=2,clamped=1 values=r0.lead=1,r0.v=100,r0.trail=2` |
 | `old_unknown_census.bin` | the OLD build, one record: `lead`, `trail`, four `items` with `a` = `10 + i` and `drop` = `900 + i` | `file=old_unknown_census.bin row=unknown_census side=old root=Census records=1 values=r0.lead=…,r0.items[0].a=10,r0.items[0].drop=900,…,r0.trail=…` |
 
 **Two additions to #32's grammar, and nothing else moves.** `side=` gains **`hostile`** and **`nolayout`** —
@@ -171,7 +172,11 @@ same place without computing a record offset out of the dump. **`values=` on a f
 wrote, before the forge** — the wire's lawful values — **and the forged byte is the `forged=` field's;
 the VERDICT is this page's row and never the manifest's**, which is the one place a hostile row departs from
 "assert the manifest" (§5.9 #37): the manifest is the oracle for what went ONTO the wire, this table is the
-oracle for what comes BACK. `manifest_case` still holds — every `.bin` in the corpus has a line and every
+oracle for what comes BACK. **A shared cross-version vector is the exception, and it says so with one more
+field, `expect=<path>=<value>,...,clamped=<n>`**, between `forged=` and `values=`: what the C++ reference's
+own NEW reader landed from the forged bytes and the `clamped` its report holds. Every leg reads that answer
+through `internal/fixedvector` and asserts it, so the verdict is the reference's and written once.
+`hostile_range_widen.bin` is the first: the writer's range is the bound (FIXED-FORM-ALGORITHM.md §4.5). `manifest_case` still holds — every `.bin` in the corpus has a line and every
 `root=` names a table the generator emitted.
 
 **Row 9's corpus files carry ONE record each, deliberately.** §5.3's loop lands record `k` before it checks
