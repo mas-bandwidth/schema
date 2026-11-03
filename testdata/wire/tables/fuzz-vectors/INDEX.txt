@@ -266,3 +266,8 @@ union_array_element_kind messagedemo ToolMessage testdata/wire/tables/fuzz-vecto
 retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
 retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
 retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin
+
+# A map key with an unknown kind is a clean whole-map mismatch, not malformed
+# input. Discovered by the Elixir wire pass; TestPinnedMapKeyKindElixir fails
+# against the pre-admission-scan emitter and passes with the repaired scanner.
+map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind_unknown.bin
