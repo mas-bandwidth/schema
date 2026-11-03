@@ -959,7 +959,9 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       report.kindMismatch = report.kindMismatch + 1;
       return ARRAY_FOREIGN;
     }
-    report.widened = report.widened + 1;
+    // a list count past the int32 storage cap refuses the read before the
+    // widening counts: the refusal moves no counter (docs/SPEC-TABLES.md §2.9)
+    if (!(fd.list && count > 0x7fffffff)) report.widened = report.widened + 1;
   }
   local keep = count;
   if (fd.list) {

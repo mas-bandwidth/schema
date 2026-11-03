@@ -936,7 +936,9 @@ array_body = function(fd: any, sub: any, report: any, v: any, headerEnd: number?
 	end
 	if ek ~= fd.ek then
 		if not widens(ek, fd.ek) then report.kindMismatch = report.kindMismatch + 1; return false end
-		report.widened = report.widened + 1
+		-- a list past the int32 storage cap refuses below and moves no
+		-- counter (§2.9), the widening included
+		if not (fd.array == "list" and count > 0x7FFFFFFF) then report.widened = report.widened + 1 end
 	end
 	local keep = count
 	if fd.array == "list" then

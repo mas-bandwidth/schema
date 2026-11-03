@@ -1187,7 +1187,9 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
       report.kindMismatch = report.kindMismatch + 1
       return nil, false
     end
-    report.widened = report.widened + 1
+    -- a list past the int32 storage cap refuses below and moves no counter
+    -- (§2.9), the widening included
+    if not (fd.list and above(count, 0x7fffffff)) then report.widened = report.widened + 1 end
   end
 
   if fd.keyed ~= nil then

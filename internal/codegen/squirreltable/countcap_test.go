@@ -55,7 +55,9 @@ foreach (key in __KEYS__) {
 // by the name count_over_extent_cap, with malformed unset and no counter
 // moved, on the tolerant load, the plain load, ReadStrict and the retaining
 // load. The inputs are the cap rows of the shared pin table, whose strict
-// column this read must also answer. The negative controls are the pin's good
+// column this read must also answer; values_widened_over_cap carries an int8
+// element kind that widens to int32, and its refusal moves no widened counter
+// either. The negative controls are the pin's good
 // row, which reads, and each cap row's count lowered to exactly 2^31-1, which
 // is not this refusal (its body cannot cover the count, so it is damage).
 func TestSquirrelCountCapRefusal(t *testing.T) {
@@ -69,7 +71,7 @@ func TestSquirrelCountCapRefusal(t *testing.T) {
 	var keys []string
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 6 || f[1] != "measure" || (!strings.Contains(f[0], "_cap3") && f[0] != "good") {
+		if len(f) != 6 || f[1] != "measure" || (!strings.Contains(f[0], "_cap3") && f[0] != "good" && f[0] != "values_widened_over_cap") {
 			continue
 		}
 		wire, err := hex.DecodeString(f[2])
@@ -88,8 +90,8 @@ func TestSquirrelCountCapRefusal(t *testing.T) {
 			keys = append(keys, f[0]+"_atcap")
 		}
 	}
-	if len(pinned) != 5 {
-		t.Fatalf("%d cap rows and the good row, want 5", len(pinned))
+	if len(pinned) != 6 {
+		t.Fatalf("%d cap rows and the good row, want 6", len(pinned))
 	}
 	dir := t.TempDir()
 	mod := emitUnit(t, dir, "probe", loadSource(t, countCapSchema))

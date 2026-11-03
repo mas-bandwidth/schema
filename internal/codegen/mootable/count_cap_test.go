@@ -52,8 +52,10 @@ const (
 	countCapRetainedCap  = countCapRetainedHead + "0e06048080808008" + countCapRetainedTail
 )
 
-// countCapInputs is the shared pin's four cap rows
-// (internal/codegen/goosetable/testdata/load_refusal_reasons.tsv), its good
+// countCapInputs is the shared pin's five cap rows
+// (internal/codegen/goosetable/testdata/load_refusal_reasons.tsv), the widened
+// one among them (an int8 element kind over the cap, which moves no widened
+// counter), its good
 // row, the values field at a count AT the cap (2^31-1), and the two retained
 // files.
 func countCapInputs(t *testing.T) (map[string][]byte, []string) {
@@ -69,7 +71,7 @@ func countCapInputs(t *testing.T) (map[string][]byte, []string) {
 		names = append(names, name)
 	}
 	for _, r := range reasonRows(t) {
-		if r.schema != "measure" || (!strings.Contains(r.name, "_cap3") && r.name != "good") {
+		if r.schema != "measure" || (!strings.Contains(r.name, "_cap3") && r.name != "good" && r.name != "values_widened_over_cap") {
 			continue
 		}
 		if r.name != "good" && r.strict != "count_over_extent_cap" {
@@ -86,8 +88,8 @@ func countCapInputs(t *testing.T) (map[string][]byte, []string) {
 	}
 	add("retained_good", countCapRetainedGood)
 	add("retained_cap", countCapRetainedCap)
-	if len(names) != 8 {
-		t.Fatalf("%d inputs, want the four cap rows, good, at_cap and the two retained files", len(names))
+	if len(names) != 9 {
+		t.Fatalf("%d inputs, want the five cap rows, good, at_cap and the two retained files", len(names))
 	}
 	return in, names
 }

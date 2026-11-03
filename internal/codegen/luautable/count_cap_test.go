@@ -62,7 +62,8 @@ var countCapPaths = []string{"tolerant", "load", "strict", "retain", "retainTole
 // §2.9: a `[]` or map count above the int32 storage cap answers nil, refuses
 // by the name count_over_extent_cap with refused set, leaves malformed unset
 // and moves no counter. The inputs are the pinned cap rows of the shared
-// load_refusal_reasons.tsv. The negative controls are the pin's good row,
+// load_refusal_reasons.tsv, values_widened_over_cap among them: its element
+// kind widens, so a widened count before the cap would show here. The negative controls are the pin's good row,
 // which reads, and each cap row with its count lowered to the cap itself
 // (2^31-1), which is not this refusal.
 func TestLuauCountCapRefusal(t *testing.T) {
@@ -76,7 +77,7 @@ func TestLuauCountCapRefusal(t *testing.T) {
 	var capRows []string
 	for line := range strings.SplitSeq(string(data), "\n") {
 		f := strings.Split(line, "\t")
-		if len(f) != 6 || f[1] != "measure" || (!strings.Contains(f[0], "_cap3") && f[0] != "good") {
+		if len(f) != 6 || f[1] != "measure" || (!strings.Contains(f[0], "_cap3") && f[0] != "values_widened_over_cap" && f[0] != "good") {
 			continue
 		}
 		wire, err := hex.DecodeString(f[2])
@@ -101,8 +102,8 @@ func TestLuauCountCapRefusal(t *testing.T) {
 		inputs[f[0]+"_atcap"] = twin
 	}
 	sort.Strings(capRows)
-	if len(capRows) != 4 || inputs["good"] == nil {
-		t.Fatalf("%d cap rows and good=%v, want 4 and the good row", len(capRows), inputs["good"] != nil)
+	if len(capRows) != 5 || inputs["good"] == nil {
+		t.Fatalf("%d cap rows and good=%v, want 5 and the good row", len(capRows), inputs["good"] != nil)
 	}
 
 	dir := t.TempDir()
