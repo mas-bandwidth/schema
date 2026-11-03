@@ -19,7 +19,7 @@ import (
 var nonGoCarriers = map[string][]string{
 	"c":    {carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
 	"cs":   {carryUnboundedText, carryRequired, carryTimestamp, carryForms, carryIntegrity, carryTextList, carryTextListTotal, carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot},
-	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap, carryForms, carryIntegrity, carryRequired},
+	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
 	"dart": {carryOptionalVariableClosure},
 	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
 	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
@@ -200,7 +200,7 @@ func TestCarriedQueries(t *testing.T) {
 		t.Errorf("Carried(go) = %v, %v; want every construct", got, ok)
 	}
 	got, ok = Carried("cpp")
-	if !ok || !slices.Equal(got, []string{carryTimestamp, carryRequired, carryForms, carryIntegrity, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap}) {
+	if !ok || !slices.Equal(got, carryConstructs) {
 		t.Errorf("Carried(cpp) = %v, %v", got, ok)
 	}
 	if got, ok := Carried("carry-test-unregistered"); ok || got != nil {
