@@ -253,3 +253,4 @@ retain_union_arm_widen messagedemo ToolMessage testdata/wire/tables/fuzz-vectors
 # A keyed scalar element kind widens once and preserves every named slot.
 keyed_element_widen tabledemo KeyedConfig testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin
 inert_byte_array_header streamdemo Feed testdata/wire/tables/fuzz-vectors/inert_byte_array_header.bin
+blob_field_replaced blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_field_replaced.bin

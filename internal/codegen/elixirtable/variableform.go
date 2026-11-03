@@ -1715,15 +1715,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # THE TOLERANT READ OF A SHARED BLOB (docs/SPEC-TABLES.md §2.5): a blob is
   # owned by one slot, and a wire whose two slots name ONE blob record is read,
-  # not refused. The first slot reads the bytes; every other slot reads
-  # {:blob_shared, bytes} — the same binary, never a copy — and counts once in
-  # the report's blob_shared counter, so a save, a measure and a text write of
-  # that value refuse it by name rather than writing a copy per slot. A slot is
-  # the body that holds it (the root, or a table node by its index) and its
+  # not refused. Final stored slots use bytes for the first owner and
+  # {:blob_shared, bytes} for each other owner, never a copy. The report counts
+  # extra read namings; writers refuse only ownership that survives replacement.
+  # A read site is the body holding it (root or table node by index) and its
   # position among that body's blob reads, so a table node a second pointer
   # decodes again names the same slots and is not a sharing.
   defp blob_namings(fun) do
-    Process.put(:elixir_blob_read, %{holder: :root, n: 0, named: %{}, shared: MapSet.new()})
+    Process.put(:elixir_blob_read, %{
+      holder: :root,
+      n: 0,
+      next: 0,
+      named: %{},
+      shared: MapSet.new()
+    })
 
     try do
       result = fun.()
@@ -1757,23 +1762,62 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       st ->
         site = {st.holder, st.n}
-        st = %{st | n: st.n + 1}
+        marker = {:__wire_blob__, idx, st.next, bytes}
+        st = %{st | n: st.n + 1, next: st.next + 1}
 
-        case Map.fetch(st.named, idx) do
-          :error ->
-            Process.put(:elixir_blob_read, %{st | named: Map.put(st.named, idx, site)})
-            bytes
+        st =
+          case Map.fetch(st.named, idx) do
+            :error -> %{st | named: Map.put(st.named, idx, site)}
+            {:ok, ^site} -> st
+            {:ok, _first} -> %{st | shared: MapSet.put(st.shared, site)}
+          end
 
-          {:ok, ^site} ->
-            Process.put(:elixir_blob_read, st)
-            bytes
-
-          {:ok, _first} ->
-            Process.put(:elixir_blob_read, %{st | shared: MapSet.put(st.shared, site)})
-            {:blob_shared, bytes}
-        end
+        Process.put(:elixir_blob_read, st)
+        marker
     end
   end
+
+  # Read events count every extra naming. Writer ownership belongs to the
+  # final stored slots, after duplicate fields have replaced or cleared values.
+  # Resolve markers before assembling the DAG: each table body is visited once.
+  defp final_blob_slots(records) do
+    case Process.get(:elixir_blob_read) do
+      %{next: 0} ->
+        records
+
+      _ ->
+        owners = blob_slot_owners(records, %{})
+        place_blob_slots(records, owners)
+    end
+  end
+
+  defp blob_slot_owners({:__wire_blob__, idx, order, _bytes}, owners),
+    do: Map.update(owners, idx, order, &min(&1, order))
+
+  defp blob_slot_owners(value, owners) when is_map(value),
+    do: Enum.reduce(value, owners, fn {_key, v}, acc -> blob_slot_owners(v, acc) end)
+
+  defp blob_slot_owners(value, owners) when is_list(value),
+    do: Enum.reduce(value, owners, &blob_slot_owners/2)
+
+  defp blob_slot_owners(value, owners) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.reduce(owners, &blob_slot_owners/2)
+
+  defp blob_slot_owners(_value, owners), do: owners
+
+  defp place_blob_slots({:__wire_blob__, idx, order, bytes}, owners),
+    do: if(Map.fetch!(owners, idx) == order, do: bytes, else: {:blob_shared, bytes})
+
+  defp place_blob_slots(value, owners) when is_map(value),
+    do: Map.new(value, fn {key, v} -> {key, place_blob_slots(v, owners)} end)
+
+  defp place_blob_slots(value, owners) when is_list(value),
+    do: Enum.map(value, &place_blob_slots(&1, owners))
+
+  defp place_blob_slots(value, owners) when is_tuple(value),
+    do: value |> Tuple.to_list() |> Enum.map(&place_blob_slots(&1, owners)) |> List.to_tuple()
+
+  defp place_blob_slots(value, _owners), do: value
 
   # Decode never follows a pointer. The directory gives constant-time index
   # lookup; a stored pointer stays a private marker until all bodies are read.
@@ -1864,7 +1908,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     {root, own_report} = carry_count_report(report, fn -> decode(desc, fields, nodes, ids) end)
     report = merge_report(report, own_report)
-    records = Map.put(records, 1, root)
+    records = records |> Map.put(1, root) |> final_blob_slots()
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report}
   end
@@ -6723,7 +6767,7 @@ const variableRetainSource = `
       end)
 
     {root, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
-    records = Map.put(records, 1, root)
+    records = records |> Map.put(1, root) |> final_blob_slots()
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report, retain}
   end
