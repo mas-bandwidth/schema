@@ -129,6 +129,7 @@ int main()
         CHECK( jn >= 0 );
         char text[4096], packed[4096];
         CHECK( MToJson( v, text, sizeof( text ) ) == jn );
+        text[jn] = 0;
         compact( packed, text );
         CHECK( strcmp( packed, jsons[shape] ) == 0 );
         MBuilder jb;

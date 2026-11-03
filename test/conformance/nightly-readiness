@@ -669,7 +669,7 @@ def main(argv=None):
                    and re.search(r"^OK$", text, re.MULTILINE) else ["readiness contract tests did not execute"])
     prerequisites = "bin/schema build/conformance-harness"
     if lang == "cpp":
-        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz"
+        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz dist-luau dist-squirrel"
     if lang == "dart":
         # Native cook-write tests import this corpus directly, before the
         # later AOT driver phase. A clean bench must not depend on that race.

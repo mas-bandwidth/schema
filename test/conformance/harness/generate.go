@@ -227,7 +227,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		// returns an unpacking diagnostic when no value can be produced.
 		root := unit.Tables[rc.Root]
 		if root == nil {
-			return fmt.Errorf("%s: root %q is not a table", rc.Name, rc.Root)
+			return fmt.Errorf("%s: root %q names no table", rc.Name, rc.Root)
 		}
 		model := tabletext.NewModel(unit)
 		var report tabletext.Report

@@ -25,14 +25,16 @@ export LUAU LUAU_ANALYZE
 # download never reaches dist/.
 .PHONY: dist-luau
 dist-luau:
-	@mkdir -p $(LUAU_DIST) build/dist-luau
-	@curl -fsSL -o build/dist-luau/luau-ubuntu.zip $(LUAU_ZIP_URL)
-	@got=$$(sha256sum build/dist-luau/luau-ubuntu.zip | cut -d' ' -f1); \
-	if [ "$$got" != "$(LUAU_ZIP_SHA)" ]; then \
-		echo "dist-luau REFUSES: luau-ubuntu.zip sha256 $$got is not the pin $(LUAU_ZIP_SHA)"; \
-		rm -f build/dist-luau/luau-ubuntu.zip; exit 1; fi
-	@unzip -o -q build/dist-luau/luau-ubuntu.zip -d $(LUAU_DIST)
-	@chmod +x $(LUAU_DIST)/luau $(LUAU_DIST)/luau-analyze $(LUAU_DIST)/luau-ast $(LUAU_DIST)/luau-compile
+	@if [ ! -x $(LUAU_DIST)/luau ]; then \
+		mkdir -p $(LUAU_DIST) build/dist-luau; \
+		curl -fsSL -o build/dist-luau/luau-ubuntu.zip $(LUAU_ZIP_URL); \
+		got=$$(sha256sum build/dist-luau/luau-ubuntu.zip | cut -d' ' -f1); \
+		if [ "$$got" != "$(LUAU_ZIP_SHA)" ]; then \
+			echo "dist-luau REFUSES: luau-ubuntu.zip sha256 $$got is not the pin $(LUAU_ZIP_SHA)"; \
+			rm -f build/dist-luau/luau-ubuntu.zip; exit 1; fi; \
+		unzip -o -q build/dist-luau/luau-ubuntu.zip -d $(LUAU_DIST); \
+		chmod +x $(LUAU_DIST)/luau $(LUAU_DIST)/luau-analyze $(LUAU_DIST)/luau-ast $(LUAU_DIST)/luau-compile; \
+	fi
 	@echo "dist-luau: luau $(LUAU_VERSION) at $(LUAU_DIST) sha256 $(LUAU_ZIP_SHA)"
 
 # THE TOOLCHAIN GATE, this leg's half (issue #599; the Makefile's header and
