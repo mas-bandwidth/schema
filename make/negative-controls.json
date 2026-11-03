@@ -645,6 +645,15 @@
       "moo": "pin"
     },
     {
+      "name": "moo-view",
+      "when": "pull-request",
+      "why": "the moo unit view's controls (docs/SPEC-TABLES.md §8.7; make/moo-view.mk), on the moo pin .github/actions/moo restores into dist/moo: each breaks one claim of the corpus gate in a copy of the generated text (a printer that leaves a multi-line doc unflattened, a declaration dropped from the registry's tables set, a general arm's arm_offset moved one byte, a field's doc emptied, a field of a type no table reaches given a wire id) and requires the listing red on the line that claim owns. One go test of internal/codegen/mootable under SCHEMA_SLOW; the five subtests measured under 0.4 s each on vision, so the row is the package's compile plus the pin's cache restore.",
+      "targets": [
+        "tables-moo-view-negative-controls"
+      ],
+      "moo": "pin"
+    },
+    {
       "name": "block-fuzz",
       "when": "pull-request",
       "why": "the block fuzz extent oracle, which sabotages the C++, C# and Rust block emitters together and then requires all three fuzzers to go red, so one job needs both the .NET SDK and cargo. Measured 48 s on the runner.",
