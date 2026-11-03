@@ -365,3 +365,21 @@ reach_element_nan_then_element_damage tabledemo ProfileConfig testdata/wire/tabl
 reach_element_damage_then_later_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_element_damage_then_later_nan.bin
 reach_nested_tail_damage_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_nested_tail_damage_then_nan.bin
 reach_overlong_body_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-vectors/reach_overlong_body_then_nan.bin
+
+# ---- THE MESSAGE SKIP DEPTH LIMIT (docs/SPEC-TABLES.md §3.3, message_skip_depth = 128) ----
+# Two vectors, one on each side of the bound, over backenddemo.LoginRequest as
+# a MESSAGE. Both are a batch of one body whose only field is entry 22 of the
+# unit's own announcement, the union arm Payload.login (kind 13), which
+# LoginRequest does not declare, so the reader counts it unknown and skips it
+# by its announced shape. Each skipped body holds that same entry again, and
+# the chain is closed by zero references. The field's skip is depth 0 and the
+# Nth nested body is depth N; depth above 128 is malformed.
+#
+# at_limit: 128 nested bodies, the deepest at depth 128. Accepted: unknown 1,
+# malformed false. over_limit: 129 nested bodies. Refused as malformed:
+# unknown 1, malformed true, no refusal reason (damage, not a named refusal).
+# The C++ reference and the generated Go reader answer exactly this; the
+# oracle (internal/tablewire) carries the same bound level for level.
+message_skip_depth_at_limit backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_skip_depth_at_limit.bin message
+message_skip_depth_over_limit backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_skip_depth_over_limit.bin message
+# ---- END THE MESSAGE SKIP DEPTH LIMIT ----
