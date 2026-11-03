@@ -905,16 +905,38 @@ async function surfaceWire(lines, outDir) {
   }
 }
 
+// The report line, then the §16 text of the value the read left when the read
+// reads. A root this leg carries no text writer for answers the line alone
+// beside `<case>.absent`: the verdict is held and the value is the missing
+// feature (test/conformance/README.md).
 async function surfaceReport(lines, outDir) {
   for (const f of kind(lines, "report")) {
     const codec = await wireCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = codec.report();
-    const ok = codec.load(new Uint8Array(readFileSync(f[4])), r) !== null;
+    const wire = new Uint8Array(readFileSync(f[4]));
+    const ok = codec.load(wire, r) !== null;
     const malformed = r.malformed || (!ok && !r.refused);
     const verdict = r.refused ? "refused" : "read";
-    writeFileSync(join(outDir, f[1]), [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n");
+    let answer = [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, malformed, verdict].join(",") + "\n";
+    if (ok && !r.refused && !malformed) {
+      const text = await valueText(f[2], f[3], wire);
+      if (text === null) { wireAbsent(outDir, f[1]); } else { answer += text; }
+    }
+    writeFileSync(join(outDir, f[1]), answer);
   }
+}
+
+// valueText is the §16 text of the value a tolerant read of the wire leaves,
+// through the root's text codec, or null when this leg writes no text for it.
+async function valueText(unit, root, wire) {
+  const codec = await textCodec(unit, root);
+  if (codec === null) { return null; }
+  const v = codec.load(wire, codec.report());
+  if (v === null) { fail(unit + "." + root + ": the text codec's load refused a wire the report read"); }
+  const text = codec.toJson(v);
+  if (text === null) { fail(unit + "." + root + ": ToJson refused the value"); }
+  return text;
 }
 
 // THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read report as the
@@ -972,7 +994,8 @@ async function surfaceJsonWrite(lines, outDir) {
 
 // json-hostile: one tree per rule the text form states (docs/SPEC-TABLES.md
 // §16.2, §16.3, §17.5), the text at <tree>/<root>.json as `schema pack` reads
-// it. The answer is the REPORT the read produces, or `refused`.
+// it. The answer is the REPORT the read produces, then the §16 text of the
+// value it left, or `refused`.
 async function surfaceJsonHostile(lines, outDir) {
   for (const f of kind(lines, "json-hostile")) {
     const codec = await textCodec(f[2], f[3]);
@@ -981,10 +1004,13 @@ async function surfaceJsonHostile(lines, outDir) {
     const text = readJsonTextFile(join(f[4], f[3] + ".json"));
     if (text === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
     const v = codec.fromJson(text, r);
-    const verdict = v === null || v === undefined || r.malformed || r.refused
-      ? "refused"
-      : [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",");
-    writeFileSync(join(outDir, f[1]), verdict + "\n");
+    if (v === null || v === undefined || r.malformed || r.refused) {
+      writeFileSync(join(outDir, f[1]), "refused\n");
+      continue;
+    }
+    const value = codec.toJson(v);
+    if (value === null) { fail(f[1] + ": ToJson refused the value"); }
+    writeFileSync(join(outDir, f[1]), [r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate, false, "read"].join(",") + "\n" + value);
   }
 }
 

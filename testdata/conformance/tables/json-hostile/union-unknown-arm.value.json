@@ -1,0 +1,14 @@
+{
+  "version_note": "",
+  "weapons": [
+    {
+      "damage": 21,
+      "speed": 500,
+      "penetration": 1,
+      "channel": 0,
+      "homing": false,
+      "effect": {}
+    }
+  ],
+  "profiles": []
+}

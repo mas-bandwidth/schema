@@ -1,0 +1,1 @@
+{ "profiles": [ { "precision": 1E+21, "ratings": [ 1e-7, 1.0E2, 2.5e+0, 125e-3 ] } ] }
