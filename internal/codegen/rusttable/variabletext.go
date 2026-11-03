@@ -229,9 +229,10 @@ pub fn json_fixed(out: &mut String, raw: u128, signed: bool, frac: u32) {
     }
 }
 
-/// A float at the SHORTEST precision that reads back as the same value at the
-/// field's own width (docs/SPEC-TABLES.md §16.2), exactly as the reference
-/// writes it. A non-finite value has no JSON spelling; the writer marks it.
+/// A float by docs/SPEC-TABLES.md §16.14's W12: %.*g at the first precision
+/// whose text reads back as the same value at the field's own width, exactly
+/// as the reference writes it. A non-finite value has no JSON spelling; the
+/// writer marks it.
 #[allow(dead_code)]
 pub fn json_float(v: f64, single: bool, w: &mut Jw) {
     if !v.is_finite() {
@@ -247,12 +248,17 @@ pub fn json_float(v: f64, single: bool, w: &mut Jw) {
             w.out.push_str(&text);
             return;
         }
-        if let Ok(back) = text.parse::<f64>() {
-            let same = if single { (back as f32) as f64 == v } else { back == v };
-            if same {
-                w.out.push_str(&text);
-                return;
-            }
+        // the read-back is ONE correctly rounded conversion at the field's own
+        // width (§16.14, W12): a float32 field parses as f32, never as f64 and
+        // then narrowed, because rounding twice parts from rounding once
+        let same = if single {
+            text.parse::<f32>().map(|back| back as f64 == v).unwrap_or(false)
+        } else {
+            text.parse::<f64>().map(|back| back == v).unwrap_or(false)
+        };
+        if same {
+            w.out.push_str(&text);
+            return;
         }
         digits += 1;
     }

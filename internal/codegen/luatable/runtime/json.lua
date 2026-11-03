@@ -2534,8 +2534,10 @@ local function float_text(v, single)
     local back = tonumber(text)
     if back ~= nil then
       if single then
+        -- ONE correctly rounded conversion, as the reader lands it (§16.14,
+        -- W12): the double narrowed alone rounds twice
         local narrow = string.unpack("<f", string.pack("<f", back))
-        if narrow == v then return text end
+        if nearest_f32(text, back, narrow) == v then return text end
       elseif back == v then
         return text
       end

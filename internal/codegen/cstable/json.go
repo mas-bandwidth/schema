@@ -585,11 +585,11 @@ public static class TableJson
         return n;
     }
 
-    // A float writes at the SHORTEST precision that reads back as the same
-    // value at the field's own width, so a round trip is exact and a text stays
-    // readable. Non-finite values have no JSON spelling at all, and the writer
-    // REFUSES rather than losing one silently — the same rule measure and save
-    // already apply to an enum value no variant names (§5).
+    // A float writes by §16.14's W12: C's %.*g at the first precision whose
+    // text reads back as the same value at the field's own width. Non-finite
+    // values have no JSON spelling at all, and the writer REFUSES rather than
+    // losing one silently — the same rule measure and save already apply to an
+    // enum value no variant names (§5).
     static bool WriteFloat(ref Out o, double value, bool single)
     {
         if (!Finite(value)) { return false; }
@@ -602,17 +602,21 @@ public static class TableJson
             length = FormatG(value, digits, text);
             if (length <= 0) { return false; }
             if (digits >= high) { break; }
-            double back;
-            if (!double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture, out back))
-            {
-                continue;
-            }
+            // the read-back is ONE correctly rounded conversion at the field's
+            // own width (§16.14, W12): a float32 parses as a float, never as a
+            // double then narrowed, because rounding twice parts from once
             if (single)
             {
-                if ((double)(float)back == value) { break; }
+                float back32;
+                if (float.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out back32)
+                    && (double)back32 == value) { break; }
+                continue;
             }
-            else if (back == value) { break; }
+            double back;
+            if (double.TryParse(text.Slice(0, length), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out back)
+                && back == value) { break; }
         }
         for (int i = 0; i < length; i++) { o.Put((byte)text[i]); }
         return true;

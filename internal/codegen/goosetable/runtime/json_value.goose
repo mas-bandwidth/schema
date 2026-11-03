@@ -515,16 +515,19 @@ fn jv_put2(out: u8[>..]&, v: i64) {
 }
 
 // jv_put_stamp writes a count as RFC3339Nano in UTC: a fraction's trailing
-// zeros dropped and the fraction omitted on a whole second.
+// zeros dropped and the fraction omitted on a whole second. The second and the
+// day are FLOORED (docs/SPEC-TABLES.md §16.14, W13), so -1 is
+// 1969-12-31T23:59:59.999999999Z; each remainder is taken as the dividend less
+// quotient times divisor, which floors under either rounding of `/`.
 fn jv_put_stamp(out: u8[>..]&, nanos: i64) {
     var secs = nanos / 1000000000;
-    var frac = nanos % 1000000000;
+    var frac = nanos - secs * 1000000000;
     if frac < 0 {
         frac += 1000000000;
         secs -= 1;
     }
     var days = secs / 86400;
-    var rem = secs % 86400;
+    var rem = secs - days * 86400;
     if rem < 0 {
         rem += 86400;
         days -= 1;

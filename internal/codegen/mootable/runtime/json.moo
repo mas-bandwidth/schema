@@ -12,8 +12,8 @@
 --   * a binary32 / binary64 BIT PATTERN to its text: C's `%.*g` at the fewest
 --     digits (6..9, 15..17) whose text reads back to the same value at the
 --     field's own width — internal/tabletext/write.go's writeFloat, step for
---     step, the read back included (a float32 is read back through a double
---     and narrowed, as Go's `float32(ParseFloat(text, 64))` does). The digits
+--     step, the read back included (rounded once at the field's own width, as
+--     Go's `ParseFloat(text, 32|64)` does, §16.14 W12). The digits
 --     come from the value's exact expansion, rounded half to even.
 --   * a decimal token to the NEAREST binary32 / binary64 pattern, ties to even,
 --     in one rounding at the field's own width (`strconv.ParseFloat(token,
@@ -676,29 +676,28 @@ local function float64Parts(hi: number, lo: number): (Big, number)
 end
 
 -- readsBack(d, E, single, bits, hi, lo): whether the text of the digits d at
--- decimal exponent E reads back as the value: parsed to the nearest double
--- and, for a float32, narrowed to the nearest float32, exactly as write.go's
--- `float32(strconv.ParseFloat(text, 64))` does (two roundings, on purpose).
+-- decimal exponent E reads back as the value: rounded ONCE to the nearest
+-- value at the field's own width, as write.go's strconv.ParseFloat(text, 32|64)
+-- does (docs/SPEC-TABLES.md §16.14, W12). A float32 never passes through a
+-- double: rounding twice parts from rounding once.
 local function readsBack(d: string, E: number, single: boolean, bits: number, hi: number, lo: number): boolean
 	local last = #d
 	while string.byte(d, last) == 48 do
 		last -= 1
 	end
 	local q = E - #d + 1 + (#d - last)
-	local kind, qh, ql, e = decimalBinary(string.sub(d, 1, last), q, F64)
+	local kind, qh, ql, e = decimalBinary(string.sub(d, 1, last), q, if single then F32 else F64)
 	if kind ~= 1 then
 		return false
+	end
+	if single then
+		return float32Bits(qh, ql, e) == bits
 	end
 	local bh, bl = float64Bits(qh, ql, e)
 	if bh >= 0x7FF00000 then
 		return false -- past the largest double: ParseFloat's range error
 	end
-	if not single then
-		return bh == hi and bl == lo
-	end
-	local M, me = float64Parts(bh, bl)
-	local nh, nl, ne = roundBinary(M, { 1 }, me, 24, -149)
-	return float32Bits(nh, nl, ne) == bits
+	return bh == hi and bl == lo
 end
 
 local function shortest(negative: boolean, M: Big, e: number, single: boolean, bits: number, hi: number, lo: number): string

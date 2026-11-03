@@ -218,8 +218,9 @@ local parseF32 = function(tok) {
   return [widenF32(r[0]), true];
 };
 
-// the shortest %.*g that reads back the same value at the field's own width
-// (write.go writeFloat): 6..9 digits for a float32, 15..17 for a float64.
+// the first %.*g that reads back the same value at the field's own width
+// (docs/SPEC-TABLES.md §16.14, W12; write.go writeFloat): 6..9 digits for a
+// float32, 15..17 for a float64.
 // A non-finite value has no JSON spelling: null, and the writer refuses.
 local floatText = function(v, single) {
   if (!isFinite(v)) return null;
@@ -230,10 +231,12 @@ local floatText = function(v, single) {
   for (local digits = low; ; digits++) {
     local text = formatG(v, digits);
     if (digits >= high) return text;
-    local back = tokenFloat(text);
     if (single) {
-      if (widenF32(narrowF32(back, 0)[0]) == v) return text;
-    } else if (back == v) {
+      // ONE correctly rounded conversion, as the reader lands it
+      // (docs/SPEC-TABLES.md §16.14, W12): the double narrowed alone rounds
+      // twice
+      if (parseF32(text)[0] == v) return text;
+    } else if (tokenFloat(text) == v) {
       return text;
     }
   }

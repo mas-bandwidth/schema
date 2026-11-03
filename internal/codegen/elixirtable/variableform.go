@@ -3986,9 +3986,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # json_float spells one float as C's %.*g does, byte for byte, over the
   # float's OWN width (docs/SPEC-TABLES.md §16, "The FLOAT SPELLING", which
   # §16.7 holds for the variable class): the first precision from low to high
-  # whose text reads back to the same value at that width (a float32 parsed
-  # and narrowed through float32, 6 to 9 digits; a float64 parsed as is, 15 to
-  # 17), and at the last precision the text as rounded, with no loop left.
+  # whose text reads back to the same value at that width (a float32 rounded
+  # once, straight from the decimal, 6 to 9 digits; a float64 parsed as is, 15
+  # to 17), and at the last precision the text as rounded, with no loop left.
   # Float.to_string is NOT this rule: it is the shortest round trip of the
   # widened double, so a float32 spelled up to seventeen digits, its exponent
   # was "e19" where %g writes "e+19", and a trailing-zero trim ate an exponent's
@@ -4037,9 +4037,19 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_float_reads_back?(text, v, width) do
+  # A float32 reads back through json_decimal_f32, ONE correctly rounded
+  # conversion (docs/SPEC-TABLES.md §16.14, W12): parsing the text as a double
+  # and narrowing rounds twice, and for 0x15AE43FE the two answers part.
+  defp json_float_reads_back?(text, v, 4) do
+    case json_decimal_f32({:decimal, text}) do
+      {:ok, back} -> back == v
+      _ -> false
+    end
+  end
+
+  defp json_float_reads_back?(text, v, _width) do
     case Float.parse(text) do
-      {back, ""} -> json_float_narrow(back, width) == v
+      {back, ""} -> back == v
       _ -> false
     end
   rescue

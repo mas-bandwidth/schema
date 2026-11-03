@@ -299,9 +299,9 @@ final _jsonU64Max = _jsonU64Span - BigInt.one;
 final _jsonI64Min = -(BigInt.one << 63);
 final _jsonI64Max = (BigInt.one << 63) - BigInt.one;
 
-// _jsonFloat spells a float at the shortest precision that reads back the same
-// value AT ITS OWN WIDTH (§16.2): a float32 from six significant digits up to
-// nine, a float64 from fifteen up to seventeen, each candidate C's %%.*g
+// _jsonFloat spells a float at the first precision that reads back the same
+// value AT ITS OWN WIDTH (§16.14, W12): a float32 from six significant digits
+// up to nine, a float64 from fifteen up to seventeen, each candidate C's %%.*g
 // (_formatG). single is a float32 field.
 // A non-finite float has no JSON spelling and the writer refuses it.
 String _jsonFloat(double v, bool single) {
@@ -316,7 +316,10 @@ String _jsonFloat(double v, bool single) {
     final back = double.tryParse(text);
     if (back == null) continue;
     if (single) {
-      if (_f32Bits(back) == _f32Bits(v)) return text;
+      // ONE correctly rounded conversion, as the reader lands it (§16.14,
+      // W12): the double narrowed alone rounds twice
+      final narrowed = _narrowF32(back, text);
+      if (narrowed != null && _f32Bits(narrowed) == _f32Bits(v)) return text;
     } else if (back == v) {
       return text;
     }

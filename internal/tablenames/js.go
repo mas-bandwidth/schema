@@ -293,6 +293,7 @@ func init() {
 		Name{Name: "TableVariableEnumRef", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableExactDigits", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableExtent", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableF32OfToken", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFieldDefault", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFieldEdges", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableFiniteFloat", What: "the JavaScript variable-form runtime module"},
