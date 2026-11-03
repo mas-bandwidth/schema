@@ -1443,6 +1443,11 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
     return null;
   }
   resolve(st, c, report);
+  // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
+  // stored is walked once every index has resolved, by the save's own
+  // numbering, which refuses a reference to a node whose descent is open.
+  if (!report.malformed && _require("schema_table_save").numberForCook(T, rootName, v) == null)
+    report.malformed = true;
   // WHETHER THE ROOT BODY READ TO ITS OWN TERMINATOR (docs/SPEC-TABLES.md §4,
   // §4.2): a builder whose root body stopped holds a partial value, which a
   // builder caller discards. It is told only to a caller whose report
