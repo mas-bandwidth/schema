@@ -73,8 +73,9 @@ func strictAgrees(lobster, engine string) bool {
 
 // goStrictReason is the Go reference's strict answer for one wire, in the
 // order TableReport.Err() applies (§6.5): a non-finite float first, a form
-// refusal as unknown_form, then missing_required, malformed, blob_shared,
+// refusal as unknown_form, then missing_required, damage, blob_shared,
 // clamped and kind_mismatch; unknown and widened alone are not a refusal.
+// Every damaged wire is wire_damaged on the strict read (§4, §6.5).
 func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 	m := tabletext.NewModel(u.u)
 	inst := m.New(m.Lookup(rootName))
@@ -94,7 +95,7 @@ func goStrictReason(u *irUnit, rootName string, wire []byte) string {
 	case strings.HasPrefix(rep.Reason, "missing_required"):
 		return "missing_required"
 	case rep.Malformed:
-		return "malformed"
+		return "wire_damaged"
 	case rep.BlobShared > 0:
 		return "blob_shared"
 	case rep.Clamped > 0:
@@ -156,7 +157,7 @@ func runStrictRows(t *testing.T, g *loadUnit, rows []loadRow) strictResult {
 // TestLobsterStrictRead holds the strict read and every read-time refusal to
 // docs/SPEC-TABLES.md §6.5 and to Go's own answer on every manifest row: the
 // plain name is strict, the tolerant walk has its own name, unknown and
-// widened alone do not refuse, and malformed, clamped, kind_mismatch,
+// widened alone do not refuse, and wire_damaged, clamped, kind_mismatch,
 // blob_shared, missing_required, non_finite_float and an unknown form each
 // refuse by Go's name. It
 // also runs load, save and re-load through the same unit and holds the bytes
@@ -249,7 +250,7 @@ func TestLobsterStrictRead(t *testing.T) {
 	if rowsRun == 0 {
 		t.Fatal("no manifest row was read: the comparison is vacuous")
 	}
-	for _, name := range []string{"ok", "malformed", "clamped", "kind_mismatch", "blob_shared", "missing_required", "non_finite_float", "unknown_form"} {
+	for _, name := range []string{"ok", "wire_damaged", "clamped", "kind_mismatch", "blob_shared", "missing_required", "non_finite_float", "unknown_form"} {
 		t.Logf("strict construct %s: %d", name, counts[name])
 	}
 
@@ -275,8 +276,8 @@ func TestLobsterStrictRead(t *testing.T) {
 			t.Errorf("%s %s: strict read = %s, want %s", row.kind, row.name, pres.reason[i], want)
 		}
 	}
-	if counts["malformed"] == 0 {
-		t.Fatalf("no malformed refusal was exercised: the probe units do not reach the name")
+	if counts["wire_damaged"] == 0 {
+		t.Fatalf("no wire_damaged refusal was exercised: the probe units do not reach the name")
 	}
 	t.Logf("probe refusals: trailing=%s negative-id-count=%s", pres.reason[1], pres.reason[2])
 	if len(refusedUnits) > 0 {
@@ -284,7 +285,7 @@ func TestLobsterStrictRead(t *testing.T) {
 	}
 }
 
-// TestLobsterStrictReadNegativeControl breaks the malformed clause of the
+// TestLobsterStrictReadNegativeControl breaks the damage clause of the
 // emitted strict read and requires the strict comparison to go red.
 func TestLobsterStrictReadNegativeControl(t *testing.T) {
 	t.Parallel()
@@ -301,9 +302,9 @@ func TestLobsterStrictReadNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "    if rep.malformed:\n        return \"malformed\"\n"
+	const anchor = "    if rep.malformed:\n        return \"wire_damaged\"\n"
 	if n := strings.Count(string(src), anchor); n != 1 {
-		t.Fatalf("the malformed anchor is in the emitted runtime %d times, want 1", n)
+		t.Fatalf("the damage anchor is in the emitted runtime %d times, want 1", n)
 	}
 	patched := strings.Replace(string(src), anchor, "    if rep.malformed:\n        return \"\"\n", 1)
 	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {

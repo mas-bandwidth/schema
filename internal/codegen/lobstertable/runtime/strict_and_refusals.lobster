@@ -7,7 +7,7 @@
 // refusal, the reason from strict_reason) and schema_rt.load_tolerant keeps
 // the recovered record and the counters. This file adds load_strict, Go's
 // ReadStrict: one call, the record or ONE typed reason — non_finite_float,
-// unknown_form, missing_required, malformed, blob_shared, clamped or
+// unknown_form, missing_required, wire_damaged, blob_shared, clamped or
 // kind_mismatch. Unknown and widened alone are not loss and do not refuse
 // (§6.5). Every name is Go's TableRefuseReason spelling (refusal.go).
 // SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
