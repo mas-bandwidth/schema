@@ -111,33 +111,117 @@ func TestEveryTargetDeclinesTheFixedFormPastTheRecordBound(t *testing.T) {
 	}
 }
 
-// TestFixedLockRefusesARecordPastItsSizeField: a lock records every fixed
-// table's lineage, including one past the record bound, and a layout entry
-// carries its size in 32 bits. A record past 2^32-1 bytes is refused by name
-// when the lock is written, rather than locked with its size modulo 2^32; a
-// record past the record bound but under 2^32 is locked as before.
-func TestFixedLockRefusesARecordPastItsSizeField(t *testing.T) {
-	t.Parallel()
-	wide := fixedBoundUnit(t, readWideSchema(t))
-	errs := ir.TableFixedLockRefusals(wide)
-	var refusal *ir.TableFixedLayoutRefusal
-	if len(errs) != 1 || !errors.As(errs[0], &refusal) || refusal.Table != "Huge" || !refusal.Lock {
-		t.Fatalf("Wide.schema lock refusals: %v, want layout_record_too_large naming Huge alone (Part is 2^31 bytes)", errs)
-	}
+// lockedLineage writes a lock for one unit directory and answers, per fixed
+// table, the lineage entries the written file holds.
+func lockedLineage(t *testing.T, src string) map[string][]lockfile.LineageEntry {
+	t.Helper()
+	u := fixedBoundUnit(t, src)
 	dir := t.TempDir()
-	path := filepath.Join(dir, "Wide.schema")
-	if err := os.WriteFile(path, []byte(readWideSchema(t)), 0o644); err != nil {
+	path := filepath.Join(dir, "Bound.schema")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := lockfile.Update(wide, []string{path}); !errors.As(err, &refusal) {
-		t.Fatalf("schema lock on Wide.schema: %v, want layout_record_too_large", err)
+	lock, _, err := lockfile.Update(u, []string{path})
+	if err != nil {
+		t.Fatalf("schema lock: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, lockfile.FileName)); !os.IsNotExist(err) {
-		t.Fatalf("a refused lock was written: %v", err)
+	data, err := os.ReadFile(lock)
+	if err != nil {
+		t.Fatal(err)
 	}
-	// past the record bound, under 2^32: no fixed form, and the lock holds it
-	big := fixedBoundUnit(t, "package bound\nfixed table Frame { a [1048576]int64 }\n")
-	if errs := ir.TableFixedLockRefusals(big); len(errs) != 0 {
-		t.Fatalf("an 8 MiB record is lockable: %v", errs)
+	locked, err := lockfile.Parse(lock, data)
+	if err != nil {
+		t.Fatalf("the written lock does not parse: %v", err)
+	}
+	if errs := lockfile.Check(u, []string{path}); len(errs) != 0 {
+		t.Fatalf("the written lock does not check: %v", errs)
+	}
+	out := map[string][]lockfile.LineageEntry{}
+	for _, tb := range locked.Tables {
+		if tb.Decl == lockfile.DeclFixedTable {
+			out[tb.Name] = tb.Lineage
+		}
+	}
+	return out
+}
+
+// TestFixedLockRecordsNoLayoutPastTheRecordBound: a fixed table past the
+// fixed-form record bound has no fixed form (docs/SPEC-TABLES.md §3.4), so its
+// lock records no layout for it: a 6 GiB record and an 8 MiB record each lock,
+// with no lineage entry, in every language, and no size is stored modulo 2^32.
+// A record of exactly 65536 bytes keeps its layout entry.
+func TestFixedLockRecordsNoLayoutPastTheRecordBound(t *testing.T) {
+	t.Parallel()
+	wide := lockedLineage(t, readWideSchema(t))
+	for _, name := range []string{"Huge", "Part"} {
+		entries, ok := wide[name]
+		if !ok {
+			t.Fatalf("Wide.schema: the lock does not hold fixed table %s", name)
+		}
+		if len(entries) != 0 {
+			t.Fatalf("Wide.schema: %s is past the record bound and the lock records %d layout entries for it", name, len(entries))
+		}
+	}
+	if entries := lockedLineage(t, "package bound\nfixed table Frame { a [1048576]int64 }\n")["Frame"]; len(entries) != 0 {
+		t.Fatalf("an 8 MiB record: the lock records %d layout entries", len(entries))
+	}
+	at := lockedLineage(t, "package bound\nfixed table At { a [8192]int64 }\n")["At"]
+	if len(at) != 1 || at[0].Record != ir.TableFixedRecordMaxBytes || len(at[0].Layout) == 0 {
+		t.Fatalf("a record of exactly %d bytes keeps its one layout entry: %+v", ir.TableFixedRecordMaxBytes, at)
+	}
+}
+
+// TestFixedLockKeepsHistoryPastTheRecordBound: a committed lock that already
+// holds lineage for a table past the record bound (tables/block's 7.5 MB
+// RenderFrame) still checks, and writing the lock again keeps every entry it
+// holds: they are history, and the lock is append-only.
+func TestFixedLockKeepsHistoryPastTheRecordBound(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	src := "../tables/block"
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, e.Name()), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Ext(e.Name()) == ".schema" {
+			paths = append(paths, filepath.Join(dir, e.Name()))
+		}
+	}
+	before, err := os.ReadFile(filepath.Join(dir, lockfile.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := lockfile.Parse(lockfile.FileName, before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame := held.Table("RenderFrame"); frame == nil || len(frame.Lineage) == 0 {
+		t.Fatal("tables/block's lock no longer holds RenderFrame's historical lineage; this test needs it")
+	}
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if errs := lockfile.Check(u, paths); len(errs) != 0 {
+		t.Fatalf("the committed lock does not check: %v", errs)
+	}
+	if _, rewrote, err := lockfile.Update(u, paths); err != nil || rewrote {
+		t.Fatalf("schema lock over the committed lock: rewrote %v, err %v", rewrote, err)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, lockfile.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("schema lock changed the committed lock: its historical entries must stand")
 	}
 }

@@ -168,8 +168,17 @@ func plural(n int, one, many string) string {
 // now. A rendering knows one layout and the committed file knows the rest, so
 // [Render] produces a lineage of exactly one entry and [Update] is what carries
 // the history forward onto it.
+//
+// A TABLE PAST THE FIXED-FORM RECORD BOUND HAS NO FIXED FORM (docs/SPEC-TABLES.md
+// §3.4), so it has no layout to record and renders no entry: it locks in every
+// language, and no size is ever written modulo 2^32. An entry a lock already
+// holds for such a table is history; [mergeLineage] carries it forward and the
+// check reads it as that.
 func renderLineage(u *ir.Unit, st *ir.Struct) []LineageEntry {
-	layout := ir.TableFixedLineageLayoutBytes(ir.TableFixedWalkRoot(st))
+	if pastRecordBound(st) {
+		return nil
+	}
+	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
 	digest := ir.TableFixedDefinitionsDigest(st)
 	return []LineageEntry{{
 		Wire:   lineageWireHash(layout, digest),
@@ -177,6 +186,12 @@ func renderLineage(u *ir.Unit, st *ir.Struct) []LineageEntry {
 		Digest: digest,
 		Record: ir.TableFixedTypeBytes(st),
 	}}
+}
+
+// pastRecordBound answers whether a fixed table's record is past the
+// fixed-form record bound, so that it carries no fixed form and no lineage.
+func pastRecordBound(st *ir.Struct) bool {
+	return ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes
 }
 
 // line is one lineage entry's text. The wire hash leads, because it is what a
@@ -419,6 +434,14 @@ func salvageLineage(locked, live *Unit) {
 func mergeLineage(locked, live *Unit) {
 	for i := range live.Tables {
 		lv := &live.Tables[i]
+		// a table past the record bound renders no entry; what the lock
+		// already holds for it is history, kept as it stands (append-only)
+		if lv.Decl == DeclFixedTable && len(lv.Lineage) == 0 {
+			if lk := locked.Table(lv.Name); lk != nil && lk.Decl == DeclFixedTable {
+				lv.Lineage = append([]LineageEntry(nil), lk.Lineage...)
+			}
+			continue
+		}
 		if lv.Decl != DeclFixedTable || len(lv.Lineage) != 1 {
 			continue
 		}
@@ -500,6 +523,11 @@ func Warnings(paths []string) []string {
 // per entry before it. Under [Appendable] the answer is a new entry, which is
 // what `schema lock` is for.
 func diffLineage(lk, lv *Table, policy Policy) error {
+	// a table past the record bound has no fixed form and renders no entry:
+	// the lock owes it none, and any entries it holds are history
+	if lv != nil && lv.PastRecordBound {
+		return nil
+	}
 	if len(lk.Lineage) == 0 {
 		return fmt.Errorf("fixed table %s: the lock carries no lineage for it — every fixed table's layouts are the record a reader is compiled from (docs/FIXED-FORM-BILL-READS-BACKWARD.md §6b, §11.7); write it with `schema lock` (docs/SPEC-TABLES.md §2.10)",
 			lk.Name)
@@ -545,15 +573,17 @@ func diffLineage(lk, lv *Table, policy Policy) error {
 // may not cross it. A table already past it crosses nothing and says nothing —
 // it never had the form this refusal protects.
 func diffCeiling(lk, lv *Table) error {
-	if len(lk.Lineage) == 0 || len(lv.Lineage) != 1 {
+	// the declaration's record is the live table's own: past the bound it
+	// renders no lineage entry to read it from
+	if len(lk.Lineage) == 0 || lv.Decl != DeclFixedTable {
 		return nil
 	}
-	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Lineage[0]
-	if last.Record > ir.TableFixedRecordMaxBytes || cur.Record <= ir.TableFixedRecordMaxBytes {
+	last, cur := lk.Lineage[len(lk.Lineage)-1], lv.Record
+	if last.Record > ir.TableFixedRecordMaxBytes || cur <= ir.TableFixedRecordMaxBytes {
 		return nil
 	}
 	return fmt.Errorf("fixed table %s: its record was %d bytes in the lock and is %d in the declaration: record past the form's %d-byte ceiling (%d -> %d) — past the ceiling a fixed table DOES NOT CARRY THE FIXED FORM (docs/SPEC-TABLES.md §3.4): it keeps form 1, so this is not a widening every reader can hold but a CHANGE OF FORM, and the readers compiled from this lineage would meet a form byte no plan of theirs has a branch for (docs/FIXED-FORM-BILL-READS-BACKWARD.md §2, docs/SPEC-TABLES.md §2.10); shrink the bounds it declares back inside the ceiling, or start a new table under a new name",
-		lk.Name, last.Record, cur.Record, ir.TableFixedRecordMaxBytes, last.Record, cur.Record)
+		lk.Name, last.Record, cur, ir.TableFixedRecordMaxBytes, last.Record, cur)
 }
 
 // diffDepth is THE WALK'S DEPTH BOUND AS A MONOTONE FACT (docs/SPEC-TABLES.md

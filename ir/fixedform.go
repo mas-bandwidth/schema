@@ -625,15 +625,15 @@ func tableFixedWalkEnum(w *tableFixedWalk, e *Enum, id uint64, note string, dst 
 // is a leg asking for a layout the compiler has already declined;
 // [TableFixedLayoutOf] answers it as an error.
 func TableFixedLayoutBytes(entries []TableFixedLayoutEntry) []byte {
-	if err := tableFixedLayoutBound(entries, TableFixedRecordMaxBytes, false); err != nil {
+	if err := tableFixedLayoutBound(entries); err != nil {
 		panic(err)
 	}
 	return tableFixedLayoutEncode(entries)
 }
 
-// tableFixedLayoutEncode writes entries with no bound check, behind the two
-// checked encoders, and for [TableFixedTypeDepth], which reads the child
-// counts alone: the depth question is asked of every table, including one past
+// tableFixedLayoutEncode writes entries with no bound check, behind the
+// checked encoder, and for [TableFixedTypeDepth], which reads the child counts
+// alone: the depth question is asked of every table, including one past
 // the record bound, and a size it never reads cannot mislead it.
 func tableFixedLayoutEncode(entries []TableFixedLayoutEntry) []byte {
 	out := make([]byte, 0, TableFixedLayoutHeaderBytes+TableFixedEntryBytes*len(entries))
@@ -653,69 +653,32 @@ func tableFixedLayoutEncode(entries []TableFixedLayoutEntry) []byte {
 const TableFixedLayoutRecordTooLarge = "layout_record_too_large"
 
 // TableFixedLayoutRefusal is the encoder's refusal of a layout entry past the
-// bound its use allows (docs/SPEC-TABLES.md §3.4): the fixed-form record bound
-// for a layout a leg emits, and the 32-bit size field for the layout a lock
-// records. Table is the table the walk began at, Size the entry's size.
+// fixed-form record bound (docs/SPEC-TABLES.md §3.4): Table is the table the
+// walk began at, Size the entry's size.
 type TableFixedLayoutRefusal struct {
 	Table string
 	Size  int64
-	// Lock says the refused layout is a lock's lineage, held to the 32-bit
-	// size field rather than to the record bound
-	Lock bool
 }
 
 func (e *TableFixedLayoutRefusal) Error() string {
-	if e.Lock {
-		return fmt.Sprintf("%s: fixed table %s: a record of %d bytes is past the %d bytes a layout entry's 32-bit size carries, so its lineage cannot be locked (docs/SPEC-TABLES.md §3.4, §2.10); the fixed form is not emitted for it, and it keeps form 1",
-			TableFixedLayoutRecordTooLarge, e.Table, e.Size, int64(math.MaxUint32))
-	}
 	return fmt.Sprintf("%s: table %s: a layout entry of %d bytes is past the %d-byte fixed-form record bound (docs/SPEC-TABLES.md §3.4); the fixed form is not emitted for it, and the table keeps form 1",
 		TableFixedLayoutRecordTooLarge, e.Table, e.Size, TableFixedRecordMaxBytes)
 }
 
-// tableFixedLayoutBound refuses entries any of whose sizes is past bound. The
-// root entry is the largest, since every child's storage lies inside it, but
-// each entry is held so no size is ever written modulo 2^32.
-func tableFixedLayoutBound(entries []TableFixedLayoutEntry, bound int64, lock bool) error {
+// tableFixedLayoutBound refuses entries any of whose sizes is past the record
+// bound. The root entry is the largest, since every child's storage lies
+// inside it, but each entry is held so no size is ever written modulo 2^32.
+func tableFixedLayoutBound(entries []TableFixedLayoutEntry) error {
 	for _, e := range entries {
-		if e.Size < 0 || e.Size > bound {
+		if e.Size < 0 || e.Size > TableFixedRecordMaxBytes {
 			table := e.Note
 			if len(entries) > 0 {
 				table = entries[0].Note
 			}
-			return &TableFixedLayoutRefusal{Table: table, Size: e.Size, Lock: lock}
+			return &TableFixedLayoutRefusal{Table: table, Size: e.Size}
 		}
 	}
 	return nil
-}
-
-// TableFixedLineageLayoutBytes is the layout a LOCK records in a fixed
-// table's lineage (docs/SPEC-TABLES.md §2.10). The lock holds every fixed
-// table's declaration, including one past the fixed-form record bound whose
-// form is not emitted, so its sizes are held to the 32-bit field the layout
-// carries rather than to the record bound: past 2^32-1 it refuses, by name,
-// rather than write the size modulo 2^32. [TableFixedLockRefusals] names that
-// table to the compiler before any lock is rendered.
-func TableFixedLineageLayoutBytes(entries []TableFixedLayoutEntry) []byte {
-	if err := tableFixedLayoutBound(entries, math.MaxUint32, true); err != nil {
-		panic(err)
-	}
-	return tableFixedLayoutEncode(entries)
-}
-
-// TableFixedLockRefusals names every fixed table of the unit whose record a
-// lock's lineage cannot carry: past 2^32-1 bytes, the most a layout entry's
-// 32-bit size field holds. Such a table compiles and generates (it keeps form
-// 1); it cannot be locked, and `schema lock` and the lock check refuse it as
-// layout_record_too_large.
-func TableFixedLockRefusals(u *Unit) []error {
-	var errs []error
-	for _, st := range TableFixedRoots(u) {
-		if err := tableFixedLayoutBound(TableFixedWalkRoot(st), math.MaxUint32, true); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	return errs
 }
 
 // TableFixedLayoutOf is the layout of a fixed table, or the encoder's refusal
@@ -723,7 +686,7 @@ func TableFixedLockRefusals(u *Unit) []error {
 // the fixed-form record bound.
 func TableFixedLayoutOf(st *Struct) ([]byte, error) {
 	entries := TableFixedWalkRoot(st)
-	if err := tableFixedLayoutBound(entries, TableFixedRecordMaxBytes, false); err != nil {
+	if err := tableFixedLayoutBound(entries); err != nil {
 		return nil, err
 	}
 	return TableFixedLayoutBytes(entries), nil

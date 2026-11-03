@@ -71,11 +71,6 @@ func Check(u *ir.Unit, paths []string) []error {
 	if !ok {
 		return nil
 	}
-	// a fixed table whose record a lineage cannot carry is refused by name
-	// before any rendering (docs/SPEC-TABLES.md §3.4)
-	if errs := ir.TableFixedLockRefusals(u); len(errs) != 0 {
-		return errs
-	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil
@@ -121,9 +116,6 @@ func Check(u *ir.Unit, paths []string) []error {
 // later. Writing a lock declares nothing — every write it accepts is an
 // append, and an append breaks nothing.
 func Update(u *ir.Unit, paths []string) (path string, rewrote bool, err error) {
-	if errs := ir.TableFixedLockRefusals(u); len(errs) != 0 {
-		return "", false, errs[0]
-	}
 	dirs := map[string]bool{}
 	var dir string
 	for _, p := range paths {

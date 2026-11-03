@@ -473,7 +473,7 @@ fixed table Huge
 	// lock carries one: handed in exactly as lockfile.Lineage hands the one a
 	// lock holds, GenerateLineage MUST NOT REFUSE IT and must not emit it.
 	hugeWalk := ir.TableFixedWalkRoot(huge)
-	hugeLayout := ir.TableFixedLineageLayoutBytes(hugeWalk)
+	hugeLayout := t03HistoricalLayout(hugeWalk)
 	overCeiling := FixedLineageEntry{
 		Wire:   ir.TableFixedLayoutHash(hugeLayout, huge),
 		Layout: hugeLayout,
@@ -621,4 +621,19 @@ func t03CheckErrs(t *testing.T, src string) []error {
 		Path: "Probe.schema", Name: "Probe.schema", Base: "Probe", Bytes: []byte(src), AST: f,
 	}})
 	return cerrs
+}
+
+// t03HistoricalLayout writes a layout in the wire format as a lock written
+// before the record bound held its lineage recorded it: the shared encoder
+// refuses a table past the bound, so the entry a lock already carries for one
+// is stated here (a u32 entry count, then seventeen-byte entries).
+func t03HistoricalLayout(entries []ir.TableFixedLayoutEntry) []byte {
+	out := binary.LittleEndian.AppendUint32(nil, uint32(len(entries)))
+	for _, e := range entries {
+		out = binary.LittleEndian.AppendUint64(out, e.ID)
+		out = append(out, byte(e.Kind))
+		out = binary.LittleEndian.AppendUint32(out, uint32(e.Size))
+		out = binary.LittleEndian.AppendUint32(out, uint32(e.Children))
+	}
+	return out
 }

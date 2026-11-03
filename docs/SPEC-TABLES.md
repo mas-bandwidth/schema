@@ -8033,12 +8033,11 @@ three and not one.
   encoder refuses an entry past 65536 by the reader's own name,
   `layout_record_too_large`, rather than write its size in the 32-bit field
   modulo 2^32, so no leg can emit a layout, a hash or a descriptor of the form
-  for a table the compiler has declined it to. A LOCK still records such a
-  table's lineage (§2.10), because the lock holds every fixed declaration;
-  its entries are held to the 32-bit field instead, and a record past
-  2^32-1 bytes is refused by `schema lock` and the lock check with the same
-  name. Such a table compiles and generates, keeping form `1`, and is not
-  lockable.
+  for a table the compiler has declined it to. Nor does the LOCK record a layout for
+  one (§2.10): a table with no fixed form has no lineage, so it locks in every
+  language at any size and no size is ever stored truncated. A lineage entry a
+  lock already holds for such a table is history: it stays (the lock is
+  append-only), the check reads it as history, and nothing is appended to it.
 
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
   — because the keyword declares the CLASS and this bound is the FORM's.** The
@@ -13566,10 +13565,7 @@ in build version (§20.5).
   the C# generator refuses such a unit by name, `cs_value_type_too_large`,
   naming the record, its struct and its size. A Java `byte[]` view reads no
   position past 2^31-1, so its accessor for one throws
-  `ArithmeticException`. One limit holds in every language: a lock's lineage
-  carries a layout entry's size in 32 bits, so a fixed table past 2^32-1
-  bytes generates on form `1` but cannot be locked (`layout_record_too_large`,
-  §3.4).
+  `ArithmeticException`.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a
