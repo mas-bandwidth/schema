@@ -8636,7 +8636,9 @@ diagnostic name, which is not normative and is never compared:
   count, index or reference on the form-`1` wire, §3), a kind no reader can
   skip, an array, keyed or map body too short to carry its own header (fewer
   than two bytes: the element kind byte and the count), a count the body
-  cannot cover, a header that crosses its own `L`,
+  cannot cover, a header that crosses its own `L`, bytes left inside an array's, keyed
+  array's or map's `L` after its count's elements (an `L` of 3 holding the
+  element kind, a count of 0 and one byte more),
   the same field id twice in one body, the same keyed slot twice in
   one keyed body, bytes after a nested union inside its arm's `L`, an arm
   whose `L` does not frame its kind, a bool byte other than `0` or `1`,
@@ -9776,7 +9778,8 @@ evolution a read accepts (§4).
   id table, references, canonical LEB128, a kind no reader can skip, kind `32`
   with a nonzero `L`); a bool byte other than `0` or `1`; ill-formed text; a
   non-finite float; a repeated field id or keyed slot in one body; bytes left
-  inside an arm after a nested union; the node table's framing; the pointer
+  inside an arm after a nested union; bytes left inside an array's, keyed
+  array's or map's `L` after its count's elements; the node table's framing; the pointer
   graph's cycles and unreachable records; one blob record named from two
   slots; a count past the storage cap and a blob past its size cap.
 - **DEPENDENT ON THE DECLARATION**, and applied only where this reader declares

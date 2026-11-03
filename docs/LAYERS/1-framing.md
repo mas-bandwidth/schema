@@ -28,9 +28,15 @@ What holds the layer:
 - **The surface** — `framing`, which runs the same vectors through every leg's
   driver (`test/conformance/README.md`, "The surfaces").
 - **The model** — `tla/Framing.tla`, a layout model of the record scan with
-  offsets, `L` and the header read against the parent, in which damage ends
-  the load (invariant `DamageEndsLoad`), checked with TLC on a small instance
-  and reversed by four witnesses, `ResumeAfterDamage` among them
+  offsets, `L` and the header inside its body, in which damage ends the load
+  (`DamageEndsLoad`), the header lies inside the field's `L`
+  (`HeaderInsideBody`, with `ElementsInsideBody` and `HeaderDamageIsCrossing`)
+  and bytes left after an array's elements inside its `L` are damage
+  (`EveryCaseRuled`), checked with TLC on a small instance (`MCFraming.cfg`)
+  and reversed by five witnesses, one per retired or broken rule:
+  `MCFramingHeaderAgainstParent`, `MCFramingInertShortBody`,
+  `MCFramingOffByOneAtL`, `MCFramingResumeAfterDamage` and
+  `MCFramingTrailingElements`
   (`tla/README.md`, "tla/Framing").
 
 The reference a leg is compared against is the engine, and the engine is
@@ -209,6 +215,13 @@ included" (§3, §4).
 **L5. Bytes left inside a union arm's `L` after a whole inner union are damage
 (D1).** §3: "Bytes left inside a union arm's `L` after a whole inner union are
 damage, as a byte after the root's own terminator is: no writer emits them."
+
+**L6. Bytes left inside an array's, a keyed array's or a map's `L` after its
+count's elements are damage (D1).** §4: "bytes left inside an array's, keyed
+array's or map's `L` after its count's elements (an `L` of 3 holding the
+element kind, a count of 0 and one byte more)" is damage, decidable from the
+wire alone (§6.5). No writer emits them. Held by `tla/Framing.tla`
+`EveryCaseRuled` and its witness `MCFramingTrailingElements`.
 
 ## D. Arrays, maps and keyed arrays: the header inside the body
 
