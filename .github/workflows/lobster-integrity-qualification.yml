@@ -24,6 +24,6 @@ jobs:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobsterVariableWireIntegrity$' -count=1 -v
+          go test ./internal/codegen/lobstertable -run '^TestLobster(VariableWireIntegrity|MessageIntegrity)$' -count=1 -v
       - name: Pure Go Lobster and compiler checks
         run: go test ./internal/codegen/lobstertable ./internal/tablenames -count=1
