@@ -1980,6 +1980,8 @@ fn jr_key_cmp(c: JvIn&, kd: FieldDesc, a: i64, b: i64) -> i64 {
 recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
     let et = jv_entry(c.unit, owner, d.slot);
     if et < 0 { return json_fail(c.jr); }
+    // the map's object is one level below its holder, and its values one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     let kd = c.unit.tables[et].fields[0];
     let vd = c.unit.tables[et].fields[1];
@@ -2022,7 +2024,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
             }
         }
         if drop {
-            if !jr_skip(c, depth) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
         } else {
             // the VALUE: null is an absent `?T` and a null pointer; any
             // other value of an optional is present (§2.3, §2.8)
@@ -2033,10 +2035,10 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
                 jr_reset(c, vs, vd);
             } else if got != jr_shape(c, vd, ename, 1, false) {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { ok = false; break; }
+                if !jr_skip(c, depth + 2) { ok = false; break; }
                 if vd.optional { jr_present(c, vs, vd); }
             } else {
-                if !jr_field(c, vs, vd, ename, 1, depth) { ok = false; break; }
+                if !jr_field(c, vs, vd, ename, 1, depth + 1) { ok = false; break; }
                 if vd.optional { jr_present(c, vs, vd); }
             }
             var dup: i64 = -1;
@@ -2176,6 +2178,8 @@ recursive fn jr_value(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
 // name; `{}` is None, an unknown arm counted unknown, an arm value of the
 // wrong shape kind_mismatch with the union None, and two keys malformed.
 recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
+    // the union's object is one level below its holder, and its arm's value one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     let u = jv_union(c.unit, name);
     if u < 0 { return json_fail(c.jr); }
@@ -2198,13 +2202,13 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
     let got = json_shape(c.jr);
     if tag == 0 {
         c.jr.rep.unknown += 1;
-        if !jr_skip(c, depth + 1) { return false; }
+        if !jr_skip(c, depth + 2) { return false; }
     } else {
         let arm = arms[tag - 1];
         if arm.shape == ShapeVoid {
             if got != 'z' {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { return false; }
+                if !jr_skip(c, depth + 2) { return false; }
             } else {
                 if !json_literal(c.jr, "null") { return false; }
                 jr_arm(c, s, tag, -1);
@@ -2215,10 +2219,10 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
             let want: u8 = if c.unit.tables[at].json_array { 'a' } else { 'o' };
             if got != want {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { return false; }
+                if !jr_skip(c, depth + 2) { return false; }
             } else {
                 let p = jr_new_record(c, at);
-                if !jr_table(c, at, p, depth + 1) { return false; }
+                if !jr_table(c, at, p, depth + 2) { return false; }
                 jr_arm(c, s, tag, p);
             }
         } else {
@@ -2230,7 +2234,7 @@ recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
                 jr_arm(c, s, tag, p);
             } else if got != jr_shape(c, arm, uname, tag as! i32, false) {
                 c.jr.rep.kind_mismatch += 1;
-                if !jr_skip(c, depth + 1) { return false; }
+                if !jr_skip(c, depth + 2) { return false; }
             } else {
                 if !jr_field(c, p, arm, uname, tag as! i32, depth + 1) { return false; }
                 jr_arm(c, s, tag, p);

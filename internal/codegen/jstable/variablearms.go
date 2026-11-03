@@ -831,13 +831,15 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
   holder[fd.n] = TableVariableFieldDefault(fd);
   if (shape !== fd.js) {
     report.kindMismatch++;
-    return inp.skip(depth, graph);
+    return inp.skip(depth + 1, graph);
   }
   return TableVariableTextField(fd, inp, holder, depth, graph, report);
 }
 
 function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  // the map's object is one level below its holder, and its values one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
@@ -861,15 +863,15 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     if (status === "malformed") { report.malformed = true; inp.bad = true; return false; }
     if (status === "mismatch") {
       report.kindMismatch++;
-      if (!inp.skip(depth, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
       // KEYS NEVER CLAMP: the entry drops whole (§2.8)
       report.clamped++;
-      if (!inp.skip(depth, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else {
       const entry = fd.c.make();
       entry.key = key;
-      if (!TableVariableTextValue(vd, inp, entry, depth, graph, report)) { return false; }
+      if (!TableVariableTextValue(vd, inp, entry, depth + 1, graph, report)) { return false; }
       const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
       if (at >= 0) { report.duplicate++; ents[at] = entry; } else { ents.push(entry); }
     }
@@ -924,6 +926,8 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
 // key is a text this walk will not guess at
 function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  // the union's object is one level below its holder, and its arm's value one below that
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   holder[key] = null;
   if (inp.peek() === "}") { inp.p++; return true; }
@@ -934,11 +938,11 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   const arm = d.u.byName.get(k);
   if (arm === undefined) {
     report.unknown++;
-    if (!inp.skip(depth + 1, graph)) { return false; }
+    if (!inp.skip(depth + 2, graph)) { return false; }
   } else if (arm.void) {
     if (inp.shape() !== "z") {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else {
       if (!inp.literal("null")) { return false; }
       holder[key] = { arm: arm.name, value: null };
@@ -946,10 +950,10 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   } else if (arm.body) {
     if (inp.shape() !== (arm.c.jsonArray ? "a" : "o")) {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else {
       const inst = arm.c.make();
-      if (!TableVariableReadTable(arm.c, inp, inst, depth + 1, graph, report)) { return false; }
+      if (!TableVariableReadTable(arm.c, inp, inst, depth + 2, graph, report)) { return false; }
       holder[key] = { arm: arm.name, value: inst };
     }
   } else {
@@ -961,7 +965,7 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
       holder[key] = h;
     } else if (shape !== arm.f.js) {
       report.kindMismatch++;
-      if (!inp.skip(depth + 1, graph)) { return false; }
+      if (!inp.skip(depth + 2, graph)) { return false; }
     } else {
       if (!TableVariableTextField(arm.f, inp, h, depth + 1, graph, report)) { return false; }
       holder[key] = h;

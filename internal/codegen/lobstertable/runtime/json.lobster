@@ -2022,6 +2022,10 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     if j_peek(r) != '{':
         r.bad = true
         return false
+    // the union's object is one level below its holder, and its arm's value one below that
+    if depth + 1 > json_max_depth:
+        r.bad = true
+        return false
     r.pos++
     cell.i = 0
     cell.tab = nil
@@ -2042,14 +2046,14 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
             tag = i + 1
     if tag == 0:
         r.report.unknown++
-        if not j_skip_value(r, depth + 1):
+        if not j_skip_value(r, depth + 2):
             return false
     else:
         let a = un.arms[tag - 1]
         if a.s == "void":
             if j_value_shape(r) != 'z':
                 r.report.kind_mismatch++
-                if not j_skip_value(r, depth + 1):
+                if not j_skip_value(r, depth + 2):
                     return false
             else:
                 if not j_literal(r, "null"):
@@ -2058,11 +2062,11 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
         elif a.s == "tab":
             if j_value_shape(r) != 'o':
                 r.report.kind_mismatch++
-                if not j_skip_value(r, depth + 1):
+                if not j_skip_value(r, depth + 2):
                     return false
             else:
                 let payload = new_record(table_of(a.t))
-                if not j_read_table(r, payload, depth + 1):
+                if not j_read_table(r, payload, depth + 2):
                     return false
                 cell.i = tag
                 cell.tab = payload
@@ -2076,7 +2080,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
                 cell.arm = fv
             elif shape != j_shape(a):
                 r.report.kind_mismatch++
-                if not j_skip_value(r, depth + 1):
+                if not j_skip_value(r, depth + 2):
                     return false
             else:
                 if not j_read_field(r, fv, depth + 1):
@@ -2213,6 +2217,10 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
     if j_peek(r) != '{':
         r.bad = true
         return false
+    // the map's object is one level below its holder, and its values one below that
+    if depth + 1 > json_max_depth:
+        r.bad = true
+        return false
     r.pos++
     sl.entries = []
     let ed = table_of(sl.fd.t)
@@ -2246,21 +2254,21 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
             fits = length(entry.fields[0].cell.s) <= kf.bound
         if over and string_key:
             r.report.clamped++
-            if not j_skip_value(r, depth):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif over:
             r.report.kind_mismatch++
-            if not j_skip_value(r, depth):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif placed == 1:
             r.report.kind_mismatch++
-            if not j_skip_value(r, depth):
+            if not j_skip_value(r, depth + 2):
                 return false
         elif not fits:
             r.report.clamped++
-            if not j_skip_value(r, depth):
+            if not j_skip_value(r, depth + 2):
                 return false
-        elif not j_read_map_value(r, entry.fields[1], depth):
+        elif not j_read_map_value(r, entry.fields[1], depth + 1):
             return false
         else:
             var at = -1

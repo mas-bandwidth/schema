@@ -1773,6 +1773,8 @@ namespace Blockdemo
             static bool ReadMap(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int depth)
             {
                 if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                // the map's object is one level below its holder, and its values one below that
+                if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
                 input.Pos++; f.ResetField(owner);
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
@@ -1813,7 +1815,7 @@ namespace Blockdemo
                         { input.Bad = true; return false; }
                         if (probe.Report.Clamped != 0 || probe.Report.KindMismatch != 0) { input.Report.KindMismatch++; drop = true; }
                     }
-                    if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
+                    if (drop) { if (!SkipValue(text, ref input, depth + 2)) { return false; } }
                     else
                     {
                         char shape = ValueShape(text, ref input);
@@ -1831,9 +1833,9 @@ namespace Blockdemo
                             if (shape != Shape(field))
                             {
                                 input.Report.KindMismatch++;
-                                if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                                if (!SkipValue(text, ref input, depth + 2)) { return false; }
                             }
-                            else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                            else if (!ReadField(text, ref input, entry, field, depth + 1)) { return false; }
                         }
                         int at = 0;
                         while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
@@ -2474,6 +2476,9 @@ namespace Blockdemo
                     object union = f.GetChild(owner, index);
                     if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
                     input.Pos++;
+                    // the union's object is one level below its holder, and its arm's
+                    // value one below that
+                    if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
                     Span<byte> key = stackalloc byte[MaxKey];
@@ -2489,7 +2494,7 @@ namespace Blockdemo
                     if (tag == 0)
                     {
                         input.Report.Unknown++;
-                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        if (!SkipValue(text, ref input, depth + 2)) { return false; }
                     }
                     else
                     {
@@ -2499,7 +2504,7 @@ namespace Blockdemo
                         if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                         {
                             input.Report.KindMismatch++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else
                         {
@@ -2511,7 +2516,7 @@ namespace Blockdemo
                             {
                                 object body = arm.Payload(union);
                                 arm.Table.Reset(body);
-                                if (!ReadTable(text, ref input, body, arm.Table, depth + 1)) { return false; }
+                                if (!ReadTable(text, ref input, body, arm.Table, depth + 2)) { return false; }
                             }
                             else
                             {

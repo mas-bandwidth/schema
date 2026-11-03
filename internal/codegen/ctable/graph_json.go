@@ -501,12 +501,12 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
         }
         if(entry!=NULL && map->count==before) { in->report->duplicate++; }
         c=table_json_value_shape(in);
-        if(entry==NULL) { if(!table_json_skip_value(in,depth+1)) { return 0; } }
+        if(entry==NULL) { if(!table_json_skip_value(in,depth+2)) { return 0; } }
         else if(value->optional && c=='z') {
             if(!table_json_literal(in,"null")) { return 0; }
         } else {
             if(c!=shape && !(value->kind==17 && !value->is_array && c=='z')) {
-                in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+1)) { return 0; }
+                in->report->kind_mismatch++; if(!table_json_skip_value(in,depth+2)) { return 0; }
             } else if(!table_json_read_field(in,entry,value,depth+1)) { return 0; }
             if(value->optional) { table_json_set_raw((uint8_t *)entry+value->present_offset,1,1); }
         }

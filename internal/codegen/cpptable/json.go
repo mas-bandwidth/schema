@@ -449,7 +449,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         const char got = TableJsonValueShape( in );
         if ( entry == NULL )
         {
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else if ( value->kind == 17 && !value->is_array )
         {
@@ -466,7 +466,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             else if ( got != shape )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonReadPointer( in, (uint8_t *) entry + value->offset, value, depth + 1 ) )
             {
@@ -476,7 +476,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         else if ( got != shape )
         {
             in.report->kind_mismatch++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
         {
@@ -3772,6 +3772,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             return false;
         }
         in.pos++;
+        // the union's object is one level below its holder, and its arm's
+        // value one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( TableJsonPeek( in ) == '}' )
         {
@@ -3800,7 +3807,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3824,7 +3831,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 else if ( got != TableJsonShape( arm ) )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3848,13 +3855,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( TableJsonValueShape( in ) != 'o' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3864,7 +3871,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( TableJsonValueShape( in ) != 'z' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )

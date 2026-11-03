@@ -1228,6 +1228,8 @@ end
 
 local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '{' then inp.bad = true; return false end
+  -- the map's object is one level below its holder, and its values one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local out, seen = {}, {}
   local kf = fd.key_field
@@ -1287,7 +1289,7 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
       seen[kval] = true
       out[kval] = false
     elseif skip then
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
@@ -1363,6 +1365,8 @@ end
 
 local function read_union(T: any, u: any, inp: Input, depth: number, graph: any, report: any): any
   if peek(inp) ~= '{' then inp.bad = true; return nil end
+  -- the union's object is one level below its holder, and its arm's value one below that
+  if depth + 1 > MAX_DEPTH then inp.bad = true; return nil end
   inp.p = inp.p + 1
   if peek(inp) == '}' then inp.p = inp.p + 1; return { tag = 0 } end
   local start = inp.p
@@ -1376,11 +1380,11 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= 'z' then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return nil end
+      if not skip_value(inp, depth + 2, graph) then return nil end
     else
       literal(inp, "null")
       out.tag = tag
@@ -1393,7 +1397,7 @@ local function read_union(T: any, u: any, inp: Input, depth: number, graph: any,
     out.tag = tag
   elseif value_shape(inp) ~= shape_of(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   else
     out.tag = tag
     if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false) then

@@ -2411,6 +2411,11 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		r.bad = true
 		return false
 	end
+	-- the union's object is one level below its holder, and its arm's value one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local ud = St.lookup(t)
 	local u = ud.new()
@@ -2437,13 +2442,13 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 	end
 	if arm == nil then
 		r.report.unknown += 1
-		if not skipValue(r, depth + 1) then
+		if not skipValue(r, depth + 2) then
 			return false
 		end
 	elseif arm.s == "void" then
 		if valueShape(r) ~= "z" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2456,13 +2461,13 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		-- a BODY arm: the declared type's object
 		if valueShape(r) ~= "o" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
 			local bd = St.lookup(arm.t)
 			local payload = bd.new()
-			if not readTable(r, bd, payload, depth + 1) then
+			if not readTable(r, bd, payload, depth + 2) then
 				return false
 			end
 			u[arm.slot] = payload
@@ -2478,7 +2483,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 			u.Type = arm.tag
 		elseif s ~= shape(arm) then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -3003,6 +3008,11 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
+	-- the map's object is one level below its holder, and its values one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local ed = St.lookup(fd.t)
 	local kd, vd = ed.fields[1], ed.fields[2]
@@ -3070,17 +3080,17 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			else
 				r.report.kindMismatch += 1
 			end
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed == "mismatch" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif kd.s == "str" and #name > kd.bound then
 			r.report.clamped += 1
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -3091,7 +3101,7 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 					resetField(ed, vd, entry)
 				end
 			else
-				value = readField(r, ed, vd, entry, depth)
+				value = readField(r, ed, vd, entry, depth + 1)
 				if value and vd.present ~= nil then
 					entry[vd.present] = true
 				end

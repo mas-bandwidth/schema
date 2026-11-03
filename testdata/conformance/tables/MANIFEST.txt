@@ -717,6 +717,21 @@ json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conform
 # the skip walk every reader has; the at-limit read counts the one unknown key.
 json-hostile nesting-at-depth-cap         tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-at-depth-cap         1,0,0,0,0,false,read
 json-hostile nesting-one-past-depth-cap   tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap   refused
+#
+# Every container is one level, whatever declared it: a map's object and a
+# union's object each count, as a table's object and an array do. The pairs
+# below reach the limit through mapdemo's Depth root, `one.roster` (a table,
+# then a map, then the map's Item value) and `arm.squad` (a union, then its
+# Squad payload), each ending in an unknown key's arrays. A reader that does
+# not count the map or the union object reads the one-past text.
+json-hostile nesting-at-depth-cap-through-map         mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-map         1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-map   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-map   refused
+json-hostile nesting-at-depth-cap-through-union       mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-union       1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-union mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-union refused
+# The same through a fixed table's declared path, tabledemo's RootConfig:
+# `weapons` (an array), a WeaponConfig, its `effect` union, then the Buff arm.
+json-hostile nesting-at-depth-cap-through-fixed-union       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-fixed-union       1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-fixed-union tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-fixed-union refused
 json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,0,false,read
 json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,0,false,read
 json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused

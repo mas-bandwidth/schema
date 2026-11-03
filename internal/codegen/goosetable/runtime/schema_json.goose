@@ -1439,6 +1439,9 @@ struct JsonArm {
 // None, reads arm s.tag when s.read, sets the tag to s.tag when it is not 0,
 // and ends with json_union_close.
 fn json_union_open(jr: JsonIn&, s: JsonArm&, d: const UnionDesc&, shapes: const u8[:], depth: i64) -> bool {
+    // the union's object is one level below its holder, and its arm's value
+    // one below that
+    if depth + 1 > JsonMaxDepth { return json_fail(jr); }
     if !json_expect(jr, '{') { return false; }
     if json_peek(jr) == '}' {
         jr.pos += 1;
@@ -1460,11 +1463,11 @@ fn json_union_open(jr: JsonIn&, s: JsonArm&, d: const UnionDesc&, shapes: const 
     }
     if tag == 0 {
         jr.rep.unknown += 1;
-        return json_skip_value(jr, depth + 1);
+        return json_skip_value(jr, depth + 2);
     }
     if json_shape(jr) != shapes[a] {
         jr.rep.kind_mismatch += 1;
-        return json_skip_value(jr, depth + 1);
+        return json_skip_value(jr, depth + 2);
     }
     s.tag = tag;
     if shapes[a] == 'z' { return json_literal(jr, "null"); }
