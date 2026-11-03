@@ -22,6 +22,7 @@ var knownSurfaces = map[string]bool{
 	"block": true, "block-foreign": true, "block-dump": true,
 	"forgery": true, "cook-forgery": true,
 	"cook-reason": true, "block-reason": true,
+	"write-refusal": true,
 }
 
 // TestSquirrelDriverListsItsSurfaces runs the conformance driver's `list` from
