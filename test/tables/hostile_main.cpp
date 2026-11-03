@@ -682,6 +682,15 @@ int main( int argc, char ** argv )
             failures++;
             continue;
         }
+        // the witness unit holds text lists, which the C++ target does not
+        // carry (docs/SPEC-TABLES.md §2.13, compiler/carries_cpp.go): this
+        // driver builds no root of it, and internal/tablepack's half holds
+        // the row against the engine
+        if ( strcmp( unit, "featurewitnesses" ) == 0 )
+        {
+            printf( "ABSENT cpp / pack hostile / %s: the C++ target carries no text list (docs/SPEC-TABLES.md §2.13)\n", name );
+            continue;
+        }
         bool carries = true;
         char owed[128];
         if ( !read_marks( name, fields, carried_mark, uncarried_mark, verdict, carries, owed, sizeof( owed ) ) )
