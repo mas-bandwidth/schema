@@ -704,6 +704,9 @@ func (g *variableGen) elemDefaultExpr(f *ir.Field) string {
 	plain := *f
 	plain.KeyEnum, plain.KeyEnumRef = "", nil
 	plain.Array, plain.ArrayBound = ir.ArrayNone, 0
+	// the element of an OPTIONAL array is not itself optional: absence is the
+	// arrays, and an element defaults to its types own default
+	plain.Type.Optional = false
 	return g.defaultExpr(&plain)
 }
 
@@ -1142,8 +1145,10 @@ func intProps(f *ir.Field) string {
 // emitRootCodec emits a variable root's whole surface: the wire Save/Measure,
 // the tolerant Load, the LoadMeasure the oracle fuzzer compares, and the text
 // ToJson/FromJson (docs/SPEC-TABLES.md §3, §16). Save answers null and Measure
-// -1 for a value the wire cannot carry: a data cycle (§3.1) or an enum value no
-// variant names (§5). ToJson answers null for a value the text cannot spell: a
+// -1 for a value the wire cannot carry: a data cycle (§3.1), an enum value no
+// variant names (§5), or a value off its declaration (an integer off its range,
+// its bits(N) width or its storage, a ranged float off its range, a text past
+// its N, an array past its bound). ToJson answers null for a value the text cannot spell: a
 // cycle, a non-finite float, a blob two slots name, a nesting past the depth
 // cap (§16.3, §16.7).
 func (g *variableGen) emitRootCodec(st *ir.Struct) {
