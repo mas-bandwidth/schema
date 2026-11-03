@@ -13,5 +13,6 @@ func init() {
 		carryRequired,
 		carryTextList,
 		carryTextListTotal,
+		carryUnboundedText,
 	)
 }

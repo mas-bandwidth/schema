@@ -476,7 +476,7 @@ func TestPopulatedFeatureWitnessesCoverEveryRequiredConstruct(t *testing.T) {
 		t.Fatalf("expected two active feature witnesses, found %d", len(m.Instances))
 	}
 	required := compiler.CarryConstructs()
-	problems, count := implementationAudit(m, []string{"go", "js"}, required, compiler.Carried, newUnits(m), compiler.New())
+	problems, count := implementationAudit(m, []string{"go", "js", "c"}, required, compiler.Carried, newUnits(m), compiler.New())
 	if len(problems) != 0 || count != 2 {
 		t.Fatalf("populated witness audit: count=%d problems=%v", count, problems)
 	}

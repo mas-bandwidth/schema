@@ -788,6 +788,9 @@ static SCHEMA_UNUSED int bench_table_json_write_pointer( bench_table_json_out_t 
 static SCHEMA_UNUSED int bench_table_json_write_pointer( bench_table_json_out_t * out, const void * slot, const bench_table_field_info_t * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_bench_table_json_write_unbounded_text_( bench_table_json_out_t * out, const void * slot );
+#endif
 static SCHEMA_UNUSED int schema_bench_table_json_write_text_element_( bench_table_json_out_t * out, const void * p, const bench_table_field_info_t * f )
 {
     const bench_table_field_info_t * v = &f->table->fields[0];
@@ -797,6 +800,9 @@ static SCHEMA_UNUSED int schema_bench_table_json_write_text_element_( bench_tabl
         bench_table_json_raw( out, "null", 4 );
         return 1;
     }
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+    if ( !v->counted ) { return schema_bench_table_json_write_unbounded_text_( out, (const uint8_t *) p + v->offset ); }
+#endif
     n = bench_table_json_count( p, v );
     if ( n < 0 || n > v->array_bound ) { return 0; }
     bench_table_json_write_string( out, (const char *) p + v->offset, n );
@@ -948,6 +954,9 @@ static SCHEMA_UNUSED int bench_table_json_write_field( bench_table_json_out_t * 
     }
     if ( f->kind == 12 && f->text_list == 0 )
     {
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_bench_table_json_write_unbounded_text_( out, storage ); }
+#endif
         bench_table_json_write_string( out, (const char *) storage, bench_table_json_count( base, f ) );
         return 1;
     }
@@ -1877,6 +1886,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
 static SCHEMA_UNUSED int bench_table_json_read_list(bench_table_json_in_t * in,void * storage,const bench_table_field_info_t * f,int32_t depth);
 #ifdef SCHEMA_BENCH_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int bench_table_json_read_map(bench_table_json_in_t * in,void * storage,const bench_table_field_info_t * f,int32_t depth);
+static SCHEMA_UNUSED int schema_bench_table_json_read_unbounded_text_( bench_table_json_in_t * in, void * slot );
 #endif
 #endif
 static SCHEMA_UNUSED int schema_bench_table_json_timestamp_digit_( char c )
@@ -2292,6 +2302,9 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
     if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
+#ifdef SCHEMA_BENCH_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_bench_table_json_read_unbounded_text_( in, storage ); }
+#endif
         if ( !bench_table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
         bench_table_json_set_count( base, f, length );

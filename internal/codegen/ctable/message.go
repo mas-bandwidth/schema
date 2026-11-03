@@ -43,7 +43,7 @@ func messageClosure(u *ir.Unit) (structs, unions map[string]bool) {
 		}
 	}
 	for name := range ir.TableClosure(u) {
-		if st := u.Tables[name]; st != nil && st.FixedDeclared {
+		if st := u.Tables[name]; st != nil && st.FixedDeclared && !st.IsMapEntry() {
 			walk(st)
 		}
 	}
