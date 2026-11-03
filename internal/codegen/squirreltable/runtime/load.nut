@@ -952,6 +952,20 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
 
 // THE ELEMENTS of an array whose header (element kind, count) is read, out of
 // a reader bounded by the array's own body.
+// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the bytes the list's
+// elements hold so far, the last one just appended. An element that would carry
+// the sum past the total is removed and counted clamped, and the caller stops
+// reading, so the list keeps the longest prefix within the total.
+local textTotalKeeps = function(fd, out, spent, report) {
+  if (!("total" in fd)) return true;
+  local el = out[out.len() - 1];
+  local n = (fd.textlist == 2 && !el.ValuePresent) ? 0 : el.Value.len();
+  if (n <= fd.total - spent[0]) { spent[0] += n; return true; }
+  out.pop();
+  report.clamped = report.clamped + 1;
+  return false;
+};
+
 readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
   local want = fd.shape == "bytes" ? 6 : fd.elem.kind;
   if (ek != want) {
@@ -986,6 +1000,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     // its own L and bytes, landed in the element record's one `value` string.
     local d = tableDesc(T, fd.elem.table);
     local out = [];
+    local spent = [0];
     for (local i = 0; i < keep; i++) {
       local L = leb(r);
       if (r.bad || r.at + L > r.end) { report.malformed = true; break; }
@@ -995,6 +1010,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       inst.Value = dec.s;
       out.append(inst);
       r.at += L;
+      if (!textTotalKeeps(fd, out, spent, report)) break;
     }
     v[fd.member] = out;
     return ARRAY_SELECTED;
@@ -1037,8 +1053,10 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     v[fd.member] = out;
     return ARRAY_SELECTED;
   }
+  local spent = [0];
   for (local i = 0; i < keep; i++) {
     local reached = r.at < r.end;
+    local placed = out.len();
     if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) {
       // AN ELEMENT OF AN ARRAY OF UNIONS IS RESET THE MOMENT ITS ARM ID IS READ
       // (docs/SPEC-TABLES.md §4), before the kind and the arm length are
@@ -1050,6 +1068,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
         out.append(unionDesc(T, fd.elem.table).make());
       break;
     }
+    if (fd.textlist != 0 && out.len() > placed && !textTotalKeeps(fd, out, spent, report)) break;
   }
   if (!fd.list && !fd.counted) {
     // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
