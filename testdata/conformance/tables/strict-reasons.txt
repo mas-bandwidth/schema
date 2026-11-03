@@ -70,6 +70,7 @@ r1_cfg_as_r2                           ok
 r1_ping_as_r2                          ok
 r2_cfg_as_r1                           ok
 list_scalar_widen                      ok
+text_total_and_count                   clamped
 map_key_widen                          ok
 map_depth_root_kind                    kind_mismatch
 strict_blob_shared                     blob_shared
