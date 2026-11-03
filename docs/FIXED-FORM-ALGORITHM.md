@@ -17,8 +17,8 @@ COPY(dst, src, n)          move n bytes; dst and src never overlap
 ZERO(p, n)                 write n zero bytes at p
 struct N { f : T ; ... }   a record of named fields
 for i in 0 .. n            i takes 0, 1, ... n-1
-REFUSE name                stop; decode nothing; move no counter; report `name` as the one reason
-COUNT c                    add one to a §4 counter (`widened` is the only one this form moves)
+REFUSE name                stop; decode nothing; the verdict is "refused"; `name` is a recommended diagnostic
+COUNT c                    add one to a §4 counter, a per-language diagnostic (`widened` is the only one)
 UNLAWFUL                   the lineage entry is not a lawful widening of the reader: COMPILE lays no plan
                            for it and its lane carries `layout_malformed` (§5.9 #30, #36)
 ```
@@ -1012,13 +1012,11 @@ reserved byte, a ragged tail — is a refusal like any other, each by its own na
 and present bytes and floats, each against the WRITER's layout, before the first record lands, in whatever
 order is fastest for its language, and refuses at the first condition it meets. Only then does it land the
 records and run the bounds pass. A refusal of the check loop leaves `out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never
-left partly landed. This answers the open question `FIXED-FORM-VERSIONING-TESTS.md` names
-beside §5.8 row 9; the one-record corpus files of that row hold under either reading.
+left partly landed. This is the answer `FIXED-FORM-VERSIONING-TESTS.md` gives beside §5.8 row 9.
 
-**THE REPORT IS ONE ANSWER, AND EVERY FIXTURE ASSERTS IT WHOLE** (`test/tables/versioning_lists.cpp:178`,
-the lines `refuses_newer` shares with every OLD-REFUSES-NEW column): a refusal and its ONE `reason`, or a read
-that lands values and its `widened` count. **EVERY REFUSAL OF THE FIXED LOAD HAS A NAME**, the framing damage
-included: `truncated` for a short input or ragged tail and `reserved_not_zero` for a reserved byte, matching the
+**THE CROSS-LANGUAGE ANSWER IS THE VERDICT** (SPEC-TABLES §6.5): "refused", or a read that lands values,
+which written back equal the canonical bytes. The reason and the `widened` count are per-language
+diagnostics, never compared. The RECOMMENDED names, the framing damage included: `truncated` for a short input or ragged tail and `reserved_not_zero` for a reserved byte, matching the
 cooked form's `TableRefuseTruncated` and `TableRefuseReservedNotZero` spellings (SPEC-TABLES §3.4's registry,
 §7). There is no `malformed` flag on this form's report.
 
@@ -1043,9 +1041,8 @@ to `layout_newer` alone is "and nothing else" (§5.9 #7). **The field is called 
 last member of the report (§5.9 #15). **There is no COMPILE census to land**: on a LAWFUL lineage it is zero, always (§5.9 #30), and an
 entry that would raise one is UNLAWFUL and carries `layout_malformed` (§5.2).
 
-**THE NAMES ARE THE CONTRACT AND THE INTEGERS ARE EACH LEG PAIR'S OWN** (§5.9 #14). A peer is refused by the
-same NAME whichever leg reads it; the value behind that name is the leg's, because one leg spells a reason as a
-string and has no integer to agree with. The C and C++ pair's values are **`18` `layout_newer` and `19`
+**THE NAMES ARE RECOMMENDED AND THE INTEGERS ARE EACH LEG PAIR'S OWN** (§5.9 #14). Neither is compared
+across legs; the verdict is. The C and C++ pair's values are **`18` `layout_newer` and `19`
 `layout_unsupported`**, taken in the order §5.3 names them — the order is the contract too, so a second leg
 pair numbering its own set numbers them in the same order.
 
@@ -1055,15 +1052,13 @@ the tail behind the layout, is the file's. **A LINEAGE ENTRY whose
 recorded record size is wrong is a LOCK BUG and the build fails** (§5.9 #26); a leg that routes it into step 9
 has read a lock bug as a wire event.
 
-A port that refuses with no reason fails it too, and so does one that answers a refusal with any other
-name than the row's. That is exactly what §5.8 row 8 is: ill-formed text zeroes the field and sets a flag,
-where the ruling is a refusal by name.
+A port that lands a value where the row refuses fails it. That is exactly what §5.8 row 8 is: ill-formed
+text zeroes the field and sets a flag, where the ruling is a refusal.
 
 ### 5.4 The counter, and the refusals, per op and per condition
 
-The fixtures assert these exactly, so a port that moves a different counter, or names a different reason, on
-the same bytes is wrong even when every value lands. `widened` is the one counter; every other row is a
-refusal by one name (SPEC-TABLES §6.5).
+The fixtures assert the VERDICT and the value written back; the counter and the names are per-language
+diagnostics (SPEC-TABLES §6.5). `widened` is the one counter; every other row is a refusal.
 
 | where | answer | when |
 |---|---|---|
@@ -1360,13 +1355,9 @@ explicitly — `test/tables/fixedform_dump.cpp` writes `nested_append` from `Lin
 table of the unit names by value. The pilot's heuristic gives that same answer on every row; **the rule is the
 dump's**, and a leg reads each corpus file with the root the dump wrote it from.
 
-**10. THE COUNTERS A ROW OWES, PER ROW.** An APPEND row owes **every counter at zero** — an append the reader
-knows is not an event (§5.4's last line). A WIDTH row owes **`widened` nonzero**.
-The exact number is §5.4's rule multiplied out: `widened` moves once per widen entry per record, so a row's
-count is its plan's widen entries times its record count, and a leg that knows its plan asserts the number
-while one that does not asserts nonzero. **No clean row asserts a refusal.** `union_arm_payload_widen`
-is an APPEND and owes `0, 0` despite its name (§5.7). The pilot asserted the floor of this and it stands; the
-multiple is the addition.
+**10. WHAT A ROW OWES.** Every clean row owes the VALUE, written back to the canonical bytes, and no
+refusal; a refusing row owes "refused". The `widened` count is a per-language diagnostic: a leg may assert
+its own, and no row compares it across legs (SPEC-TABLES §6.5).
 
 **11. THE LEG'S BYTE GATE EXISTS, AND A LEG OWES TWO GATES.** `make tables-go-fixed-form` **is in the tree** —
 `make/go.mk:475`, hung off `test-go`, with a negative control at `make/go.mk:489` that adds one to every text
@@ -1795,9 +1786,10 @@ of its own LINEAGE and its own files, and a table with no form is a root of neit
 
 ## 7. What a port takes, and what it must not
 
-**The CONTRACT must not drift; the SHAPE may.** The contract is everything this page states as a byte, a
-counter, a refusal name or an invariant, and the one-path promise of §4.2: two conforming ports write the same
-bytes for the same values and land the same values and counters for the same bytes. The shape is how a port
+**The CONTRACT must not drift; the SHAPE may.** The contract is everything this page states as a byte or an
+invariant, the verdict, and the one-path promise of §4.2: two conforming ports write the same bytes for the
+same values and land the same values, or both refuse, for the same bytes. Counters and refusal names are
+per-language diagnostics. The shape is how a port
 gets there: one copy into a record image and a straight-line scatter, or coalesced runs into storage; the
 bounds checks inline or after; how a plan is cached. Every good idea the nine ports found tonight was shape drift
 (Rust's one-copy identity, Dart's separate flavour lane, Java's scatter) and every bug was contract drift

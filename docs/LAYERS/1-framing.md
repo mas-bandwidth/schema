@@ -330,10 +330,10 @@ as the legal twins.
 
 ## F. The report
 
-**C1. A read that returns reports the evolution counters; a refusal reports
-"refused" and moves no counter.** §4: "THE READ REPORT HOLDS THE REASON AND
-THE EVOLUTION COUNTERS, AND NOTHING ELSE." `unknown` and `widened`, and on a
-retaining read `retained` and `retain_lost`. On a damaged read "refused" is the whole compared answer (D1).
+**C1. The compared answer is the verdict; counters are diagnostics.** §4: a
+read that returns is compared by the value written back, and a refusal by
+"refused". `unknown`, `widened`, `retained` and `retain_lost` are per-language
+diagnostics, never compared.
 
 **C2. Counters on a refused read are not defined.** D1: nothing else the read
 produced is defined. Counters stand only on a read that returns.

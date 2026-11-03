@@ -9,8 +9,8 @@ The bill is `FIXED-FORM-BILL-READS-BACKWARD.md`; the law is its §2 and §6; the
 |---|---|---|---|
 | **LOCK-REFUSES** | the narrowing does not compile against the lock; the refusal names the table, the definition, the rule, the old and the new value | `internal/lockfile` (Go), one test per row | yes |
 | **LOCK-ALLOWS** | the widening compiles and the lock's lineage gains one entry | `internal/lockfile` | no (a positive) |
-| **NEW-READS-OLD** | the widened reader reads the older writer's file: every old value lands exactly, the reader's tail is the default, the counters are what §5.2 says | the C++ reference first (`test/tables/fixedform_main.cpp`, a lineage pair per row written by the dump), then every leg | yes, per leg |
-| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses `layout_unknown` before any record, no counter moves, nothing decoded; the refusal carries the file's hash and nothing else (bill §12.4) | the C++ reference first, then every leg | yes, per leg |
+| **NEW-READS-OLD** | the widened reader reads the older writer's file: every old value lands exactly and the reader's tail is the default, so the value written back equals the canonical bytes | the C++ reference first (`test/tables/fixedform_main.cpp`, a lineage pair per row written by the dump), then every leg | yes, per leg |
+| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses before any record, nothing decoded (recommended diagnostic `layout_unknown` with the file's hash, bill §12.4) | the C++ reference first, then every leg | yes, per leg |
 
 The two read columns share one corpus: for each row, `fixedform_dump.cpp` writes the OLD file (`vN_<row>.bin`)
 and the NEW file (`vN1_<row>.bin`) from two schemas that differ by exactly that row. Each leg then has two
@@ -131,13 +131,12 @@ and may not there.
 Four more rows, one per divergence of `FIXED-FORM-ALGORITHM.md` §5.8 that NO row above can reach — a
 row whose subject is not a definition change but a place the reference and this page disagree. They are
 written the same way and they owe the same things: the schema pair or the forged file, the expected verdict,
-the expected counters, and WHICH of the four ways apply — a `—` is a column the row cannot have rather than
-one nobody wrote. **The counters are asserted EXACTLY and never `>= 1`**: every one of these four is a row
-where the right number counted in the wrong place, or counted twice, is the bug, so a `>=` passes the read it
-exists to catch. The reference and the dump are Johnny's; **every other leg builds the fixture from THIS TEXT
+the value where it reads, and WHICH of the four ways apply — a `—` is a column the row cannot have rather than
+one nobody wrote. **The verdict is asserted, and where the row reads, the value written back**; counters and reason names
+are per-language diagnostics and are not asserted across legs. The reference and the dump are Johnny's; **every other leg builds the fixture from THIS TEXT
 and the row's manifest line, never from `fixedform_dump.cpp`** (§5.9 #32, #37).
 
-| row | the pair / the forged file | the read | the verdict | the counters | the four ways |
+| row | the pair / the forged file | the read | the verdict | the counters (diagnostic, not compared across legs) | the four ways |
 |---|---|---|---|---|---|
 | `writer_bound_count` (§5.8 row 4) | `VOLD_/VNEW_array_bounded_grow` as they stand — `[..4]int32` → `[..8]int32`, the reader's bound WIDER than the writer's — plus one forged file, `hostile_array_bounded_grow.bin`: `old_array_bounded_grow.bin` with the count word set to `7`, a value BETWEEN the writer's `4` and the reader's `8` | the NEW build reads the forged OLD file through its lineage, so the plan is a COMPILED one | `n == -1`, `refused` true, `reason == count_over_bound` — the WRITER's bound `4` carried by the plan, never the reader's `8` — and not one destination byte written | every counter `0` | NEW-READS-OLD only. LOCK-REFUSES / LOCK-ALLOWS are `array_bounded_grow`'s own and are not repeated; OLD-REFUSES-NEW is `—`: the forged file carries the OLD layout, which the OLD reader takes by identity |
 | `refuse_writes_nothing` (§5.8 row 9) | `VOLD_/VNEW_nested_append` as they stand — the appended nested field `Vec.w = 88` is a NONZERO prefill, which is the only thing that can tell a prefill that ran from one that did not — plus one forged file, `nolayout_nested_append.bin`: `old_nested_append.bin` with the PER-RECORD hash word (the record's first eight bytes) inverted, the header's hash untouched | the NEW build reads it: the header's hash selects the OLD lineage entry, so a COMPILED plan with a NONEMPTY fill list is in hand when step 11 compares the record's hash | `n == -1`, `refused` true, `reason == no_layout`, `layout_hash` untouched — **and the caller's storage, POISONED with `0x5A` before the load, is `0x5A` in every byte after it**: not the prefill's `88` in `v.w`, not a zero anywhere, nothing | every counter `0` — REFUSE IS TOTAL | OLD-REFUSES-NEW's sibling, run as its own column. NEW-READS-OLD is `nested_append`'s own; LOCK-* are `—` (no definition changed) |
@@ -148,7 +147,7 @@ and the row's manifest line, never from `fixedform_dump.cpp`** (§5.9 #32, #37).
 row above pins; the ranges are `range_widen_hostile` (the writer's `| 0..100`, the reader's `| 0..200`, a forged
 `150` refusing `out_of_range`), the variant count is the row below, and the arm count is
 `union_append_hostile` (a forged tag `3` against the writer's two arms refusing `out_of_range`). A leg
-asserts the reason by name and that nothing landed.
+asserts the refusal and that nothing landed.
 
 **What `fixedform_dump.cpp` owes, so nine legs read the same bytes** (§5.9 #32's manifest, `build/fixedform-corpus/manifest.txt`):
 
