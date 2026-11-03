@@ -44,7 +44,7 @@ func runPacketWideGoldens(t *testing.T, sabotage bool) {
 		}
 		inputs[name] = b
 	}
-	writeFile(t, dir, "main.lobster", packetWideProbe)
+	writeFile(t, dir, "main.lobster", program)
 	if out := strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", inputs))); out != "wide goldens passed" {
 		t.Fatal(out)
 	}
