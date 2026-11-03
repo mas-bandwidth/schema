@@ -61,7 +61,7 @@ func checkGolden(t *testing.T, name, path string, reads bool, u *units, unitKey 
 	if err != nil {
 		t.Fatalf("%s: the engine's writer refused the value: %v", name, err)
 	}
-	if !bytes.Equal(text, golden) {
+	if !bytes.Equal(oneText(text), golden) {
 		t.Errorf("%s: %s is not the oracle's value — run: make conformance-generate", name, path)
 	}
 }

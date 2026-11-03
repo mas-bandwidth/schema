@@ -308,10 +308,21 @@ func writeValue(path string, reads bool, text func() ([]byte, error)) error {
 	if err != nil {
 		return fmt.Errorf("the engine's writer refused the value: %w", err)
 	}
+	body = oneText(body)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 	return writeFileAtomic(path, body)
+}
+
+// oneText is the writer's text as a document: THE TEXT ENDS WITH ONE NEWLINE
+// (§16.1), which every leg's ToJson writes and the engine's Write leaves to
+// its caller.
+func oneText(body []byte) []byte {
+	if len(body) == 0 || body[len(body)-1] != '\n' {
+		body = append(body, '\n')
+	}
+	return body
 }
 
 // pruneValues removes a value golden no row names.
