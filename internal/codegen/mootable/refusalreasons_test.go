@@ -12,8 +12,7 @@ package mootable_test
 //	    the read a form-1 file goes to. moo's strict read answers ONE name, on
 //	    report.reason: for a row whose form column pins the form refusal (Go's
 //	    TableReport.Reason, Goose's report.reason) that name is the form
-//	    column's, and for every other row it is the strict column's (or
-//	    pendingPin's, for the rows whose pin is changing). The tolerant load
+//	    column's, and for every other row it is the strict column's. The tolerant load
 //	    (loadTolerant) names the same form refusal on its report, as Go's
 //	    TableReport.Reason does
 //	TestMooLoadRefusalReasonsNegativeControl  breaks the strict read's
@@ -40,17 +39,6 @@ type reasonRow struct{ name, schema, wire, strict, form string }
 var reasonSchemas = map[string]string{
 	"measure": "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
 	"fixed":   "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
-}
-
-// pendingPin overrides the pin table's strict answer for the four rows whose
-// pin changes on rowan/count-cap-defined: a count above the int32 storage cap
-// (§2.9) refuses the load as count_over_extent_cap, as the C++ and C
-// references and LoadMeasure name it. Remove it once that branch lands.
-var pendingPin = map[string]string{
-	"values_cap31":  "count_over_extent_cap",
-	"entries_cap31": "count_over_extent_cap",
-	"values_cap32":  "count_over_extent_cap",
-	"entries_cap32": "count_over_extent_cap",
 }
 
 func reasonRows(t *testing.T) []reasonRow {
@@ -135,9 +123,6 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 			if r.form != "-" {
 				want = r.form
 			}
-			if pin, ok := pendingPin[r.name]; ok {
-				want = pin
-			}
 			if r.form != "-" && tolerant[r.name] != r.form {
 				bad = append(bad, fmt.Sprintf("%s: the tolerant load's report names %q, want %q", r.name, tolerant[r.name], r.form))
 			}
@@ -162,18 +147,10 @@ func TestMooLoadRefusalReasons(t *testing.T) {
 			t.Errorf("no pin row answers %s", want)
 		}
 	}
-	for name, pin := range pendingPin {
-		i := slices.IndexFunc(rows, func(r reasonRow) bool { return r.name == name })
-		if i < 0 {
-			t.Errorf("pendingPin names %s, which the pin table does not", name)
-		} else if rows[i].strict == pin {
-			t.Errorf("the pin table now answers %s for %s: remove it from pendingPin", pin, name)
-		}
-	}
 	for _, b := range loadReasons(t, nil) {
 		t.Error(b)
 	}
-	t.Logf("%d pinned rows answered, %d of them by pendingPin", len(rows), len(pendingPin))
+	t.Logf("%d pinned rows answered", len(rows))
 }
 
 // TestMooLoadRefusalReasonsNegativeControl:
