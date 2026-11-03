@@ -15,7 +15,9 @@
 --
 -- A RECORD IS READER-PRIVATE (§6.6). Its layout here is the reference's own:
 --   u32 total, u32 node, u32 depth, u32 payload length, u64 id, u8 kind,
---   u8 placed, depth * (u32 field ordinal, u32 element index), payload.
+--   u8 discarded, depth * (u32 field ordinal, u32 element index), payload.
+-- A DISCARDED record belongs to a body occurrence a later one superseded: the
+-- save neither places it nor counts it lost, and its bytes stay spent (§6.6).
 -- Nothing writes one to disk and nothing compares two ports' buffers.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
@@ -387,6 +389,30 @@ local function store_record(store: any, node: number, steps: { any }, id: intege
 	return true
 end
 
+-- discard marks every record held under one field of the body at `steps`
+-- (and, when `i` is given, under that one element of it) as superseded
+-- (docs/SPEC-TABLES.md §6.6; internal/tablewire retain.go forget). A record
+-- belongs to the body occurrence that carried it and dies with it: the read
+-- of a later occurrence replaces that body whole. The discard moves neither
+-- counter, and the capacity the record took stays spent.
+local function discard(store: any, node: number, steps: { any }, o: number, i: number?)
+	local b = store.bytes
+	local d = #steps
+	local at = 0
+	while at < store.used do
+		local total = buffer.readu32(b, at)
+		if buffer.readu32(b, at + 4) == node and buffer.readu32(b, at + 8) > d then
+			local match = buffer.readu32(b, at + 26 + d * 8) == o and (i == nil or buffer.readu32(b, at + 30 + d * 8) == i)
+			for k = 1, d do
+				if not match then break end
+				match = buffer.readu32(b, at + 26 + (k - 1) * 8) == steps[k].o and buffer.readu32(b, at + 30 + (k - 1) * 8) == steps[k].i
+			end
+			if match then buffer.writeu8(b, at + 25, 1) end
+		end
+		at = at + total
+	end
+end
+
 local walk_body: any
 local walk_field: any
 local walk_union: any
@@ -457,6 +483,10 @@ end
 
 -- a union: an arm this build cannot name is an excluded class (§6.6)
 walk_union = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
+	-- A UNION WHOSE ARM IS WRITTEN AGAIN, the same arm or another, supersedes
+	-- the earlier arm body and its records, whatever this occurrence holds
+	-- (internal/tablewire decode.go unionCell, forgetArm)
+	discard(store, node, steps, fd.o or 0, nil)
 	local ref = r_leb(r)
 	if r.bad or ref == 0 then return end
 	if ref > #_ids then return end
@@ -489,7 +519,10 @@ walk_union = function(fd: any, r: any, steps: { any }, store: any, report: any, 
 	r.at = r.at + n
 end
 
--- one array or keyed array body (§2.9, §3.2)
+-- one array or keyed array body (§2.9, §3.2). A body too short for its
+-- header, or of an element kind the declaration does not take, leaves the
+-- field standing with its records (internal/tablewire decode.go arrayBody,
+-- keyedBody).
 walk_array = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then return end
@@ -499,6 +532,10 @@ walk_array = function(fd: any, r: any, steps: { any }, store: any, report: any, 
 	local ek = r_u8(sub)
 	local count = r_leb(sub)
 	if sub.bad then r.at = e; return end
+	local el = fd.e or {}
+	local o = fd.o or 0
+	local holds = el.s == "tab" or el.s == "union" or el.s == "enum"
+	if holds and fd.ek ~= nil and ek ~= fd.ek then r.at = e; return end
 	if fd.array == "keyed" then
 		for _ = 1, count do
 			local keyref = r_leb(sub)
@@ -516,34 +553,45 @@ walk_array = function(fd: any, r: any, steps: { any }, store: any, report: any, 
 				report.retainLost = report.retainLost + 1
 				sub.at = sub.at + elen
 			else
-				push(steps, fd.o or 0, at - 1)
-				walk_element(fd.e, sub, steps, store, report, node, elen)
+				-- a slot written again replaces that slot's body alone
+				if el.s == "tab" then discard(store, node, steps, o, at - 1) end
+				push(steps, o, at - 1)
+				walk_element(el, sub, steps, store, report, node, elen)
 				pop(steps)
 			end
 		end
-	else
-		local el = fd.e or {}
-		for i = 1, count do
-			if ek == 13 then
-				local elen = r_leb(sub)
-				if sub.bad or sub.at + elen > sub.e then break end
-				push(steps, fd.o or 0, i - 1)
-				local body = new_reader(sub.b, sub.at, sub.at + elen)
-				if el.s == "tab" then walk_body(S.lookup(el.t), body, steps, store, report, node) end
-				pop(steps)
-				sub.at = sub.at + elen
-			elseif ek == 15 then
-				push(steps, fd.o or 0, i - 1)
-				walk_union(el, sub, steps, store, report, node)
-				pop(steps)
+		r.at = e
+		return
+	end
+	-- THE READ COMMITS TO REPLACE HERE (internal/tablewire decode.go
+	-- arrayBody): every record under the field goes with the value it is
+	-- about to lose. A bounded array reads no element past its bound.
+	discard(store, node, steps, o, nil)
+	local keep = count
+	if fd.array ~= "list" and fd.bound ~= nil and keep > fd.bound then keep = fd.bound end
+	for i = 1, keep do
+		if ek == 13 then
+			local elen = r_leb(sub)
+			if sub.bad or sub.at + elen > sub.e then break end
+			push(steps, o, i - 1)
+			local body = new_reader(sub.b, sub.at, sub.at + elen)
+			if el.s == "tab" then walk_body(S.lookup(el.t), body, steps, store, report, node) end
+			pop(steps)
+			sub.at = sub.at + elen
+		elseif ek == 15 then
+			push(steps, o, i - 1)
+			walk_union(el, sub, steps, store, report, node)
+			pop(steps)
+		elseif el.s == "enum" then
+			walk_enum(el, sub, report)
+			if sub.bad then break end
+		else
+			local w = width_of(ek)
+			if w > 0 then
+				if sub.at + w > sub.e then break end
+				sub.at = sub.at + w
 			else
-				local w = width_of(ek)
-				if w > 0 then
-					if sub.at + w > sub.e then break end
-					sub.at = sub.at + w
-				else
-					break
-				end
+				break
 			end
 		end
 	end
@@ -559,12 +607,20 @@ walk_element = function(el: any, sub: any, steps: { any }, store: any, report: a
 		walk_union(el, body, steps, store, report, node)
 	elseif el ~= nil and el.s == "arr" then
 		walk_array(el, body, steps, store, report, node)
+	elseif el ~= nil and el.s == "enum" then
+		walk_enum(el, body, report)
 	end
 	sub.at = sub.at + elen
 end
 
 -- a map: its entries are framed bodies, and a key this build cannot name is
--- an excluded class (§2.8, §6.6)
+-- an excluded class (§2.8, §6.6). The walk follows the load's own key rules
+-- (internal/tablewire decode.go mapField): a readable header of entry kind 13
+-- commits the occurrence to replace the map; an entry whose key kind is
+-- foreign empties the map and ends it, so no later entry body is read; an
+-- entry whose key does not fit is dropped unread; and a duplicate key replaces
+-- the entry it repeats, whose records go with it. An entry's records are held
+-- at the index it LANDED at, which is where the save writes it.
 walk_map = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
 	local n = r_leb(r)
 	if r.bad or r.at + n > r.e then return end
@@ -574,15 +630,34 @@ walk_map = function(fd: any, r: any, steps: { any }, store: any, report: any, no
 	local ek = r_u8(sub)
 	local count = r_leb(sub)
 	if sub.bad or ek ~= 13 then r.at = e; return end
+	local o = fd.o or 0
+	discard(store, node, steps, o, nil)
 	local entry = S.lookup(fd.t)
-	for i = 1, count do
+	local keys = Load.mapKeys
+	local keyfd = fields_by_id(entry)[keys.id]
+	local landed = 0
+	local lastKey: any = nil
+	for _ = 1, count do
 		local elen = r_leb(sub)
 		if sub.bad or sub.at + elen > sub.e then break end
-		push(steps, fd.o or 0, i - 1)
 		local body = new_reader(sub.b, sub.at, sub.at + elen)
-		walk_body(entry, body, steps, store, report, node)
-		pop(steps)
 		sub.at = sub.at + elen
+		local key, kindBad, _, keyOk = keys.scan(keyfd, body, entry)
+		if kindBad or not keyOk then break end
+		if keys.fits(keyfd, key) then
+			local order = -1
+			if landed > 0 then order = keys.compare(keyfd, lastKey, key) end
+			if order > 0 then break end
+			if order == 0 then
+				discard(store, node, steps, o, landed - 1)
+			else
+				landed = landed + 1
+				lastKey = key
+			end
+			push(steps, o, landed - 1)
+			walk_body(entry, body, steps, store, report, node)
+			pop(steps)
+		end
 	end
 	r.at = e
 end
@@ -592,6 +667,10 @@ end
 walk_field = function(fd: any, r: any, steps: { any }, store: any, report: any, node: number)
 	local sh = fd.s
 	if sh == "tab" then
+		-- A NESTED TABLE READ AGAIN replaces the body whole, and the earlier
+		-- occurrence's records go with it (internal/tablewire decode.go,
+		-- discardsWhole, forgetField)
+		discard(store, node, steps, fd.o or 0, nil)
 		local n = r_leb(r)
 		if r.bad or r.at + n > r.e then return end
 		push(steps, fd.o or 0, 0)
@@ -1017,7 +1096,6 @@ local function res_take(c: any, n: number): string
 end
 
 local function save_ref(cx: any, id: integer): number
-	if id == 0i then return 0 end
 	local r = cx.refmap[id]
 	if r ~= nil then return r end
 	-- A RETAINED ID PAST THE CAPACITY (§6.6): inside a retained record, an id
@@ -1525,6 +1603,7 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		local plen = buffer.readu32(store.bytes, at + 12)
 		local id = buffer.readinteger(store.bytes, at + 16)
 		local kind = buffer.readu8(store.bytes, at + 24)
+		local discarded = buffer.readu8(store.bytes, at + 25) ~= 0
 		local steps = {}
 		for i = 0, depth - 1 do
 			steps[i + 1] = {
@@ -1550,6 +1629,11 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		end
 		local ok = target ~= nil and tdesc ~= nil
 		local dest: any = nil
+		if discarded then
+			-- superseded at load: neither placed nor lost (§6.6)
+			at = at + total
+			continue
+		end
 		if ok then
 			dest = save_locate_body(target, tdesc, steps, 1)
 			ok = dest ~= nil

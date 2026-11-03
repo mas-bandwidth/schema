@@ -2276,4 +2276,15 @@ function L.load(root: string, bytes: buffer, report: any): any
 	return L.ReadStrict(root, bytes, report)
 end
 
+-- THE MAP KEY RULES the retaining walk (schema_retain.luau) follows to know
+-- which entry body the load read and where it landed: the key scan, the
+-- key-fits rule and the key order, against the id table of the load that ran
+-- last (§2.8, §6.6).
+L.mapKeys = {
+	id = MapKeyId,
+	scan = loadFixDScanKey,
+	fits = loadFixDKeyFits,
+	compare = loadFixDKeyCompare,
+}
+
 return table.freeze(L)

@@ -14,9 +14,11 @@ for need in build/conformance-harness "$host" build/conformance-luau build/luau-
 	fi
 done
 
-# plant <vector> <perl substitution> [driver]: the fix reverted, the run red
-# on <vector>. The substitution lands in every generated schema_load.luau, or
-# in the copied wire-fuzz driver when the third word is `driver`.
+# plant <vector> <perl substitution> [driver|retain]: the fix reverted, the run
+# red on <vector>. The substitution lands in every generated schema_load.luau,
+# in every generated schema_retain.luau when the third word is `retain`, or in
+# the copied wire-fuzz driver when it is `driver`. A vector whose line ends in
+# `retain` replays on the retaining arm.
 plant() {
 	name=$1 subst=$2 where=${3:-units}
 	rm -rf "$out"
@@ -27,6 +29,7 @@ plant() {
 	planted=0
 	targets="$out"/build/conformance-luau/*/schema_load.luau
 	[ "$where" = driver ] && targets="$out/test/conformance/luau/wirefuzz.luau"
+	[ "$where" = retain ] && targets="$out"/build/conformance-luau/*/schema_retain.luau
 	for f in $targets; do
 		before=$(cksum < "$f")
 		perl -0pi -e "$subst" "$f"
@@ -46,7 +49,9 @@ plant() {
 		exit 1
 	fi
 	set -- $line
-	if build/conformance-harness wire-fuzz --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
+	arm=
+	[ "${5:-}" = retain ] && arm=--retain
+	if build/conformance-harness wire-fuzz $arm --driver "$host $out/test/conformance/luau/wirefuzz.luau" \
 		--replay "$4" --unit "$2" --root "$3" --failed "$out/failed.bin" > "$out/log" 2>&1; then
 		cat "$out/log"
 		echo "NEGATIVE CONTROL FAILED: the $name fix reverted left its vector green" >&2
@@ -72,3 +77,15 @@ plant map_repeated_key_widen \
 	's/\t*kindBad = false -- this occurrence replaces the earlier key kind\n//'
 plant region_align_extent_uint128 \
 	's/math\.max\(layout\.record_layout\(v\)\.align, layout\.extent_align\(v, \{\}\)\)/layout.record_layout(v).align/' driver
+plant retain_record_id_zero \
+	's/(local function save_ref\(cx: any, id: integer\): number\n)/$1\tif id == 0i then return 0 end\n/' retain
+plant retain_enum_list_unknown \
+	's/\t\telseif el\.s == "enum" then\n\t\t\twalk_enum\(el, sub, report\)\n\t\t\tif sub\.bad then break end\n//' retain
+plant retain_list_replaced \
+	's/\tdiscard\(store, node, steps, o, nil\)\n(\tlocal keep = count\n)/$1/' retain
+plant retain_map_entry_replaced \
+	's/\t\t\t\tdiscard\(store, node, steps, o, landed - 1\)\n//' retain
+plant retain_list_maps_replaced \
+	's/\t\t\t\tdiscard\(store, node, steps, o, landed - 1\)\n//' retain
+plant map_retained_replaced \
+	's/(\tlocal o = fd\.o or 0\n)\tdiscard\(store, node, steps, o, nil\)\n(\tlocal entry = )/$1$2/' retain

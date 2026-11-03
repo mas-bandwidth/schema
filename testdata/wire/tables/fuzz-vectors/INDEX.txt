@@ -398,3 +398,11 @@ region_align_extent_uint128 widelist Wide testdata/wire/tables/fuzz-vectors/regi
 # slot for later and took the replaced entry's slots out of the queue, so it
 # never met the index and loaded. From mapdemo.Chunks, random #20608 of seed 2.
 map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_duplicate_pointer_past_table.bin
+
+# A RETAINED RECORD'S OWN ID MAY BE ZERO (§6.6). The id table of graph_tree
+# with its first entry zeroed names id 0 for two fields the reader cannot name,
+# and on the retaining arm id 0 is an id like any other: the save interns it
+# and writes its reference. The Luau save read it as the null reference, wrote
+# 0 for the field, and ended the body there. The enumerated pass's mutant 1497
+# of graphdemo.Scene graph_tree, on every seed.
+retain_record_id_zero graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_record_id_zero.bin

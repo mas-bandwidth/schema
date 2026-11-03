@@ -1,7 +1,9 @@
 # THE LUAU LEG's PINNED FUZZ VECTORS (docs/SPEC-TABLES.md §4.2), in the
 # harness's vector-index format (testdata/wire/tables/fuzz-vectors/INDEX.txt):
 #
-#   <name> <unit> <root> <file>
+#   <name> <unit> <root> <file> [retain]
+#
+# A line ending in `retain` replays on the retaining arm (harness --retain).
 #
 # Each was a red of the Luau leg against the oracle, and each stays as the
 # regression gate for the fix that closed it (make/luau-fuzz.mk,
@@ -44,3 +46,26 @@ map_repeated_key_widen mapdemo Pairs testdata/wire/tables/fuzz-vectors/map_repea
 # a []uint128 in a record aligned eight rounds the region to sixteen, so the
 # driver's LoadMeasure answers the framing's 80 bytes and not 72.
 region_align_extent_uint128 widelist Wide testdata/wire/tables/fuzz-vectors/region_align_extent_uint128.bin
+
+# A RETAINED RECORD's OWN ID MAY BE ZERO (§6.6): the id table names id 0 for an
+# unknown field, which is an id like any other, so the save interns it and
+# writes its reference. The Luau save read an id of 0 as the null reference
+# and wrote the field's reference as 0, ending its body there. From
+# graphdemo.Scene graph_tree, the enumerated pass's first id zeroed (mutant
+# 1497, every seed).
+retain_record_id_zero graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_record_id_zero.bin retain
+
+# THE RETAINING ARM's SHARED VECTORS (testdata/wire/tables/fuzz-vectors/INDEX.txt).
+# A record belongs to the body occurrence that carried it and dies with it
+# (§6.6): a later occurrence of a nested table, a union, an array, a list or a
+# map, and a duplicate map key, supersede the earlier bodies, and their records
+# are neither saved nor counted lost. The walk reads only the map entries the
+# load reads, at the index each landed. An unknown enum variant in a list is an
+# excluded class and counts one retain_lost.
+retain_enum_list_unknown listdemo Mixed testdata/wire/tables/fuzz-vectors/retain_enum_list_unknown.bin retain
+retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin retain
+retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin retain
+retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin retain
+retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin retain
+map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin retain
+map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin retain
