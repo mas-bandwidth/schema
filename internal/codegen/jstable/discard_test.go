@@ -106,6 +106,16 @@ func jsDiscardWire(t *testing.T, writer, reader *ir.Unit, root, text string) (cl
 // under the leg's own node; probe imports the module as `m`.
 func jsDiscardRun(t *testing.T, u *ir.Unit, files map[string][]byte, probe string) {
 	t.Helper()
+	if out, err := jsDiscardRunPatched(t, u, files, probe, nil); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
+
+// jsDiscardRunPatched is jsDiscardRun with the generated module edited by
+// patch first (nil leaves it as generated), answering the probe's output and
+// its error instead of failing the test.
+func jsDiscardRunPatched(t *testing.T, u *ir.Unit, files map[string][]byte, probe string, patch func(string) string) ([]byte, error) {
+	t.Helper()
 	slowtest.Gate(t, "node (it runs the generated module)")
 	gen, err := generateVariableFiles(u, nil)
 	if err != nil {
@@ -115,6 +125,9 @@ func jsDiscardRun(t *testing.T, u *ir.Unit, files map[string][]byte, probe strin
 	data, ok := gen[module]
 	if !ok {
 		t.Fatalf("no variable module %s generated", module)
+	}
+	if patch != nil {
+		data = []byte(patch(string(data)))
 	}
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "module.js"), data, 0o600); err != nil {
@@ -138,9 +151,7 @@ console.log("ok");
 	}
 	cmd := exec.Command(jsNode(t), "probe.mjs")
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("%v\n%s", err, out)
-	}
+	return cmd.CombinedOutput()
 }
 
 // TestDamageDiscardsTheWholeLoadJavaScript is the JavaScript leg's gate for

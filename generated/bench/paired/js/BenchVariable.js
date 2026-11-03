@@ -1907,7 +1907,14 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     }
     let keep = count;
     if (fd.list) {
-      if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; return false; }
+      // THE STORAGE CAP (§2.9, §2.2; decode.go collectionCap): a count inside
+      // L is the load's refusal, the one LoadMeasure names first; a count
+      // whose spelling crossed L is one the measure, bounded by L, never saw,
+      // so with the region sized it is the region's damage
+      if (count > 0x7fffffff) {
+        if (r.at > end) { report.malformed = true; } else { report.refused = 1; report.reason = "count_over_extent_cap"; }
+        return false;
+      }
     } else if (count > fd.bound) {
       keep = fd.bound;
       report.clamped++;
@@ -2676,7 +2683,12 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
-    if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
+    // THE STORAGE CAP, the array body's rule: inside L the load's refusal,
+    // crossing L the region's damage
+    if (count > 0x7fffffff) {
+      if (r.at > end) { report.malformed = true; } else { report.refused = 1; report.reason = "count_over_extent_cap"; }
+      r.at = end; return false;
+    }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false;

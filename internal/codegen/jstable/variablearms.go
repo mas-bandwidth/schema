@@ -528,7 +528,12 @@ function TableVariableReadMap(fd, r, table, v, report, st, retain, path) {
     if (retain !== null && path !== null) { TableVariableRetainDiscard(retain, path, true, fd.o); }
     const m = new Map();
     v[fd.n] = m;
-    if (count > 0x7fffffff) { report.refused = 1; report.reason = "count_over_extent_cap"; r.at = end; return false; }
+    // THE STORAGE CAP, the array body's rule: inside L the load's refusal,
+    // crossing L the region's damage
+    if (count > 0x7fffffff) {
+      if (r.at > end) { report.malformed = true; } else { report.refused = 1; report.reason = "count_over_extent_cap"; }
+      r.at = end; return false;
+    }
     const sub = new TableVariableReader(r.b, r.at, Math.max(r.at, end));
     const ents = [];
     let last = null, landed = false, widened = false;
