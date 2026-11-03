@@ -19,6 +19,7 @@ package goosetable
 
 import (
 	"fmt"
+	"math/big"
 	"sync"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
@@ -36,6 +37,34 @@ type FixedEvolutionEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
+	// Ranges are the WRITER's ranged scalars, so a read through this entry
+	// clamps a value to what its writer could have stored before the
+	// reader's own bounds pass runs (docs/FIXED-FORM-ALGORITHM.md §4.5, the
+	// reference's collectKnownRanges).
+	Ranges []FixedRangeSpec
+}
+
+// FixedRangeSpec is one ranged top-level scalar of a lineage entry's writer:
+// the field's name, matched against the reader's own, and the writer's
+// declared min and max in the field's own units.
+type FixedRangeSpec struct {
+	Name     string
+	Min, Max *big.Int
+}
+
+// fixedWriterRanges answers a writer root's ranged top-level integer scalars.
+func fixedWriterRanges(st *ir.Struct) []FixedRangeSpec {
+	var out []FixedRangeSpec
+	for _, f := range st.Fields {
+		if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.Type.Optional || !f.HasIntRange || f.IntMin == nil || f.IntMax == nil {
+			continue
+		}
+		if _, _, ok := ir.TableRawRange(f); !ok || ir.TableFixedStorageBytes(f.Type) > 8 {
+			continue
+		}
+		out = append(out, FixedRangeSpec{Name: f.Name, Min: f.IntMin, Max: f.IntMax})
+	}
+	return out
 }
 
 // FixedEvolutionOf is the entry a unit's OWN build locks for table name: its
@@ -48,7 +77,7 @@ func FixedEvolutionOf(u *ir.Unit, name string) (FixedEvolutionEntry, bool) {
 			continue
 		}
 		layout, hash, body := fixedRootFacts(st)
-		return FixedEvolutionEntry{Wire: hash, Layout: layout, Record: 8 + body}, true
+		return FixedEvolutionEntry{Wire: hash, Layout: layout, Record: 8 + body, Ranges: fixedWriterRanges(st)}, true
 	}
 	return FixedEvolutionEntry{}, false
 }
@@ -297,6 +326,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
 		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
+		e.emitWriterClamps(st, olds[i].Ranges)
 	}
 	e.p("        }\n")
 	e.p("        report.clamped += _%sFixedClamp(values[k]);\n", n)
@@ -321,6 +351,30 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	}
 	e.p("    return count;\n")
 	e.p("}\n")
+}
+
+// emitWriterClamps holds an older entry's ranged scalars to its WRITER's
+// range (docs/FIXED-FORM-ALGORITHM.md §4.5), counting each clamp, before the
+// reader's own bounds pass. A spec lands on the reader's integer scalar of the
+// same name; the lock refuses a narrowed range, so the writer's range lies
+// inside the reader's and the reader's pass that follows never moves it.
+func (e *fixedEvolveEmit) emitWriterClamps(st *ir.Struct, ranges []FixedRangeSpec) {
+	for _, spec := range ranges {
+		for _, f := range st.Fields {
+			if f.Name != spec.Name || f.Array != ir.ArrayNone || f.KeyEnum != "" || f.Type.Optional || !f.HasIntRange || f.Type.Kind == ir.TNamed {
+				continue
+			}
+			if ir.TableFixedStorageBytes(f.Type) > 8 {
+				continue
+			}
+			wf := *f
+			wf.IntMin, wf.IntMax = spec.Min, spec.Max
+			val := fieldPlace("values[k]", f).val
+			for _, b := range scalarBounds(&wf) {
+				e.p("            if %s { %s = %s; report.clamped += 1; }\n", b.over(val), val, b.land)
+			}
+		}
+	}
 }
 
 // addExpr joins a base expression and offsets without a leading "+".
