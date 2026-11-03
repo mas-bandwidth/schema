@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -118,6 +119,8 @@ func TestStorageCapVectorsAreCurrent(t *testing.T) {
 // Load sums node storage without an extent walk.
 func TestStorageCapRefusedAtMeasureCPP(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (c++)")
+	// a leg that stops refusing builds toward 2^40 bytes; the guard kills it at 4 GiB
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	t.Run("extents", func(t *testing.T) {
 		t.Parallel()
