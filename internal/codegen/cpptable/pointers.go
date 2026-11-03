@@ -598,6 +598,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	g.emitExtentWalkSurface(members)
 	g.emitMapBuilderSurfaces(members)
 	g.emitListBuilderSurfaces(members)
+	g.emitTextListSurfaces(members)
 	for _, st := range g.varMembers(members) {
 		g.owner = st
 		g.emitNumber(st)

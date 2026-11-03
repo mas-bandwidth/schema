@@ -1,15 +1,18 @@
-// the featurewitnesses unit (testdata/conformance/feature-witnesses/full): a
-// NAMED ABSENCE. The C++ target carries no text list (docs/SPEC-TABLES.md
-// §2.13, compiler/carries_cpp.go), so it generates no code for the unit and
-// every case of its root answers skip, naming why.
-#include "hostile.h"
+// the featurewitnesses unit (testdata/conformance/feature-witnesses/full).
+#include "FeaturesTable.h"
+#define HC_NS featurewitnesses
+#include "hostile.hpp"
+
+HC_CPP_REASONS()
+HC_VAR( Root )
 
 extern "C" const hc_binding_t * hc_bindings_featurewitnesses( int * count )
 {
-    static hc_binding_t row = {};
-    row.schema = "testdata/conformance/feature-witnesses/full/Features.schema";
-    row.table = "Root";
-    row.absent = "the C++ target carries no text list (docs/SPEC-TABLES.md 2.13, compiler/carries_cpp.go)";
-    *count = 1;
-    return &row;
+    static std::vector<hc_binding_t> rows;
+    if ( rows.empty() )
+    {
+        { HC_VAR_ROW( "testdata/conformance/feature-witnesses/full/Features.schema", "Root", Root ); rows.push_back( row ); }
+    }
+    *count = (int) rows.size();
+    return rows.data();
 }

@@ -478,6 +478,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -8020,6 +8023,189 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
@@ -8262,7 +8448,7 @@ template <typename Entry> struct TableMapCursor
 
 // heapsort: O( n log n ) once per map, no recursion, no allocation past the
 // pointer array the caller already paid for
-template <typename Entry> inline void TableMapSort( const Entry ** order, int32_t count )
+template <typename Entry> inline void TableMapSort( const TableArena & arena, const Entry ** order, int32_t count )
 {
     for ( int32_t start = count / 2 - 1; start >= 0; start-- )
     {
@@ -8271,8 +8457,8 @@ template <typename Entry> inline void TableMapSort( const Entry ** order, int32_
         {
             int32_t child = 2 * root + 1;
             if ( child >= count ) { break; }
-            if ( child + 1 < count && TableEntryOrder( *order[child], *order[child + 1] ) < 0 ) { child++; }
-            if ( TableEntryOrder( *order[root], *order[child] ) >= 0 ) { break; }
+            if ( child + 1 < count && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
+            if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
             const Entry * swap = order[root]; order[root] = order[child]; order[child] = swap;
             root = child;
         }
@@ -8285,8 +8471,8 @@ template <typename Entry> inline void TableMapSort( const Entry ** order, int32_
         {
             int32_t child = 2 * root + 1;
             if ( child >= end ) { break; }
-            if ( child + 1 < end && TableEntryOrder( *order[child], *order[child + 1] ) < 0 ) { child++; }
-            if ( TableEntryOrder( *order[root], *order[child] ) >= 0 ) { break; }
+            if ( child + 1 < end && TableEntryOrder( &arena, *order[child], *order[child + 1] ) < 0 ) { child++; }
+            if ( TableEntryOrder( &arena, *order[root], *order[child] ) >= 0 ) { break; }
             const Entry * hold = order[root]; order[root] = order[child]; order[child] = hold;
             root = child;
         }
@@ -8334,7 +8520,7 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         table_release( arena.allocator, order );
         return cursor;
     }
-    TableMapSort( order, map.count );
+    TableMapSort( arena, order, map.count );
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -8427,7 +8613,7 @@ inline Entry * TableMapScan( const TableArena & arena, const TableMap<Entry> & m
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
-            if ( TableEntryOrder( segment->entries[i], key ) == 0 ) { return segment->entries + i; }
+            if ( TableEntryOrder( &arena, segment->entries[i], key ) == 0 ) { return segment->entries + i; }
         }
         segment_ref = segment->next;
     }
@@ -8450,7 +8636,7 @@ inline bool TableMapErase( TableArena & arena, TableMap<Entry> & map, Key key )
         for ( int32_t i = 0; i < segment->used; i++ )
         {
             if ( TableMapSegmentDead( segment->dead, i ) ) { continue; }
-            if ( TableEntryOrder( segment->entries[i], key ) != 0 ) { continue; }
+            if ( TableEntryOrder( &arena, segment->entries[i], key ) != 0 ) { continue; }
             segment->dead[ i / 32 ] |= 1u << ( i % 32 );
             head->live--;
             head->dead++;
@@ -8489,7 +8675,7 @@ template <typename Entry> struct TableMapEach
                 return;
             }
         }
-        auto operator*() const { return TableEntryEach( segment->entries + index ); }
+        auto operator*() const { return TableEntryEach( arena, segment->entries + index ); }
         Iterator & operator++() { index++; Skip(); return *this; }
         // the end is a NULL segment at any index: the loop body then never sees a NULL segment
         bool operator==( const Iterator & other ) const { return segment == other.segment && ( segment == NULL || index == other.index ); }
@@ -8770,7 +8956,14 @@ inline Entry * TableMapPlace( TableWorker & worker, TableMap<Entry> & map, Key k
     Entry * entry = TableMapAppend( worker, head, map );
     if ( entry == NULL ) { return NULL; }
     TableReset( *entry );
-    TableEntrySetKey( *entry, key );
+    if ( !TableEntrySetKey( worker, *entry, key ) )
+    {
+        TableMapSegment<Entry> * seg = (TableMapSegment<Entry> *) TableArenaAt( *worker.arena, (uint32_t) head->last.value );
+        seg->dead[ ( seg->used - 1 ) / 32 ] |= 1u << ( ( seg->used - 1 ) % 32 );
+        head->live--;
+        map.count--;
+        return NULL;
+    }
     return entry;
 }
 
@@ -8801,6 +8994,12 @@ inline uint64_t TableMapHash( const void * bytes, int32_t length )
     return hash;
 }
 inline uint64_t TableMapHash( uint64_t key ) { return TableMapHash( (const void *) &key, (int32_t) sizeof( key ) ); }
+inline uint64_t schema_table_map_hash_text_( const TableRef & ref )
+{
+    int32_t n = 0;
+    const char * s = schema_table_text_at_( ref, n );
+    return TableMapHash( (const void *) ( s != NULL ? s : "" ), n > 0 ? n : 0 );
+}
 
 // this runtime's own load factor, and no port reproduces it either: the next
 // power of two at or above twice the count, so a probe run stays short
@@ -9036,6 +9235,21 @@ inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, Ta
     if ( element == NULL ) { return NULL; }
     new ( element ) Element(); // value-init: the declared defaults, and null for a slot
     return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
 }
 
 // ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
@@ -11035,6 +11249,8 @@ inline bool LogEntryLoadMessages( LogEntry * values, int64_t * count, const Tabl
 template <typename Ctx>
 inline int64_t SaveMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Save & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // placements: a kind 14 array of kind 13 elements, INDEX order (§2.9)
@@ -11094,6 +11310,8 @@ inline int64_t SaveMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool SaveSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Save & value )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Placement> cursor_placements = TableListElements( ctx, value.placements ); // placements
         if ( !cursor_placements.ok ) { return false; }
@@ -11192,6 +11410,7 @@ inline bool SaveSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     SaveReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -11289,6 +11508,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                             Placement * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -11375,6 +11595,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                             TableRef * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -11468,6 +11689,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -11518,6 +11740,7 @@ inline bool SaveLoadBody( TableReader & r, const TableNodeMap & nodes, Save & va
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12437,6 +12660,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             Grade * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12534,6 +12758,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             Perm * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12584,6 +12809,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             Perm * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12669,6 +12895,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             Hit * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12821,6 +13048,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12873,6 +13101,7 @@ inline bool MixedLoadBody( TableReader & r, const TableNodeMap & nodes, Mixed & 
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -17114,6 +17343,8 @@ LISTDEMO_TABLE_INLINE bool LogEntryLoadBodyRetain( TableReader & r, LogEntry & v
 template <typename Ctx>
 inline int64_t SaveMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Save & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     {
         // placements: a kind 14 array of kind 13 elements, INDEX order (§2.9)
@@ -17174,6 +17405,8 @@ inline int64_t SaveMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool SaveSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Save & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     {
         TableListCursor<Placement> cursor_placements = TableListElements( ctx, value.placements ); // placements
         if ( !cursor_placements.ok ) { return false; }
@@ -17268,6 +17501,7 @@ inline bool SaveSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Save & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     SaveReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -17373,6 +17607,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                             Placement * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -17459,6 +17694,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                             TableRef * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -17552,6 +17788,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -17602,6 +17839,7 @@ inline bool SaveLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sav
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -18178,6 +18416,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             Grade * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -18275,6 +18514,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             Perm * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -18325,6 +18565,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             Perm * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -18413,6 +18654,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             Hit * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -18565,6 +18807,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -18617,6 +18860,7 @@ inline bool MixedLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Mi
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -20747,39 +20991,39 @@ extern const TableTypeInfo PointTableInfo;
 extern const TableTypeInfo MixedTableInfo;
 
 inline const TableFieldInfo PlacementTableFields[] = {
-    { "x", "x", "float32", 0xaf63f54c86021707ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, x ), (uint32_t) sizeof( Placement::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "y", "y", "float32", 0xaf63f44c86021554ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, y ), (uint32_t) sizeof( Placement::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "model", "model", "uint32", 0x9de543933e6e703aull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, model ), (uint32_t) sizeof( Placement::model ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "x", "x", "float32", 0xaf63f54c86021707ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, x ), (uint32_t) sizeof( Placement::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "y", "y", "float32", 0xaf63f44c86021554ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, y ), (uint32_t) sizeof( Placement::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "model", "model", "uint32", 0x9de543933e6e703aull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Placement, model ), (uint32_t) sizeof( Placement::model ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo PlacementTableInfo = { "Placement", (uint32_t) sizeof( Placement ), 3, PlacementTableFields, +[]( void * p ) { PlacementReset( *(Placement *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PlacementTableType() { return &PlacementTableInfo; }
 
 inline const TableFieldInfo LogEntryTableFields[] = {
-    { "tick", "tick", "uint32", 0x1e7683ef2ebc7684ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LogEntry, tick ), (uint32_t) sizeof( LogEntry::tick ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tick", "tick", "uint32", 0x1e7683ef2ebc7684ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LogEntry, tick ), (uint32_t) sizeof( LogEntry::tick ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo LogEntryTableInfo = { "LogEntry", (uint32_t) sizeof( LogEntry ), 1, LogEntryTableFields, +[]( void * p ) { LogEntryReset( *(LogEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LogEntryTableType() { return &LogEntryTableInfo; }
 
 inline const TableFieldInfo SaveTableFields[] = {
-    { "placements", "placements", "Placement", 0xd24733aa574d4b09ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, placements ), (uint32_t) sizeof( Placement ), (uint32_t) offsetof( Save, placements.count ), 0xffffffffu, &PlacementTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Placement> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "log", "log", "LogEntry", 0x125073191daf5431ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) LogEntryAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) LogEntryEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Save, log ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Save, log.count ), 0xffffffffu, &LogEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<LogEntry *> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "scores", "scores", "int32", 0x01986b0b27400fb2ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, scores ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Save, scores.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "placements", "placements", "Placement", 0xd24733aa574d4b09ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, placements ), (uint32_t) sizeof( Placement ), (uint32_t) offsetof( Save, placements.count ), 0xffffffffu, &PlacementTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Placement> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Placement> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "log", "log", "LogEntry", 0x125073191daf5431ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) LogEntryAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) LogEntryEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Save, log ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Save, log.count ), 0xffffffffu, &LogEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<LogEntry *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<LogEntry *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "scores", "scores", "int32", 0x01986b0b27400fb2ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Save, scores ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Save, scores.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
 };
 inline const TableTypeInfo SaveTableInfo = { "Save", (uint32_t) sizeof( Save ), 3, SaveTableFields, +[]( void * p ) { SaveReset( *(Save *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SaveTableType() { return &SaveTableInfo; }
 
 inline const TableFieldInfo PointTableFields[] = {
-    { "x", "x", "int32", 0xaf63f54c86021707ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, x ), (uint32_t) sizeof( Point::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "y", "y", "int32", 0xaf63f44c86021554ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, y ), (uint32_t) sizeof( Point::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "x", "x", "int32", 0xaf63f54c86021707ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, x ), (uint32_t) sizeof( Point::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "y", "y", "int32", 0xaf63f44c86021554ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Point, y ), (uint32_t) sizeof( Point::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo PointTableInfo = { "Point", (uint32_t) sizeof( Point ), 2, PointTableFields, +[]( void * p ) { PointReset( *(Point *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PointTableType() { return &PointTableInfo; }
 
 inline const TableFieldInfo MixedTableFields[] = {
-    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, grades ), (uint32_t) sizeof( Grade ), (uint32_t) offsetof( Mixed, grades.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Grade> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "perms", "perms", "Perm", 0x4af2ed8470862ea8ull, 9, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, perms ), (uint32_t) sizeof( Perm ), (uint32_t) offsetof( Mixed, perms.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerm( (int) v ); }, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Perm> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "hits", "hits", "Hit", 0x732dfbcc9b0cf0bbull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, hits ), (uint32_t) sizeof( Hit ), (uint32_t) offsetof( Mixed, hits.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "point"; case 2: return "damage"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x73feab3544c345b1ull; case 2: return 0x7f6308be8ab37fc0ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Hit[] = { { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hit, damage ), (uint32_t) sizeof( Hit::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Hit, point ), &PointTableInfo, NULL, 8 }, { (uint32_t) offsetof( Hit, damage ), NULL, &arm_fields_Hit[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Hit, type ), (uint32_t) sizeof( Hit::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<Hit> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
-    { "bounds", "bounds", "int32", 0x52f60c4caef0b768ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, bounds ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Mixed, bounds.count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, grades ), (uint32_t) sizeof( Grade ), (uint32_t) offsetof( Mixed, grades.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Grade> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Grade> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "perms", "perms", "Perm", 0x4af2ed8470862ea8ull, 9, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, perms ), (uint32_t) sizeof( Perm ), (uint32_t) offsetof( Mixed, perms.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerm( (int) v ); }, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Perm> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Perm> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "hits", "hits", "Hit", 0x732dfbcc9b0cf0bbull, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, hits ), (uint32_t) sizeof( Hit ), (uint32_t) offsetof( Mixed, hits.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "point"; case 2: return "damage"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x73feab3544c345b1ull; case 2: return 0x7f6308be8ab37fc0ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Hit[] = { { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Hit, damage ), (uint32_t) sizeof( Hit::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Hit, point ), &PointTableInfo, NULL, 8 }, { (uint32_t) offsetof( Hit, damage ), NULL, &arm_fields_Hit[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Hit, type ), (uint32_t) sizeof( Hit::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Hit> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Hit> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "bounds", "bounds", "int32", 0x52f60c4caef0b768ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Mixed, bounds ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Mixed, bounds.count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
 };
 inline const TableTypeInfo MixedTableInfo = { "Mixed", (uint32_t) sizeof( Mixed ), 4, MixedTableFields, +[]( void * p ) { MixedReset( *(Mixed *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MixedTableType() { return &MixedTableInfo; }

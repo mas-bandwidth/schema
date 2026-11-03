@@ -32,12 +32,13 @@ CPP_HOSTILE_JOBS     ?= 4
 CPP_HOSTILE_UNITS := tabledemo:tables/examples \
 	messagedemo:tables/messages blobdemo:tables/blobs \
 	graphdemo:tables/pointers scalardemo:tables/scalars \
-	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists probe:$(CPP_HOSTILE_BUILD)/probe.schema
+	streamdemo:tables/stream mapdemo:tables/maps listdemo:tables/lists probe:$(CPP_HOSTILE_BUILD)/probe.schema \
+	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
 $(CPP_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cpp-runs-hostile-corpus.mk internal/ci/hostilecorpus/corpus.go \
 		$(wildcard tables/examples/*.schema tables/messages/*.schema tables/blobs/*.schema \
 			tables/pointers/*.schema tables/scalars/*.schema tables/stream/*.schema \
-			tables/maps/*.schema tables/lists/*.schema)
+			tables/maps/*.schema tables/lists/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@rm -rf $(CPP_HOSTILE_BUILD)/generated && mkdir -p $(CPP_HOSTILE_BUILD)/generated
 	@go run ./tools/hostilecorpusexec probe-schema $(CPP_HOSTILE_BUILD)/probe.schema
 	@for unit in $(CPP_HOSTILE_UNITS); do \
@@ -50,10 +51,7 @@ $(CPP_HOSTILE_BUILD)/generated/.stamp: bin/schema make/schema-cpp-runs-hostile-c
 # Each unit's translation units see only that unit's generated directory, so
 # two units' identically named headers never meet; test/tables carries the
 # hand-written header tables/pointers' schema names (graph_colour.h). The
-# objects build in parallel; the link is the one serial step. featurewitnesses
-# is a NAMED ABSENCE (test/cpp-hostile/unit_featurewitnesses.cpp): the C++
-# target carries no text list, so the unit has no generated code and its one
-# translation unit builds on its own.
+# objects build in parallel; the link is the one serial step.
 $(CPP_HOSTILE_BUILD)/case: $(CPP_HOSTILE_BUILD)/generated/.stamp $(wildcard test/cpp-hostile/*.cpp test/cpp-hostile/*.hpp) test/c-hostile/main.c test/c-hostile/hostile.h
 	@rm -rf $(CPP_HOSTILE_BUILD)/obj && mkdir -p $(CPP_HOSTILE_BUILD)/obj
 	@{ for unit in $(CPP_HOSTILE_UNITS); do \
@@ -64,7 +62,6 @@ $(CPP_HOSTILE_BUILD)/case: $(CPP_HOSTILE_BUILD)/generated/.stamp $(wildcard test
 	xargs -P $(CPP_HOSTILE_JOBS) -L 1 sh -c 'out=$(CPP_HOSTILE_BUILD)/obj/$$0-$$(basename $$1 .cpp).o; \
 		$(CXX) $(CPP_HOSTILE_CXXFLAGS) -I$(CPP_HOSTILE_BUILD)/generated/$$0 -Itest/cpp-hostile -Itest/c-hostile -Itest/tables -I$(SERIALIZE) -c $$1 -o $$out'
 	$(CC) $(CPP_HOSTILE_CFLAGS) -Itest/c-hostile -c test/c-hostile/main.c -o $(CPP_HOSTILE_BUILD)/obj/main.o
-	$(CXX) $(CPP_HOSTILE_CXXFLAGS) -Itest/c-hostile -c test/cpp-hostile/unit_featurewitnesses.cpp -o $(CPP_HOSTILE_BUILD)/obj/featurewitnesses-absent.o
 	$(CXX) $(CPP_HOSTILE_SANITIZE) -pthread $(CPP_HOSTILE_BUILD)/obj/*.o -o $@
 
 $(CPP_HOSTILE_BUILD)/hostilecorpusexec: $(wildcard tools/hostilecorpusexec/*.go internal/ci/hostilecorpus/*.go)
