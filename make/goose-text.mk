@@ -35,3 +35,30 @@ tables-goose-json-differential-negative-control:
 # The leg gate reaches them (as make/cs.mk's test-cs reaches its differential):
 # a prerequisite added here, so make/goose.mk is not edited.
 test-goose: tables-goose-json-walk tables-goose-json-walk-negative-control tables-goose-json-differential tables-goose-json-differential-negative-control
+
+# I11: regenerate from an actual text-reader emitter sabotage and require the
+# harness to localise it. The normal conformance CI also runs these surfaces.
+.PHONY: tables-goose-json-conformance conformance-negative-control-goose-walk
+tables-goose-json-conformance: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-conformance
+conformance-negative-control-goose-walk: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/walk-negative-control
+
+# The variable class of the text form (docs/SPEC-TABLES.md §16.7), over the
+# flat value table (runtime/json_value.goose): each control breaks one clause
+# of that walk in the emitter and requires exactly its surface red on
+# graphdemo — `label` the writer's `&node` (json-write), `share` the reader's
+# reference resolution (json-read).
+.PHONY: conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share
+conformance-negative-control-goose-json-label: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-value-negative-control label
+conformance-negative-control-goose-json-share: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/json-value-negative-control share
+
+# The leg gate reaches the conformance gate and its three controls, so the
+# PORTING register's I11 and M14 cells cite targets `make test` runs.
+test-goose: tables-goose-json-conformance conformance-negative-control-goose-walk conformance-negative-control-goose-json-label conformance-negative-control-goose-json-share

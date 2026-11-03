@@ -25,6 +25,29 @@ fi
 		echo "import .$(basename "$f" .goose);"
 	done
 	echo "fn conformance_unit() -> schema_rt::LoadUnit { return $ns::TableUnit; }"
+	# THE MESSAGE FORM, one arm per fixed root that carries it (every
+	# generated <Root>LoadMessages): the batch read against the unit's own
+	# announcement into a full batch at defaults, body one saved back. The
+	# load's report is the answer; the save's own report is not.
+	msg_roots=$(cat "$out"/*Table.goose | sed -n 's/^fn \([A-Za-z0-9_]*\)LoadMessages(.*/\1/p')
+	echo "fn conformance_message_root(root: const u8[:]) -> bool {"
+	for r in $msg_roots; do echo "    if root == \"$r\" { return true; }"; done
+	echo "    return false;"
+	echo "}"
+	echo "fn conformance_message_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::MsgReport&) -> i64 {"
+	for r in $msg_roots; do
+		echo "    if root == \"$r\" {"
+		echo "        var voc = schema_rt::MsgVocabulary { .. };"
+		echo "        var arep = schema_rt::MsgReport { .. };"
+		echo "        if !schema_rt::announce_read(voc, $ns::${r}Announce, arep) { return -1; }"
+		echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
+		echo "        $ns::${r}LoadMessages(values[0..256], voc, data, rep);"
+		echo "        var srep = schema_rt::MsgReport { .. };"
+		echo "        return $ns::${r}SaveMessages(values[0..1], out, srep);"
+		echo "    }"
+	done
+	echo "    return -1;"
+	echo "}"
 } >"$out/conformance_unit.goose"
 cp test/conformance/goose/wirefuzz.goose test/conformance/goose/wirefuzz.build \
 	test/conformance/goose/wirefuzz_io.c "$out"/ || exit 1

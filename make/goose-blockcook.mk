@@ -30,13 +30,15 @@ tables-goose-block-negative-control:
 # THE ACCELERATORS' HARNESS CONTROLS (group goose-blockcook): one clause of
 # the runtime broken in a copy of the generated units, and the harness must
 # turn red exactly the surfaces it owns — the cook's reserved words (M8),
-# the block's pitch assertion (M7) and the write's byte order (§7.6).
+# the block's pitch assertion (M7), the write's byte order (§7.6) and the
+# region writer's first-visit numbering (§3.1, §7.6).
 .PHONY: tables-goose-accel-negative-control
 tables-goose-accel-negative-control: build/conformance-harness build/conformance-goose
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control-accel cook-open
 	sh test/conformance/goose/negative-control-accel block-pitch
 	sh test/conformance/goose/negative-control-accel cook-order
+	sh test/conformance/goose/negative-control-accel cook-numbering
 
 # THE FORGERY FUZZER (docs/PORTING.md I3): valid block images and the Go
 # reference's cooks, mutated (a word of the prologue or a triple, a bit, the
@@ -51,10 +53,16 @@ tables-goose-accel-negative-control: build/conformance-harness build/conformance
 GOOSE_ACCEL_FUZZ_SEED ?= $(SEED)
 GOOSE_ACCEL_FUZZ_N    ?= 20000
 
-.PHONY: tables-goose-fuzz
-tables-goose-fuzz: build/conformance-harness build/conformance-goose
-	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+# THE COOK HALF'S FIXTURES, materialised once per make run: the fuzzer and
+# its controls both read build/conformance/fixtures, so under make -j one
+# rule writes them before either starts, never two at once.
+.PHONY: goose-accel-fixtures
+goose-accel-fixtures: build/conformance-harness
 	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
+
+.PHONY: tables-goose-fuzz
+tables-goose-fuzz: build/conformance-harness build/conformance-goose goose-accel-fixtures
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	./test/conformance/goose/driver $(GOOSE_MANIFEST) block-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 	./test/conformance/goose/driver $(GOOSE_MANIFEST) cook-fuzz $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N) build/conformance/fixtures
 
@@ -65,9 +73,8 @@ tables-goose-fuzz: build/conformance-harness build/conformance-goose
 # (test/conformance/goose/negative-control-fuzz says why one half is not a
 # control: the other refuses the same forgery, measured).
 .PHONY: tables-goose-fuzz-negative-control
-tables-goose-fuzz-negative-control: build/conformance-harness build/conformance-goose
+tables-goose-fuzz-negative-control: build/conformance-harness build/conformance-goose goose-accel-fixtures
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
-	./build/conformance-harness run --drivers /dev/null --work build/conformance > /dev/null 2>&1 || true
 	sh test/conformance/goose/negative-control-fuzz block-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 	sh test/conformance/goose/negative-control-fuzz cook-extent $(GOOSE_ACCEL_FUZZ_SEED) $(GOOSE_ACCEL_FUZZ_N)
 

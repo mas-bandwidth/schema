@@ -271,3 +271,34 @@ retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain
 # input. Discovered by the Elixir wire pass; TestPinnedMapKeyKindElixir fails
 # against the pre-admission-scan emitter and passes with the repaired scanner.
 map_key_kind_unknown mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_kind_unknown.bin
+
+# Unknown key fields leave two equal default keys: last wins and duplicate counts.
+map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin
+
+# UTF-16 NUL is malformed even though the host Unicode converter accepts it.
+wide_text_zero_unit widedemo Caption testdata/wire/tables/fuzz-vectors/wide_text_zero_unit.bin
+
+# A bounded byte count clamps before payload extent checks.
+bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/bytes_count_clamped_prefix.bin
+
+# A POINTER CYCLE THROUGH NODES THE ROOT REACHES (§3.1, §4). Each is its seed
+# with one pointer's node index lowered to 2 (stream_chain, blob_small,
+# graph_tree), which closes a cycle in the stored pointer graph. A cyclic
+# wire is damage on every read, the builder and retaining reads included: the
+# oracle discards the load as malformed. The Goose load stored the edges and
+# returned the root; its save then refused the data cycle.
+stream_chain_link_cycle streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_chain_link_cycle.bin
+blob_catalog_cycle blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_catalog_cycle.bin
+graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin
+
+# A CRC-32C TRAILER THAT DOES NOT MATCH A ONE-BYTE BODY (§2.14). Five bytes as
+# a root that declares integrity = "crc32c": the form byte 1 is the whole
+# body, and its CRC-32C is 0xA016D052, not the trailer's 0x00070401. The read
+# is malformed with integrity_mismatch, nothing decoded and nothing saved. The
+# Goose load never answered: GCC 15 -O2 compiled its bitwise CRC loop into an
+# endless one. Found by the retaining arm at seed 1, pass truncate #5 of
+# feature_full.
+integrity_short_body_mismatch featurewitnesses Root testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin
+
+# A framed node record with an impossible collection count refuses region sizing.
+node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/node_record_list_count_refusal.bin

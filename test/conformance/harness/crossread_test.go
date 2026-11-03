@@ -30,6 +30,7 @@ func fakeReference(t *testing.T, refuse string, alter bool) string {
 		refuseArm = fmt.Sprintf("if grep -q ' %s ' \"$manifest\"; then echo 'refused %s' >&2; exit 1; fi", refuse, refuse)
 	}
 	writeExec(t, filepath.Join(dir, referenceLang, "driver"), fmt.Sprintf(`#!/bin/sh
+set -eu
 manifest="$1"
 surface="$2"
 out="$3"

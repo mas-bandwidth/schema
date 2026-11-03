@@ -79,10 +79,22 @@ func blockRecordIndex(blocks *ir.BlockUnit) (keys []string, index map[string]int
 // accessors, and each table's projection's place in BlockRecords. It is named
 // for the package, so a file that sorts earlier moves no byte of any file's
 // <Base>Block.goose.
+func hasBlockForm(blocks *ir.BlockUnit) bool {
+	if blocks == nil {
+		return false
+	}
+	for _, bl := range blocks.Tables {
+		if bl.Table.CarriesForm("block") {
+			return true
+		}
+	}
+	return false
+}
+
 func emitBlockPackage(g *goose.Gen) error {
 	u := g.Unit
 	blocks := ir.Blocks(u)
-	if blocks == nil || len(blocks.Tables) == 0 {
+	if !hasBlockForm(blocks) {
 		return nil
 	}
 	keys, index, rowIndex := blockRecordIndex(blocks)
@@ -93,6 +105,9 @@ func emitBlockPackage(g *goose.Gen) error {
 	tables := append([]*ir.BlockLayout(nil), blocks.Tables...)
 	sort.Slice(tables, func(i, j int) bool { return tables[i].Table.Name < tables[j].Table.Name })
 	for _, bl := range tables {
+		if !bl.Table.CarriesForm("block") {
+			continue
+		}
 		n := bl.Table.Name
 		g.Declare(n + "BlockRecord")
 		g.Pf("let %sBlockRecord: i64 = %d;\n", n, index[blockRecordKey(n, true)])
@@ -107,7 +122,7 @@ func emitBlockPackage(g *goose.Gen) error {
 func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	blocks := ir.Blocks(u)
-	if blocks == nil || len(blocks.Tables) == 0 {
+	if !hasBlockForm(blocks) {
 		return out, nil
 	}
 	if err := sideModuleRefusal(u, "Block"); err != nil {
@@ -116,6 +131,9 @@ func generateBlockModules(u *ir.Unit, names map[string]string) (map[string][]byt
 	for _, f := range u.Files {
 		var mine []*ir.BlockLayout
 		for _, st := range f.Tables {
+			if !st.CarriesForm("block") {
+				continue
+			}
 			if bl := blocks.Block(st.Name); bl != nil {
 				mine = append(mine, bl)
 			}

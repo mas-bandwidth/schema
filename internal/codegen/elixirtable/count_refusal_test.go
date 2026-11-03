@@ -1,7 +1,9 @@
 package elixirtable
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -296,5 +298,84 @@ if Process.get(:failed,false),do: System.halt(1)
 	out, err := runArmProbe(t, elixirBinary(t), files, strings.ReplaceAll(probe, "CASES", rows.String()))
 	if err != nil {
 		t.Fatalf("bounded retaining probe: %v\n%s", err, out)
+	}
+}
+
+// A list inside a pointered node record whose count exceeds the element slice's
+// byte floor must be refused by load_measure (-1), matching FileRegionMeasure.
+func TestNodeRecordListCountRefusalElixir(t *testing.T) {
+	slowtest.Gate(t, "the Elixir toolchain")
+	u := loadDirUnit(t, filepath.Join("..", "..", "..", "tables", "lists"))
+	root := u.Tables["Sheet"]
+	if root == nil {
+		t.Fatal("Lists.schema declares no Sheet root")
+	}
+
+	const mutantHex = "01010e530d030e020e040d01010003040a000000001c020e120d020704046400000000070404650000000003040b0000000024020e1a0d03070404c800000000070404c900000000070404ca0000000003040c00000000051102060c1f01071c020e120d1007040401000000000704040200000000030463000000000038810af11f06a7a36f2c414fbf84783e3d62cb8fecfcf739090602864ceb63af0f62ad077747825ffffffffffffffffffb06c9fe19e113a00700000000000000"
+	const mutantSHA256 = "7a084541b43ed4e19690ccea7b06142f03dcd305854bd3fe0acf845cf955ff26"
+
+	mutant, err := hex.DecodeString(mutantHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(mutant)); got != mutantSHA256 {
+		t.Fatalf("mutant sha256 = %s, want %s", got, mutantSHA256)
+	}
+	if size, whole, refused := tablewire.FileRegionMeasure(u, root, mutant); size != -1 || !whole || !refused {
+		t.Fatalf("FileRegionMeasure(mutant) = (%d, %v, %v), want (-1, true, true)", size, whole, refused)
+	}
+
+	clean := append([]byte(nil), mutant...)
+	if clean[100] != 0x10 {
+		t.Fatalf("node record items count moved: byte 100 = 0x%02x, want 0x10", clean[100])
+	}
+	clean[100] = 0x02
+	cleanSize, cleanWhole, cleanRefused := tablewire.FileRegionMeasure(u, root, clean)
+	if cleanSize != 184 || !cleanWhole || cleanRefused {
+		t.Fatalf("FileRegionMeasure(clean) = (%d, %v, %v), want (184, true, false)", cleanSize, cleanWhole, cleanRefused)
+	}
+
+	files := generateElixir(t, u)
+	probe := fmt.Sprintf(`
+mutant = Base.decode16!(%q, case: :lower)
+clean = Base.decode16!(%q, case: :lower)
+if Listdemo.Table.load_measure("Sheet", mutant) != -1 do
+  raise("expected -1 for mutant load_measure, got " <> inspect(Listdemo.Table.load_measure("Sheet", mutant)))
+end
+if Listdemo.Table.load_measure("Sheet", clean) != %d do
+  raise("expected %d for clean load_measure, got " <> inspect(Listdemo.Table.load_measure("Sheet", clean)))
+end
+case Listdemo.Table.load("Sheet", mutant) do
+  {:error, :malformed, report} when report.malformed == true -> :ok
+  other -> raise("expected malformed refusal on mutant load, got " <> inspect(other))
+end
+IO.puts("NODE_RECORD_LIST_COUNT_OK")
+`, mutantHex, hex.EncodeToString(clean), cleanSize, cleanSize)
+
+	out, err := runArmProbe(t, elixirBinary(t), files, probe)
+	if err != nil || !strings.Contains(out, "NODE_RECORD_LIST_COUNT_OK") || strings.Contains(out, "warning:") {
+		t.Fatalf("node record list count probe failed: %v\n%s", err, out)
+	}
+
+	// Negative control: swallowing :error from measure_node_table into {:ok, 0, 0}
+	// sizes the root without the node table (136) instead of refusing (-1).
+	const target = "  defp measure_found_nodes(payload, ids, desc), do: measure_node_table(payload, ids, desc)"
+	const sabotage = `  defp measure_found_nodes(payload, ids, desc) do
+    case measure_node_table(payload, ids, desc) do
+      {:ok, count, blobs} -> {:ok, count, blobs}
+      :error -> {:ok, 0, 0}
+    end
+  end`
+	tableEx := string(files["Table.ex"])
+	if !strings.Contains(tableEx, target) {
+		t.Fatal("negative control target not found in generated Table.ex")
+	}
+	badFiles := make(map[string][]byte, len(files))
+	for k, v := range files {
+		badFiles[k] = v
+	}
+	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
+	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil || !strings.Contains(badOut, "expected -1 for mutant load_measure, got 136") {
+		t.Fatalf("negative control did not expose the swallowed node extent: %v\n%s", badErr, badOut)
 	}
 }
