@@ -474,9 +474,11 @@ public final class MixedEventVariable {
             in.bad = true;
             return v;
         }
+        if (!in.enter()) return v;
         in.p++;
         if (in.peek() == '}') {
             in.p++;
+            in.leave();
             return v;
         }
         String armName = in.scanString();
@@ -537,6 +539,7 @@ public final class MixedEventVariable {
             return v;
         }
         in.p++;
+        in.leave();
         return v;
     }
 }

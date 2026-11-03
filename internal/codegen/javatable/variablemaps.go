@@ -123,7 +123,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear();\n", m)
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} if(!in.enter())return; in.p++; v.%s.clear();\n", m)
 	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
 		if key.Type.TextUnbounded() {
@@ -149,7 +149,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
 	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry);\n", st.Name, m)
 	fmt.Fprintf(b, "                    if(in.bad)return; int found=-1;for(int i=0;i<v.%s.size();i++)if("+st.Name+"Variable.compare_%s(v.%s.get(i),entry)==0){found=i;break;} if(found>=0){v.%s.set(found,entry);in.rep.duplicate++;}else v.%s.add(entry); }\n", m, m, m, m, m)
-	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++;\n")
+	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++; in.leave();\n")
 }
 
 // A skipped repeat preserves its earlier map; an accepted header replaces it.

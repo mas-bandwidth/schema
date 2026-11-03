@@ -712,6 +712,10 @@ public final class MixedStatVariable {
         int c = in.peek();
         if (c == '}') {
             in.p++;
+            if (!in.enter()) {
+                return null;
+            }
+            in.leave();
             TableJson.LabelEntry entry = in.labels.get(labelId);
             if (entry == null || entry.open) {
                 in.bad = true;
@@ -758,6 +762,9 @@ public final class MixedStatVariable {
     }
 
     static void jsonReadFieldsBody(TableJson.In in, Value v) {
+        if (!in.enter()) {
+            return;
+        }
         boolean[] seenField = new boolean[2];
         while (true) {
             int c = in.peek();
@@ -840,5 +847,6 @@ public final class MixedStatVariable {
             in.bad = true;
             return;
         }
+        in.leave();
     }
 }

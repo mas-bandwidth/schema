@@ -2110,6 +2110,10 @@ public final class BenchMixedVariable {
         int c = in.peek();
         if (c == '}') {
             in.p++;
+            if (!in.enter()) {
+                return null;
+            }
+            in.leave();
             TableJson.LabelEntry entry = in.labels.get(labelId);
             if (entry == null || entry.open) {
                 in.bad = true;
@@ -2156,6 +2160,9 @@ public final class BenchMixedVariable {
     }
 
     static void jsonReadFieldsBody(TableJson.In in, Value v) {
+        if (!in.enter()) {
+            return;
+        }
         boolean[] seenField = new boolean[27];
         while (true) {
             int c = in.peek();
@@ -2383,7 +2390,7 @@ public final class BenchMixedVariable {
                     if (repeated && in.peek() != 'n') {
                         v.entities = new ArrayList<>();
                     }
-                    if (in.peek() == '[') {
+                    if (in.peek() == '[' && in.enter()) {
                         in.p++;
                         int idx = 0;
                         int ab = 8;
@@ -2426,7 +2433,8 @@ public final class BenchMixedVariable {
                             in.bad = true;
                             break;
                         }
-                    } else {
+                        in.leave();
+                    } else if (!in.bad) {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
@@ -2444,7 +2452,7 @@ public final class BenchMixedVariable {
                     if (repeated && in.peek() != 'n') {
                         v.stats = new ArrayList<>();
                     }
-                    if (in.peek() == '[') {
+                    if (in.peek() == '[' && in.enter()) {
                         in.p++;
                         int idx = 0;
                         int ab = 80;
@@ -2487,7 +2495,8 @@ public final class BenchMixedVariable {
                             in.bad = true;
                             break;
                         }
-                    } else {
+                        in.leave();
+                    } else if (!in.bad) {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
@@ -2517,7 +2526,7 @@ public final class BenchMixedVariable {
                     if (repeated && in.peek() != 'n') {
                         v.loadout = new ArrayList<>();
                     }
-                    if (in.peek() == '[') {
+                    if (in.peek() == '[' && in.enter()) {
                         in.p++;
                         int idx = 0;
                         int ab = 4;
@@ -2555,7 +2564,8 @@ public final class BenchMixedVariable {
                             in.bad = true;
                             break;
                         }
-                    } else {
+                        in.leave();
+                    } else if (!in.bad) {
                         in.skipValue();
                         in.rep.kindMismatch++;
                     }
@@ -2881,5 +2891,6 @@ public final class BenchMixedVariable {
             in.bad = true;
             return;
         }
+        in.leave();
     }
 }
