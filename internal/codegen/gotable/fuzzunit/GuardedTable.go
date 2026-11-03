@@ -784,6 +784,11 @@ func PatrolLoadBuilder(b *PatrolBuilder, wire []byte, report *TableReport) bool 
 func PatrolReadStrict(wire []byte) (*Patrol, error) {
 	var b PatrolBuilder
 	size := PatrolLoadMeasure(wire)
+	if size < 0 {
+		if _, why := PatrolLoadMeasureReason(wire); why == TableRefuseStorageOverCap {
+			return nil, why
+		}
+	}
 	size = max(size, 0)
 	if !b.initSized(size) {
 		return nil, TableRefuseAllocationFailed

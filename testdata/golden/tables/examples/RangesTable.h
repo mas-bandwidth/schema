@@ -133,7 +133,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -206,6 +207,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::tabledemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::tabledemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::tabledemo::vocabulary_too_large;
@@ -6509,6 +6511,10 @@ struct TableBlob
 
 static const int64_t kTableBlobHeader = 8;             // length (u32), then four zero bytes
 static const int64_t kTableBlobMaxLength = 0xFFFFFFFF; // a record's length is a u32 (§3.1)
+
+// the STORAGE CAP (§11): a wire whose region measure passes it is refused as
+// storage_over_cap, and no count times an element size is summed past it
+static const int64_t kTableStorageCap = 1099511627776;
 
 // the node's storage: the header, the bytes, a string's terminator, rounded
 // to the arena's alignment like every node

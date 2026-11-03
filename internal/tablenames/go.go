@@ -427,6 +427,8 @@ func init() {
 		Name{Name: "tableFixedBool", What: "the fixed form (form 3)"},
 		Name{Name: "TableRefuseCountOverBound", What: "the fixed form refusal reason count_over_bound"},
 		Name{Name: "TableRefuseLengthOverBound", What: "the fixed form refusal reason length_over_bound"},
+		Name{Name: "TableRefuseStorageOverCap", What: "a wire whose region measure passes the 2^40-byte storage cap (docs/SPEC-TABLES.md §11)"},
+		Name{Name: "tableStorageCap", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableFixedTag", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextUTF8", What: "the fixed form (form 3)"},
 		Name{Name: "tableFixedTextWide", What: "the fixed form (form 3)"},

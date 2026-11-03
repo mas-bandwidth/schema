@@ -133,7 +133,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -206,6 +207,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::armdemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::armdemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::armdemo::vocabulary_too_large;
@@ -5080,6 +5082,10 @@ struct TableBlob
 static const int64_t kTableBlobHeader = 8;             // length (u32), then four zero bytes
 static const int64_t kTableBlobMaxLength = 0xFFFFFFFF; // a record's length is a u32 (§3.1)
 
+// the STORAGE CAP (§11): a wire whose region measure passes it is refused as
+// storage_over_cap, and no count times an element size is summed past it
+static const int64_t kTableStorageCap = 1099511627776;
+
 // the node's storage: the header, the bytes, a string's terminator, rounded
 // to the arena's alignment like every node
 inline int64_t TableBlobStorage( int64_t length, bool terminated )
@@ -8424,6 +8430,11 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
         return false;
     } // an N the list's L cannot carry
     at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
+    if ( n > 0 && elem_size > 0 && (int64_t) n > ( kTableStorageCap - at ) / elem_size )
+    {
+        reason = storage_over_cap;
+        return false;
+    } // a term past the storage cap is refused before it is summed (§11)
     at += (int64_t) n * elem_size;
     if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
     for ( uint64_t i = 0; i < n; i++ )
@@ -10894,8 +10905,20 @@ inline int64_t GateLoadMeasure( const uint8_t * wire_file, int64_t wire_file_byt
             return -1;
         } // an N the record's framing cannot carry, or a blob past the cap (§2.8, §2.9, §3.1)
         if ( storage > 0 ) { data += storage; } // a type id this build cannot name commands none
+        if ( data > kTableStorageCap )
+        {
+            reason = storage_over_cap;
+            if ( reason_out != NULL ) { *reason_out = reason; }
+            return -1;
+        } // the storage cap (§11): each term is at most the cap, so the sum never overflows
     }
     int64_t attribution = ( records + 1 ) * (int64_t) sizeof( TableNodeDirEntry );
+    if ( data + attribution > kTableStorageCap )
+    {
+        reason = storage_over_cap;
+        if ( reason_out != NULL ) { *reason_out = reason; }
+            return -1;
+    }
     if ( attribution_bytes != NULL ) { *attribution_bytes = attribution; }
     return data + attribution;
 }
@@ -10975,9 +10998,18 @@ inline const Gate * GateLoadTolerant( uint8_t * region, int64_t region_bytes, co
                 int64_t storage = GateNodeStorage( type_id, length, reason );
                 if ( storage == kTableNodeRefused ) { extent_ok = false; }
                 else if ( storage > 0 ) { data += storage; }
+                if ( data > kTableStorageCap ) { extent_ok = false; reason = storage_over_cap; }
             }
         }
     }
+    if ( ( !extent_ok && reason == storage_over_cap ) || ( extent_ok && data > kTableStorageCap ) )
+    {
+        out->refused = true;
+        out->reason = storage_over_cap;
+        out->refuse_reason = storage_over_cap;
+        out->malformed = malformed_before;
+        return NULL;
+    } // the storage cap (§11), refused by name before any builder is filled
     if ( !extent_ok )
     {
         GateBuilder builder;
@@ -12103,9 +12135,18 @@ inline const Gate * GateLoadRetain( uint8_t * region, int64_t region_bytes, cons
                 int64_t storage = GateNodeStorage( type_id, length, reason );
                 if ( storage == kTableNodeRefused ) { extent_ok = false; }
                 else if ( storage > 0 ) { data += storage; }
+                if ( data > kTableStorageCap ) { extent_ok = false; reason = storage_over_cap; }
             }
         }
     }
+    if ( ( !extent_ok && reason == storage_over_cap ) || ( extent_ok && data > kTableStorageCap ) )
+    {
+        out->refused = true;
+        out->reason = storage_over_cap;
+        out->refuse_reason = storage_over_cap;
+        out->malformed = malformed_before;
+        return NULL;
+    } // the storage cap (§11), refused by name before any builder is filled
     if ( !extent_ok )
     {
         GateBuilder builder;

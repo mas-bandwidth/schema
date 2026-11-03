@@ -28,8 +28,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xa9a32f918d49425e)
-const _ = uint64(0xa9a32f918d49425e - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x06b0de47a4334bb0)
+const _ = uint64(0x06b0de47a4334bb0 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -90,6 +90,7 @@ const TableRefuseBatchTooLarge = goruntime.TableRefuseBatchTooLarge
 const TableRefuseTextIllFormed = goruntime.TableRefuseTextIllFormed
 const TableRefuseCountOverBound = goruntime.TableRefuseCountOverBound
 const TableRefuseLengthOverBound = goruntime.TableRefuseLengthOverBound
+const TableRefuseStorageOverCap = goruntime.TableRefuseStorageOverCap
 
 type tableTruncatedMalformed = goruntime.TableTruncatedMalformed
 
@@ -1947,6 +1948,7 @@ func (value *EffectRow) Debuff() *struct {
 }
 
 const tableRegionAlign int64 = 8
+const tableStorageCap int64 = 1099511627776
 const tableBytesTypeID uint64 = 0x2f2ec0474f1c4fe4
 const tableStringTypeID uint64 = 0x704be0d8faaffc58
 
@@ -2708,6 +2710,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if n > 0 {
 			data += n
 		}
+		if data > tableStorageCap {
+			return -1, 0, TableOpenRefused, TableRefuseStorageOverCap
+		}
 	}
 	if strict && !s.whole() {
 		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
@@ -2734,6 +2739,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 	}
 	attribution := int64(s.records+1) * 16
+	if data+attribution > tableStorageCap {
+		return -1, 0, TableOpenRefused, TableRefuseStorageOverCap
+	}
 	return data + attribution, attribution, TableOpenOk, TableRefuseOk
 }
 
@@ -3293,6 +3301,9 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed, arm bool, at 
 			return TableRefuseCountOverLength
 		}
 		*at = (*at + int64(f.ElemAlign) - 1) & -int64(f.ElemAlign)
+		if f.ElemSize > 0 && int64(count) > (tableStorageCap-*at)/int64(f.ElemSize) {
+			return TableRefuseStorageOverCap
+		}
 		*at += int64(count) * int64(f.ElemSize)
 	}
 	if nodes >= 0 && f.Map {

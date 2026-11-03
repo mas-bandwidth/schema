@@ -182,6 +182,10 @@ const (
 	TableRefuseTextIllFormed
 	TableRefuseCountOverBound
 	TableRefuseLengthOverBound
+	// TableRefuseStorageOverCap: a wire whose region measure passes the storage cap,
+	// 2^40 bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §11): LoadMeasure answers -1 with it
+	// before any region is sized, and no count past the cap is multiplied out.
+	TableRefuseStorageOverCap
 )
 
 func (r TableRefuseReason) Error() string {
@@ -276,6 +280,8 @@ func (r TableRefuseReason) Error() string {
 		return "count_over_bound"
 	case TableRefuseLengthOverBound:
 		return "length_over_bound"
+	case TableRefuseStorageOverCap:
+		return "storage_over_cap"
 	}
 	return "invalid refusal reason"
 }
@@ -2231,4 +2237,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xa9a32f918d49425e
+const Version uint64 = 0x06b0de47a4334bb0

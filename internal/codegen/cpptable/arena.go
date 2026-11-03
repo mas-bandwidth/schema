@@ -273,6 +273,10 @@ struct TableBlob
 static const int64_t kTableBlobHeader = 8;             // length (u32), then four zero bytes
 static const int64_t kTableBlobMaxLength = 0xFFFFFFFF; // a record's length is a u32 (§3.1)
 
+// the STORAGE CAP (§11): a wire whose region measure passes it is refused as
+// storage_over_cap, and no count times an element size is summed past it
+static const int64_t kTableStorageCap = ` + fmt.Sprint(ir.MaxSizeBytes) + `;
+
 // the node's storage: the header, the bytes, a string's terminator, rounded
 // to the arena's alignment like every node
 inline int64_t TableBlobStorage( int64_t length, bool terminated )

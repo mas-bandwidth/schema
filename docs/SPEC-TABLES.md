@@ -10001,7 +10001,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   is the record count the framing actually carries, which the scan proves
   before a byte of body is believed. `LoadMeasure` is the caller's traversal
   limit in that sense — the caller refuses a size it will not pay — and
-  nothing in the runtime decides that for it.
+  below the storage cap nothing in the runtime decides that for it. Past the
+  cap the measure refuses on its own, `storage_over_cap` (§11).
 - **A MESSAGE BATCH (form `2`) HAS NOTHING TO AMPLIFY.** Its bodies are fixed
   tables (§3.3), so a batch loads into the caller's own array of values, at
   most `min(256, the caller's capacity)` bodies, and commands no region: no
@@ -10076,6 +10077,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `text_ill_formed` | a fixed-form TEXT payload that is not the declared text kind: not valid UTF-8, or a wide or bytes payload that does not decode (§3.4) |
   | `count_over_bound` | a fixed record's count past the count bound its plan declares (§3.4) |
   | `length_over_bound` | a fixed text or blob length past the length bound its plan declares (§3.4) |
+  | `storage_over_cap` | a wire whose region measure passes the 2^40-byte storage cap: `LoadMeasure` answers `-1` with it before any region is sized, the strict read refuses with it, and a region `Load` refuses it (§11) |
   | `no_vocabulary` | a message batch read before any vocabulary was announced (§3.3) |
   | `second_announcement` | a second announcement on a vocabulary that already has one, or after a refusal (§3.3) |
   | `vocabulary_too_large` | an announced vocabulary past the reader's declared byte or entry storage (§3.3); the fixed plan's `plan_too_large` is the same rule on the same codec |
@@ -13530,8 +13532,17 @@ in build version (§20.5).
   the field and the product, so a schema of individually legal bounds cannot
   hand a backend a number the arithmetic no longer represents. The wire
   itself frames a body of any size (§3), so this cap is the STORAGE side's,
-  and a wire body past it is refused at LOAD rather than at compile time
-  (§3.1). It sits far below where an int64 size stops being exact.
+  and a wire whose region measure passes it is refused at LOAD, by name,
+  `storage_over_cap` (§6.5). A few kilobytes of wire reach it: an element or
+  record costs two wire bytes and commands its whole storage, so 8192 empty
+  bodies of a 2^27-byte record measure past 2^40. `LoadMeasure` answers `-1`
+  with it before any region is sized, the strict read refuses with it, and a
+  region `Load` refuses it before it writes; each extent term (a count times
+  an element size) is checked against the cap before it is added, so the
+  measure never overflows. It sits far below where an int64 size stops being
+  exact. The C++ reference and the Go port hold it, on the shared vectors in
+  `testdata/wire/tables/storage-cap`; the other ports and the Go oracle
+  (`internal/tablewire`) do not yet, and each is owed it.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a

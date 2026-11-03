@@ -32,8 +32,9 @@ const (
 	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
 	// -4: variable region and retain loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +5: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
+	// +7: a wire whose region measure passes the 2^40-byte storage cap is refused as storage_over_cap by the measure and the strict read (SPEC-TABLES §11)
 	// +18: the layout facts of a generated type come through tableSizeof, tableOffsetof and their siblings, never a constant unsafe layout builtin, so a chain of structs ending in structs type-checks in linear time (TestChainDepthBuildsInLinearTime)
-	goOneTableLineBudget = 9593
+	goOneTableLineBudget = 9600
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -47,8 +48,9 @@ const (
 	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
 	// -100: variable loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +8: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
+	// +22: a wire whose region measure passes the 2^40-byte storage cap is refused as storage_over_cap by the measure and the strict read (SPEC-TABLES §11)
 	// +18: the layout facts of a generated type come through tableSizeof, tableOffsetof and their siblings, never a constant unsafe layout builtin, so a chain of structs ending in structs type-checks in linear time (TestChainDepthBuildsInLinearTime)
-	goExamplesLineBudget = 59501
+	goExamplesLineBudget = 59523
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at
