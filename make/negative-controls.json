@@ -207,6 +207,22 @@
       ]
     },
     {
+      "name": "base-cpp-write-refusal",
+      "when": "pull-request",
+      "why": "the write contract's C++ control (docs/SPEC.md §5.1): every range assert deleted from a copy of the generated C++ tree, the conformance driver rebuilt against it, and cpp / write-refusal required red with wire green. One driver compile and one leg run, about 41 s on the studio; its own row because base-conformance-1 and base-conformance-cpp each already carry a full driver compile.",
+      "targets": [
+        "conformance-negative-control-cpp-write-refusal"
+      ]
+    },
+    {
+      "name": "base-c-write-refusal",
+      "when": "pull-request",
+      "why": "the write contract's C control (docs/SPEC.md §5.1): every range assert of the plain save deleted from a copy of the generated C tree, the C conformance driver rebuilt against it at -O0, and c / write-refusal required red with wire green. About 19 s on the studio; its own row for the same reason as the other compile-heavy C conformance rows.",
+      "targets": [
+        "conformance-negative-control-c-write-refusal"
+      ]
+    },
+    {
       "name": "base-c-conformance",
       "when": "pull-request",
       "why": "The C JSON driver sabotage and the small message/retention compiler probes share one job. The expanded C driver must not share a job with the other two complete C driver rebuilds.",

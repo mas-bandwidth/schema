@@ -449,6 +449,43 @@ conformance-negative-control-c: build/conformance-harness
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
 
+# THE WRITE CONTRACT'S NEGATIVE CONTROL, C side (docs/SPEC.md §5.1): the C twin
+# of conformance-negative-control-cpp-write-refusal. Every range assert of the
+# plain save (one line, ending in the comment the sed anchors on) is deleted
+# from a COPY of the generated tree, the driver is built against the copy, and
+# `c / write-refusal` must go RED while `wire` stays green. Nothing tracked is
+# written to.
+CONFORMANCE_NEGATIVE_C_WREF := build/conformance-negative-c-write-refusal
+CONFORMANCE_C_WREF_ANCHOR := schema_assert(.*a write keeps the declared bounds
+.PHONY: conformance-negative-control-c-write-refusal
+conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_WREF) && mkdir -p $(CONFORMANCE_NEGATIVE_C_WREF)
+	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_WREF)/generated
+	@n=$$(grep -l '$(CONFORMANCE_C_WREF_ANCHOR)' $(CONFORMANCE_NEGATIVE_C_WREF)/generated/examples/*Table.h | wc -l); \
+		[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no range assert to remove in the generated tree"; exit 1; }
+	@for f in $(CONFORMANCE_NEGATIVE_C_WREF)/generated/*/*.h; do \
+		sed '/$(CONFORMANCE_C_WREF_ANCHOR)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(CONFORMANCE_C_WREF_ANCHOR)' $(CONFORMANCE_NEGATIVE_C_WREF)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: a range assert survived the sabotage"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_WREF)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_WREF)/generated,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_WREF)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_WREF)" > $(CONFORMANCE_NEGATIVE_C_WREF)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_WREF)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_WREF)" > $(CONFORMANCE_NEGATIVE_C_WREF)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_WREF)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C_WREF)/work > $(CONFORMANCE_NEGATIVE_C_WREF)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a C writer without its range asserts left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C_WREF)/log; exit 1; \
+	fi
+	@grep -Eq '^write-refusal +FAIL ' $(CONFORMANCE_NEGATIVE_C_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on write-refusal"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_WREF)/log; exit 1; }
+	@grep -Eq '^wire +pass ' $(CONFORMANCE_NEGATIVE_C_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: wire went red too, so the control localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_WREF)/log; exit 1; }
+	@grep -m1 "c / write-refusal" $(CONFORMANCE_NEGATIVE_C_WREF)/log
+	@echo "negative control: the C writer without its range asserts turns the harness RED on write-refusal alone"
+
 # I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
 # answers a case it cannot write as `<case>.absent` (spill_absent_reason): the
 # blob_shared instance is a NAMED absence today, as every writer refuses a blob

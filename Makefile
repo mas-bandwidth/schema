@@ -6358,6 +6358,50 @@ conformance-negative-control-cpp: build/conformance-harness
 	@grep -m1 "cpp / json-read" $(CONFORMANCE_NEGATIVE_CPP)/log
 	@echo "negative control: one storage offset off in the C++ emitter turns the harness RED on json-read alone"
 
+# THE WRITE CONTRACT'S NEGATIVE CONTROL, C++ side (docs/SPEC.md §5.1). The
+# variable-form Save refuses an integer off its declared range with
+# schema_assert, debug-only, and the `write-refusal` surface reads that abort
+# as `refused`. This control deletes every one of those asserts from a COPY of
+# the generated tree (each is one line ending in the comment the sed anchors
+# on), builds the driver against the copy, and requires `cpp / write-refusal`
+# RED while `wire` stays green: the range rows then answer `wrote`, and the
+# count, length, enum, tag and float rows, which refuse by return, do not move.
+# Nothing tracked is written to.
+CONFORMANCE_NEGATIVE_CPP_WREF := build/conformance-negative-cpp-write-refusal
+CONFORMANCE_WREF_ANCHOR := schema_assert(.*a write keeps the declared bounds
+.PHONY: conformance-negative-control-cpp-write-refusal
+conformance-negative-control-cpp-write-refusal: build/conformance-harness build/tables-generated/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_CPP_WREF) && mkdir -p $(CONFORMANCE_NEGATIVE_CPP_WREF)
+	@cp -R build/tables-generated $(CONFORMANCE_NEGATIVE_CPP_WREF)/generated
+	@n=$$(grep -l '$(CONFORMANCE_WREF_ANCHOR)' $(CONFORMANCE_NEGATIVE_CPP_WREF)/generated/examples/*Table.h | wc -l); \
+		[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no range assert to remove in the generated tree"; exit 1; }
+	@for f in $(CONFORMANCE_NEGATIVE_CPP_WREF)/generated/*/*.h; do \
+		sed '/$(CONFORMANCE_WREF_ANCHOR)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(CONFORMANCE_WREF_ANCHOR)' $(CONFORMANCE_NEGATIVE_CPP_WREF)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: a range assert survived the sabotage"; exit 1; }
+	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(CXX) $(TABLES_CXXFLAGS) \
+		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP_WREF)/generated/,$(CONFORMANCE_INCLUDES))) \
+		test/conformance/cpp/main.cpp \
+		$(subst build/tables-generated/,$(CONFORMANCE_NEGATIVE_CPP_WREF)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o $(CONFORMANCE_NEGATIVE_CPP_WREF)/driver-bin
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_CPP_WREF)" > $(CONFORMANCE_NEGATIVE_CPP_WREF)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_CPP_WREF)/driver
+	@printf 'cpp %s/driver\n' "$(CONFORMANCE_NEGATIVE_CPP_WREF)" > $(CONFORMANCE_NEGATIVE_CPP_WREF)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_CPP_WREF)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_CPP_WREF)/work > $(CONFORMANCE_NEGATIVE_CPP_WREF)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a C++ writer without its range asserts left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_CPP_WREF)/log; exit 1; \
+	fi
+	@grep -Eq '^write-refusal +FAIL ' $(CONFORMANCE_NEGATIVE_CPP_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on write-refusal"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP_WREF)/log; exit 1; }
+	@grep -Eq '^wire +pass ' $(CONFORMANCE_NEGATIVE_CPP_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: wire went red too, so the control localises nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_CPP_WREF)/log; exit 1; }
+	@grep -m1 "cpp / write-refusal" $(CONFORMANCE_NEGATIVE_CPP_WREF)/log
+	@echo "negative control: the C++ writer without its range asserts turns the harness RED on write-refusal alone"
+
 # THE NEGATIVE CONTROL FOR THE BLOCK ROW DUMP (docs/SPEC-TABLES.md §19.2), and it
 # sabotages neither driver: it flips one byte INSIDE A ROW of the block image
 # itself. That is the whole reason the surface exists. `Open` reads the prologue
