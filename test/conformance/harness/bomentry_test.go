@@ -79,7 +79,7 @@ func TestBOMEntryCorpusOracle(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !bytes.Equal(golden, encoded) {
+				if !bytes.Equal(golden, oneText(encoded)) {
 					t.Fatalf("%s: the value golden is not the oracle's value", row.Value)
 				}
 			}
