@@ -121,6 +121,38 @@ function tableMessageCountBits(s) {
   while (n !== 0) { bits++; n = Math.floor(n / 2); }
   return bits;
 }
+export function tableMessageUtf8Valid(bytes, at, len) {
+  for (let i = 0; i < len;) {
+    const b0 = bytes[at + i];
+    if (b0 === 0) { return false; }
+    if (b0 < 0x80) { i += 1; continue; }
+    let need, cp;
+    if ((b0 & 0xe0) === 0xc0) { need = 1; cp = b0 & 0x1f; }
+    else if ((b0 & 0xf0) === 0xe0) { need = 2; cp = b0 & 0x0f; }
+    else if ((b0 & 0xf8) === 0xf0) { need = 3; cp = b0 & 0x07; }
+    else { return false; }
+    if (i + 1 + need > len) { return false; }
+    for (let k = 1; k <= need; k++) {
+      const b = bytes[at + i + k];
+      if ((b & 0xc0) !== 0x80) { return false; }
+      cp = (cp << 6) | (b & 0x3f);
+    }
+    const min = need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { return false; }
+    i += 1 + need;
+  }
+  return true;
+}
+export function tableMessageUtf8Clamp(bytes, at, bound) {
+  let i = 0;
+  while (i < bound) {
+    const b0 = bytes[at + i];
+    const step = b0 < 0x80 ? 1 : (b0 & 0xe0) === 0xc0 ? 2 : (b0 & 0xf0) === 0xe0 ? 3 : 4;
+    if (i + step > bound) { break; }
+    i += step;
+  }
+  return i;
+}
 export function tableMessageCount(r, s) {
   const bits = tableMessageCountBits(s);
   const [raw, ok] = r.Get(bits);
@@ -333,6 +365,7 @@ func baseBigLit(base *big.Int) string {
 // gates only the batch verbs on FixedDeclared).
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
 	g.needHome("TableMessageRefBitsHere", "tableMessageEntry",
+		"tableMessageUtf8Valid", "tableMessageUtf8Clamp",
 		"tableMessageCount", "tableMessageSkip", "tableMessageSkipBody",
 		"tableMessageReadScalar", "tableMessageWriteScalar",
 		"TableMessageFloat32Bits", "TableMessageFloat32FromBits",
@@ -593,7 +626,11 @@ func (g *fixedModule) emitMessageWriteUnion(f *ir.Field, mem, ind string) {
 }
 
 func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
+	if !st.IsTable && g.gen.need != nil {
+		g.need(fixedDeclaringFile(g.unit, st.Name), "Init"+st.Name)
+	}
 	g.pf("export function %sLoadMessageBody(r, value) {\n", st.Name)
+	g.pf("  Init%s(value);\n", st.Name)
 	g.pf("  for (;;) {\n")
 	g.pf("    const [ref, ok] = r.Bits.Get(r.RefBits);\n")
 	g.pf("    if (!ok) { r.Report.Malformed = true; return false; }\n")
@@ -630,8 +667,10 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Malformed = true; return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
 		g.pf("%s  if (!r.Bits.Skip(Number(n) * 8)) { r.Report.Malformed = true; return false; }\n", ind)
-		g.pf("%s  let kept = Number(n);\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  const rawLen = Number(n);\n", ind)
+		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  let kept = rawLen;\n", ind)
+		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
@@ -645,11 +684,21 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string) 
 		g.pf("%s  for (let i = 0; i < kept; i++) { %s[i] = r.Bits.Buffer[start + i]; }\n", ind, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok) { r.Report.Malformed = true; return false; }\n", ind, shape)
-		g.pf("%s  let kept = Number(n);\n", ind)
+		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || Number(n) * 16 > r.Bits.Buffer.length * 8 - r.Bits.Offset) { r.Report.Malformed = true; return false; }\n", ind, shape)
+		g.pf("%s  const rawLen = Number(n);\n", ind)
+		g.pf("%s  let kept = rawLen;\n", ind)
 		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Clamped++; }\n", ind, f.Type.Size, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
-		g.pf("%s  for (let i = 0; i < Number(n); i++) { const [u, uok] = r.Bits.Get(16); if (!uok) { r.Report.Malformed = true; return false; } if (i < kept) { %s[i] = Number(u); } }\n", ind, mem)
+		g.pf("%s  let high = false;\n", ind)
+		g.pf("%s  for (let i = 0; i < rawLen; i++) {\n", ind)
+		g.pf("%s    const [u, uok] = r.Bits.Get(16);\n", ind)
+		g.pf("%s    const unit = Number(u);\n", ind)
+		g.pf("%s    if (!uok || unit === 0 || (unit >= 0xdc00 && unit <= 0xdfff && !high) || (high && (unit < 0xdc00 || unit > 0xdfff))) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s    high = unit >= 0xd800 && unit <= 0xdbff;\n", ind)
+		g.pf("%s    if (i < kept) { %s[i] = unit; }\n", ind, mem)
+		g.pf("%s  }\n", ind)
+		g.pf("%s  if (high) { r.Report.Malformed = true; return false; }\n", ind)
+		g.pf("%s  if (kept > 0 && %s[kept - 1] >= 0xd800 && %s[kept - 1] <= 0xdbff) { kept--; %s[kept] = 0; }\n", ind, mem, mem, mem)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, mem, ind)
