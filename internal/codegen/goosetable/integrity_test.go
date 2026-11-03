@@ -240,10 +240,10 @@ func TestGooseIntegrityCRC32CNegativeControl(t *testing.T) {
 	}
 }
 
-// sabotageCrcTable replaces the runtime's Crc32cTable declaration with decl.
+// sabotageCrcTable replaces the generated Crc32cTable declaration with decl.
 func sabotageCrcTable(t *testing.T, decl string) string {
 	t.Helper()
-	src := string(readRepo(t, "internal/codegen/goosetable/runtime/schema_tables.goose"))
+	src := string(integrityFiles(t, nil)["schema_tables.goose"])
 	start := strings.Index(src, "let Crc32cTable: u32[256] = [")
 	if start < 0 || strings.Count(src, "let Crc32cTable: u32[256] = [") != 1 {
 		t.Fatal("the Crc32cTable anchor must occur once")
