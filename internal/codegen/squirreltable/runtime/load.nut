@@ -756,13 +756,21 @@ local readMapEntry = function(ed, es, T, table, ent, report, st) {
   return es.at == es.end;
 };
 
-local mapKeyCmp = function(a, b) {
+// THE KEY ORDER (docs/SPEC-TABLES.md §2.8, §22.2.1): a signed key by its
+// signed value, a string by its bytes, and an UNSIGNED key by its unsigned
+// value. A uint64 key past 2^63 is held in a Squirrel integer, which is signed,
+// so the unsigned compare flips the sign bit of both sides first; every
+// narrower unsigned key is non-negative and compares the same either way.
+local mapKeyCmp = function(kd, a, b) {
   if (a == null && b == null) return 0;
   if (a == null) return -1;
   if (b == null) return 1;
-  if (a < b) return -1;
-  if (a > b) return 1;
-  return 0;
+  if (a == b) return 0;
+  if (kd.shape != "str" && !kd.signed) {
+    local sign = -9223372036854775807 - 1;
+    return (a ^ sign) < (b ^ sign) ? -1 : 1;
+  }
+  return a < b ? -1 : 1;
 };
 
 // THE KEY SCAN (docs/SPEC-TABLES.md §2.8): the reader does not assume where
@@ -895,7 +903,7 @@ readMapField = function(fd, r, T, table, v, report, st) {
       break;
     }
     local key = ent[fd.mapkey.member];
-    local cmp = haveLast ? mapKeyCmp(last, key) : -1;
+    local cmp = haveLast ? mapKeyCmp(fd.mapkey, last, key) : -1;
     if (cmp > 0) {
       // DESCENDING: not a body any conforming writer produced (§2.8)
       foreach (k, x in before) report[k] = x;
