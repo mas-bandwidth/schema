@@ -9,13 +9,17 @@
 //                             own value table, so it has no caller region and
 //                             no LoadMeasure, which is that arm's shape
 //   wirefuzz <unit> fixed     the value-only roots on the region arm, where a
-//                             fixed root has no region and measures -1
+//                             fixed root has no region and measures -1, and
+//                             their message form (form byte 2), read against
+//                             the unit's own announcement
 //
 // ONE UNIT PER PROCESS. Every generated unit carries its own copy of the
 // runtime, so two units cannot be one Goose program; make/goose-fuzz.mk builds
 // this file once per unit, beside a glue module, conformance_unit.goose, that
 // names the unit's registry, and runs the harness once per unit. The roster
 // entries of every other unit are a `0` and are never sent a mutant.
+// test/conformance/goose/wirefuzzdispatch runs this leg for every unit at
+// once behind one --driver, routing each roster entry to its unit's leg.
 // Variable roots also accept the retaining roster flag and use the existing
 // retaining pair with the harness's roomy capacities. The --builder --retain
 // differential compares this path without inventing a caller-region measure.
@@ -79,6 +83,7 @@ fn main() {
     let count = le(head, 0, 4) as! i64;
     var roots: i64[>..] = [];
     var retaining: bool[>..] = [];
+    var message: bool[>..] = [];
     var reply: u8[>..] = [];
     for _ in count {
         let kn = take(2);
@@ -92,8 +97,17 @@ fn main() {
                 if d.name == root && d.variable == builder && (fr[1] == 0 || d.variable) { t = i; break; }
             }
         }
+        // the message form, form byte 2, of a fixed root the unit carries it
+        // for (conformance_message_root, the glue's), on the fixed arm
+        let msg = key == argv[1] && fr[0] == 2 && fr[1] == 0 && !builder && conformance_message_root(root);
+        if msg {
+            for d, i in unit.tables {
+                if d.name == root && !d.variable { t = i; break; }
+            }
+        }
         roots.push(t);
         retaining.push(fr[1] == 1);
+        message.push(msg);
         reply.push(if t >= 0 { 1 } else { 0 });
     }
     write_stdout(reply);
@@ -115,6 +129,36 @@ fn main() {
             exit(1);
         }
         let name = unit.tables[roots[idx]].name;
+        if message[idx] {
+            // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the batch read
+            // against the unit's own announcement, body one saved back; the
+            // glue answers the saved length, or -1 when the save refused
+            var mrep = schema_rt::MsgReport { .. };
+            var msaved: u8[>..] = [];
+            let mn = conformance_message_fuzz(name, data, msaved, mrep);
+            var mout: u8[>..] = [];
+            // a message read has no region and no builder completion
+            mout.push(1);
+            put_i32(mout, mrep.unknown);
+            put_i32(mout, mrep.kind_mismatch);
+            put_i32(mout, mrep.widened);
+            put_i32(mout, mrep.clamped);
+            put_i32(mout, mrep.duplicate);
+            mout.push(flag(mrep.malformed) as! u8);
+            mout.push(flag(mrep.reason != 0) as! u8);
+            put_le(mout, 0xFFFFFFFFFFFFFFFF, 8); // measure: no region (-1)
+            put_i32(mout, 0);
+            put_i32(mout, 0);
+            if mn < 0 {
+                put_le(mout, 0xFFFFFFFFFFFFFFFF, 8);
+            } else {
+                put_le(mout, msaved.len as! u64, 8);
+                mout.append(msaved);
+            }
+            write_stdout(mout);
+            flush_stdout();
+            continue;
+        }
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };

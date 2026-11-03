@@ -47,6 +47,31 @@ tables-goose-wire-fuzz tables-goose-retain-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conf
 	@sh make/goose-wirefuzz.sh "$(GOOSE)" ./build/conformance-harness $(GOOSE_FUZZ_DIR)/units \
 		$(GOOSE_FUZZ_DIR)/legs $(GOOSE_FUZZ_SEED) $(GOOSE_FUZZ_N) $(if $(filter tables-goose-retain-fuzz,$@),retain,all)
 
+# THE WHOLE-ROSTER DRIVER (test/conformance/nightly-readiness goose): one
+# --driver over every unit, for a harness run over the full roster. Every
+# generated unit's leg is built under $(GOOSE_LEGS_DIR)/legs/<unit>, and
+# test/conformance/goose/wirefuzzdispatch routes each roster entry to its
+# unit's leg. A leg that does not build fails the target; a unit the goose
+# target refuses has no leg, and its seeds are absent in the harness's count.
+GOOSE_LEGS_DIR := build/goose-wirefuzz-legs
+GOOSE_DISPATCH := build/goose-wirefuzz-dispatch
+
+.PHONY: build/conformance-goose-wirefuzz
+build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA)
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go build -o $(GOOSE_DISPATCH) ./test/conformance/goose/wirefuzzdispatch
+	$(call goose_fuzz_units,$(GOOSE_LEGS_DIR)/units)
+	@rm -rf $(GOOSE_LEGS_DIR)/legs && mkdir -p $(GOOSE_LEGS_DIR)/legs
+	@for d in $(GOOSE_LEGS_DIR)/units/*/; do \
+		ls "$$d"*Table.goose >/dev/null 2>&1 && basename "$$d"; \
+	done | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -I{} sh -c \
+		'sh make/goose-wirefuzz-build.sh "$$1" "$$2/units/{}" "$$2/legs/{}" || echo "{}" >>"$$2/build-failed.txt"' \
+		_ "$(GOOSE)" $(GOOSE_LEGS_DIR)
+	@if [ -s $(GOOSE_LEGS_DIR)/build-failed.txt ]; then \
+		echo "goose wire-fuzz legs do not build: $$(tr '\n' ' ' <$(GOOSE_LEGS_DIR)/build-failed.txt)"; \
+		rm -f $(GOOSE_LEGS_DIR)/build-failed.txt; exit 1; fi
+	@echo "goose wire-fuzz driver: $(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs ($$(ls $(GOOSE_LEGS_DIR)/legs | wc -l) unit legs)"
+
 # THE WIRE-FUZZ CONTROLS: a check removed from the Goose load, the differential
 # red on exactly that. The table wire's load is a runtime module the compiler
 # emits verbatim (go:embed, which `go build -overlay` does not reach), so each
