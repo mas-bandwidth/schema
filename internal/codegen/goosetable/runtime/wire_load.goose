@@ -1650,7 +1650,127 @@ fn load_variable(c: LoadCtx&, body: Rd) -> bool {
     var r = body;
     let ok = body_at(c, r, root, c.root_val, false, false);
     if c.report.count_refused { return false; }
+    // A CYCLIC WIRE IS DAMAGE (§3.1): the graph the load stored is checked
+    // once every index has resolved
+    if c.good && !c.report.malformed && !acyclic(c) { c.report.malformed = true; }
     return ok;
+}
+
+// ---- THE CYCLE CHECK (docs/SPEC-TABLES.md §3.1, A CYCLIC WIRE IS DAMAGE) ----
+//
+// The vertices are the root (wire index 1) and every record the load placed
+// (wire index k + 2); the edges are every non-null table pointer slot a
+// vertex's by-value closure stores, a slot under a false guard included,
+// because a guard decides what a write elides and never what a read places. A
+// byte buffer is no vertex. Kahn's algorithm: one walk counts each vertex's
+// in-degree, then vertices of in-degree zero are released one at a time, and
+// the graph is acyclic exactly when every vertex is released. Each vertex is
+// walked twice and nothing recurses over the pointer graph; the recursion
+// that remains is by-value nesting, whose depth the schema fixes (§2).
+
+// CycleWalk is the check's state, by wire index: each vertex's unreleased
+// in-degree, and the vertices ready to release. release: the walk decrements
+// in-degrees rather than counting them.
+struct CycleWalk { deg: i64[>..<]&, ready: i64[>..<]&, release: bool }
+
+fn cycle_vertex_at(c: LoadCtx&, v: i64) -> bool {
+    if v == 1 { return true; }
+    if v < 2 || v - 2 >= c.node_n { return false; }
+    let n = c.nodes[v - 2];
+    return n.tab >= 0 && n.blob == 0 && n.val >= 0;
+}
+
+// cycle_edge counts or releases the edge a pointer slot stores.
+fn cycle_edge(c: LoadCtx&, w: CycleWalk&, s: i64) {
+    if s < 0 || c.vals[s].state != ValPresent { return; }
+    let t = c.vals[s].bits.lo as! i64;
+    if !cycle_vertex_at(c, t) { return; }
+    if !w.release {
+        w.deg[t] += 1;
+        return;
+    }
+    w.deg[t] -= 1;
+    if w.deg[t] == 0 { w.ready.push(t); }
+}
+
+// cycle_record walks one record's by-value closure for its pointer edges.
+recursive fn cycle_record(c: LoadCtx&, w: CycleWalk&, tab: i64, rec: i64) {
+    if tab < 0 || rec < 0 || !c.vals[rec].made { return; }
+    let first = c.vals[rec].first;
+    for d, i in c.unit.tables[tab].fields {
+        if i >= c.vals[rec].count { return; }
+        cycle_value(c, w, first + i, d);
+    }
+}
+
+// cycle_value walks one stored value of descriptor d: a table pointer is an
+// edge, and a record, a map's entries, a union's set arm and an array's live
+// elements are descended.
+recursive fn cycle_value(c: LoadCtx&, w: CycleWalk&, s: i64, d: const FieldDesc&) {
+    if s < 0 { return; }
+    if d.shape == ShapePtr { cycle_edge(c, w, s); return; }
+    if d.shape == ShapeTab {
+        if c.vals[s].made { cycle_record(c, w, c.vals[s].tab, s); }
+        return;
+    }
+    if d.shape == ShapeUnion {
+        let tag = c.vals[s].bits.lo as! i64;
+        if c.vals[s].state != ValPresent || tag == 0 { return; }
+        let u = union_index(c, d.ref);
+        if u < 0 || tag > c.unit.unions[u].arms.len { return; }
+        cycle_value(c, w, c.vals[s].first, c.unit.unions[u].arms[tag - 1]);
+        return;
+    }
+    if !c.vals[s].made { return; }
+    if d.shape == ShapeMap {
+        for k in c.vals[s].len {
+            let e = c.vals[s].first + k;
+            if c.vals[e].made { cycle_record(c, w, c.vals[e].tab, e); }
+        }
+        return;
+    }
+    if d.shape == ShapeArr {
+        let e = d.elem;
+        guard e else { return; }
+        if e.shape != ShapePtr && e.shape != ShapeUnion && e.shape != ShapeTab { return; }
+        let live = if d.array == ArrayCounted || d.array == ArrayList { c.vals[s].len } else { c.vals[s].count };
+        for k in live { cycle_value(c, w, c.vals[s].first + k, e); }
+    }
+}
+
+fn cycle_walk_vertex(c: LoadCtx&, w: CycleWalk&, v: i64) {
+    if v == 1 {
+        cycle_record(c, w, c.root_tab, c.root_val);
+        return;
+    }
+    cycle_record(c, w, c.nodes[v - 2].tab, c.nodes[v - 2].val);
+}
+
+// acyclic is the check: false when the stored graph holds a cycle.
+fn acyclic(c: LoadCtx&) -> bool {
+    let n = c.node_n + 2;
+    var deg: i64[>..<] = [];
+    var ready: i64[>..<] = [];
+    for _ in n { deg.push(0); }
+    var w = CycleWalk { deg: deg, ready: ready, release: false };
+    var vertices: i64 = 0;
+    for v in n {
+        if !cycle_vertex_at(c, v) { continue; }
+        vertices += 1;
+        cycle_walk_vertex(c, w, v);
+    }
+    w.release = true;
+    for v in n {
+        if cycle_vertex_at(c, v) && w.deg[v] == 0 { w.ready.push(v); }
+    }
+    var released: i64 = 0;
+    while w.ready.len > 0 {
+        let v = w.ready[w.ready.len - 1];
+        w.ready.resize(w.ready.len - 1);
+        released += 1;
+        cycle_walk_vertex(c, w, v);
+    }
+    return released == vertices;
 }
 
 // load_with is the one load both entry points share: load_table, and
