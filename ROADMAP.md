@@ -123,7 +123,7 @@ This work is on main: sprint/schema-vt-core landed on main, and the Go core (spr
 
 Progress checkpoint: 2026-11-02. Completed work is landing incrementally in main through PR #2660 and PR #2666. This roadmap records the current implementation and known gaps; unfinished work no longer holds completed changes on branches. The original nine languages remain the priority.
 
-Registration now covers all 11 active constructs in C, C#, Go, Rust, Java, JavaScript, Dart and Elixir. The current C++ public registry lists 5/11; its additional landed implementation still needs registry and acceptance reconciliation. These counts describe compiler declarations, not percentages of full Schema completion.
+Registration now covers all 11 active constructs in C, C#, Go, Rust, Java, JavaScript, Dart and Elixir. The C++ public registry now lists 8/11, including required fields, forms and integrity. Text lists, total text limits, unbounded text and full nightly acceptance remain open. These counts describe compiler declarations, not percentages of full Schema completion.
 
 Landed: required-field, forms, integrity and text-list implementation across the ports; stronger ordinary-positive-unit coverage; populated feature witnesses; pointer-target and root-closure regressions; neutral repeated-key widening and message-integrity repairs; Rust nested-reader refusal repair; JavaScript helper emission and blob accounting; Dart string identity and retained-record accounting; Elixir measurement, pointer and root-closure repairs. Shared failing inputs stay in the corpus.
 
