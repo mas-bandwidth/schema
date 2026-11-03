@@ -3849,19 +3849,19 @@ defmodule Bench.Table do
     if not is_integer(v) or v < lo or v > hi, do: throw(:invalid_value)
   end
 
-  defp compatible_payload?(%{t: t, elem_kind: expected}, payload)
+  defp compatible_payload?(%{t: t, elem_kind: expected} = f, payload)
        when t in [:list, :map, :keyed] do
     with {_len, <<actual, count_rest::binary>>} <- leb(payload),
-         {_count, _} <- leb(count_rest) do
+         true <- count_ok?(f, count_rest) do
       actual == expected or (t in [:list, :keyed] and kind_widens?(actual, expected))
     else
       _ -> true
     end
   end
 
-  defp compatible_payload?(%{t: :bytes}, payload) do
+  defp compatible_payload?(%{t: :bytes} = f, payload) do
     with {_len, <<actual, count_rest::binary>>} <- leb(payload),
-         {_count, _} <- leb(count_rest) do
+         true <- count_ok?(f, count_rest) do
       actual == 6
     else
       _ -> true
@@ -3869,6 +3869,14 @@ defmodule Bench.Table do
   end
 
   defp compatible_payload?(_f, _payload), do: true
+
+  defp count_ok?(%{arm_kind: _}, bin), do: leb(bin) != :error
+  defp count_ok?(_f, bin), do: leb(bin) != :error or crosses_l?(bin, 0)
+
+  defp crosses_l?(<<b, rest::binary>>, i) when i < 9 and (b &&& 0x80) != 0,
+    do: rest == <<>> or crosses_l?(rest, i + 1)
+
+  defp crosses_l?(_bin, _i), do: false
 
   defp inert_required_field(%{required: true} = f, value),
     do: Map.put_new(value, f.name, f.default)

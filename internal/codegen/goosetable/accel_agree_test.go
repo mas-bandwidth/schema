@@ -244,16 +244,21 @@ fn main() {
 		}
 		emit("}")
 	}
-	for _, st := range cookRecords(u) {
-		ml := ir.RecordLayout(u, st)
-		fields(st.Name, st.Name+"Row", fmt.Sprintf("record_of(%s::CookRecords, %q)", ns, st.Name), ml.Fields, false)
+	if cookPackage(u) != "" {
+		for _, st := range cookRecords(u) {
+			ml := ir.RecordLayout(u, st)
+			fields(st.Name, st.Name+"Row", fmt.Sprintf("record_of(%s::CookRecords, %q)", ns, st.Name), ml.Fields, false)
+		}
 	}
-	if blocks := ir.Blocks(u); blocks != nil && len(blocks.Tables) > 0 {
+	if blocks := ir.Blocks(u); hasBlockForm(blocks) {
 		_, index, _ := blockRecordIndex(blocks)
 		for _, name := range blocks.Order {
 			fields("block row "+name, name+"Row", fmt.Sprintf("%s::BlockRecords[%d]", ns, index[blockRecordKey(name, false)]), blocks.Layout(name).Fields, false)
 		}
 		for _, bl := range blocks.Tables {
+			if !bl.Table.CarriesForm("block") {
+				continue
+			}
 			n := bl.Table.Name
 			fields("block "+n, n+"Block", fmt.Sprintf("%s::BlockRecords[%s::%sBlockRecord]", ns, ns, n), bl.Projection.Fields, true)
 		}

@@ -47,6 +47,31 @@ tables-goose-wire-fuzz tables-goose-retain-fuzz: $(GOOSE_FUZZ_SCHEMA) build/conf
 	@sh make/goose-wirefuzz.sh "$(GOOSE)" ./build/conformance-harness $(GOOSE_FUZZ_DIR)/units \
 		$(GOOSE_FUZZ_DIR)/legs $(GOOSE_FUZZ_SEED) $(GOOSE_FUZZ_N) $(if $(filter tables-goose-retain-fuzz,$@),retain,all)
 
+# THE WHOLE-ROSTER DRIVER (test/conformance/nightly-readiness goose): one
+# --driver over every unit, for a harness run over the full roster. Every
+# generated unit's leg is built under $(GOOSE_LEGS_DIR)/legs/<unit>, and
+# test/conformance/goose/wirefuzzdispatch routes each roster entry to its
+# unit's leg. A leg that does not build fails the target; a unit the goose
+# target refuses has no leg, and its seeds are absent in the harness's count.
+GOOSE_LEGS_DIR := build/goose-wirefuzz-legs
+GOOSE_DISPATCH := build/goose-wirefuzz-dispatch
+
+.PHONY: build/conformance-goose-wirefuzz
+build/conformance-goose-wirefuzz: $(GOOSE_FUZZ_SCHEMA)
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	go build -o $(GOOSE_DISPATCH) ./test/conformance/goose/wirefuzzdispatch
+	$(call goose_fuzz_units,$(GOOSE_LEGS_DIR)/units)
+	@rm -rf $(GOOSE_LEGS_DIR)/legs && mkdir -p $(GOOSE_LEGS_DIR)/legs
+	@for d in $(GOOSE_LEGS_DIR)/units/*/; do \
+		ls "$$d"*Table.goose >/dev/null 2>&1 && basename "$$d"; \
+	done | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -I{} sh -c \
+		'sh make/goose-wirefuzz-build.sh "$$1" "$$2/units/{}" "$$2/legs/{}" || echo "{}" >>"$$2/build-failed.txt"' \
+		_ "$(GOOSE)" $(GOOSE_LEGS_DIR)
+	@if [ -s $(GOOSE_LEGS_DIR)/build-failed.txt ]; then \
+		echo "goose wire-fuzz legs do not build: $$(tr '\n' ' ' <$(GOOSE_LEGS_DIR)/build-failed.txt)"; \
+		rm -f $(GOOSE_LEGS_DIR)/build-failed.txt; exit 1; fi
+	@echo "goose wire-fuzz driver: $(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs ($$(ls $(GOOSE_LEGS_DIR)/legs | wc -l) unit legs)"
+
 # THE WIRE-FUZZ CONTROLS: a check removed from the Goose load, the differential
 # red on exactly that. The table wire's load is a runtime module the compiler
 # emits verbatim (go:embed, which `go build -overlay` does not reach), so each
@@ -128,3 +153,51 @@ tables-goose-retain-fuzz-driver:
 tables-goose-retain-fuzz-negative-control:
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseRetaining(FuzzNegativeControl|MapReplacementNegativeControl)$$' ./internal/codegen/goosetable/
+
+# THE INTEGRITY TRAILER UNDER THE LEG'S OWN BUILD (docs/SPEC-TABLES.md §2.14;
+# internal/codegen/goosetable/integrity_test.go). The gate builds its probes
+# with `goose build -O2`, which compiles through the machine's C compiler:
+# crc32c's known answers against Go's Castagnoli table, the short-body vector
+# (testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin)
+# malformed with integrity_mismatch on every load path, and the
+# featurewitnesses corpus files saved back to their own bytes.
+.PHONY: tables-goose-integrity tables-goose-integrity-negative-control
+tables-goose-integrity:
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseIntegrity(CRC32C|WireFuzzLeg)$$' ./internal/codegen/goosetable/
+
+# ITS CONTROLS, each deterministic on any C compiler. A wrong-polynomial
+# table reds the known answers and the Root round trips, and nothing else. A
+# crc32c that never returns (a constant-condition loop, which no C compiler
+# may assume terminates) put in one leg's generated schema_tables.goose must
+# turn the harness's replay of the short-body vector red on its own stall
+# watchdog.
+GOOSE_FUZZ_SED_crcloop := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|loop { crc ^= 1; } // SABOTAGED: crc32c never returns|
+tables-goose-integrity-negative-control: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestGooseIntegrityCRC32CNegativeControl$$' ./internal/codegen/goosetable/
+	@sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/control-crcloop '$(GOOSE_FUZZ_SED_crcloop)'; \
+	rc=$$?; if [ $$rc -eq 0 ]; then \
+		echo "NEGATIVE CONTROL FAILED: a crc32c that never returns left the replay green"; exit 1; \
+	elif [ $$rc -ne 3 ]; then \
+		echo "NEGATIVE CONTROL FAILED: the replay went red, but not on the driver's stall"; exit 1; fi
+	@echo "goose integrity negative control: $$(grep -m1 'harness: FAILED' $(GOOSE_FUZZ_DIR)/control-crcloop/log)"
+
+# THE BITWISE-LOOP DIAGNOSTIC, never a gate. The bitwise CRC loop in the
+# shape Goose lowers `while` into, put back in one leg, is replayed against
+# the short-body vector, and the C compiler `goose toolchain` reports is said
+# to be affected (the replay stalls) or not. GCC 15 -O2 (-foptimize-crc)
+# compiles that loop into an endless one; recorded 2026-11-02: gcc
+# 15.2.0-16ubuntu1 (Ubuntu, x86-64) affected, clang 21 (macOS arm64) not.
+GOOSE_FUZZ_SED_crcbitwise := s|crc = Crc32cTable\[((crc ^ data\[i\]) \& 0xFF) as! i64\] ^ (crc >> 8);|crc ^= data[i]; var b: i64 = 0; while b < 8 { if (crc \& 1) != 0 { crc = (crc >> 1) ^ 0x82F63B78; } else { crc >>= 1; } b += 1; } // SABOTAGED: the bitwise loop|
+.PHONY: tables-goose-integrity-crc-diagnostic
+tables-goose-integrity-crc-diagnostic: $(GOOSE_FUZZ_SCHEMA) build/conformance-harness
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	@cc=$$("$(GOOSE)" toolchain | sed -n 's/^id: *//p'); \
+	sh make/goose-crc-replay.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) ./build/conformance-harness $(GOOSE_FUZZ_DIR)/diagnostic-crcbitwise '$(GOOSE_FUZZ_SED_crcbitwise)'; \
+	case $$? in \
+		0) echo "goose integrity crc diagnostic: compiler not affected ($$cc): the bitwise CRC loop answers";; \
+		3) echo "goose integrity crc diagnostic: compiler affected ($$cc): the bitwise CRC loop never returns";; \
+		*) echo "goose integrity crc diagnostic: inconclusive ($$cc):"; cat $(GOOSE_FUZZ_DIR)/diagnostic-crcbitwise/log;; \
+	esac; \
+	echo "goose integrity crc diagnostic: recorded 2026-11-02: gcc 15.2.0-16ubuntu1 (x86-64) affected, clang 21 (arm64) not affected"

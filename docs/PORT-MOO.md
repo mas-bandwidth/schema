@@ -157,6 +157,7 @@ over a table's Save and strict read). It is not `text.moo` because
 | one walk (M9) | `TestMooJsonOneWalk` |
 | the base64 carrier (§16.8) | `TestMooTextCarrier`, control `TestMooTextCarrierNegativeControl`; the generated `<Name>SaveText` / `<Name>LoadText` over the moo wire, `TestMooTextCarrierSurface` |
 | json-read and json-write over the moo table wire (the conformance surfaces) | `TestMooJsonWireSurfaces` |
+| text lists (§2.13): plain elements as strings, unbounded elements unclamped, the total, an integrity root's trailer | `TestMooJsonTextLists`, control `TestMooJsonTextListsNegativeControl` (each rule broken, red on exactly its cases) |
 
 ## THE FUZZ DIFFERENTIAL (layer 6)
 
@@ -232,6 +233,39 @@ packet and table output with every control registered in
 (docs/PORTING.md, the `moo` column) and the roadmap (`port/moo/*`); the cells
 still open there are named with what they owe. A runtime gap found on the way is fixed in
 serialize.moo, never worked around here.
+
+## THE VIEW (layer 3, docs/SPEC-TABLES.md §8)
+
+**The descriptor columns** (§8.1, `mootable/annotate.go`). Every field and
+union arm descriptor carries `type_name` (the declared type's spelling), a
+general arm `arm_offset` (its offset in the union's storage at the record
+layout, the one payload base every arm overlays), and what a person wrote:
+`doc`, the `///` block verbatim, and `tags`, in declared order. Absence has
+one spelling each: a row with no doc names `St.DocNone`, the one empty doc
+`schema_tables.moo` defines, and a row with no tags carries no `tags` (nil).
+A moo list carries its own length, so no count column rides beside it. A
+table descriptor carries its declaration's own `doc` and `tags` the same way.
+
+**The registry** (§8.3, `mootable/view.go`). Every unit with a table gets
+`<Package>View.moo` (§8.5), on the side: nothing else requires it. It exports
+the row types (`UnitViewInfo`, `ViewType`, `ViewVocabulary`, `ViewVariant`,
+`ViewConstant`) and `UnitView()`, which returns the one frozen registry. The
+registry holds descriptors by reference: a declaration's row names its
+`<Name>Descriptor`, a record-naming arm its payload's descriptor and a
+general arm its entry in `<Union>Descriptor.arms`. The 64-bit columns take
+the table surface's spellings: an id and the protocol id are eight
+little-endian bytes as a string, a constant's folded value a
+`serialize.Int64`, and a float constant its binary64 bits (`float_bits`),
+eight little-endian bytes as a string, since moo holds no float. A type or
+union no table reaches gets its `<Name>Descriptor` here, with no table-wire
+identity (§8.2): every id 0, every text key empty.
+
+| gate | test |
+|---|---|
+| the listing a moo program prints from `UnitView()` (`test/tables/view_moo.mootext`) byte-equal to `internal/viewlisting` for every VIEW_CORPUS and tables manifest unit | `TestMooUnitViewCorpus`, `make tables-moo-view` |
+| a type no table reaches described with no table-wire identity | `TestMooUnitViewPacketStorage` |
+| the empty doc defined once, no row writing its own | `TestMooEmptyDocIsOneDefinition` |
+| five sabotages (unflattened doc, dropped row, arm offset, emptied doc, outside id), each red on its own line | `TestMooUnitViewNegativeControl`, `make tables-moo-view-negative-controls` |
 
 ## RETAIN-UNKNOWN (layer 3, docs/SPEC-TABLES.md §6.6)
 

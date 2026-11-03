@@ -97,27 +97,34 @@ end
 local ID_TABLE_BOUND = 4096
 
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
--- byte this reader does not know REFUSES; damage is malformed. The count is
--- the unsigned u64 at the file's end; a high half past zero is huge and never
--- frames.
+-- byte this reader does not know REFUSES, naming it; damage is malformed and
+-- the verdict's damage (report.damaged). The count is the unsigned u64 at the
+-- file's end; a high half past zero is huge and never frames.
 local function open(bytes: buffer, report: any): any
 	local len = buffer.len(bytes)
 	if len < 1 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
-	if buffer.readu8(bytes, 0) ~= 1 then
+	local form = buffer.readu8(bytes, 0)
+	if form ~= 1 then
+		-- the report names which form it refused (§6.5): a batch handed to a
+		-- file reader, or a byte this reader does not carry
 		report.refused += 1
+		report.reason = if form == 2 then "message_form_as_file" else "newer_form"
 		return nil
 	end
 	if len < 9 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
 	local lo = buffer.readu32(bytes, len - 8)
 	local hi = buffer.readu32(bytes, len - 4)
 	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
 	local count = lo
@@ -128,6 +135,7 @@ local function open(bytes: buffer, report: any): any
 		local id = buffer.readstring(bytes, endpos + i * 8, 8)
 		if seen[id] then
 			report.malformed = true
+			report.damaged = true
 			return nil
 		end
 		seen[id] = true
@@ -472,6 +480,7 @@ local function scan_key(keyfd: any, body: any, entry: any): (any, boolean, boole
 		if id == MapKeyId and keyfd ~= nil then
 			if kind ~= keyfd.k and V.widens(kind, keyfd.k) then
 				entryWidened = true
+				kindBad = false -- this occurrence replaces the earlier key kind
 				local x = scalar_at(scan, keyfd, kind, quiet, keyfd)
 				if x == nil then
 					return keyVal, kindBad, entryWidened, false
@@ -543,8 +552,6 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap)
 		if count > 0x7FFFFFFF then
 			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
 			r.at = endpos
 			return true
 		end
@@ -852,8 +859,6 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	if fd.array == "list" then
 		if count > 0x7FFFFFFF then
 			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
 			return false
 		end
 	elseif fd.bound ~= nil and count > fd.bound then
@@ -1409,6 +1414,160 @@ local function resolve(report: any)
 	end
 end
 
+-- ---- THE CYCLE CHECK (§3.1, §4; internal/tablewire decodenodes.go cyclic) --
+--
+-- No writer produces a cyclic wire, so a cycle in the LOADED graph is damage
+-- and the whole load is refused. The vertices are the root and every record
+-- the load placed; the edges are every pointer slot a vertex's by-value
+-- closure stores, a slot under a false guard included, because the load
+-- stored it. A byte buffer is no vertex. A cycle anywhere refuses, one the
+-- root never reaches included.
+
+-- the live count of a stored array: a list's length, a counted array's count
+-- beside it, a fixed array's bound (§2.9)
+local function stored_count(fd: any, holder: any, val: any): number
+	if type(val) ~= "table" then
+		return 0
+	end
+	if fd.array == "list" then
+		return #val
+	end
+	if fd.array == "counted" then
+		local c = holder[fd.slot .. "Count"]
+		if type(c) ~= "number" then
+			return 0
+		end
+		return math.min(c, fd.bound)
+	end
+	return fd.bound or 0
+end
+
+local stored_edges: any
+
+local function stored_arm_edges(fd: any, u: any, index: { [any]: number }, out: { number })
+	if type(u) ~= "table" or u.Type == nil or u.Type == 0 then
+		return
+	end
+	local arm = S.lookup(fd.t).arms[u.Type]
+	if arm == nil or arm.slot == nil then
+		return
+	end
+	local val = u[arm.slot]
+	local shape = arm.s
+	if shape == "ptr" then
+		if val then
+			out[#out + 1] = index[val]
+		end
+	elseif shape == "tab" then
+		stored_edges(S.lookup(arm.t), val, index, out)
+	elseif shape == "union" then
+		stored_arm_edges(arm, val, index, out)
+	elseif shape == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
+		for i = 1, stored_count(arm, u, val) do
+			if val[i] then
+				out[#out + 1] = index[val[i]]
+			end
+		end
+	end
+end
+
+-- stored_edges appends the vertex index of every pointer target v's by-value
+-- closure stores. The recursion is by-value nesting only, whose depth the
+-- schema fixes (§2); it never follows a pointer.
+stored_edges = function(d: any, v: any, index: { [any]: number }, out: { number }): { number }
+	if type(v) ~= "table" then
+		return out
+	end
+	for _, fd in d.fields do
+		if fd.slot == nil or (fd.present ~= nil and not v[fd.present]) then
+			continue
+		end
+		local val = v[fd.slot]
+		local s = fd.s
+		if s == "ptr" then
+			if val then
+				out[#out + 1] = index[val]
+			end
+		elseif s == "tab" then
+			stored_edges(S.lookup(fd.t), val, index, out)
+		elseif s == "union" then
+			stored_arm_edges(fd, val, index, out)
+		elseif s == "map" then
+			if type(val) == "table" then
+				local entry = S.lookup(fd.t)
+				for _, ev in val do
+					stored_edges(entry, ev, index, out)
+				end
+			end
+		elseif s == "arr" and type(val) == "table" and fd.e ~= nil then
+			local e = fd.e
+			local n = stored_count(fd, v, val)
+			if e.s == "ptr" then
+				for i = 1, n do
+					if val[i] then
+						out[#out + 1] = index[val[i]]
+					end
+				end
+			elseif e.s == "union" then
+				for i = 1, n do
+					stored_arm_edges(e, val[i], index, out)
+				end
+			elseif e.s == "tab" then
+				local td = S.lookup(e.t)
+				for i = 1, n do
+					stored_edges(td, val[i], index, out)
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- cyclic reports whether the loaded graph holds a cycle. Each vertex carries
+-- one of three marks and is ENTERED ONCE: a pointer to an OPEN vertex is a
+-- cycle, and a pointer to a CLOSED one is a legal share. The walk holds its
+-- own stack, so it is linear in vertices plus slots and a pointer chain is
+-- never a recursion depth.
+local function cyclic(): boolean
+	local verts: { any } = { { d = _rootDesc, v = _rootValue } }
+	local index: { [any]: number } = { [_rootValue] = 1 }
+	for _, n in _nodes do
+		if n.kind == "t" and index[n.v] == nil then
+			verts[#verts + 1] = { d = n.desc, v = n.v }
+			index[n.v] = #verts
+		end
+	end
+	local mark: { number } = table.create(#verts, 0) -- 0 unvisited, 1 open, 2 closed
+	local stack: { any } = {}
+	for start = 1, #verts do
+		if mark[start] ~= 0 then
+			continue
+		end
+		mark[start] = 1
+		stack[1] = { at = start, out = stored_edges(verts[start].d, verts[start].v, index, {}), i = 0 }
+		while #stack > 0 do
+			local top = stack[#stack]
+			if top.i >= #top.out then
+				mark[top.at] = 2
+				stack[#stack] = nil
+			else
+				top.i += 1
+				local t = top.out[top.i]
+				if t ~= nil then
+					if mark[t] == 1 then
+						return true
+					end
+					if mark[t] == 0 then
+						mark[t] = 1
+						stack[#stack + 1] = { at = t, out = stored_edges(verts[t].d, verts[t].v, index, {}), i = 0 }
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
 -- a field's guard holds when every (bool slot, value) pair matches (§2.3, §3)
 local function guard_holds(fd: any, v: any): boolean
 	if fd.guard == nil then
@@ -1525,6 +1684,7 @@ end
 -- a report at rest (docs/SPEC-TABLES.md §4)
 local function reset(report: any)
 	report.malformed = false
+	report.damaged = false
 	report.retained = 0
 	report.retainLost = 0
 	report.refused = 0
@@ -1589,6 +1749,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		if ref == 0 then
 			if walk.at ~= o.e then
 				report.malformed = true
+				report.damaged = true
 				return nil
 			end
 			break
@@ -1640,8 +1801,28 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 			end
 		end
 	end
-	read_body(desc, new_reader(bytes, 1, o.e), v, false)
+	-- A VALUE-ONLY ROOT'S DAMAGE (§4, gotable's <T>LoadTolerant): damage its
+	-- walk read past is the verdict's; damage that stopped the walk is a
+	-- malformed body
+	local whole = read_body(desc, new_reader(bytes, 1, o.e), v, false)
+	if whole and report.malformed and not desc.variable then
+		report.damaged = true
+	end
 	resolve(report)
+	-- A COUNT ABOVE THE int32 STORAGE CAP (§2.9, §2.2) refuses the load: no
+	-- value, the report at rest but for the refusal and its name,
+	-- count_over_extent_cap, malformed not set
+	if _countRefused then
+		reset(report)
+		report.refused = 1
+		report.reason = "count_over_extent_cap"
+		return nil
+	end
+	-- A CYCLIC WIRE IS DAMAGE (§3.1, §4): the stored graph is checked once
+	-- every index has resolved
+	if _numberingGood and not report.malformed and cyclic() then
+		report.malformed = true
+	end
 	if report.nonFiniteField ~= nil then
 		report.reason = "non_finite_float: " .. report.nonFiniteField
 		return nil
@@ -2029,11 +2210,16 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.field = rep.nonFiniteField
 		return nil
 	end
+	-- a count past the int32 extent cap (§2.9) is the load's own refusal,
+	-- named as the tolerant load names it
 	if _countRefused then
-		rep.reason = "count_refusal"
+		rep.reason = "count_over_extent_cap"
 		return nil
 	end
-	if v == nil and rep.malformed then
+	-- THE VERDICT'S DAMAGE IS wire_damaged, and a malformed body behind good
+	-- framing is malformed (TableReport.Err()'s order); a load that read
+	-- nothing whole and names nothing else is wire_damaged
+	if rep.damaged then
 		rep.reason = "wire_damaged"
 		return nil
 	end
@@ -2048,6 +2234,10 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 			end
 			return nil
 		end
+	end
+	if v == nil then
+		rep.reason = "wire_damaged"
+		return nil
 	end
 	if rep.unknown > 0 then
 		rep.unknownField = witness(root, b, "unknown")
