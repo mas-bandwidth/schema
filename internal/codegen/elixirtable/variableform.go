@@ -2050,15 +2050,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
                   {:cont, :inert, report} -> {:cont, {inert_required_field(f, value), report}}
-                  {:cont, v, report} -> {:cont, {Map.put(value, f.name, v), report}}
-                  {:halt, v, report} -> {:halt, {Map.put(value, f.name, v), report}}
+                  {:cont, v, report} -> {:cont, {put_wire_field(value, f, v), report}}
+                  {:halt, v, report} -> {:halt, {put_wire_field(value, f, v), report}}
                 end
 
               widens?(kind, f) ->
                 # WIDENED (§4): a kind that grew since the writer decodes exactly
                 # at its own width, the value lands, and one widened event counts
                 {v, report} = read_widened(f, kind, payload, report)
-                {:cont, {Map.put(value, f.name, v), report}}
+                {:cont, {put_wire_field(value, f, v), report}}
 
               true ->
                 {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
@@ -2069,6 +2069,20 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     report = require_seen(desc, value, Map.keys(value), report)
     {value, report}
   end
+
+  # A positional fixed array updates its received prefix; an enum-keyed
+  # occurrence updates only the slots it names. Other fields replace normally.
+  defp put_wire_field(value, %{t: :list, fixed_array: _} = f, incoming) do
+    prior = Map.get(value, f.name) || []
+    Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
+  end
+
+  defp put_wire_field(value, %{t: :keyed} = f, incoming) do
+    prior = Map.get(value, f.name) || %{}
+    Map.put(value, f.name, Map.merge(prior, incoming))
+  end
+
+  defp put_wire_field(value, f, incoming), do: Map.put(value, f.name, incoming)
 
   # AN INERT BODY (docs/SPEC-TABLES.md §4; docs/LAYERS/1-framing.md H2): an
   # array, map or keyed body too short to carry its own header, fewer than two
@@ -6156,15 +6170,15 @@ const variableRetainSource = `
                     {:cont, {inert_required_field(f, value), report, retain}}
 
                   {:cont, v, report, retain} ->
-                    {:cont, {Map.put(value, f.name, v), report, retain}}
+                    {:cont, {put_wire_field(value, f, v), report, retain}}
 
                   {:halt, v, report, retain} ->
-                    {:halt, {Map.put(value, f.name, v), report, retain}}
+                    {:halt, {put_wire_field(value, f, v), report, retain}}
                 end
 
               widens?(kind, f) ->
                 {v, report} = read_widened(f, kind, payload, report)
-                {:cont, {Map.put(value, f.name, v), report, retain}}
+                {:cont, {put_wire_field(value, f, v), report, retain}}
 
               true ->
                 {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}, retain}}
@@ -6375,8 +6389,6 @@ const variableRetainSource = `
   # an enum-keyed array: slot k is the step pair {ordinal, k}; a slot written
   # again resets the earlier one's records.
   defp read_payload_retain(%{t: :keyed} = f, payload, nodes, ids, report, retain, path) do
-    retain = retain_reset(retain, path, f.ordinal, nil)
-
     case leb(payload) do
       {_len, body} when byte_size(body) < 2 ->
         {:cont, %{}, report, retain}
