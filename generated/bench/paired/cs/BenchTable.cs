@@ -2798,14 +2798,20 @@ namespace Bench
                     // re-establishment a nested table and a union arm already get.
                     ResetSlots(value, f);
                     PutCount(value, f, 0);
-                    int placed = 0; long textSpent = 0; bool textFull = false;
+                    int placed = 0; long textSpent = 0; bool textFull = false; int textSeen = 0;
                     char shape = ElementShape(f);
                     for (; ; )
                     {
                         byte c = Peek(text, ref input);
                         if (c == ']') { input.Pos++; break; }
                         if (c == 0) { input.Bad = true; return false; }
-                        if (textFull) { if (!SkipValue(text,ref input,depth+1)) { return false; } }
+                        if (textFull)
+                        {
+                            // the total dropped this element; one past [..N] is counted
+                            // as well, as the wire counts its count clamp (§2.13)
+                            if (++textSeen > f.ArrayBound) { input.Report.Clamped++; }
+                            if (!SkipValue(text,ref input,depth+1)) { return false; }
+                        }
                         else if (placed >= f.ArrayBound)
                         {
                             // more elements than the reader's bound: the bounded prefix
@@ -2827,7 +2833,7 @@ namespace Bench
                             if(f.TextTotal>0){
                                 object child=f.GetChild(value,placed);TableFieldInfo element=f.Table.Fields[0];
                                 int length=element.Optional&&!element.GetPresent(child)?0:Count(child,element);
-                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;}
+                                if(!TableWire.TextTotalKeep(f,length,ref textSpent,input.Report)){f.Table.Reset(child);textFull=true;textSeen=placed+1;}
                             }
                             if(!textFull){placed++;}
                         }

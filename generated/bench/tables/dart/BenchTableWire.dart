@@ -4898,7 +4898,7 @@ List<T> _jsonTextList<T>(dynamic val,TableTextReport r,int bound,String field,T 
  for(var i=0;i<val.length;i++){
   if(bound>=0&&i>=bound){r.clamped+=val.length-i;break;}
   final e=read(val[i]);
-  if(total>0){spent+=length(e);if(spent>total){r.clamped++;break;}}
+  if(total>0){spent+=length(e);if(spent>total){r.clamped++;if(bound>=0&&val.length>bound)r.clamped+=val.length-bound;break;}}
   out.add(e);
  }
  if(r.clamped!=before&&r.clampedField.isEmpty)r.clampedField=field;

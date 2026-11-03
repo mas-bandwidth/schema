@@ -1177,6 +1177,21 @@ local function read_base64(inp: Input, bound: number, report: any): (string | fa
   return table.concat(out)
 end
 
+-- the bytes one text-list element of the walk holds toward its list's total
+-- (docs/SPEC-TABLES.md §2.13): a plain element's string, an optional element's
+-- value when present, zero when absent
+local function walk_text_bytes(T: any, e: any, x: any): number
+  if type(x) == "string" then return #x end
+  if type(x) == "table" and e.shape == "table" then
+    local vf = T.Tables[e.target].fields[1]
+    if vf == nil then return 0 end
+    if vf.optional and not x[vf.name .. "_present"] then return 0 end
+    local v = x[vf.name]
+    if type(v) == "string" then return #v end
+  end
+  return 0
+end
+
 read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth: number, graph: any, report: any): boolean
   if peek(inp) ~= '[' then inp.bad = true; return false end
   inp.p = inp.p + 1
@@ -1187,12 +1202,22 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
   local bound = fd.list and 0x7fffffff or fd.bound
   local placed = 0
   local eshape = shape_of(T, fd.elem)
+  -- A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the read keeps the longest
+  -- prefix whose bytes fit, drops the element that would cross it and every
+  -- later one, counted clamped once; an element past [..N] is counted as well
+  local total = fd.raw ~= nil and fd.raw.total or nil
+  local spent, full, seen = 0, false, 0
   while true do
     local c = peek(inp)
     local vs = value_shape(inp)
     if c == ']' then inp.p = inp.p + 1; break end
     if c == nil then inp.bad = true; return false end
-    if placed >= bound then
+    seen = seen + 1
+    local before = placed
+    if full then
+      if seen > bound then report.clamped = report.clamped + 1 end
+      if not skip_value(inp, depth + 1, graph) then return false end
+    elseif placed >= bound then
       report.clamped = report.clamped + 1
       if not skip_value(inp, depth + 1, graph) then return false end
     elseif fd.elem.shape == "pointer" and vs == 'z' then
@@ -1209,6 +1234,17 @@ read_array = function(T: any, fd: any, inp: Input, holder: any, key: any, depth:
       if out[placed] == nil then out[placed] = zero_elem(T, fd.elem) end
       if not read_value(T, fd.elem, inp, out, placed, depth + 1, graph, report, true) then
         return false
+      end
+    end
+    if total ~= nil and placed > before then
+      local n = walk_text_bytes(T, fd.elem, out[placed])
+      if n <= total - spent then
+        spent = spent + n
+      else
+        report.clamped = report.clamped + 1
+        out[placed] = if fd.fixed then zero_elem(T, fd.elem) else nil
+        placed = placed - 1
+        full = true
       end
     end
     c = peek(inp)
