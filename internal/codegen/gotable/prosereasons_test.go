@@ -8,8 +8,8 @@ import (
 
 // TestVariableLoadNamesTheRefusedForm pins docs/SPEC-TABLES.md §3 (THE FIRST
 // BYTE) and §6.5's one-enum table. A variable <T>Load and <T>LoadBuilder name
-// a refused form byte by its reason, message_form_as_file for 2, previous_form
-// for 0 (older than the reader's form 1) and newer_form for a byte above it, and Err() keeps §6.5's strict error
+// a refused form byte by its reason, message_form_as_file for 2 and newer_form
+// for every other byte it does not carry (0, 3, 255), and Err() keeps §6.5's strict error
 // identity: a form-byte refusal answers TableRefuseUnknownForm, never the name.
 // The same names ride on the non-regional <T>LoadTolerant/<T>ReadStrict path
 // that read.go emits. No emitted Reason literal is a prose sentence: a literal
@@ -100,7 +100,7 @@ func refuseForm(t *testing.T, name string, wire []byte, wantReason string) {
 }
 
 func TestVariableLoadNamesTheRefusedForm(t *testing.T) {
-	refuseForm(t, "form 0", []byte{0}, "previous_form")
+	refuseForm(t, "form 0", []byte{0}, "newer_form")
 	refuseForm(t, "form 2", []byte{2}, "message_form_as_file")
 	refuseForm(t, "form 3", []byte{3}, "newer_form")
 	refuseForm(t, "form 255", []byte{255}, "newer_form")
@@ -134,7 +134,7 @@ func refuseStrict(t *testing.T, name string, wire []byte, wantReason string) {
 }
 
 func TestVariableLoadNamesTheRefusedForm(t *testing.T) {
-	refuseStrict(t, "form 0", []byte{0}, "previous_form")
+	refuseStrict(t, "form 0", []byte{0}, "newer_form")
 	refuseStrict(t, "form 2", []byte{2}, "message_form_as_file")
 	refuseStrict(t, "form 3", []byte{3}, "newer_form")
 	refuseStrict(t, "form 255", []byte{255}, "newer_form")

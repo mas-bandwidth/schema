@@ -2734,12 +2734,8 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return nil
@@ -2999,12 +2995,8 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return false
@@ -4541,12 +4533,8 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			report.Malformed = true
 		} else {
 			report.Reason = "newer_form"
-			if len(wire) > 0 {
-				if wire[0] == 2 {
-					report.Reason = "message_form_as_file"
-				} else if wire[0] == 0 {
-					report.Reason = "previous_form"
-				}
+			if len(wire) > 0 && wire[0] == 2 {
+				report.Reason = "message_form_as_file"
 			}
 		}
 		return nil

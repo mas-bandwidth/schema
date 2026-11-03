@@ -155,7 +155,7 @@ func TestGooseLoadRefusalReasonsNegativeControl(t *testing.T) {
 		{"damage-verdict", "    if report.damaged { return LoadRefuseWireDamaged; }\n", "",
 			[]string{"cut_last", "empty", "fixed_bool_two", "fixed_dup_ids", "fixed_early_end", "form_only"}},
 		{"form-reason", "        LoadRefuseUnknownForm => \"unknown_form\",\n", "",
-			[]string{"form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
+			[]string{"form0", "form255", "form255_alone", "form2", "form2_alone", "form3", "form9"}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
 			t.Parallel()
