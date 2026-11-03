@@ -58,6 +58,7 @@
 #include "TextTable.h"
 // the LIST unit: §2.8's duplicate-key row names Army, a list of tables that hold maps
 #include "HoldersTable.h"
+#include "FeaturesTable.h"
 
 static int failures = 0;
 static int checked = 0;
@@ -252,6 +253,7 @@ static void check_case( const char * name, const char * text, long text_size,
 
 REGION_CODEC( SceneCodec, graphdemo, Scene );
 REGION_CODEC( ArmyCodec, listdemo, Army );
+REGION_CODEC( RootCodec, featurewitnesses, Root );
 
 // the same three questions over the VARIABLE class (docs/SPEC-TABLES.md §16.7):
 // the text reads into a BUILDER, the bytes it saves are compared with the pack's,
@@ -682,15 +684,6 @@ int main( int argc, char ** argv )
             failures++;
             continue;
         }
-        // the witness unit holds text lists, which the C++ target does not
-        // carry (docs/SPEC-TABLES.md §2.13, compiler/carries_cpp.go): this
-        // driver builds no root of it, and internal/tablepack's half holds
-        // the row against the engine
-        if ( strcmp( unit, "featurewitnesses" ) == 0 )
-        {
-            printf( "ABSENT cpp / pack hostile / %s: the C++ target carries no text list (docs/SPEC-TABLES.md §2.13)\n", name );
-            continue;
-        }
         bool carries = true;
         char owed[128];
         if ( !read_marks( name, fields, carried_mark, uncarried_mark, verdict, carries, owed, sizeof( owed ) ) )
@@ -770,6 +763,10 @@ int main( int argc, char ** argv )
         else if ( strcmp( root, "Army" ) == 0 )
         {
             check_region_case<ArmyCodec>( name, (const char *) text, text_size, packed, size, refused, want );
+        }
+        else if ( strcmp( root, "Root" ) == 0 )
+        {
+            check_region_case<RootCodec>( name, (const char *) text, text_size, packed, size, refused, want );
         }
         else if ( strcmp( root, "Text" ) == 0 )
         {
