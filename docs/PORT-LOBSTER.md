@@ -30,8 +30,8 @@ name (the toolchain gate, issue #599). The fleet installs the same pin.
 
 ## THE TYPE MAPPING
 
-One module per schema file, `<Base>.lobster`, and `<Base>Table.lobster` for a
-file with tables (or with a packet type a table reaches). Every module of a
+One packet module per schema file, `<Base>.lobster`, and a separate
+`<Base>Table.lobster` carrying its reflection declarations and any table codecs. Every module of a
 unit declares the same `namespace <package>`, so a consumer spells a
 declaration `<package>.<Name>` and one module names another's declarations
 bare. A value is a Lobster `class` (a mutable object, copied by reference)
@@ -115,6 +115,20 @@ a small per-table accessor the form's card emits — one function per table
 that hands the walk each slot in descriptor order, joined through
 `lobstertable.Register` — never through per-field codec logic. That accessor
 is the only per-table code a form emits; the walk itself is one runtime file.
+
+## THE UNIT REGISTRY
+
+Import `<package>View.lobster` and call `<package>.UnitView()` to enumerate
+all six declaration sets. The entry point imports every file's reflection
+module, including constant-only files and packet types no table reaches.
+Table-free units have the same entry point. Packet modules keep their packet
+imports; a consumer opts into reflection by importing the view module.
+
+The extra output is part of generation, so runtime module file names are
+reserved in table-free units as well as table units. A schema basename that
+collides with `<package>View.lobster` is refused before output is written.
+`TestLobsterUnitViewIncludesUnreachedFiles` checks table-free and mixed units,
+all six sets, and a missing constant-module import as its negative control.
 
 ## THE NUMBER MODEL
 
