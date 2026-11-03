@@ -157,6 +157,7 @@ over a table's Save and strict read). It is not `text.moo` because
 | one walk (M9) | `TestMooJsonOneWalk` |
 | the base64 carrier (§16.8) | `TestMooTextCarrier`, control `TestMooTextCarrierNegativeControl`; the generated `<Name>SaveText` / `<Name>LoadText` over the moo wire, `TestMooTextCarrierSurface` |
 | json-read and json-write over the moo table wire (the conformance surfaces) | `TestMooJsonWireSurfaces` |
+| text lists (§2.13): plain elements as strings, unbounded elements unclamped, the total, an integrity root's trailer | `TestMooJsonTextLists`, control `TestMooJsonTextListsNegativeControl` (each rule broken, red on exactly its cases) |
 
 ## THE FUZZ DIFFERENTIAL (layer 6)
 
