@@ -30,7 +30,7 @@ func TestEngineWireEnumVariantRefSort(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := tabletext.NewModel(u)
+	m := variableRoots(tabletext.NewModel(u))
 	root := m.Lookup("LoadoutConfig")
 	build := func(t *testing.T, text string) []byte {
 		t.Helper()
