@@ -1212,7 +1212,11 @@ inline const char * schema_table_json_unbounded_text_at_( const void * slot, int
 {
     int64_t delta = 0;
     memcpy( &delta, slot, 8 );
-    if ( delta == 0 ) { len = 0; return ""; }
+    if ( delta == 0 )
+    {
+        len = 0;
+        return "";
+    }
     const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
@@ -1388,7 +1392,11 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( f->text_list != 0 )
     {
         const int32_t count = TableJsonCount( base, f );
-        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        if ( count == 0 )
+        {
+            out.raw( "[]", 2 );
+            return true;
+        }
         out.put( '[' );
         for ( int32_t i = 0; i < count; i++ )
         {
@@ -3414,7 +3422,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( f->text_list != 0 )
     {
-        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        if ( TableJsonPeek( in ) != '[' )
+        {
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
@@ -3428,8 +3440,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         for ( ;; )
         {
             char c = TableJsonPeek( in );
-            if ( c == ']' ) { in.pos++; break; }
-            if ( c == 0 ) { in.bad = true; return false; }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
+            if ( c == 0 )
+            {
+                in.bad = true;
+                return false;
+            }
             if ( total_clamped || placed >= f->array_bound )
             {
                 // an element past [..N] counts, the total having dropped it
@@ -3456,8 +3476,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
             }
             c = TableJsonPeek( in );
-            if ( c == ',' ) { in.pos++; continue; }
-            if ( c == ']' ) { in.pos++; break; }
+            if ( c == ',' )
+            {
+                in.pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
             in.bad = true;
             return false;
         }
@@ -5517,7 +5545,11 @@ bool RenderCameraFromJsonTolerant( RenderCamera & value, const char * text, int6
     const bool ok = TableJsonRead( &value, RenderCameraTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderCameraTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5565,7 +5597,11 @@ bool RenderShipFromJsonTolerant( RenderShip & value, const char * text, int64_t 
     const bool ok = TableJsonRead( &value, RenderShipTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderShipTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5613,7 +5649,11 @@ bool RenderTurretFromJsonTolerant( RenderTurret & value, const char * text, int6
     const bool ok = TableJsonRead( &value, RenderTurretTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderTurretTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5661,7 +5701,11 @@ bool RenderMissileFromJsonTolerant( RenderMissile & value, const char * text, in
     const bool ok = TableJsonRead( &value, RenderMissileTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderMissileTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5709,7 +5753,11 @@ bool RenderDynamicPropFromJsonTolerant( RenderDynamicProp & value, const char * 
     const bool ok = TableJsonRead( &value, RenderDynamicPropTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderDynamicPropTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5757,7 +5805,11 @@ bool RenderStaticPropFromJsonTolerant( RenderStaticProp & value, const char * te
     const bool ok = TableJsonRead( &value, RenderStaticPropTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderStaticPropTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5805,7 +5857,11 @@ bool RenderCosmeticPropFromJsonTolerant( RenderCosmeticProp & value, const char 
     const bool ok = TableJsonRead( &value, RenderCosmeticPropTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderCosmeticPropTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5853,7 +5909,11 @@ bool RenderLaserFromJsonTolerant( RenderLaser & value, const char * text, int64_
     const bool ok = TableJsonRead( &value, RenderLaserTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderLaserTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5901,7 +5961,11 @@ bool RenderExplosionFromJsonTolerant( RenderExplosion & value, const char * text
     const bool ok = TableJsonRead( &value, RenderExplosionTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderExplosionTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5949,7 +6013,11 @@ bool RenderFrameFromJsonTolerant( RenderFrame & value, const char * text, int64_
     const bool ok = TableJsonRead( &value, RenderFrameTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderFrameTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5997,7 +6065,11 @@ bool RenderVector3FromJsonTolerant( RenderVector3 & value, const char * text, in
     const bool ok = TableJsonRead( &value, RenderVector3TableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderVector3TableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -6045,7 +6117,11 @@ bool RenderQuaternionFromJsonTolerant( RenderQuaternion & value, const char * te
     const bool ok = TableJsonRead( &value, RenderQuaternionTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RenderQuaternionTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)

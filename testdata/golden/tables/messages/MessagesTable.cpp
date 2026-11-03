@@ -1212,7 +1212,11 @@ inline const char * schema_table_json_unbounded_text_at_( const void * slot, int
 {
     int64_t delta = 0;
     memcpy( &delta, slot, 8 );
-    if ( delta == 0 ) { len = 0; return ""; }
+    if ( delta == 0 )
+    {
+        len = 0;
+        return "";
+    }
     const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
@@ -1388,7 +1392,11 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( f->text_list != 0 )
     {
         const int32_t count = TableJsonCount( base, f );
-        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        if ( count == 0 )
+        {
+            out.raw( "[]", 2 );
+            return true;
+        }
         out.put( '[' );
         for ( int32_t i = 0; i < count; i++ )
         {
@@ -3414,7 +3422,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( f->text_list != 0 )
     {
-        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        if ( TableJsonPeek( in ) != '[' )
+        {
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
@@ -3428,8 +3440,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         for ( ;; )
         {
             char c = TableJsonPeek( in );
-            if ( c == ']' ) { in.pos++; break; }
-            if ( c == 0 ) { in.bad = true; return false; }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
+            if ( c == 0 )
+            {
+                in.bad = true;
+                return false;
+            }
             if ( total_clamped || placed >= f->array_bound )
             {
                 // an element past [..N] counts, the total having dropped it
@@ -3456,8 +3476,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
             }
             c = TableJsonPeek( in );
-            if ( c == ',' ) { in.pos++; continue; }
-            if ( c == ']' ) { in.pos++; break; }
+            if ( c == ',' )
+            {
+                in.pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
             in.bad = true;
             return false;
         }
@@ -5517,7 +5545,11 @@ bool UserFromJsonTolerant( User & value, const char * text, int64_t bytes, Table
     const bool ok = TableJsonRead( &value, UserTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         UserTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5565,7 +5597,11 @@ bool ScriptFromJsonTolerant( Script & value, const char * text, int64_t bytes, T
     const bool ok = TableJsonRead( &value, ScriptTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         ScriptTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5613,7 +5649,11 @@ bool SelectionFromJsonTolerant( Selection & value, const char * text, int64_t by
     const bool ok = TableJsonRead( &value, SelectionTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         SelectionTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5661,7 +5701,11 @@ bool InsertTextFromJsonTolerant( InsertText & value, const char * text, int64_t 
     const bool ok = TableJsonRead( &value, InsertTextTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         InsertTextTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5709,7 +5753,11 @@ bool RemoveTextFromJsonTolerant( RemoveText & value, const char * text, int64_t 
     const bool ok = TableJsonRead( &value, RemoveTextTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         RemoveTextTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5757,7 +5805,11 @@ bool EditFromJsonTolerant( Edit & value, const char * text, int64_t bytes, Table
     const bool ok = TableJsonRead( &value, EditTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         EditTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5805,7 +5857,11 @@ bool OpenDocumentFromJsonTolerant( OpenDocument & value, const char * text, int6
     const bool ok = TableJsonRead( &value, OpenDocumentTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         OpenDocumentTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5853,7 +5909,11 @@ bool SaveDocumentFromJsonTolerant( SaveDocument & value, const char * text, int6
     const bool ok = TableJsonRead( &value, SaveDocumentTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         SaveDocumentTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5901,7 +5961,11 @@ bool TransactionFromJsonTolerant( Transaction & value, const char * text, int64_
     const bool ok = TableJsonRead( &value, TransactionTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         TransactionTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5949,7 +6013,11 @@ bool ToolMessageFromJsonTolerant( ToolMessage & value, const char * text, int64_
     const bool ok = TableJsonRead( &value, ToolMessageTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         ToolMessageTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5997,7 +6065,11 @@ bool CursorFromJsonTolerant( Cursor & value, const char * text, int64_t bytes, T
     const bool ok = TableJsonRead( &value, CursorTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         CursorTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -6045,7 +6117,11 @@ bool PingFromJsonTolerant( Ping & value, const char * text, int64_t bytes, Table
     const bool ok = TableJsonRead( &value, PingTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         PingTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)

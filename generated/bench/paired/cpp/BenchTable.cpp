@@ -1212,7 +1212,11 @@ inline const char * schema_table_json_unbounded_text_at_( const void * slot, int
 {
     int64_t delta = 0;
     memcpy( &delta, slot, 8 );
-    if ( delta == 0 ) { len = 0; return ""; }
+    if ( delta == 0 )
+    {
+        len = 0;
+        return "";
+    }
     const uint8_t * raw = (const uint8_t *) ( (uintptr_t) slot + (uintptr_t) delta );
     uint32_t u = 0;
     memcpy( &u, raw, 4 );
@@ -1388,7 +1392,11 @@ inline bool TableJsonWriteField( TableJsonOut & out, const void * base, const Ta
     if ( f->text_list != 0 )
     {
         const int32_t count = TableJsonCount( base, f );
-        if ( count == 0 ) { out.raw( "[]", 2 ); return true; }
+        if ( count == 0 )
+        {
+            out.raw( "[]", 2 );
+            return true;
+        }
         out.put( '[' );
         for ( int32_t i = 0; i < count; i++ )
         {
@@ -3414,7 +3422,11 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( f->text_list != 0 )
     {
-        if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
+        if ( TableJsonPeek( in ) != '[' )
+        {
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
@@ -3428,8 +3440,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         for ( ;; )
         {
             char c = TableJsonPeek( in );
-            if ( c == ']' ) { in.pos++; break; }
-            if ( c == 0 ) { in.bad = true; return false; }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
+            if ( c == 0 )
+            {
+                in.bad = true;
+                return false;
+            }
             if ( total_clamped || placed >= f->array_bound )
             {
                 // an element past [..N] counts, the total having dropped it
@@ -3456,8 +3476,16 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 }
             }
             c = TableJsonPeek( in );
-            if ( c == ',' ) { in.pos++; continue; }
-            if ( c == ']' ) { in.pos++; break; }
+            if ( c == ',' )
+            {
+                in.pos++;
+                continue;
+            }
+            if ( c == ']' )
+            {
+                in.pos++;
+                break;
+            }
             in.bad = true;
             return false;
         }
@@ -5517,7 +5545,11 @@ bool MixedEntityFromJsonTolerant( MixedEntity & value, const char * text, int64_
     const bool ok = TableJsonRead( &value, MixedEntityTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         MixedEntityTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5565,7 +5597,11 @@ bool MixedStatFromJsonTolerant( MixedStat & value, const char * text, int64_t by
     const bool ok = TableJsonRead( &value, MixedStatTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         MixedStatTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5613,7 +5649,11 @@ bool MixedHitEventFromJsonTolerant( MixedHitEvent & value, const char * text, in
     const bool ok = TableJsonRead( &value, MixedHitEventTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         MixedHitEventTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5661,7 +5701,11 @@ bool MixedChatEventFromJsonTolerant( MixedChatEvent & value, const char * text, 
     const bool ok = TableJsonRead( &value, MixedChatEventTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         MixedChatEventTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5709,7 +5753,11 @@ bool MixedPickupEventFromJsonTolerant( MixedPickupEvent & value, const char * te
     const bool ok = TableJsonRead( &value, MixedPickupEventTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         MixedPickupEventTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5757,7 +5805,11 @@ bool BenchMixedFromJsonTolerant( BenchMixed & value, const char * text, int64_t 
     const bool ok = TableJsonRead( &value, BenchMixedTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
+        if ( to->missing_required == 0 ) { to->malformed = true; }
+        else
+        {
+            to->malformed = malformed_before;
+        }
         BenchMixedTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
