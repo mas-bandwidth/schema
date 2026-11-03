@@ -16,8 +16,8 @@ import "sort"
 // The claimable Lobster spellings are the two the emitter refuses by name
 // instead: the namespace itself (a package named schema_rt) and a runtime
 // module's FILE name, because a Lobster import names a file beside the module
-// (a schema file named for a runtime module is refused beside a table and
-// kept in a table-free unit, TestLobsterRuntimeFileNamesAreClaimed).
+// (a schema file named for a runtime module is refused in every unit, since
+// table-free units also emit reflection: TestLobsterRuntimeFileNamesAreClaimed).
 
 // lobsterRuntimeNames is every name the Lobster table runtime defines at
 // namespace scope (a def, a class, a let or a var at column zero), by the

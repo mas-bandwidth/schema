@@ -89,6 +89,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g := lobster.NewGen(u, f)
 		g.Suffix, g.Kind = "Table", "table surface"
 		g.Runtimes = []string{lobster.RuntimeModule, RuntimeModule}
+		g.Import(f.Base) // unreferenced packet types still supply reflection accessors
 		emitFile(g, reach)
 		for _, p := range parts {
 			if err := p.fn(g); err != nil {
