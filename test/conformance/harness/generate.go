@@ -266,6 +266,15 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		}
 	}
 
+	// THE REWRITE ROWS' CANONICAL BYTES (docs/SPEC-TABLES.md §22): the
+	// oracle's tolerant read of each input, then its write. The input must
+	// read, because a row whose read is refused or damaged has no value to
+	// write back. And the canonical bytes are a FIXED POINT: read and written
+	// again they are themselves, or the oracle has two answers for one value.
+	if err := generateRewrites(u, m); err != nil {
+		return err
+	}
+
 	// THE HOSTILE ROWS' VALUES: the oracle's text read of each tree, then its
 	// writer, so a leg that counts the same events and lands a different
 	// value is red (test/conformance/README.md, `json-hostile`). The engine's
@@ -403,4 +412,77 @@ func readReports(path string) (map[string]Counts, error) {
 		out[f[0]] = c
 	}
 	return out, nil
+}
+
+// generateRewrites writes every rewrite row's canonical bytes and removes a
+// canonical file no row names.
+func generateRewrites(u *units, m *Manifest) error {
+	keep := map[string]bool{}
+	dir := ""
+	for _, rw := range m.Rewrites {
+		dir = filepath.Dir(rw.Canonical)
+		unit, err := u.get(rw.Unit)
+		if err != nil {
+			return err
+		}
+		input, err := os.ReadFile(rw.Wire)
+		if err != nil {
+			return fmt.Errorf("rewrite %s: %w", rw.Name, err)
+		}
+		canonical, err := rewriteOnce(unit, rw.Root, input)
+		if err != nil {
+			return fmt.Errorf("rewrite %s: the input: %w", rw.Name, err)
+		}
+		again, err := rewriteOnce(unit, rw.Root, canonical)
+		if err != nil {
+			return fmt.Errorf("rewrite %s: the canonical bytes: %w", rw.Name, err)
+		}
+		if !bytes.Equal(again, canonical) {
+			return fmt.Errorf("rewrite %s: the canonical bytes are not a fixed point: %d bytes written, %d written again", rw.Name, len(canonical), len(again))
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(rw.Canonical, canonical); err != nil {
+			return err
+		}
+		keep[filepath.Base(rw.Canonical)] = true
+		fmt.Printf("conformance: %-22s %7d B in  %7d B canonical\n", rw.Name, len(input), len(canonical))
+	}
+	if dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !keep[e.Name()] {
+			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil {
+				return err
+			}
+			fmt.Printf("conformance: removed %s, which no rewrite row names\n", e.Name())
+		}
+	}
+	return nil
+}
+
+// rewriteOnce is the oracle's answer for one rewrite input: the tolerant read,
+// then the write of the value it leaves.
+func rewriteOnce(unit *ir.Unit, rootName string, data []byte) ([]byte, error) {
+	root := unit.Tables[rootName]
+	if root == nil {
+		return nil, fmt.Errorf("root %q names no table", rootName)
+	}
+	model := tabletext.NewModel(unit)
+	var report tabletext.Report
+	value := model.New(root)
+	ok, err := tablewire.Decode(model, value, data, &report)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || report.Malformed || report.Refused {
+		return nil, fmt.Errorf("the read does not read (malformed %t, refused %t): a rewrite row's input must", report.Malformed, report.Refused)
+	}
+	return tablewire.Encode(model, value)
 }

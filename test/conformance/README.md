@@ -31,6 +31,7 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
+| `conformance-negative-control-write-order` | the Go writer's map entry order, then its node numbering walk (docs/SPEC-TABLES.md §22) | `go / wire` on `edge_map_keys`; `go / wire` on `edge_graph_diamond` and `go / rewrite` on `node_diamond_chain` | `scalars_full` |
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 | `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |
@@ -161,6 +162,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | surface | for each | the driver writes | the harness compares against |
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
+| `rewrite` | `rewrite` | the `wire` surface's own run, over a second derived manifest whose instance lines are the rewrite rows: Load the input, Save, the bytes | `rewrite/<case>.bin`, the canonical bytes the oracle writes for the value the read leaves (docs/SPEC-TABLES.md §22.7) |
 | `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes; for a row whose message-form wire is `-` (a variable table), `<name>.absent` holding `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)` | the message-form golden, or that exact reason |
 | `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value when the read reads (not refused, not malformed) | `reports.txt`, then `report-values/<case>.json` |
 | `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
@@ -179,6 +181,16 @@ One process per surface, so a runtime starts once rather than once per case.
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
 | `cook-reason` | `refusal` (`cook`) | Open the forged cook, the reason beside the null as the enum's value name, or `ok` | the reason in the manifest |
 | `block-reason` | `refusal` (`block`) | Open the forged block, the reason beside the false as the enum's value name, or `ok` | the reason in the manifest |
+
+**`rewrite` IS THE OWNER'S TEST OF THE WRITE ALGORITHM** (docs/SPEC-TABLES.md
+§22; Glenn, 2026-11-03: "and we test this by checking that it can write out that
+data the same way"). A rewrite row is an input that READS and is not already
+canonical: every evolution (`report`) row and framing row that reads, and the
+hand-built spellings §22 names. A driver implements nothing for it: the harness
+hands the leg's `wire` surface a second derived manifest, `manifest-rewrite.txt`,
+whose instance lines are the rewrite rows, and holds each answer to the one
+canonical byte string, so two legs that pass have written identical bytes. A
+leg that does not list `wire` is absent on `rewrite` too.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.

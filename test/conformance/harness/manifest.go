@@ -439,6 +439,7 @@ type Manifest struct {
 	Instances   []Instance
 	Reports     []ReportCase
 	Framings    []FramingCase
+	Rewrites    []RewriteCase
 	Hostiles    []Hostile
 	Cooks       []Cook
 	CookWrites  []CookWrite
@@ -598,6 +599,18 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)
 			}
 			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Value: ReportValue(jsonDir, f[1])})
+		case "rewrite":
+			// rewrite <case> <unit> <root> <wire>: an input every leg reads and
+			// writes back, held to the canonical bytes (docs/SPEC-TABLES.md §22)
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: rewrite takes case, unit, root, wire", where)
+			}
+			for _, rw := range m.Rewrites {
+				if rw.Name == f[1] {
+					return nil, fmt.Errorf("%s: rewrite %s is named twice", where, f[1])
+				}
+			}
+			m.Rewrites = append(m.Rewrites, RewriteCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Canonical: RewriteCanonical(jsonDir, f[1])})
 		case "framing":
 			// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the verdict is
 			// `refused` or the §4 report, and the value is a §16 text file or

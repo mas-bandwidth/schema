@@ -188,6 +188,11 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
+	for _, rw := range m.Rewrites {
+		if err := add("rewrite", rw.Name, rw.Unit, rw.Root); err != nil {
+			return nil, err
+		}
+	}
 	for _, rc := range m.Retains {
 		unit := rc.Unit
 		if err := add("retain", rc.Name, unit, rc.Root); err != nil {

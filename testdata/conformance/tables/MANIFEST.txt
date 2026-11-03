@@ -1302,3 +1302,126 @@ framing node_chain_two                        graphdemo ListNode testdata/wire/t
 unit widelist tables/widelist
 instance widelist_wide widelist Wide testdata/wire/tables/widelist_wide.bin
 cook-write widelist_wide testdata/conformance/tables/cook-write/widelist_wide.cook testdata/conformance/tables/cook-write/widelist_wide-be.cook
+
+# THE REWRITE ROWS (docs/SPEC-TABLES.md §22, test/conformance/README.md): every
+# corpus input that READS, read by every leg and written back. The canonical
+# bytes are rewrite/<case>.bin, the oracle's write of the value the read leaves.
+# Every report row and framing row that reads has a row here, and the harness
+# test TestEveryReadingRowIsARewriteRow holds that.
+rewrite v1_cfg_as_v2 tblv2 Cfg testdata/wire/tables/v1_cfg.bin
+rewrite v1_seams_as_v2 tblv2 Cfg testdata/wire/tables/v1_seams.bin
+rewrite v2_cfg_as_v1 tblv1 Cfg testdata/wire/tables/v2_cfg.bin
+rewrite v2_seams_as_v1 tblv1 Cfg testdata/wire/tables/v2_seams.bin
+rewrite p1_as_p3 tblp3 Chain testdata/wire/tables/chain_value.bin
+rewrite p3_as_p1 tblp1 Chain testdata/wire/tables/chain_optional.bin
+rewrite p1_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_value_empty.bin
+rewrite p3_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_optional_empty.bin
+rewrite p2_as_p1 tblp1 Chain testdata/wire/tables/chain_pointer.bin
+rewrite p2_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer.bin
+rewrite p2_empty_as_p1 tblp1 Chain testdata/wire/tables/chain_pointer_empty.bin
+rewrite p2_empty_as_p3 tblp3 Chain testdata/wire/tables/chain_pointer_empty.bin
+rewrite p1_as_p2 tblp2 Chain testdata/wire/tables/chain_value.bin
+rewrite p3_as_p2 tblp2 Chain testdata/wire/tables/chain_optional.bin
+rewrite p1_empty_as_p2 tblp2 Chain testdata/wire/tables/chain_value_empty.bin
+rewrite parts_elem_kind streamdemo Feed testdata/wire/tables/parts_elem_kind.bin
+rewrite parts_count_past_bound streamdemo Feed testdata/wire/tables/parts_count_past_bound.bin
+rewrite batch_elem_kind messagedemo ToolMessage testdata/wire/tables/batch_elem_kind.bin
+rewrite batch_unknown_arm messagedemo ToolMessage testdata/wire/tables/batch_unknown_arm.bin
+rewrite trace_elem_kind messagedemo ToolMessage testdata/wire/tables/trace_elem_kind.bin
+rewrite trace_count_past_bound messagedemo ToolMessage testdata/wire/tables/trace_count_past_bound.bin
+rewrite marks_unknown_variant messagedemo ToolMessage testdata/wire/tables/marks_unknown_variant.bin
+rewrite m1_open_as_m2 tblm2 Msg testdata/wire/tables/m1_open.bin
+rewrite m1_save_as_m2 tblm2 Msg testdata/wire/tables/m1_save.bin
+rewrite m2_close_as_m1 tblm1 Msg testdata/wire/tables/m2_close.bin
+rewrite m2_open_as_m1 tblm1 Msg testdata/wire/tables/m2_open.bin
+rewrite k1_as_k2 tblk2 Root testdata/wire/tables/k1_as_k2.bin
+rewrite k2_as_k1 tblk1 Root testdata/wire/tables/k2_as_k1.bin
+rewrite escape_unnamed_field messagedemo ToolMessage testdata/wire/tables/escape_unnamed_field.bin
+rewrite escape_named_field messagedemo ToolMessage testdata/wire/tables/escape_named_field.bin
+rewrite escape_arm messagedemo ToolMessage testdata/wire/tables/escape_arm.bin
+rewrite escape_element messagedemo ToolMessage testdata/wire/tables/escape_element.bin
+rewrite nopayload_named_field messagedemo ToolMessage testdata/wire/tables/nopayload_named_field.bin
+rewrite nested_arm_trailing messagedemo ToolMessage testdata/wire/tables/nested_arm_trailing.bin
+rewrite a2_arm_enum_as_int tbla2 Root testdata/wire/tables/a2_arm_enum_as_int.bin
+rewrite a2_arm_pointer_as_int tbla2 Root testdata/wire/tables/a2_arm_pointer_as_int.bin
+rewrite a2_arm_bytes_as_string tbla2 Root testdata/wire/tables/a2_arm_bytes_as_string.bin
+rewrite a1_arm_moved_width_as_a2 tbla2 Root testdata/wire/tables/a1_arm_moved_width.bin
+rewrite a1_arm_one_width_as_a2 tbla2 Root testdata/wire/tables/a1_arm_one_width.bin
+rewrite a1_arm_as_string_as_a2 tbla2 Root testdata/wire/tables/a1_arm_as_string.bin
+rewrite a1_arm_as_body_as_a2 tbla2 Root testdata/wire/tables/a1_arm_as_body.bin
+rewrite a1_arm_body_as_a2 tbla2 Root testdata/wire/tables/a1_arm_body.bin
+rewrite a1_arm_unknown_as_a2 tbla2 Root testdata/wire/tables/a1_arm_unknown.bin
+rewrite scalars_full_as_2 tblscalars2 SimState testdata/wire/tables/scalars_full.bin
+rewrite scalars_edges_as_2 tblscalars2 SimState testdata/wire/tables/scalars_edges.bin
+rewrite field_scalar_widen tblscalars2 SimState testdata/wire/tables/field_scalar_widen.bin
+rewrite w1_fleet_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet.bin
+rewrite w2_fleet_as_w1 tblw1 Fleet testdata/wire/tables/w2_fleet.bin
+rewrite w1_fleet_default_as_w2 tblw2 Fleet testdata/wire/tables/w1_fleet_default.bin
+rewrite r1_cfg_as_r2 tblr2 Cfg testdata/wire/tables/r1_cfg.bin
+rewrite r1_ping_as_r2 tblr2 Cfg testdata/wire/tables/r1_ping.bin
+rewrite r2_cfg_as_r1 tblr1 Cfg testdata/wire/tables/r2_cfg.bin
+rewrite list_scalar_widen listdemo Save testdata/wire/tables/fuzz-vectors/list_scalar_widen.bin
+rewrite text_total_and_count featurewitnesses Root testdata/wire/tables/text_total_and_count.bin
+rewrite map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_widen.bin
+rewrite map_depth_root_kind mapdemo Depth testdata/wire/tables/fuzz-vectors/map_depth_root_kind.bin
+rewrite frame_empty_table tblr1 Cfg testdata/wire/tables/framing/frame_empty_table.bin
+rewrite frame_unreferenced_entry tblr1 Cfg testdata/wire/tables/framing/frame_unreferenced_entry.bin
+rewrite frame_entries_4096 tblr1 Cfg testdata/wire/tables/framing/frame_entries_4096.bin
+rewrite frame_ref_last_slot tblr1 Cfg testdata/wire/tables/framing/frame_ref_last_slot.bin
+rewrite frame_unknown_id_fixed_width tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_fixed_width.bin
+rewrite frame_unknown_id_length tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_length.bin
+rewrite frame_unknown_id_union tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union.bin
+rewrite frame_unknown_id_union_empty tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_union_empty.bin
+rewrite frame_unknown_id_reference tblr1 Cfg testdata/wire/tables/framing/frame_unknown_id_reference.bin
+rewrite frame_kind_mismatch_skips_by_wire_kind tblr1 Cfg testdata/wire/tables/framing/frame_kind_mismatch_skips_by_wire_kind.bin
+rewrite frame_repeat_last_wins tblr1 Cfg testdata/wire/tables/framing/frame_repeat_last_wins.bin
+rewrite nested_L_exact tblr1 Cfg testdata/wire/tables/framing/nested_L_exact.bin
+rewrite nested_unknown_id_inside tblr1 Cfg testdata/wire/tables/framing/nested_unknown_id_inside.bin
+rewrite array_L0_inert tblr1 Cfg testdata/wire/tables/framing/array_L0_inert.bin
+rewrite array_L1_inert tblr1 Cfg testdata/wire/tables/framing/array_L1_inert.bin
+rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
+rewrite array_count_at_bound tblr1 Cfg testdata/wire/tables/framing/array_count_at_bound.bin
+rewrite array_count_bound_plus_one tblr1 Cfg testdata/wire/tables/framing/array_count_bound_plus_one.bin
+rewrite array_header_crosses_L_kind_mismatch tblr1 Cfg testdata/wire/tables/framing/array_header_crosses_L_kind_mismatch.bin
+rewrite array_elem_kind_mismatch tblr1 Cfg testdata/wire/tables/framing/array_elem_kind_mismatch.bin
+rewrite map_header_crosses_L_kind_mismatch listdemo Squad testdata/wire/tables/framing/map_header_crosses_L_kind_mismatch.bin
+rewrite map_L1_inert listdemo Squad testdata/wire/tables/framing/map_L1_inert.bin
+rewrite keyed_header_crosses_L_kind_mismatch tblr1 Cfg testdata/wire/tables/framing/keyed_header_crosses_L_kind_mismatch.bin
+rewrite keyed_unknown_key tblr1 Cfg testdata/wire/tables/framing/keyed_unknown_key.bin
+rewrite keyed_elem_kind_mismatch tblr1 Cfg testdata/wire/tables/framing/keyed_elem_kind_mismatch.bin
+rewrite keyed_L1_inert tblr1 Cfg testdata/wire/tables/framing/keyed_L1_inert.bin
+rewrite union_arm_width_exact tblr1 Cfg testdata/wire/tables/framing/union_arm_width_exact.bin
+rewrite union_void_arm tblr1 Cfg testdata/wire/tables/framing/union_void_arm.bin
+rewrite union_unknown_arm tblr1 Cfg testdata/wire/tables/framing/union_unknown_arm.bin
+rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite node_clean graphdemo ListNode testdata/wire/tables/framing/node_clean.bin
+rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
+rewrite node_unknown_to_fixed_reader tblr1 Cfg testdata/wire/tables/framing/node_unknown_to_fixed_reader.bin
+rewrite node_table_twice graphdemo ListNode testdata/wire/tables/framing/node_table_twice.bin
+rewrite node_diamond_chain graphdemo Scene testdata/wire/tables/framing/node_diamond_chain.bin
+rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin
+# THE HAND-BUILT NON-CANONICAL SPELLINGS (docs/SPEC-TABLES.md §22): each is a
+# legal wire no conforming writer produces, so the leg that reads it must write
+# the canonical bytes back. Fields out of declaration order with the id table
+# no longer in first-use order; the id table reversed and every reference
+# renumbered; and a field written twice, the earlier occurrence holding another
+# value, which the last occurrence overrides (§3).
+rewrite rewrite_fields_reversed scalars     SimState      testdata/wire/tables/rewrite_fields_reversed.bin
+rewrite rewrite_ids_reversed    backenddemo LoginRequest  testdata/wire/tables/rewrite_ids_reversed.bin
+rewrite rewrite_field_twice     backenddemo StorePurchase testdata/wire/tables/rewrite_field_twice.bin
+
+# THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of
+# freedom a writer has, each a trap for one wrong implementation of it. Map keys
+# whose byte order and whose UTF-16 or signed order disagree, keys at their
+# default (which elide inside the entry), a nested map value that is empty;
+# uint16 keys whose little-endian bytes sort the other way; an unbounded string
+# key past 127 bytes beside its prefix; a pointer DIAMOND and a list chain the
+# depth-first walk numbers before the tree a breadth-first walk would reach
+# first; and a union arm that reaches nodes before the pointer fields declared
+# after it name them again.
+instance edge_map_keys      mapdemo          Fleet testdata/wire/tables/edge_map_keys.bin
+instance edge_text_keys     mapdemo          Text  testdata/wire/tables/edge_text_keys.bin
+instance edge_by_name       featurewitnesses Root  testdata/wire/tables/edge_by_name.bin
+instance edge_graph_diamond graphdemo        Scene testdata/wire/tables/edge_graph_diamond.bin
+instance edge_stream_union  streamdemo       Feed  testdata/wire/tables/edge_stream_union.bin
+instance edge_u64_keys      mapdemo          EdgeRow testdata/wire/tables/edge_u64_keys.bin
