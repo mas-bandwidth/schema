@@ -1,0 +1,403 @@
+// VNEW_limit_depth.schema — NEW: the fixed form's nesting bound, AT the bound
+//
+// docs/SPEC-TABLES.md §3.4's fixed_max_depth is 64 (ir.TableFixedMaxDepth, every
+// runtime's kTableFixedMaxDepth), and the root is depth 0. Here d is depth 1,
+// the D<k> entry is depth k, and D63's v is the deepest entry at depth 64, so
+// this layout nests exactly as deep as the bound allows; one level more and the
+// compiler does not emit the fixed form. Each level's nested field comes first
+// and a byte follows it: Go's type checker sizes a struct whose LAST field is a
+// struct by sizing that field twice, so a chain of last fields costs 2^depth
+// to compile, and this chain must compile in every leg.
+// VOLD_limit_depth and VNEW_limit_depth differ by v's range alone (0..100, then
+// 0..200): the layout bytes are the same and the hashes differ, so the NEW
+// reader holds the OLD layout as a lineage entry and parses it under the bound
+// when it builds its plan (docs/FIXED-FORM-ALGORITHM.md §1.1, §5).
+// test/tables/fixedform_dump.cpp writes old_limit_depth.bin from the OLD unit
+// and derives hostile_limit_depth.bin from it, the same file with one more
+// table level spliced into its layout.
+
+package vnew_limit_depth
+
+type D63
+{
+    v int32 = 0 | min = 0, max = 200
+}
+
+type D62
+{
+    d    D63
+    tail uint8
+}
+
+type D61
+{
+    d    D62
+    tail uint8
+}
+
+type D60
+{
+    d    D61
+    tail uint8
+}
+
+type D59
+{
+    d    D60
+    tail uint8
+}
+
+type D58
+{
+    d    D59
+    tail uint8
+}
+
+type D57
+{
+    d    D58
+    tail uint8
+}
+
+type D56
+{
+    d    D57
+    tail uint8
+}
+
+type D55
+{
+    d    D56
+    tail uint8
+}
+
+type D54
+{
+    d    D55
+    tail uint8
+}
+
+type D53
+{
+    d    D54
+    tail uint8
+}
+
+type D52
+{
+    d    D53
+    tail uint8
+}
+
+type D51
+{
+    d    D52
+    tail uint8
+}
+
+type D50
+{
+    d    D51
+    tail uint8
+}
+
+type D49
+{
+    d    D50
+    tail uint8
+}
+
+type D48
+{
+    d    D49
+    tail uint8
+}
+
+type D47
+{
+    d    D48
+    tail uint8
+}
+
+type D46
+{
+    d    D47
+    tail uint8
+}
+
+type D45
+{
+    d    D46
+    tail uint8
+}
+
+type D44
+{
+    d    D45
+    tail uint8
+}
+
+type D43
+{
+    d    D44
+    tail uint8
+}
+
+type D42
+{
+    d    D43
+    tail uint8
+}
+
+type D41
+{
+    d    D42
+    tail uint8
+}
+
+type D40
+{
+    d    D41
+    tail uint8
+}
+
+type D39
+{
+    d    D40
+    tail uint8
+}
+
+type D38
+{
+    d    D39
+    tail uint8
+}
+
+type D37
+{
+    d    D38
+    tail uint8
+}
+
+type D36
+{
+    d    D37
+    tail uint8
+}
+
+type D35
+{
+    d    D36
+    tail uint8
+}
+
+type D34
+{
+    d    D35
+    tail uint8
+}
+
+type D33
+{
+    d    D34
+    tail uint8
+}
+
+type D32
+{
+    d    D33
+    tail uint8
+}
+
+type D31
+{
+    d    D32
+    tail uint8
+}
+
+type D30
+{
+    d    D31
+    tail uint8
+}
+
+type D29
+{
+    d    D30
+    tail uint8
+}
+
+type D28
+{
+    d    D29
+    tail uint8
+}
+
+type D27
+{
+    d    D28
+    tail uint8
+}
+
+type D26
+{
+    d    D27
+    tail uint8
+}
+
+type D25
+{
+    d    D26
+    tail uint8
+}
+
+type D24
+{
+    d    D25
+    tail uint8
+}
+
+type D23
+{
+    d    D24
+    tail uint8
+}
+
+type D22
+{
+    d    D23
+    tail uint8
+}
+
+type D21
+{
+    d    D22
+    tail uint8
+}
+
+type D20
+{
+    d    D21
+    tail uint8
+}
+
+type D19
+{
+    d    D20
+    tail uint8
+}
+
+type D18
+{
+    d    D19
+    tail uint8
+}
+
+type D17
+{
+    d    D18
+    tail uint8
+}
+
+type D16
+{
+    d    D17
+    tail uint8
+}
+
+type D15
+{
+    d    D16
+    tail uint8
+}
+
+type D14
+{
+    d    D15
+    tail uint8
+}
+
+type D13
+{
+    d    D14
+    tail uint8
+}
+
+type D12
+{
+    d    D13
+    tail uint8
+}
+
+type D11
+{
+    d    D12
+    tail uint8
+}
+
+type D10
+{
+    d    D11
+    tail uint8
+}
+
+type D9
+{
+    d    D10
+    tail uint8
+}
+
+type D8
+{
+    d    D9
+    tail uint8
+}
+
+type D7
+{
+    d    D8
+    tail uint8
+}
+
+type D6
+{
+    d    D7
+    tail uint8
+}
+
+type D5
+{
+    d    D6
+    tail uint8
+}
+
+type D4
+{
+    d    D5
+    tail uint8
+}
+
+type D3
+{
+    d    D4
+    tail uint8
+}
+
+type D2
+{
+    d    D3
+    tail uint8
+}
+
+type D1
+{
+    d    D2
+    tail uint8
+}
+
+fixed table LimitDepth
+{
+    lead  uint32 = 1
+    d     D1
+    trail uint32 = 2
+}
