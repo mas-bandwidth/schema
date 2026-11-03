@@ -13566,7 +13566,10 @@ in build version (§20.5).
   the C# generator refuses such a unit by name, `cs_value_type_too_large`,
   naming the record, its struct and its size. A Java `byte[]` view reads no
   position past 2^31-1, so its accessor for one throws
-  `ArithmeticException`.
+  `ArithmeticException`. One limit holds in every language: a lock's lineage
+  carries a layout entry's size in 32 bits, so a fixed table past 2^32-1
+  bytes generates on form `1` but cannot be locked (`layout_record_too_large`,
+  §3.4).
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a
