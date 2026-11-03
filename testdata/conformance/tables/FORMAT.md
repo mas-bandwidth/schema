@@ -15,8 +15,10 @@ section is cited rather than restated.
 ```
 MANIFEST.txt          the registry: every case, by kind
 reports.txt           the read report of every evolution case  (generated)
+report-values/<case>.json  the value an evolution read leaves  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
+json-hostile/<case>.value.json  the value its read leaves      (generated)
 cook/<case>.dump      the canonical node dump of every cook    (pinned)
 cook-write/<name>     the cooked file the tool wrote, per order (generated)
 block/<name>.dump     the canonical row dump of every block    (pinned)
@@ -110,7 +112,9 @@ refusal      <forgery> <reason>
   the message form is fixed tables only (§3.3), so no table has retention on a
   message.
 - **`report`** is bytes read by a type that did not write them — the evolution
-  class. The counters and the verdict live in `reports.txt`, keyed by `<case>`.
+  class. The counters and the verdict live in `reports.txt`, keyed by `<case>`,
+  and the §16 text of the value a read that reads leaves lives in
+  `report-values/<case>.json`; both are the oracle's.
 - **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
   (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
   against the parent, damage and where reading resumes, the node-table scan.
@@ -131,7 +135,11 @@ refusal      <forgery> <reason>
   `<unknown>,<kind_mismatch>,<clamped>,<duplicate>,<malformed>`. `<tree>` is the
   directory `schema pack` reads, so the text is `<tree>/<root>.json` (§17). The
   verdict is HAND-AUTHORED, which is what makes it an expectation rather than a
-  restatement of what one engine happens to do.
+  restatement of what one engine happens to do. A row whose verdict reads also
+  owes the VALUE: `<tree>.value.json`, beside the tree, is the §16 text of
+  what the oracle's text read leaves (internal/tabletext, read then written),
+  and `make conformance-generate` refuses a row whose hand-authored verdict
+  the oracle does not give.
 - **`cook`** names a cooked file's CASE, the root it is opened at, and the dump
   its Open must produce. Case and root are two columns because one root can have
   more than one fixture — `Scene` and `SceneValued` are the same table read two

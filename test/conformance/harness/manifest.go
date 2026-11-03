@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -118,12 +119,17 @@ func ParseCounts(text string) (Counts, error) {
 	return c, nil
 }
 
-// ReportCase is bytes read by a type that did not write them.
+// ReportCase is bytes read by a type that did not write them. Value is the
+// file holding the §16 text of the value the read leaves, which the row owes
+// after its report line whenever the read reads: the oracle writes it
+// (`harness generate`, from internal/tablewire and internal/tabletext), and a
+// refused or damaged read has none.
 type ReportCase struct {
-	Name string
-	Unit string
-	Root string
-	Wire string
+	Name  string
+	Unit  string
+	Root  string
+	Wire  string
+	Value string
 }
 
 // FramingCase is one hand-built framing vector (docs/LAYERS/1-framing.md): the
@@ -176,6 +182,20 @@ type Hostile struct {
 	// (docs/SPEC-TABLES.md §16.3).
 	CarriedBy []string
 	Uncarried string
+	// Value is the file holding the §16 text of the value the read leaves,
+	// <Tree>.value.json beside the tree, which the row owes after its report
+	// line whenever the read reads. The oracle writes it (`harness generate`,
+	// internal/tabletext's read then its writer); a refused row has none.
+	Value string
+}
+
+// HostileValue is where a hostile row's value golden lives: beside the tree,
+// never inside it, because the tree is what `schema pack` reads.
+func HostileValue(tree string) string { return tree + ".value.json" }
+
+// ReportValue is where a report row's value golden lives.
+func ReportValue(jsonDir, name string) string {
+	return filepath.Join(filepath.Dir(jsonDir), "report-values", name+".json")
 }
 
 // Verdict is the standard's answer for one hostile case.
@@ -577,7 +597,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)
 			}
-			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]})
+			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Value: ReportValue(jsonDir, f[1])})
 		case "framing":
 			// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the verdict is
 			// `refused` or the §4 report, and the value is a §16 text file or
@@ -614,7 +634,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			if len(f) != 6 && len(f) != 8 {
 				return nil, fmt.Errorf("%s: json-hostile takes case, unit, root, tree, verdict, and optionally carried-by=<ports> uncarried=<verdict>", where)
 			}
-			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4]}
+			h := Hostile{Name: f[1], Unit: f[2], Root: f[3], Tree: f[4], Value: HostileValue(f[4])}
 			if f[5] == "refused" {
 				h.Refused = true
 			} else {
