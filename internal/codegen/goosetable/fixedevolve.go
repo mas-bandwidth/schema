@@ -246,8 +246,14 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("// %sFixedEvolveLoad reads a fixed-form file through the lineage: the identity\n", n)
 	e.p("// entry uses the fixed form's own scan and run, an append-only older entry the\n")
 	e.p("// old body over a current-layout image born at its defaults (§4.3, §5.3).\n")
-	e.p("fn %sFixedEvolveLoad(values: %s[:], data: const u8[:], report: schema_rt::FixedEvolveReport&) -> i64 {\n", n, typ)
+	e.p("fn %sFixedEvolveLoad(values: %s[:], raw: const u8[:], report: schema_rt::FixedEvolveReport&) -> i64 {\n", n, typ)
 	e.p("    report = schema_rt::FixedEvolveReport { .. };\n")
+	if st.Integrity == "crc32c" {
+		e.p("    if schema_rt::fixed_evolve_open_integrity(raw, report) < 0 { return -1; }\n")
+		e.p("    let data = raw[0..raw.len - 4];\n")
+	} else {
+		e.p("    let data = raw;\n")
+	}
 	e.p("    let fr = schema_rt::fixed_evolve_header(data, report);\n")
 	e.p("    if fr < 0 { return -1; }\n")
 	e.p("    let h = schema_rt::fixed_u64(data, 8);\n")

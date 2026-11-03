@@ -80,6 +80,14 @@ struct FieldDesc {
     def_b: bool,
     def_s: const u8[:],
     tag: i64,                 // a union arm's tag
+    type_name: const u8[:],   // the declared type's spelling (docs/SPEC-TABLES.md §8.1)
+    arm_offset: i64,          // a union arm's offset in the union's storage at the
+                              // record layout: the tag at 0, every arm at the one
+                              // payload base (§7.2, §8.1); 0 on every other field
+    doc: const u8[:],         // the `///` block above it, verbatim (SPEC §4.1);
+                              // TableDocNone when there is none
+    num_tags: i32,            // its tags (SPEC §4.2), in DECLARED order; 0 and an
+    tags: const (const u8[:])[:], // empty list when there are none
 }
 
 // TableDesc is one table — or a packet type a table reaches by value, which
@@ -90,11 +98,21 @@ struct TableDesc {
     table: bool,
     fixed: bool,
     variable: bool,
+    json_array: bool,
+    integrity: bool,
     place: const (const u8[:])[:], // what a pointer walk from it may place
     place_str: bool,
     place_bytes: bool,
     fields: const FieldDesc[:],
+    doc: const u8[:],         // the declaration's own `///` block (§8.1)
+    num_tags: i32,            // and its tags, in DECLARED order
+    tags: const (const u8[:])[:],
 }
+
+// TableDocNone is THE ONE EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every
+// descriptor of a declaration or a field with no `///` block names it, so the
+// emitted text defines the empty doc once against every row that has none.
+let TableDocNone: const u8[:] = "";
 
 // UnionDesc is one union as data: one entry per arm, in tag order (§2.6).
 struct UnionDesc {
@@ -108,3 +126,37 @@ struct UnionDesc {
 // it selects. The first row that matches wins. It lives here, beside the
 // array it types, so this module checks on its own.
 struct LoadReg { shape: u8, array: u8, wide: bool, loader: Loader }
+
+// crc32c is §2.14's CRC-32C (Castagnoli, reflected polynomial 0x82F63B78)
+// over data[start..end].
+fn crc32c(data: const u8[:], start: i64, end: i64) -> u32 {
+    var crc: u32 = 0xFFFFFFFF;
+    var i = start;
+    while i < end {
+        crc ^= data[i];
+        var b: i64 = 0;
+        while b < 8 {
+            if (crc & 1) != 0 {
+                crc = (crc >> 1) ^ 0x82F63B78;
+            } else {
+                crc >>= 1;
+            }
+            b += 1;
+        }
+        i += 1;
+    }
+    return crc ^ 0xFFFFFFFF;
+}
+
+// integrity_holds is §2.14's read check: a file or batch of at least
+// min_body + 4 bytes whose last four bytes (little-endian) match the
+// CRC-32C of every byte before them.
+fn integrity_holds(data: const u8[:], min_body: i64) -> bool {
+    let n = data.len - 4;
+    if n < min_body { return false; }
+    let got: u32 = data[n]
+        | ((data[n + 1] as u32) << 8)
+        | ((data[n + 2] as u32) << 16)
+        | ((data[n + 3] as u32) << 24);
+    return got == crc32c(data, 0, n);
+}

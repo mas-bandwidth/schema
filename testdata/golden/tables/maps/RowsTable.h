@@ -18038,7 +18038,7 @@ inline int64_t RowMeasureWireRetain( const Ctx & ctx, const Row & root, TableRet
         (void) type_id;
         return -1;
     };
-    if ( RowNumberFrom( ctx, numbering, root ) )
+    if ( RowNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -18079,7 +18079,7 @@ inline int64_t RowSaveWireRetain( const Ctx & ctx, const Row & root, TableRetain
         (void) type_id;
         return false;
     };
-    if ( !RowNumberFrom( ctx, numbering, root ) )
+    if ( !RowNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -18494,7 +18494,7 @@ inline int64_t WideRowMeasureWireRetain( const Ctx & ctx, const WideRow & root, 
         (void) type_id;
         return -1;
     };
-    if ( WideRowNumberFrom( ctx, numbering, root ) )
+    if ( WideRowNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -18535,7 +18535,7 @@ inline int64_t WideRowSaveWireRetain( const Ctx & ctx, const WideRow & root, Tab
         (void) type_id;
         return false;
     };
-    if ( !WideRowNumberFrom( ctx, numbering, root ) )
+    if ( !WideRowNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -18950,7 +18950,7 @@ inline int64_t EdgeRowMeasureWireRetain( const Ctx & ctx, const EdgeRow & root, 
         (void) type_id;
         return -1;
     };
-    if ( EdgeRowNumberFrom( ctx, numbering, root ) )
+    if ( EdgeRowNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -18991,7 +18991,7 @@ inline int64_t EdgeRowSaveWireRetain( const Ctx & ctx, const EdgeRow & root, Tab
         (void) type_id;
         return false;
     };
-    if ( !EdgeRowNumberFrom( ctx, numbering, root ) )
+    if ( !EdgeRowNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

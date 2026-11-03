@@ -1094,7 +1094,11 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.declare(n+"FixedMeasure", n+"FixedSave", n+"FixedLoadTolerant", n+"FixedLoad")
 	e.p(0, "// %sFixedMeasure is a file of count records: the header, the layout, the records (§2).", n)
 	e.p(0, "fn %sFixedMeasure(count: i64) -> i64 {", n)
-	e.p(1, "return schema_rt::FixedHeaderBytes + 4 + %sFixedLayoutLength + count * %sFixedRecordBytes;", n, n)
+	if st.Integrity == "crc32c" {
+		e.p(1, "return schema_rt::FixedHeaderBytes + 4 + %sFixedLayoutLength + count * %sFixedRecordBytes + 4;", n, n)
+	} else {
+		e.p(1, "return schema_rt::FixedHeaderBytes + 4 + %sFixedLayoutLength + count * %sFixedRecordBytes;", n, n)
+	}
 	e.p(0, "}\n")
 
 	e.p(0, "// %sFixedSave appends a fixed-form file of values to out and returns its byte length, or -1", n)
@@ -1113,6 +1117,10 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(2, "_%sFixedWrite(out, values[k]);", n)
 	e.p(2, "k += 1;")
 	e.p(1, "}")
+	if st.Integrity == "crc32c" {
+		e.p(1, "let sum = schema_rt::crc32c(out, start, out.len);")
+		e.p(1, "schema_rt::fixed_put(out, sum as u64, 4);")
+	}
 	e.p(1, "return out.len - start;")
 	e.p(0, "}\n")
 
@@ -1121,7 +1129,13 @@ func (e *fixedEmit) emitRoot(st *ir.Struct) {
 	e.p(0, "// a refusal lands nothing (§5.3, TOTAL OVER THE BATCH). Clamps are counted onto report.")
 	e.p(0, "fn %sFixedLoadTolerant(values: %s[:], data: const u8[:], report: schema_rt::FixedReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::FixedReport { .. };")
-	e.p(1, "let n = schema_rt::fixed_load_frame(data, %sFixedLayout, %sFixedHash, %sFixedRecordBytes, values.len, report);", n, n, n)
+	if st.Integrity == "crc32c" {
+		e.p(1, "if schema_rt::fixed_open_integrity(data, report) < 0 { return -1; }")
+		e.p(1, "let file = data[0..data.len - 4];")
+		e.p(1, "let n = schema_rt::fixed_load_frame(file, %sFixedLayout, %sFixedHash, %sFixedRecordBytes, values.len, report);", n, n, n)
+	} else {
+		e.p(1, "let n = schema_rt::fixed_load_frame(data, %sFixedLayout, %sFixedHash, %sFixedRecordBytes, values.len, report);", n, n, n)
+	}
 	e.p(1, "if n < 0 { return -1; }")
 	e.p(1, "let first = schema_rt::FixedHeaderBytes + 4 + %sFixedLayoutLength + 8;", n)
 	e.p(1, "var k: i64 = 0;")

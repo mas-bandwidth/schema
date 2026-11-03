@@ -13141,7 +13141,7 @@ inline int64_t ChunkMeasureWireRetain( const Ctx & ctx, const Chunk & root, Tabl
         }
         return -1;
     };
-    if ( ChunkNumberFrom( ctx, numbering, root ) )
+    if ( ChunkNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13190,7 +13190,7 @@ inline int64_t ChunkSaveWireRetain( const Ctx & ctx, const Chunk & root, TableRe
         }
         return false;
     };
-    if ( !ChunkNumberFrom( ctx, numbering, root ) )
+    if ( !ChunkNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;
@@ -13490,7 +13490,7 @@ inline int64_t FeedMeasureWireRetain( const Ctx & ctx, const Feed & root, TableR
         }
         return -1;
     };
-    if ( FeedNumberFrom( ctx, numbering, root ) )
+    if ( FeedNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13539,7 +13539,7 @@ inline int64_t FeedSaveWireRetain( const Ctx & ctx, const Feed & root, TableReta
         }
         return false;
     };
-    if ( !FeedNumberFrom( ctx, numbering, root ) )
+    if ( !FeedNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

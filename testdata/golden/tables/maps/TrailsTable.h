@@ -13255,7 +13255,7 @@ inline int64_t TrailsMeasureWireRetain( const Ctx & ctx, const Trails & root, Ta
         }
         return -1;
     };
-    if ( TrailsNumberFrom( ctx, numbering, root ) )
+    if ( TrailsNumberFrom( ctx, numbering, root ) && !numbering.shared )
     {
         TableRetainIds ids( retain );
         if ( retain != NULL ) { retain->id_used = 0; } // one walk fills the list, and the save's own walk refills it
@@ -13304,7 +13304,7 @@ inline int64_t TrailsSaveWireRetain( const Ctx & ctx, const Trails & root, Table
         }
         return false;
     };
-    if ( !TrailsNumberFrom( ctx, numbering, root ) )
+    if ( !TrailsNumberFrom( ctx, numbering, root ) || numbering.shared )
     {
         TableNumberingShutdown( numbering );
         return -1;

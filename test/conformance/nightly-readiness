@@ -351,6 +351,11 @@ class Runner:
         self.env["ELIXIR_TABLES_EBIN"] = str(root / "build/elixir-tables-ebin")
         self.env["SCHEMA_C_COLLECTIONS_DRIVER"] = str(root / "build/c-collections-fuzz")
         self.env["SCHEMA_CPP_COLLECTIONS_DRIVER"] = str(root / "build/cpp-collections-fuzz")
+        if lang == "cpp":
+            # The shared harness includes the native Dart roster probes, and
+            # the compiler package includes the explicit 2 GiB certification.
+            self.env["SCHEMA_DART_ROSTER_DRIVER"] = str(root / "build/conformance-dart")
+            self.env["SCHEMA_CERTIFY_INT32_MAX"] = "1"
 
     def run(self, name, argv, cwd=None, validate=None, expected=0):
         cwd = cwd or self.root
@@ -687,7 +692,7 @@ def main(argv=None):
     # reference's byte oracle, so a clean bench builds it here.
     prerequisites = "bin/schema build/conformance-harness build/fixedform-corpus/.stamp"
     if lang == "cpp":
-        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz"
+        prerequisites += " build/c-collections-fuzz build/cpp-collections-fuzz build/conformance-dart"
     if lang == "dart":
         # Native cook-write tests import this corpus directly, before the
         # later AOT driver phase. A clean bench must not depend on that race.
