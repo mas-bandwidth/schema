@@ -690,6 +690,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # mark of a blob a second slot named, and every writer refuses it (§2.5).
   defp blob_site_begin(holder), do: Process.put(:elixir_blob_site, {holder, 0})
 
+  defp blob_site({:__wire_blob__, idx, order, _bytes}), do: {:wire_blob, idx, order}
+
   defp blob_site({:blob_shared, _bytes}), do: throw(:blob_shared)
 
   defp blob_site(_bytes) do
@@ -785,6 +787,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # push_node numbers a TABLE node a pointer names, once, and walks its body
   # the first time only: a node reached again is the one record (§3.1).
+  # Unassembled read markers are queued once by the live ownership walk.
+  defp push_node(acc, {_tid, :table, _elem, %{__wire_node__: _}} = node), do: [node | acc]
+
   defp push_node(acc, {_type_id, :table, elem, v} = node) do
     c = node_content(node)
 
@@ -1779,34 +1784,41 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # Read events count every extra naming. Writer ownership belongs to the
   # final stored slots, after duplicate fields have replaced or cleared values.
-  # Resolve markers before assembling the DAG: each table body is visited once.
-  defp final_blob_slots(records) do
+  # Resolve markers before assembling the DAG, following only live root edges.
+  defp final_blob_slots(records, root_desc) do
     case Process.get(:elixir_blob_read) do
       %{next: 0} ->
         records
 
       _ ->
-        owners = blob_slot_owners(records, %{})
+        owners = live_blob_owners([{1, root_desc}], records, MapSet.new(), %{})
         place_blob_slots(records, owners)
     end
   end
 
-  defp blob_slot_owners({:__wire_blob__, idx, order, _bytes}, owners),
-    do: Map.update(owners, idx, order, &min(&1, order))
+  defp live_blob_owners([], _records, _seen, owners), do: owners
 
-  defp blob_slot_owners(value, owners) when is_map(value),
-    do: Enum.reduce(value, owners, fn {_key, v}, acc -> blob_slot_owners(v, acc) end)
+  defp live_blob_owners([{idx, desc} | pending], records, seen, owners) do
+    if MapSet.member?(seen, idx) do
+      live_blob_owners(pending, records, seen, owners)
+    else
+      # Reuse writer selection, including guards, by-value bodies and selected
+      # union arms. Private pointer markers queue edges without expanding DAGs.
+      {pending, owners} =
+        Enum.reduce(collect_nodes(desc, Map.fetch!(records, idx), []), {pending, owners}, fn
+          {_tid, :blob, _site, {:__wire_blob__, blob, order, _bytes}}, {pending, owners} ->
+            {pending, Map.update(owners, blob, order, &min(&1, order))}
 
-  defp blob_slot_owners(value, owners) when is_list(value),
-    do: Enum.reduce(value, owners, &blob_slot_owners/2)
+          {_tid, :table, name, %{__wire_node__: child}}, {pending, owners} ->
+            {[{child, Map.fetch!(@tables, name)} | pending], owners}
+        end)
 
-  defp blob_slot_owners(value, owners) when is_tuple(value),
-    do: value |> Tuple.to_list() |> Enum.reduce(owners, &blob_slot_owners/2)
-
-  defp blob_slot_owners(_value, owners), do: owners
+      live_blob_owners(pending, records, MapSet.put(seen, idx), owners)
+    end
+  end
 
   defp place_blob_slots({:__wire_blob__, idx, order, bytes}, owners),
-    do: if(Map.fetch!(owners, idx) == order, do: bytes, else: {:blob_shared, bytes})
+    do: if(Map.get(owners, idx, order) == order, do: bytes, else: {:blob_shared, bytes})
 
   defp place_blob_slots(value, owners) when is_map(value),
     do: Map.new(value, fn {key, v} -> {key, place_blob_slots(v, owners)} end)
@@ -1908,7 +1920,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     {root, own_report} = carry_count_report(report, fn -> decode(desc, fields, nodes, ids) end)
     report = merge_report(report, own_report)
-    records = records |> Map.put(1, root) |> final_blob_slots()
+    records = records |> Map.put(1, root) |> final_blob_slots(desc)
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report}
   end
@@ -6767,7 +6779,7 @@ const variableRetainSource = `
       end)
 
     {root, report, retain} = decode_retain(desc, fields, nodes, ids, retain, report, [])
-    records = records |> Map.put(1, root) |> final_blob_slots()
+    records = records |> Map.put(1, root) |> final_blob_slots(desc)
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report, retain}
   end

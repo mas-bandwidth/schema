@@ -63,10 +63,14 @@ func TestBlobOwnershipUsesFinalSlotsElixir(t *testing.T) {
 		{"clear_second", replace(shared, "alias", 0), 1, false},
 		{"clear_first", replace(shared, "thumb", 0), 1, false},
 		{"equal_distinct", read("blob_equal_bytes"), 0, false},
+		{"drop_table_owner", replace(replace(read("blob_small"), "thumb", 3), "head", 0), 1, false},
 	}
 	var probe strings.Builder
 	probe.WriteString("alias Blobdemo.Table,as: T\nProcess.put(:failures,[])\ncheck=fn yes,msg->unless yes,do: Process.put(:failures,[msg|Process.get(:failures)]) end\n")
 	for _, c := range cases {
+		if c.name == "drop_table_owner" && !bytes.Equal(c.wire, read("fuzz-vectors/blob_table_owner_replaced")) {
+			t.Fatal("literal unreachable-owner vector changed")
+		}
 		value := m.New(u.Tables["Catalog"])
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, value, c.wire, &report)
@@ -96,5 +100,66 @@ end
 	out := runCompleteUnitProbe(t, u, probe.String())
 	if !strings.Contains(out, "FINAL_BLOB_SLOTS_OK") {
 		t.Fatalf("native final slots: %s", out)
+	}
+}
+
+func TestBlobOwnershipUsesLiveGuardsElixir(t *testing.T) {
+	slowtest.Gate(t, "Elixir blob writer ownership follows final nested guards")
+	u := unitFrom(t, `package blobguards
+ table Catalog {
+ name string(32)
+ outer bool
+ if outer {
+  inner bool
+  if inner { thumb *bytes }
+ }
+ alias *bytes
+ }`)
+	m := tabletext.NewModel(u)
+	wire, e := os.ReadFile("../../../testdata/wire/tables/blob_shared.bin")
+	if e != nil {
+		t.Fatal(e)
+	}
+	n := int(binary.LittleEndian.Uint64(wire[len(wire)-8:]))
+	start := len(wire) - 8 - 8*n
+	var probe strings.Builder
+	probe.WriteString("alias Blobguards.Table,as: T\n")
+	for _, bits := range [][2]byte{{0, 0}, {0, 1}, {1, 0}, {1, 1}} {
+		b := []byte{1, byte(n + 1), 1, bits[0], byte(n + 2), 1, bits[1]}
+		b = append(b, wire[1:start]...)
+		b = append(b, wire[start:len(wire)-8]...)
+		b = binary.LittleEndian.AppendUint64(b, ir.TableWireId("outer"))
+		b = binary.LittleEndian.AppendUint64(b, ir.TableWireId("inner"))
+		b = binary.LittleEndian.AppendUint64(b, uint64(n+2))
+		value := m.New(u.Tables["Catalog"])
+		var report tabletext.Report
+		ok, e := tablewire.Decode(m, value, b, &report)
+		if e != nil || !ok || report.Malformed || report.BlobShared != 1 {
+			t.Fatalf("guard %v oracle: %v %v %+v", bits, ok, e, report)
+		}
+		shared := bits[0] == 1 && bits[1] == 1
+		want, e := tablewire.Encode(m, value)
+		if (e != nil) != shared {
+			t.Fatalf("guard %v writer %v", bits, e)
+		}
+		fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
+store=%%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+for result<-[T.load("Catalog",wire),T.load_retain("Catalog",wire,store,zero)] do
+ unless elem(result,0)==:ok and elem(result,2).blob_shared==1,do: raise("guard load "<>inspect(result))
+ value=elem(result,1)
+ written=if tuple_size(result)==4,do: T.save_retain("Catalog",value,elem(result,3),zero),else: T.save("Catalog",value)
+ if %t do
+  unless elem(written,0)==:error and elem(written,1)==:blob_shared,do: raise("guard shared "<>inspect(written))
+ else
+  unless elem(written,0)==:ok and Base.encode16(elem(written,1),case: :lower)==%q,do: raise("guard write "<>inspect(written))
+ end
+end
+`, hex.EncodeToString(b), shared, hex.EncodeToString(want))
+	}
+	probe.WriteString("IO.puts(\"LIVE_BLOB_GUARDS_OK\")\n")
+	out := runCompleteUnitProbe(t, u, probe.String())
+	if !strings.Contains(out, "LIVE_BLOB_GUARDS_OK") {
+		t.Fatal(out)
 	}
 }
