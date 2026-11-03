@@ -37,6 +37,9 @@
 //                the shell driver copies from units/<unit>.goose, or the empty
 //                unit.goose beside this file), and through the flat value
 //                table for every other root
+// The strict read (docs/SPEC-TABLES.md §6.5):
+//   strict-reason the one reason load_error names for every report and framing
+//                row's wire, or ok
 // The cook's and the block form's surfaces are accel.goose's: the shell
 // driver runs that program for them.
 import os;
@@ -101,6 +104,31 @@ fn surface_report(lines: const u8[:][:], unit: const u8[:]) {
                        report.duplicate, ",", bool_word(report.malformed), ",",
                        if report.refused || report.non_finite { "refused" } else { "read" }, "\n");
         answer(f[1], text);
+    }
+}
+
+// surface_strict_reason: THE STRICT READ'S ONE REASON (docs/SPEC-TABLES.md
+// §6.5) for every report and framing row of the unit, the refusal-names enum
+// member load_error answers, or `ok`. A root the unit carries no table for is
+// a named absence.
+fn surface_strict_reason(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 5 || (f[0] != "report" && f[0] != "framing") || f[2] != unit { continue; }
+        var carried = false;
+        for t in conformance_unit().tables { if t.name == f[3] { carried = true; } }
+        if !carried {
+            absent(f[1], str("no table ", f[3]));
+            continue;
+        }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var report = schema_rt::LoadReport { .. };
+        let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        let reason = schema_rt::load_error(report, root);
+        answer(f[1], str(if reason == schema_rt::LoadRefuseOk { "ok" } else { schema_rt::load_refusal_name(reason) }, "\n"));
     }
 }
 
@@ -291,7 +319,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\n");
+        write_stdout("wire\nmessage\nreport\nretain\nretain-save\njson-read\njson-write\njson-hostile\nstrict-reason\n");
         return;
     }
     if argv.len != 4 {
@@ -310,6 +338,7 @@ fn main() {
     if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
     if argv[1] == "json-write" { surface_json(lines, unit, true); return; }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
+    if argv[1] == "strict-reason" { surface_strict_reason(lines, unit); return; }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);
 }

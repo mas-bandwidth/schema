@@ -406,3 +406,18 @@ const ConformanceCodec * conformance_codecs_graphdemo(int * count)
 
 int conformance_cook_open(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer)
 { return conformance_cook_open_reason(root,data,bytes,extent,pointer,NULL); }
+
+/* the strict read of each root (docs/SPEC-TABLES.md §6.5) */
+SCHEMA_CONFORMANCE_GRAPH_STRICT( Scene, scene )
+SCHEMA_CONFORMANCE_GRAPH_STRICT( ListNode, list_node )
+
+static const ConformanceStrict strict_rows[] = {
+    SCHEMA_CONFORMANCE_STRICT_ROW( graphdemo, Scene ),
+    SCHEMA_CONFORMANCE_STRICT_ROW( graphdemo, ListNode )
+};
+
+const ConformanceStrict * conformance_stricts_graphdemo( int * count )
+{
+    *count = (int) ( sizeof( strict_rows ) / sizeof( strict_rows[0] ) );
+    return strict_rows;
+}

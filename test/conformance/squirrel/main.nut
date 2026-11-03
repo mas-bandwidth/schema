@@ -210,7 +210,7 @@ if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
-                     "cook-write", "message", "retain", "retain-save"]) print(name + "\n");
+                     "cook-write", "message", "retain", "retain-save", "strict-reason"]) print(name + "\n");
   return;
 }
 
@@ -257,6 +257,37 @@ if (mode == "framing") {
       text += json;
     }
     writeText(outdir + "/" + cname, text);
+  }
+  return;
+}
+
+// THE STRICT-REASON surface (docs/SPEC-TABLES.md §6.5, §11): the strict
+// read's one typed reason for every wire a report or framing line names, or
+// `ok` for a read the strict rule accepts. The read is the plain load, which
+// IS the strict read for every root, fixed class or variable (§6.5: THE PLAIN
+// NAME IS THE STRICT READ); it answers report.reason, and this surface only
+// spells the name ahead of any field it carries.
+if (mode == "strict-reason") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 5 || (f[0] != "report" && f[0] != "framing")) continue;
+    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
+    if (!generated(unit)) { writeAbsent(cname); continue; }
+    local opened = openUnit(unit);
+    local T = opened[1];
+    local L = opened[0].require("schema_table_load");
+    local report = {};
+    local v = L.load(T, root, readBytes(wirepath), report);
+    if (v != null) { writeText(outdir + "/" + cname, "ok\n"); continue; }
+    local reason = report.reason;
+    if (typeof reason != "string") throw cname + ": the strict read refused with no reason";
+    local name = "";
+    foreach (c in reason) {
+      if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) break;
+      name += c.tochar();
+    }
+    if (name == "") throw cname + ": the strict read refused with no reason name: " + reason;
+    writeText(outdir + "/" + cname, name + "\n");
   }
   return;
 }

@@ -34,7 +34,7 @@ local GENERATED = "build/conformance-luau"
 local SURFACES = {
 	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason",
+	"cook-forgery", "cook-reason", "block-reason", "strict-reason",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -271,6 +271,35 @@ local function surfaceFraming(lines: { { string } })
 				text ..= buffer.tostring(json)
 			end
 			sayText(f[2], text)
+		end
+	end
+end
+
+-- THE STRICT-REASON surface (docs/SPEC-TABLES.md §6.5, §11): the strict
+-- read's one typed reason for every wire a report or framing line names, or
+-- `ok` for a read the strict rule accepts. The read is the plain load, which
+-- IS the strict read for every root, fixed class or variable (§6.5: THE PLAIN
+-- NAME IS THE STRICT READ); it answers report.reason, and this surface only
+-- spells the name ahead of any field it carries.
+local function surfaceStrictReason(lines: { { string } })
+	for _, f in lines do
+		if f[1] == "report" or f[1] == "framing" then
+			local u = unit(f[3])
+			if u == nil or rootOf(u, f[4]) == nil then
+				say(f[2], nil)
+			else
+				local r = report()
+				local v = u.load.load(f[4], file(f[5]), r)
+				if v ~= nil then
+					sayText(f[2], "ok\n")
+				else
+					local name = string.match(tostring(r.reason), "^([%a_][%w_]*)")
+					if name == nil then
+						error(f[2] .. ": the strict read refused with no reason name: " .. tostring(r.reason))
+					end
+					sayText(f[2], name .. "\n")
+				end
+			end
 		end
 	end
 end
@@ -1046,4 +1075,6 @@ elseif surface == "cook-reason" then
 	surfaceForgery(lines, "cook", true)
 elseif surface == "block-reason" then
 	surfaceForgery(lines, "block", true)
+elseif surface == "strict-reason" then
+	surfaceStrictReason(lines)
 end

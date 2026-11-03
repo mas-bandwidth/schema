@@ -196,6 +196,61 @@ static const ConformanceCodec * find_codec( const char * unit, const char * root
     return NULL;
 }
 
+typedef const ConformanceStrict * ( *StrictFn )( int * count );
+
+static const StrictFn strict_units[] = {
+    conformance_stricts_mapdemo,
+    conformance_stricts_listdemo,
+    conformance_stricts_tblw1,
+    conformance_stricts_tblw2,
+    conformance_stricts_messagedemo,
+    conformance_stricts_tblm1,
+    conformance_stricts_tblm2,
+    conformance_stricts_tbla1,
+    conformance_stricts_tbla2,
+    conformance_stricts_tblk1,
+    conformance_stricts_tblk2,
+    conformance_stricts_tblr1,
+    conformance_stricts_tblr2,
+    conformance_stricts_backenddemo,
+    conformance_stricts_vocabdemo,
+    conformance_stricts_vocab9demo,
+    conformance_stricts_tabledemo,
+    conformance_stricts_tblv1,
+    conformance_stricts_tblv2,
+    conformance_stricts_tblp1,
+    conformance_stricts_tblp3,
+    conformance_stricts_widedemo,
+    conformance_stricts_scalars,
+    conformance_stricts_graphdemo,
+    conformance_stricts_blobdemo,
+    conformance_stricts_tblg1,
+    conformance_stricts_tblp2,
+    conformance_stricts_streamdemo,
+    conformance_stricts_tblscalars2,
+    conformance_stricts_widelist,
+    conformance_stricts_featurewitnesses
+};
+
+static const ConformanceStrict * find_strict( const char * unit, const char * root )
+{
+    size_t u;
+    for ( u = 0; u < sizeof( strict_units ) / sizeof( strict_units[0] ); u++ )
+    {
+        int count = 0;
+        const ConformanceStrict * table = strict_units[u]( &count );
+        int i;
+        for ( i = 0; i < count; i++ )
+        {
+            if ( strcmp( table[i].unit, unit ) == 0 && strcmp( table[i].root, root ) == 0 )
+            {
+                return &table[i];
+            }
+        }
+    }
+    return NULL;
+}
+
 /* ---------------------------------------------------------------------------
    the surfaces
    --------------------------------------------------------------------------- */
@@ -667,6 +722,50 @@ static int surface_reason(const char * out,const char * kind)
     return 0;
 }
 
+/* strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5,
+   §11) for every wire a `report` or `framing` line names, written as the
+   refusal-names enum's member, `ok` for a read the strict rule accepts. The
+   reason is the refuse_reason the unit's plain load leaves in its report; the
+   names are the unit's TableRefuseReason values in their declared order. A
+   derived line is `<report|framing> <case> <unit> <root> <wire> [no-value]`. */
+static int surface_strict_reason( const char * out )
+{
+    static const char * names[] = { "ok", "not_a_cook", "foreign_order", "wrong_build_version", "reserved_not_zero", "bad_alignment",
+                                    "truncated", "unaligned_base", "bad_layout", "unknown_form", "count_over_length",
+                                    "count_over_extent_cap", "blob_over_size_cap", "data_cycle", "invalid_value", "allocation_failed",
+                                    "wire_damaged", "malformed", "clamped", "kind_mismatch", "base64_damaged", "base64_not_canonical",
+                                    "integrity_mismatch", "non_finite_float", "blob_shared", "missing_required" };
+    int i;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceStrict * strict;
+        uint8_t * wire;
+        size_t bytes;
+        int reason;
+        char answer[64];
+        if ( strcmp( f->field[0], "report" ) != 0 && strcmp( f->field[0], "framing" ) != 0 ) { continue; }
+        strict = find_strict( f->field[2], f->field[3] );
+        if ( strict == NULL )
+        {
+            if ( !spill_absent( out, f->field[1] ) ) { return 1; }
+            continue;
+        }
+        wire = slurp( f->field[4], &bytes );
+        if ( wire == NULL ) { return 1; }
+        reason = strict->strict( wire, (int64_t) bytes );
+        free( wire );
+        if ( reason < 0 || reason >= (int) ( sizeof( names ) / sizeof( names[0] ) ) )
+        {
+            fprintf( stderr, "driver: %s: strict read answered reason %d\n", f->field[1], reason );
+            return 1;
+        }
+        snprintf( answer, sizeof( answer ), "%s\n", names[reason] );
+        if ( !spill( out, f->field[1], answer, strlen( answer ) ) ) { return 1; }
+    }
+    return 0;
+}
+
 static int surface_message(const char * out)
 {
  int i,j;
@@ -716,7 +815,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\n" );
+        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nstrict-reason\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -744,5 +843,6 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }
+    if ( strcmp( surface, "strict-reason" ) == 0 ) { return surface_strict_reason( out ); }
     return 2;
 }

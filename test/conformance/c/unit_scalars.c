@@ -13,3 +13,16 @@ const ConformanceCodec * conformance_codecs_scalars( int * count )
     *count = (int) ( sizeof( codecs ) / sizeof( codecs[0] ) );
     return codecs;
 }
+
+/* the strict read of each root (docs/SPEC-TABLES.md §6.5) */
+SCHEMA_CONFORMANCE_STRICT( SimState, sim_state )
+
+static const ConformanceStrict strict_rows[] = {
+    SCHEMA_CONFORMANCE_STRICT_ROW( scalars, SimState )
+};
+
+const ConformanceStrict * conformance_stricts_scalars( int * count )
+{
+    *count = (int) ( sizeof( strict_rows ) / sizeof( strict_rows[0] ) );
+    return strict_rows;
+}

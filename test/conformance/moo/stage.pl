@@ -77,6 +77,7 @@ my %kinds = (
 	"json-read"     => ["instance"],
 	"report"        => ["report"],
 	"framing"       => ["framing"],
+	"strict-reason" => ["report", "framing"],
 	"retain"        => ["retain"],
 	"retain-save"   => ["retain"],
 	"message"       => ["connection", "message"],

@@ -216,6 +216,10 @@ struct Codec
     bool ( *cook )( const void *, void *, uint64_t, int );
     void * ( *make )();
     void ( *reset )( void * );
+    // the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5, §11): the
+    // plain Load is the strict read of a fixed-class root, and the reason it
+    // sets is the unit's TableRefuseReason as its ordinal, ok on a clean read
+    int ( *strict )( void *, const uint8_t *, int64_t );
 };
 
 template <typename T>
@@ -275,7 +279,12 @@ struct Erase
                                    big ? ns::TableByteOrder::Big                               \
                                        : ns::TableByteOrder::Little );                         \
         },                                                                                     \
-        Erase<ns::type>::make, Erase<ns::type>::reset                                          \
+        Erase<ns::type>::make, Erase<ns::type>::reset,                                         \
+        []( void * v, const uint8_t * b, int64_t n ) {                                         \
+            ns::TableReport inner;                                                             \
+            ns::type##Load( *(ns::type *) v, b, n, &inner );                                   \
+            return (int) inner.refuse_reason;                                                  \
+        }                                                                                      \
     }
 
 static const Codec codecs[] = {
@@ -344,6 +353,9 @@ struct VarCodec
     bool ( *cook )( const void *, void *, uint64_t, int );
     bool ( *json_read )( const char *, int64_t, Report *, std::vector<uint8_t> & );
     bool ( *to_json )( const void *, std::vector<char> & );
+    // the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5, §11):
+    // ReadStrict's out-parameter as its ordinal, ok on a clean read
+    int ( *strict )( const uint8_t *, int64_t );
 };
 
 #define VARCODEC( unit_key, ns, type )                                                         \
@@ -385,6 +397,12 @@ struct VarCodec
             text.assign( (size_t) size + 1, 0 );                                                \
             text.resize( (size_t) size );                                                       \
             return ns::type##ToJson( (const ns::type *) v, text.data(), size ) == size;          \
+        },                                                                                     \
+        []( const uint8_t * b, int64_t n ) {                                                    \
+            ns::TableRefuseReason why = ns::ok;                                                 \
+            const ns::type * root = ns::type##ReadStrict( b, n, &why );                         \
+            if ( root != NULL ) ns::table_release( ns::TableDefaultAllocator(), (void *) root ); \
+            return (int) why;                                                                   \
         }                                                                                      \
     }
 
@@ -1495,6 +1513,40 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
     return "?";
 }
 
+// strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5,
+// §11) for every wire the `report` and `framing` lines name, spelled as the
+// enum's own value name, or `ok` for a read the strict rule accepts. The
+// reason is the generated read's own; this surface only spells it. Every unit
+// declares the one TableRefuseReason in the same order, so an ordinal from
+// any unit spells through the block unit's names.
+static int surface_strict_reason( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "report" && f[0] != "framing" ) continue;
+        std::vector<uint8_t> wire;
+        if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
+        int reason = 0;
+        const VarCodec * variable = find_var_codec( f[2], f[3] );
+        if ( variable != NULL )
+        {
+            reason = variable->strict( wire.data(), (int64_t) wire.size() );
+        }
+        else
+        {
+            const Codec * codec = find_codec( f[2], f[3] );
+            if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+            void * value = codec->make();
+            codec->reset( value );
+            reason = codec->strict( value, wire.data(), (int64_t) wire.size() );
+        }
+        std::string answer = std::string( reason_name( (blockdemo::TableRefuseReason) reason ) ) + "\n";
+        if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
+    }
+    return 0;
+}
+
 static int surface_block_reason( const std::string & out )
 {
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
@@ -1640,7 +1692,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\n" );
+        printf( "wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nstrict-reason\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1666,5 +1718,6 @@ int main( int argc, char ** argv )
     if ( surface == "block-dump" ) return surface_block_dump( out );
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
+    if ( surface == "strict-reason" ) return surface_strict_reason( out );
     return 2;
 }

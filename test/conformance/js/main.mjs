@@ -941,6 +941,19 @@ async function surfaceFraming(lines, outDir) {
   }
 }
 
+// strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5)
+// for every wire a `report` or `framing` line names. The JavaScript runtime
+// carries no strict read: its variable load is the tolerant read, and its
+// report has no reason for what the strict rule refuses (clamped,
+// kind_mismatch, malformed, wire_damaged), so every case is answered absent
+// rather than spelled from the tolerant read.
+function surfaceStrictReason(lines, outDir) {
+  for (const f of lines) {
+    if (f[0] !== "report" && f[0] !== "framing") { continue; }
+    writeFileSync(join(outDir, f[1] + ".absent"), "");
+  }
+}
+
 async function surfaceJsonRead(lines, outDir) {
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
@@ -1349,7 +1362,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nstrict-reason\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1381,5 +1394,6 @@ switch (surface) {
   case "cook-forgery": surfaceCookForgery(lines, outDir); break;
   case "cook-reason": surfaceReason("cook", lines, outDir); break;
   case "block-reason": surfaceReason("block", lines, outDir); break;
+  case "strict-reason": surfaceStrictReason(lines, outDir); break;
   default: process.exit(2);
 }

@@ -179,9 +179,29 @@ One process per surface, so a runtime starts once rather than once per case.
 | `cook-forgery` | `forgery` (`cook`) | the same, over the cook battery's 111 | the verdict in the manifest |
 | `cook-reason` | `refusal` (`cook`) | Open the forged cook, the reason beside the null as the enum's value name, or `ok` | the reason in the manifest |
 | `block-reason` | `refusal` (`block`) | Open the forged block, the reason beside the false as the enum's value name, or `ok` | the reason in the manifest |
+| `strict-reason` | `report`, `framing` | the STRICT read of the wire at the line's root (§6.5), its one typed reason as the enum's value name, or `ok` | `strict-reasons.txt`, pinned from the reference leg; run by its own gate, below |
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**`strict-reason` IS THE REFUSAL REASON, AND ITS GATE IS ITS OWN.** `report`
+and `framing` compare the TOLERANT read's six counters and its verdict, and
+nothing there says WHICH refusal a strict read names, so a reason could drift
+by language with every cell green. This surface runs each leg's strict read
+(docs/SPEC-TABLES.md §6.5: the plain `Load` of a fixed-class root, `ReadStrict`
+of a variable one, or the leg's equivalent) over every wire a `report` or
+`framing` line names, and writes the one typed reason as the refusal-names
+enum spells it (§6.5's table), or `ok`. The leg spells the reason its runtime
+names and decides nothing; a leg whose strict read names no reason answers
+`<case>.absent`. `make conformance-pin` takes `strict-reasons.txt` from the
+reference leg, except on a row marked `reference=<reason>`: there the C++
+answer is not the spec's, the row holds the spec's reason by hand, and the
+reference goes red on it with every other leg that agrees with C++.
+`make conformance-strict-reasons` (`harness strict-reasons`) runs every leg
+over it and prints the disagreement table — leg, case, expected reason, the
+leg's reason — and exits nonzero on any row. It is not a column of
+`make conformance`, so a leg's reason disagreements do not turn that leg's
+conformance job red.
 
 **A `json-hostile` ROW MAY EXEMPT A PORT THAT HAS NOT TAKEN ITS RULE YET**
 (docs/SPEC-TABLES.md §16.3). The manifest line

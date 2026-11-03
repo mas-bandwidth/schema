@@ -1152,6 +1152,20 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
   return null;
 }
 
+// strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5,
+// §11) for every wire a `report` or `framing` line names. The Dart runtime
+// carries no strict read: its wire load is the tolerant read, and its report's
+// reason names no refusal for what the strict rule refuses (clamped,
+// kind_mismatch), so every case is answered absent rather than spelled from
+// the tolerant read.
+int surfaceStrictReason(String outDir) {
+  for (final f in lines) {
+    if (f[0] != 'report' && f[0] != 'framing') continue;
+    spillAbsent(outDir, f[1]);
+  }
+  return 0;
+}
+
 String? loadReport(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
     case 'featurewitnesses Root':
@@ -2231,12 +2245,13 @@ const String surfaces =
     // cook-write the graphdemo and blobdemo rows (§7.6). retain and
     // retain-save carry RT1's retaining round trip (§6.6). The
     // accelerators and the forgery surfaces stay, and cook-reason and
-    // block-reason name each forgery's first failing clause (§7, §19.2). The
-    // wire fuzzer's roots are another card's.
+    // block-reason name each forgery's first failing clause (§7, §19.2).
+    // strict-reason answers every case absent: this runtime has no strict
+    // read (§6.5). The wire fuzzer's roots are another card's.
     ''
     'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\ncook-reason\nblock-reason\n';
+    'forgery\ncook-forgery\ncook-reason\nblock-reason\nstrict-reason\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -2738,6 +2753,8 @@ int run(List<String> args) {
       return surfaceReason(out, 'cook');
     case 'block-reason':
       return surfaceReason(out, 'block');
+    case 'strict-reason':
+      return surfaceStrictReason(out);
   }
   return 2;
 }

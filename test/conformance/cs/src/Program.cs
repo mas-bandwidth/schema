@@ -876,6 +876,22 @@ static partial class Program
         return 0;
     }
 
+    // strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md
+    // §6.5) for every wire a `report` or `framing` line names. The C# runtime
+    // carries no strict read: its plain Load is the tolerant read, and its
+    // report has no reason for what the strict rule refuses (clamped,
+    // kind_mismatch, malformed, wire_damaged), so every case is answered
+    // absent rather than spelled from the tolerant read.
+    static int SurfaceStrictReason(string outDir)
+    {
+        foreach (string[] f in lines)
+        {
+            if (f[0] != "report" && f[0] != "framing") { continue; }
+            SpillAbsent(outDir, f[1]);
+        }
+        return 0;
+    }
+
     // The region and builder loads of the pointered framing roots: null when
     // both agree with the managed load on whether the bytes are damage.
     static unsafe string NativeFramingDisagrees(string unit, string root, byte[] wire, bool malformed)
@@ -2297,7 +2313,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\n");
+            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nstrict-reason\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2323,6 +2339,7 @@ static partial class Program
             case "block-dump": return SurfaceBlockDump(outDir);
             case "forgery": return SurfaceForgery(outDir);
             case "block-reason": return SurfaceBlockReason(outDir);
+            case "strict-reason": return SurfaceStrictReason(outDir);
             default: return 2;
         }
     }

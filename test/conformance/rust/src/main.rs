@@ -1219,6 +1219,18 @@ fn surface_framing(manifest: &Manifest, out: &str) {
     }
 }
 
+// THE STRICT READ'S REASON (docs/SPEC-TABLES.md §6.5, §11): the one typed
+// reason a strict read names for each wire a `report` or `framing` line names.
+// The Rust runtime's reads are the tolerant load and the fixed-form load; it
+// carries no strict read that names a reason, so every case answers
+// `<case>.absent`, a feature this leg lacks. The driver never derives a reason
+// from the tolerant report's counters.
+fn surface_strict_reason(manifest: &Manifest, out: &str) {
+    for f in manifest.lines.iter().filter(|f| f[0] == "report" || f[0] == "framing") {
+        spill_absent(out, &f[1]);
+    }
+}
+
 // The file-form retention rows exercise §6.6 with caller-owned capacities.
 // A short store is measured from the full retaining read, then reduced by one
 // byte so the loss is caused by capacity rather than a different input wire.
@@ -1525,7 +1537,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason"
+            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nstrict-reason"
         );
         return;
     }
@@ -1554,6 +1566,7 @@ fn main() {
         "block-reason" => surface_reason(&manifest, out, "block"),
         "cook-reason" => surface_reason(&manifest, out, "cook"),
         "message" => surface_message(&manifest, out),
+        "strict-reason" => surface_strict_reason(&manifest, out),
         _ => exit(2),
     }
 }

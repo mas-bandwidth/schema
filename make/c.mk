@@ -176,6 +176,7 @@ TABLES_CFLAGS := -std=c99 -Wall -Wextra -Werror -Wshadow -Wtype-limits $(C_TAUTO
 TABLES_CFLAGS_CONTROL := $(subst -O2,-O0,$(TABLES_CFLAGS))
 
 C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/collections_fuzz_lists.c test/c-tables/collections_fuzz_arms.c \
+	test/conformance/c/strict_mapdemo.c test/conformance/c/strict_listdemo.c \
 	$(patsubst tables/%.schema,build/tables-generated-c/%Table.c,$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS)) \
 	test/conformance/c/unit_tblw1.c build/tables-generated-c/w1/W1Table.c \
 	test/conformance/c/unit_tblw2.c build/tables-generated-c/w2/W2Table.c \

@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 )
 
-func pin(m *Manifest, driversPath, work, cookDir string) error {
+func pin(m *Manifest, driversPath, work, cookDir, strictReasonsPath string) error {
 	drivers, _, err := loadDrivers(driversPath)
 	if err != nil {
 		return err
@@ -82,6 +82,13 @@ func pin(m *Manifest, driversPath, work, cookDir string) error {
 			}
 			fmt.Printf("conformance: pinned %s from the %s leg — %d bytes\n", golden, reference.lang, len(data))
 		}
+	}
+
+	// the STRICT READ's reasons (docs/SPEC-TABLES.md §6.5), one word per
+	// report and framing wire, keeping the spec's reason on every row whose
+	// reference= marker says the reference names another
+	if err := pinStrictReasons(m, reference, derived, work, strictReasonsPath); err != nil {
+		return err
 	}
 
 	// and the block battery, whose offsets only a backend that can open a block

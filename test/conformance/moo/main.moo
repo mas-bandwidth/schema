@@ -145,6 +145,10 @@ local ctx = {
 			load(ROOT .. generated .. "/" .. key .. "/" .. name)
 		end
 	end,
+	-- the names of a unit's <Base>Table modules
+	tableNames = function(key: string): { string }
+		return tableModules[key] or {}
+	end,
 	kind = kind,
 	module = function(key: string, name: string): any?
 		local ok, mod = pcall(load, ROOT .. generated .. "/" .. key .. "/" .. name)

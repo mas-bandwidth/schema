@@ -331,7 +331,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason strict-reason)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -679,6 +679,17 @@ defmodule Driver do
               write_absent(outdir, name)
           end
       end
+    end
+  end
+
+  # strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md
+  # §6.5, §11) for every wire a `report` or `framing` line names. The Elixir
+  # runtime carries no strict read: its load is the tolerant read, and a
+  # clamped or kind-mismatched read answers :ok, so every case is answered
+  # absent rather than spelled from the tolerant read.
+  defp run("strict-reason", rows, outdir) do
+    for [name | _] <- rows(rows, "report") ++ rows(rows, "framing") do
+      write_absent(outdir, name)
     end
   end
 

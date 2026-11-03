@@ -54,6 +54,17 @@ typedef struct ConformanceCodec
     int64_t (*retain_fuzz)(const uint8_t *,int64_t,uint8_t **,ConformanceReport *,int *,int64_t *);
 } ConformanceCodec;
 
+/* One row per (unit, root) whose STRICT read (docs/SPEC-TABLES.md §6.5) the
+ * strict-reason surface runs: the read's one typed reason, the unit's own
+ * refuse-reason enum value, 0 for a read the strict rule accepts. A separate
+ * table from the codecs so the codec rows stay as they are. */
+typedef struct ConformanceStrict
+{
+    const char * unit;
+    const char * root;
+    int ( *strict )( const uint8_t * bytes, int64_t size );
+} ConformanceStrict;
+
 /* A GROWING TEXT, for the two dumps. The harness compares bytes, so nothing
  * here formats anything a reader has to parse back. */
 typedef struct ConformanceText
@@ -118,6 +129,40 @@ const ConformanceCodec * conformance_codecs_scalars( int * count );
 const ConformanceCodec * conformance_codecs_tblscalars2( int * count );
 const ConformanceCodec * conformance_codecs_widelist( int * count );
 const ConformanceCodec * conformance_codecs_featurewitnesses( int * count );
+
+/* each unit's strict rows, defined in the same translation unit as its codecs
+   (listdemo and mapdemo in strict_listdemo.c and strict_mapdemo.c) */
+const ConformanceStrict * conformance_stricts_mapdemo( int * count );
+const ConformanceStrict * conformance_stricts_listdemo( int * count );
+const ConformanceStrict * conformance_stricts_tblw1( int * count );
+const ConformanceStrict * conformance_stricts_tblw2( int * count );
+const ConformanceStrict * conformance_stricts_messagedemo( int * count );
+const ConformanceStrict * conformance_stricts_tblm1( int * count );
+const ConformanceStrict * conformance_stricts_tblm2( int * count );
+const ConformanceStrict * conformance_stricts_tbla1( int * count );
+const ConformanceStrict * conformance_stricts_tbla2( int * count );
+const ConformanceStrict * conformance_stricts_tblk1( int * count );
+const ConformanceStrict * conformance_stricts_tblk2( int * count );
+const ConformanceStrict * conformance_stricts_tblr1( int * count );
+const ConformanceStrict * conformance_stricts_tblr2( int * count );
+const ConformanceStrict * conformance_stricts_backenddemo( int * count );
+const ConformanceStrict * conformance_stricts_vocabdemo( int * count );
+const ConformanceStrict * conformance_stricts_vocab9demo( int * count );
+const ConformanceStrict * conformance_stricts_tabledemo( int * count );
+const ConformanceStrict * conformance_stricts_tblv1( int * count );
+const ConformanceStrict * conformance_stricts_tblv2( int * count );
+const ConformanceStrict * conformance_stricts_tblp1( int * count );
+const ConformanceStrict * conformance_stricts_tblp3( int * count );
+const ConformanceStrict * conformance_stricts_widedemo( int * count );
+const ConformanceStrict * conformance_stricts_scalars( int * count );
+const ConformanceStrict * conformance_stricts_graphdemo( int * count );
+const ConformanceStrict * conformance_stricts_blobdemo( int * count );
+const ConformanceStrict * conformance_stricts_tblg1( int * count );
+const ConformanceStrict * conformance_stricts_tblp2( int * count );
+const ConformanceStrict * conformance_stricts_streamdemo( int * count );
+const ConformanceStrict * conformance_stricts_tblscalars2( int * count );
+const ConformanceStrict * conformance_stricts_widelist( int * count );
+const ConformanceStrict * conformance_stricts_featurewitnesses( int * count );
 
 /* the BLOCK unit (blockdemo): open one image at the extent and pointer the
  * caller claims, and read every row out of the descriptors */

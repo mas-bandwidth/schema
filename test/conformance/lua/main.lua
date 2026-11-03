@@ -36,7 +36,7 @@ local SURFACE_ORDER = {
   "wire", "message", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason",
+  "block-reason", "strict-reason",
 }
 local SURFACES = {}
 for _, s in ipairs(SURFACE_ORDER) do SURFACES[s] = true end
@@ -105,7 +105,7 @@ local NOT_GENERATED = "unit not generated for lua: docs/SPEC-TABLES.md §15"
 -- later require runs against another unit's search path
 local RUNTIME = {
   "load", "save", "json", "retain", "message", "cook",
-  "cookwrite", "block",
+  "cookwrite", "block", "refusal",
 }
 
 -- the unit's table module is <Package>Tables.lua beside its runtime; the
@@ -211,6 +211,32 @@ local function surfaceFraming(all, outdir)
         text = text .. json
       end
       writeBytes(outdir .. "/" .. f[2], text)
+    end
+  end
+end
+
+-- THE STRICT-REASON surface (docs/SPEC-TABLES.md §6.5, §11): the strict
+-- read's one typed reason for every wire a report or framing line names, or
+-- `ok` for a read the strict rule accepts. ReadStrict is the runtime's strict
+-- entry point for every root, fixed or variable; it raises the refusal's name
+-- (a fixed read's error may carry Lua's position prefix), and this surface
+-- only spells that name.
+local function surfaceStrictReason(all, outdir)
+  for _, f in ipairs(all) do
+    if f[1] == "report" or f[1] == "framing" then
+      local u = unit(f[3])
+      if not u then
+        absent(outdir, f[2], NOT_GENERATED)
+      else
+        local ok, err = pcall(u.refusal.ReadStrict, u.T, f[4], mustRead(f[5]))
+        local answer = "ok"
+        if not ok then
+          if type(err) ~= "string" then fail(f[2] .. ": ReadStrict raised a non-string error") end
+          answer = err:gsub("^[^:]*:%d+: ", ""):match("^([%a_][%w_]*)")
+          if answer == nil then fail(f[2] .. ": ReadStrict raised no reason name: " .. err) end
+        end
+        writeBytes(outdir .. "/" .. f[2], answer .. "\n")
+      end
     end
   end
 end
@@ -822,5 +848,6 @@ elseif surface == "forgery" then surfaceForgery(all, outdir, "block", false)
 elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
 elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
 elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
+elseif surface == "strict-reason" then surfaceStrictReason(all, outdir)
 end
 os.exit(0)

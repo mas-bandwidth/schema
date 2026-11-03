@@ -10,3 +10,16 @@ const ConformanceCodec * conformance_codecs_tblm1( int * count )
 {
     *count = (int)(sizeof(codecs)/sizeof(codecs[0])); return codecs;
 }
+
+/* the strict read of each root (docs/SPEC-TABLES.md §6.5) */
+SCHEMA_CONFORMANCE_STRICT( Msg, msg )
+
+static const ConformanceStrict strict_rows[] = {
+    SCHEMA_CONFORMANCE_STRICT_ROW( tblm1, Msg )
+};
+
+const ConformanceStrict * conformance_stricts_tblm1( int * count )
+{
+    *count = (int) ( sizeof( strict_rows ) / sizeof( strict_rows[0] ) );
+    return strict_rows;
+}

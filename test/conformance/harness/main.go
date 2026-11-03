@@ -12,6 +12,7 @@
 //	harness wire-fuzz             fuzz one language's tolerant wire read against the engine
 //	harness cross-read            the C++ reference reads what one leg wrote (the nightly)
 //	harness coverage              the nightly's coverage table, from its rows
+//	harness strict-reasons        every leg's strict read reason against the pinned one
 //
 // Flags are the same for both so a Makefile line reads the same way; see usage.
 package main
@@ -83,6 +84,12 @@ func usage() {
              a LoadMeasure inside the framing's bound, for every mutant
              (docs/SPEC-TABLES.md §4.2). --seed and --n size the random pass;
              the enumerated passes run whatever N is.
+  strict-reasons
+             run every leg's strict-reason surface: the strict read's one
+             typed reason for every wire a report or framing line names,
+             against --strict-reasons, pinned from the reference leg by pin.
+             Prints the disagreement table (--table writes it as TSV) and
+             exits nonzero on any disagreement (docs/SPEC-TABLES.md §6.5).
   cook-differential
              cook every cook-write row's wire with the tool's engine and
              with the C++ reference driver (--driver, default its committed
@@ -114,6 +121,9 @@ flags:
   --require-original-nine
                       require complete original-nine coverage and fixed forms
   --ports             leave the reference leg out of the matrix (matrix only)
+  --strict-reasons <path>
+                      the pinned strict read reasons (pin, strict-reasons)
+  --table <path>      write the disagreement table as TSV (strict-reasons only)
   --results <path>    write every case's verdict as JSON, the input of
                       "go run ./tools/matrix proof" (run only)
   --driver <cmd>      the leg to fuzz (wire-fuzz), or the reference driver
@@ -163,6 +173,8 @@ func main() {
 	in := fs.String("in", "", "where the coverage rows are (coverage only)")
 	requireNine := fs.Bool("require-original-nine", false, "require original-nine completion (coverage only)")
 	ports := fs.Bool("ports", false, "leave the reference leg out (matrix only)")
+	strictReasonsPath := fs.String("strict-reasons", defaultStrictReasons, "the pinned strict read reasons (pin, strict-reasons)")
+	table := fs.String("table", "", "write the disagreement table as TSV (strict-reasons only)")
 	if len(os.Args) > 2 {
 		_ = fs.Parse(os.Args[2:])
 	}
@@ -243,8 +255,16 @@ func main() {
 			fatalf("%v", err)
 		}
 	case "pin":
-		if err := pin(m, *drivers, *work, "testdata/conformance/tables/cook"); err != nil {
+		if err := pin(m, *drivers, *work, "testdata/conformance/tables/cook", *strictReasonsPath); err != nil {
 			fatalf("%v", err)
+		}
+	case "strict-reasons":
+		ok, err := strictReasons(os.Stdout, m, *strictReasonsPath, *drivers, *work, *only, *skip, *table)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		if !ok {
+			os.Exit(1)
 		}
 	case "wire-fuzz":
 		if err := wireFuzz(m, wireFuzzOptions{driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed}); err != nil {

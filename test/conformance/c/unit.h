@@ -182,4 +182,33 @@
       schema_conformance_save_##TYPE, schema_conformance_from_json_##TYPE, \
       schema_conformance_to_json_##TYPE, schema_conformance_make_##TYPE, NULL, schema_conformance_cook_measure_##TYPE, schema_conformance_cook_##TYPE, NULL }
 
+/* THE STRICT READ (docs/SPEC-TABLES.md §6.5): the PLAIN load name, whatever
+   SCHEMA_CONFORMANCE_READ names for the other surfaces, and the answer is the
+   refuse_reason it leaves in its report, the one typed reason, OK for a read
+   the strict rule accepts. A fixed-class root reads into a value of its own; a
+   variable root reads into a region its load_measure sizes, freed after. */
+#define SCHEMA_CONFORMANCE_STRICT( TYPE, FN ) \
+    static int schema_conformance_strict_##TYPE( const uint8_t * bytes, int64_t size ) \
+    { \
+        static SCHEMA_CONFORMANCE_Q(FN##_t) value; \
+        SCHEMA_CONFORMANCE_Q(table_report_t) report; \
+        memset( &value, 0, sizeof( value ) ); \
+        SCHEMA_CONFORMANCE_Q(FN##_reset)( &value ); \
+        memset( &report, 0, sizeof( report ) ); \
+        (void) SCHEMA_CONFORMANCE_Q(FN##_load)( &value, bytes, size, &report ); \
+        return report.refuse_reason; \
+    }
+
+#define SCHEMA_CONFORMANCE_GRAPH_STRICT( TYPE, FN ) \
+    static int schema_conformance_strict_##TYPE( const uint8_t * bytes, int64_t size ) \
+    { \
+        SCHEMA_CONFORMANCE_Q(table_report_t) report; int64_t extent=SCHEMA_CONFORMANCE_Q(FN##_load_measure)(bytes,size); uint8_t * region=NULL; \
+        memset(&report,0,sizeof(report)); \
+        if(extent>0) { region=(uint8_t *)malloc((size_t)extent); } \
+        (void) SCHEMA_CONFORMANCE_Q(FN##_load)(region,extent,bytes,size,&report); \
+        free(region); return report.refuse_reason; \
+    }
+
+#define SCHEMA_CONFORMANCE_STRICT_ROW( UNIT, TYPE ) { #UNIT, #TYPE, schema_conformance_strict_##TYPE }
+
 #endif /* SCHEMA_CONFORMANCE_UNIT_H */

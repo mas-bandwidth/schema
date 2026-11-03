@@ -873,6 +873,18 @@ public final class Driver {
         return 0;
     }
 
+    // strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md
+    // §6.5) for every wire a `report` or `framing` line names. The Java runtime
+    // carries no strict read: its variable load is the tolerant read, and its
+    // report has no reason for what the strict rule refuses (clamped,
+    // kind_mismatch, malformed, wire_damaged), so every case is answered
+    // absent rather than spelled from the tolerant read.
+    private static int surfaceStrictReason(String out) throws IOException {
+        for (String[] f : kind("report")) spillAbsent(out, f[1]);
+        for (String[] f : kind("framing")) spillAbsent(out, f[1]);
+        return 0;
+    }
+
     // ---- THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2)
     //
     // cook-reason and block-reason (test/conformance/README.md): each forgery of
@@ -1269,7 +1281,7 @@ public final class Driver {
             System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
-                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n");
+                    + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\nstrict-reason\n");
             return 0;
         }
         if (args.length < 3) {
@@ -1297,6 +1309,7 @@ public final class Driver {
             case "cook-write": return surfaceCookWrite(out);
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
+            case "strict-reason": return surfaceStrictReason(out);
             default: return 2;
         }
     }

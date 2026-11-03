@@ -8,10 +8,13 @@
 --   framing the report line as `report` prints it, then the §16 text of the
 --           value the read left, unless the row says `no-value` or the read
 --           was refused (docs/LAYERS/1-framing.md)
+--   strict-reason  the strict read's one reason (§6.5) for every report and
+--           framing row's wire, as the refusal-names enum spells it, or ok
 --
 -- through the emitted table_load.moo and table_save.moo and the descriptors the
 -- unit's <Base>Table modules register. ctx is the one block.moo documents, with
--- tables(key) added: it requires every <Base>Table module of a unit.
+-- tables(key) added: it requires every <Base>Table module of a unit, and
+-- tableNames(key), which names them.
 
 type Surface = { carried: (any, string) -> boolean, run: () -> () }
 
@@ -116,6 +119,46 @@ return function(ctx: any): { [string]: Surface }
 					text ..= J.toJson(schema.lookup(f[4]), v)
 				end
 				ctx.say(f[2], text)
+			end
+		end,
+	}
+	-- THE STRICT READ'S ONE REASON (docs/SPEC-TABLES.md §6.5) for every report
+	-- and framing row: table_refusal.moo's ReadStrict, its report.reason spelled
+	-- as the bare refusal-names member (a name like `missing_required: <field>`
+	-- answers its name alone), or ok for a read it keeps. T is the <Base>Table
+	-- module carrying the root's fixed form, which a fixed root reads through.
+	local function strictCarried(_: any, key: string): boolean
+		return ctx.module(key, "table_refusal") ~= nil
+	end
+	surfaces["strict-reason"] = {
+		carried = strictCarried,
+		run = function()
+			for _, what in { "report", "framing" } do
+				for _, f in ctx.kind(what) do
+					if not strictCarried(nil, f[3]) then
+						ctx.say(f[2], nil)
+						continue
+					end
+					ctx.tables(f[3])
+					local R: any = ctx.module(f[3], "table_refusal")
+					local T: any = nil
+					for _, name in ctx.tableNames(f[3]) do
+						local m: any = ctx.module(f[3], name)
+						if m ~= nil and m[f[4] .. "Fixed"] ~= nil then
+							T = m
+						end
+					end
+					local report: any = {}
+					local v = R.ReadStrict(T, f[4], ctx.inputs(f[5]), report)
+					local reason: string? = report.reason
+					if reason ~= nil then
+						ctx.say(f[2], (string.match(reason, "^[%w_]+") or reason) .. "\n")
+					elseif v ~= nil then
+						ctx.say(f[2], "ok\n")
+					else
+						ctx.refuse(f[2], "no value and no reason named")
+					end
+				end
 			end
 		end,
 	}

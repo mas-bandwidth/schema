@@ -592,6 +592,8 @@ func main() {
 		run = func(lines []line, out string) error { return surfaceForgeryResult("block", lines, out, true) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
+	case "strict-reason":
+		run = surfaceStrictReason
 	default:
 		os.Exit(2)
 	}

@@ -38,7 +38,7 @@ import .json
 // text form (§16), and the framing vectors (docs/LAYERS/1-framing.md)
 let surfaces = ["wire", "message", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
-    "json-read", "json-write", "json-hostile"]
+    "json-read", "json-write", "json-hostile", "strict-reason"]
 
 let arguments = command_line_arguments()
 let argument_count = length(arguments)
@@ -138,6 +138,24 @@ def surface_framing(text:string):
             assert why == ""
             out += js
         say(f[1], out)
+
+// the STRICT-REASON surface (docs/SPEC-TABLES.md §6.5, §11): the strict
+// read's one typed reason for every wire a report or framing line names, or
+// `ok` for a read the strict rule accepts. load_strict is the runtime's
+// ReadStrict, the record or ONE reason by Go's name; this surface only spells
+// it. An accepted record is released, the owner-side end of its graph.
+def surface_strict_reason(text:string):
+    for(tokenize(text, "\n", " \t\r")) line:
+        let f = words(line)
+        if length(f) >= 5 and (f[0] == "report" or f[0] == "framing") and f[2] == unit_key:
+            let rep = schema_rt.LoadReport {}
+            let rec, why = schema_rt.load_strict(f[3], fixture(f[4]), rep)
+            if rec:
+                schema_rt.release(rec)
+                say(f[1], "ok\n")
+            else:
+                assert why != ""
+                say(f[1], why + "\n")
 
 // block_root is the table a block image of the manifest projects, by the
 // image's name, as every leg's driver names it (test/conformance/js/main.mjs)
@@ -415,6 +433,8 @@ else:
         surface_json_hostile(text)
     elif surface == "block-foreign":
         surface_block(text, true)
+    elif surface == "strict-reason":
+        surface_strict_reason(text)
     else:
         assert surface == "block-dump"
         surface_block_dump(text)
