@@ -129,6 +129,38 @@ func materialise(m *Manifest, work string) error {
 		}
 	}
 
+	// THE GROWN ANNOUNCEMENTS (docs/SPEC-TABLES.md §3, §3.3): each is its
+	// connection's committed announcement with the id table padded
+	if len(m.Grown) > 0 {
+		if err := os.MkdirAll(filepath.Join(fixtures, "announce"), 0o755); err != nil {
+			return err
+		}
+	}
+	for i := range m.Grown {
+		g := &m.Grown[i]
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			return err
+		}
+		c, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(c.Wire)
+		if err != nil {
+			return err
+		}
+		grown, err := GrowIdTable(data, g.Entries, g.Repeat)
+		if err != nil {
+			return fmt.Errorf("announce-grown %s: %w", g.Name, err)
+		}
+		out := filepath.Join(fixtures, "announce", g.Name+".bin")
+		if err := os.WriteFile(out, grown, 0o644); err != nil {
+			return err
+		}
+		g.File = out
+	}
+
 	for i := range m.Forgeries {
 		f := &m.Forgeries[i]
 		src, ok := base[f.Base]
@@ -200,6 +232,21 @@ func deriveManifest(m *Manifest, path string) error {
 	}
 	for _, msg := range m.Messages {
 		fmt.Fprintf(&b, "message %s %s %s %s %s\n", msg.Name, msg.Connection, msg.Root, msg.FileWire, msg.MessageWire)
+	}
+	for _, g := range m.Grown {
+		// A GROWN ANNOUNCEMENT IS AN ORDINARY CONNECTION to a driver, keyed by
+		// the row's own name, and its row an ordinary message on it: whether
+		// the announcement is malformed is the answer, and stays withheld.
+		msg, err := m.LookupMessage(g.Message)
+		if err != nil {
+			return err
+		}
+		c, err := m.LookupConnection(msg.Connection)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", g.Name, c.Unit, c.BuildVersion, g.File)
+		fmt.Fprintf(&b, "message %s %s %s %s %s\n", g.Name, g.Name, msg.Root, msg.FileWire, msg.MessageWire)
 	}
 	for _, rc := range m.Retains {
 		// THE ANSWER IS WITHHELD, as it is everywhere else: a driver is handed
@@ -278,6 +325,9 @@ type expectation struct {
 	// verdict is a port's behaviour before the ruling, and the value that
 	// behaviour leaves is not the standard's.
 	verdictOnly bool
+	// absent is the reason of a NAMED REFUSAL row: the leg writes no bytes
+	// and answers `<case>.absent` holding exactly this text.
+	absent string
 }
 
 // hostileExpectations is the answer each port owes the hostile battery: the
@@ -337,7 +387,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		// no expected bytes, and scoreAnswer holds the leg to the reason.
 		for _, msg := range m.Messages {
 			if msg.Refused() {
-				out = append(out, expectation{name: msg.Name})
+				out = append(out, expectation{name: msg.Name, absent: VariableMessageRefusal})
 				continue
 			}
 			want, err := os.ReadFile(msg.MessageWire)
@@ -345,6 +395,24 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: msg.Name, want: want})
+		}
+		// A GROWN ANNOUNCEMENT (§3, §3.3): one the read accepts announces the
+		// connection's own vocabulary, so the row owes its message golden; a
+		// malformed one sets no vocabulary, and the row owes the named absence.
+		for _, g := range m.Grown {
+			if g.Malformed {
+				out = append(out, expectation{name: g.Name, absent: AnnouncementMalformed})
+				continue
+			}
+			msg, err := m.LookupMessage(g.Message)
+			if err != nil {
+				return nil, err
+			}
+			want, err := os.ReadFile(msg.MessageWire)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, expectation{name: g.Name, want: want})
 		}
 	case "retain":
 		// RETAIN-UNKNOWN's COUNTERS (docs/SPEC-TABLES.md §6.6): the load's two
@@ -700,22 +768,23 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 // Instance for a case that carries no marker.
 func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *result) {
 	answer := filepath.Join(out, e.name)
-	if surface == "message" && e.want == nil {
+	if surface == "message" && e.absent != "" {
 		// THE NAMED REFUSAL ROW (docs/SPEC-TABLES.md §3.3): a message row over
-		// a variable table, which no leg carries, and every leg names why.
+		// a variable table, which no leg carries, or over an announcement the
+		// read refuses as damage, which sets no vocabulary; every leg names why.
 		if _, err := os.Stat(answer); err == nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: a variable table carries no message form, and the leg wrote bytes", e.name))
+			r.failures = append(r.failures, fmt.Sprintf("%s: the row owes the named absence %q, and the leg wrote bytes", e.name, e.absent))
 			r.mark(e.name, outcomeFail)
 			return
 		}
 		reason, err := os.ReadFile(answer + ".absent")
 		if err != nil {
-			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, VariableMessageRefusal))
+			r.failures = append(r.failures, fmt.Sprintf("%s: expected named absence %q, driver wrote nothing", e.name, e.absent))
 			r.mark(e.name, outcomeFail)
 			return
 		}
-		if string(reason) != VariableMessageRefusal {
-			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), VariableMessageRefusal))
+		if string(reason) != e.absent {
+			r.failures = append(r.failures, fmt.Sprintf("%s: absent reason %q, want %q", e.name, string(reason), e.absent))
 			r.mark(e.name, outcomeFail)
 			return
 		}
@@ -767,6 +836,14 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 
 	got, err := os.ReadFile(answer)
 	if err != nil {
+		// A MALFORMED ANNOUNCEMENT IS NOT A MISSING FEATURE: a leg that names
+		// it on a row whose announcement the reference accepts refused input
+		// the rule says is well formed.
+		if reason, rerr := os.ReadFile(answer + ".absent"); surface == "message" && rerr == nil && string(reason) == AnnouncementMalformed {
+			r.failures = append(r.failures, fmt.Sprintf("%s: the leg refused the announcement as malformed, and the row owes its message golden", e.name))
+			r.mark(e.name, outcomeFail)
+			return
+		}
 		if _, absent := os.Stat(answer + ".absent"); absent == nil {
 			// An ordinary per-case absence is a missing feature for this leg.
 			r.missing++

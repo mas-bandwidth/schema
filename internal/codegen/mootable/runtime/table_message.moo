@@ -575,8 +575,16 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	end
 	local start = len - 8 - lo * 8
 	local ids = table.create(lo)
+	local named: { [string]: boolean } = {}
 	for i = 0, lo - 1 do
-		ids[i + 1] = buffer.readstring(data, start + i * 8, 8)
+		local id = buffer.readstring(data, start + i * 8, 8)
+		-- an id table that names one id twice is malformed (§3)
+		if named[id] then
+			report.malformed = true
+			return false
+		end
+		named[id] = true
+		ids[i + 1] = id
 	end
 	-- the body's extent: a terminated body must end exactly at the id table
 	local at = 1

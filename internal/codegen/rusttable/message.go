@@ -262,6 +262,12 @@ fn announce_read_once(
         report.malformed = true;
         return false;
     }
+    // "a table of more than 4096 entries is malformed" (§3, THE DISTINCTNESS
+    // CHECK IS BOUNDED WORK), whatever the buffer holds.
+    if trailer_count > 4096 {
+        report.malformed = true;
+        return false;
+    }
     let end = data.len() - 8 - (trailer_count as usize) * 8;
     // "a table carrying one id twice" is the whole wire malformed (§3.3).
     for i in 0..trailer_count {

@@ -60,6 +60,12 @@ return function(ctx: any): { [string]: Surface }
 				local report: any = {}
 				local vocabulary = MS.NewVocabulary()
 				if not MS.AnnounceRead(vocabulary, ctx.inputs(conn[5]), report) then
+					if report.malformed then
+						-- a malformed announcement sets no vocabulary (§3.3),
+						-- and the row is answered by name
+						ctx.refuse(f[2], "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)")
+						continue
+					end
 					error("driver: " .. f[2] .. ": the announcement was refused: " .. tostring(report.reason), 0)
 				end
 				local count, values = MS.LoadMessages(vocabulary, f[4], ctx.inputs(f[6]), BATCH, report)

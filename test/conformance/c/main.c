@@ -709,6 +709,8 @@ static int surface_message(const char * out)
   announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
   if(!announcement||!message){free(announcement);free(message);return 1;}
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
+  /* an announcement the read refuses as damage sets no vocabulary (§3.3), and the row is answered by name */
+  if(!ok&&report.announce&&report.malformed){free(answer);free(message);free(announcement);if(!spill_absent_reason(out,f->field[1],"malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"))return 1;continue;}
   if(ok)ok=spill(out,f->field[1],answer,(size_t)size);
   free(answer);free(message);free(announcement);
   if(!ok){fprintf(stderr,"message %s failed: malformed=%d refused=%d unknown=%d mismatch=%d\n",f->field[1],report.malformed,report.refused,report.unknown,report.kind_mismatch);return 1;}

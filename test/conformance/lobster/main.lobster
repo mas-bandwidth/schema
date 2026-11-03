@@ -206,7 +206,12 @@ def surface_message(text:string):
                 else:
                     let v = schema_rt.new_vocabulary(schema_rt.message_entries_here())
                     let rep = schema_rt.LoadReport {}
-                    assert schema_rt.announce_read(v, fixture(announcement), rep)
+                    if not schema_rt.announce_read(v, fixture(announcement), rep):
+                        // an announcement the read refuses as damage sets no
+                        // vocabulary (§3.3), and the row is answered by name
+                        assert rep.malformed
+                        print(f[1] + " absent malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)")
+                        continue
                     let recs, count, ok = schema_rt.load_messages_tolerant(f[3], v, fixture(f[5]), rep, schema_rt.message_batch_max)
                     assert ok and count == length(recs)
                     let out, n = schema_rt.save_messages(recs, schema_rt.LoadReport {})

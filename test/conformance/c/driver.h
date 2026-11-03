@@ -31,6 +31,7 @@ typedef struct ConformanceReport
     int unknown, kind_mismatch, clamped, duplicate;
     int malformed, refused, widened, retained, retain_lost;
     int blob_shared; /* §2.5: extra namings of one blob, which every writer refuses */
+    int announce; /* the message surface: the refusal was the announcement's (§3.3) */
 } ConformanceReport;
 
 /* One row per (unit, root) the corpus names. Every row is the SAME six

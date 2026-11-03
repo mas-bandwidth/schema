@@ -857,7 +857,7 @@ function M.announceRead(_, vocab, data, report, maxBytes, maxEntries)
   end
   if #data < 9 then return damage() end
   local count = string.unpack("<I8", data, #data - 7)
-  if count < 0 or count > (#data // 8) then return damage() end
+  if count < 0 or count > (#data // 8) or count > D.ID_TABLE_BOUND then return damage() end
   local span = count * 8 + 8
   if span + 1 > #data then return damage() end
   local first = #data - span + 1

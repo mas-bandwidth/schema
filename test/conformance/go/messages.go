@@ -13,6 +13,8 @@ type messageCodec struct {
 	unit, root  string
 	run         func([]byte, []byte, bool) ([]byte, report, bool)
 	loadMeasure func([]byte) int64
+	// announce reads an announcement alone, into a fresh vocabulary
+	announce func([]byte) (report, bool)
 }
 
 func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V, announceMeasure func() int64, announce func([]byte) int64, announceRead func(*V, []byte, *R) bool, load func([]T, *V, []byte, *R) (int64, bool), measure func([]*T, *R) int64, save func([]*T, []byte, *R) int64, snap func(*R) report) messageCodec {
@@ -22,7 +24,11 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 	for i := range values {
 		pointers[i] = &values[i]
 	}
-	return messageCodec{unit: unit, root: root, run: func(announcement, wire []byte, fuzz bool) ([]byte, report, bool) {
+	return messageCodec{unit: unit, root: root, announce: func(announcement []byte) (report, bool) {
+		var r R
+		ok := announceRead(fresh(), announcement, &r)
+		return snap(&r), ok
+	}, run: func(announcement, wire []byte, fuzz bool) ([]byte, report, bool) {
 		var r R
 		v := own
 		if announcement != nil {
@@ -112,6 +118,14 @@ func surfaceMessage(lines []line, out string) error {
 		}
 		answer, report, ok := codec.run(announcement, wire, false)
 		if !ok {
+			// an announcement the read refuses as damage sets no vocabulary
+			// (docs/SPEC-TABLES.md §3.3), and the row is answered by name
+			if r, read := codec.announce(announcement); !read && r.malformed {
+				if err := spillAbsentReason(out, f[1], "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"); err != nil {
+					return err
+				}
+				continue
+			}
 			return fmt.Errorf("%s: message load/save %+v", f[1], report)
 		}
 		if err := spill(out, f[1], answer); err != nil {

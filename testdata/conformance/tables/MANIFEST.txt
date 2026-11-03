@@ -926,6 +926,18 @@ json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/
 #            message form is fixed tables only (§3.3), and every leg answers it
 #            absent with "variable table: the message form is fixed tables only
 #            (SPEC-TABLES §3.3)".
+#
+#   announce-grown <name> <message> <entries> <distinct|repeat> <answer>
+#            one message row read again over its connection's announcement
+#            with the announcement's id table grown to <entries> entries, the
+#            added ids named by nothing in the body; `repeat` makes the last
+#            entry the first. The harness grows the table when it materialises
+#            the fixtures and hands a driver an ordinary connection and message
+#            row, so the answer is withheld. <answer> is `message`, the row's
+#            own message golden, or `malformed`: the read refuses the
+#            announcement as damage, sets no vocabulary, and every leg answers
+#            the row absent with "malformed announcement: the connection carries
+#            no vocabulary (SPEC-TABLES §3.3)".
 unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
@@ -971,6 +983,19 @@ message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin   
 message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin
 message vocab9_wide vocab9_conn Wide19 testdata/wire/tables/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
 message vocab9_low  vocab9_conn Wide00 testdata/wire/tables/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
+
+# THE ANNOUNCEMENT'S ID TABLE IS A FILE'S (§3.3), so §3's bound is its bound:
+# THE DISTINCTNESS CHECK IS BOUNDED WORK, and a table of more than 4096 entries
+# is malformed whatever the buffer holds, as is one that names an id twice. A
+# table of exactly 4096 distinct entries is accepted and announces the
+# vocabulary the connection's own announcement does. One fixed root on each of
+# two units, a narrow vocabulary and a 9-bit one.
+announce-grown login_full_ids4096         login_full  4096 distinct message
+announce-grown login_full_ids4097         login_full  4097 distinct malformed
+announce-grown login_full_ids4096_repeat  login_full  4096 repeat   malformed
+announce-grown vocab9_wide_ids4096        vocab9_wide 4096 distinct message
+announce-grown vocab9_wide_ids4097        vocab9_wide 4097 distinct malformed
+announce-grown vocab9_wide_ids4096_repeat vocab9_wide 4096 repeat   malformed
 
 # THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
 # bytes and flags fields OFF their declared defaults beside a node holding every

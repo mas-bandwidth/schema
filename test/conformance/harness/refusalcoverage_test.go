@@ -13,15 +13,20 @@ func TestRefusalCoverageMatchesScoredVerdicts(t *testing.T) {
 	for _, tc := range []struct {
 		name, surface, file, body, outcome string
 		damaged                            bool
+		absent                             string
 		answered, named, failed            int
 	}{
-		{"damage refused", "framing", "case", "0,0,0,0,0,true,read\n", outcomePass, true, 1, 0, 0},
-		{"damage accepted", "framing", "case", "0,0,0,0,0,false,read\n", outcomeFail, true, 0, 0, 1},
-		{"damage report invalid", "report", "case", "invalid\n", outcomeFail, true, 0, 0, 1},
-		{"message named refusal", "message", "case.absent", VariableMessageRefusal, outcomeNamed, false, 0, 1, 0},
-		{"message wrong reason", "message", "case.absent", "wrong", outcomeFail, false, 0, 0, 1},
-		{"message writes bytes", "message", "case", "unexpected", outcomeFail, false, 0, 0, 1},
-		{"message no answer", "message", "", "", outcomeFail, false, 0, 0, 1},
+		{"damage refused", "framing", "case", "0,0,0,0,0,true,read\n", outcomePass, true, "", 1, 0, 0},
+		{"damage accepted", "framing", "case", "0,0,0,0,0,false,read\n", outcomeFail, true, "", 0, 0, 1},
+		{"damage report invalid", "report", "case", "invalid\n", outcomeFail, true, "", 0, 0, 1},
+		{"message named refusal", "message", "case.absent", VariableMessageRefusal, outcomeNamed, false, VariableMessageRefusal, 0, 1, 0},
+		{"message wrong reason", "message", "case.absent", "wrong", outcomeFail, false, VariableMessageRefusal, 0, 0, 1},
+		{"message writes bytes", "message", "case", "unexpected", outcomeFail, false, VariableMessageRefusal, 0, 0, 1},
+		{"message no answer", "message", "", "", outcomeFail, false, VariableMessageRefusal, 0, 0, 1},
+		{"announcement malformed refused", "message", "case.absent", AnnouncementMalformed, outcomeNamed, false, AnnouncementMalformed, 0, 1, 0},
+		{"announcement malformed accepted", "message", "case", "bytes", outcomeFail, false, AnnouncementMalformed, 0, 0, 1},
+		{"announcement malformed other reason", "message", "case.absent", VariableMessageRefusal, outcomeFail, false, AnnouncementMalformed, 0, 0, 1},
+		{"announcement well formed refused", "message", "case.absent", AnnouncementMalformed, outcomeFail, false, "", 0, 0, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -31,7 +36,7 @@ func TestRefusalCoverageMatchesScoredVerdicts(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			e := expectation{name: "case", damaged: tc.damaged}
+			e := expectation{name: "case", damaged: tc.damaged, absent: tc.absent}
 			r := &result{total: 1}
 			scoreAnswer("go", tc.surface, dir, e, Instance{}, r)
 			if r.outcome[e.name] != tc.outcome {

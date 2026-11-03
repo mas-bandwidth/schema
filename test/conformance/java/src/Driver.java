@@ -1195,6 +1195,12 @@ public final class Driver {
                 Object report = codec.report();
                 if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
                         || codec.flag(report, "malformed") || codec.flag(report, "refused")) {
+                    // an announcement the read refuses as damage sets no
+                    // vocabulary (§3.3), and the row is answered by name
+                    if (codec.flag(report, "malformed") && !codec.flag(report, "refused")) {
+                        spillAbsentReason(out, f[1], "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)");
+                        continue;
+                    }
                     return failInt(f[1] + ": announceRead refused " + conn[4]);
                 }
                 Object values = codec.newValues(256);

@@ -295,6 +295,12 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
             absent(f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
             continue;
         }
+        if n == -4 {
+            // an announcement the read refuses as damage sets no vocabulary
+            // (§3.3), and the row is answered by name
+            absent(f[1], "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)");
+            continue;
+        }
         if n < 0 {
             write_stderr(str("driver: ", f[1], " does not round-trip (", n, ")\n"));
             exit(1);

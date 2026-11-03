@@ -66,6 +66,7 @@ static partial class Program
         public int Unknown, KindMismatch, Widened, Clamped, Duplicate, BlobShared;
         public bool Refused;
         public bool Malformed;
+        public bool Announce; // the message surface: the refusal was the announcement's (§3.3)
     }
 
     sealed class Codec
@@ -635,6 +636,9 @@ static partial class Program
             if (codec == null) { SpillAbsent(outDir, f[1]); continue; }
             var report = new Report();
             object value = codec.MessageLoad(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[5]), report);
+            // an announcement the read refuses as damage sets no vocabulary (§3.3), and the row is answered by name
+            if (report.Announce && report.Malformed && !report.Refused)
+            { File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"); continue; }
             if (report.Malformed || report.Refused) { Console.Error.WriteLine("message read failed: " + f[1]); return 1; }
             long size = codec.MessageMeasure(value);
             if (size < 0) { return 1; }
@@ -1308,7 +1312,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblr2.TableVocabulary(); var inner = new Tblr2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblr2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblr2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblr2.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblr2.Cfg(); }
                 if (!inner.Refused && !inner.Malformed) { Tblr2.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1325,7 +1329,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblr1.TableVocabulary(); var inner = new Tblr1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblr1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblr1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblr1.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblr1.Cfg(); }
                 if (!inner.Refused && !inner.Malformed) { Tblr1.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1342,7 +1346,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocab9demo.TableVocabulary(); var inner = new Vocab9demo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Vocab9demo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Vocab9demo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Vocab9demo.Wide19[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocab9demo.Wide19(); }
                 if (!inner.Refused && !inner.Malformed) { Vocab9demo.Schema.Wide19LoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1359,7 +1363,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocab9demo.TableVocabulary(); var inner = new Vocab9demo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Vocab9demo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Vocab9demo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Vocab9demo.Wide00[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocab9demo.Wide00(); }
                 if (!inner.Refused && !inner.Malformed) { Vocab9demo.Schema.Wide00LoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1376,7 +1380,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocabdemo.TableVocabulary(); var inner = new Vocabdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Vocabdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Vocabdemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Vocabdemo.Wide09[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocabdemo.Wide09(); }
                 if (!inner.Refused && !inner.Malformed) { Vocabdemo.Schema.Wide09LoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1393,7 +1397,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Vocabdemo.TableVocabulary(); var inner = new Vocabdemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Vocabdemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Vocabdemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Vocabdemo.Wide00[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Vocabdemo.Wide00(); }
                 if (!inner.Refused && !inner.Malformed) { Vocabdemo.Schema.Wide00LoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1410,7 +1414,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Backenddemo.Envelope[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.Envelope(); }
                 if (!inner.Refused && !inner.Malformed) { Backenddemo.Schema.EnvelopeLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1427,7 +1431,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Backenddemo.StorePurchase[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.StorePurchase(); }
                 if (!inner.Refused && !inner.Malformed) { Backenddemo.Schema.StorePurchaseLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1444,7 +1448,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Backenddemo.MatchResult[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.MatchResult(); }
                 if (!inner.Refused && !inner.Malformed) { Backenddemo.Schema.MatchResultLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1461,7 +1465,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Backenddemo.TableVocabulary(); var inner = new Backenddemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Backenddemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Backenddemo.LoginRequest[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Backenddemo.LoginRequest(); }
                 if (!inner.Refused && !inner.Malformed) { Backenddemo.Schema.LoginRequestLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1598,7 +1602,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblw2.TableVocabulary(); var inner = new Tblw2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblw2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblw2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblw2.Ship[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblw2.Ship(); }
                 if (!inner.Refused && !inner.Malformed) { Tblw2.Schema.ShipLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1620,7 +1624,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblw1.TableVocabulary(); var inner = new Tblw1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblw1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblw1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblw1.Vessel[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblw1.Vessel(); }
                 if (!inner.Refused && !inner.Malformed) { Tblw1.Schema.VesselLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1667,7 +1671,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Wide.TableVocabulary(); var inner = new Wide.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Wide.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Wide.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Wide.Stamp[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Wide.Stamp(); }
                 if (!inner.Refused && !inner.Malformed) { Wide.Schema.StampLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1684,7 +1688,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Wide.TableVocabulary(); var inner = new Wide.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Wide.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Wide.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Wide.Caption[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Wide.Caption(); }
                 if (!inner.Refused && !inner.Malformed) { Wide.Schema.CaptionLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1701,7 +1705,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Scalardemo2.TableVocabulary(); var inner = new Scalardemo2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Scalardemo2.SimState[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Scalardemo2.SimState(); }
                 if (!inner.Refused && !inner.Malformed) { Scalardemo2.Schema.SimStateLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1718,7 +1722,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Scalardemo.TableVocabulary(); var inner = new Scalardemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Scalardemo.Pose[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Scalardemo.Pose(); }
                 if (!inner.Refused && !inner.Malformed) { Scalardemo.Schema.PoseLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1735,7 +1739,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Scalardemo.TableVocabulary(); var inner = new Scalardemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Scalardemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Scalardemo.SimState[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Scalardemo.SimState(); }
                 if (!inner.Refused && !inner.Malformed) { Scalardemo.Schema.SimStateLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1752,7 +1756,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.User[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.User(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.UserLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1769,7 +1773,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.Script[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Script(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.ScriptLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1786,7 +1790,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.Selection[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Selection(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.SelectionLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1803,7 +1807,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.InsertText[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.InsertText(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.InsertTextLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1820,7 +1824,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.RemoveText[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.RemoveText(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.RemoveTextLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1837,7 +1841,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.Edit[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Edit(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.EditLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1854,7 +1858,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.OpenDocument[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.OpenDocument(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.OpenDocumentLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1871,7 +1875,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.SaveDocument[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.SaveDocument(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.SaveDocumentLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1888,7 +1892,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.Transaction[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Transaction(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.TransactionLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1905,7 +1909,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.ToolMessage[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.ToolMessage(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.ToolMessageLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1922,7 +1926,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.Cursor[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Cursor(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.CursorLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1939,7 +1943,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Messagedemo.TableVocabulary(); var inner = new Messagedemo.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Messagedemo.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Messagedemo.Ping[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Messagedemo.Ping(); }
                 if (!inner.Refused && !inner.Malformed) { Messagedemo.Schema.PingLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1956,7 +1960,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm1.Open[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Open(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm1.Schema.OpenLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1973,7 +1977,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm1.Save[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Save(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm1.Schema.SaveLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -1990,7 +1994,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm1.Quit[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Quit(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm1.Schema.QuitLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2007,7 +2011,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm1.TableVocabulary(); var inner = new Tblm1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm1.Msg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm1.Msg(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm1.Schema.MsgLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2024,7 +2028,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm2.Open[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Open(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm2.Schema.OpenLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2041,7 +2045,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm2.Close[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Close(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm2.Schema.CloseLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2058,7 +2062,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm2.Quit[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Quit(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm2.Schema.QuitLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2075,7 +2079,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblm2.TableVocabulary(); var inner = new Tblm2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblm2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblm2.Msg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblm2.Msg(); }
                 if (!inner.Refused && !inner.Malformed) { Tblm2.Schema.MsgLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2092,7 +2096,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla1.TableVocabulary(); var inner = new Tbla1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tbla1.Body[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla1.Body(); }
                 if (!inner.Refused && !inner.Malformed) { Tbla1.Schema.BodyLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2109,7 +2113,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla1.TableVocabulary(); var inner = new Tbla1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tbla1.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla1.Root(); }
                 if (!inner.Refused && !inner.Malformed) { Tbla1.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2126,7 +2130,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla2.TableVocabulary(); var inner = new Tbla2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tbla2.Body[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla2.Body(); }
                 if (!inner.Refused && !inner.Malformed) { Tbla2.Schema.BodyLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2143,7 +2147,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tbla2.TableVocabulary(); var inner = new Tbla2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tbla2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tbla2.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tbla2.Root(); }
                 if (!inner.Refused && !inner.Malformed) { Tbla2.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2160,7 +2164,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblk1.TableVocabulary(); var inner = new Tblk1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblk1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblk1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblk1.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblk1.Root(); }
                 if (!inner.Refused && !inner.Malformed) { Tblk1.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2177,7 +2181,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblk2.TableVocabulary(); var inner = new Tblk2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblk2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblk2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblk2.Root[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblk2.Root(); }
                 if (!inner.Refused && !inner.Malformed) { Tblk2.Schema.RootLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2194,7 +2198,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblv1.TableVocabulary(); var inner = new Tblv1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblv1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblv1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblv1.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblv1.Cfg(); }
                 if (!inner.Refused && !inner.Malformed) { Tblv1.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2211,7 +2215,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblv2.TableVocabulary(); var inner = new Tblv2.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblv2.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblv2.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblv2.Cfg[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblv2.Cfg(); }
                 if (!inner.Refused && !inner.Malformed) { Tblv2.Schema.CfgLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2228,7 +2232,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblp1.TableVocabulary(); var inner = new Tblp1.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblp1.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblp1.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblp1.Chain[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblp1.Chain(); }
                 if (!inner.Refused && !inner.Malformed) { Tblp1.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
@@ -2245,7 +2249,7 @@ static partial class Program
             c.MessageLoad = (announcement, bytes, report) =>
             {
                 var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblp3.TableVocabulary(); var inner = new Tblp3.TableReport();
-                if (!ReferenceEquals(announcement, c.Announcement)) { Tblp3.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblp3.Schema.AnnounceRead(vocabulary, announcement, inner); report.Announce = inner.Refused || inner.Malformed; }
                 var values = new Tblp3.Chain[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblp3.Chain(); }
                 if (!inner.Refused && !inner.Malformed) { Tblp3.Schema.ChainLoadMessages(values, bytes, vocabulary, inner, out _); }
                 Fill(report, Copy(inner)); return values[0];
