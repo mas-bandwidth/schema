@@ -81,6 +81,7 @@ class TableDescriptor:
     table:bool
     fixed:bool
     variable:bool
+    integrity:bool = false
     place_tables:[string]
     place_str:bool
     place_bytes:bool
@@ -135,3 +136,26 @@ def registered_tables() -> [TableDescriptor]:
 // registered_unions is the union descriptors registered so far.
 def registered_unions() -> [UnionDescriptor]:
     return union_registry
+
+// CRC-32C covers the complete file before its root-only trailer (§2.14).
+// Keep it independent of the record walk so a bad checksum decodes nothing.
+def wire_crc32c(data:string) -> int:
+    var crc = 0xffffffff
+    for(length(data)) i:
+        crc = (crc ^ read_uint8_le(data, i)) & 0xffffffff
+        for(8):
+            let mask = -(crc & 1)
+            crc = (shr(crc, 1) ^ (0x82f63b78 & mask)) & 0xffffffff
+    return (crc ^ 0xffffffff) & 0xffffffff
+
+// Called after the form-byte check, before resolving ids or reading fields.
+def wire_integrity_body(d:TableDescriptor, data:string) -> string, bool:
+    if not d.integrity:
+        return data, true
+    if length(data) < 5:
+        return "", false
+    let n = length(data) - 4
+    let body = substring(data, 0, n)
+    if read_uint32_le(data, n) != wire_crc32c(body):
+        return "", false
+    return body, true

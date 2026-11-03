@@ -185,11 +185,14 @@ def region_size(st:LoadState, d:TableDescriptor, lo:int, hi:int) -> int, bool:
 def load_measure(root:string, data:string) -> int, bool, bool:
     if length(data) == 0 or data[0] != 1:
         return 0, false, false
-    let ids, first, ok = trailer(data)
+    let d = table_of(root)
+    let wire, intact = wire_integrity_body(d, data)
+    if not intact:
+        return -1, false, true
+    let ids, first, ok = trailer(wire)
     if not ok:
         return 0, false, false
-    let d = table_of(root)
-    let st = LoadState { data: data, ids: ids, report: LoadReport {}, variable: false, good: false, root: nil, nodes: [], named: [], count_refused: false }
+    let st = LoadState { data: wire, ids: ids, report: LoadReport {}, variable: false, good: false, root: nil, nodes: [], named: [], count_refused: false }
     var total, rok = region_size(st, d, 1, first)
     if not rok:
         return -1, true, true
