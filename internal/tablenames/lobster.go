@@ -18,6 +18,9 @@ import "sort"
 // module's FILE name, because a Lobster import names a file beside the module
 // (a schema file named for a runtime module is refused in every unit, since
 // table-free units also emit reflection: TestLobsterRuntimeFileNamesAreClaimed).
+// Package names that match runtime bindings are additionally refused by
+// lobstertable/runtime_package_names.go, which derives its inventory from
+// embedded sources rather than this namespace-level list.
 
 // lobsterRuntimeNames is every name the Lobster table runtime defines at
 // namespace scope (a def, a class, a let or a var at column zero), by the

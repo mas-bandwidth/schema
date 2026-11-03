@@ -130,7 +130,12 @@ reserved in table-free units as well as table units. A schema basename that
 collides with `<package>View.lobster` is refused before output is written.
 Generated `UnitView`, `<Name>Descriptor`, and enum-keyed `Slot`/`At`/`Each`
 accessor names are also claimed before emission; conflicting declarations
-or fields must be renamed.
+or fields must be renamed. Package names matching a binding in the embedded
+packet or table runtime are refused conservatively: Lobster can interpret a
+local's member access as a package-qualified name. The binding scan includes
+parameters, locals and callback variables, and ignores comments, literal
+contents and plain class fields. `TestLobsterUnitViewRuntimePackages` checks
+named refusals and a renamed package under the native compiler.
 `TestLobsterUnitViewIncludesUnreachedFiles` checks table-free and mixed units,
 all six sets, and a missing constant-module import as its negative control.
 
