@@ -345,7 +345,7 @@ recursive fn edges_arm(c: SaveCtx&, s: i64, name: const u8[:]) {
     let tag = c.vals[s].bits.lo as! i64;
     if c.vals[s].state != ValPresent || tag == 0 { return; }
     let u = save_union_index(c, name);
-    if u < 0 || tag > c.unit.unions[u].arms.len { return; }
+    if u < 0 || tag < 0 || tag > c.unit.unions[u].arms.len { return; }
     let a = c.unit.unions[u].arms[tag - 1];
     let p = c.vals[s].first;
     if p < 0 { return; }

@@ -324,6 +324,7 @@ fn em_copy(c: SaveCtx&, k: Cap&, kind: u8) {
             shift += 7;
             if shift > 63 { k.bad = true; return; }
         }
+        if x > (k.end - k.off - used) as! u64 { k.bad = true; return; }
         n = used + (x as! i64);
     }
     if k.end - k.off < n { k.bad = true; return; }
