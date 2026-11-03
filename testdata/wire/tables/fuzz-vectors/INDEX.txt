@@ -290,3 +290,6 @@ bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-ve
 stream_chain_link_cycle streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_chain_link_cycle.bin
 blob_catalog_cycle blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_catalog_cycle.bin
 graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin
+
+# A framed node record with an impossible collection count refuses region sizing.
+node_record_list_count_refusal listdemo Sheet testdata/wire/tables/fuzz-vectors/node_record_list_count_refusal.bin

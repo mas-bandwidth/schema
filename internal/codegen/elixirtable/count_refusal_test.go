@@ -375,7 +375,7 @@ IO.puts("NODE_RECORD_LIST_COUNT_OK")
 		badFiles[k] = v
 	}
 	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
-	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
-		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
+	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil || !strings.Contains(badOut, "expected -1 for mutant load_measure, got 136") {
+		t.Fatalf("negative control did not expose the swallowed node extent: %v\n%s", badErr, badOut)
 	}
 }
