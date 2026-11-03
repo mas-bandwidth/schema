@@ -1975,8 +1975,10 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
 static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
 #ifdef SCHEMA_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
-static SCHEMA_UNUSED int schema_table_json_read_unbounded_text_( TableJsonIn * in, void * slot );
 #endif
+#endif
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_table_json_read_unbounded_text_( TableJsonIn * in, void * slot );
 #endif
 static SCHEMA_UNUSED int schema_table_json_timestamp_digit_( char c )
 {
