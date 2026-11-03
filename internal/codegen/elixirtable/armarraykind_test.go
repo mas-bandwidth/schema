@@ -113,7 +113,7 @@ end
 
 func TestPinnedUnionArrayElementKindElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir permanent union-array mismatched element kind replay")
-	u := loadUnit(t, "../../../tables/messages/Messages.schema")
+	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/union_array_element_kind.bin")
 	if e != nil {

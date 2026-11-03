@@ -105,7 +105,7 @@ func TestPinnedKeyedElementWideningElixir(t *testing.T) {
 	if e != nil || len(paths) == 0 {
 		t.Fatalf("examples unit: %v", e)
 	}
-	u := loadUnit(t, paths...)
+	u := loadVariableRetainFixture(t, paths...)
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/keyed_element_widen.bin")
 	if e != nil {

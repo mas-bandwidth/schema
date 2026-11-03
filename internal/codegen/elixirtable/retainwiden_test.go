@@ -119,7 +119,7 @@ end
 
 func TestPinnedUnionArmWideningElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir known-arm widening replays its permanent plain and retaining input")
-	u := loadUnit(t, "../../../tables/messages/Messages.schema")
+	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/retain_union_arm_widen.bin")
 	if e != nil {

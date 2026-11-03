@@ -92,7 +92,7 @@ IO.puts("RETAINED_CONTAINER_ARM_OK")
 
 func TestPinnedNestedUnionRetainElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir nested union retention replays the permanent corpus vector")
-	u := loadUnit(t, "../../../tables/messages/Messages.schema")
+	u := loadVariableRetainFixture(t, "../../../tables/messages/Messages.schema")
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/retain_nested_union_arm.bin")
 	if e != nil {
