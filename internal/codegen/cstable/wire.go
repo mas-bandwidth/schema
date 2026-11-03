@@ -896,8 +896,8 @@ public static partial class TableWire
         if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
         // a ranged integer or a bits(N) value outside its field is caller
         // error on the write side: checked in a debug build, gone in release
-        System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i)), "write refused: " + f.Name + " out of range");
-        System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(f.GetWide(value, i)), "write refused: " + f.Name + " out of range");
+        System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i)), "write refused: an integer outside its declared range");
+        System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(f.GetWide(value, i)), "write refused: an integer outside its declared range");
         // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
         // §3.3): collect precedes measure and the first output byte, so Measure
         // and Save both answer -1.
