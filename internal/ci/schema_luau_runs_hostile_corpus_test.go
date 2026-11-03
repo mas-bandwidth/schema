@@ -242,6 +242,8 @@ local function nn(x: any): string
 	-- field; the engine has no refusal constant for them, so they are damaged
 	local name = string.match(tostring(x), "^([%w_]+):")
 	if name == "string_not_utf8" or name == "string_lone_surrogate" or name == "text_holds_zero" then return "damaged" end
+	-- the corpus names a count past the int32 storage cap count_refusal
+	if x == "count_over_extent_cap" then return "count_refusal" end
 	return tostring(x)
 end
 local function hexstr(buf: buffer): string
