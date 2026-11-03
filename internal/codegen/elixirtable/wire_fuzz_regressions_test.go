@@ -3,6 +3,7 @@ package elixirtable
 import (
 	"encoding/hex"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,9 +186,7 @@ IO.puts("WIRE_FUZZ_REGRESSIONS_OK")
 		t.Fatal("negative control target not found in generated Table.ex")
 	}
 	badFiles := make(map[string][]byte, len(files))
-	for k, v := range files {
-		badFiles[k] = v
-	}
+	maps.Copy(badFiles, files)
 	badFiles["Table.ex"] = []byte(strings.Replace(tableEx, target, sabotage, 1))
 	if badOut, badErr := runArmProbe(t, elixirBinary(t), badFiles, probe); badErr == nil {
 		t.Fatalf("negative control passed unexpectedly:\n%s", badOut)
