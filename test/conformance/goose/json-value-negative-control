@@ -16,6 +16,11 @@
 #                                       total (§2.13), over featurewitnesses:
 #                                       json-hostile red; wire, json-read and
 #                                       json-write green
+#   json-value-negative-control count   an element past [..N] goes uncounted
+#                                       once the total is reached (§2.13),
+#                                       over featurewitnesses: json-hostile
+#                                       red (text-total-and-count); wire,
+#                                       json-read and json-write green
 set -eu
 mode=${1:-}
 root=$(pwd)
@@ -42,8 +47,15 @@ total)
 	green="wire json-read json-write"
 	unit=featurewitnesses
 	;;
+count)
+	from='            if seen > bound { c.jr.rep.clamped += 1; }'
+	to='            if seen < 0 { c.jr.rep.clamped += 1; }'
+	want="json-hostile "
+	green="wire json-read json-write"
+	unit=featurewitnesses
+	;;
 *)
-	echo "usage: json-value-negative-control label|share|total" >&2
+	echo "usage: json-value-negative-control label|share|total|count" >&2
 	exit 2
 	;;
 esac
