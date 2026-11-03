@@ -199,7 +199,6 @@ func hostileProbe(cases []hostileCase, mods []string, flags map[string][]string)
 local J = require("./schema_json")
 local L = require("./schema_load")
 local V = require("./schema_save")
-local R = require("./schema_refusal")
 local M = require("./schema_message")
 local S = require("./schema_tables")
 -- The text carrier has already passed the strict text read; the wire round

@@ -13,9 +13,14 @@
 --
 -- THE REPORT (docs/SPEC-TABLES.md §4): the six counters and the verdict. The
 -- caller owns it; the codec never makes one.
+--
+-- THE STRICT READ (docs/SPEC-TABLES.md §6.5) lives here too, as L.ReadStrict,
+-- the runtime's one strict read: the plain L.load, LoadText and every caller
+-- reach it, and a form-3 file goes from it to schema_fixed.luau's reader.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
 local S = require("./schema_tables")
+local F = require("./schema_fixed")
 
 local L = {}
 
@@ -2176,25 +2181,70 @@ local function reset(report: any)
 end
 
 
--- THE VARIABLE FORM'S STRICT READ (docs/SPEC-TABLES.md §6.5): the one answer
--- for form 1, over the tolerant walk above. It resets the caller's report,
--- applies the file's own framing (integrity, the id table and the root body's
--- terminator) and then the refusing counters in TableReport.Err()'s order, so a
--- wire always answers one name. A form byte it does not read is unknown_form
--- (§6.5, strict error identity), and damage anywhere, framing or body, is
--- wire_damaged. R.ReadStrict's fixed-form dispatch lives in
--- schema_refusal.luau; this is the half a form-1 file reaches, including a declared
--- fixed root handed its form-1 wire.
-function L.ReadStrict(root: string, bytes: buffer, report: any): any
+-- the fixed reader (docs/SPEC-TABLES.md §3.4): one record, through the
+-- emitted layout T declares for root, its own refusals by name
+local function readFixed(T: any, root: string, bytes: buffer, report: any): any
+	local d = T[root .. "Descriptor"]
+	local fixed = {
+		hash = T[root .. "FixedHash"], recordBytes = T[root .. "FixedRecordBytes"], layout = T[root .. "FixedLayout"],
+		lineage = T[root .. "FixedLineage"], floor = T[root .. "FixedFloor"],
+	}
+	local fx: any = {}
+	local out = F.read(d, fixed, bytes, fx)
+	if out == nil then
+		report.reason = fx.reason
+		-- non_finite_float names its field (docs/SPEC-TABLES.md §3.3)
+		if fx.field ~= nil then report.field = fx.field end
+		-- truncated and reserved_not_zero keep report.malformed set beside
+		-- the name, as Go's fixed load keeps Malformed (§5.3)
+		if fx.malformed == true then report.malformed = true end
+		return nil
+	end
+	if #out ~= 1 then
+		report.malformed = true
+		report.reason = "wire_damaged"
+		return nil
+	end
+	return out[1]
+end
+
+-- THE STRICT READ (docs/SPEC-TABLES.md §6.5), the runtime's one:
+-- L.ReadStrict(root, bytes, report, T?) answers the root value or nil, with
+-- report.reason the name of the one refusal (§6.5's vocabulary, the same
+-- spellings in every port) and report.field the first field the walk saw move
+-- that counter (nil for a form byte, a trailer, or damage no field holds). It
+-- resets the caller's report first.
+--
+-- THE FORM BYTE is answered before anything behind it, so a one-byte file
+-- names its form, and a byte the read does not carry moves no counter (§3).
+-- Form 1 reads as the variable form at every root, a declared-fixed root
+-- included. Form 3 goes to the fixed reader when root is declared fixed and T,
+-- the <Base>Table module that declares it, carries its layout; without T, or
+-- at a variable root, it is unknown_form. Every other byte is unknown_form
+-- (§6.5, strict error identity: the report's form names fold into it).
+--
+-- FORM 1 then applies the file's own framing (integrity, the id table and the
+-- root body's terminator) and the refusing counters in TableReport.Err()'s
+-- order, so a wire always answers one name: damage anywhere, framing or body,
+-- is wire_damaged (§4, §6.5).
+function L.ReadStrict(root: string, bytes: buffer?, report: any?, T: any?): any
 	local rep: any = report or {}
 	reset(rep)
-	if bytes == nil or buffer.len(bytes) < 1 then
+	if bytes == nil or buffer.len(bytes :: buffer) < 1 then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
 		return nil
 	end
 	local b = bytes :: buffer
 	local form = buffer.readu8(b, 0)
+	if form == 3 then
+		local fd = S.lookup(root)
+		if fd.fixed and T ~= nil and T[root .. "FixedLayout"] ~= nil then
+			return readFixed(T, root, b, rep)
+		end
+		rep.reason = "unknown_form"
+		return nil
+	end
 	if form ~= 1 then rep.reason = "unknown_form"; return nil end
 	local d = S.lookup(root)
 	if d.integrity ~= nil and d.integrity ~= "" then
@@ -2244,21 +2294,39 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	return v
 end
 
--- resetReport is the report at rest, shared with schema_refusal.luau's fixed path.
+-- resetReport is the report at rest (§4).
 function L.resetReport(report: any)
 	reset(report)
 end
+
+-- the names L.ReadStrict answers, for a caller that wants the spelling rather
+-- than the reason string (docs/SPEC-TABLES.md §11, §6.5)
+L.ReadStrictNames = table.freeze({
+	unknown_form = true,
+	integrity_mismatch = true, wire_damaged = true,
+	missing_required = true, clamped = true, kind_mismatch = true, non_finite_float = true, blob_shared = true,
+	-- the storage cap refusal (§2.9): a `[]` or map count past the int32
+	-- storage cap
+	count_over_extent_cap = true,
+	-- the fixed reader's own, answered through schema_fixed.luau for a form-3
+	-- file (§3.4, §6.5): Go's names, every framing-damage return included, and
+	-- the form names its own registry spells
+	message_form_as_file = true, newer_form = true, previous_form = true,
+	layout_malformed = true, layout_record_too_large = true, layout_unknown = true, layout_unsupported = true,
+	layout_kind_invalid = true,
+	plan_too_large = true, count_over_bound = true,
+	truncated = true, reserved_not_zero = true, no_layout = true,
+	length_over_bound = true, text_ill_formed = true,
+})
 
 -- THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): every read
 -- entry point reached by the plain name refuses what the strict read refuses
 -- and hands back no recovered value, with the caller's report overwritten by
 -- this read's counters and report.reason the one name the strict read answers.
--- The strict check lives HERE, beside the walk it judges, rather than calling
--- schema_refusal.luau: the pinned Luau refuses a require cycle at load time, and
--- schema_load.luau -> schema_refusal.luau -> schema_load.luau is exactly one. schema_refusal.luau's
--- ReadStrict still owns the fixed-form dispatch and delegates form 1 here.
-function L.load(root: string, bytes: buffer, report: any): any
-	return L.ReadStrict(root, bytes, report)
+-- It is L.ReadStrict, the one strict read; T, the declaring <Base>Table
+-- module, lets a form-3 file reach its fixed reader.
+function L.load(root: string, bytes: buffer, report: any, T: any?): any
+	return L.ReadStrict(root, bytes, report, T)
 end
 
 return table.freeze(L)

@@ -28,7 +28,7 @@ const countCapSchema = "package probe\n table Child { values []int32 }\n table R
 const countCapProbe = `local inputs = require("./inputs")
 local T = require("./ProbeTable")
 local load = require("./schema_load")
-local R = require("./schema_refusal")
+local R = require("./schema_load")
 local Ret = require("./schema_retain")
 
 local function report(): any
@@ -37,7 +37,7 @@ end
 local paths = {
 	tolerant = function(b, rep) return load.loadTolerant("Root", b, rep) end,
 	load = function(b, rep) return load.load("Root", b, rep) end,
-	strict = function(b, rep) return R.ReadStrict(T, "Root", b, rep) end,
+	strict = function(b, rep) return R.ReadStrict("Root", b, rep, T) end,
 	retain = function(b, rep) return (Ret.LoadRetain("Root", b, rep)) end,
 	retainTolerant = function(b, rep) return (Ret.LoadRetainTolerant("Root", b, rep)) end,
 }

@@ -126,13 +126,13 @@ func blobSharedWire(titleText string) []byte {
 // blobProbeMain is the Luau probe: it loads the shared wire, the
 // two-distinct-blobs wire and the clamped wire through the emitted
 // schema_load.luau, prints the reports' blobShared (and clamped) and the two
-// buffers' identity and bytes, asks schema_refusal.luau's ReadStrict for its name
+// buffers' identity and bytes, asks schema_load.luau's ReadStrict for its name
 // and witness, and saves the shared and distinct values through schema_save.luau
 // (docs/SPEC-TABLES.md §2.5, §6.5).
 func blobProbeMain(g *generatedUnit) string {
 	var b strings.Builder
 	b.WriteString("local inputs = require(\"./inputs\")\n")
-	b.WriteString("local L = require(\"./schema_load\")\nlocal S = require(\"./schema_save\")\nlocal R = require(\"./schema_refusal\")\nlocal St = require(\"./schema_tables\")\n")
+	b.WriteString("local L = require(\"./schema_load\")\nlocal S = require(\"./schema_save\")\nlocal R = require(\"./schema_load\")\nlocal St = require(\"./schema_tables\")\n")
 	var mods []string
 	for name := range g.files {
 		if strings.HasSuffix(name, "Table.luau") {
@@ -161,7 +161,7 @@ local rep = fresh()
 local v = L.loadTolerant("Probe", inputs.shared, rep)
 print("shared|" .. tostring(rep.blobShared) .. "|" .. tostring(v.Note == v.Note2) .. "|" .. text(v.Note) .. "|" .. text(v.Note2))
 local strict = fresh()
-local sv = R.ReadStrict(ProbeTable, "Probe", inputs.shared, strict)
+local sv = R.ReadStrict("Probe", inputs.shared, strict, ProbeTable)
 print("strict|" .. tostring(strict.reason) .. "|" .. tostring(strict.field) .. "|" .. tostring(sv == nil))
 local sharedOut, why = S.save(d, v)
 print("sharedsave|" .. tostring(sharedOut == nil) .. "|" .. tostring(why and why.name) .. "|" .. tostring(why and why.field))
@@ -175,7 +175,7 @@ local rep3 = fresh()
 local v3 = L.loadTolerant("Probe", inputs.clamped, rep3)
 print("clampedreport|" .. tostring(rep3.blobShared) .. "|" .. tostring(rep3.clamped) .. "|" .. text(v3.Title))
 local strict3 = fresh()
-local sv3 = R.ReadStrict(ProbeTable, "Probe", inputs.clamped, strict3)
+local sv3 = R.ReadStrict("Probe", inputs.clamped, strict3, ProbeTable)
 print("clampedstrict|" .. tostring(strict3.reason) .. "|" .. tostring(strict3.field) .. "|" .. tostring(sv3 == nil))
 `)
 	return b.String()

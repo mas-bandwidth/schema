@@ -105,7 +105,7 @@ local T = require("./FFTable")
 local St = require("./schema_tables")
 local load = require("./schema_load")
 local save = require("./schema_save")
-local R = require("./schema_refusal")
+local R = require("./schema_load")
 local Ret = require("./schema_retain")
 local M = require("./schema_message")
 local F = require("./schema_fixed")
@@ -159,7 +159,7 @@ for _, w in { "varA", "varB", "varXs", "varYs" } do
 	local v = load.loadTolerant("Var", inputs[w], r)
 	row("var/read/" .. w, if v == nil then tostring(r.reason) else "loaded")
 	local r2: any = {}
-	local s = R.ReadStrict(nil, "Var", inputs[w], r2)
+	local s = R.ReadStrict("Var", inputs[w], r2, nil)
 	row("var/strict/" .. w, if s == nil then tostring(r2.reason) .. " " .. tostring(r2.field) else "loaded")
 end
 do

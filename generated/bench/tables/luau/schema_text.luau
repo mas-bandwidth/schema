@@ -7,7 +7,7 @@
 -- refuses keeps the binary reader's own name (a form this build does not
 -- carry, wire_damaged, truncated, or the report's reason).
 --
--- It is a WRAPPER over schema_save.luau and schema_refusal.luau and edits nothing in them:
+-- It is a WRAPPER over schema_save.luau and schema_load.luau and edits nothing in them:
 -- SaveText is the base64 of Save's bytes, and LoadText is ReadStrict (§6.5)
 -- over the decoded wire, so a tolerant load's recovered value never comes
 -- back with a nil verdict.
@@ -16,7 +16,6 @@
 local S = require("./schema_tables")
 local Save = require("./schema_save")
 local Load = require("./schema_load")
-local Refusal = require("./schema_refusal")
 
 local T = {}
 
@@ -25,7 +24,7 @@ local ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 local VALUE: { [string]: number } = {}
 for i = 1, #ALPHABET do VALUE[string.sub(ALPHABET, i, i)] = i - 1 end
 
--- the report at rest, as schema_refusal.luau resets it (§4)
+-- the report at rest, as schema_load.luau resets it (§4)
 local function reset(report: any)
 	report.malformed = false
 	report.refused = 0
@@ -149,11 +148,12 @@ end
 -- THE FIRST BYTE: the form-1 machinery a fixed table carries until form 3
 -- lands), exactly as Go's <Name>LoadText reads it through <Name>Load, so this
 -- path names form 1 and not the fixed form's previous_form. Every refusing
--- counter is TableReport.Err's, in its order, and damage the framing walk
--- refuses itself is wire_damaged.
+-- counter is TableReport.Err's, in its order; damage, framing or body, is
+-- wire_damaged, and a form byte the read does not carry is unknown_form (§6.5,
+-- strict error identity).
 local REFUSING = { "malformed", "clamped", "kindMismatch" }
 local NAMES: { [string]: string } = {
-	malformed = "malformed",
+	malformed = "wire_damaged",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
 }
@@ -166,8 +166,7 @@ local function strict_variable(root: string, wire: buffer, rep: any): any
 		return nil
 	end
 	local form = buffer.readu8(wire, 0)
-	if form == 2 then rep.reason = "message_form_as_file"; return nil end
-	if form ~= 1 then rep.reason = "newer_form"; return nil end
+	if form ~= 1 then rep.reason = "unknown_form"; return nil end
 	local v = Load.load(root, wire, rep)
 	if v == nil then
 		if rep.reason == nil then rep.reason = "wire_damaged" end
@@ -201,7 +200,7 @@ function T.LoadText(module: any, root: string, text: string, report: any?): any
 	if d.fixed then
 		return strict_variable(root, wire, rep)
 	end
-	return Refusal.ReadStrict(module, root, wire, rep)
+	return Load.ReadStrict(root, wire, rep, module)
 end
 
 return table.freeze(T)

@@ -92,7 +92,7 @@ table Plain
 	wantPlain := referenceSave("Plain", false)
 
 	main := `local save = require("./schema_save")
-local refusal = require("./schema_refusal")
+local refusal = require("./schema_load")
 local St = require("./schema_tables")
 local T = require("./SealTable")
 
@@ -112,7 +112,7 @@ local function probe(root)
 	local m = save.measure(d, v)
 	assert(out ~= nil and m ~= nil, root .. ": save or measure returned nil")
 	local rep = {}
-	local back = refusal.ReadStrict(T, root, out, rep)
+	local back = refusal.ReadStrict(root, out, rep, T)
 	local verdict = if back ~= nil then "ok" else tostring(rep.reason)
 	local parts = table.create(buffer.len(out))
 	for i = 0, buffer.len(out) - 1 do

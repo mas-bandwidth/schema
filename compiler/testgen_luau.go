@@ -287,7 +287,6 @@ func tgLuauFile(u *ir.Unit, base string, roots []tgLuauRoot) []byte {
 	b.WriteString("local load = require(\"./schema_load\")\n")
 	b.WriteString("local json = require(\"./schema_json\")\n")
 	b.WriteString("local text = require(\"./schema_text\")\n")
-	b.WriteString("local refusal = require(\"./schema_refusal\")\n")
 	b.WriteString("local fixed = require(\"./schema_fixed\")\n")
 	b.WriteString("local St = require(\"./schema_tables\")\n")
 	for _, f := range u.Files {
@@ -452,7 +451,7 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 		local cuts = { string.sub(wireText, 1, 1), string.sub(wireText, 1, #wireText - 1) }
 		for i, cut in cuts do
 			local rep = fresh()
-			local got = refusal.ReadStrict(T, root, buffer.fromstring(cut), rep)
+			local got = load.ReadStrict(root, buffer.fromstring(cut), rep, T)
 			local want = if fixedData ~= nil then "truncated" elseif d.fixed then "previous_form" else "wire_damaged"
 			if got ~= nil or rep.reason ~= want then
 				error(root .. ": truncated wire reason=" .. tostring(rep.reason) .. ", want " .. want, 0)
@@ -462,7 +461,7 @@ local function checkRoot(root: string, samples: { { name: string, text: string }
 			local flipped = buffer.fromstring(wireText)
 			buffer.writeu8(flipped, 0, form)
 			local rep = fresh()
-			local got = refusal.ReadStrict(T, root, flipped, rep)
+			local got = load.ReadStrict(root, flipped, rep, T)
 			local want = "newer_form"
 			if form == 2 then want = "message_form_as_file" end
 			if got ~= nil or rep.reason ~= want then

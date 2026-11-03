@@ -7,7 +7,7 @@
 -- refuses keeps the binary reader's own name (a form this build does not
 -- carry, wire_damaged, truncated, or the report's reason).
 --
--- It is a WRAPPER over schema_save.luau and schema_refusal.luau and edits nothing in them:
+-- It is a WRAPPER over schema_save.luau and schema_load.luau and edits nothing in them:
 -- SaveText is the base64 of Save's bytes, and LoadText is ReadStrict (§6.5)
 -- over the decoded wire, so a tolerant load's recovered value never comes
 -- back with a nil verdict.
@@ -16,7 +16,6 @@
 local S = require("./schema_tables")
 local Save = require("./schema_save")
 local Load = require("./schema_load")
-local Refusal = require("./schema_refusal")
 
 local T = {}
 
@@ -25,7 +24,7 @@ local ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 local VALUE: { [string]: number } = {}
 for i = 1, #ALPHABET do VALUE[string.sub(ALPHABET, i, i)] = i - 1 end
 
--- the report at rest, as schema_refusal.luau resets it (§4)
+-- the report at rest, as schema_load.luau resets it (§4)
 local function reset(report: any)
 	report.malformed = false
 	report.refused = 0
@@ -201,7 +200,7 @@ function T.LoadText(module: any, root: string, text: string, report: any?): any
 	if d.fixed then
 		return strict_variable(root, wire, rep)
 	end
-	return Refusal.ReadStrict(module, root, wire, rep)
+	return Load.ReadStrict(root, wire, rep, module)
 end
 
 return table.freeze(T)

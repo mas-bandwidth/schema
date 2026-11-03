@@ -50,7 +50,7 @@ table Var
 const floatProbe = `local inputs = require("./inputs")
 local load = require("./schema_load")
 local save = require("./schema_save")
-local R = require("./schema_refusal")
+local R = require("./schema_load")
 local St = require("./schema_tables")
 local s = buffer.create(8)
 local function hex(b: buffer?): string
@@ -95,7 +95,7 @@ else
 	print("save=" .. hex(out) .. " measure=" .. tostring(measure))
 end
 local r2: any = {}
-R.ReadStrict(nil, "Var", inputs.wire, r2)
+R.ReadStrict("Var", inputs.wire, r2, nil)
 print("strict=" .. (r2.reason or "ok") .. " field=" .. (r2.field or "-"))
 `
 

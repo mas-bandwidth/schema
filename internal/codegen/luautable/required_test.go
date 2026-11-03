@@ -214,7 +214,7 @@ func requiredLuauRead(t *testing.T, g *generatedUnit, cases []requiredCase) map[
 	}
 	sort.Strings(mods)
 	var b strings.Builder
-	b.WriteString("local inputs = require(\"./inputs\")\nlocal R = require(\"./schema_refusal\")\n")
+	b.WriteString("local inputs = require(\"./inputs\")\nlocal R = require(\"./schema_load\")\n")
 	for _, m := range mods {
 		fmt.Fprintf(&b, "require(\"./%s\")\n", m)
 	}
@@ -226,7 +226,7 @@ func requiredLuauRead(t *testing.T, g *generatedUnit, cases []requiredCase) map[
 	b.WriteString("}\nlocal T = require(\"./ReqTable\")\n")
 	b.WriteString(`for name, root in pairs(roots) do
 	local rep: any = {}
-	local v = R.ReadStrict(T, root, inputs[name], rep)
+	local v = R.ReadStrict(root, inputs[name], rep, T)
 	print("@" .. name .. "|" .. (rep.reason or "ok"))
 end
 `)

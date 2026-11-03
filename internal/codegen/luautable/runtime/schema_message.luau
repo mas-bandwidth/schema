@@ -24,10 +24,8 @@ local VERSION_ID: integer = -2i       -- 0xfffffffffffffffe
 local VOCAB_ID: integer = -3i         -- 0xfffffffffffffffd
 
 -- CRC-32C, the Castagnoli polynomial, reflected 0x82F63B78, initial and final
--- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). schema_refusal.luau keeps the same routine
--- local to itself; requiring it here would not cycle, but it exports no CRC
--- and this card's PATHS do not include schema_refusal.luau, so the routine is copied
--- rather than moved.
+-- 0xFFFFFFFF (docs/SPEC-TABLES.md §2.14). schema_load.luau keeps the same
+-- routine local to itself and exports no CRC, so the routine is copied here.
 local function crc32c(b: buffer, n: number): number
 	local crc = 0xFFFFFFFF
 	for i = 0, n - 1 do

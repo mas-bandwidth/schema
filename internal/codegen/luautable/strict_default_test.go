@@ -98,7 +98,7 @@ table Var
 
 	main := `local inputs = require("./inputs")
 local load = require("./schema_load")
-local R = require("./schema_refusal")
+local R = require("./schema_load")
 require("./VarTable")
 
 local function fresh()
@@ -118,7 +118,7 @@ for _, name in { "clean", "clamped", "kind_mismatch", "truncated" } do
 	local tolerantRep = fresh()
 	local tolerant = load.loadTolerant("Var", b, tolerantRep)
 	local readRep = fresh()
-	local read = R.ReadStrict(nil, "Var", b, readRep)
+	local read = R.ReadStrict("Var", b, readRep, nil)
 	print(name .. "|" .. n(strict) .. "|" .. tostring(strictRep.reason) .. "|" .. counters(strictRep) ..
 		"|" .. n(tolerant) .. "|" .. counters(tolerantRep) ..
 		"|" .. n(read) .. "|" .. tostring(readRep.reason))

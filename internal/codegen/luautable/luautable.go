@@ -696,7 +696,7 @@ func emitDescriptor(g *luau.Gen, t *ir.Struct, ctors string, wire bool) {
 		g.Pf("\tjsonArray = true,\n")
 	}
 	// the table line's `integrity` key (docs/SPEC-TABLES.md §2.14): a
-	// declaring table's file carries the trailer, and schema_refusal.luau's strict
+	// declaring table's file carries the trailer, and schema_load.luau's strict
 	// read checks it before any field, by this entry
 	if t.Integrity != "" {
 		g.Pf("\tintegrity = %q,\n", t.Integrity)

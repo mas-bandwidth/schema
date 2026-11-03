@@ -105,12 +105,12 @@ local runtimes = {}
 local function runtimeFor(unit)
 	if runtimes[unit] ~= nil then return runtimes[unit] end
 	local base = "./generated/" .. unit .. "/"
-	local ok, S, Sv, Ld, Rf, Tx = pcall(function()
+	local ok, S, Sv, Ld, Tx = pcall(function()
 		return require(base .. "schema_tables"), require(base .. "schema_save"),
-			require(base .. "schema_load"), require(base .. "schema_refusal"), require(base .. "schema_text")
+			require(base .. "schema_load"), require(base .. "schema_text")
 	end)
 	if not ok then error("fuzz runtime missing for " .. unit .. ": " .. tostring(S)) end
-	local rt = { S = S, save = Sv, load = Ld, strict = Rf, text = Tx }
+	local rt = { S = S, save = Sv, load = Ld, strict = Ld, text = Tx }
 	runtimes[unit] = rt
 	return rt
 end
@@ -190,7 +190,7 @@ local function run(kind, r, data)
 	if kind == "load" then
 		ok, v = pcall(r.rt.load.loadTolerant or r.rt.load.load, r.name, buffer.fromstring(data), rep)
 	elseif kind == "strict" then
-		ok, v = pcall(r.rt.strict.ReadStrict, r.module, r.name, buffer.fromstring(data), rep)
+		ok, v = pcall(r.rt.strict.ReadStrict, r.name, buffer.fromstring(data), rep, r.module)
 	else
 		ok, v = pcall(r.rt.text.LoadText, r.module, r.name, data, rep)
 	end
@@ -408,12 +408,12 @@ local runtimes = {}
 local function runtimeFor(unit)
 	if runtimes[unit] ~= nil then return runtimes[unit] end
 	local base = "./generated/" .. unit .. "/"
-	local ok, S, Ld, Rf, Tx = pcall(function()
+	local ok, S, Ld, Tx = pcall(function()
 		return require(base .. "schema_tables"), require(base .. "schema_load"),
-			require(base .. "schema_refusal"), require(base .. "schema_text")
+			require(base .. "schema_text")
 	end)
 	if not ok then return nil end
-	local rt = { S = S, load = Ld, strict = Rf, text = Tx }
+	local rt = { S = S, load = Ld, strict = Ld, text = Tx }
 	runtimes[unit] = rt
 	return rt
 end
@@ -466,7 +466,7 @@ for _, e in replay do
 		if e.kind == "load" then
 			ok, v = pcall(r.rt.load.loadTolerant or r.rt.load.load, r.name, buffer.fromstring(data), rep)
 		elseif e.kind == "strict" then
-			ok, v = pcall(r.rt.strict.ReadStrict, r.module, r.name, buffer.fromstring(data), rep)
+			ok, v = pcall(r.rt.strict.ReadStrict, r.name, buffer.fromstring(data), rep, r.module)
 		else
 			ok, v = pcall(r.rt.text.LoadText, r.module, r.name, data, rep)
 		end

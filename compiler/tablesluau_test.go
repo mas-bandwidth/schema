@@ -183,8 +183,8 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 	}{
 		{"luau.CheckBases", "a schema file named for the type surface's runtime",
 			map[string]string{"schema_runtime.schema": "package p\n\ntype T\n{\n    x uint8\n}\n"}, "schema_runtime.luau"},
-		{"luau.CheckBases", "a schema file named for the table runtime's strict read",
-			map[string]string{"Schema_refusal.schema": tableWithType}, "schema_refusal.luau"},
+		{"luau.CheckBases", "a schema file named for the table runtime's fixed reader",
+			map[string]string{"Schema_fixed.schema": tableWithType}, "schema_fixed.luau"},
 		{"luau.CheckBases", "a schema file named for the table runtime's load",
 			map[string]string{"schema_load.schema": tableWithType}, "schema_load.luau"},
 		// the table surface's own RequireCycle call is the same site: a
@@ -250,17 +250,17 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 // the Luau backend is a member the emitted strict-read runtime defines.
 func TestLuauStrictReadNamesAreEmitted(t *testing.T) {
 	t.Parallel()
-	src, ok := luautable.Runtime()["schema_refusal.luau"]
+	src, ok := luautable.Runtime()["schema_load.luau"]
 	if !ok {
-		t.Fatal("the Luau table runtime emits no schema_refusal.luau")
+		t.Fatal("the Luau table runtime emits no schema_load.luau")
 	}
 	names := tablenames.DefinedBy(tablenames.Luau)
 	if len(names) == 0 {
 		t.Fatal("internal/tablenames registers no Luau name")
 	}
 	for _, name := range names {
-		if !strings.Contains(string(src), "function R."+name+"(") && !strings.Contains(string(src), "R."+name+" = ") {
-			t.Errorf("internal/tablenames says the Luau backend defines %s, but schema_refusal.luau defines no R.%s", name, name)
+		if !strings.Contains(string(src), "function L."+name+"(") && !strings.Contains(string(src), "L."+name+" = ") {
+			t.Errorf("internal/tablenames says the Luau backend defines %s, but schema_load.luau defines no L.%s", name, name)
 		}
 	}
 }

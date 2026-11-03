@@ -109,7 +109,7 @@ const luauTimestampProbe = `--!strict
 local T = require("./ProbeTable")
 local S = require("./schema_save")
 local L = require("./schema_load")
-local R = require("./schema_refusal")
+local R = require("./schema_load")
 local F = require("./schema_fixed")
 
 local function hex(b: buffer): string
@@ -149,7 +149,7 @@ assert(got1.ClosedAt == -86400000000000i, "var_full ClosedAt")
 assert(got1.MinAt == 0x8000000000000000i and got1.MaxAt == 9223372036854775807i, "var_full extremes")
 
 local srep1: any = {}
-local strict1 = R.ReadStrict(T, "Event", w1, srep1)
+local strict1 = R.ReadStrict("Event", w1, srep1, T)
 assert(strict1 ~= nil and srep1.reason == nil, "var_full ReadStrict")
 
 -- Kind 36 vs kind 5 (int64): mutating OpenedAt's kind byte (0x24 -> 0x05) is kind_mismatch
@@ -165,7 +165,7 @@ for i = 0, buffer.len(badKind) - 1 do
 end
 assert(patched, "found kind 36 byte")
 local badRep: any = {}
-local strictBad = R.ReadStrict(T, "Event", badKind, badRep)
+local strictBad = R.ReadStrict("Event", badKind, badRep, T)
 assert(strictBad == nil and badRep.reason == "kind_mismatch" and badRep.field == "opened_at", "int64 kind byte refused as kind_mismatch on opened_at")
 print("var_kind_mismatch " .. tostring(badRep.reason) .. " " .. tostring(badRep.field))
 
@@ -195,7 +195,7 @@ assert(fback[2].Started == 0i and fback[2].Ended == 123456789i and fback[2].MinM
 
 local fw1 = F.save(T.SessionDescriptor, sessionFixed, { s1 })
 local frep: any = {}
-local fstrict = R.ReadStrict(T, "Session", fw1, frep)
+local fstrict = R.ReadStrict("Session", fw1, frep, T)
 assert(fstrict ~= nil and frep.reason == nil, "fixed ReadStrict")
 assert(fstrict.Started == 1729296000123456789i and fstrict.Ended == -86400000000000i, "fixed ReadStrict values")
 print("fixed_strict_ok 2")
