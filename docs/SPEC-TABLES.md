@@ -4394,8 +4394,8 @@ and `AppendAbsent(worker, value)` take the WORKER for every unbounded-element
 list, the bounded `[..N]` count included, because the bytes are allocated;
 the map's `Insert(worker, holder, key string)`, `Find(arena, holder, key)`,
 `Erase(arena, holder, key)`, `Each(holder, visit func(string, *V) bool, arena...)` keep their spellings. The runtime adds `TableMalformedField`, a
-strict read's `malformed` refusal naming the text list or map
-(`<Table>.<field>`) whose element or key it refused (`errors.Is(err, TableRefuseMalformed)` holds), beside §2.13's `TableClampedField`. The claimed
+strict read's `wire_damaged` refusal naming the text list or map
+(`<Table>.<field>`) whose element or key it refused (`errors.Is(err, TableRefuseWireDamaged)` holds, §6.5), beside §2.13's `TableClampedField`. The claimed
 names are §2.13's and §2.8's, unchanged; an unbounded text list claims its
 element record and its accessors on the same rule.
 
@@ -9950,9 +9950,28 @@ The builder is designed to go wide, lock-free by ownership:
 ### 6.5 The two load paths
 
 **A `1` BOOL byte that is neither `0` nor `1` is MALFORMED on this read**,
-naming the field: the TOLERANT read and the STRICT read alike refuse the whole
-load as `malformed` (§3, §4). The FIXED form carries its own
-rule (§3.4), unchanged.
+naming the field: it is damage, and the TOLERANT read and the STRICT read
+alike refuse the whole load (§3, §4). The tolerant read's report sets
+`malformed`; the strict read's one typed reason is `wire_damaged`. The FIXED
+form carries its own rule (§3.4), unchanged.
+
+**DAMAGE HAS ONE STRICT NAME: `wire_damaged`.** Every condition §3 and §4 call
+malformed is damage, and the strict read (and every plain-name read that is
+strict, below) answers every damaged wire `wire_damaged`: a frame the reader
+cannot open and a body damaged inside a sound frame alike, a bool byte, a
+length past its body, an early terminator, a reference above the entry count,
+a cycle, ill-formed text, and every other §4 damage condition. `malformed` is
+NOT a strict-read reason on the binary wire. It is the tolerant read's report
+flag and counter, which this rule leaves as it is: the report still sets
+`malformed`, and still names the field in its reason (`malformed: <field>`),
+on the same wire the strict read refuses `wire_damaged`. Damage outranks the
+refusing counters (`missing_required`, `blob_shared`, `clamped`,
+`kind_mismatch`), because damage discards the whole load (§4); only
+`non_finite_float`, `count_over_extent_cap`, a form-byte refusal and
+`integrity_mismatch`, which a read meets before it believes a body, are named
+ahead of it. The text read (§16) keeps its own vocabulary: a JSON document its
+reader refuses is `malformed` (§16.2), and a decoded binary wire inside it is
+the wire reader's own refusal (§16.8).
 
 **Strict error identity.** A strict read of a fixed-form file returns the
 fixed refusal's own section 3.4 reason by name: `layout_unknown` remains
@@ -10050,8 +10069,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
   | `invalid_value` | a writer handed a value outside the declaration: a count past its maximum, a value off min or max, an ordinal past its set, ill-formed text. The fixed writer answers it as its save reason (§3.1, §11) |
   | `allocation_failed` | an allocation the codec asked for was refused (§7.6) |
-  | `wire_damaged` | a read that reached damage rather than a refusal: the report's verdict is damage (§4) |
-  | `malformed` | a tolerant read that saw a malformed body; the report counts it (§4) |
+  | `wire_damaged` | a read that reached damage rather than a refusal (§4). The STRICT read's one name for EVERY damaged wire, framing or body: whatever the tolerant report flags `malformed`, the strict read refuses `wire_damaged` |
+  | `malformed` | the TOLERANT read's report flag: a read that saw damage sets it and counts it (§4). It is NOT a strict-read reason on the binary wire, which names the same damage `wire_damaged`; the JSON reader's refusal keeps the name (§16.2) |
   | `clamped` | a tolerant read that clamped a value to its declared bound; the report counts it (§4) |
   | `kind_mismatch` | a wire field whose kind does not match the declaration; the report counts it (§4) |
   | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
@@ -10168,7 +10187,7 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   construct that can raise one is (§2.9).
 - **The STRICT read** — one call, `<Name>ReadStrict( wire )`, that answers
   the root or refuses. It refuses, with ONE typed reason, a read that is
-  malformed, clamped, kind-mismatched, of an unknown form, wire-damaged,
+  damaged (every damage, `wire_damaged`, above), clamped, kind-mismatched, of an unknown form,
   build-version-mismatched, missing a required field (§2.3), carrying a `[]`
   or map count above the `int32` storage cap (`count_over_extent_cap`, §2.9), holding a
   non-finite plain float (`non_finite_float`, §3.3, a plain float's special values; the tolerant read refuses it too) or
@@ -10183,7 +10202,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
   not loss). The reason is `TableRefuseReason`, the same enum a measure's
   `-1` carries, or `TableBuildVersionMismatch` for the announcement's strict
   refusal (§3.3), or `TableMissingRequired` naming the missing field (§2.3), so the language's typed-error test matches it (`errors.Is`
-  in Go). Values this read adds (`malformed`, `clamped`, `kind_mismatch`)
+  in Go). Values this read adds (`malformed`, which the binary strict read does
+  not answer, `clamped`, `kind_mismatch`)
   (and `non_finite_float`, spelled `non_finite` until 2026-10-27 and renamed in place, then `blob_shared`) are appended to that enum and never renumbered. `TableReport.Err()`
   answers the same reason for every counter this read refuses, and nil on a
   clean read and on a read whose only counters are `unknown`, `widened` or
@@ -10193,8 +10213,8 @@ Only a form-byte refusal (`previous_form`, `newer_form`,
 - **THE PLAIN NAME IS THE STRICT READ; THE TOLERANT READ HAS A NAME OF ITS
   OWN** (Go first). An unchecked read cannot be written by accident: every
   generated read entry point a caller reaches by the plain name refuses
-  whatever the strict read above refuses — malformed, clamped,
-  kind-mismatched, of an unknown form, wire-damaged, build-version-mismatched,
+  whatever the strict read above refuses — damaged (`wire_damaged`), clamped,
+  kind-mismatched, of an unknown form, build-version-mismatched,
   `integrity_mismatch` and `missing_required` — and hands back no recovered
   value. The plain names
   are `<Name>Load` (both shapes: the value read of a fixed-class root and the
