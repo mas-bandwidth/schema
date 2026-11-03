@@ -50,6 +50,12 @@ class LoadReport:
     refused:bool = false
     reason:string = ""
     stopped:bool = false
+    // damaged is the verdict's damage (§4, §6.5): a wire whose framing does
+    // not open (no bytes, an id table that does not hold, a root body that
+    // ends before the id table), or a value-only root whose walk read past
+    // damage to its terminator. The strict read names it wire_damaged; a
+    // body that stopped the walk is malformed.
+    damaged:bool = false
 
 class Record
 class Slot
@@ -1224,13 +1230,15 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
             if optional:
                 sl.present = true
             return true, false
-        if ek != f.ek:
-            if not widens(ek, f.ek):
-                // the element kind is part of the array's identity (§3)
-                rep.kind_mismatch++
-                r.off = end
-                return true, false
-            rep.widened++
+        if ek != f.ek and not widens(ek, f.ek):
+            // the element kind is part of the array's identity (§3)
+            rep.kind_mismatch++
+            r.off = end
+            return true, false
+        // a widened element kind counts once the count is known to land: the
+        // builder's count-cap refusal moves no counter (§2.9), while the
+        // region read's damage still counts it
+        let widened = ek != f.ek
         // THE READ COMMITS TO REPLACE HERE (Go's arrayBody, §6.6): the
         // retained fields under the elements go with the value it loses
         for(sl.elems) old:
@@ -1240,10 +1248,14 @@ def array_body(r:Reader, sl:Slot, framed:int) -> bool, bool:
             sl.elems = []
             if count < 0 or count > 0x7FFFFFFF:
                 r.off = end
+                if widened and not r.st.variable:
+                    rep.widened++
                 return collection_cap(r), false
         elif ult(bound, count):
             keep = bound
             rep.clamped++
+        if widened:
+            rep.widened++
         // elements are BOUNDED by the field body (§4)
         let sr = sub_to(r, end)
         if is_bytes:
@@ -1988,16 +2000,18 @@ def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
 // strict_reason is docs/SPEC-TABLES.md §6.5's one typed reason for a read,
 // in the order Go's TableReport.Err() applies: a non-finite float first
 // (§3.3), then a count past the int32 storage cap (§2.9), a form refusal,
-// missing_required, malformed, blob_shared, clamped and kind_mismatch; the
-// empty string on a read whose only counters are unknown or widened, which
-// are not loss.
+// the verdict's damage (wire_damaged), missing_required, malformed,
+// blob_shared, clamped and kind_mismatch; the empty string on a read whose
+// only counters are unknown or widened, which are not loss.
 def strict_reason(rep:LoadReport) -> string:
     if rep.non_finite_float != "":
         return "non_finite_float"
     if rep.reason == "count_over_extent_cap":
         return "count_over_extent_cap"
-    if rep.refused or rep.reason == "form" or rep.reason == "message_form_as_file":
+    if rep.refused or rep.reason == "newer_form" or rep.reason == "message_form_as_file":
         return "unknown_form"
+    if rep.damaged:
+        return "wire_damaged"
     if rep.missing_required > 0:
         return "missing_required"
     if rep.malformed:
@@ -2107,28 +2121,33 @@ def release(root:Record?) -> void:
 def load_walk(root:string, data:string, report:LoadReport) -> Record?:
     if length(data) < 1:
         report.malformed = true
+        report.damaged = true
         report.stopped = true
         return nil
     let form = data[0]
     if form != 1:
         report.refused = true
         report.stopped = true
-        report.reason = if form == 2: "message_form_as_file" else: "form"
+        report.reason = if form == 2: "message_form_as_file" else: "newer_form"
         return nil
     let rec = new_record(table_of(root))
     let ids, first, ok = trailer(data)
     if not ok:
         report.malformed = true
+        report.damaged = true
         report.stopped = true
         return rec
     let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
     let end, terminated = body_extent(st, first)
     if terminated and end != first:
         report.malformed = true
+        report.damaged = true
         report.stopped = true
         return rec
     if not rec.d.variable:
         report.stopped = not body_at(reader(st, 1, first), rec, false, false)
+        if not report.stopped and report.malformed:
+            report.damaged = true
         if report.missing_required > 0:
             return nil
         return rec

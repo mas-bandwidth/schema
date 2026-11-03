@@ -841,10 +841,14 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	return true
 }
 
+// capDamages reports whether collectionCap answers damage rather than the
+// builder's refusal: a region read, or a reader with no refusal to set.
+func (r *wireReader) capDamages() bool { return r.region || r.countRefusal == nil }
+
 // collectionCap matches TableListFillBegin and TableMapFillBegin: builder storage refuses the
 // partial value, while a region read reports damage and resumes after L.
 func (r *wireReader) collectionCap() bool {
-	if r.region || r.countRefusal == nil {
+	if r.capDamages() {
 		r.report.Malformed = true
 		return true
 	}
@@ -988,6 +992,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			return true, false
 		}
+		widened := false
 		if int(ek) != ir.TableWireElemKind(f) {
 			if !ir.TableKindWidens(int(ek), ir.TableWireElemKind(f)) {
 				// the element kind is part of the array's identity (§3): counted,
@@ -1000,8 +1005,10 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			// WIDENED at an element kind (§4): every element decodes at the
 			// wire kind's width, and ONE `widened` counts for the field
-			// however many elements it holds
-			r.report.Widened++
+			// however many elements it holds. It counts once the count is
+			// known to land: a builder's count-cap refusal moves no counter
+			// (§2.9)
+			widened = true
 		}
 		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
 		// records under this field go with the value it is about to lose. An
@@ -1020,6 +1027,9 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			fv.Elems = fv.Elems[:0]
 			if count > uint64(math.MaxInt32) {
 				r.off = end
+				if widened && r.capDamages() {
+					r.report.Widened++
+				}
 				return r.collectionCap(), false
 			}
 			// Slots grow one at a time against the body's own length.
@@ -1031,6 +1041,9 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				// a text-list COUNT clamp names the field (§2.13), as the Go leg does
 				r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
 			}
+		}
+		if widened {
+			r.report.Widened++
 		}
 		// elements are BOUNDED by the field body: a count the length cannot
 		// cover keeps the decoded prefix, flags malformed, and the parent

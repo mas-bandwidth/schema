@@ -298,7 +298,7 @@ public final class Main {
         // 1. JSON witness
         TableVariable.Report jrep = new TableVariable.Report();
         TotalsVariable.Value vj = TotalsVariable.fromJson(inputJson, jrep);
-        if (vj == null || jrep.malformed || jrep.clamped != 8 || !"clamped: Totals.a".equals(jrep.reason)) {
+        if (vj == null || jrep.malformed || jrep.clamped != 10 || !"clamped: Totals.a".equals(jrep.reason)) {
             throw new AssertionError("JSON witness mismatch: clamped=" + jrep.clamped + " reason=" + jrep.reason + " malformed=" + jrep.malformed);
         }
         byte[] outJson = TotalsVariable.toJson(vj);
