@@ -1,7 +1,10 @@
 # THE LOAD'S REFUSAL REASONS, BY INPUT (docs/SPEC-TABLES.md §6.5, §2.9, §3, §4):
 # one row per file, each answered by the Go leg's generated reader and held
-# there by gotable's TestLoadRefusalReasonPins, and by the Goose load by
-# goosetable's TestGooseLoadRefusalReasons. Columns, tab-separated:
+# there by gotable's TestLoadRefusalReasonPins, by the Goose load by
+# goosetable's TestGooseLoadRefusalReasons, and by the moo load by mootable's
+# TestMooLoadRefusalReasons (moo's ReadStrict answers one name: the form
+# column's where it pins one, the strict column's otherwise). Columns,
+# tab-separated:
 #
 #   name     the case
 #   schema   measure: TestMeasureRefusalReasons's unit (Child; Root with
