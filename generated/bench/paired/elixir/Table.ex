@@ -2126,35 +2126,33 @@ defmodule Bench.Table do
         {:error, reason, reasoned(empty_report(), reason)}
 
       {:ok, body, ids} ->
-        case entries(body, ids, desc, desc.variable) do
-          {:error, _} ->
-            {:error, :malformed, reasoned(empty_report(), :malformed)}
+        {fields, nodes, terminated} =
+          case entries(body, ids, desc, desc.variable) do
+            {:ok, fields, nodes} -> {fields, nodes, true}
+            {:stop, fields, nodes, _remaining} -> {fields, nodes, false}
+          end
 
-          {:stop, _fields, _nodes, _remaining} ->
-            # a ROOT body the walk could not finish is malformed; nothing below
-            # the damage is read, so there is no value to save (§3)
-            {:error, :malformed, reasoned(empty_report(), :malformed)}
+        {{value, report}, shared} =
+          with_node_directory(table, nodes, fn ->
+            blob_namings(fn -> decode_directory(desc, fields, nodes, ids, terminated) end)
+          end)
 
-          {:ok, fields, nodes} ->
-            {{value, report}, shared} =
-              with_node_directory(table, nodes, fn ->
-                blob_namings(fn -> decode_directory(desc, fields, nodes, ids) end)
-              end)
+        report =
+          report
+          |> Map.put(:blob_shared, shared)
+          |> Map.put(:malformed, report.malformed or not terminated)
 
-            report = Map.put(report, :blob_shared, shared)
+        # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
+        # that met damage anywhere returns no value, only its report
+        cond do
+          Map.get(report, :missing_required, 0) > 0 ->
+            {:error, :missing_required, report}
 
-            # DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): a read
-            # that met damage anywhere returns no value, only its report
-            cond do
-              Map.get(report, :missing_required, 0) > 0 ->
-                {:error, :missing_required, report}
+          Map.get(report, :malformed) ->
+            {:error, :malformed, reasoned(report, :malformed)}
 
-              Map.get(report, :malformed) ->
-                {:error, :malformed, reasoned(report, :malformed)}
-
-              true ->
-                {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
-            end
+          true ->
+            {:ok, Map.merge(defaults(desc), value), reasoned(report, :ok)}
         end
     end
   catch
@@ -2593,7 +2591,8 @@ defmodule Bench.Table do
     desc = Map.fetch!(@tables, name)
 
     case entries(body, ids, desc, :nested) do
-      {:ok, fields, []} -> {desc, fields}
+      {:ok, fields, []} -> {desc, fields, true}
+      {:stop, fields, [], _} -> {desc, fields, false}
       _ -> throw(:wire_damaged)
     end
   end
@@ -2609,7 +2608,7 @@ defmodule Bench.Table do
     }
   end
 
-  defp decode_directory(desc, fields, nodes, ids) do
+  defp decode_directory(desc, fields, nodes, ids, terminated) do
     # The directory census precedes every body; placed nodes precede the root.
     # A refusal must retain exactly the diagnostic prefix already earned.
     report = directory_report(nodes, empty_report(), false)
@@ -2619,23 +2618,28 @@ defmodule Bench.Table do
       |> Enum.with_index(2)
       |> Enum.reduce({%{}, report}, fn
         {{:table, name, body}, idx}, {records, report} ->
-          {node_desc, node_fields} = decoded_fields(name, body, ids)
+          {node_desc, node_fields, node_ok} = decoded_fields(name, body, ids)
 
-          {value, own_report} =
+          {_status, value, own_report} =
             carry_count_report(report, fn ->
               in_read_holder(idx, fn ->
-                decode(node_desc, node_fields, nodes, ids)
+                decode(node_desc, node_fields, nodes, ids, node_ok)
               end)
             end)
 
+          own_report = %{own_report | malformed: own_report.malformed or not node_ok}
           {Map.put(records, idx, value), merge_report(report, own_report)}
 
         _, state ->
           state
       end)
 
-    {root, own_report} = carry_count_report(report, fn -> decode(desc, fields, nodes, ids) end)
-    report = merge_report(report, own_report)
+    {_status, root, own_report} =
+      carry_count_report(report, fn -> decode(desc, fields, nodes, ids, terminated) end)
+
+    report =
+      merge_report(report, %{own_report | malformed: own_report.malformed or not terminated})
+
     records = records |> Map.put(1, root) |> final_blob_slots(desc)
     value = if report.malformed, do: %{}, else: assemble_directory(records)
     {value, report}
@@ -2718,13 +2722,17 @@ defmodule Bench.Table do
   # stand, one malformed counts, and no field after it is read. §4's ordinary
   # events — an unknown id, a kind mismatch, an out-of-range value, a reference
   # a reader cannot name — read on, and the halt is the one exception.
-  defp decode(desc, fields, nodes, ids) do
-    {value, report} =
-      Enum.reduce_while(fields, {Map.new(), empty_report()}, fn {id, kind, payload},
-                                                                {value, report} ->
+  defp decode(desc, fields, nodes, ids, terminated) do
+    {status, value, report} =
+      Enum.reduce_while(fields, {:cont, Map.new(), empty_report()}, fn {id, kind, payload},
+                                                                       {_status, value, report} ->
         case find_field(desc, id) do
           nil ->
-            {:cont, {value, %{report | unknown: report.unknown + 1}}}
+            report = %{report | unknown: report.unknown + 1}
+
+            if payload == :unframed,
+              do: {:halt, {:halt, value, report}},
+              else: {:cont, {:cont, value, report}}
 
           f ->
             cond do
@@ -2738,32 +2746,41 @@ defmodule Bench.Table do
                     do: report,
                     else: %{report | kind_mismatch: report.kind_mismatch + 1}
 
-                {:halt, {value, report}}
+                {:halt, {:halt, value, report}}
 
               kind == f.kind and not compatible_payload?(f, payload) ->
-                {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+                {:cont, {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
 
               kind == f.kind ->
                 case read_payload(f, payload, nodes, ids, report) do
-                  {:cont, :inert, report} -> {:cont, {inert_required_field(f, value), report}}
-                  {:cont, v, report} -> {:cont, {put_wire_field(value, f, v), report}}
-                  {:halt, v, report} -> {:halt, {put_wire_field(value, f, v), report}}
+                  {:cont, :inert, report} ->
+                    {:cont, {:cont, inert_required_field(f, value), report}}
+
+                  {:cont, v, report} ->
+                    {:cont, {:cont, put_wire_field(value, f, v), report}}
+
+                  {:halt, v, report} ->
+                    {:halt, {:halt, put_wire_field(value, f, v), report}}
                 end
 
               widens?(kind, f) ->
                 # WIDENED (§4): a kind that grew since the writer decodes exactly
                 # at its own width, the value lands, and one widened event counts
                 {v, report} = read_widened(f, kind, payload, report)
-                {:cont, {put_wire_field(value, f, v), report}}
+                {:cont, {:cont, put_wire_field(value, f, v), report}}
 
               true ->
-                {:cont, {value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
+                {:cont, {:cont, value, %{report | kind_mismatch: report.kind_mismatch + 1}}}
             end
         end
       end)
 
-    report = require_seen(desc, value, Map.keys(value), report)
-    {value, report}
+    status = if terminated, do: status, else: :halt
+
+    report =
+      if status == :cont, do: require_seen(desc, value, Map.keys(value), report), else: report
+
+    {status, value, report}
   end
 
   # A positional fixed array updates its received prefix; an enum-keyed
@@ -2827,8 +2844,9 @@ defmodule Bench.Table do
     {:cont, clamped, report}
   end
 
-  defp read_payload(%{t: :bool}, payload, _nodes, _ids, report) do
-    {:cont, binary_part(payload, 0, 1) != <<0>>, report}
+  defp read_payload(%{t: :bool}, <<b, _::binary>>, _nodes, _ids, report) do
+    report = if b > 1, do: %{report | malformed: true}, else: report
+    {:cont, b != 0, report}
   end
 
   defp read_payload(%{t: :enum} = f, payload, _nodes, ids, report) do
@@ -2924,12 +2942,12 @@ defmodule Bench.Table do
         # a nested body reads as an element does (§3, §4), and its events FOLD
         # into the holder's: a fresh report here would drop every event the
         # holder counted before it
-        {value, nested} =
+        {status, value, nested} =
           carry_count_report(report, fn ->
             read_element(Map.fetch!(@tables, f.elem), body, nodes, ids)
           end)
 
-        {:cont, value, merge_report(report, nested)}
+        {status, value, merge_report(report, nested)}
 
       :error ->
         {:cont, %{}, %{report | malformed: true}}
@@ -2944,27 +2962,24 @@ defmodule Bench.Table do
       {_len, arr} when byte_size(arr) < 2 ->
         {:cont, :inert, report}
 
-      {_len, arr} ->
-        case arr do
-          <<6, count_rest::binary>> ->
-            case leb(count_rest) do
-              {n, bytes} ->
-                keep = min(n, f.size)
-                clamped = if n > f.size, do: 1, else: 0
-                report = %{report | clamped: report.clamped + clamped}
+      {_len, <<actual, count_rest::binary>>} ->
+        case leb(count_rest) do
+          {n, bytes} when actual == 6 ->
+            keep = min(n, f.size)
+            clamped = if n > f.size, do: 1, else: 0
+            report = %{report | clamped: report.clamped + clamped}
 
-                if byte_size(bytes) >= keep do
-                  {:cont, binary_part(bytes, 0, keep), report}
-                else
-                  {:cont, bytes, %{report | malformed: true}}
-                end
-
-              _ ->
-                {:cont, <<>>, %{report | malformed: true}}
+            if byte_size(bytes) >= keep do
+              {:cont, binary_part(bytes, 0, keep), report}
+            else
+              {:cont, bytes, %{report | malformed: true}}
             end
 
-          _ ->
+          {_n, _bytes} ->
             {:cont, <<>>, %{report | kind_mismatch: report.kind_mismatch + 1}}
+
+          :error ->
+            {:cont, <<>>, %{report | malformed: true}}
         end
 
       :error ->
@@ -2983,6 +2998,9 @@ defmodule Bench.Table do
     case read_payload(Map.put(%{f | t: :list}, :map_entry, true), payload, nodes, ids, report) do
       {:cont, :map_key_mismatch, report} ->
         {:cont, %{}, report}
+
+      {:cont, :map_entry_halt, report} ->
+        {:halt, %{}, report}
 
       {:cont, :inert, report} ->
         {:cont, :inert, report}
@@ -3084,39 +3102,31 @@ defmodule Bench.Table do
         # a body too short to carry its header is inert (§4, H2)
         {:cont, :inert, report}
 
-      {_len, arr} ->
-        case arr do
-          <<elem_kind, count_rest::binary>> ->
+      {_len, <<elem_kind, count_rest::binary>>} ->
+        case leb(count_rest) do
+          {n, elems} ->
             # a narrower scalar element kind widens and counts once
             # (docs/SPEC-TABLES.md §2.9, §4). Any other disagreement skips
             # the field and counts a kind mismatch.
-            cond do
-              elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) ->
-                case leb(count_rest) do
-                  {n, elems} ->
-                    report =
-                      if elem_kind == f.elem_kind do
-                        report
-                      else
-                        %{report | widened: report.widened + 1}
-                      end
-
-                    check_wire_count(n, f, report)
-                    reader = %{f | elem_kind: elem_kind}
-                    {n, report} = clamp_count(n, f, report)
-                    {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
-                    {:cont, value, report}
-
-                  :error ->
-                    {:cont, [], %{report | malformed: true}}
+            if elem_kind == f.elem_kind or kind_widens?(elem_kind, f.elem_kind) do
+              report =
+                if elem_kind == f.elem_kind do
+                  report
+                else
+                  %{report | widened: report.widened + 1}
                 end
 
-              true ->
-                {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+              check_wire_count(n, f, report)
+              reader = %{f | elem_kind: elem_kind}
+              {n, report} = clamp_count(n, f, report)
+              {value, report} = read_list_elements(reader, elems, n, nodes, ids, [], report)
+              {:cont, value, report}
+            else
+              {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
             end
 
-          _ ->
-            {:cont, [], %{report | kind_mismatch: report.kind_mismatch + 1}}
+          :error ->
+            {:cont, [], %{report | malformed: true}}
         end
 
       :error ->
@@ -3336,41 +3346,51 @@ defmodule Bench.Table do
 
   defp read_keyed_pairs(f, bin, n, nodes, ids, acc, report) do
     with {kref, r1} <- leb(bin),
+         kid when kid != :error <- resolve(ids, kref),
          {l, r2} when byte_size(r2) >= l <- leb(r1) do
       elem = binary_part(r2, 0, l)
       rest = binary_part(r2, l, byte_size(r2) - l)
       item = Map.put(f.item, :elem_kind, f.elem_kind)
 
-      {v, report} =
-        if f.elem_kind == 13 do
-          {v, elem_report} =
-            carry_count_report(report, fn ->
-              read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
-            end)
+      case Map.fetch(f.key_by_id, kid) do
+        {:ok, name} ->
+          case read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+            {:cont, v, report} ->
+              read_keyed_pairs(f, rest, n - 1, nodes, ids, Map.put(acc, name, v), report)
 
-          {v, merge_report(report, elem_report)}
-        else
-          case read_list_elements(item, elem, 1, nodes, ids, [], report) do
-            {[v], report} -> {v, report}
-            {_, report} -> {item.default, report}
+            {:halt, v, report} ->
+              {:halt, Map.put(acc, name, v), report}
           end
-        end
 
-      {acc, report} =
-        case resolve(ids, kref) do
-          :error ->
-            {acc, %{report | malformed: true}}
-
-          kid ->
-            case Map.fetch(f.key_by_id, kid) do
-              {:ok, name} -> {Map.put(acc, name, v), report}
-              :error -> {acc, %{report | unknown: report.unknown + 1}}
-            end
-        end
-
-      read_keyed_pairs(f, rest, n - 1, nodes, ids, acc, report)
+        :error ->
+          read_keyed_pairs(
+            f,
+            rest,
+            n - 1,
+            nodes,
+            ids,
+            acc,
+            %{report | unknown: report.unknown + 1}
+          )
+      end
     else
       _ -> {:cont, acc, %{report | malformed: true}}
+    end
+  end
+
+  defp read_keyed_elem_plain(f, item, elem, nodes, ids, report) do
+    if f.elem_kind == 13 do
+      {status, v, elem_report} =
+        carry_count_report(report, fn ->
+          read_element(Map.fetch!(@tables, item.elem), elem, nodes, ids)
+        end)
+
+      {status, v, merge_report(report, elem_report)}
+    else
+      case read_list_elements(item, elem, 1, nodes, ids, [], report) do
+        {[v], report} -> {:cont, v, report}
+        {_, report} -> {:cont, item.default, report}
+      end
     end
   end
 
@@ -3539,19 +3559,25 @@ defmodule Bench.Table do
             )
 
           {:keep, desc, report} ->
-            {value, elem_report} =
+            {status, value, elem_report} =
               carry_count_report(report, fn -> read_element(desc, sub, nodes, ids) end)
 
             f = Map.put(f, :map_widened, Map.get(desc, :map_widened, false))
 
             report = map_duplicate_report(desc, merge_report(report, elem_report))
 
-            case text_list_keep(f, value, report) do
-              {:keep, f, report} ->
-                read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
+            if status == :halt do
+              if Map.get(f, :map_entry, false),
+                do: {:map_entry_halt, report},
+                else: {Enum.reverse(acc), report}
+            else
+              case text_list_keep(f, value, report) do
+                {:keep, f, report} ->
+                  read_list_elements(f, after_sub, n - 1, nodes, ids, [value | acc], report)
 
-              {:drop, report} ->
-                {Enum.reverse(acc), report}
+                {:drop, report} ->
+                  {Enum.reverse(acc), report}
+              end
             end
         end
 
@@ -3643,6 +3669,7 @@ defmodule Bench.Table do
   defp read_list_elements(%{elem_kind: 1} = f, rest, n, nodes, ids, acc, report) do
     case rest do
       <<b, after_sub::binary>> ->
+        report = if b > 1, do: %{report | malformed: true}, else: report
         read_list_elements(f, after_sub, n - 1, nodes, ids, [b != 0 | acc], report)
 
       _ ->
@@ -3680,8 +3707,13 @@ defmodule Bench.Table do
   defp read_list_elements(%{elem_kind: 15} = f, rest, n, nodes, ids, acc, report) do
     case slice(rest, 15) do
       {:ok, header, after_sub} ->
-        {_, v, report} = read_arm(f.elem, header, nodes, ids, report)
-        read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
+        case read_arm(f.elem, header, nodes, ids, report) do
+          {:cont, v, report} ->
+            read_list_elements(f, after_sub, n - 1, nodes, ids, [v | acc], report)
+
+          {:halt, _v, report} ->
+            {Enum.reverse(acc), report}
+        end
 
       :error ->
         {Enum.reverse(acc), %{report | malformed: true}}
@@ -3705,27 +3737,27 @@ defmodule Bench.Table do
         # terminator is not the last byte of its L is framing damage (§3):
         # the events its fields earned count, the element reads its
         # declared defaults, and one malformed counts.
-        {value, report} = decode(desc, fields, nodes, ids)
+        {status, value, report} = decode(desc, fields, nodes, ids, true)
 
         if ends_early?(sub, ids),
-          do: {%{}, %{report | malformed: true}},
-          else: {value, report}
+          do: {status, %{}, %{report | malformed: true}},
+          else: {status, value, report}
 
       {:stop, fields, [], 0} ->
         # the element's body ran off its own end with no terminator: the
         # prefix decoded stands, and one malformed counts (§3)
-        {value, report} = decode(desc, fields, nodes, ids)
-        {value, %{report | malformed: true}}
+        {_status, value, report} = decode(desc, fields, nodes, ids, false)
+        {:halt, value, %{report | malformed: true}}
 
       {:stop, fields, [], _remaining} ->
         # the element's body is damaged mid-walk: the events its prefix
         # already earned count, the element reads its declared defaults, and
         # one malformed counts (§3, §4)
-        {_value, report} = decode(desc, fields, nodes, ids)
-        {%{}, %{report | malformed: true}}
+        {_status, _value, report} = decode(desc, fields, nodes, ids, false)
+        {:halt, %{}, %{report | malformed: true}}
 
       _ ->
-        {%{}, malformed_report()}
+        {:halt, %{}, malformed_report()}
     end
   end
 
@@ -3817,25 +3849,34 @@ defmodule Bench.Table do
     if not is_integer(v) or v < lo or v > hi, do: throw(:invalid_value)
   end
 
-  defp compatible_payload?(%{t: t, elem_kind: expected}, payload)
+  defp compatible_payload?(%{t: t, elem_kind: expected} = f, payload)
        when t in [:list, :map, :keyed] do
-    case leb(payload) do
-      {_len, <<actual, _count, _::binary>>} ->
-        actual == expected or (t in [:list, :keyed] and kind_widens?(actual, expected))
-
-      _ ->
-        true
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         true <- count_ok?(f, count_rest) do
+      actual == expected or (t in [:list, :keyed] and kind_widens?(actual, expected))
+    else
+      _ -> true
     end
   end
 
-  defp compatible_payload?(%{t: :bytes}, payload) do
-    case leb(payload) do
-      {_len, <<actual, _count, _::binary>>} -> actual == 6
+  defp compatible_payload?(%{t: :bytes} = f, payload) do
+    with {_len, <<actual, count_rest::binary>>} <- leb(payload),
+         true <- count_ok?(f, count_rest) do
+      actual == 6
+    else
       _ -> true
     end
   end
 
   defp compatible_payload?(_f, _payload), do: true
+
+  defp count_ok?(%{arm_kind: _}, bin), do: leb(bin) != :error
+  defp count_ok?(_f, bin), do: leb(bin) != :error or crosses_l?(bin, 0)
+
+  defp crosses_l?(<<b, rest::binary>>, i) when i < 9 and (b &&& 0x80) != 0,
+    do: rest == <<>> or crosses_l?(rest, i + 1)
+
+  defp crosses_l?(_bin, _i), do: false
 
   defp inert_required_field(%{required: true} = f, value),
     do: Map.put_new(value, f.name, f.default)
