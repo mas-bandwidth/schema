@@ -2430,6 +2430,10 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_table_integrity_seal_( uint8_t * b
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 typedef int tabledemo_table_refuse_reason_t;
@@ -5358,6 +5362,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 47, 0x4f31c5309e13e932ull, 4 );
+            schema_assert( value->penetration >= 0 && value->penetration <= 10 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->penetration ) );
         }
     }
@@ -5366,6 +5371,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 86, 0xa5013e9ad5caeda4ull, 6 );
+            schema_assert( (uint64_t)( value->channel ) <= 0x3full ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->channel ) );
         }
     }
@@ -8643,6 +8649,7 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
         if ( !( value->slot == 0 ) )
         {
             tabledemo_table_writer_header_at( w, 59, 0x6a771618f6fe31d1ull, 4 );
+            schema_assert( value->slot >= 0 && value->slot <= 7 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->slot ) );
         }
     }
@@ -9273,6 +9280,7 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body( tabledemo_table_writer_t * 
         if ( !( value->amount == 0 ) )
         {
             tabledemo_table_writer_header_at( w, 69, 0x8113fe7ea2b16969ull, 4 );
+            schema_assert( value->amount >= 0 && value->amount <= 100 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }
@@ -12213,6 +12221,8 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body_retain( tabledemo_tab
             }
             tabledemo_table_retain_writer_id( w, 0x4f31c5309e13e932ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( value->penetration >= 0 && value->penetration <= 10 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->penetration ) );
         }
     }
@@ -12225,6 +12235,8 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body_retain( tabledemo_tab
             }
             tabledemo_table_retain_writer_id( w, 0xa5013e9ad5caeda4ull , retention);
             tabledemo_table_writer_put8( w, 6 );
+            schema_assert( (uint64_t)( value->channel ) <= 0x3full );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->channel ) );
         }
     }
@@ -14513,6 +14525,8 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body_retain( tabledemo_table_
         {
             tabledemo_table_retain_writer_id( w, 0x6a771618f6fe31d1ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( value->slot >= 0 && value->slot <= 7 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->slot ) );
         }
     }
@@ -14783,6 +14797,8 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body_retain( tabledemo_table_writ
         {
             tabledemo_table_retain_writer_id( w, 0x8113fe7ea2b16969ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( value->amount >= 0 && value->amount <= 100 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }

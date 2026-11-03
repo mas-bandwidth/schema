@@ -2431,6 +2431,10 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_table_integrity_seal_( uint8_t * b
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 typedef int tabledemo_table_refuse_reason_t;
@@ -5030,6 +5034,7 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body( tabledemo_table_wri
         if ( !( value->count == 1 ) )
         {
             tabledemo_table_writer_header_at( w, 97, 0xb1e5e28e4479a274ull, 4 );
+            schema_assert( value->count >= 0 && value->count <= 100 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }
@@ -6170,6 +6175,8 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_body_retain( tabledemo_ta
         {
             tabledemo_table_retain_writer_id( w, 0xb1e5e28e4479a274ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( value->count >= 0 && value->count <= 100 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->count ) );
         }
     }

@@ -2430,6 +2430,10 @@ static SCHEMA_UNUSED int64_t schema_graphdemo_table_integrity_seal_( uint8_t * b
 
 #endif /* SCHEMA_GRAPHDEMO_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_GRAPHDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_GRAPHDEMO_TABLE_REFUSE_RUNTIME
 typedef int graphdemo_table_refuse_reason_t;
@@ -5054,6 +5058,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body( graphdemo_table_writer_t * w
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             graphdemo_table_writer_header_at( w, 27, 0x823b8a195ce2133cull, 4 );
+            schema_assert( value->seq >= 0 && value->seq <= 1000 ); /* a write keeps the declared bounds (SPEC.md §5.1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->seq ) );
         }
     }
@@ -5977,6 +5982,8 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_body_retain( graphdemo_table_write
             }
             graphdemo_table_retain_writer_id( w, 0x823b8a195ce2133cull , retention);
             graphdemo_table_writer_put8( w, 4 );
+            schema_assert( value->seq >= 0 && value->seq <= 1000 );
+            /* a write keeps the declared bounds (SPEC.md §5.1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->seq ) );
         }
     }

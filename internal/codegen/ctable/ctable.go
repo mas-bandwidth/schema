@@ -124,7 +124,11 @@ func tablePut(width int) string { return fmt.Sprintf("table_writer_put%d", width
 func tableGet(width int) string { return fmt.Sprintf("table_reader_get%d", width*8) }
 
 type tableGen struct {
-	retain bool // emit the opt-in parallel body family
+	// wroteAssert is the emitted writer carrying a schema_assert of its own
+	// (emitRangeAssert), which brings in <assert.h> and the assert hook for a
+	// file that has no other use for them.
+	wroteAssert bool
+	retain      bool // emit the opt-in parallel body family
 
 	messageSlots     map[string]uint64
 	descriptorUnions map[string]bool
@@ -1044,6 +1048,10 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 		// counted array's live count, debug-only, with no abort behind them —
 		// so this unit takes <assert.h> and not <stdlib.h>.
 		h.WriteString("#include <assert.h> /* the fixed form's write-side bounds, in a debug build */\n")
+	} else if g.wroteAssert {
+		// THE WRITE CONTRACT'S RANGE ASSERTS (docs/SPEC.md §5.1): debug-only,
+		// nothing after them, so the assert and not <stdlib.h>.
+		h.WriteString("#include <assert.h> /* the writer's declared-range asserts, in a debug build */\n")
 	}
 	fmt.Fprintf(&h, "\n#include \"%s.h\"\n", f.Base)
 	if unitHasWideStorage(u) {
@@ -1060,6 +1068,12 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 	}
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n\n")
 	h.WriteString(g.wirePrimitives())
+	if g.wroteAssert {
+		// PER FILE and outside the per-package primitives guard: the header
+		// whose writer asserts is the one that has to define the hook, since
+		// the package's other headers may not be in this translation unit.
+		h.WriteString(tableFixedAssertHook)
+	}
 	h.WriteString(tableRefuseRuntime)
 	if g.anyVariable {
 		h.WriteString("\n")
