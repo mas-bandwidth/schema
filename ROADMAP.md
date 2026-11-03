@@ -123,11 +123,11 @@ This work is on main: sprint/schema-vt-core landed on main, and the Go core (spr
 
 Progress checkpoint: 2026-11-02. Completed work is landing incrementally in main through PR #2660 and PR #2666. This roadmap records the current implementation and known gaps; unfinished work no longer holds completed changes on branches. The original nine languages and the newly added Goose leg are the completion targets; Goose still needs its remaining variable-table work and full acceptance.
 
-Registration now covers all 11 active constructs in C, C#, Go, Rust, Java, JavaScript, Dart and Elixir. The C++ public registry now lists 8/11, including required fields, forms and integrity. Text lists, total text limits, unbounded text and full nightly acceptance remain open. These counts describe compiler declarations, not percentages of full Schema completion.
+Registration now covers all 11 active constructs across all nine original languages (C++, C, C#, Go, Rust, Java, JavaScript, Dart and Elixir) as well as Goose. These counts describe compiler declarations, not percentages of full Schema completion.
 
 Landed: required-field, forms, integrity and text-list implementation across the ports; stronger ordinary-positive-unit coverage; populated feature witnesses; pointer-target and root-closure regressions; neutral repeated-key widening and message-integrity repairs; Rust nested-reader refusal repair; JavaScript helper emission and blob accounting; Dart string identity and retained-record accounting; Elixir measurement, pointer and root-closure repairs. Shared failing inputs stay in the corpus.
 
-C/C++/Go update: C has completed all 11 active constructs, populated feature witnesses, text-form/report coverage and the full 25-phase nightly at 243d391180030ee2a75fc490e33f33301cd95cf6. Go has completed its full 25-phase nightly at 3bab349e71d7c526a6f016f3ba601235d5d000d1. Receipts are in docs/validation/2026-11-02-c-nightly.json and docs/validation/2026-11-02-go-nightly.json. C++ construct registration and full acceptance remain open.
+C/C++/Go update: C has completed all 11 active constructs, populated feature witnesses, text-form/report coverage and the full 25-phase nightly at 243d391180030ee2a75fc490e33f33301cd95cf6. Go has completed its full 25-phase nightly at 3bab349e71d7c526a6f016f3ba601235d5d000d1. C++ has completed all 11 active constructs (including text lists, total text limits and unbounded text), populated feature witnesses, hostile corpus and pack gates, and the full 37-phase nightly at b998963b125e6ba2e943c6e38dde661eef886a21 (merged at f80b3e26f244d724b980f61182bffd8d61c5e6e6). Receipts are in docs/validation/2026-11-02-c-nightly.json, docs/validation/2026-11-02-go-nightly.json and docs/validation/2026-11-03-cpp-nightly.json.
 
 C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. The full-roster region driver and separate mutable-builder driver are now aligned with their reader contracts. Full uncapped nightly acceptance passed all 26 phases at 16dcb340f64d1d2f499334ec8e4cc1d72ed1f9c6; the frozen-source receipt is docs/validation/2026-11-02-cs-nightly.json.
 
@@ -137,7 +137,7 @@ Java update: the full uncapped fleet nightly passed all 23 required phases at 68
 
 Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Cursor and node-table length checks now validate remaining extent before addition; the three original overflow inputs are in the shared corpus and pass native JIT/AOT regression tests. The full-roster mixed mutable-reader profile and native second-arm lineage replacement are integrated. Cook-open cursor handling and guarded cook-write support are qualified by native JIT/AOT tests and all five cook conformance surfaces, with no absent cases. Superseded inline and array retention records are discarded on replacement, explicit fixed-root retaining APIs emit named non-callable refusals, and full uncapped nightly acceptance passed all 25 phases at b469caa0f1ed10f5c11c799064d2efca4bcad666 (plus bounded 75d605f4be110a749681c7264dde80269821f73e fixed-root refusal provenance); the frozen-source receipt is docs/validation/2026-11-02-dart-nightly.json. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage. Enum collection references outside the ID table now report malformed, with 21-case native coverage and an exact shared regression input. Unknown enum collection/arm losses and retaining union-array traversal are repaired, with native plain/retain matrices, nested-record save coverage and a shared foreign-enum regression input. Additional qualified Elixir repairs preserve retained union arms and untouched array slots, resolve blob ownership from surviving fields, widen keyed elements at their incoming width, refuse public retention on fixed roots, enforce list/map/keyed count refusal and unknown-keyed-slot skipping, defer node-table decoding until the final @node_id occurrence, and bound unknown union arm lengths before arm-ID refusal. Full uncapped nightly acceptance passed all 21 phases at d2d77495d63df61bc3097cedf8f049bae97dc1ce; the frozen-source receipt is docs/validation/2026-11-03-elixir-nightly.json.
 
-Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. C, C#, Go, Rust, Java, JavaScript, Dart and Elixir full-roster nightly acceptance are complete at their recorded revisions; C++ acceptance remains open. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
+Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. Full-roster nightly acceptance is now complete across all nine original languages (C++, C, C#, Go, Rust, Java, JavaScript, Dart and Elixir) and Goose at their recorded revisions.
 
 <!-- nova-work:variable-tables:start -->
 
@@ -162,7 +162,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | optional arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
-| the wire fuzzer gate | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| the wire fuzzer gate | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | maps | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | union arms of any field type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | string, bytes and flags defaults, and renaming a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 0% | 0% | 87% | 81% | 0% |
+| complete | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 0% | 0% | 87% | 81% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
