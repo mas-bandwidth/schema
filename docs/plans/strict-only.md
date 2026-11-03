@@ -58,9 +58,11 @@ in `docs/roadmap.sexp`, one task per layer below.
    JSONTestSuite `y_object_duplicated_key*` files refuse (a dialect row).
 10. **Non-zero slack in a fixed record stays unspecified and is not refused**
     (§3.4): no reader reads it, so no leg can disagree about it.
-11. **Open, not decided**: two map entries whose keys collide only after an
-    unknown key field defaults (`map_key_default_duplicate`); and whether a
-    record out of first-visit order, or one no pointer reaches, is damage.
+11. **Settled after the cold read**: map order and repeats are judged at step 3
+    as the reader decodes the keys, an absent key field at its default; a record
+    no pointer reaches is damage; a record out of first-visit order is not
+    (the numbering is positional); every leg answers `layout_unknown`, and
+    `layout_newer` and `count_over_length` are retired.
 
 ## (c) The layers, in order, each with its gate
 

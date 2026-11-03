@@ -10,7 +10,7 @@ The bill is `FIXED-FORM-BILL-READS-BACKWARD.md`; the law is its §2 and §6; the
 | **LOCK-REFUSES** | the narrowing does not compile against the lock; the refusal names the table, the definition, the rule, the old and the new value | `internal/lockfile` (Go), one test per row | yes |
 | **LOCK-ALLOWS** | the widening compiles and the lock's lineage gains one entry | `internal/lockfile` | no (a positive) |
 | **NEW-READS-OLD** | the widened reader reads the older writer's file: every old value lands exactly, the reader's tail is the default, the counters are what §5.2 says | the C++ reference first (`test/tables/fixedform_main.cpp`, a lineage pair per row written by the dump), then every leg | yes, per leg |
-| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses `layout_newer` before any record, no counter moves, nothing decoded; the refusal carries the file's hash and nothing else (bill §12.4) | the C++ reference first, then every leg | yes, per leg |
+| **OLD-REFUSES-NEW** | the older reader given the widened writer's file refuses `layout_unknown` before any record, no counter moves, nothing decoded; the refusal carries the file's hash and nothing else (bill §12.4) | the C++ reference first, then every leg | yes, per leg |
 
 The two read columns share one corpus: for each row, `fixedform_dump.cpp` writes the OLD file (`vN_<row>.bin`)
 and the NEW file (`vN1_<row>.bin`) from two schemas that differ by exactly that row. Each leg then has two
@@ -49,7 +49,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `float_widen` | `float32` | `float64` | `float32` from `float64`: "narrowed"; `int32`: "ladder" | the bits, NaN payloads included (per the FU ruling on the quiet bit) | the hash |
 | `range_widen` | `int32 \| 0..100` | `\| 0..200`; unranged | `\| 0..50`: "range narrowed"; `\| 10..100`: "range narrowed" | 100 lands, every counter 0 | the hash |
 | `range_added` | `int32` | — | `int32 \| 0..100`: "range added where none was" | — | — |
-| `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes and every counter `0` | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_newer` |
+| `cfloat_res_refine` | `float32 \| min = -1, max = 1, resolution = 0.1` | `resolution = 0.01` | — (the REFINEMENT is the widening; its reverse is `cfloat_res_coarsen`) | every old value lands EXACTLY: the old writer quantized to `0.1`, and `0.1` is a whole multiple of this reader's `0.01`, so nothing requantizes and every counter `0` | the hash — the resolution is in the DEFINITIONS DIGEST (`'Q'`, bill §13), so the wire hash moves when the step does and the older reader refuses `layout_unknown` |
 | `cfloat_res_coarsen` | `float32 \| min = -1, max = 1, resolution = 0.01` | — | `resolution = 0.1`: "resolution coarsened (0.01 -> 0.1)" | — | — |
 | `cfloat_range_widen` | `float32 \| min = -1, max = 1, resolution = 0.01` | `min = -2, max = 2, resolution = 0.01` | `min = -1, max = 0.5`: "range narrowed" | `1.0` lands, every counter 0 — a compressed float RIDES AS THE FLOAT (SPEC §3.4), so the bounds follow the ranged-scalar rule | the range, by the hash |
 | `bits_grow` | `bits(8)` | `bits(12)` | `bits(4)`: "narrowed" | exact | the hash |
@@ -58,7 +58,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `optional_add` | `T` | `?T` | `T` from `?T`: "optional removed" | present == 1, value exact | the hash |
 | `nested_append` | `Root { v Vec }`, `Vec {x,y,z}` | `Vec {x,y,z,w}` | `Vec {x,y}`: "field removed" (in the nested type, named as `Root: Vec.z`) | as `field_append`, inside Root | the hash |
 | `default_change` | `a int32 = 1` | — | `a int32 = 2`: "default changed" | — | — |
-| `keyword_change` | `fixed table` | — | `table`: "fixed removed"; the reverse: "fixed added" | — | (a different form, `previous_form` / `newer_form`, not `layout_newer`) |
+| `keyword_change` | `fixed table` | — | `table`: "fixed removed"; the reverse: "fixed added" | — | (a different form, `previous_form` / `newer_form`, not `layout_unknown`) |
 | `closure_plain_table` | — | — | a variable table reached by value: compile refusal (check_fixed) | — | — |
 | `closure_variable_kind` | — | — | a pointer, a map, an unbounded array in the closure: compile refusal | — | — |
 | `closure_self` | — | — | a fixed table reaching itself by value, in an array, through a type, through a pointer: compile refusal | — | — |
@@ -73,7 +73,7 @@ Naming: `V_<row>`; the Go test is `TestLock<Row>Refuses` / `TestLock<Row>Allows`
 | `floor_at` | a file at the floor reads |
 | `floor_below` | a file one below the floor refuses `layout_unsupported`, no counter, nothing decoded |
 | `floor_raise_live` | the floor raised by one: the file that read yesterday refuses today, by name, and the lock's diff says which |
-| `hash_unknown` | a hash in no lineage refuses `layout_newer` |
+| `hash_unknown` | a hash in no lineage refuses `layout_unknown` |
 | `hash_known_bytes_differ` | a known hash whose layout bytes differ from the lock's refuses `layout_malformed`; the seven §1.1 cases each written against a KNOWN hash land here, not in a runtime walk |
 | `hash_identity` | the reader's own hash selects the identity plan; no plan compiler runs (asserted by shape: no compile symbol reachable from load) |
 | `lineage_merge` | two branches append different fields; after the merge both pre-merge files read on the merged build (the name-subset rule, bill §8a.1) |

@@ -2976,7 +2976,7 @@ is the same on both:
 
 | the wire says | into a REGION (§6.5) | into a BUILDER (`LoadBuilder`) |
 |---|---|---|
-| a count the BODY CANNOT COVER | `LoadMeasure` answers `-1` with the reason `count_over_length` (§6.5). No `Load` runs, and there is no report, because nothing was read | damage: the whole load refuses `wire_damaged` (§4) |
+| a count the BODY CANNOT COVER | `LoadMeasure` answers `-1` with the reason `wire_damaged` (§6.5). No `Load` runs, and there is no report, because nothing was read | damage: the whole load refuses `wire_damaged` (§4) |
 | a count above the `int32` STORAGE CAP | `LoadMeasure` answers `-1` with the reason `count_over_extent_cap` (§6.5). No `Load`, no report | `LoadBuilder` answers NULL and REFUSES BY THE SAME NAME: the report's reason is `count_over_extent_cap` (and a report's `refused` flag is set and its `refuse_reason` is that name, in a port whose report carries them). No counter moves, and the partial builder is DISCARDED |
 
 **NO COUNTER MOVES FOR A `LoadMeasure` REFUSAL**, on §3's rule for the form
@@ -4258,8 +4258,7 @@ wire's own, each with its own named refusal:
 - **the reader's framing**: an `L` past its body's remaining bytes is
   damage, `wire_damaged` (§4), checked before anything is copied,
   and nothing is allocated from an `L` the bytes do not hold; a count claiming
-  more elements than its body's bytes can hold is refused `count_over_length`
-  (`TableRefuseCountOverLength`) at measure time, before any allocation, for a
+  more elements than its body's bytes can hold is damage, `wire_damaged` at measure time, before any allocation, for a
   `[]` list exactly as for any other §2.9 list, and a `[..N]` count past its
   bytes is damage, `wire_damaged` (§4);
 - **int32 count storage** (§2.9, §6.1): a `[]` count past `2^31 - 1` is
@@ -5210,7 +5209,7 @@ twenty unnameable entries counts nothing at all if no body references them.
   the bound reads every element and key equal, and a reader that adds one
   refuses a longer element or key `length_over_bound` (§2.8). An element or key `L` past its
   body is `wire_damaged`, a count past what its bytes can hold is
-  `count_over_length`, and neither allocates from the claim.
+  `wire_damaged`, and neither allocates from the claim.
 - **Field ORDER within a body is not part of the contract.** This
   implementation writes fields in declaration order, and a reader must not
   rely on it: every field is found by its id, so any order decodes the same
@@ -6408,7 +6407,7 @@ RANGE, AND IT REFUSES `out_of_range`.** A ranged value's `bits` can spell
 offsets past the sender's own range whenever `max - min` is not one less than a
 power of two, exactly as a reference's width can spell values past `E`. No
 writer emits one, and the announcement says what the writer's range was, so the
-reader refuses the batch `out_of_range`, naming the field, and never clamps
+reader refuses the batch `out_of_range` in §6.5's third step, and never clamps
 (Glenn, 2026-11-03: a value outside the writer's range refuses). A value inside
 the sender's range and outside this reader's own refuses by the same name
 (§4). The quantized float's index above `count` refuses as the packet wire
@@ -8175,8 +8174,8 @@ the bounds pass that runs after the loop, over storage, for either plan:
   | `widen` | decode a narrower integer source at its own width into a wider destination, `widened` counts |
   | `widenF` | widen an `f32` source to `f64` by the ordinary conversion (every finite `f32` is exact in an `f64`; a non-finite source is refused as `non_finite_float`, §3.3), `widened` counts |
   | `const` | write the constant at `aux` into the destination, for an absent arm or a default the reader's storage needs |
-  | `bool` | land a source byte of `0` or `1`; any other byte refuses `wire_damaged` (§6.5), as on the variable wire |
-  | `tag` | read a union tag and land it in the destination; a value past the WRITER's arm count, which the plan carries, refuses `out_of_range`, and arms are guarded entries the loop runs below, not here |
+  | `bool` | land a source byte of `0` or `1`; any other byte was refused `wire_damaged` by the load's check over every record before any landed (§6.5, algorithm §5.3) |
+  | `tag` | read a union tag and land it in the destination; a value past the WRITER's arm count, which the plan carries, is the bounds pass's to refuse `out_of_range` (the one place tags and ordinals are checked), and arms are guarded entries the loop runs below, not here |
 
 **THERE IS NO `union` OP**: a union is a `tag` entry and its arms' guarded
 entries. The op table's home is `docs/FIXED-FORM-ALGORITHM.md` §4.1, with §4.5
@@ -8368,8 +8367,7 @@ switches on the reason sees each by name (§5.3).
   the header is held to the layout behind it by a BYTE COMPARISON instead:
   **a known hash whose layout bytes are not the lock's own bytes for that hash
   is refused**, `layout_malformed`; a hash in no lineage entry is `layout_unknown`
-  (§21.3; `layout_newer` is reserved for a hash the lineage PROVES newer, and
-  nothing does yet; algorithm §5.3 steps 3 to 7).
+  (§21.3; algorithm §5.3 steps 3 to 7).
 - **THE FIXED FORM DOES NOT NEED THE PADDING AND PAYS IT ANYWAY** (§3). Nothing
   in this form memory-maps a body today; the sixteen bytes are paid so that the
   bytes do not move again when the cook and the block form join the registry
@@ -8555,7 +8553,9 @@ reason name (§6.5). There is no partial value, no repair, no clamp, and no
 reading past damage. What a read accepts is EVOLUTION, and evolution only:
 
 - **Unknown field** (newer writer): skipped by its length, counted `unknown`,
-  or kept under the retain rules (§6.6).
+  or kept under the retain rules (§6.6). Skipped is not unread: its contents
+  are checked by their wire kinds in §6.5's step 2 like every other byte, so
+  damage inside an unknown field refuses the load.
 - **Absent field** (older writer): the reader's value takes the field's
   default: the specified default, else zero. A `string(N)`, `bytes(N)`
   or `flags` field's declared default is that default (SPEC §4.2): the writer elides such a field holding it exactly as it elides a
@@ -8638,8 +8638,9 @@ name a wire with several conditions answers):
   count, index or reference on the form-`1` wire, §3), a kind no reader can
   skip, an array, keyed or map body too short to carry its own header (fewer
   than two bytes: the element kind byte and the count), a count the body
-  cannot cover, a header that crosses its own `L`, a descending or REPEATED
-  map key, the same field id twice in one body, the same keyed slot twice in
+  cannot cover, a header that crosses its own `L`, a map key equal to or
+  below the one before it (judged against the declaration, §6.5's step 3),
+  the same field id twice in one body, the same keyed slot twice in
   one keyed body, bytes after a nested union inside its arm's `L`, an arm
   whose `L` does not frame its kind, a bool byte other than `0` or `1`,
   ILL-FORMED TEXT (a kind `12` payload that is not well-formed UTF-8 or that
@@ -8647,8 +8648,9 @@ name a wire with several conditions answers):
   surrogate or a zero unit — the same refusal SPEC.md §4.7 and §4.12 put on
   the packet wire), a node table that cannot be read whole, a cycle (a loaded
   graph in which a pointer names a node whose descent is still open, which no
-  writer produces, §3.1), a reserved id out of place, and every case that
-  makes the whole wire damaged (§3). **No reader accepts damage**, on any
+  writer produces, §3.1), a node record no pointer reaches, kind `32` with a
+  nonzero `L` at any position, a reserved id out of place, and every case
+  that makes the whole wire damaged (§3). **No reader accepts damage**, on any
   form, which is what lets fifteen targets owe each other one verdict on one
   payload. Glenn, 2026-10-31: "failing to read something means the whole
   read is undefined".
@@ -8702,7 +8704,9 @@ name a wire with several conditions answers):
 **THE READ REPORT HOLDS THE REASON AND THE EVOLUTION COUNTERS, AND NOTHING
 ELSE.** A read that returns a value reports `unknown` (every id this reader
 cannot name: a field id, an enum variant id, a union arm id, a keyed slot's
-key) and `widened`; a retaining read adds `retained` and `retain_lost` (§6.6),
+key) and `widened`, each counted ONCE PER FIELD where it fires — an array or
+a map whose elements carry the event counts one for the field, as `widened`
+always has; a retaining read adds `retained` and `retain_lost` (§6.6),
 which stay zero until a caller asks for retention. Silence (all zero) means
 the data matched this reader's schema exactly. A read that refuses reports its
 one reason (§6.5) and no counter: nothing it decoded is defined, so there is
@@ -9750,10 +9754,10 @@ There is no tolerant read, under any name, in any target: no partial value,
 no repair, no clamp, no count of a condition the read then accepts, and no
 reading past damage. What a read accepts is evolution, and §4 lists it whole.
 
-**WHICH ONE REASON: THE PHASE, THEN THE BYTE.** A wire can carry more than one
+**WHICH ONE REASON: THE STEP, THEN THE BYTE.** A wire can carry more than one
 condition, and fifteen readers that each stop where their own walk happens to
 meet one would name different reasons for one payload. So the reason is
-fixed by the input, in three phases, and a reader stops at its first refusal:
+fixed by the input, in three steps, and a reader stops at its first refusal:
 
 1. **THE ENVELOPE**, in this order: the form byte (`unknown_form` on the
    variable read, the direction names on the fixed read, §3.4), the
@@ -9763,33 +9767,78 @@ fixed by the input, in three phases, and a reader stops at its first refusal:
    is decided before a byte of body is believed.
 2. **THE INPUT IS WELL-FORMED BY ITSELF.** The input is checked with no
    declaration: on the binary wires by the kinds and the framing the wire
-   carries, every record, every body and every field the wire holds, known
-   to this reader or not; on the text forms by the grammar (§16.2, §16.9). The
-   first condition in BYTE ORDER wins: `wire_damaged` for every §4 damage,
-   `count_over_extent_cap`, `blob_over_size_cap`, `non_finite_float` and
-   `blob_shared` on the binary wires, and `malformed` on the JSON read.
-   A pointer cycle, a property of the whole graph, is judged after the walk.
-   On the FIXED form this phase is every record's own framing against the
-   WRITER's layout — its hash (`no_layout`), its counts and lengths
-   (`count_over_bound`, `length_over_bound`), its used text (`text_ill_formed`),
-   its bool and present bytes and its floats — across the whole file before the
-   first record lands (algorithm §5.3).
+   carries, over every record, every body and every field the wire holds,
+   known to this reader or not; on the JSON read by the grammar (§16.2). The
+   reasons are `wire_damaged` for every §4 damage, `count_over_extent_cap`,
+   `blob_over_size_cap`, `non_finite_float` and `blob_shared` on the binary
+   wires, and `malformed` on the JSON read. **The POINTER checks are over every
+   pointer the wire carries** — every kind `17` payload in every record and
+   every field, known to this reader or not — in one marked walk from the
+   root after the scan: a pointer naming a node whose descent is still open is
+   a cycle, `wire_damaged`; a second slot naming one blob record is
+   `blob_shared`; and a record no pointer reaches is `wire_damaged`. A record
+   out of first-visit order is NOT damage: the numbering is positional, and a
+   reader resolves an index whatever order the records sit in.
 3. **THE INPUT AGAINST THE READER'S DECLARATION.** A well-formed input is
-   matched to the reader's declaration, and the first condition in BYTE ORDER
-   wins: `kind_mismatch`, `out_of_range`, `count_over_bound`,
-   `length_over_bound`, and `missing_required`, whose byte is the one that
-   closes the body that lacks the field. In the variable form the byte order
-   is the node table's record order and each body's field order, which is the
-   order a writer emits (§3.1).
+   matched to the reader's declaration: `kind_mismatch`, `out_of_range`,
+   `count_over_bound`, `length_over_bound`, `missing_required`, and the MAP
+   ORDER check. **The map order check is step 3** because it needs the
+   declaration: a map and a `[..N]Pair` are the same bytes, and only a map
+   reader holds its entries to an order. Keys are compared as this reader
+   decodes them, a key field the entry does not carry at its default, and a
+   key equal to or below the one before it refuses `wire_damaged`, at the later
+   entry's key. **A value outside the WRITER's range is step 3 on every form**
+   where the writer's range is known (the fixed form's plan, the message
+   announcement): `out_of_range`, at the value's first byte.
 
-A reader may fuse the phases, walk in its own order, or decode lazily; what it
+**WHAT BYTE ORDER MEANS: the absolute offset in the input**, the offset of the
+byte the condition is decided at, counted from the input's first byte (the
+batch's first byte on the message form). Every reason has its byte, the way
+§16.9.4 gives the text form's:
+
+| condition | its byte |
+|---|---|
+| a kind the reader cannot skip, a kind mismatch | the kind byte |
+| a bool byte, ill-formed text, a non-finite float, a value out of range | the value's first byte |
+| a count past the body, past the storage cap, past the reader's bound | the count's first byte |
+| a length past the body, past the blob cap, past the reader's bound | the length's first byte |
+| a non-canonical LEB128 number, a reference out of range or `0` where an id is required | the number's first byte |
+| a repeated field id, keyed slot or node-table field | the second occurrence's id reference |
+| a map key equal to or below the one before it | the later entry's key |
+| an early or missing terminator, bytes left in a body | the first byte no field claims, or the byte past the body |
+| `blob_shared` | the second naming slot's index |
+| a cycle | the index that names the open node |
+| a record no pointer reaches | the record's type id reference |
+| `missing_required` | the byte that closes the body lacking the field |
+
+**TWO CONDITIONS AT ONE BYTE.** A count or a length is checked against the
+storage cap (`count_over_extent_cap`) or the blob cap (`blob_over_size_cap`)
+FIRST, then against the body it sits in (`wire_damaged`), then against the
+reader's bound (step 3). Any other pair of conditions at one byte cannot occur,
+because each byte is one kind of thing.
+
+**THE MESSAGE FORM** (§3.3) takes the same three steps over the batch. Step 2 is
+a reference above the entry count `E`, a reference naming an entry of the wrong
+sort, a quantized index past its `count`, ill-formed text, a non-finite float
+and the framing of every body (`wire_damaged`, `non_finite_float`); step 3 is
+the declaration, a value outside the sender's announced range included. Byte
+order is the absolute bit offset in the batch, and an ANNOUNCED kind that does
+not match the reader's declaration refuses `kind_mismatch` at the first body
+that uses the field, not at the announcement.
+
+A reader may fuse the steps, walk in its own order, or decode lazily; what it
 answers is the reason this order names. Damage outranks every declaration
 condition because no declaration condition is defined on bytes that are not a
-wire, and byte order inside a phase is the one order every reader can compute
-from the input alone. **A refusal names the field where the reason has one**
-(`out_of_range: <Table>.<field>`, `kind_mismatch: <Table>.<field>`,
-`missing_required: <fields>`, `non_finite_float: <field>`, and the bound
-reasons), the name before the colon being the enum member.
+wire, and byte order is the one order every reader can compute from the input
+alone.
+
+**THE COMPARED ANSWER IS THE REASON'S NAME, AND NOTHING ELSE.** A reader may
+add diagnostic text after the name and a colon, and where it names a field it
+spells it `<Table>.<field>`, or `<Table>#<id>` for a field the reader has no
+name for (the id in hexadecimal). The text is never compared: two readers
+agree when they name the same member. Under the JSON read a lone surrogate is
+the reason `malformed` with the text `string_lone_surrogate: <Table>.<field>`
+(§16.3).
 
 **A `1` BOOL byte that is neither `0` nor `1` is DAMAGE on this read**:
 the whole load refuses `wire_damaged` (§3, §4). The FIXED form refuses the same
@@ -9839,8 +9888,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   decodes no body (§3.1) — and it commands the largest `sizeof( T )` this
   root can place plus its directory entry. A node ten thousand pointers name
   is ONE record, because the table holds one record per node and a pointer is
-  an index and never a copy, and a node the scan does not reach costs
-  nothing. Depth is not recursion, because the graph is flat. The
+  an index and never a copy, and a record no pointer reaches is damage
+  (§6.5), refused by the load. Depth is not recursion, because the graph is flat. The
   amplification a hostile FILE (form `1`) can reach is therefore the schema's
   largest record (plus one directory entry) per two wire bytes, and the number
   of records it can multiply that by is not a wire field the reader trusts: it
@@ -9884,7 +9933,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `unaligned_base` | the caller's base pointer is null, or not aligned for the region the header names (§7) |
   | `bad_layout` | the block accelerator's layout word, pitch, count or offset does not describe its arrays (§7, §19) |
   | `unknown_form` | a form byte THIS CALL does not carry (§3). A file's measure answers it for any byte that is not the variable form, form `2` included, because a batch belongs to the message surface (§3.3); the `Load` beside it answers `message_form_as_file` for `2` and `newer_form` otherwise, because a report has room to say which and a `-1` has one value |
-  | `count_over_length` | an array or map count whose elements cannot fit the field's own `L` (§2.8, §2.9) |
+  | `count_over_length` | RETIRED (2026-11-03): an array or map count whose elements cannot fit the field's own `L` is damage, `wire_damaged`. The member keeps its ordinal and no read answers it |
   | `count_over_extent_cap` | a count above the `int32` extent cap (§2.2), which no region can hold whatever its size. The measure's `-1`, the builder read's NULL and every read refuse with it (§2.9) |
   | `blob_over_size_cap` | a blob whose length is past the derived-size cap (§3.1, §11) |
   | `data_cycle` | a data cycle reached from a builder, which is the AUTHORING side's `-1` and the one value here that is not about a wire (§3.1, §7.6) |
@@ -9892,7 +9941,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `allocation_failed` | an allocation the codec asked for was refused (§7.6) |
   | `wire_damaged` | DAMAGE on a binary wire, framing or body: every condition §4 lists as damage, on every read of every binary form. The one name for all of it (§4, §6.5) |
   | `malformed` | DAMAGE on the JSON read: a text that is not well-formed JSON in this form's dialect, a repeated key, the depth cap (§16.2). Not a binary-wire reason |
-  | `out_of_range` | a value outside the range the read holds it to: the reader's declared `[min, max]` on the variable, message and JSON reads, the WRITER's range from the lineage entry on the fixed read, a `bits(N)` value past `2^N − 1`, and on the fixed read an enum ordinal or union tag outside the writer's set (§4, §3.4). The reason is `out_of_range: <Table>.<field>`. Same ordinal as the retired spelling `clamped`, renamed in place, because no read clamps |
+  | `out_of_range` | a value outside a range the read holds it to, always in §6.5's third step: the reader's declared `[min, max]` on every read; the WRITER's range where the read knows it — the fixed form's lineage plan and the message form's announcement; a `bits(N)` value past `2^N − 1`; and on the fixed read an enum ordinal or union tag outside the writer's set (§4, §3.3, §3.4). Same ordinal as the retired spelling `clamped`, renamed in place, because no read clamps |
   | `kind_mismatch` | a wire field, arm, element or map key whose kind is not the reader's declared kind and is not a widening, or a JSON value of the wrong type or shape (§4, §16.2). The reason is `kind_mismatch: <Table>.<field>` |
   | `base64_damaged` | base64 text with a byte outside the alphabet, or the wrong padding (§16.8) |
   | `base64_not_canonical` | base64 text that decodes but is not the canonical spelling of its bytes (§16.8) |
@@ -9906,7 +9955,7 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
   | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
   | `layout_unsupported` | the hash IS in the lineage, below its floor: an older, retired layout, so upgrade the client (§21.3) |
-  | `layout_newer` | RESERVED: a hash the lineage PROVES newer than this reader's own (§21.3). Go answers `layout_unknown` and no reader that has taken §21.3 emits this; the legs that have not taken it still do, and every port declares the member |
+  | `layout_newer` | RETIRED (2026-11-03): every leg answers `layout_unknown` for a hash outside the lineage (§21.3). The member keeps its ordinal, every port declares it, and no read answers it |
   | `layout_malformed` | bytes handed to the fixed form as a layout that are not one, after the seven named rules below have had their say: fewer bytes than a header, or none at all (§3.4). Also the name a malformed lock lineage entry reports (§21.3). The layout is refused WHOLE and sets nothing |
   | `layout_count_mismatch` | the entry count does not fit the layout's length exactly — `4 + 17 * count` is not the length given, or the count is `0` (§3.4). KEPT by the lineage rule: the lock-init parse still reaches it at `fixedruntime.go:1085` through the call at `:1681` |
   | `layout_kind_unknown` | an entry at a kind OUTSIDE §3's closed set (§3.4). A fixed form's kind set is CLOSED, so an unknown kind means a newer FORM BYTE and a different form, not a newer layout of this one; it is refused rather than stepped over. KEPT: the lock-init parse still reaches it at `fixedruntime.go:907` and `:1056` through the call at `:1681` |
@@ -14759,8 +14808,8 @@ repaired, kept in part or read past. The JSON and hand-editable text reads
 field, variant, arm or slot from a newer writer is skipped and counted
 `unknown`, or kept under the retain rules (§6.6); an absent field takes its
 default; a widening decodes exactly and counts `widened`; and the fixed form
-selects its lineage plan by hash (§21). A value outside the WRITER's range is
-damage to the record and refuses `out_of_range`; it never clamps.
+selects its lineage plan by hash (§21). A value outside the WRITER's range refuses `out_of_range`, in §6.5's third
+step on every form; it never clamps.
 
 **What it overturns.** The tolerant read and its named entry points
 (`...Tolerant`, §6.5); the owner read policy of 2026-10-17 ("reads forgiving
@@ -19617,9 +19666,8 @@ is what the writer is looked up by.
 **The name says what the reader knows and not which way the file lies.** A hash outside the lineage is a newer
 writer's layout, or an older layout nobody ever locked, or another table's file, or a header whose hash byte was
 damaged on disk or in flight; the reader cannot tell these apart, and answering "ship a newer reader" to all of
-them sends the operator after a reader that may not exist. So the refusal that points the operator at a newer
-reader, **`layout_newer`**, is for ONE case only: **a hash the lock lineage PROVES newer than this reader's own
-layout.** `layout_unsupported` is the opposite proof (the hash is in the lineage, below the floor: older,
+them sends the operator after a reader that may not exist. So every leg answers `layout_unknown`, and no refusal points the operator at a newer reader.
+`layout_unsupported` is the opposite proof (the hash is in the lineage, below the floor: older,
 retired, upgrade the client); `layout_unknown` is the absence of either proof.
 
 **What can prove direction, and what cannot.** Direction is an ORDER, and the only ordered thing a build holds
@@ -19628,17 +19676,9 @@ held to the declaration by `schema check`. So (1) every entry a build holds is t
 OLDER than it, and a `retired` mark says older too (`layout_unsupported`); (2) a hash that is not in the
 lineage has no position in it, so the lineage can say nothing about it; (3) the wire carries a hash and no
 ordinal, and the hash is a digest that cannot be ordered or re-derived (§3.4). **Nothing on the wire and
-nothing in the lock proves a layout newer today**, which makes `layout_newer` RESERVED by the standard: no reader that
-has taken this rule emits it (Go today), and for such a reader every hash outside the lineage is
-`layout_unknown`; the legs that have not taken it still emit it, the gap the next paragraph names. It becomes emittable only when the standard gives a
-reader an ordered fact about a hash it does not hold (for example a lineage position spent from the header's
-reserved bytes, or a lock tail recording layouts ahead of the build), and that change is made here first.
-
-**Go is first, and the other legs have a gap.** Go answers `layout_unknown` (the exported constant
-`TableRefuseLayoutUnknown`). The C, C++, C#, Java, Rust, JS, Dart and Elixir legs keep answering `layout_newer`
-for a hash outside the lineage until each takes this rule in its turn; until then those legs overstate, and the
-two names are the same refusal in everything but what they claim about direction. The C and C++ integers
-(algorithm §5.3) are assigned when those legs take the rule.
+nothing in the lock proves a layout newer**, so every hash outside the lineage is `layout_unknown`, in every leg,
+with no variation (decided 2026-11-03). `layout_newer` is RETIRED: the member keeps its ordinal and no read
+answers it.
 
 ### 21.4 The closure rule
 

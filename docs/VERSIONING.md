@@ -397,11 +397,9 @@ refusal says what the reader knows. `layout_unsupported` is a layout the
 reader's lineage holds and has retired: upgrade the client. `layout_unknown` is
 a layout hash the lineage does not hold, reported with the file's hash and
 nothing else: it may be a newer writer's, an older layout nobody locked, or a
-damaged header, and it does not say which. `layout_newer` ("ship the reader")
-is reserved for a hash the lock lineage proves newer, and nothing on the wire
-or in the lock proves that today, so no reader that has taken this rule (Go
-today) answers it yet; the legs that have not taken it still answer
-`layout_newer` (SPEC-TABLES.md §21.3). A refused load moves no counter. The error preserves the fixed
+damaged header, and it does not say which. Every leg answers `layout_unknown` for it; `layout_newer` is retired, because
+nothing on the wire or in the lock proves a layout newer (SPEC-TABLES.md
+§21.3). A refused load moves no counter. The error preserves the fixed
 refusal's own reason name (`layout_unknown`, `count_over_bound`, and the other
 section 3.4 reasons). Only a refusal of a form byte the call does not carry answers
 `unknown_form`; `TableReport.Err()` follows that rule (SPEC-TABLES.md section 6.5).
