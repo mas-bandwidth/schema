@@ -1305,6 +1305,13 @@ framing node_cycle_to_root                    graphdemo ListNode testdata/wire/t
 framing node_cycle_mid                        graphdemo ListNode testdata/wire/tables/framing/node_cycle_mid.bin               malformed            -
 framing node_diamond_chain                    graphdemo Scene    testdata/wire/tables/framing/node_diamond_chain.bin           0,0,0,0,0,false,read testdata/conformance/tables/framing/scene_diamond_chain.json
 framing node_chain_two                        graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
+# leb128_max_bytes = 10 (docs/SPEC-TABLES.md §3, F10), at a skipped kind-17
+# field whose value is never used: ten bytes reaching 2^64 - 1 is skipped and
+# counted unknown; a tenth byte above the 64th bit, and eleven bytes, are
+# malformed at the same position.
+framing frame_leb_ten_bytes_skipped           tblr1 Cfg testdata/wire/tables/framing/frame_leb_ten_bytes_skipped.bin           1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_leb_tenth_byte_overflow_skipped tblr1 Cfg testdata/wire/tables/framing/frame_leb_tenth_byte_overflow_skipped.bin malformed            -
+framing frame_leb_eleven_bytes_skipped        tblr1 Cfg testdata/wire/tables/framing/frame_leb_eleven_bytes_skipped.bin        malformed            -
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
