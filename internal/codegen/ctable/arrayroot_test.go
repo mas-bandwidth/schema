@@ -43,11 +43,12 @@ const cArrayRootProbe = `#include "ProbeTable.h"
 static int failures = 0;
 #define CHECK(x) do { if (!(x)) { fprintf(stderr, "line %d: %s\n", __LINE__, #x); failures++; } } while (0)
 
-static void compact( char * text )
+/* JSON writers return counted bytes, without a trailing NUL. */
+static void compact( char * text, int64_t length )
 {
     char * at = text;
     char * p;
-    for ( p = text; *p != 0; p++ )
+    for ( p = text; p < text + length; p++ )
     {
         if ( *p == ' ' || *p == '\n' || *p == '\r' || *p == '\t' ) { continue; }
         *at++ = *p;
@@ -92,9 +93,11 @@ int main( void )
     CHECK( goal_list_builder_lock( &b ) );
 
     n = goal_list_to_json_measure( (const GoalList *)(const void *)b.region );
-    CHECK( n > 0 );
+    CHECK( n > 0 && n < (int64_t) sizeof( text ) );
+    if ( n <= 0 || n >= (int64_t) sizeof( text ) ) { return 1; }
+    memset( text, '!', sizeof( text ) );
     CHECK( goal_list_to_json( (const GoalList *)(const void *)b.region, text, (int64_t) sizeof( text ) ) == n );
-    compact( text );
+    compact( text, n );
     CHECK( strcmp( text, "[{\"x\":1},{\"x\":2}]" ) == 0 );
     goal_list_builder_shutdown( &b );
 
@@ -118,9 +121,11 @@ int main( void )
     hg->x = 7;
     CHECK( holder_builder_lock( &h ) );
     hn = holder_to_json_measure( (const Holder *)(const void *)h.region );
-    CHECK( hn > 0 );
+    CHECK( hn > 0 && hn < (int64_t) sizeof( htext ) );
+    if ( hn <= 0 || hn >= (int64_t) sizeof( htext ) ) { return 1; }
+    memset( htext, '!', sizeof( htext ) );
     CHECK( holder_to_json( (const Holder *)(const void *)h.region, htext, (int64_t) sizeof( htext ) ) == hn );
-    compact( htext );
+    compact( htext, hn );
     CHECK( strcmp( htext, "{\"g\":[{\"x\":7}]}" ) == 0 );
     holder_builder_shutdown( &h );
 
