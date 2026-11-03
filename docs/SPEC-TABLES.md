@@ -13546,7 +13546,13 @@ in build version (§20.5).
   C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua and Squirrel
   hold it on the shared vectors in `testdata/wire/tables/storage-cap`, each
   through its measure and its strict read; Goose, MOO, Luau and Lobster are
-  owed it.
+  owed it. Each of those legs stores a type's size, its field offsets and its
+  element, entry and cook element sizes at 64 bits, so a record past 4 GiB
+  (`testdata/wire/tables/storage-cap/wide`) generates and compiles with
+  its sizes exact. Two runtime limits stand below the cap: the CLR loads no
+  value type of 2 GiB or more, so C#'s by-value row and block structs for
+  such a record do not compile, and a Java `byte[]` view reads no position
+  past 2^31-1, so its accessor for one throws `ArithmeticException`.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a
