@@ -257,3 +257,36 @@ func TestGooseCookWriterMatchesIndependentLayout(t *testing.T) {
 		})
 	}
 }
+
+// TestGooseCookRegionWriterHonoursDeclaredForms: a pointered root that
+// declares the cook among its forms (§2.12) gets the region writer and its
+// layout; one that does not gets neither.
+func TestGooseCookRegionWriterHonoursDeclaredForms(t *testing.T) {
+	t.Parallel()
+	const src = `package formsdemo
+table Cooked | forms = "wire,cook" {
+    next *Cooked
+}
+table Uncooked | forms = "wire" {
+    next *Uncooked
+}
+`
+	u := unitFromSchema(t, "Forms.schema", src)
+	files, err := goosetable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cook := string(files["FormsCook.goose"])
+	for _, want := range []string{"fn CookedCookMeasure(data: ", "fn CookedCook(data: "} {
+		if !strings.Contains(cook, want) {
+			t.Errorf("FormsCook.goose missing %q", want)
+		}
+	}
+	if strings.Contains(cook, "UncookedCook") {
+		t.Errorf("FormsCook.goose emitted a cook surface for Uncooked, which declares no cook")
+	}
+	home := string(files["formsdemo_cook.goose"])
+	if !strings.Contains(home, "let CookedCookRegionTable:") || strings.Contains(home, "UncookedCookRegionTable") {
+		t.Errorf("formsdemo_cook.goose region roots are not the cook-carrying tables:\n%s", home)
+	}
+}
