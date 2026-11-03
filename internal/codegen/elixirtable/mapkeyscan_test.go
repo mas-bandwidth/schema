@@ -33,6 +33,8 @@ func TestMapKeyAdmissionElixir(t *testing.T) {
 		mismatch, widened, clamped, unknown, retained, saveLost, duplicate int
 		malformed                                                          bool
 	}{
+		{"duplicate-retains-only-last", "numbers", []string{"02080100000003040a00000005040b00000000", "02080100000003041400000005041500000000"}, 0, 0, 0, 2, 2, 0, 1, false},
+		{"duplicate-retires-first", "numbers", []string{"02080100000003040a00000005040b00000000", "02080100000003041400000000"}, 0, 0, 0, 1, 1, 0, 1, false},
 		{"duplicate-numeric", "numbers", []string{"02080100000003040a00000000", "02080100000003041400000000"}, 0, 0, 0, 0, 0, 0, 1, false},
 		{"duplicate-text", "words", []string{"020c016103040a00000000", "020c016103041400000000"}, 0, 0, 0, 0, 0, 0, 1, false},
 		{"duplicate-before-bad-key", "numbers", []string{"02080100000003040a00000000", "02080100000003041400000000", "0200"}, 1, 0, 0, 0, 0, 0, 1, false},
