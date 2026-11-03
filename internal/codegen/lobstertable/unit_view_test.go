@@ -101,7 +101,15 @@ print("constant omission detected")
 func TestLobsterUnitViewCorpus(t *testing.T) {
 	for _, source := range []string{"examples", "bench/corpus/BenchTable.schema"} {
 		t.Run(source, func(t *testing.T) {
-			g, err := generateLoadUnit(t, []string{filepath.Join(root, source)})
+			paths := []string{filepath.Join(root, source)}
+			if source == "examples" {
+				var err error
+				paths, err = filepath.Glob(filepath.Join(root, source, "*.schema"))
+				if err != nil || len(paths) == 0 {
+					t.Fatalf("example paths: %v (%d files)", err, len(paths))
+				}
+			}
+			g, err := generateLoadUnit(t, paths)
 			if err != nil {
 				t.Fatal(err)
 			}
