@@ -383,9 +383,6 @@ func luaHostileCarriedList(_ []luaHostileCase) map[string]luaHostileCarried {
 	out := map[string]luaHostileCarried{}
 	// The message reader has no caller storage bound.
 	out["message-batch-too-large"] = luaHostileCarried{"accept", "-", "schema-lua-message-honors-storage-bound-r"}
-	// Accepted by both, but the subnormal float's canonical text differs: a
-	// reader/writer spelling bug in the Lua float32 path.
-	out["conformance-num-float32-subnormal"] = luaHostileCarried{"accept", "-", "schema-lua-float32-subnormal-canonical-text-r"}
 	return out
 }
 
