@@ -12,7 +12,9 @@ import (
 // table the Goose load is held to by the same rows (goosetable's
 // TestGooseLoadRefusalReasons): for each file, <T>ReadStrict's one reason,
 // the form refusal TableReport.Reason names, and, for the measure unit,
-// <T>LoadMeasureReason over the same bytes (docs/SPEC-TABLES.md §6.5).
+// <T>LoadMeasureReason over the same bytes (docs/SPEC-TABLES.md §6.5). A
+// count-cap row also leaves the builder load's report with no counter moved
+// and malformed unset (§2.9).
 func TestLoadRefusalReasonPins(t *testing.T) {
 	t.Setenv("GOTOOLCHAIN", "go1.26.0")
 	data, err := os.ReadFile("../goosetable/testdata/load_refusal_reasons.tsv")
@@ -40,7 +42,9 @@ func TestLoadRefusalReasonPins(t *testing.T) {
  `
 	for _, leg := range []struct{ schema, name, read string }{
 		{"package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n", "measure",
-			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilderTolerant(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr)"},
+			"var b RootBuilder;if !b.Init(){t.Fatal(\"init\")};var rep TableReport;RootLoadBuilderTolerant(&b,w,&rep);b.Shutdown();_,mr:=RootLoadMeasureReason(w);measure:=member(mr);" +
+				// the builder's count-cap refusal moves no counter and is not damage (§2.9)
+				"if p.strict==\"count_over_extent_cap\"&&(rep.Widened!=0||rep.Clamped!=0||rep.KindMismatch!=0||rep.Unknown!=0||rep.Duplicate!=0||rep.Malformed){t.Errorf(\"%s: the count-cap refusal left %+v\",p.name,rep)}"},
 		{"package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n", "fixed",
 			"var v Root;var rep TableReport;RootLoadTolerant(&v,w,&rep);measure:=\"-\""},
 	} {
