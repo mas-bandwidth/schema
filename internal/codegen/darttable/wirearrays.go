@@ -278,6 +278,11 @@ func (g *wireGen) emitFixedHelper(st *ir.Struct, f *ir.Field) {
 	} else {
 		g.pf("\tif (elemKind != %d && !(%s)) { p.report.kindMismatch++;%s return true; }\n", ek, wc, g.absentOnMismatch(f))
 	}
+	// A compatible positional occurrence supersedes the earlier retention
+	// even when only a prefix of known slots is updated (§6.6).
+	if ek == wireKindTable || ek == wireKindUnion {
+		g.pf("\tif (p.retain != null) { for (final old in v.%s) { p.retain!.forget(old); } }\n", fieldMember(f))
+	}
 	g.pf("\tfinal out = <%s>[];\n", et)
 	// a count past the declared slots keeps them and counts one clamp; the
 	// excess skips via the length (§4, internal/tablewire arrayBody)

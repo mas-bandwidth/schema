@@ -252,3 +252,4 @@ enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vector
 # Replacing a table array supersedes retained inline records without save loss.
 retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
 retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
+retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain_list_maps_replaced.bin
