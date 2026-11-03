@@ -2482,6 +2482,11 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		// after its own kind check — a repeat under the same id whose payload
 		// is of another element kind leaves the previously-decoded value
 		// standing rather than wiping it.
+		// Superseded by-value bodies stop owning retained records. The
+		// existing forget walk leaves pointer nodes independently accountable.
+		if declKind == wireKindTable || declKind == wireKindUnion {
+			g.pf("%s\t\tif (r.retain != null) { for (final old in v.%s) { r.retain!.forget(old); } }\n", ind, name)
+		}
 		g.pf("%s\t\tv.%s = <%s>[];\n", ind, name, et)
 		// a count past a counted array's bound keeps the bound's prefix and
 		// counts one clamp; the rest skips via the length (§4,

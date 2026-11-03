@@ -248,3 +248,7 @@ enum_array_ref_outside tabledemo RootConfig testdata/wire/tables/fuzz-vectors/en
 
 # An unknown enum variant in a known array slot is excluded retention loss.
 enum_array_foreign_variant tabledemo RootConfig testdata/wire/tables/fuzz-vectors/enum_array_foreign_variant.bin
+
+# Replacing a table array supersedes retained inline records without save loss.
+retain_array_replaced mapdemo Depth testdata/wire/tables/fuzz-vectors/retain_array_replaced.bin
+retain_list_replaced listdemo Save testdata/wire/tables/fuzz-vectors/retain_list_replaced.bin
