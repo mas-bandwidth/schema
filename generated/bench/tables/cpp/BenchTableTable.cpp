@@ -1511,6 +1511,39 @@ struct TableJsonIn
     void * graph; // the pointered read's builder and label map (§16.7); NULL for a fixed table
 };
 
+// TableJsonRequireSeen closes ONE object: every field marked required
+// (docs/SPEC-TABLES.md §2.3; oracle internal/codegen/gotable/json.go
+// tableJsonRequireSeen) must have been named, and one that was not is refused
+// as missing_required, in declaration order, exactly as the binary reader
+// refuses a record that omitted it. A required field inside an if guard is
+// demanded only while its guard holds: with the branch off it is absent and
+// no refusal is owed. The bounded seen bitmap is the duplicate tracker; a
+// table with more than 4096 fields keeps its old reading past the window.
+inline bool TableJsonRequireSeen( TableJsonIn & in, const void * base, const TableTypeInfo * info, const uint64_t * seen )
+{
+    bool missing = false;
+    for ( int32_t i = 0; i < info->num_fields; i++ )
+    {
+        const TableFieldInfo * f = &info->fields[i];
+        if ( i >= 4096 || !f->required ) { continue; }
+        if ( f->guard[0] != 0 && !TableJsonGuardHolds( base, info, f->guard ) ) { continue; }
+        if ( ( seen[i >> 6] & ( uint64_t( 1 ) << ( i & 63 ) ) ) != 0 ) { continue; }
+        if ( !missing ) { in.report->missing_required_fields[0] = 0; }
+        if ( missing && strlen( in.report->missing_required_fields ) + 2 + strlen( f->name ) < sizeof( in.report->missing_required_fields ) )
+        {
+            strcat( in.report->missing_required_fields, ", " );
+        }
+        if ( strlen( in.report->missing_required_fields ) + strlen( f->name ) < sizeof( in.report->missing_required_fields ) )
+        {
+            strcat( in.report->missing_required_fields, f->name );
+        }
+        missing = true;
+    }
+    if ( !missing ) { return true; }
+    in.report->missing_required++;
+    return false;
+}
+
 inline void TableJsonSpace( TableJsonIn & in )
 {
     while ( in.pos < in.size )
@@ -3576,7 +3609,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
 {
     // duplicate tracking, bounded and allocation-free: a table with more
     // fields than this still reads, its repeats simply stop being counted
-    uint64_t seen[8] = {};
+    uint64_t seen[64] = {};
     for ( ;; )
     {
         char key[kTableJsonMaxKey];
@@ -3592,7 +3625,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
             if ( c == '}' )
             {
                 in.pos++;
-                return true;
+                return TableJsonRequireSeen( in, base, info, seen );
             }
             if ( c == 0 )
             {
@@ -3639,7 +3672,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         else
         {
             const TableFieldInfo * f = &info->fields[index];
-            if ( index < 512 )
+            if ( index < 4096 )
             {
                 uint64_t bit = uint64_t( 1 ) << ( index & 63 );
                 if ( ( seen[index >> 6] & bit ) != 0 ) { in.report->duplicate++; }
@@ -3715,7 +3748,7 @@ inline bool TableJsonReadTableKeys( TableJsonIn & in, void * base, const TableTy
         if ( c == '}' )
         {
             in.pos++;
-            return true;
+            return TableJsonRequireSeen( in, base, info, seen );
         }
         in.bad = true;
         return false;
@@ -3741,6 +3774,7 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
         return false;
     }
     if ( bytes >= 3 && (uint8_t) text[0] == 0xEF && (uint8_t) text[1] == 0xBB && (uint8_t) text[2] == 0xBF ) { in.pos = 3; }
+    const int32_t missing_before = in.report->missing_required;
     bool ok = TableJsonReadTable( in, value, info, 0 );
     if ( ok )
     {
@@ -3749,7 +3783,8 @@ inline bool TableJsonRead( void * value, const TableTypeInfo * info, const char 
     }
     if ( in.bad || !ok )
     {
-        in.report->malformed = true;
+        // a missing required field is its own refusal (§2.3), not damage
+        if ( in.bad || in.report->missing_required == missing_before ) { in.report->malformed = true; }
         return false;
     }
     return true;
@@ -4794,6 +4829,44 @@ inline bool TableTextFormField( const TableTextFormNode & n, const TableFieldInf
     return TableTextFormScalar( n, f, out, why, path, spans );
 }
 
+inline bool tableTextFormGuard( const char * guard, const TableTextFormNode & rec, const TableTypeInfo * info, const std::vector<int32_t> & seen_idx, const std::vector<size_t> & seen_val )
+{
+    if ( guard == NULL || guard[0] == 0 ) { return true; }
+    const char * p = guard;
+    for ( ;; )
+    {
+        while ( *p == ' ' || *p == '&' ) { p++; }
+        if ( *p == 0 ) { return true; }
+        bool want = true;
+        if ( *p == '!' )
+        {
+            want = false;
+            p++;
+        }
+        const char * start = p;
+        while ( *p != 0 && *p != ' ' && *p != '&' ) { p++; }
+        const std::string name( start, (size_t) ( p - start ) );
+        bool val = false;
+        for ( int32_t j = 0; j < info->num_fields; j++ )
+        {
+            if ( name == info->fields[j].name )
+            {
+                for ( size_t k = 0; k < seen_idx.size(); k++ )
+                {
+                    if ( seen_idx[k] == j )
+                    {
+                        const TableTextFormNode & vn = rec.items[seen_val[k]];
+                        val = ( vn.kind == 't' );
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+        if ( val != want ) { return false; }
+    }
+}
+
 inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInfo * info, std::string & out, const char ** why, const std::string & path, tableTextFormSpans * spans )
 {
     tableTextFormMark( spans, path, n );
@@ -4804,6 +4877,7 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
     }
     out += '{';
     std::vector<int32_t> seen;
+    std::vector<size_t> seen_val;
     for ( size_t i = 0; i < n.items.size(); i += 2 )
     {
         const TableTextFormNode & key = n.items[i];
@@ -4840,12 +4914,37 @@ inline bool TableTextFormRecord( const TableTextFormNode & n, const TableTypeInf
             }
         }
         seen.push_back( found );
+        seen_val.push_back( i + 1 );
         const std::string fp = tableTextFormJoin( path, info->fields[found].json );
         tableTextFormMark( spans, fp, key );
         if ( i > 0 ) { out += ','; }
         TableTextFormJsonString( out, info->fields[found].json );
         out += ':';
         if ( !TableTextFormField( n.items[i + 1], &info->fields[found], out, why, fp, spans ) ) { return false; }
+    }
+    for ( int32_t j = 0; j < info->num_fields; j++ )
+    {
+        const TableFieldInfo * f = &info->fields[j];
+        const bool active = tableTextFormGuard( f->guard, n, info, seen, seen_val );
+        bool is_seen = false;
+        for ( size_t k = 0; k < seen.size(); k++ )
+        {
+            if ( seen[k] == j )
+            {
+                is_seen = true;
+                break;
+            }
+        }
+        if ( is_seen && !active )
+        {
+            *why = "text_inactive_field";
+            return false;
+        }
+        if ( !is_seen && active && f->required )
+        {
+            *why = "text_missing_required";
+            return false;
+        }
     }
     out += '}';
     return true;
@@ -5016,7 +5115,7 @@ bool TableEntityFromJsonTolerant( TableEntity & value, const char * text, int64_
     const bool ok = TableJsonRead( &value, TableEntityTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        to->malformed = true;
+        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
         TableEntityTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5028,11 +5127,11 @@ bool TableEntityFromJson( TableEntity & value, const char * text, int64_t bytes,
 {
     TableReport read;
     bool ok = TableJsonRead( &value, TableEntityTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else
+        else if ( read.kind_mismatch != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }
@@ -5064,7 +5163,7 @@ bool TableStatFromJsonTolerant( TableStat & value, const char * text, int64_t by
     const bool ok = TableJsonRead( &value, TableStatTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        to->malformed = true;
+        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
         TableStatTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5076,11 +5175,11 @@ bool TableStatFromJson( TableStat & value, const char * text, int64_t bytes, Tab
 {
     TableReport read;
     bool ok = TableJsonRead( &value, TableStatTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else
+        else if ( read.kind_mismatch != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }
@@ -5112,7 +5211,7 @@ bool TableMixedFromJsonTolerant( TableMixed & value, const char * text, int64_t 
     const bool ok = TableJsonRead( &value, TableMixedTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        to->malformed = true;
+        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
         TableMixedTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5124,11 +5223,11 @@ bool TableMixedFromJson( TableMixed & value, const char * text, int64_t bytes, T
 {
     TableReport read;
     bool ok = TableJsonRead( &value, TableMixedTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else
+        else if ( read.kind_mismatch != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }
@@ -5160,7 +5259,7 @@ bool TableHitEventFromJsonTolerant( TableHitEvent & value, const char * text, in
     const bool ok = TableJsonRead( &value, TableHitEventTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        to->malformed = true;
+        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
         TableHitEventTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5172,11 +5271,11 @@ bool TableHitEventFromJson( TableHitEvent & value, const char * text, int64_t by
 {
     TableReport read;
     bool ok = TableJsonRead( &value, TableHitEventTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else
+        else if ( read.kind_mismatch != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }
@@ -5208,7 +5307,7 @@ bool TableChatEventFromJsonTolerant( TableChatEvent & value, const char * text, 
     const bool ok = TableJsonRead( &value, TableChatEventTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        to->malformed = true;
+        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
         TableChatEventTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5220,11 +5319,11 @@ bool TableChatEventFromJson( TableChatEvent & value, const char * text, int64_t 
 {
     TableReport read;
     bool ok = TableJsonRead( &value, TableChatEventTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else
+        else if ( read.kind_mismatch != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }
@@ -5256,7 +5355,7 @@ bool TablePickupEventFromJsonTolerant( TablePickupEvent & value, const char * te
     const bool ok = TableJsonRead( &value, TablePickupEventTableType(), text, bytes, to );
     if ( !ok || to->malformed )
     {
-        to->malformed = true;
+        if ( to->missing_required == 0 ) { to->malformed = true; } else { to->malformed = malformed_before; }
         TablePickupEventTableType()->reset( &value );
         return false;
     } // damage discards the whole load (§4)
@@ -5268,11 +5367,11 @@ bool TablePickupEventFromJson( TablePickupEvent & value, const char * text, int6
 {
     TableReport read;
     bool ok = TableJsonRead( &value, TablePickupEventTableType(), text, bytes, &read );
-    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed )
+    if ( !ok || read.clamped != 0 || read.kind_mismatch != 0 || read.malformed || read.missing_required != 0 )
     {
-        if ( !ok || read.malformed ) { read.refuse_reason = TableRefuseReason::malformed; }
+        if ( read.malformed || ( !ok && read.missing_required == 0 ) ) { read.refuse_reason = TableRefuseReason::malformed; }
         else if ( read.clamped != 0 ) { read.refuse_reason = TableRefuseReason::clamped; }
-        else
+        else if ( read.kind_mismatch != 0 )
         {
             read.refuse_reason = TableRefuseReason::kind_mismatch;
         }

@@ -19,7 +19,7 @@ import (
 var nonGoCarriers = map[string][]string{
 	"c":    {carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
 	"cs":   {carryUnboundedText, carryRequired, carryTimestamp, carryForms, carryIntegrity, carryTextList, carryTextListTotal, carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot},
-	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
+	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap, carryForms, carryIntegrity, carryRequired},
 	"dart": {carryOptionalVariableClosure},
 	"java": {carryOptionalVariableClosure, carryOneSidedRange, carryForms, carryArrayRoot, carryTimestamp, carryOptionalMap, carryRequired, carryIntegrity, carryTextList, carryTextListTotal, carryUnboundedText},
 	"luau": {carryTimestamp, carryRequired, carryForms, carryUnboundedText, carryTextListTotal, carryTextList, carryArrayRoot, carryOneSidedRange, carryOptionalVariableClosure, carryOptionalMap},
