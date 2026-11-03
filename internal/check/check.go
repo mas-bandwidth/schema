@@ -4926,6 +4926,24 @@ func (c *checker) reserveCPrefix(name string, pos ast.Pos) {
 // payload is a `type`. Sorted, so the diagnostics never shuffle run to run.
 func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	reached := map[string]bool{}
+	// An arm reaches its named union transitively, including when the name
+	// is the element of a bounded array (§2.6). Mark before descending so
+	// shared subgraphs are visited once and rejected cycles cannot loop here.
+	var reach func(*ir.Union)
+	reach = func(un *ir.Union) {
+		if un == nil || reached[un.Name] {
+			return
+		}
+		reached[un.Name] = true
+		for _, v := range un.Variants {
+			if v.F == nil || v.F.Type.Kind != ir.TNamed {
+				continue
+			}
+			if nested, ok := v.F.Type.Ref.(*ir.Union); ok {
+				reach(nested)
+			}
+		}
+	}
 	for name := range closure {
 		st := c.closureMember(name)
 		if st == nil {
@@ -4933,7 +4951,7 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 		}
 		for _, f := range st.Fields {
 			if un, ok := f.Type.Ref.(*ir.Union); ok && f.Type.Kind == ir.TNamed {
-				reached[un.Name] = true
+				reach(un)
 			}
 		}
 	}
@@ -4944,7 +4962,7 @@ func (c *checker) checkTableArmsReached(closure map[string]bool) {
 	for union, owners := range c.unionNamedBy {
 		for _, owner := range owners {
 			if closure[owner] {
-				reached[union] = true
+				reach(c.unions[union])
 			}
 		}
 	}

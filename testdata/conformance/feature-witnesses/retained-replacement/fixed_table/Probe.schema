@@ -1,0 +1,6 @@
+package probe
+enum Slot { Alpha, Beta }
+table Node { known int32 }
+table Item { known int32
+ peer *Node }
+table Root { entry [2]Item }

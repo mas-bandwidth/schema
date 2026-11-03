@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // TestDamageDiscardsTheWholeLoadElixir holds docs/SPEC-TABLES.md §4, DAMAGE
@@ -75,7 +76,41 @@ func TestDamageDiscardsTheWholeLoadElixir(t *testing.T) {
 			} else {
 				paths, _ = filepath.Glob(filepath.Join(root, units[unit].dir, "*.schema"))
 			}
-			files := generateElixir(t, loadUnit(t, paths...))
+			u := loadUnit(t, paths...)
+			variable := ir.VariableTables(u)
+			fixedRoots := false
+			for _, r := range rows[unit] {
+				fixedRoots = fixedRoots || !variable[r[1]]
+			}
+			if fixedRoots {
+				// Keep the original fixture's plain and variable retaining reads.
+				// A fixed root instead refuses retention before inspecting bytes.
+				var originalProbe strings.Builder
+				originalProbe.WriteString(`store=%{records: [],used: 0,cap: 4096,ids: [],id_cap: 256}
+zero=%{unknown: 0,kind_mismatch: 0,widened: 0,clamped: 0,malformed: false,retained: 0,retain_lost: 0}
+`)
+				for _, r := range rows[unit] {
+					fmt.Fprintf(&originalProbe, `data=File.read!(%q)
+{:error,:malformed,%%{malformed: true}}=%s.load(%q,data)
+`, r[2], units[unit].module, r[1])
+					if variable[r[1]] {
+						fmt.Fprintf(&originalProbe, `{:error,_,%%{malformed: true},%%{records: [],used: 0,ids: []}}=%s.load_retain(%q,data,store,zero)
+`, units[unit].module, r[1])
+					} else {
+						fmt.Fprintf(&originalProbe, `{:error,:fixed_root,^zero,^store}=%s.load_retain(%q,data,store,zero)
+`, units[unit].module, r[1])
+					}
+				}
+				originalProbe.WriteString("IO.puts(\"ORIGINAL_DAMAGE_OK\")\n")
+				out, err := runArmProbe(t, elixirBin, generateElixir(t, u), originalProbe.String())
+				if err != nil || !strings.Contains(out, "ORIGINAL_DAMAGE_OK") {
+					t.Fatalf("original fixture damage/refusal: %v\n%s", err, out)
+				}
+				// Replay every identical framing vector through an ordinary
+				// table counterpart so retaining discard still has its blade.
+				u = loadVariableRetainFixture(t, paths...)
+			}
+			files := generateElixir(t, u)
 			var probe strings.Builder
 			probe.WriteString(`
 defmodule Probe do
