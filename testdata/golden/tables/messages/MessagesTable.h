@@ -28318,6 +28318,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // MESSAGEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // UserLoadTextForm reads one User from the hand-editable text form
@@ -28325,6 +28340,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool UserLoadTextForm( const char * text, int64_t bytes, User & value, const char ** refusal );
+
+// UserLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool UserLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, User & value, const char ** refusal );
 
 // UserLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28351,6 +28370,10 @@ bool UserEditTextForm( const char * document, int64_t document_bytes, const Tabl
 // names itself in *refusal (§16.9.4).
 bool ScriptLoadTextForm( const char * text, int64_t bytes, Script & value, const char ** refusal );
 
+// ScriptLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ScriptLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Script & value, const char ** refusal );
+
 // ScriptLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // ScriptSaveTextForm with no edit is the input byte for byte.
@@ -28375,6 +28398,10 @@ bool ScriptEditTextForm( const char * document, int64_t document_bytes, const Ta
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool SelectionLoadTextForm( const char * text, int64_t bytes, Selection & value, const char ** refusal );
+
+// SelectionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool SelectionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Selection & value, const char ** refusal );
 
 // SelectionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28401,6 +28428,10 @@ bool SelectionEditTextForm( const char * document, int64_t document_bytes, const
 // names itself in *refusal (§16.9.4).
 bool InsertTextLoadTextForm( const char * text, int64_t bytes, InsertText & value, const char ** refusal );
 
+// InsertTextLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool InsertTextLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, InsertText & value, const char ** refusal );
+
 // InsertTextLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // InsertTextSaveTextForm with no edit is the input byte for byte.
@@ -28425,6 +28456,10 @@ bool InsertTextEditTextForm( const char * document, int64_t document_bytes, cons
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RemoveTextLoadTextForm( const char * text, int64_t bytes, RemoveText & value, const char ** refusal );
+
+// RemoveTextLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RemoveTextLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RemoveText & value, const char ** refusal );
 
 // RemoveTextLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28451,6 +28486,10 @@ bool RemoveTextEditTextForm( const char * document, int64_t document_bytes, cons
 // names itself in *refusal (§16.9.4).
 bool EditLoadTextForm( const char * text, int64_t bytes, Edit & value, const char ** refusal );
 
+// EditLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool EditLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Edit & value, const char ** refusal );
+
 // EditLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // EditSaveTextForm with no edit is the input byte for byte.
@@ -28475,6 +28514,10 @@ bool EditEditTextForm( const char * document, int64_t document_bytes, const Tabl
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool OpenDocumentLoadTextForm( const char * text, int64_t bytes, OpenDocument & value, const char ** refusal );
+
+// OpenDocumentLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool OpenDocumentLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, OpenDocument & value, const char ** refusal );
 
 // OpenDocumentLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28501,6 +28544,10 @@ bool OpenDocumentEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool SaveDocumentLoadTextForm( const char * text, int64_t bytes, SaveDocument & value, const char ** refusal );
 
+// SaveDocumentLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool SaveDocumentLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, SaveDocument & value, const char ** refusal );
+
 // SaveDocumentLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // SaveDocumentSaveTextForm with no edit is the input byte for byte.
@@ -28525,6 +28572,10 @@ bool SaveDocumentEditTextForm( const char * document, int64_t document_bytes, co
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool TransactionLoadTextForm( const char * text, int64_t bytes, Transaction & value, const char ** refusal );
+
+// TransactionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool TransactionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Transaction & value, const char ** refusal );
 
 // TransactionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -28551,6 +28602,10 @@ bool TransactionEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool ToolMessageLoadTextForm( const char * text, int64_t bytes, ToolMessage & value, const char ** refusal );
 
+// ToolMessageLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ToolMessageLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ToolMessage & value, const char ** refusal );
+
 // ToolMessageLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // ToolMessageSaveTextForm with no edit is the input byte for byte.
@@ -28576,6 +28631,10 @@ bool ToolMessageEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool CursorLoadTextForm( const char * text, int64_t bytes, Cursor & value, const char ** refusal );
 
+// CursorLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool CursorLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Cursor & value, const char ** refusal );
+
 // CursorLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // CursorSaveTextForm with no edit is the input byte for byte.
@@ -28600,6 +28659,10 @@ bool CursorEditTextForm( const char * document, int64_t document_bytes, const Ta
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PingLoadTextForm( const char * text, int64_t bytes, Ping & value, const char ** refusal );
+
+// PingLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PingLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Ping & value, const char ** refusal );
 
 // PingLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

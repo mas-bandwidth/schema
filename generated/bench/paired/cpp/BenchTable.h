@@ -14076,6 +14076,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // BENCH_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // MixedEntityLoadTextForm reads one MixedEntity from the hand-editable text form
@@ -14083,6 +14098,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool MixedEntityLoadTextForm( const char * text, int64_t bytes, MixedEntity & value, const char ** refusal );
+
+// MixedEntityLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool MixedEntityLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, MixedEntity & value, const char ** refusal );
 
 // MixedEntityLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -14109,6 +14128,10 @@ bool MixedEntityEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool MixedStatLoadTextForm( const char * text, int64_t bytes, MixedStat & value, const char ** refusal );
 
+// MixedStatLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool MixedStatLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, MixedStat & value, const char ** refusal );
+
 // MixedStatLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // MixedStatSaveTextForm with no edit is the input byte for byte.
@@ -14133,6 +14156,10 @@ bool MixedStatEditTextForm( const char * document, int64_t document_bytes, const
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool MixedHitEventLoadTextForm( const char * text, int64_t bytes, MixedHitEvent & value, const char ** refusal );
+
+// MixedHitEventLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool MixedHitEventLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, MixedHitEvent & value, const char ** refusal );
 
 // MixedHitEventLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -14159,6 +14186,10 @@ bool MixedHitEventEditTextForm( const char * document, int64_t document_bytes, c
 // names itself in *refusal (§16.9.4).
 bool MixedChatEventLoadTextForm( const char * text, int64_t bytes, MixedChatEvent & value, const char ** refusal );
 
+// MixedChatEventLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool MixedChatEventLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, MixedChatEvent & value, const char ** refusal );
+
 // MixedChatEventLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // MixedChatEventSaveTextForm with no edit is the input byte for byte.
@@ -14184,6 +14215,10 @@ bool MixedChatEventEditTextForm( const char * document, int64_t document_bytes, 
 // names itself in *refusal (§16.9.4).
 bool MixedPickupEventLoadTextForm( const char * text, int64_t bytes, MixedPickupEvent & value, const char ** refusal );
 
+// MixedPickupEventLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool MixedPickupEventLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, MixedPickupEvent & value, const char ** refusal );
+
 // MixedPickupEventLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // MixedPickupEventSaveTextForm with no edit is the input byte for byte.
@@ -14208,6 +14243,10 @@ bool MixedPickupEventEditTextForm( const char * document, int64_t document_bytes
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool BenchMixedLoadTextForm( const char * text, int64_t bytes, BenchMixed & value, const char ** refusal );
+
+// BenchMixedLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool BenchMixedLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, BenchMixed & value, const char ** refusal );
 
 // BenchMixedLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

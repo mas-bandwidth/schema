@@ -9659,6 +9659,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // SCALARDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // SimStateLoadTextForm reads one SimState from the hand-editable text form
@@ -9666,6 +9681,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool SimStateLoadTextForm( const char * text, int64_t bytes, SimState & value, const char ** refusal );
+
+// SimStateLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool SimStateLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, SimState & value, const char ** refusal );
 
 // SimStateLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -9691,6 +9710,10 @@ bool SimStateEditTextForm( const char * document, int64_t document_bytes, const 
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PoseLoadTextForm( const char * text, int64_t bytes, Pose & value, const char ** refusal );
+
+// PoseLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PoseLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Pose & value, const char ** refusal );
 
 // PoseLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

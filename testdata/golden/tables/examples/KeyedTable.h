@@ -17915,6 +17915,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // TABLEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // TeamConfigLoadTextForm reads one TeamConfig from the hand-editable text form
@@ -17922,6 +17937,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool TeamConfigLoadTextForm( const char * text, int64_t bytes, TeamConfig & value, const char ** refusal );
+
+// TeamConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool TeamConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, TeamConfig & value, const char ** refusal );
 
 // TeamConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -17948,6 +17967,10 @@ bool TeamConfigEditTextForm( const char * document, int64_t document_bytes, cons
 // names itself in *refusal (§16.9.4).
 bool GunnerConfigLoadTextForm( const char * text, int64_t bytes, GunnerConfig & value, const char ** refusal );
 
+// GunnerConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool GunnerConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, GunnerConfig & value, const char ** refusal );
+
 // GunnerConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // GunnerConfigSaveTextForm with no edit is the input byte for byte.
@@ -17972,6 +17995,10 @@ bool GunnerConfigEditTextForm( const char * document, int64_t document_bytes, co
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool TurretConfigLoadTextForm( const char * text, int64_t bytes, TurretConfig & value, const char ** refusal );
+
+// TurretConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool TurretConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, TurretConfig & value, const char ** refusal );
 
 // TurretConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -17998,6 +18025,10 @@ bool TurretConfigEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool HullConfigLoadTextForm( const char * text, int64_t bytes, HullConfig & value, const char ** refusal );
 
+// HullConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool HullConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, HullConfig & value, const char ** refusal );
+
 // HullConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // HullConfigSaveTextForm with no edit is the input byte for byte.
@@ -18023,6 +18054,10 @@ bool HullConfigEditTextForm( const char * document, int64_t document_bytes, cons
 // names itself in *refusal (§16.9.4).
 bool KeyedConfigLoadTextForm( const char * text, int64_t bytes, KeyedConfig & value, const char ** refusal );
 
+// KeyedConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool KeyedConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, KeyedConfig & value, const char ** refusal );
+
 // KeyedConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // KeyedConfigSaveTextForm with no edit is the input byte for byte.
@@ -18047,6 +18082,10 @@ bool KeyedConfigEditTextForm( const char * document, int64_t document_bytes, con
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool ScoreBoardLoadTextForm( const char * text, int64_t bytes, ScoreBoard & value, const char ** refusal );
+
+// ScoreBoardLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ScoreBoardLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ScoreBoard & value, const char ** refusal );
 
 // ScoreBoardLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

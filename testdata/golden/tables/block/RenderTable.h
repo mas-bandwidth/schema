@@ -24649,6 +24649,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // BLOCKDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // RenderCameraLoadTextForm reads one RenderCamera from the hand-editable text form
@@ -24656,6 +24671,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderCameraLoadTextForm( const char * text, int64_t bytes, RenderCamera & value, const char ** refusal );
+
+// RenderCameraLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderCameraLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderCamera & value, const char ** refusal );
 
 // RenderCameraLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24682,6 +24701,10 @@ bool RenderCameraEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool RenderShipLoadTextForm( const char * text, int64_t bytes, RenderShip & value, const char ** refusal );
 
+// RenderShipLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderShipLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderShip & value, const char ** refusal );
+
 // RenderShipLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderShipSaveTextForm with no edit is the input byte for byte.
@@ -24706,6 +24729,10 @@ bool RenderShipEditTextForm( const char * document, int64_t document_bytes, cons
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderTurretLoadTextForm( const char * text, int64_t bytes, RenderTurret & value, const char ** refusal );
+
+// RenderTurretLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderTurretLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderTurret & value, const char ** refusal );
 
 // RenderTurretLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24732,6 +24759,10 @@ bool RenderTurretEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool RenderMissileLoadTextForm( const char * text, int64_t bytes, RenderMissile & value, const char ** refusal );
 
+// RenderMissileLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderMissileLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderMissile & value, const char ** refusal );
+
 // RenderMissileLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderMissileSaveTextForm with no edit is the input byte for byte.
@@ -24756,6 +24787,10 @@ bool RenderMissileEditTextForm( const char * document, int64_t document_bytes, c
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderDynamicPropLoadTextForm( const char * text, int64_t bytes, RenderDynamicProp & value, const char ** refusal );
+
+// RenderDynamicPropLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderDynamicPropLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderDynamicProp & value, const char ** refusal );
 
 // RenderDynamicPropLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24782,6 +24817,10 @@ bool RenderDynamicPropEditTextForm( const char * document, int64_t document_byte
 // names itself in *refusal (§16.9.4).
 bool RenderStaticPropLoadTextForm( const char * text, int64_t bytes, RenderStaticProp & value, const char ** refusal );
 
+// RenderStaticPropLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderStaticPropLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderStaticProp & value, const char ** refusal );
+
 // RenderStaticPropLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderStaticPropSaveTextForm with no edit is the input byte for byte.
@@ -24806,6 +24845,10 @@ bool RenderStaticPropEditTextForm( const char * document, int64_t document_bytes
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderCosmeticPropLoadTextForm( const char * text, int64_t bytes, RenderCosmeticProp & value, const char ** refusal );
+
+// RenderCosmeticPropLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderCosmeticPropLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderCosmeticProp & value, const char ** refusal );
 
 // RenderCosmeticPropLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24832,6 +24875,10 @@ bool RenderCosmeticPropEditTextForm( const char * document, int64_t document_byt
 // names itself in *refusal (§16.9.4).
 bool RenderLaserLoadTextForm( const char * text, int64_t bytes, RenderLaser & value, const char ** refusal );
 
+// RenderLaserLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderLaserLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderLaser & value, const char ** refusal );
+
 // RenderLaserLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderLaserSaveTextForm with no edit is the input byte for byte.
@@ -24856,6 +24903,10 @@ bool RenderLaserEditTextForm( const char * document, int64_t document_bytes, con
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderExplosionLoadTextForm( const char * text, int64_t bytes, RenderExplosion & value, const char ** refusal );
+
+// RenderExplosionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderExplosionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderExplosion & value, const char ** refusal );
 
 // RenderExplosionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -24882,6 +24933,10 @@ bool RenderExplosionEditTextForm( const char * document, int64_t document_bytes,
 // names itself in *refusal (§16.9.4).
 bool RenderFrameLoadTextForm( const char * text, int64_t bytes, RenderFrame & value, const char ** refusal );
 
+// RenderFrameLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderFrameLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderFrame & value, const char ** refusal );
+
 // RenderFrameLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderFrameSaveTextForm with no edit is the input byte for byte.
@@ -24907,6 +24962,10 @@ bool RenderFrameEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool RenderVector3LoadTextForm( const char * text, int64_t bytes, RenderVector3 & value, const char ** refusal );
 
+// RenderVector3LoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderVector3LoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderVector3 & value, const char ** refusal );
+
 // RenderVector3LoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RenderVector3SaveTextForm with no edit is the input byte for byte.
@@ -24931,6 +24990,10 @@ bool RenderVector3EditTextForm( const char * document, int64_t document_bytes, c
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool RenderQuaternionLoadTextForm( const char * text, int64_t bytes, RenderQuaternion & value, const char ** refusal );
+
+// RenderQuaternionLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RenderQuaternionLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RenderQuaternion & value, const char ** refusal );
 
 // RenderQuaternionLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

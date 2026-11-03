@@ -8062,6 +8062,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // BLOCKHOME_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // ArmorPlateLoadTextForm reads one ArmorPlate from the hand-editable text form
@@ -8069,6 +8084,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool ArmorPlateLoadTextForm( const char * text, int64_t bytes, ArmorPlate & value, const char ** refusal );
+
+// ArmorPlateLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ArmorPlateLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ArmorPlate & value, const char ** refusal );
 
 // ArmorPlateLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -8095,6 +8114,10 @@ bool ArmorPlateEditTextForm( const char * document, int64_t document_bytes, cons
 // names itself in *refusal (§16.9.4).
 bool ArmorConfigLoadTextForm( const char * text, int64_t bytes, ArmorConfig & value, const char ** refusal );
 
+// ArmorConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ArmorConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ArmorConfig & value, const char ** refusal );
+
 // ArmorConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // ArmorConfigSaveTextForm with no edit is the input byte for byte.
@@ -8120,6 +8143,10 @@ bool ArmorConfigEditTextForm( const char * document, int64_t document_bytes, con
 // names itself in *refusal (§16.9.4).
 bool FiringGroupLoadTextForm( const char * text, int64_t bytes, FiringGroup & value, const char ** refusal );
 
+// FiringGroupLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool FiringGroupLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, FiringGroup & value, const char ** refusal );
+
 // FiringGroupLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // FiringGroupSaveTextForm with no edit is the input byte for byte.
@@ -8144,6 +8171,10 @@ bool FiringGroupEditTextForm( const char * document, int64_t document_bytes, con
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool GunnerSettingsLoadTextForm( const char * text, int64_t bytes, GunnerSettings & value, const char ** refusal );
+
+// GunnerSettingsLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool GunnerSettingsLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, GunnerSettings & value, const char ** refusal );
 
 // GunnerSettingsLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

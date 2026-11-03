@@ -22018,6 +22018,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // TABLEDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // WeaponConfigLoadTextForm reads one WeaponConfig from the hand-editable text form
@@ -22025,6 +22040,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool WeaponConfigLoadTextForm( const char * text, int64_t bytes, WeaponConfig & value, const char ** refusal );
+
+// WeaponConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool WeaponConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, WeaponConfig & value, const char ** refusal );
 
 // WeaponConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -22051,6 +22070,10 @@ bool WeaponConfigEditTextForm( const char * document, int64_t document_bytes, co
 // names itself in *refusal (§16.9.4).
 bool LoadoutConfigLoadTextForm( const char * text, int64_t bytes, LoadoutConfig & value, const char ** refusal );
 
+// LoadoutConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool LoadoutConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, LoadoutConfig & value, const char ** refusal );
+
 // LoadoutConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // LoadoutConfigSaveTextForm with no edit is the input byte for byte.
@@ -22075,6 +22098,10 @@ bool LoadoutConfigEditTextForm( const char * document, int64_t document_bytes, c
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool ProfileConfigLoadTextForm( const char * text, int64_t bytes, ProfileConfig & value, const char ** refusal );
+
+// ProfileConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool ProfileConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, ProfileConfig & value, const char ** refusal );
 
 // ProfileConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -22101,6 +22128,10 @@ bool ProfileConfigEditTextForm( const char * document, int64_t document_bytes, c
 // names itself in *refusal (§16.9.4).
 bool RootConfigLoadTextForm( const char * text, int64_t bytes, RootConfig & value, const char ** refusal );
 
+// RootConfigLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool RootConfigLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, RootConfig & value, const char ** refusal );
+
 // RootConfigLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // RootConfigSaveTextForm with no edit is the input byte for byte.
@@ -22125,6 +22156,10 @@ bool RootConfigEditTextForm( const char * document, int64_t document_bytes, cons
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool AttachmentLoadTextForm( const char * text, int64_t bytes, Attachment & value, const char ** refusal );
+
+// AttachmentLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool AttachmentLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Attachment & value, const char ** refusal );
 
 // AttachmentLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -22151,6 +22186,10 @@ bool AttachmentEditTextForm( const char * document, int64_t document_bytes, cons
 // names itself in *refusal (§16.9.4).
 bool BuffLoadTextForm( const char * text, int64_t bytes, Buff & value, const char ** refusal );
 
+// BuffLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool BuffLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Buff & value, const char ** refusal );
+
 // BuffLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
 // BuffSaveTextForm with no edit is the input byte for byte.
@@ -22175,6 +22214,10 @@ bool BuffEditTextForm( const char * document, int64_t document_bytes, const Tabl
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool DebuffLoadTextForm( const char * text, int64_t bytes, Debuff & value, const char ** refusal );
+
+// DebuffLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool DebuffLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Debuff & value, const char ** refusal );
 
 // DebuffLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

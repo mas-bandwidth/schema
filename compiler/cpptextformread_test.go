@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -292,6 +293,46 @@ func TestCPPTextFormDocumentVectors(t *testing.T) {
 			})
 		}
 	})
+	// THE CALLER'S LIMITS (§16.9.4), each held at its exact boundary: the
+	// document at the limit reads, one under refuses as text_limit, and a zero
+	// or negative field takes the contract default. The nested document is 20
+	// bytes, 9 tokens, 3 nodes, depth 3 and 1 decoded byte; the title document
+	// decodes 4 bytes. Go's TestDocumentLimits holds the same limits.
+	t.Run("caller-limits", func(t *testing.T) {
+		t.Parallel()
+		const nested = `(:nodes ((:id "a")))`
+		const title = `(:title "abcd")`
+		for _, tc := range []struct {
+			name                                    string
+			doc                                     string
+			bytes, tokens, nodes, allocation, depth int
+			want                                    string
+		}{
+			{"defaults", nested, 0, 0, 0, 0, 0, "accepted"},
+			{"negative-defaults", nested, -1, -1, -1, -1, -1, "accepted"},
+			{"bytes-at", nested, 20, 0, 0, 0, 0, "accepted"},
+			{"bytes-over", nested, 19, 0, 0, 0, 0, "text_limit"},
+			{"tokens-at", nested, 0, 9, 0, 0, 0, "accepted"},
+			{"tokens-over", nested, 0, 8, 0, 0, 0, "text_limit"},
+			{"nodes-at", nested, 0, 0, 3, 0, 0, "accepted"},
+			{"nodes-over", nested, 0, 0, 2, 0, 0, "text_limit"},
+			{"depth-at", nested, 0, 0, 0, 0, 3, "accepted"},
+			{"depth-over", nested, 0, 0, 0, 0, 2, "text_limit"},
+			{"depth-clamped", nested, 0, 0, 0, 0, 1000, "accepted"},
+			{"allocation-at", title, 0, 0, 0, 4, 0, "accepted"},
+			{"allocation-over", title, 0, 0, 0, 3, 0, "text_limit"},
+		} {
+			call := fmt.Sprintf("    load( \"%s\", %d, %d, %d, %d, %d );\n", cppEscape(tc.doc), tc.bytes, tc.tokens, tc.nodes, tc.allocation, tc.depth)
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				main, bin := writeDriver(t, "", strings.Replace(cppLimitsDriver, "CALLS\n", call, 1))
+				compile(t, main, bin)
+				if got := run(t, bin); got != tc.want {
+					t.Fatalf("%s: got %q, want %q", tc.name, got, tc.want)
+				}
+			})
+		}
+	})
 }
 
 func cppMustRead(t *testing.T, name string) []byte {
@@ -446,6 +487,37 @@ int main( void )
 
 // cppRefusalDriver prints the stable refusal name (§16.9.4) for an ill-formed
 // document, or the value when it is (wrongly) accepted.
+const cppLimitsDriver = `#include <stdio.h>
+#include <string.h>
+#include "ProbeTable.h"
+
+using namespace probe;
+
+static void load( const char * text, int64_t bytes, int64_t tokens, int64_t nodes, int64_t allocation, int64_t depth )
+{
+    TableTextFormLimits limits;
+    limits.bytes = bytes;
+    limits.tokens = tokens;
+    limits.nodes = nodes;
+    limits.allocation = allocation;
+    limits.depth = depth;
+    Document value;
+    const char * refusal = NULL;
+    if ( !DocumentLoadTextForm( text, (int64_t) strlen( text ), limits, value, &refusal ) )
+    {
+        printf( "%s\n", refusal == NULL ? "?" : refusal );
+        return;
+    }
+    printf( "accepted\n" );
+}
+
+int main( void )
+{
+CALLS
+    return 0;
+}
+`
+
 const cppRefusalDriver = `#include <stdio.h>
 #include <string.h>
 #include "ProbeTable.h"

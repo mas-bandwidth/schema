@@ -13029,6 +13029,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // ARMDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // OnlyLoadTextForm reads one Only from the hand-editable text form
@@ -13036,6 +13051,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool OnlyLoadTextForm( const char * text, int64_t bytes, Only & value, const char ** refusal );
+
+// OnlyLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool OnlyLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Only & value, const char ** refusal );
 
 // OnlyLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -13061,6 +13080,10 @@ bool OnlyEditTextForm( const char * document, int64_t document_bytes, const Tabl
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool GateLoadTextForm( const char * text, int64_t bytes, GateBuilder & builder, const char ** refusal );
+
+// GateLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool GateLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, GateBuilder & builder, const char ** refusal );
 
 // GateLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
