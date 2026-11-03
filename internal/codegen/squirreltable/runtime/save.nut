@@ -204,6 +204,18 @@ local wideFits = function(val, bound) {
   foreach (u in val) if (typeof u != "integer" || u < 0 || u > 0xFFFF) return false;
   return true;
 };
+// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the sum of the elements'
+// byte lengths, an absent `?string` element counting zero, is past the
+// declared total. Save and Measure refuse such a value with nothing written.
+local textTotalPast = function(d, val) {
+  local sum = 0;
+  foreach (rec in val) {
+    if (rec == null || (d.textlist == 2 && !rec.ValuePresent)) continue;
+    sum += rec.Value.len();
+    if (sum > d.total) return true;
+  }
+  return false;
+};
 local wideUnits = function(w, val) {
   foreach (u in val) { wu8(w, u); wu8(w, u >> 8); }
 };
@@ -760,6 +772,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
     }
     if (!always && !arrayRides(d, val)) return true;
     if (!d.list && val.len() > d.bound) return false;
+    if (("total" in d) && textTotalPast(d, val)) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 14);
     local body = newWriter();
     local n = writeArrayBody(T, d, val, body, ids, nodes, root);
