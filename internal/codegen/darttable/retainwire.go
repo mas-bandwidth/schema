@@ -569,6 +569,15 @@ void _retainTail(TableWireWriter w, Object owner) {
 func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	n := st.Name
 	d := dartName(n)
+	// Explicit fixed-class roots have no retaining region directory (§6.6).
+	// Keep each public name as an explanatory, non-callable constant, as in Go.
+	if st.FixedDeclared {
+		for _, suffix := range []string{"WireLoadRetain", "WireMeasureRetain", "WireSaveRetain"} {
+			g.pf("const String %s%s = %q;\n", d, suffix, n+": retention requires a variable root and its region directory")
+		}
+		g.pf("\n")
+		return
+	}
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
