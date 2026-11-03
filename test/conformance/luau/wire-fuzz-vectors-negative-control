@@ -89,3 +89,7 @@ plant retain_list_maps_replaced \
 	's/\t\t\t\tdiscard\(store, node, steps, o, landed - 1\)\n//' retain
 plant map_retained_replaced \
 	's/(\tlocal o = fd\.o or 0\n)\tdiscard\(store, node, steps, o, nil\)\n(\tlocal entry = )/$1$2/' retain
+plant retain_node_past_root_fields \
+	's/elseif saved ~= nil and nodesField ~= nil and saved - 1 <= #nodesField\.node\.nodes then/elseif saved ~= nil and nodesField ~= nil and saved <= #rootBody.fields + 1 and saved - 1 <= #nodesField.node.nodes then/' retain
+plant retain_orphan_node_first \
+	's/saved = if nv ~= nil then numbering\.index\[nv\] else nil/saved = node/' retain

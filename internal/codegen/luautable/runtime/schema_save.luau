@@ -1023,6 +1023,14 @@ local function invalid_deprecated(d: any, v: any, seen: any): any
 	return nil
 end
 
+-- Number is the save's own node numbering of the value (§3.1): its `index`
+-- answers the node index (1 the root, k + 1 record k) each node takes in the
+-- file this value saves to, or the walk answers nil for a value the save
+-- refuses. The retaining save places a record held under a node by it.
+function S.number(d: any, v: any): any
+	return (number(d, v))
+end
+
 function S.save(d: any, v: any): (buffer?, any?)
 	if v == nil then return nil, { name = "nil_value", field = d.name } end
 	local invalid = invalid_deprecated(d, v, {})

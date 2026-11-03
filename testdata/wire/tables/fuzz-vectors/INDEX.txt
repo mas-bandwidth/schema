@@ -406,3 +406,19 @@ map_duplicate_pointer_past_table mapdemo Chunks testdata/wire/tables/fuzz-vector
 # 0 for the field, and ended the body there. The enumerated pass's mutant 1497
 # of graphdemo.Scene graph_tree, on every seed.
 retain_record_id_zero graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_record_id_zero.bin
+
+# A RETAINED RECORD IS HELD UNDER ITS NODE, AND EVERY NODE PLACES ONE (§3.1,
+# §6.6). A six-node ListNode chain whose `value` id the reader cannot name
+# retains one record per node. The Luau save placed a record only under a node
+# index no larger than the root body's field count plus one, so four of the six
+# counted retain_lost. From graphdemo.Scene graph_deep, mutant 43750 of the
+# enumerated pass (every seed), minimized.
+retain_node_past_root_fields graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_node_past_root_fields.bin
+
+# A RETAINED RECORD FOLLOWS ITS NODE INTO THE SAVE'S NUMBERING (§3.1, §6.6).
+# The root's head names record 3, and record 2, an orphan, names record 3 too;
+# each carries a `value` the reader cannot name (0x11 and 0x22). The save numbers
+# record 3 as node 2 and never reaches the orphan, so the orphan's record is
+# lost and record 3's lands under node 2. A record held by its load index lands
+# in the wrong body.
+retain_orphan_node_first graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_orphan_node_first.bin

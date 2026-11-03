@@ -69,3 +69,8 @@ retain_list_maps_replaced listdemo Army testdata/wire/tables/fuzz-vectors/retain
 retain_map_entry_replaced mapdemo Docs testdata/wire/tables/fuzz-vectors/retain_map_entry_replaced.bin retain
 map_key_default_duplicate mapdemo Docs testdata/wire/tables/fuzz-vectors/map_key_default_duplicate.bin retain
 map_retained_replaced mapdemo Text testdata/wire/tables/fuzz-vectors/map_retained_replaced.bin retain
+
+# A RECORD UNDER A NODE IS PLACED IN THAT NODE'S BODY IN THE SAVE'S OWN
+# NUMBERING (§3.1, §6.6), whatever its index and wherever the load found it.
+retain_node_past_root_fields graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_node_past_root_fields.bin retain
+retain_orphan_node_first graphdemo Scene testdata/wire/tables/fuzz-vectors/retain_orphan_node_first.bin retain

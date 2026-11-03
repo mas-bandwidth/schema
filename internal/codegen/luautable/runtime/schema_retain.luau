@@ -803,6 +803,14 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 	_ids = ids
 	local desc = S.lookup(root)
 	local raw = node_records(bytes, ids, endpos)
+	-- A RECORD'S NODE IS THE VALUE, NOT THE INDEX (§3.1, §6.6): the save
+	-- numbers the nodes it reaches afresh, so a record is held under the value
+	-- the load placed at its index, and the save finds that value's index in
+	-- its own numbering
+	store.nodeValues = {}
+	for k, n in Load.loadedNodes() do
+		if n.kind == "t" then store.nodeValues[k + 1] = n.v end
+	end
 	local place = {}
 	if desc.place ~= nil then
 		for _, name in desc.place.tables do
@@ -1593,6 +1601,15 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		if f.rec == nil and ids[f.ref] == NodeTableId then rootAt = i; break end
 	end
 
+	local nodesField: any = nil
+	for _, f in rootBody.fields do
+		if f.node ~= nil and f.node.t == "nodes" then nodesField = f; break end
+	end
+	-- the save's numbering of the value: a record's load node is placed at the
+	-- index the save gave the same value, and a node the save no longer
+	-- reaches places none of its records (§6.6)
+	local numbering = if retained.nodeValues ~= nil then Save.number(desc, value) else nil
+
 	local lost = 0
 	local at = 0
 	local store = retained
@@ -1615,17 +1632,17 @@ function R.SaveRetain(root: string, value: any, retained: any, report: any?): (b
 		local rec = { id = id, kind = kind, payload = payload }
 		local target: any = nil
 		local tdesc: any = nil
-		if node == 1 then
+		local saved: number? = node
+		if node ~= 1 and numbering ~= nil then
+			local nv = retained.nodeValues[node]
+			saved = if nv ~= nil then numbering.index[nv] else nil
+		end
+		if saved == 1 then
 			target, tdesc = rootBody, desc
-		elseif node <= #rootBody.fields + 1 then
-			for _, f in rootBody.fields do
-				if f.node ~= nil and f.node.t == "nodes" and node - 1 <= #f.node.nodes then
-					local nr = f.node.nodes[node - 1]
-					target = nr.body
-					tdesc = place[ids[nr.tref]]
-					break
-				end
-			end
+		elseif saved ~= nil and nodesField ~= nil and saved - 1 <= #nodesField.node.nodes then
+			local nr = nodesField.node.nodes[saved - 1]
+			target = nr.body
+			tdesc = place[ids[nr.tref]]
 		end
 		local ok = target ~= nil and tdesc ~= nil
 		local dest: any = nil
