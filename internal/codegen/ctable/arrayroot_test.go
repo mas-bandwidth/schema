@@ -94,6 +94,7 @@ int main( void )
     n = goal_list_to_json_measure( (const GoalList *)(const void *)b.region );
     CHECK( n > 0 );
     CHECK( goal_list_to_json( (const GoalList *)(const void *)b.region, text, (int64_t) sizeof( text ) ) == n );
+    CHECK( n < (int64_t) sizeof( text ) ); text[n < (int64_t) sizeof( text ) ? n : 0] = 0;
     compact( text );
     CHECK( strcmp( text, "[{\"x\":1},{\"x\":2}]" ) == 0 );
     goal_list_builder_shutdown( &b );
@@ -120,6 +121,7 @@ int main( void )
     hn = holder_to_json_measure( (const Holder *)(const void *)h.region );
     CHECK( hn > 0 );
     CHECK( holder_to_json( (const Holder *)(const void *)h.region, htext, (int64_t) sizeof( htext ) ) == hn );
+    CHECK( hn < (int64_t) sizeof( htext ) ); htext[hn < (int64_t) sizeof( htext ) ? hn : 0] = 0;
     compact( htext );
     CHECK( strcmp( htext, "{\"g\":[{\"x\":7}]}" ) == 0 );
     holder_builder_shutdown( &h );
