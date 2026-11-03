@@ -92,6 +92,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.Import(f.Base) // unreferenced packet types still supply reflection accessors
 		emitFile(g, reach)
 		for _, p := range parts {
+			if len(u.Tables) == 0 && p.name != "descriptors" {
+				continue
+			}
 			if err := p.fn(g); err != nil {
 				return nil, fmt.Errorf("lobster %s: %s: %w", p.name, f.Base, err)
 			}
@@ -117,7 +120,32 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	}
 	view.Pf("def UnitView() -> schema_rt.UnitView:\n    return schema_rt.unit_view()\n")
 	out[u.Package+"View.lobster"] = view.Assemble()
-	maps.Copy(out, Runtime())
+	if len(u.Tables) == 0 {
+		// Reflection is opt-in. Include only the transitive runtime imports
+		// needed by the descriptor modules, not unrelated table codecs.
+		runtimes := Runtime()
+		var include func([]byte)
+		include = func(src []byte) {
+			for _, line := range strings.Split(string(src), "\n") {
+				name, ok := strings.CutPrefix(strings.TrimSpace(line), "import .")
+				if !ok {
+					continue
+				}
+				name += ".lobster"
+				data, exists := runtimes[name]
+				if !exists || out[name] != nil {
+					continue
+				}
+				out[name] = data
+				include(data)
+			}
+		}
+		for _, src := range out {
+			include(src)
+		}
+	} else {
+		maps.Copy(out, Runtime())
+	}
 	return out, nil
 }
 
