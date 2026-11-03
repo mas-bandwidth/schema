@@ -2,8 +2,8 @@
 # one row per file, each answered by the Go leg's generated reader and held
 # there by gotable's TestLoadRefusalReasonPins, by the Goose load by
 # goosetable's TestGooseLoadRefusalReasons, and by the moo load by mootable's
-# TestMooLoadRefusalReasons (moo's ReadStrict answers one name: the form
-# column's where it pins one, the strict column's otherwise). Columns,
+# TestMooLoadRefusalReasons (moo's ReadStrict answers the strict
+# column's one name, and its tolerant load the form column's). Columns,
 # tab-separated:
 #
 #   name     the case

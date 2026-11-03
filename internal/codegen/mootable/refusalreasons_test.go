@@ -120,9 +120,6 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 		}
 		for _, r := range mine {
 			want := r.strict
-			if want == "malformed" {
-				want = "wire_damaged"
-			}
 			if r.form != "-" && tolerant[r.name] != r.form {
 				bad = append(bad, fmt.Sprintf("%s: the tolerant load's report names %q, want %q", r.name, tolerant[r.name], r.form))
 			}
