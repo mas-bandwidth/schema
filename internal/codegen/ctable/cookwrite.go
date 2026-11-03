@@ -105,6 +105,25 @@ static SCHEMA_UNUSED int64_t table_graph_cook(const TableCtx * ctx,const void * 
 done:
     table_number_dispose(&n); return result;
 }
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_table_cook_text_(TableNumbering * n,const TableRef * src,uint8_t * slot,uint8_t * extent,int64_t * at,int order)
+{
+    int32_t len=0; int64_t bytes; const char * text;
+    if(src->value==0) { return 1; }
+    text=schema_table_text_at_(n->ctx,src,&len);
+    if(len<0) { return 0; }
+    if(len==0) { return 1; }
+    bytes=table_blob_storage((int64_t)len,1);
+    if(bytes<0 || !table_extent_reserve(at,1,bytes,8)) { return 0; }
+    if(slot!=NULL && extent!=NULL) {
+        uint8_t * raw=extent+*at-bytes;
+        table_cook_put(slot,(uint64_t)(raw-slot),8,order);
+        table_cook_put(raw,(uint32_t)len,4,order);
+        table_cook_bytes(raw+8,text,len,len);
+    }
+    return 1;
+}
+#endif
 #endif
 `
 
@@ -113,7 +132,7 @@ func (g *tableGen) hasCookExtent(st *ir.Struct) bool {
 	return slices.ContainsFunc(st.Fields, g.cookFieldExtent)
 }
 func (g *tableGen) cookFieldExtent(f *ir.Field) bool {
-	if f.IsList() || f.IsMap() {
+	if f.IsList() || f.IsMap() || f.Type.TextUnbounded() {
 		return true
 	}
 	if f.Type.Pointer {
@@ -181,7 +200,7 @@ func (g *tableGen) cookField(f *ir.Field, src, at string, offset int64, ind stri
 	if f.Type.Optional {
 		g.pf("%stable_cook_put(%s+%d,%s_present ? 1 : 0,1,order);\n", ind, at, pieces[len(pieces)-1].Offset-offset, src)
 	}
-	if f.IsMap() || f.IsList() {
+	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return
 	} // zero until the extent writer places the array
 	if f.Array != ir.ArrayNone {
@@ -277,6 +296,8 @@ func (g *tableGen) cookExtentField(f *ir.Field, guard, src, dst, ind string, ste
 	}
 	dst = label + "_slot"
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("%sif(!schema_table_cook_text_(n,&%s,%s,extent,at,order)) { return 0; }\n", ind, src, dst)
 	case f.IsList() || f.IsMap():
 		typ := g.sequenceType(f)
 		elem := sequenceElement(f)

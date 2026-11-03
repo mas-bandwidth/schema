@@ -534,9 +534,16 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	switch kind {
 	case tkString:
 		val := f.Type.Ref.(*ir.Struct).Fields[0]
-		g.pf("%sif ( (%s).value_length < 0 || (%s).value_length > %d || !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr, val.Type.Size, expr, expr)
-		g.pf("%stable_writer_leb( w, (uint64_t)(%s).value_length );\n", ind, expr)
-		g.pf("%stable_writer_raw( w, (%s).value, (%s).value_length );\n", ind, expr, expr)
+		if val.Type.TextUnbounded() {
+			g.pf("%s{ int32_t len = 0; const char * text = schema_table_text_at_( w->nodes ? w->nodes->ctx : NULL, &(%s).value, &len );\n", ind, expr)
+			g.pf("%s  if ( len < 0 || !table_wire_utf8( (const uint8_t *)text, (uint64_t)len ) ) { return 0; }\n", ind)
+			g.pf("%s  table_writer_leb( w, (uint64_t)len );\n", ind)
+			g.pf("%s  table_writer_raw( w, text, len ); }\n", ind)
+		} else {
+			g.pf("%sif ( (%s).value_length < 0 || (%s).value_length > %d || !table_wire_utf8( (const uint8_t *)(%s).value, (uint64_t)(%s).value_length ) ) { return 0; }\n", ind, expr, expr, val.Type.Size, expr, expr)
+			g.pf("%stable_writer_leb( w, (uint64_t)(%s).value_length );\n", ind, expr)
+			g.pf("%stable_writer_raw( w, (%s).value, (%s).value_length );\n", ind, expr, expr)
+		}
 	case tkTable:
 		g.wireFrame(fmt.Sprintf("%s( w, &%s )", g.api(f.Type.Name, "save_body"), expr), ind)
 	case tkUnion:
@@ -574,7 +581,7 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		cacheArg = ", int64_t * element_sizes"
 	}
 	g.pf("static SCHEMA_UNUSED int %s( TableWriter * w, const %s * value%s )\n{\n", g.wireFieldHelper(st, f), st.Name, cacheArg)
-	if (f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString || (f.Type.Kind == ir.TBytes && !f.Type.Blob()) {
+	if !f.Type.TextUnbounded() && ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString || (f.Type.Kind == ir.TBytes && !f.Type.Blob())) {
 		g.pf("    if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 	} else if f.Array == ir.ArrayCounted {
 		g.pf("    if ( %s_count < 0 || %s_count > %d ) { return 0; }\n", expr, expr, f.ArrayBound)
@@ -582,6 +589,10 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	switch {
 	case f.IsList() || f.IsMap():
 		g.emitSequenceWrite(f, expr)
+	case f.Type.TextUnbounded():
+		g.pf("    int32_t len = 0; const char * text = schema_table_text_at_( w->nodes ? w->nodes->ctx : NULL, &%s, &len );\n", expr)
+		g.pf("    if ( len < 0 || !table_wire_utf8( (const uint8_t *) text, (uint64_t) len ) ) { return 0; }\n")
+		g.pf("    table_writer_raw( w, text, len );\n")
 	case f.Type.Kind == ir.TWString:
 		g.pf("    int32_t i; for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
@@ -743,6 +754,10 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			condition = expr + ".count > 0"
 		case f.Type.Optional:
 			condition = expr + "_present"
+		case f.Type.TextUnbounded():
+			g.pf("        int32_t text_len = 0; (void) schema_table_text_at_( w->nodes ? w->nodes->ctx : NULL, &%s, &text_len );\n", expr)
+			g.pf("        if ( text_len < 0 ) { return 0; }\n")
+			condition = "text_len > 0"
 		case (f.Type.Kind == ir.TBytes && !f.Type.Blob()) || ((f.Type.Kind == ir.TString && !f.Type.Blob()) || f.Type.Kind == ir.TWString):
 			g.pf("        if ( %s_length < 0 || %s_length > %d ) { return 0; }\n", expr, expr, f.Type.Size)
 			condition = g.wireBytesDiffer(f, expr)

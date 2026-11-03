@@ -17,7 +17,7 @@ import (
 // compiler/target_squirrel_*.go files register; every other target
 // carries none at this stage.
 var nonGoCarriers = map[string][]string{
-	"c":    {carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal},
+	"c":    {carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot, carryTimestamp, carryForms, carryIntegrity, carryRequired, carryTextList, carryTextListTotal, carryUnboundedText},
 	"cs":   {carryUnboundedText, carryRequired, carryTimestamp, carryForms, carryIntegrity, carryTextList, carryTextListTotal, carryOptionalVariableClosure, carryOneSidedRange, carryOptionalMap, carryArrayRoot},
 	"cpp":  {carryOptionalVariableClosure, carryTimestamp, carryArrayRoot, carryOneSidedRange, carryOptionalMap},
 	"dart": {carryOptionalVariableClosure},
