@@ -290,3 +290,12 @@ bytes_count_clamped_prefix backenddemo LoginRequest testdata/wire/tables/fuzz-ve
 stream_chain_link_cycle streamdemo Feed testdata/wire/tables/fuzz-vectors/stream_chain_link_cycle.bin
 blob_catalog_cycle blobdemo Catalog testdata/wire/tables/fuzz-vectors/blob_catalog_cycle.bin
 graph_tree_cycle graphdemo Scene testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin
+
+# A CRC-32C TRAILER THAT DOES NOT MATCH A ONE-BYTE BODY (§2.14). Five bytes as
+# a root that declares integrity = "crc32c": the form byte 1 is the whole
+# body, and its CRC-32C is 0xA016D052, not the trailer's 0x00070401. The read
+# is malformed with integrity_mismatch, nothing decoded and nothing saved. The
+# Goose load never answered: GCC 15 -O2 compiled its bitwise CRC loop into an
+# endless one. Found by the retaining arm at seed 1, pass truncate #5 of
+# feature_full.
+integrity_short_body_mismatch featurewitnesses Root testdata/wire/tables/fuzz-vectors/integrity_short_body_mismatch.bin
