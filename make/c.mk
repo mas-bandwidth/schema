@@ -2114,3 +2114,7 @@ tables-c-cycle-linear-negative-control:
 	@grep -m1 "diamond:" $(C_CYCLE_LINEAR_NC)/log
 	@echo "negative control: entering a shared node once per path turns the C diamond gate RED"
 test-c: tables-c-cycle
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-c/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

@@ -192,20 +192,6 @@ local generated = function(unit) {
 // An instance the corpus carries on the wire alone (FORMAT.md, `no-text`).
 local noText = function(f) { return f.len() > 5 && f[5] == "no-text"; };
 
-local loadReport = function(unit, root, bytes) {
-  local opened = openUnit(unit);
-  local schema = opened[0];
-  local T = opened[1];
-  local L = schema.require("schema_table_load");
-  local report = newReport();
-  L.loadTolerant(T, root, bytes, report);
-  local verdict = report.refused ? "refused" : "read";
-  local m = report.malformed ? "true" : "false";
-  return report.unknown.tostring() + "," + report.kindMismatch.tostring() + "," +
-         report.widened.tostring() + "," + report.clamped.tostring() + "," +
-         report.duplicate.tostring() + "," + m + "," + verdict + "\n";
-};
-
 if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
@@ -216,29 +202,18 @@ if (mode == "list") {
 
 local lines = manifestLines(readText(manifest));
 
-// THE EVOLUTION CLASS (reports.txt): the tolerant load's report, never the
-// value. A unit the target refused is the one per-case absence; a crash is a
-// failure, never an absence.
-if (mode == "report") {
+// THE EVOLUTION CLASS (reports.txt) and THE FRAMING VECTORS
+// (docs/LAYERS/1-framing.md): the tolerant load's report line, then the §16
+// text of the value it left, unless a framing row says `no-value` or the read
+// refused. Damaged input is discarded whole (docs/SPEC-TABLES.md §4): the
+// harness scores the report line alone there. A unit the target refused is the
+// one per-case absence; a crash is a failure, never an absence. A derived line
+// is `report <case> <unit> <root> <wire>` or
+// `framing <case> <unit> <root> <wire> [no-value]`.
+if (mode == "report" || mode == "framing") {
   foreach (ln in lines) {
     local f = splitFields(ln);
-    if (f.len() < 5 || f[0] != "report") continue;
-    local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
-    if (!generated(unit)) { writeAbsent(cname); continue; }
-    writeText(outdir + "/" + cname, loadReport(unit, root, readBytes(wirepath)));
-  }
-  return;
-}
-
-// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the tolerant load's report
-// line, then the §16 text of the value it left, unless the row says
-// `no-value` or the read refused. Damaged input is discarded whole
-// (docs/SPEC-TABLES.md §4): the harness scores the report line alone there.
-// A derived line is `framing <case> <unit> <root> <wire> [no-value]`.
-if (mode == "framing") {
-  foreach (ln in lines) {
-    local f = splitFields(ln);
-    if (f.len() < 5 || f[0] != "framing") continue;
+    if (f.len() < 5 || f[0] != mode) continue;
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4];
     local noValue = f.len() > 5 && f[5] == "no-value";
     if (!generated(unit)) { writeAbsent(cname); continue; }
@@ -321,11 +296,11 @@ if (mode == "wire") {
   return;
 }
 
-// THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: FromJson the pinned text,
-// Save, the bytes. json-write: Load the wire, ToJson, the text, and its
-// ToJsonMeasure must be the text's length. Both go through the root's
-// generated names (<Root>FromJson is the strict read: a clean instance text
-// reads with nothing to refuse).
+// THE TEXT FORM (docs/SPEC-TABLES.md §16). json-read: the TOLERANT text read
+// of the pinned text, Save, the bytes; json-read and json-hostile call that
+// one entry point, FromJsonTolerant (test/conformance/README.md). json-write:
+// Load the wire, ToJson, the text, and its ToJsonMeasure must be the text's
+// length.
 if (mode == "json-read" || mode == "json-write") {
   local write = mode == "json-write";
   foreach (ln in lines) {
@@ -345,8 +320,9 @@ if (mode == "json-read" || mode == "json-write") {
       writeText(outdir + "/" + outname, text);
     } else {
       local report = newReport();
-      local v = T[root + "FromJson"](readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
-      if (v == null) throw cname + ": FromJson refused the text: " + (("reason" in report) ? report.reason : "?");
+      local J = opened[0].require("schema_table_json");
+      local v = J.FromJsonTolerant(T, root, readBytes("testdata/conformance/tables/json/" + cname + ".json"), report);
+      if (v == null || report.malformed) throw cname + ": FromJsonTolerant refused the text";
       local out = T[root + "Save"](v);
       if (out == null) throw cname + ": save refused the value";
       if (T[root + "Measure"](v) != out.len()) throw cname + ": Measure is not the save's length";
@@ -357,7 +333,8 @@ if (mode == "json-read" || mode == "json-write") {
 }
 
 // THE TEXT FORM's hostile battery (§16.2, §16.3, §17.5): the TOLERANT read of
-// <tree>/<root>.json, its report, or `refused` where the read was malformed.
+// <tree>/<root>.json, its report and the §16 text of the value it left, or
+// `refused` where the read was malformed.
 if (mode == "json-hostile") {
   foreach (ln in lines) {
     local f = splitFields(ln);
@@ -367,10 +344,12 @@ if (mode == "json-hostile") {
     local opened = openUnit(unit);
     local J = opened[0].require("schema_table_json");
     local r = newReport();
-    J.FromJsonTolerant(opened[1], root, readBytes(tree + "/" + root + ".json"), r);
-    local verdict = r.malformed ? "refused\n" :
-      r.unknown + "," + r.kindMismatch + "," + r.widened + "," + r.clamped + "," + r.duplicate + ",false,read\n";
-    writeText(outdir + "/" + cname, verdict);
+    local v = J.FromJsonTolerant(opened[1], root, readBytes(tree + "/" + root + ".json"), r);
+    if (r.malformed || v == null) { writeText(outdir + "/" + cname, "refused\n"); continue; }
+    local json = opened[1][root + "ToJson"](v);
+    if (json == null) throw cname + ": ToJson refused the value";
+    writeText(outdir + "/" + cname,
+      r.unknown + "," + r.kindMismatch + "," + r.widened + "," + r.clamped + "," + r.duplicate + ",false,read\n" + json);
   }
   return;
 }

@@ -1785,48 +1785,52 @@ int surfaceJsonWrite(String outDir) {
 // counters, or refuses a malformed text. A missing codec is explicit.
 String? jsonHostileReport(String unit, String root, String text) {
   dynamic r;
+  String value;
   try {
     switch ('$unit $root') {
       case 'featurewitnesses Root':
-        r=feature.TableTextReport();feature.rootFromJson(text,r);break;
+        r = feature.TableTextReport();
+        value = feature.rootToJson(feature.rootFromJson(text, r));
+        break;
       case 'featurewitnesses ArrayRoot':
-        r=feature.TableTextReport();feature.arrayRootFromJson(text,r);break;
-
+        r = feature.TableTextReport();
+        value = feature.arrayRootToJson(feature.arrayRootFromJson(text, r));
+        break;
       case 'tabledemo RootConfig':
         r = tabledemo.TableTextReport();
-        tabledemo.rootConfigFromJson(text, r);
+        value = tabledemo.rootConfigToJson(tabledemo.rootConfigFromJson(text, r));
         break;
       case 'tabledemo PackConfig':
         r = tabledemo.TableTextReport();
-        tabledemo.packConfigFromJson(text, r);
+        value = tabledemo.packConfigToJson(tabledemo.packConfigFromJson(text, r));
         break;
       case 'blobdemo Catalog':
         r = blobdemo.TableTextReport();
-        blobdemo.catalogFromJson(text, r);
+        value = blobdemo.catalogToJson(blobdemo.catalogFromJson(text, r));
         break;
       case 'graphdemo Scene':
         r = graphdemo.TableTextReport();
-        graphdemo.sceneFromJson(text, r);
+        value = graphdemo.sceneToJson(graphdemo.sceneFromJson(text, r));
         break;
       case 'mapdemo Text':
         r = mapdemo.TableTextReport();
-        mapdemo.textFromJson(text, r);
+        value = mapdemo.textToJson(mapdemo.textFromJson(text, r));
         break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
-        listdemo.armyFromJson(text, r);
+        value = listdemo.armyToJson(listdemo.armyFromJson(text, r));
         break;
       case 'messagedemo ToolMessage':
         r = messagedemo.TableTextReport();
-        messagedemo.toolMessageFromJson(text, r);
+        value = messagedemo.toolMessageToJson(messagedemo.toolMessageFromJson(text, r));
         break;
       case 'scalars SimState':
         r = scalardemo.TableTextReport();
-        scalardemo.simStateFromJson(text, r);
+        value = scalardemo.simStateToJson(scalardemo.simStateFromJson(text, r));
         break;
       case 'streamdemo Feed':
         r = streamdemo.TableTextReport();
-        streamdemo.feedFromJson(text, r);
+        value = streamdemo.feedToJson(streamdemo.feedFromJson(text, r));
         break;
       default:
         return null;
@@ -1834,7 +1838,8 @@ String? jsonHostileReport(String unit, String root, String text) {
   } on FormatException {
     return 'refused\n';
   }
-  return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n';
+  // the report line, then the §16 text of the value the read left
+  return '${r.unknown},${r.kindMismatch},0,${r.clamped},${r.duplicate},false,read\n$value';
 }
 
 int surfaceJsonHostile(String outDir) {
@@ -1954,14 +1959,30 @@ int surfaceFraming(String outDir) {
   return 0;
 }
 
+// The report line, then the §16 text of the value the read left when the
+// read reads, as `framing` answers a row that owes its value.
 int surfaceReport(String outDir) {
   for (final f in kind('report')) {
-    final line = loadReport(f[2], f[3], File(f[4]).readAsBytesSync());
+    final wire = File(f[4]).readAsBytesSync();
+    final line = loadReport(f[2], f[3], wire);
     if (line == null) {
       spillAbsent(outDir, f[1]);
       continue;
     }
-    File('$outDir/${f[1]}').writeAsStringSync(line);
+    final fields = line.trimRight().split(',');
+    final damaged = fields.length == 7 && fields[5] == 'true';
+    if (fields.last == 'refused' || damaged) {
+      File('$outDir/${f[1]}').writeAsStringSync(line);
+      continue;
+    }
+    final text = jsonWriteText(f[2], f[3], wire);
+    if (text == null) {
+      // no text writer for this root: the line alone, and the value absent
+      File('$outDir/${f[1]}').writeAsStringSync(line);
+      spillAbsent(outDir, f[1]);
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsStringSync(line + text);
   }
   return 0;
 }

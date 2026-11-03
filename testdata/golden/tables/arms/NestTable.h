@@ -479,6 +479,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -7615,6 +7618,189 @@ struct TableExtentCarve
 // answers non-zero here too, and refusing on it is the same answer one level up.
 inline bool TableExtentUnreachedEmpty( int64_t extent ) { return extent == 0; }
 
+// ---- UNBOUNDED TEXT in the node extent (docs/SPEC-TABLES.md §2.13.1) ----
+//
+// An unbounded string ([]string, []?string, [..N]string, [..N]?string,
+// map[string]V) stores a TableRef in its generated element or entry record.
+// A zero TableRef is the empty string "". A non-zero TableRef resolves (via
+// self-relative delta in a region/cook, or TableArenaAt in a builder) to an
+// 8-byte aligned TableBlob record in the holder's node extent (§2.5, §2.13.1):
+//   [uint32_t byte_length][uint32_t zero][len UTF-8 bytes]['\0']
+static const char schema_table_empty_text_[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+inline const char * schema_table_text_from_raw_( const uint8_t * raw, int32_t & len )
+{
+    if ( raw == NULL ) { len = -1; return NULL; }
+    uint32_t u = 0;
+    memcpy( &u, raw, 4 );
+    if ( u > (uint32_t) INT32_MAX ) { len = -1; return NULL; }
+    if ( u > 0 && !TableUtf8Valid( raw + 8, (uint64_t) u ) ) { len = -1; return NULL; }
+    len = (int32_t) u;
+    return (const char *) ( raw + 8 );
+}
+
+inline const char * schema_table_text_at_( const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    return schema_table_text_from_raw_( (const uint8_t *) ( (uintptr_t) &ref + (uintptr_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableRegionCtx &, const TableRef & ref, int32_t & len )
+{
+    return schema_table_text_at_( ref, len );
+}
+inline const char * schema_table_text_at_( const TableArena & arena, const TableRef & ref, int32_t & len )
+{
+    if ( ref.value == 0 ) { len = 0; return schema_table_empty_text_ + 8; }
+    if ( ref.value < 0 || ref.value > (int64_t) UINT32_MAX ) { len = -1; return NULL; }
+    return schema_table_text_from_raw_( TableArenaAt( arena, (uint32_t) ref.value ), len );
+}
+inline const char * schema_table_text_at_( const TableArenaCtx & ctx, const TableRef & ref, int32_t & len )
+{
+    if ( ctx.arena == NULL ) { len = -1; return NULL; }
+    return schema_table_text_at_( *ctx.arena, ref, len );
+}
+
+inline bool schema_table_text_store_( TableWorker & worker, TableRef & slot, const char * text, int64_t len )
+{
+    if ( worker.arena == NULL || worker.arena->locked ) { return false; }
+    if ( len < 0 || len > kTableBlobMaxLength ) { return false; }
+    if ( len > 0 && text == NULL ) { return false; }
+    if ( !TableUtf8Valid( (const uint8_t *) text, (uint64_t) len ) ) { return false; }
+    if ( len == 0 ) { slot.value = 0; return true; }
+    uint32_t at = 0;
+    uint8_t * dst = worker.AllocRaw( 8 + len + 1, 8, at );
+    if ( dst == NULL ) { return false; }
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( dst, &u, 4 );
+    memcpy( dst + 4, &z, 4 );
+    memcpy( dst + 8, text, (size_t) len );
+    dst[8 + len] = 0;
+    slot.value = (int64_t) at;
+    return true;
+}
+
+inline bool schema_table_text_place_( const TableNodeMap & nodes, TableRef & slot, const uint8_t * src, int64_t len )
+{
+    slot.value = 0;
+    if ( len < 0 || len > kTableBlobMaxLength )
+    {
+        if ( nodes.carve != NULL && nodes.carve->worker != NULL ) { nodes.refused = true; }
+        return false;
+    }
+    if ( len == 0 ) { return true; }
+    if ( nodes.carve == NULL ) { return false; }
+    if ( nodes.carve->worker != NULL )
+    {
+        uint32_t at = 0;
+        uint8_t * dst = nodes.carve->worker->AllocRaw( 8 + len + 1, 8, at );
+        if ( dst == NULL )
+        {
+            nodes.refused = true;
+            return false;
+        }
+        uint32_t u = (uint32_t) len;
+        uint32_t z = 0;
+        memcpy( dst, &u, 4 );
+        memcpy( dst + 4, &z, 4 );
+        memcpy( dst + 8, src, (size_t) len );
+        dst[8 + len] = 0;
+        slot.value = (int64_t) at;
+        return true;
+    }
+    uint8_t * base = (uint8_t *) ( ( (uintptr_t) nodes.carve->at + 7u ) & ~(uintptr_t) 7u );
+    const int64_t bytes = TableAlignUp64( 9 + len );
+    const int64_t pad = (int64_t) ( base - nodes.carve->at );
+    if ( pad + bytes > nodes.carve->left ) { return false; }
+    nodes.carve->at = base + bytes;
+    nodes.carve->left -= pad + bytes;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( base, &u, 4 );
+    memcpy( base + 4, &z, 4 );
+    memcpy( base + 8, src, (size_t) len );
+    base[8 + len] = 0;
+    slot.value = (int64_t) ( base - (const uint8_t *) &slot );
+    return true;
+}
+
+inline int32_t schema_table_text_placed_len_( const TableNodeMap & nodes, const TableRef & ref )
+{
+    int32_t len = 0;
+    if ( nodes.carve != NULL && nodes.carve->worker != NULL && nodes.carve->worker->arena != NULL )
+    {
+        schema_table_text_at_( *nodes.carve->worker->arena, ref, len );
+    }
+    else
+    {
+        schema_table_text_at_( ref, len );
+    }
+    return len > 0 ? len : 0;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_extent_( const Ctx & ctx, const TableRef & slot, int64_t & at )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, slot, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+template <typename Ctx>
+inline bool schema_table_text_pack_( const Ctx & ctx, const TableRef & src, TableRef & dst, uint8_t * extent, int64_t & at, int64_t capacity )
+{
+    int32_t len = 0;
+    const char * bytes = schema_table_text_at_( ctx, src, len );
+    if ( bytes == NULL ) { return false; }
+    if ( len == 0 ) { dst.value = 0; return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    const int64_t need = TableAlignUp64( 9 + (int64_t) len );
+    if ( at + need > capacity ) { return false; }
+    uint8_t * block = extent + at;
+    at += need;
+    uint32_t u = (uint32_t) len;
+    uint32_t z = 0;
+    memcpy( block, &u, 4 );
+    memcpy( block + 4, &z, 4 );
+    memcpy( block + 8, bytes, (size_t) len );
+    block[8 + len] = 0;
+    dst.value = (int64_t) ( block - (const uint8_t *) &dst );
+    return true;
+}
+
+inline bool schema_table_text_wire_extent_( TableReader & r, int64_t & at, TableRefuseReason & reason )
+{
+    uint64_t len = 0;
+    if ( !r.getleb( len ) || !r.room( len ) ) { r.offset = r.size; return true; }
+    r.offset += (int64_t) len;
+    if ( len > (uint64_t) kTableBlobMaxLength ) { reason = blob_over_size_cap; return false; }
+    if ( len == 0 ) { return true; }
+    at = ( at + 7 ) & ~(int64_t) 7;
+    at += TableAlignUp64( 9 + (int64_t) len );
+    return true;
+}
+
+inline bool schema_table_list_text_wire_extent_( const uint8_t * body, int64_t length, uint64_t bound, int64_t & at, TableRefuseReason & reason )
+{
+    TableReport scratch;
+    TableReader r( body, length, &scratch, NULL );
+    if ( length < 2 ) { return true; }
+    if ( r.get8() != 12 ) { return true; }
+    uint64_t n = 0;
+    if ( !r.getleb( n ) ) { return true; }
+    if ( bound > 0 && n > bound ) { n = bound; }
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        if ( !schema_table_text_wire_extent_( r, at, reason ) ) { return false; }
+        if ( r.offset >= r.size ) { break; }
+    }
+    return true;
+}
+
 // ---- LoadMeasure's framing walk (§6.5) ----
 //
 // The measure reads no field value: it walks each record's field headers,
@@ -7889,6 +8075,21 @@ inline typename TableList<T>::Element * TableListPlace( TableWorker & worker, Ta
     if ( element == NULL ) { return NULL; }
     new ( element ) Element(); // value-init: the declared defaults, and null for a slot
     return element;
+}
+
+template <typename T>
+inline void schema_table_list_drop_last_( TableArena & arena, TableList<T> & list )
+{
+    typedef typename TableList<T>::Element Element;
+    if ( list.elements.value == 0 || list.count <= 0 ) { return; }
+    TableListHead * head = (TableListHead *) TableArenaAt( arena, (uint32_t) list.elements.value );
+    if ( head->last.value == 0 ) { return; }
+    TableListSegment<Element> * seg = (TableListSegment<Element> *) TableArenaAt( arena, (uint32_t) head->last.value );
+    if ( seg->used <= 0 ) { return; }
+    const int32_t j = seg->used - 1;
+    seg->dead[j >> 6] |= 1ull << ( j & 63 );
+    head->live--;
+    list.count--;
 }
 
 // ERASE, ADDRESSED BY THE POINTER (§2.9): the element Add handed back is the
@@ -8777,6 +8978,8 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
 template <typename Ctx>
 inline int64_t TwigMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Twig & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.inner.type != InnerType::None ) // None elides — the absence of the field is the None
     {
@@ -8813,6 +9016,8 @@ inline int64_t TwigMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool TwigSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Twig & value )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.inner.type != InnerType::None )
     {
         w.header( ids.ref_at( 4, 0x2d4c068f5f889287ull ), 15 ); // inner
@@ -8856,6 +9061,7 @@ inline bool TwigSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     TwigReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -9023,6 +9229,8 @@ inline bool TwigLoadBody( TableReader & r, const TableNodeMap & nodes, Twig & va
 template <typename Ctx>
 inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Nest & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.outer.type != OuterType::None ) // None elides — the absence of the field is the None
     {
@@ -9096,6 +9304,8 @@ inline int64_t NestMeasureBody( const Ctx & ctx, const TableNumbering & numberin
 template <typename Ctx>
 inline bool NestSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Nest & value )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.outer.type != OuterType::None )
     {
         w.header( ids.ref_at( 6, 0x30e6ed678f5e1bd4ull ), 15 ); // outer
@@ -9211,6 +9421,7 @@ inline bool NestSaveBody( const Ctx & ctx, const TableNumbering & numbering, Tab
 
 inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & value )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     NestReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
@@ -9457,16 +9668,16 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -9482,6 +9693,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -9510,7 +9722,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
@@ -9532,6 +9744,7 @@ inline bool NestLoadBody( TableReader & r, const TableNodeMap & nodes, Nest & va
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -10954,8 +11167,17 @@ inline bool TwigLoadBuilderTolerant( TwigBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -11023,7 +11245,10 @@ inline const Twig * TwigReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = TwigLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -11046,6 +11271,11 @@ inline const Twig * TwigReadStrict( const uint8_t * wire_file, int64_t wire_file
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -11896,8 +12126,17 @@ inline bool NestLoadBuilderTolerant( NestBuilder & builder, const uint8_t * wire
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
     if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
-    // §2.9): the same whole-load outcome as damage, the root reset below
+    // §2.9): the whole-load outcome of damage, the root reset below, named
+    // count_over_extent_cap and not damage, so malformed is not set. The walk
+    // stops at the count, so a NaN this read met came before it, and the first
+    // refusal in read order names the read
     ok = ok && !nodes.refused;
+    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )
+    {
+        out->refused = true;
+        out->reason = count_over_extent_cap;
+        out->refuse_reason = count_over_extent_cap;
+    }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -11965,7 +12204,10 @@ inline const Nest * NestReadStrict( const uint8_t * wire_file, int64_t wire_file
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = NestLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -11990,6 +12232,11 @@ inline const Nest * NestReadStrict( const uint8_t * wire_file, int64_t wire_file
         }
         return NULL;
     }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
+        return NULL;
+    }
     if ( !builder.Lock() )
     {
         if ( reason != NULL ) { *reason = allocation_failed; }
@@ -12006,6 +12253,8 @@ inline const Nest * NestReadStrict( const uint8_t * wire_file, int64_t wire_file
 template <typename Ctx>
 inline int64_t TwigMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Twig & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.inner.type != InnerType::None ) // None elides — the absence of the field is the None
     {
@@ -12043,6 +12292,8 @@ inline int64_t TwigMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool TwigSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Twig & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.inner.type != InnerType::None )
     {
         w.header( ids.ref_at( 4, 0x2d4c068f5f889287ull ), 15 ); // inner
@@ -12087,6 +12338,7 @@ inline bool TwigSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twig & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     TwigReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -12260,6 +12512,8 @@ inline bool TwigLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Twi
 template <typename Ctx>
 inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Nest & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.outer.type != OuterType::None ) // None elides — the absence of the field is the None
     {
@@ -12334,6 +12588,8 @@ inline int64_t NestMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
 template <typename Ctx>
 inline bool NestSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Nest & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.outer.type != OuterType::None )
     {
         w.header( ids.ref_at( 6, 0x30e6ed678f5e1bd4ull ), 15 ); // outer
@@ -12450,6 +12706,7 @@ inline bool NestSaveBodyRetain( const Ctx & ctx, const TableNumbering & numberin
 
 inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nest & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     if ( nodes.refused ) { return false; }
     NestReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
@@ -12702,16 +12959,16 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             r.offset = body_end;
                             break;
                         }
-                        r.report->widened++;
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
                             nodes.refused = true;
                             return false;
                         }
+                        r.report->widened++;
                         if ( !fill.ok )
                         {
                             r.report->malformed = true;
@@ -12727,6 +12984,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -12755,7 +13013,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                     {
                         // THE COUNT IS THE DATA'S (§2.9): there is no bound, so clamped
                         // cannot fire on it. A count above the int32 storage cap is the
-                        // fill's refusal, and it moves no counter.
+                        // fill's refusal, and it moves no counter, the widening included.
                         TableListFill<int32_t> fill = TableListFillBegin( nodes, value.tail, count );
                         if ( fill.refused )
                         {
@@ -12777,6 +13035,7 @@ inline bool NestLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Nes
                             int32_t * slot = TableListFillNext( fill );
                             if ( slot == NULL )
                             {
+                                if ( fill.worker != NULL ) { nodes.refused = true; return false; }
                                 r.report->malformed = true;
                                 break;
                             } // the arena could not carve
@@ -14316,14 +14575,14 @@ extern const TableTypeInfo TwigTableInfo;
 extern const TableTypeInfo NestTableInfo;
 
 inline const TableFieldInfo TwigTableFields[] = {
-    { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Twig, inner ), (uint32_t) sizeof( Twig::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Inner, plain ), (uint32_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Inner, type ), (uint32_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Twig, inner ), (uint32_t) sizeof( Twig::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Inner, plain ), (uint32_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Inner, type ), (uint32_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo TwigTableInfo = { "Twig", (uint32_t) sizeof( Twig ), 1, TwigTableFields, +[]( void * p ) { TwigReset( *(Twig *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TwigTableType() { return &TwigTableInfo; }
 
 inline const TableFieldInfo NestTableFields[] = {
-    { "outer", "outer", "Outer", 0x30e6ed678f5e1bd4ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Nest, outer ), (uint32_t) sizeof( Nest::outer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "inner"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x2d4c068f5f889287ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Outer[] = { { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Outer, inner ), (uint32_t) sizeof( Outer::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Inner, plain ), (uint32_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Inner, type ), (uint32_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Outer, plain ), (uint32_t) sizeof( Outer::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Outer, inner ), NULL, &arm_fields_Outer[0], 24 }, { (uint32_t) offsetof( Outer, plain ), NULL, &arm_fields_Outer[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Outer, type ), (uint32_t) sizeof( Outer::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Nest, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Nest, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t ) -> void * { return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false },
+    { "outer", "outer", "Outer", 0x30e6ed678f5e1bd4ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Nest, outer ), (uint32_t) sizeof( Nest::outer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "inner"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x2d4c068f5f889287ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Outer[] = { { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Outer, inner ), (uint32_t) sizeof( Outer::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Inner, plain ), (uint32_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Inner, type ), (uint32_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Outer, plain ), (uint32_t) sizeof( Outer::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Outer, inner ), NULL, &arm_fields_Outer[0], 24 }, { (uint32_t) offsetof( Outer, plain ), NULL, &arm_fields_Outer[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Outer, type ), (uint32_t) sizeof( Outer::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Nest, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Nest, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
 };
 inline const TableTypeInfo NestTableInfo = { "Nest", (uint32_t) sizeof( Nest ), 2, NestTableFields, +[]( void * p ) { NestReset( *(Nest *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * NestTableType() { return &NestTableInfo; }

@@ -304,6 +304,108 @@ local function scan_wstring(inp, cap)
 end
 
 -- ONE RFC 8259 number; the token kept for conversion
+-- THE NEAREST FLOAT32 TO A DECIMAL TOKEN (docs/SPEC-TABLES.md §16.1, §16.2):
+-- tonumber rounds the token to the nearest double, and narrowing that double
+-- rounds a second time. The two agree except where the double lands EXACTLY
+-- on a float32 midpoint, since every float32 midpoint is itself a double and
+-- rounding is monotone: there the token's own digits decide which side of the
+-- midpoint it lies, compared exactly as integers, and only a token that IS the
+-- midpoint takes the even neighbor. x is the token's double, narrow its first
+-- float32 rounding.
+
+-- big integers in base 10^7, least significant limb first
+local BIG = 10000000
+
+local function big_small(n)
+  local a = {}
+  repeat
+    a[#a + 1] = n % BIG
+    n = n // BIG
+  until n == 0
+  return a
+end
+
+local function big_digits(s)
+  local a = { 0 }
+  for i = 1, #s do
+    local carry = s:byte(i) - 48
+    for j = 1, #a do
+      local v = a[j] * 10 + carry
+      a[j] = v % BIG
+      carry = v // BIG
+    end
+    if carry > 0 then a[#a + 1] = carry end
+  end
+  return a
+end
+
+local function big_mul(a, m)
+  local carry = 0
+  for j = 1, #a do
+    local v = a[j] * m + carry
+    a[j] = v % BIG
+    carry = v // BIG
+  end
+  while carry > 0 do
+    a[#a + 1] = carry % BIG
+    carry = carry // BIG
+  end
+end
+
+local function big_pow(a, base, n)
+  for _ = 1, n do big_mul(a, base) end
+end
+
+local function big_cmp(a, b)
+  local na, nb = #a, #b
+  while na > 1 and a[na] == 0 do na = na - 1 end
+  while nb > 1 and b[nb] == 0 do nb = nb - 1 end
+  if na ~= nb then return na < nb and -1 or 1 end
+  for i = na, 1, -1 do
+    if a[i] ~= b[i] then return a[i] < b[i] and -1 or 1 end
+  end
+  return 0
+end
+
+-- the float32 adjacent to f, one step further from zero (away) or nearer to
+-- it, by its bits
+local function f32_step(f, away)
+  local bits = string.unpack("<I4", string.pack("<f", f))
+  local sign, mag = bits & 0x80000000, bits & 0x7fffffff
+  if away then mag = mag + 1 else mag = mag - 1 end
+  return string.unpack("<f", string.pack("<I4", sign | mag))
+end
+
+-- compare the magnitude of the token's decimal value with |x|: -1, 0 or 1
+local function token_cmp(token, x)
+  local int, frac, exp = token:match("^%-?(%d+)%.?(%d*)[eE]?([+-]?%d*)$")
+  local k = (exp ~= "" and tonumber(exp) or 0) - #frac
+  local digits = (int .. frac):gsub("^0+", "")
+  if digits == "" then digits = "0" end
+  -- |x| = m * 2^e exactly, from the double's own bits
+  local bits = string.unpack("<I8", string.pack("<d", math.abs(x)))
+  local be = (bits >> 52) & 0x7ff
+  local m = bits & 0xfffffffffffff
+  local e
+  if be == 0 then e = -1074 else m = m | (1 << 52); e = be - 1075 end
+  local left = big_digits(digits)
+  local right = big_small(m)
+  if k > 0 then big_pow(left, 10, k) else big_pow(right, 10, -k) end
+  if e > 0 then big_pow(right, 2, e) else big_pow(left, 2, -e) end
+  return big_cmp(left, right)
+end
+
+local function nearest_f32(token, x, narrow)
+  if narrow == x then return narrow end
+  local other = f32_step(narrow, math.abs(x) > math.abs(narrow))
+  if (narrow + other) / 2 ~= x then return narrow end
+  local side = token_cmp(token, x)
+  if side == 0 then return narrow end
+  local up = math.abs(other) > math.abs(narrow)
+  if (side > 0) == up then return other end
+  return narrow
+end
+
 local function scan_number(inp)
   space(inp)
   local start = inp.p
@@ -1974,7 +2076,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
           return true
         end
       else
-        x = narrow
+        x = nearest_f32(token, x, narrow)
       end
     end
     holder[key] = x

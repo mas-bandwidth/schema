@@ -632,10 +632,16 @@ defmodule Driver do
     end
   end
 
+  # The report line, then the §16 text of the value the read left when the
+  # read reads (test/conformance/README.md), as `framing` answers a row that
+  # owes its value.
   defp run("report", rows, outdir) do
     for [name, unit, root, wire] <- rows(rows, "report") do
-      case report_line(table_module(unit), root, wire) do
+      mod = table_module(unit)
+
+      case report_line(mod, root, wire) do
         :absent -> write_absent(outdir, name)
+        {line, value} -> write(outdir, name, line <> value_text(mod, root, value, name))
         line -> write(outdir, name, line)
       end
     end
@@ -711,7 +717,8 @@ defmodule Driver do
               case mod.save(root, value) do
                 {:ok, wire} ->
                   {:ok, _back, _r2} = mod.load(root, wire)
-                  write(outdir, name, report_counters(report) <> ",read\n")
+                  line = report_counters(report) <> ",read\n"
+                  write(outdir, name, line <> value_text(mod, root, value, name))
 
                 {:error, _} ->
                   write(outdir, name, "refused\n")
@@ -910,6 +917,15 @@ defmodule Driver do
   # write <case>.absent (docs/SPEC-TABLES.md §11). A line that says "absent"
   # is a wrong answer against the reference's "read"; the sidecar is the
   # absence the harness already counts as a missing feature.
+  # The §16 text of a value a read left: the value half of a `report` and
+  # `json-hostile` answer.
+  defp value_text(mod, root, value, name) do
+    case mod.to_json(root, value) do
+      {:ok, text} -> IO.iodata_to_binary(text)
+      _ -> raise "#{name}: to_json refused the value"
+    end
+  end
+
   defp report_line(nil, _root, _wire), do: :absent
 
   # The verdict is the REPORT'S REASON (docs/SPEC-TABLES.md §4, §4.2): a load
@@ -919,8 +935,9 @@ defmodule Driver do
   # reports.txt spells as a read with malformed set.
   defp report_line(mod, root, wire) do
     case mod.load(root, File.read!(wire)) do
-      {:ok, _value, report} ->
-        report_counters(report) <> ",read\n"
+      {:ok, value, report} ->
+        line = report_counters(report) <> ",read\n"
+        if Map.get(report, :malformed, false), do: line, else: {line, value}
 
       {:error, _refusal, %{reason: "unknown_form"}} ->
         "0,0,0,0,0,false,refused\n"
@@ -1434,30 +1451,27 @@ defmodule WireFuzz do
   # themselves name; the message surface carries no per-kind counters, so those
   # stay zero here rather than being invented.
   defp answer_message(r, wire) do
-    case message_codec(r.unit, r.root) do
-      nil ->
+    with mod when mod != nil <- message_codec(r.unit, r.root),
+         tmod when tmod != nil <- file_codec(r.unit, r.root),
+         vocab when vocab != nil <- vocab(mod) do
+      case mod.load_messages(vocab, wire) do
+        {:ok, bodies} ->
+          tables = tmod.descriptors()
+          desc = Map.fetch!(tables, r.root)
+          message_decode_and_reply(mod, vocab, tables, desc, bodies)
+
+        {:malformed, _count, _bodies} ->
+          stdout_write(header(0, %{malformed: true}, -1) <> <<-1::little-signed-64>>)
+
+        {:error, reason} when reason in [:newer_form, :non_finite_float] ->
+          stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
+
+        _ ->
+          stdout_write(header(0, %{malformed: true}, -1) <> <<-1::little-signed-64>>)
+      end
+    else
+      _ ->
         stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
-
-      mod ->
-        case vocab(mod) do
-          nil ->
-            stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
-
-          vocab ->
-            case mod.load_messages(vocab, wire) do
-              {:ok, bodies} ->
-                message_reply(mod, vocab, bodies, false)
-
-              {:malformed, _count, bodies} ->
-                message_reply(mod, vocab, bodies, true)
-
-              {:error, :non_finite_float} ->
-                stdout_write(header(0, %{refused: true}, -1) <> <<-1::little-signed-64>>)
-
-              _ ->
-                stdout_write(header(0, %{}, -1) <> <<-1::little-signed-64>>)
-            end
-        end
     end
   end
 
@@ -1483,30 +1497,249 @@ defmodule WireFuzz do
     end
   end
 
-  defp message_reply(mod, vocab, bodies, malformed) do
-    report = %{malformed: malformed}
+  defp message_decode_and_reply(mod, vocab, tables, desc, bodies) do
+    empty = %{
+      unknown: 0,
+      kind_mismatch: 0,
+      widened: 0,
+      clamped: 0,
+      duplicate: 0,
+      malformed: false
+    }
 
-    measure =
-      case mod.measure_messages(vocab, bodies) do
-        {:ok, n} -> n
-        _ -> 0
-      end
+    {decoded_rev, report} =
+      Enum.reduce_while(bodies, {[], empty}, fn raw_body, {acc, rep} ->
+        case msg_decode_body(vocab, tables, desc, raw_body, rep) do
+          {:ok, val, rep2} -> {:cont, {[val | acc], rep2}}
+          {:malformed, rep2} -> {:halt, {[], %{rep2 | malformed: true}}}
+        end
+      end)
 
-    case bodies do
-      [first | _] ->
-        case mod.save_messages(vocab, [first]) do
-          {:ok, bytes} ->
-            stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
-            stdout_write(bytes)
+    if report.malformed do
+      stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
+    else
+      first_val = decoded_rev |> Enum.reverse() |> hd()
+      encoded_first = msg_encode_body(vocab, tables, desc, first_val)
 
-          _ ->
-            stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+      measure =
+        case mod.measure_messages(vocab, [encoded_first]) do
+          {:ok, n} -> n
+          _ -> 0
         end
 
-      [] ->
-        # damage before body one: the batch delivered no body to save
-        stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+      case mod.save_messages(vocab, [encoded_first]) do
+        {:ok, bytes} ->
+          stdout_write(header(1, report, measure) <> <<byte_size(bytes)::little-signed-64>>)
+          stdout_write(bytes)
+
+        _ ->
+          stdout_write(header(1, report, measure) <> <<-1::little-signed-64>>)
+      end
     end
+  end
+
+  defp msg_decode_body(vocab, tables, desc, raw_fields, report) do
+    Enum.reduce_while(raw_fields, {:ok, %{}, report}, fn {ref, raw_val}, {:ok, acc, rep} ->
+      entry = Enum.at(vocab.entries, ref - 1)
+
+      case Enum.find(desc.fields, fn f -> f.id == entry.id end) do
+        nil ->
+          {:cont, {:ok, acc, %{rep | unknown: rep.unknown + 1}}}
+
+        f ->
+          mine_elem = msg_field_elem_kind(f)
+
+          theirs_elem =
+            case Map.get(entry, :element) do
+              %{kind: k} -> k
+              _ -> 0
+            end
+
+          cond do
+            entry.kind == f.kind and theirs_elem == mine_elem ->
+              case msg_decode_field(vocab, tables, f, raw_val, rep) do
+                {:ok, v, rep2} -> {:cont, {:ok, Map.put(acc, f.name, v), rep2}}
+                {:malformed, rep2} -> {:halt, {:malformed, rep2}}
+              end
+
+            msg_widens?(entry.kind, theirs_elem, f.kind, mine_elem) ->
+              rep = %{rep | widened: rep.widened + 1}
+
+              case msg_decode_field(vocab, tables, f, raw_val, rep) do
+                {:ok, v, rep2} -> {:cont, {:ok, Map.put(acc, f.name, v), rep2}}
+                {:malformed, rep2} -> {:halt, {:malformed, rep2}}
+              end
+
+            true ->
+              {:cont, {:ok, acc, %{rep | kind_mismatch: rep.kind_mismatch + 1}}}
+          end
+      end
+    end)
+  end
+
+  defp msg_field_elem_kind(%{t: :bytes}), do: 6
+  defp msg_field_elem_kind(%{t: :list, elem_kind: k}), do: k
+  defp msg_field_elem_kind(_), do: 0
+
+  defp msg_widens?(tk, te, mk, me) when te == me and me == 0, do: msg_scalar_widens?(tk, mk)
+  defp msg_widens?(14, te, 14, me), do: msg_scalar_widens?(te, me)
+  defp msg_widens?(_, _, _, _), do: false
+
+  defp msg_scalar_widens?(from, to) do
+    Enum.any?([[2, 3, 4, 5, 18], [6, 7, 8, 9, 19], [10, 11]], fn ladder ->
+      fi = Enum.find_index(ladder, &(&1 == from))
+      ti = Enum.find_index(ladder, &(&1 == to))
+      fi != nil and ti != nil and fi < ti
+    end)
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :int} = f, val, rep) do
+    {val, rep} =
+      if Map.has_key?(f, :min) and Map.has_key?(f, :max) do
+        cond do
+          val < f.min -> {f.min, %{rep | clamped: rep.clamped + 1}}
+          val > f.max -> {f.max, %{rep | clamped: rep.clamped + 1}}
+          true -> {val, rep}
+        end
+      else
+        {val, rep}
+      end
+
+    {:ok, val, rep}
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :string} = f, val, rep) when is_binary(val) do
+    if not String.valid?(val) or :binary.match(val, <<0>>) != :nomatch do
+      {:malformed, rep}
+    else
+      if byte_size(val) > f.size do
+        {:ok, msg_utf8_clamp(val, f.size), %{rep | clamped: rep.clamped + 1}}
+      else
+        {:ok, val, rep}
+      end
+    end
+  end
+
+  defp msg_decode_field(_vocab, _tables, %{t: :bytes} = f, val, rep) when is_list(val) do
+    if length(val) > f.size do
+      {:ok, Enum.take(val, f.size), %{rep | clamped: rep.clamped + 1}}
+    else
+      {:ok, val, rep}
+    end
+  end
+
+  defp msg_decode_field(vocab, _tables, %{t: :enum} = f, vref, rep) do
+    if vref == 0 do
+      {:ok, 0, rep}
+    else
+      ventry = Enum.at(vocab.entries, vref - 1)
+
+      if ventry != nil and Map.has_key?(f.by_id, ventry.id) do
+        {:ok, vref, rep}
+      else
+        {:ok, 0, %{rep | unknown: rep.unknown + 1}}
+      end
+    end
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :table} = f, raw_sub, rep) do
+    msg_decode_body(vocab, tables, Map.fetch!(tables, f.elem), raw_sub, rep)
+  end
+
+  defp msg_decode_field(vocab, tables, %{t: :list, elem_kind: 13} = f, raw_elems, rep) do
+    bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
+    elem_desc = Map.fetch!(tables, f.elem)
+    rep = if length(raw_elems) > bound, do: %{rep | clamped: rep.clamped + 1}, else: rep
+
+    case Enum.reduce_while(raw_elems, {:ok, [], rep}, fn raw_elem, {:ok, acc, r} ->
+           case msg_decode_body(vocab, tables, elem_desc, raw_elem, r) do
+             {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
+             {:malformed, r2} -> {:halt, {:malformed, r2}}
+           end
+         end) do
+      {:ok, rev, rep2} ->
+        {:ok, rev |> Enum.reverse() |> Enum.take(bound), rep2}
+
+      {:malformed, rep2} ->
+        {:malformed, rep2}
+    end
+  end
+
+  defp msg_decode_field(_vocab, _tables, _f, val, rep), do: {:ok, val, rep}
+
+  defp msg_utf8_clamp(bin, max_bytes) when byte_size(bin) <= max_bytes, do: bin
+
+  defp msg_utf8_clamp(bin, max_bytes) do
+    bin
+    |> String.codepoints()
+    |> Enum.reduce_while(<<>>, fn cp, acc ->
+      if byte_size(acc) + byte_size(cp) <= max_bytes do
+        {:cont, acc <> cp}
+      else
+        {:halt, acc}
+      end
+    end)
+  end
+
+  defp msg_encode_body(vocab, tables, desc, val_map) do
+    Enum.flat_map(desc.fields, fn f ->
+      ref = msg_field_slot(vocab, f)
+
+      case f.t do
+        :int ->
+          v = Map.get(val_map, f.name, f.default)
+          if v == f.default, do: [], else: [{ref, v}]
+
+        :string ->
+          v = Map.get(val_map, f.name, <<>>)
+          if v == <<>>, do: [], else: [{ref, v}]
+
+        :bytes ->
+          v = Map.get(val_map, f.name, [])
+          if v == [], do: [], else: [{ref, v}]
+
+        :enum ->
+          v = Map.get(val_map, f.name, 0)
+          if v == 0 or v == nil, do: [], else: [{ref, v}]
+
+        :table ->
+          sub_desc = Map.fetch!(tables, f.elem)
+          sub_val = Map.get(val_map, f.name, %{})
+          sub_raw = msg_encode_body(vocab, tables, sub_desc, sub_val)
+          if sub_raw == [], do: [], else: [{ref, sub_raw}]
+
+        :list ->
+          elem_desc = Map.fetch!(tables, f.elem)
+          bound = Map.get(f, :max_count, Map.get(f, :array_bound, 0))
+          elems = Map.get(val_map, f.name, List.duplicate(%{}, bound))
+          padded = elems ++ List.duplicate(%{}, max(bound - length(elems), 0))
+
+          encoded_elems =
+            Enum.map(Enum.take(padded, bound), &msg_encode_body(vocab, tables, elem_desc, &1))
+
+          [{ref, encoded_elems}]
+
+        _ ->
+          []
+      end
+    end)
+  end
+
+  defp msg_field_slot(vocab, f) do
+    elem_kind = msg_field_elem_kind(f)
+
+    idx =
+      Enum.find_index(vocab.entries, fn e ->
+        e_elem =
+          case Map.get(e, :element) do
+            %{kind: k} -> k
+            _ -> 0
+          end
+
+        e.id == f.id and e.kind == f.kind and e_elem == elem_kind
+      end)
+
+    idx + 1
   end
 
   # the plain arm (docs/SPEC-TABLES.md §4.2): load, report, save.
@@ -1608,7 +1841,7 @@ defmodule WireFuzz do
           # A LOAD THAT MEETS DAMAGE REFUSES AND SAYS SO (Glenn, 2026-10-31:
           # damage discards the whole load): its report, malformed among it,
           # is the answer the oracle compares
-          stdout_write(header(0, report, -1) <> <<-1::little-signed-64>>)
+          stdout_write(header(0, report, measure) <> <<-1::little-signed-64>>)
       end
     end
   end

@@ -1741,3 +1741,7 @@ tables-rust-json-bom:
 	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 0 -run '^TestJsonLeadingBOMBoundaryRust$$' -v
 
 test-rust: tables-rust-json-bom
+
+# the leg's generated units move with every unit schema the conformance
+# manifest names, not only with the ones listed above
+build/tables-generated-rust/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)

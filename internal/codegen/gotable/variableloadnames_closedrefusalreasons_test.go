@@ -6,9 +6,8 @@ import (
 
 // TestVariableLoadNamesClosedRefusalReasons pins docs/SPEC-TABLES.md §3 (THE
 // FIRST BYTE) and §6.5's refused-form enum as the Go variable <T>Load emits it:
-// message_form_as_file for form 2, newer_form for a byte above the reader's form
-// (3, 255), and form 0 answering as the base pins it (previous_form, older than
-// form 1).
+// message_form_as_file for form 2 and newer_form for every other byte the
+// reader does not carry (0, 3, 255).
 func TestVariableLoadNamesClosedRefusalReasons(t *testing.T) {
 	t.Parallel()
 	const schema = `package probe
@@ -36,7 +35,7 @@ func TestVariableLoadNamesClosedRefusalReasons(t *testing.T) {
 		form byte
 		want string
 	}{
-		{"form 0", 0, "previous_form"},
+		{"form 0", 0, "newer_form"},
 		{"form 2", 2, "message_form_as_file"},
 		{"form 3", 3, "newer_form"},
 		{"form 255", 255, "newer_form"},

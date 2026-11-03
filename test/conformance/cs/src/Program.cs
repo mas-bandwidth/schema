@@ -771,8 +771,8 @@ static partial class Program
     }
 
     // json-hostile: one tree per rule the text form states (§16.2, §16.3,
-    // §17.5). The answer is the REPORT the read produces, or `refused` — the
-    // same two-valued verdict the engine's own gate holds, over the same data.
+    // §17.5). The answer is the REPORT the read produces, then the §16 text of
+    // the value it left, or `refused`.
     static int SurfaceJsonHostile(string outDir)
     {
         foreach (string[] f in Kind("json-hostile"))
@@ -790,13 +790,42 @@ static partial class Program
             byte[] text = File.ReadAllBytes(Path.Combine(f[4], f[3] + ".json"));
             Report report = new Report();
             object value = codec.FromJson(text, report);
-            string verdict = value == null || report.Malformed
-                ? "refused\n"
-                : report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
-                  report.Duplicate + ",false,read\n";
-            File.WriteAllText(Path.Combine(outDir, f[1]), verdict);
+            if (value == null || report.Malformed)
+            {
+                File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
+                continue;
+            }
+            string verdict = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
+                             report.Duplicate + ",false,read\n";
+            byte[] answer = WithValue(codec, value, verdict, f[1]);
+            if (answer == null) return 1;
+            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
         }
         return 0;
+    }
+
+    // The value half of a `report` and `json-hostile` answer
+    // (test/conformance/README.md): the report line, then the §16 text of the
+    // value the read left. Null when the writer refuses the value.
+    static byte[] WithValue(Codec codec, object value, string head, string name)
+    {
+        byte[] line = System.Text.Encoding.ASCII.GetBytes(head);
+        long size = codec.ToJsonMeasure(value);
+        if (size < 0)
+        {
+            Console.Error.WriteLine("driver: " + name + " holds a value ToJson refuses");
+            return null;
+        }
+        byte[] text = new byte[size];
+        if (codec.ToJson(value, text) != size)
+        {
+            Console.Error.WriteLine("driver: " + name + " writes a text its measure did not name");
+            return null;
+        }
+        byte[] both = new byte[line.Length + text.Length];
+        line.CopyTo(both, 0);
+        text.CopyTo(both, line.Length);
+        return both;
     }
 
     static int SurfaceReport(string outDir)
@@ -817,7 +846,14 @@ static partial class Program
             bool malformed = report.Malformed || (value == null && !report.Refused);
             string text = report.Unknown + "," + report.KindMismatch + "," + report.Widened + "," + report.Clamped + "," +
                           report.Duplicate + "," + (malformed ? "true" : "false") + "," + (report.Refused ? "refused" : "read") + "\n";
-            File.WriteAllText(Path.Combine(outDir, f[1]), text);
+            if (value == null || malformed || report.Refused)
+            {
+                File.WriteAllText(Path.Combine(outDir, f[1]), text);
+                continue;
+            }
+            byte[] answer = WithValue(codec, value, text, f[1]);
+            if (answer == null) return 1;
+            File.WriteAllBytes(Path.Combine(outDir, f[1]), answer);
         }
         return 0;
     }

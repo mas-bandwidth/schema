@@ -471,6 +471,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -10112,16 +10115,16 @@ extern const TableTypeInfo StampTableInfo;
 extern const TableTypeInfo ColourTableInfo;
 
 inline const TableFieldInfo StampTableFields[] = {
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Stamp, tag ), (uint32_t) sizeof( Stamp::tag ), (uint32_t) offsetof( Stamp, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo StampTableInfo = { "Stamp", (uint32_t) sizeof( Stamp ), 2, StampTableFields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * StampTableType() { return &StampTableInfo; }
 
 inline const TableFieldInfo ColourTableFields[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, r ), (uint32_t) sizeof( Colour::r ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, g ), (uint32_t) sizeof( Colour::g ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Colour, b ), (uint32_t) sizeof( Colour::b ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo ColourTableInfo = { "Colour", (uint32_t) sizeof( Colour ), 3, ColourTableFields, +[]( void * p ) { ColourReset( *(Colour *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ColourTableType() { return &ColourTableInfo; }

@@ -97,27 +97,34 @@ end
 local ID_TABLE_BOUND = 4096
 
 -- THE ID TABLE AND THE ROOT BODY'S FRAMING (docs/SPEC-TABLES.md §3): a form
--- byte this reader does not know REFUSES; damage is malformed. The count is
--- the unsigned u64 at the file's end; a high half past zero is huge and never
--- frames.
+-- byte this reader does not know REFUSES, naming it; damage is malformed and
+-- the verdict's damage (report.damaged). The count is the unsigned u64 at the
+-- file's end; a high half past zero is huge and never frames.
 local function open(bytes: buffer, report: any): any
 	local len = buffer.len(bytes)
 	if len < 1 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
-	if buffer.readu8(bytes, 0) ~= 1 then
+	local form = buffer.readu8(bytes, 0)
+	if form ~= 1 then
+		-- the report names which form it refused (§6.5): a batch handed to a
+		-- file reader, or a byte this reader does not carry
 		report.refused += 1
+		report.reason = if form == 2 then "message_form_as_file" else "newer_form"
 		return nil
 	end
 	if len < 9 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
 	local lo = buffer.readu32(bytes, len - 8)
 	local hi = buffer.readu32(bytes, len - 4)
 	if hi ~= 0 or lo > ID_TABLE_BOUND or lo > (len - 9) // 8 then
 		report.malformed = true
+		report.damaged = true
 		return nil
 	end
 	local count = lo
@@ -128,6 +135,7 @@ local function open(bytes: buffer, report: any): any
 		local id = buffer.readstring(bytes, endpos + i * 8, 8)
 		if seen[id] then
 			report.malformed = true
+			report.damaged = true
 			return nil
 		end
 		seen[id] = true
@@ -255,6 +263,12 @@ local _numberingGood: boolean = true
 -- the builder-path storage refusal (Go CountRefusal): a collection count past
 -- the int32 cap discards the partial value and is NOT a malformed event
 local _countRefused: boolean = false
+-- the non-finite floats the walk had met when it met the first count past the
+-- cap: when a read meets two refusals, the first in read order names it
+-- (docs/SPEC-TABLES.md §2.9), so a NaN met before the count answers
+-- non_finite_float
+local _countNonFinite: number = 0
+local _countNonFiniteField: string? = nil
 
 -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3;
 -- Go's NonFiniteRefusal): the walk goes on, so the framing verdict is the one
@@ -272,6 +286,17 @@ local function non_finite(report: any, named: any)
 end
 
 L.nonFinite = non_finite
+
+-- refuse_count records the first count past the int32 storage cap, and the
+-- non-finite floats the walk met before it (§2.9)
+local function refuse_count(report: any)
+	if _countRefused then
+		return
+	end
+	_countRefused = true
+	_countNonFinite = report.nonFinite or 0
+	_countNonFiniteField = report.nonFiniteField
+end
 
 -- scalar_at reads one scalar of wire kind `kind` for the field (or element)
 -- fd: the raw value, widened into fd's kind (§4), clamped to its declared
@@ -541,11 +566,17 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 			-- earlier occurrence built goes with it, moving neither counter
 			_retain.supersede(v, fd.slot, fd)
 		end
-		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap)
+		-- THE STORAGE CAP (§2.9, §2.2; internal/tablewire collectionCap): a
+		-- count inside the map's L is the load's refusal, the one LoadMeasure
+		-- names; a count whose spelling crosses L is read against the parent
+		-- (§3) where the measure, bounded by L, sees no count, so it is the
+		-- region's recovery instead: damage, the walk resuming after L
 		if count > 0x7FFFFFFF then
-			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
+			if head.at > endpos then
+				report.malformed = true
+			else
+				refuse_count(report)
+			end
 			r.at = endpos
 			return true
 		end
@@ -829,7 +860,8 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	local head = new_reader(sub.b, sub.at, headerEnd or sub.e)
 	local ek = r_u8(head)
 	local count = r_leb(head)
-	sub.at = if head.at > sub.e then sub.e else head.at
+	local crossed = head.at > sub.e
+	sub.at = if crossed then sub.e else head.at
 	if head.bad then
 		report.malformed = true
 		if fd.present ~= nil and v ~= nil then
@@ -851,10 +883,14 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 	end
 	local keep = count
 	if fd.array == "list" then
+		-- THE STORAGE CAP (§2.9, §2.2), read_map's rule: inside L the load's
+		-- refusal, crossing L the region's damage
 		if count > 0x7FFFFFFF then
-			_countRefused = true
-			report.malformed = true
-			report.reason = "count_refusal"
+			if crossed then
+				report.malformed = true
+			else
+				refuse_count(report)
+			end
 			return false
 		end
 	elseif fd.bound ~= nil and count > fd.bound then
@@ -1680,6 +1716,7 @@ end
 -- a report at rest (docs/SPEC-TABLES.md §4)
 local function reset(report: any)
 	report.malformed = false
+	report.damaged = false
 	report.retained = 0
 	report.retainLost = 0
 	report.refused = 0
@@ -1699,12 +1736,13 @@ local function reset(report: any)
 	report.duplicateField = nil
 end
 
--- loadTolerant loads a form-1 wire at the descriptor named root, fills report
+-- loadOpened is loadTolerant over a wire whose integrity trailer, if the root
+-- is sealed, has already been verified and taken off (§2.14): it fills report
 -- and returns the root value only if the wire is whole. Tolerant evolution
 -- is not damage (§4): malformed input returns nil, as on every read form.
 -- A non-finite float also refuses it whole (§3.3):
 -- nil, with report.reason "non_finite_float: <Owner>.<field>".
-function L.loadTolerant(root: string, bytes: buffer, report: any): any
+function L.loadOpened(root: string, bytes: buffer, report: any): any
 	if report.missingRequired == nil then
 		report.missingRequired = 0
 	end
@@ -1727,6 +1765,8 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
+	_countNonFinite = 0
+	_countNonFiniteField = nil
 	_pending = {}
 	_nodes = {}
 	local desc = S.lookup(root)
@@ -1744,6 +1784,7 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 		if ref == 0 then
 			if walk.at ~= o.e then
 				report.malformed = true
+				report.damaged = true
 				return nil
 			end
 			break
@@ -1795,8 +1836,32 @@ function L.loadTolerant(root: string, bytes: buffer, report: any): any
 			end
 		end
 	end
-	read_body(desc, new_reader(bytes, 1, o.e), v, false)
+	-- A VALUE-ONLY ROOT'S DAMAGE (§4, gotable's <T>LoadTolerant): damage its
+	-- walk read past is the verdict's; damage that stopped the walk is a
+	-- malformed body
+	local whole = read_body(desc, new_reader(bytes, 1, o.e), v, false)
+	if whole and report.malformed and not desc.variable then
+		report.damaged = true
+	end
 	resolve(report)
+	-- A COUNT ABOVE THE int32 STORAGE CAP (§2.9, §2.2) refuses the load: no
+	-- value, the report at rest but for the refusal and its name,
+	-- count_over_extent_cap, malformed not set. A NaN or an infinity the walk
+	-- met before the count is the first refusal in read order, so it names
+	-- the load instead: non_finite_float, the report at rest but for the
+	-- float (§3.3)
+	if _countRefused then
+		reset(report)
+		if _countNonFinite > 0 then
+			report.nonFinite = _countNonFinite
+			report.nonFiniteField = _countNonFiniteField
+			report.reason = "non_finite_float: " .. (_countNonFiniteField or "")
+			return nil
+		end
+		report.refused = 1
+		report.reason = "count_over_extent_cap"
+		return nil
+	end
 	-- A CYCLIC WIRE IS DAMAGE (§3.1, §4): the stored graph is checked once
 	-- every index has resolved
 	if _numberingGood and not report.malformed and cyclic() then
@@ -1851,6 +1916,24 @@ local function integrityOpen(b: buffer): buffer?
 end
 
 L.integrityOpen = integrityOpen
+
+-- loadTolerant loads a form-1 wire at the descriptor named root: a sealed
+-- root's trailer is checked before any field is decoded (§2.14), a mismatch
+-- is malformed with report.reason "integrity_mismatch", and the rest is
+-- loadOpened's.
+function L.loadTolerant(root: string, bytes: buffer, report: any): any
+	local d = S.lookup(root)
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(bytes)
+		if body == nil then
+			report.malformed = true
+			report.reason = "integrity_mismatch"
+			return nil
+		end
+		return L.loadOpened(root, body, report)
+	end
+	return L.loadOpened(root, bytes, report)
+end
 
 -- the end of one payload of `kind` at `at`, or nil when it does not fit
 local function stepOver(b: buffer, at: number, e: number, kind: number): number?
@@ -1940,7 +2023,7 @@ local function witness(root: string, b: buffer, k: string): string?
 
 	local function probe(wire: string): boolean
 		local rep = fresh()
-		L.loadTolerant(root, buffer.fromstring(wire), rep)
+		L.loadOpened(root, buffer.fromstring(wire), rep)
 		return moved(rep, k)
 	end
 
@@ -2184,16 +2267,21 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 		rep.reason = "wire_damaged"
 		return nil
 	end
-	local v = L.loadTolerant(root, b, rep)
+	local v = L.loadOpened(root, b, rep)
 	if rep.nonFinite > 0 then
 		rep.field = rep.nonFiniteField
 		return nil
 	end
+	-- a count past the int32 extent cap (§2.9) is the load's own refusal,
+	-- named as the tolerant load names it
 	if _countRefused then
-		rep.reason = "count_refusal"
+		rep.reason = "count_over_extent_cap"
 		return nil
 	end
-	if v == nil and rep.malformed then
+	-- THE VERDICT'S DAMAGE IS wire_damaged, and a malformed body behind good
+	-- framing is malformed (TableReport.Err()'s order); a load that read
+	-- nothing whole and names nothing else is wire_damaged
+	if rep.damaged then
 		rep.reason = "wire_damaged"
 		return nil
 	end
@@ -2208,6 +2296,10 @@ function L.ReadStrict(root: string, bytes: buffer?, report: any?): any
 			end
 			return nil
 		end
+	end
+	if v == nil then
+		rep.reason = "wire_damaged"
+		return nil
 	end
 	if rep.unknown > 0 then
 		rep.unknownField = witness(root, b, "unknown")

@@ -57,8 +57,9 @@ func goAnnounceVerdict(data []byte, maxEntries int) string {
 	return fmt.Sprintf("%d %s %d %d %d %d %016x", ok, reason, mal, rep.Unknown, slots, bits, v.BuildVersion())
 }
 
-// gooseAnnounceProbe runs announce_read over every case in one program.
-func gooseAnnounceProbe(t *testing.T, u *ir.Unit, cases [][]byte, maxEntries int) []string {
+// gooseAnnounceProbe runs announce_read over every case in one program, with
+// `override` replacing generated files.
+func gooseAnnounceProbe(t *testing.T, u *ir.Unit, cases [][]byte, maxEntries int, override map[string][]byte) []string {
 	t.Helper()
 	files, err := goose.Generate(u)
 	if err != nil {
@@ -69,6 +70,7 @@ func gooseAnnounceProbe(t *testing.T, u *ir.Unit, cases [][]byte, maxEntries int
 		t.Fatalf("goose table surface: %v", err)
 	}
 	maps.Copy(files, tables)
+	maps.Copy(files, override)
 	var mods []string
 	for name := range files {
 		if before, ok := strings.CutSuffix(name, ".goose"); ok {
@@ -163,7 +165,7 @@ func TestGooseMessageFormAnnounceRead(t *testing.T) {
 	}
 	u := gooseMsgUnitDir(t, "tables/backend")
 	for _, bound := range []int{4096, 3} {
-		got := gooseAnnounceProbe(t, u, cases, bound)
+		got := gooseAnnounceProbe(t, u, cases, bound, nil)
 		if len(got) != len(cases) {
 			t.Fatalf("bound %d: the probe answered %d of %d announcements:\n%s", bound, len(got), len(cases), strings.Join(got, "\n"))
 		}

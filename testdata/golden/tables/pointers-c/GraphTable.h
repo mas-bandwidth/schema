@@ -10894,8 +10894,8 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_tole
 /* list_node_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_list_node_load_builder_tolerant(graphdemo_list_node_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_list_node_t * root; int ok,malformed_before;
-    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_list_node_t * root; int ok,malformed_before; int32_t non_finite_before;
+    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }
     scan=graphdemo_table_node_scan_begin(&reader); while(graphdemo_table_node_scan_next(&scan,&id,&body)) { records++; }
     if(records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1) { report->malformed=1; return 0; }
@@ -10905,7 +10905,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_builder_tolerant(graphdemo_lis
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xf60ec899a5a69fa9);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_graphdemo_list_node_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_list_node_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }
@@ -11170,8 +11170,8 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_tole
 /* tree_node_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_tree_node_load_builder_tolerant(graphdemo_tree_node_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_tree_node_t * root; int ok,malformed_before;
-    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_tree_node_t * root; int ok,malformed_before; int32_t non_finite_before;
+    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }
     scan=graphdemo_table_node_scan_begin(&reader); while(graphdemo_table_node_scan_next(&scan,&id,&body)) { records++; }
     if(records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1) { report->malformed=1; return 0; }
@@ -11181,7 +11181,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_load_builder_tolerant(graphdemo_tre
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xb97e90a3784c431d);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_graphdemo_tree_node_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_tree_node_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }
@@ -11449,8 +11449,8 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_tolerant(uin
 /* layer_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_layer_load_builder_tolerant(graphdemo_layer_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_layer_t * root; int ok,malformed_before;
-    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_layer_t * root; int ok,malformed_before; int32_t non_finite_before;
+    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }
     scan=graphdemo_table_node_scan_begin(&reader); while(graphdemo_table_node_scan_next(&scan,&id,&body)) { records++; }
     if(records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1) { report->malformed=1; return 0; }
@@ -11460,7 +11460,7 @@ static SCHEMA_UNUSED int graphdemo_layer_load_builder_tolerant(graphdemo_layer_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x9d167ef77aed79b6);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_graphdemo_layer_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_layer_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }
@@ -11738,8 +11738,8 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_tolerant(uin
 /* scene_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_scene_load_builder_tolerant(graphdemo_scene_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_scene_t * root; int ok,malformed_before;
-    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_scene_t * root; int ok,malformed_before; int32_t non_finite_before;
+    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }
     scan=graphdemo_table_node_scan_begin(&reader); while(graphdemo_table_node_scan_next(&scan,&id,&body)) { records++; }
     if(records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1) { report->malformed=1; return 0; }
@@ -11749,7 +11749,7 @@ static SCHEMA_UNUSED int graphdemo_scene_load_builder_tolerant(graphdemo_scene_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x4a9a31623ab5f213);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_graphdemo_scene_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_scene_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }
@@ -12017,8 +12017,8 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_tolerant(uin
 /* depot_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_depot_load_builder_tolerant(graphdemo_depot_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_depot_t * root; int ok,malformed_before;
-    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_depot_t * root; int ok,malformed_before; int32_t non_finite_before;
+    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }
     scan=graphdemo_table_node_scan_begin(&reader); while(graphdemo_table_node_scan_next(&scan,&id,&body)) { records++; }
     if(records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1) { report->malformed=1; return 0; }
@@ -12028,7 +12028,7 @@ static SCHEMA_UNUSED int graphdemo_depot_load_builder_tolerant(graphdemo_depot_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x327fe6dc702553fd);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_graphdemo_depot_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_depot_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }
@@ -12306,8 +12306,8 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_tolerant(uin
 /* album_load_builder_tolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5): the tool's path into a fresh builder. */
 static SCHEMA_UNUSED int graphdemo_album_load_builder_tolerant(graphdemo_album_builder_t * builder, const uint8_t * wire, int64_t wire_bytes, graphdemo_table_report_t * report)
 {
-    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_album_t * root; int ok,malformed_before;
-    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; report->malformed=0;
+    graphdemo_table_report_t ignored; graphdemo_table_reader_t reader; graphdemo_table_node_map_t nodes; graphdemo_table_node_dir_entry_t * directory; graphdemo_table_sink_t sink; graphdemo_table_node_scan_t scan; graphdemo_table_reader_t body; uint64_t id; int64_t records=0; graphdemo_album_t * root; int ok,malformed_before; int32_t non_finite_before;
+    memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } malformed_before=report->malformed; non_finite_before=report->non_finite_floats; report->malformed=0;
     if(!graphdemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return 0; }
     scan=graphdemo_table_node_scan_begin(&reader); while(graphdemo_table_node_scan_next(&scan,&id,&body)) { records++; }
     if(records>=INT64_MAX/(int64_t)sizeof(graphdemo_table_node_dir_entry_t)-1) { report->malformed=1; return 0; }
@@ -12317,7 +12317,7 @@ static SCHEMA_UNUSED int graphdemo_album_load_builder_tolerant(graphdemo_album_b
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0xd858c2cb7f1514cc);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;
-    ok=schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { report->malformed=report->malformed||malformed_before; } graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
+    ok=schema_graphdemo_album_load_graph_(&reader,root,&nodes,directory,&sink); if(!ok) { if(nodes.refused && !report->malformed && report->non_finite_floats==non_finite_before) { report->refused=1; report->reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; } report->malformed=report->malformed||malformed_before; } /* a count past the int32 storage cap is refused by name, not damage (§2.9); the walk stops at it, so a NaN this read met came first and names the read */ graphdemo_table_release(builder->arena.allocator,directory); graphdemo_table_release(builder->arena.allocator,nodes.blob_named);
     if(!ok || report->malformed) { graphdemo_album_reset(root); return 0; } /* damage discards the whole load (§4) */
     report->malformed=report->malformed||malformed_before; return 1;
 }

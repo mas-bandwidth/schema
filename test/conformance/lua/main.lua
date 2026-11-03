@@ -173,6 +173,15 @@ end
 -- the variable form and the text form (docs/SPEC-TABLES.md §3, §4, §16)
 ---------------------------------------------------------------------------
 
+-- The value half of a report and json-hostile answer (test/conformance/README.md):
+-- the §16 text of the value the read left, after its report line.
+local function withValue(u, f, line, v)
+  local json, why = u.json.ToJson(u.T, f[4], v)
+  if json == nil then fail(f[2] .. ": ToJson refused the value: " .. tostring(why)) end
+  return line .. json
+end
+
+-- report: the report line, then the §16 text of the value when the read reads.
 local function surfaceReport(all, outdir)
   for _, f in ipairs(kind(all, "report")) do
     local u = unit(f[3])
@@ -180,8 +189,12 @@ local function surfaceReport(all, outdir)
       absent(outdir, f[2], NOT_GENERATED)
     else
       local r = newReport()
-      u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), r)
-      writeBytes(outdir .. "/" .. f[2], reportLine(r))
+      local v = u.load.LoadTolerant(u.T, f[4], mustRead(f[5]), r)
+      local refused = r.refused > 0 or r.nonFiniteFloat ~= nil
+      if v == nil and not refused then r.malformed = true end
+      local text = reportLine(r)
+      if not refused and not r.malformed then text = withValue(u, f, text, v) end
+      writeBytes(outdir .. "/" .. f[2], text)
     end
   end
 end
@@ -268,8 +281,9 @@ local function noText(f)
   return f[6] == "no-text"
 end
 
--- json-read: FromJson of the instance's committed text, then Save, the bytes
--- (§16.2). The read is the STRICT one, as every leg's text read is.
+-- json-read: the TOLERANT text read of the instance's committed text, then
+-- Save, the bytes (§16.2). Every leg's json-read and json-hostile call that one
+-- entry point, FromJsonTolerant (test/conformance/README.md).
 local function surfaceJsonRead(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     if not noText(f) then
@@ -279,8 +293,8 @@ local function surfaceJsonRead(all, outdir)
       else
         local text = mustRead("testdata/conformance/tables/json/" .. f[2] .. ".json")
         local r = newReport()
-        local v = u.json.FromJson(u.T, f[4], text, r)
-        if v == nil then fail(f[2] .. ": FromJson refused the text: " .. tostring(r.Reason)) end
+        local v = u.json.FromJsonTolerant(u.T, f[4], text, r)
+        if v == nil or r.malformed then fail(f[2] .. ": FromJsonTolerant refused the text: " .. tostring(r.Reason)) end
         local saved, why = u.save.Save(u.T, f[4], v)
         if saved == nil then fail(f[2] .. ": Save refused the value: " .. tostring(why)) end
         writeBytes(outdir .. "/" .. f[2], saved)
@@ -307,9 +321,9 @@ local function surfaceJsonWrite(all, outdir)
   end
 end
 
--- THE JSON-HOSTILE surface (test/conformance/README.md): FromJson of each
--- hostile tree, writing the report line, or `refused` when the read refuses
--- (docs/SPEC-TABLES.md §16.2, §16.3, §4).
+-- THE JSON-HOSTILE surface (test/conformance/README.md): FromJsonTolerant of
+-- each hostile tree, writing the report line and the §16 text of the value it
+-- left, or `refused` when the read refuses (docs/SPEC-TABLES.md §16.2, §16.3, §4).
 local function surfaceJsonHostile(all, outdir)
   for _, f in ipairs(kind(all, "json-hostile")) do
     local u = unit(f[3])
@@ -318,11 +332,11 @@ local function surfaceJsonHostile(all, outdir)
     else
       local text = mustRead(f[5] .. "/" .. f[4] .. ".json")
       local r = newReport()
-      u.json.FromJsonTolerant(u.T, f[4], text, r)
-      if r.malformed then
+      local v = u.json.FromJsonTolerant(u.T, f[4], text, r)
+      if r.malformed or v == nil then
         writeBytes(outdir .. "/" .. f[2], "refused\n")
       else
-        writeBytes(outdir .. "/" .. f[2], reportLine(r))
+        writeBytes(outdir .. "/" .. f[2], withValue(u, f, reportLine(r), v))
       end
     end
   end

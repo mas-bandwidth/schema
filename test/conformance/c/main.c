@@ -319,6 +319,28 @@ static int spill_absent_reason( const char * dir, const char * name, const char 
     return spill( dir, marker, reason, strlen( reason ) );
 }
 
+/* The value half of a `report` and `json-hostile` answer
+   (test/conformance/README.md): the report line, then the §16 text of the
+   value the read left. A codec with no text writer answers the line alone,
+   and the harness names the missing value. */
+static int spill_with_value( const char * out, const char * name, const char * head, int n,
+                             const ConformanceCodec * codec, void * value )
+{
+    int64_t size;
+    char * answer;
+    int ok;
+    if ( codec->to_json == NULL ) { return spill( out, name, head, (size_t) n ); }
+    size = codec->to_json( value, NULL, 0 );
+    if ( size < 0 ) { return 0; }
+    answer = (char *) malloc( (size_t) n + (size_t) size + 1 );
+    if ( answer == NULL ) { return 0; }
+    memcpy( answer, head, (size_t) n );
+    if ( codec->to_json( value, answer + n, size ) != size ) { free( answer ); return 0; }
+    ok = spill( out, name, answer, (size_t) n + (size_t) size );
+    free( answer );
+    return ok;
+}
+
 static int surface_report( const char * out )
 {
     int i;
@@ -331,7 +353,7 @@ static int surface_report( const char * out )
         void * value;
         ConformanceReport report;
         char text[128];
-        int n;
+        int n, ok, malformed;
         if ( strcmp( f->field[0], "report" ) != 0 ) { continue; }
         codec = find_codec( f->field[2], f->field[3] );
         if ( codec == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
@@ -339,12 +361,18 @@ static int surface_report( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        codec->load( value, wire, (int64_t) bytes, &report );
+        ok = codec->load( value, wire, (int64_t) bytes, &report );
         free( wire );
+        malformed = report.malformed || ( !ok && !report.refused );
         n = snprintf( text, sizeof( text ), "%d,%d,%d,%d,%d,%s,%s\n",
                       report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate,
-                      report.malformed ? "true" : "false", report.refused ? "refused" : "read" );
-        if ( !spill( out, f->field[1], text, (size_t) n ) ) { return 1; }
+                      malformed ? "true" : "false", report.refused ? "refused" : "read" );
+        if ( report.refused || malformed )
+        {
+            if ( !spill( out, f->field[1], text, (size_t) n ) ) { return 1; }
+            continue;
+        }
+        if ( !spill_with_value( out, f->field[1], text, n, codec, value ) ) { return 1; }
     }
     return 0;
 }
@@ -469,7 +497,8 @@ static int surface_json_write( const char * out )
 }
 
 /* json-hostile: one tree per rule the text form states (§16.2, §16.3, §17.5).
-   The answer is the REPORT the read produces, or `refused`. */
+   The answer is the REPORT the read produces, then the §16 text of the value
+   it left, or `refused`. */
 static int surface_json_hostile( const char * out )
 {
     int i;
@@ -498,13 +527,12 @@ static int surface_json_hostile( const char * out )
         if ( !ok || report.malformed )
         {
             n = snprintf( verdict, sizeof( verdict ), "refused\n" );
+            if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
+            continue;
         }
-        else
-        {
-            n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
-                          report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
-        }
-        if ( !spill( out, f->field[1], verdict, (size_t) n ) ) { return 1; }
+        n = snprintf( verdict, sizeof( verdict ), "%d,%d,%d,%d,%d,false,read\n",
+                      report.unknown, report.kind_mismatch, report.widened, report.clamped, report.duplicate );
+        if ( !spill_with_value( out, f->field[1], verdict, n, codec, value ) ) { return 1; }
     }
     return 0;
 }

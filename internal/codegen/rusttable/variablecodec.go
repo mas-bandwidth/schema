@@ -1187,8 +1187,8 @@ func (g *gen) emitVariableLoadField(b *strings.Builder, st *ir.Struct, f *ir.Fie
 		fmt.Fprintf(b, "%s    %s = %s::default();\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    let mut o = *off;\n", in)
 		fmt.Fprintf(b, "%s    let body_ok = %s(wire, &mut o, sub, ids, &mut %s, nodes, report, path.step(%d, 0), retain.as_deref_mut(), true);\n", in, fn(f.Type.Name, "load_body"), field, ordinal)
-		fmt.Fprintf(b, "%s    if !body_ok || nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
-		fmt.Fprintf(b, "%s    if o != sub { report.malformed = true; %s = %s::default(); }\n", in, field, f.Type.Name)
+		fmt.Fprintf(b, "%s    if nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", in)
+		fmt.Fprintf(b, "%s    if !body_ok || o != sub { report.malformed = true; %s = %s::default(); }\n", in, field, f.Type.Name)
 		fmt.Fprintf(b, "%s    *off = sub;\n", in)
 		fmt.Fprintf(b, "%s}\n", in)
 	case vString:
@@ -1316,8 +1316,7 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet mut o = *off;\n", i5)
 		fmt.Fprintf(b, "%slet body_ok = %s(wire, &mut o, eend, ids, &mut e, nodes, report, path.step(%d, j as u32), retain.as_deref_mut(), true);\n", i5, fn(f.Type.Name, "load_body"), ordinal)
 		fmt.Fprintf(b, "%sif nodes.count_refused || !report.missing_required_fields.is_empty() { return false; }\n", i5)
-		fmt.Fprintf(b, "%sif !body_ok { break; }\n", i5)
-		fmt.Fprintf(b, "%sif o != eend { report.malformed = true; e = %s::default(); }\n", i5, f.Type.Name)
+		fmt.Fprintf(b, "%sif !body_ok || o != eend { report.malformed = true; e = %s::default(); }\n", i5, f.Type.Name)
 		fmt.Fprintf(b, "%s*off = eend;\n", i5)
 		fmt.Fprintf(b, "%s%s.push(e);\n", i5, field)
 	case cls == vPointer:

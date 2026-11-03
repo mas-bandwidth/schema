@@ -624,18 +624,11 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		} else {
 			r.m.Refill(fv.Cell.Tab)
 		}
-		if !sub.bodyAt(fv.Cell.Tab, true) {
+		whole, stop := r.nested(sub, fv.Cell.Tab, int(n))
+		if stop {
 			return false
 		}
-		if r.countRefused() {
-			return false
-		}
-		// A BODY'S TERMINATOR IS THE END OF ITS PAYLOAD (§3): a body whose
-		// terminator is not the last byte of its L is framing damage — the
-		// payload stops, the field reads its declared defaults, and the
-		// enclosing body continues past it by L.
-		if sub.off != int(n) {
-			r.report.Malformed = true
+		if !whole {
 			// THE BODY FALLS BACK ON ITS DECLARED DEFAULTS AND STAYS THE BODY
 			// IT WAS: damage is not a later occurrence, so the records already
 			// retained under it are neither discarded nor counted here (§6.6)
@@ -645,6 +638,28 @@ func (r *wireReader) field(fv *tabletext.Field) bool {
 		return true
 	}
 	return r.scalarAt(&fv.Cell, f, ir.TableScalarKind(f))
+}
+
+// nested decodes one L-framed nested body: a by-value table field, a table
+// element, a keyed slot, a map entry or a union arm's table body.
+//
+// DAMAGE ENDS THE BODY IT IS MET IN (docs/SPEC-TABLES.md §4): damage inside
+// the body, or a terminator that is not the last byte of its L (§3), counts
+// one malformed and ends this body, and the enclosing body steps over it by
+// its L and reads on, so a non-finite float later in the read is still
+// reached. `whole` is false for a damaged body. `stop` is true only where the
+// whole read stops: a storage refusal, or a required field the body lacks.
+func (r *wireReader) nested(sub *wireReader, inst *tabletext.Instance, n int) (whole, stop bool) {
+	missingBefore := r.report.MissingRequired
+	ended := sub.bodyAt(inst, true)
+	if r.countRefused() || r.report.MissingRequired != missingBefore {
+		return false, true
+	}
+	if !ended || sub.off != n {
+		r.report.Malformed = true
+		return false, false
+	}
+	return true, false
 }
 
 // enumCell reads an enum value: kind 30's payload is the reference to the
@@ -796,13 +811,18 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 			whole.buf = body.buf
 			whole.off = 0
 			decoded := r.m.NewMapEntry(f)
-			if !whole.bodyAt(decoded, true) {
+			missingBefore := r.report.MissingRequired
+			ended := whole.bodyAt(decoded, true)
+			if r.countRefused() || r.report.MissingRequired != missingBefore {
 				return false
+			}
+			if !ended {
+				// DAMAGE ENDS THE BODY IT IS MET IN (§4): the entry is
+				// dropped and the map steps over it by its L and reads on
+				r.report.Malformed = true
+				continue
 			}
 			r.rt.builtMapEntry(fv, decoded)
-			if r.countRefused() {
-				return false
-			}
 			if order == 0 {
 				// EQUAL: a DUPLICATE. Last wins WHOLE — the slot the earlier
 				// entry took is replaced by this one's decode, so a field the
@@ -821,10 +841,14 @@ func (r *wireReader) mapField(fv *tabletext.Field) bool {
 	return true
 }
 
+// capDamages reports whether collectionCap answers damage rather than the
+// builder's refusal: a region read, or a reader with no refusal to set.
+func (r *wireReader) capDamages() bool { return r.region || r.countRefusal == nil }
+
 // collectionCap matches TableListFillBegin and TableMapFillBegin: builder storage refuses the
 // partial value, while a region read reports damage and resumes after L.
 func (r *wireReader) collectionCap() bool {
-	if r.region || r.countRefusal == nil {
+	if r.capDamages() {
 		r.report.Malformed = true
 		return true
 	}
@@ -968,6 +992,7 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			return true, false
 		}
+		widened := false
 		if int(ek) != ir.TableWireElemKind(f) {
 			if !ir.TableKindWidens(int(ek), ir.TableWireElemKind(f)) {
 				// the element kind is part of the array's identity (§3): counted,
@@ -980,8 +1005,10 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			}
 			// WIDENED at an element kind (§4): every element decodes at the
 			// wire kind's width, and ONE `widened` counts for the field
-			// however many elements it holds
-			r.report.Widened++
+			// however many elements it holds. It counts once the count is
+			// known to land: a builder's count-cap refusal moves no counter
+			// (§2.9)
+			widened = true
 		}
 		// THE READ COMMITS TO REPLACE HERE (docs/SPEC-TABLES.md §6.6): the
 		// records under this field go with the value it is about to lose. An
@@ -1000,6 +1027,9 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 			fv.Elems = fv.Elems[:0]
 			if count > uint64(math.MaxInt32) {
 				r.off = end
+				if widened && r.capDamages() {
+					r.report.Widened++
+				}
 				return r.collectionCap(), false
 			}
 			// Slots grow one at a time against the body's own length.
@@ -1011,6 +1041,9 @@ func (r *wireReader) arrayBody(fv *tabletext.Field, framed int) (ok, selected bo
 				// a text-list COUNT clamp names the field (§2.13), as the Go leg does
 				r.report.Reason = "clamped: " + f.TextListElem().MapEntryOf
 			}
+		}
+		if widened {
+			r.report.Widened++
 		}
 		// elements are BOUNDED by the field body: a count the length cannot
 		// cover keeps the decoded prefix, flags malformed, and the parent
@@ -1119,14 +1152,11 @@ func (r *wireReader) element(fv *tabletext.Field, i int, ek int) bool {
 		} else {
 			r.m.Refill(fv.Elems[i].Tab)
 		}
-		if !sub.bodyAt(fv.Elems[i].Tab, true) {
+		whole, stop := r.nested(sub, fv.Elems[i].Tab, int(n))
+		if stop {
 			return false
 		}
-		if r.countRefused() {
-			return false
-		}
-		if sub.off != int(n) {
-			r.report.Malformed = true
+		if !whole {
 			r.m.Refill(fv.Elems[i].Tab)
 		}
 		r.off += int(n)
@@ -1280,14 +1310,11 @@ func (r *wireReader) keyed(fv *tabletext.Field) bool {
 			} else {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
-			if !elem.bodyAt(fv.Elems[slot].Tab, true) {
+			whole, stop := r.nested(elem, fv.Elems[slot].Tab, int(elemLen))
+			if stop {
 				return false
 			}
-			if r.countRefused() {
-				return false
-			}
-			if elem.off != int(elemLen) {
-				r.report.Malformed = true
+			if !whole {
 				r.m.Refill(fv.Elems[slot].Tab)
 			}
 		default:
@@ -1395,17 +1422,14 @@ func (r *wireReader) unionCell(cell *tabletext.Cell, fv *tabletext.Field, index 
 		if arm.Body() {
 			payload := r.m.New(arm.Ref)
 			r.rt.builtArm(fv, index, payload)
-			if !sub.bodyAt(payload, true) {
+			whole, stop := r.nested(sub, payload, length)
+			if stop {
 				return false
 			}
-			if r.countRefused() {
-				return false
-			}
-			if sub.off != length {
-				// a body whose terminator is not the last byte of its L is
-				// framing damage: the union reads None and the enclosing body
-				// continues past the arm by L (§3)
-				r.report.Malformed = true
+			if !whole {
+				// a damaged arm body, or one whose terminator is not the last
+				// byte of its L: the union reads None and the enclosing body
+				// continues past the arm by L (§3, §4)
 				cell.U = 0
 				cell.Tab = nil
 			} else {

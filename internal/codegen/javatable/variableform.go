@@ -3976,7 +3976,7 @@ func writeMeasureField(b *strings.Builder, u *ir.Unit, f *ir.Field, name string,
 		} else {
 			size, align = ir.ListElementLayout(u, f)
 		}
-		b.WriteString("        if (count < 0 || count > 0x7FFFFFFFL) { report.refused = true; report.reason = \"count_refusal\"; return at; }\n")
+		b.WriteString("        if (count < 0 || count > 0x7FFFFFFFL) { report.refused = true; report.reason = \"count_over_extent_cap\"; return at; }\n")
 		b.WriteString("        long floor = 1;\n")
 		for _, k := range accepted {
 			floor := int64(ir.TableKindWidth(k))
@@ -5022,7 +5022,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { report.refused = true; if (n < 0 || n > 0x7FFFFFFFL) { report.reason = \"count_refusal\"; } }\n")
+			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5110,7 +5110,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { report.refused = true; if (n < 0 || n > 0x7FFFFFFFL) { report.reason = \"count_refusal\"; } }\n")
+			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5205,7 +5205,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	m := varMember(f)
 	ek := variableElemWireKind(f)
 	cond := variableCompatibleKinds(ek, "ek")
-	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { report.refused = true; report.reason = \"count_refusal\"; } else {"
+	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else {"
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.clamped++; }", f.ArrayBound, f.ArrayBound)
 	}

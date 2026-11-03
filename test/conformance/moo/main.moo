@@ -3,13 +3,13 @@
 -- THE HARNESS, layer 5). The shell driver beside this file runs it once per
 -- surface:
 --
---   moo main.moo -a list <generated>
---   moo main.moo -a <surface> <generated>
+--   moo main.moo -a list <generated> <stage>
+--   moo main.moo -a <surface> <generated> <stage>
 --
 -- moo has no io, so everything comes in as SOURCE and goes out on stdout
 -- (test/conformance/moo/driver): the derived manifest is the module
--- build/conformance-moo-driver/<surface>/manifest.moo, the fixtures its lines
--- name are .../inputs.moo (buffers by repo-relative path), and the answers are
+-- <stage>/manifest.moo, the fixtures its lines name are <stage>/inputs.moo
+-- (buffers by repo-relative path), and the answers are
 -- one line per case, `<case> <hex>` or `<case> absent` (per-case absence,
 -- docs/PORTING.md I4). <generated> is the repo-relative tree
 -- make/moo-conformance.mk writes, one directory per manifest unit; a unit the
@@ -22,6 +22,11 @@
 local args = { ... }
 local surface: string = args[1] or ""
 local generated: string = args[2] or "build/conformance-moo"
+-- <stage> is the repo-relative directory the shell driver staged this
+-- surface's source into ($MOO_DRIVER_STAGE/<surface>), so a run beside
+-- another (a negative control under make -j) reads only its own. It has no
+-- default: a run that names none never reads another run's staging.
+local staged: string? = args[3]
 
 -- require resolves relative to this file, test/conformance/moo/
 local ROOT = "../../../"
@@ -33,7 +38,10 @@ end
 
 -- ---- the manifest, exactly as testdata/conformance/tables/FORMAT.md states it
 
-local stage = ROOT .. "build/conformance-moo-driver/" .. surface .. "/"
+if staged == nil or staged == "" then
+	fail("no stage directory: driver <manifest> <surface> hands main.moo its own")
+end
+local stage = ROOT .. (staged :: string) .. "/"
 local manifestText: string = load(stage .. "manifest")
 
 local lines: { { string } } = {}

@@ -471,6 +471,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -8669,6 +8672,8 @@ inline bool TallyLoadMessages( Tally * values, int64_t * count, const TableVocab
 template <typename Ctx>
 inline int64_t MarkerMeasureBody( const Ctx & ctx, const TableNumbering & numbering, TableIds & ids, const Marker & value )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
@@ -8692,6 +8697,8 @@ inline int64_t MarkerMeasureBody( const Ctx & ctx, const TableNumbering & number
 template <typename Ctx>
 inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableIds & ids, const Marker & value )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
@@ -8722,6 +8729,7 @@ inline bool MarkerSaveBody( const Ctx & ctx, const TableNumbering & numbering, T
 
 inline bool MarkerLoadBody( TableReader & r, const TableNodeMap & nodes, Marker & value )
 {
+    (void) nodes;
     MarkerReset( value ); // prefill declared defaults in place, then overlay
     for ( ;; )
     {
@@ -10186,7 +10194,10 @@ inline const Marker * MarkerReadStrict( const uint8_t * wire_file, int64_t wire_
     int64_t attribution = 0;
     TableRefuseReason why = ok;
     const int64_t size = MarkerLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );
-    if ( size < 0 )
+    // a count above the int32 cap is a refusal the builder read meets in read
+    // order, so a NaN before it names the read instead (§2.9): the measure,
+    // which reads no float, hands that case to the builder read below
+    if ( size < 0 && why != count_over_extent_cap )
     {
         if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }
         return NULL;
@@ -10209,6 +10220,11 @@ inline const Marker * MarkerReadStrict( const uint8_t * wire_file, int64_t wire_
                 *reason = wire_damaged;
             }
         }
+        return NULL;
+    }
+    if ( size < 0 )
+    {
+        if ( reason != NULL ) { *reason = why; }
         return NULL;
     }
     if ( !builder.Lock() )
@@ -10348,6 +10364,8 @@ GRAPHDEMO_TABLE_INLINE bool TallyLoadBodyRetain( TableReader & r, Tally & value,
 template <typename Ctx>
 inline int64_t MarkerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & numbering, TableRetainIds & ids, const Marker & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
@@ -10372,6 +10390,8 @@ inline int64_t MarkerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
 template <typename Ctx>
 inline bool MarkerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & numbering, TableWriter & w, TableRetainIds & ids, const Marker & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) ctx;
+    (void) numbering;
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
     if ( value.label_length > 0 )
     {
@@ -10403,6 +10423,7 @@ inline bool MarkerSaveBodyRetain( const Ctx & ctx, const TableNumbering & number
 
 inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Marker & value, TableRetain * retain, const TableRetainPath & path )
 {
+    (void) nodes;
     MarkerReset( value ); // prefill declared defaults in place, then overlay
     // A RETAINED RECORD DIES WITH THE BODY OCCURRENCE THAT CARRIED IT
     // (docs/SPEC-TABLES.md §6.6): this body is being established, so
@@ -11290,14 +11311,14 @@ extern const TableTypeInfo TallyTableInfo;
 extern const TableTypeInfo MarkerTableInfo;
 
 inline const TableFieldInfo TallyTableFields[] = {
-    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, 0ll, 10000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "hits", "hits", "int32", 0x732dfbcc9b0cf0bbull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tally, hits ), (uint32_t) sizeof( Tally::hits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10000.0, 0ll, 10000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo TallyTableInfo = { "Tally", (uint32_t) sizeof( Tally ), 1, TallyTableFields, +[]( void * p ) { TallyReset( *(Tally *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TallyTableType() { return &TallyTableInfo; }
 
 inline const TableFieldInfo MarkerTableFields[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
-    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TallyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TallyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Marker, label ), (uint32_t) sizeof( Marker::label ), (uint32_t) offsetof( Marker, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "note", "note", "Tally", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TallyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TallyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Marker, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TallyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
 inline const TableTypeInfo MarkerTableInfo = { "Marker", (uint32_t) sizeof( Marker ), 2, MarkerTableFields, +[]( void * p ) { MarkerReset( *(Marker *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MarkerTableType() { return &MarkerTableInfo; }

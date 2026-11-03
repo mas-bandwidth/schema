@@ -162,13 +162,13 @@ One process per surface, so a runtime starts once rather than once per case.
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection's announcement, LoadMessages the message-form batch against it, SaveMessages, the bytes; for a row whose message-form wire is `-` (a variable table), `<name>.absent` holding `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)` | the message-form golden, or that exact reason |
-| `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n` | `reports.txt` |
+| `report` | `report` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value when the read reads (not refused, not malformed) | `reports.txt`, then `report-values/<case>.json` |
 | `framing` | `framing` | Load the wire file, the report as `u,k,w,c,d,m,verdict\n`, then ToJson of the value unless the row says `no-value` or the read was refused | the verdict and the value file on the row (docs/LAYERS/1-framing.md) |
 | `retain` | `retain` | LoadRetain the wire at the row's two capacities, MeasureRetain, SaveRetain, the counters as `<retained>,<retain_lost>,<unknown> <save lost>\n` | the counters in the manifest |
 | `retain-save` | the rows that name a save | the same round trip, the SAVED BYTES | the pinned save |
-| `json-read` | `instance` | FromJson `json/<name>.json`, Save, the bytes | the wire golden |
+| `json-read` | `instance` | the TOLERANT text read (below) of `json/<name>.json`, Save, the bytes | the wire golden |
 | `json-write` | `instance` | Load the wire file, ToJson, the text, as `<name>.json` | `json/<name>.json` |
-| `json-hostile` | `json-hostile` | FromJson `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n`, or `refused\n` | the verdict in the manifest, or the row's uncarried verdict for an exempt port |
+| `json-hostile` | `json-hostile` | the TOLERANT text read of `<tree>/<root>.json`, the report as `u,k,w,c,d,m,verdict\n` then ToJson of the value, or `refused\n` | the verdict in the manifest, then `<tree>.value.json`; the row's uncarried verdict alone for an exempt port |
 | `cook` | `cook` | Open the cook, the canonical node dump | `cook/<case>.dump` |
 | `cook-write` | `cook-write` | Load the instance's wire, `Cook` it in each byte order, the bytes, as `<instance>` and `<instance>-be` | the two files `schema cook` wrote |
 | `cook-foreign` | `cook` | byte-swap the file's MAGIC word, Open, `open\n` or `refuse\n` | `refuse\n` |
@@ -183,6 +183,32 @@ One process per surface, so a runtime starts once rather than once per case.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**THE DECODED VALUE IS COMPARED, NOT ONLY THE COUNTERS.** A `report` row and a
+`json-hostile` row whose read reads owe the §16 text of the value the read
+left, after the report line, exactly as a `framing` row with a value does. Two
+legs can count the same events and land different values (a float32 token
+rounded twice, a uint64 past 2^63 clamped by a signed compare), and only the
+value says so. The expected text is the ORACLE's, written by
+`make conformance-generate` from internal/tablewire and internal/tabletext:
+`testdata/conformance/tables/report-values/<case>.json` for a report row, and
+`<tree>.value.json` beside the tree for a hostile row (beside it, never inside
+it, because the tree is what `schema pack` reads). A refused or damaged read
+owes no value. A port on a hostile row's `uncarried` verdict is held to that
+line alone. A leg with no text writer for a root answers the report line alone
+and `<case>.absent` beside it: the line is still compared, and the value
+counts as the missing feature it is. When the line agrees and the value does
+not, the failure names the value's first differing line.
+
+**THE TEXT READ IS THE TOLERANT ONE, ON EVERY LEG.** `json-read` and
+`json-hostile` call one entry point: `<Root>FromJsonTolerant` where the leg's
+emitter names one (Go, C, C++, Lua, Luau, Squirrel, Goose), and the plain
+`FromJson` where the emitter has not taken docs/SPEC-TABLES.md §6.5 and its
+plain name is still its tolerant read (C#, Dart, Elixir, Java, JavaScript,
+MOO, Lobster, Rust). The tolerant read is the one whose value and counters a
+row can compare; a `json-read` instance is silent, so its answer is the same
+either way, and a driver that called the strict read there would be calling a
+different function than `json-hostile` holds to the oracle.
 
 **`strict-reason` IS THE REFUSAL REASON, AND ITS GATE IS ITS OWN.** `report`
 and `framing` compare the TOLERANT read's six counters and its verdict, and

@@ -227,7 +227,19 @@ local function surfaceWire(lines: { { string } })
 	end
 end
 
--- the REPORT surface is the six counters and the verdict (§4)
+-- The value half of a report and json-hostile answer (test/conformance/README.md):
+-- the §16 text of the value the read left, after its report line.
+local function withValue(u: any, f: { string }, line: string, v: any): string
+	local jr = report()
+	local json = u.json.ToJson(f[4], v, jr)
+	if json == nil then
+		error(f[2] .. ": ToJson refused the value (" .. tostring(jr.reason) .. ")")
+	end
+	return line .. buffer.tostring(json)
+end
+
+-- the REPORT surface is the six counters and the verdict (§4), then the §16
+-- text of the value when the read reads
 local function surfaceReport(lines: { { string } })
 	for _, f in kind(lines, "report") do
 		local u = unit(f[3])
@@ -235,11 +247,16 @@ local function surfaceReport(lines: { { string } })
 			say(f[2], nil)
 		else
 			local r = report()
-			u.load.loadTolerant(f[4], file(f[5]), r)
-			local verdict = r.refused > 0 and "refused" or "read"
-			sayText(f[2], string.format("%d,%d,%d,%d,%d,%s,%s\n",
+			local v = u.load.loadTolerant(f[4], file(f[5]), r)
+			local refused = r.refused > 0
+			local malformed = r.malformed or (v == nil and not refused)
+			local text = string.format("%d,%d,%d,%d,%d,%s,%s\n",
 				r.unknown, r.kindMismatch, r.widened, r.clamped,
-				r.duplicate, tostring(r.malformed), verdict))
+				r.duplicate, tostring(malformed), refused and "refused" or "read")
+			if not refused and not malformed then
+				text = withValue(u, f, text, v)
+			end
+			sayText(f[2], text)
 		end
 	end
 end
@@ -308,8 +325,10 @@ end
 --
 -- json-read lands the committed text (testdata/conformance/tables/json/
 -- <case>.json) and saves the value; json-write loads the wire and writes the
--- text; json-hostile reads one tree's <root>.json and answers the report or
--- `refused`. A `no-text` instance is no text case at all.
+-- text; json-hostile reads one tree's <root>.json and answers the report and
+-- the value's text, or `refused`. A `no-text` instance is no text case at all.
+-- json-read and json-hostile call one entry point, the TOLERANT text read
+-- FromJsonTolerant (test/conformance/README.md).
 
 local function surfaceJsonRead(lines: { { string } })
 	for _, f in kind(lines, "instance") do
@@ -319,9 +338,9 @@ local function surfaceJsonRead(lines: { { string } })
 				say(f[2], nil)
 			else
 				local r = report()
-				local v = u.json.FromJson(f[4], file("testdata/conformance/tables/json/" .. f[2] .. ".json"), r)
+				local v = u.json.FromJsonTolerant(f[4], file("testdata/conformance/tables/json/" .. f[2] .. ".json"), r)
 				if v == nil or r.malformed then
-					error(f[2] .. ": FromJson refused the text (" .. tostring(r.reason) .. ")")
+					error(f[2] .. ": FromJsonTolerant refused the text (" .. tostring(r.reason) .. ")")
 				end
 				local saved, why = u.save.save(u.S.lookup(f[4]), v)
 				if saved == nil then
@@ -366,8 +385,8 @@ local function surfaceJsonHostile(lines: { { string } })
 			if v == nil or r.malformed or (r.refused or 0) > 0 then
 				sayText(f[2], "refused\n")
 			else
-				sayText(f[2], string.format("%d,%d,%d,%d,%d,false,read\n",
-					r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate))
+				sayText(f[2], withValue(u, f, string.format("%d,%d,%d,%d,%d,false,read\n",
+					r.unknown, r.kindMismatch, r.widened, r.clamped, r.duplicate), v))
 			end
 		end
 	end

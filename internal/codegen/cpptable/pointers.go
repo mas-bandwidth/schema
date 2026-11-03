@@ -598,6 +598,7 @@ func (g *tableGen) emitVariableSurface(members []*ir.Struct) {
 	g.emitExtentWalkSurface(members)
 	g.emitMapBuilderSurfaces(members)
 	g.emitListBuilderSurfaces(members)
+	g.emitTextListSurfaces(members)
 	for _, st := range g.varMembers(members) {
 		g.owner = st
 		g.emitNumber(st)
@@ -1211,8 +1212,12 @@ func (g *tableGen) emitBuilderAndPublicSurface(st *ir.Struct) {
 	g.pf("    if ( out->missing_required != missing_before ) { ok = false; }\n")
 	if g.anyExtent {
 		g.pf("    // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md\n")
-		g.pf("    // §2.9): the same whole-load outcome as damage, the root reset below\n")
+		g.pf("    // §2.9): the whole-load outcome of damage, the root reset below, named\n")
+		g.pf("    // count_over_extent_cap and not damage, so malformed is not set. The walk\n")
+		g.pf("    // stops at the count, so a NaN this read met came before it, and the first\n")
+		g.pf("    // refusal in read order names the read\n")
 		g.pf("    ok = ok && !nodes.refused;\n")
+		g.pf("    if ( nodes.refused && !out->malformed && out->non_finite_floats == non_finite_before )\n    {\n        out->refused = true;\n        out->reason = count_over_extent_cap;\n        out->refuse_reason = count_over_extent_cap;\n    }\n")
 	}
 	g.pf("    // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)\n")
 	g.pf("    if ( ok && !out->malformed && nodes.good )\n    {\n")
@@ -1281,7 +1286,10 @@ func (g *tableGen) emitVariableReadStrict(st *ir.Struct) {
 	g.pf("    int64_t attribution = 0;\n")
 	g.pf("    TableRefuseReason why = ok;\n")
 	g.pf("    const int64_t size = %sLoadMeasure( wire_file, wire_file_bytes, &attribution, &why );\n", n)
-	g.pf("    if ( size < 0 )\n    {\n        if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }\n        return NULL;\n    }\n")
+	g.pf("    // a count above the int32 cap is a refusal the builder read meets in read\n")
+	g.pf("    // order, so a NaN before it names the read instead (§2.9): the measure,\n")
+	g.pf("    // which reads no float, hands that case to the builder read below\n")
+	g.pf("    if ( size < 0 && why != count_over_extent_cap )\n    {\n        if ( reason != NULL ) { *reason = why == ok ? wire_damaged : why; }\n        return NULL;\n    }\n")
 	g.pf("    %sBuilder builder( allocator );\n", n)
 	g.pf("    TableReport report;\n")
 	g.pf("    const bool decoded = %sLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );\n", n)
@@ -1296,6 +1304,7 @@ func (g *tableGen) emitVariableReadStrict(st *ir.Struct) {
 	g.pf("            else\n            {\n                *reason = wire_damaged;\n            }\n")
 	g.pf("        }\n")
 	g.pf("        return NULL;\n    }\n")
+	g.pf("    if ( size < 0 )\n    {\n        if ( reason != NULL ) { *reason = why; }\n        return NULL;\n    }\n")
 	g.pf("    if ( !builder.Lock() )\n    {\n        if ( reason != NULL ) { *reason = allocation_failed; }\n        return NULL;\n    }\n")
 	g.pf("    const %s * root = builder.AsConst();\n", n)
 	g.pf("    // the packed region is the caller's from here on, not the builder's\n")

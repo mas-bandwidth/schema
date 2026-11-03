@@ -628,10 +628,29 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
 
 // field_array: kind 14 — the element kind, the count, the elements (§3).
 fn field_array(c: SaveCtx&, s: i64, d: FieldDesc, count: i64) {
+    // a text list past its total is refused, as a count past its bound is
+    // (docs/SPEC-TABLES.md §2.13)
+    if d.text_total > 0 && text_sum(c, s, count) > d.text_total {
+        refuse(c, SaveRefuseInvalidValue);
+        return;
+    }
     header(c, d.id, KindArray);
     let start = c.out.len;
     array_body(c, s, d, count);
     frame(c, start);
+}
+
+// text_sum is the bytes of a text list's first count elements: each
+// element record's one value, 0 for an absent `?string(M)` element.
+fn text_sum(c: SaveCtx&, s: i64, count: i64) -> i64 {
+    if s < 0 || !c.vals[s].made { return 0; }
+    var sum: i64 = 0;
+    for k in count {
+        if k >= c.vals[s].count { break; }
+        let vs = slot_of(c, c.vals[s].first + k, 0);
+        if state_of(c, vs) == ValPresent { sum += c.vals[vs].len; }
+    }
+    return sum;
 }
 
 recursive fn array_body(c: SaveCtx&, s: i64, d: const FieldDesc&, count: i64) {

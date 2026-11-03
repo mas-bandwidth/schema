@@ -256,12 +256,36 @@ func surfaceReport(lines []line, out string) error {
 		if rep.refused {
 			verdict = "refused"
 		}
-		text := fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict)
-		if err := spill(out, f[1], []byte(text)); err != nil {
+		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
+		if !rep.refused && malformed == "false" {
+			if text, err = appendValue(c, value, text, f[1]); err != nil {
+				return err
+			}
+		}
+		if err := spill(out, f[1], text); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// appendValue is the value half of a `report`, `framing` and `json-hostile`
+// answer (test/conformance/README.md): the §16 text of the value the read
+// left, after the report line. A codec with no text writer answers the line
+// alone, and the harness names the missing value.
+func appendValue(c *codec, value any, head []byte, name string) ([]byte, error) {
+	if c.toJson == nil {
+		return head, nil
+	}
+	size := c.toJsonMeasure(value)
+	if size < 0 {
+		return nil, fmt.Errorf("%s: ToJSONMeasure refused the value", name)
+	}
+	buffer := make([]byte, size)
+	if c.toJson(value, buffer) != size {
+		return nil, fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", name)
+	}
+	return append(head, buffer...), nil
 }
 
 // surfaceFraming is THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read
@@ -512,11 +536,14 @@ func surfaceJsonHostile(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.fromJson(value, text, &rep)
-		verdict := "refused\n"
+		answer := []byte("refused\n")
 		if ok && !rep.malformed {
-			verdict = fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate)
+			answer = []byte(fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate))
+			if answer, err = appendValue(c, value, answer, f[1]); err != nil {
+				return err
+			}
 		}
-		if err := spill(out, f[1], []byte(verdict)); err != nil {
+		if err := spill(out, f[1], answer); err != nil {
 			return err
 		}
 	}

@@ -58,7 +58,7 @@ WFR_DRIVER_java  = $(JAVA_WIRE_FUZZ_DRIVER)
 
 WFR_DEPS_js      = build/tables-generated-js/.stamp cards-js-generate
 WFR_DRIVER_js    = test/conformance/js/driver wire-fuzz
-WFR_FLAGS_js     = --finite-owed tables-finite/js
+WFR_FLAGS_js     = --mixed-builder --finite-owed tables-finite/js
 
 WFR_DEPS_lobster = lobster-dist-present build/conformance-lobster build/lobster-wirefuzzhost
 WFR_DRIVER_lobster = $(LOBSTER_WIRE_FUZZ_HOST)

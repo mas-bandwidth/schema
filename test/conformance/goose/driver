@@ -76,19 +76,22 @@ glue() {
 		# class, json_form.go) reads and writes through it and its generated
 		# value bridge (<Root>ToLoaded, <Root>FromLoaded); every other root
 		# through the flat value table, json_value.goose's json_load_table and
-		# json_save_table over the unit's TableUnit and TextUnit.
+		# json_save_table over the unit's TableUnit and TextUnit. The read is
+		# the TOLERANT one, <Root>FromJsonTolerant and json_load_table: every
+		# leg's json-read and json-hostile call that one entry point
+		# (test/conformance/README.md).
 		echo "fn conformance_json_read(root: const u8[:], text: const u8[:], data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {"
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
 			echo "    if root == \"$r\" {"
 			echo "        var v = $ns::$r { .. }; var report = schema_rt::json_report(); let unit = conformance_unit();"
-			echo "        if !$ns::${r}FromJson(v, text, report) { return -2; }"
+			echo "        if !$ns::${r}FromJsonTolerant(v, text, report) || report.malformed { return -2; }"
 			echo "        let at = $ns::${r}ToLoaded(v, unit, data, vals);"
 			echo "        return if at < 0 { -2 } else { at };"
 			echo "    }"
 		done
 		echo "    var report = schema_rt::json_report();"
 		echo "    let at = schema_rt::json_load_table($ns::TableUnit, $ns::TextUnit, root, text, data, vals, nodes, report);"
-		echo "    return if at < 0 || !schema_rt::json_clean(report) { -2 } else { at };"
+		echo "    return if at < 0 || report.malformed { -2 } else { at };"
 		echo "}"
 		echo "fn conformance_json_write(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64, out: u8[>..]&) -> i64 {"
 		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
@@ -103,7 +106,8 @@ glue() {
 		echo "    return if n < 0 { -2 } else { n };"
 		echo "}"
 		# json-hostile through the flat value table: the verdict of a tolerant
-		# read, for a root the unit's own text glue does not name
+		# read and the §16 text of the value it left, for a root the unit's own
+		# text glue does not name
 		echo "fn conformance_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) {"
 		echo "    var data: u8[>..] = [];"
 		echo "    var vals: schema_rt::LoadVal[>..] = [];"
@@ -112,10 +116,12 @@ glue() {
 		echo "    let at = schema_rt::json_load_table($ns::TableUnit, $ns::TextUnit, root, text, data, vals, nodes, r);"
 		echo "    if at >= 0 && !r.malformed {"
 		echo "        format(out, r.unknown, \",\", r.kind_mismatch, \",\", r.widened, \",\", r.clamped, \",\", r.duplicate, \",false,read\");"
+		echo "        out.push(10);"
+		echo "        if schema_rt::json_save_table($ns::TableUnit, $ns::TextUnit, root, data, vals, nodes, at, out) < 0 { out.append(\"!no value\"); }"
 		echo "    } else {"
 		echo "        out.append(\"refused\");"
+		echo "        out.push(10);"
 		echo "    }"
-		echo "    out.push(10);"
 		echo "}"
 	} >"$1/conformance_unit.goose.$$"
 	cp "$main" "$1/main.goose.$$"

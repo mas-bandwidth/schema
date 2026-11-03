@@ -37,10 +37,12 @@ const tableBuilderLoadSource = `
         if (bytes.Length < 9) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         ulong idCount = Read64(bytes, bytes.Length - 8);
         if (idCount > (ulong)(bytes.Length - 9) / 8) { Damage(report); Finish(report, Verdict.Damaged); return false; }
+        // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+        // claims more than 4096 entries is malformed.
+        if (idCount > 4096) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         int end = bytes.Length - 8 - (int)idCount * 8;
         ReadOnlySpan<byte> ids = bytes.Slice(end, (int)idCount * 8);
-        for (int i = 0; i < ids.Length; i += 8)
-        { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); Finish(report, Verdict.Damaged); return false; } } }
+        if (!DistinctVocabulary(ids)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         Reader root = new Reader(bytes.Slice(1, end - 1), ids);
         if (EndsEarly(root)) { Damage(report); Finish(report, Verdict.Damaged); return false; }
         bool good = NodeFrames(root, out Reader records, out int count);
@@ -81,7 +83,7 @@ const tableBuilderLoadSource = `
                 if (offset != -1 && node != null) { NativeReadBody(ref state, ref body, new NativeValue(data, offset) { Mutable = true }, node, report, true); }
             }
             bool complete = !state.Refused && NativeReadBody(ref state, ref root, new NativeValue(data, 0) { Mutable = true }, type, report, false);
-            if (state.Refused) { return false; }
+            if (state.Refused && !report.Refused) { return false; }
             // a non-finite float refuses the load (docs/SPEC-TABLES.md §3.3)
             if (NonFiniteRefused(report) || report.Refused) { NativeReset(new NativeValue(data, 0) { Mutable = true }, type); Finish(report, Verdict.Refused); return false; }
             // a cyclic wire is damage and refuses the whole load (docs/SPEC-TABLES.md §3.1, §4)

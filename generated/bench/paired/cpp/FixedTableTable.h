@@ -438,6 +438,9 @@ struct TableFieldInfo
     // §2.3's | required: the TEXT form demands the key whenever the field's
     // guard holds, exactly as the binary body demands the field.
     bool required;
+    uint8_t text_list;
+    int64_t text_total;
+    bool unbounded;
 };
 
 struct TableTypeInfo
@@ -7155,7 +7158,7 @@ inline const TableTypeInfo * FixedTableTableType();
 inline const TableTypeInfo * FixedTableTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
     static const TableTypeInfo info = { "FixedTable", (uint32_t) sizeof( FixedTable ), 1, fields, +[]( void * p ) { FixedTableReset( *(FixedTable *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

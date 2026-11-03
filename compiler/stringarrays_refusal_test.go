@@ -21,7 +21,7 @@ const neitherSchema = "package probe\n\ntable Word\n{\n    s string(8)\n}\n\ntab
 // same declaration with a table element in place of the text (a *T element
 // for the optional spellings), so the two units differ by the construct alone.
 var stringArraysProbes = func() []unchangedProbe {
-	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "cpp") != nil }
+	usesTextForm := func(u *ir.Unit) bool { return u != nil && refuseTextForms(u, "unregistered") != nil }
 	usesArrayRoot := func(u *ir.Unit) bool { return u != nil && len(ir.TableArrayRoots(u)) > 0 }
 	base := map[string]string{"go": neitherSchema, "cpp": neitherSchema}
 	keep := []string{"Word", "Holder"}

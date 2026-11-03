@@ -6,7 +6,8 @@
 --   json-read     FromJson json/<name>.json, Save, the bytes
 --   json-write    Load the wire file, ToJson, the text
 --   json-hostile  FromJson <tree>/<root>.json, the report as
---                 `u,k,w,c,d,m,verdict\n`, or `refused\n`
+--                 `u,k,w,c,d,m,verdict\n` and the §16 text of the value it
+--                 left, or `refused\n`
 --
 -- through the emitted json.moo's descriptor-driven walk, the table load and save
 -- and the descriptors the unit's <Base>Table modules register. A row marked
@@ -98,7 +99,7 @@ return function(ctx: any): { [string]: Surface }
 							r.duplicate,
 							tostring(r.malformed),
 							"read"
-						)
+						) .. J.toJson(d, rec)
 					)
 				end
 			end

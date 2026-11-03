@@ -485,7 +485,10 @@ let JsonReasonHoldsZero: i64 = 2;
 let JsonReasonReservedKey: i64 = 3;
 
 // JsonReport is a text read's report (docs/SPEC-TABLES.md §4, §16.2):
-// widened stays zero in this form, and reason names a refusal.
+// widened stays zero in this form, and reason names a refusal. The
+// clamped-field slot holds the first clamp that names its field (§6.5),
+// `<Table>.<field>` in clamped_name's first clamped_len bytes, which
+// json_clamped_reason spells `clamped: <Table>.<field>`; 0 for none.
 struct JsonReport {
     unknown: i64,
     kind_mismatch: i64,
@@ -494,10 +497,33 @@ struct JsonReport {
     duplicate: i64,
     malformed: bool,
     reason: i64,
+    clamped_name: u8[256],
+    clamped_len: i64,
 }
 
 fn json_report() -> JsonReport {
-    return JsonReport { unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, reason: 0 };
+    return JsonReport { unknown: 0, kind_mismatch: 0, widened: 0, clamped: 0, duplicate: 0, malformed: false, reason: 0, clamped_name: [0; 256], clamped_len: 0 };
+}
+
+// json_clamped names the field a clamp clamped, `<table>.<field>`, in the
+// report's clamped-field slot: the first clamp named wins (§6.5), and a name
+// past the slot keeps its first 256 bytes.
+fn json_clamped(rep: JsonReport&, table: const u8[:], field: const u8[:]) {
+    if rep.clamped_len != 0 { return; }
+    var n: i64 = 0;
+    for b in table { if n < 256 { rep.clamped_name[n] = b; n += 1; } }
+    if n < 256 { rep.clamped_name[n] = '.'; n += 1; }
+    for b in field { if n < 256 { rep.clamped_name[n] = b; n += 1; } }
+    rep.clamped_len = n;
+}
+
+// json_clamped_reason appends the strict read's clamped refusal naming the
+// field, `clamped: <Table>.<field>`, and answers whether the report names one.
+fn json_clamped_reason(rep: const JsonReport&, out: u8[>..]&) -> bool {
+    if rep.clamped_len == 0 { return false; }
+    out.append("clamped: ");
+    for k in rep.clamped_len { out.push(rep.clamped_name[k]); }
+    return true;
 }
 
 // JsonIn is the reader's cursor over the caller's text: the read copies
@@ -1470,8 +1496,12 @@ fn json_read_table<T, F>(jr: JsonIn&, rec: T&, d: const TableDesc&, shapes: cons
                 if !json_literal(jr, "null") { return false; }
                 if !F(jr, rec, index, JsonOpAbsent, depth) { return false; }
             } else if got != shapes[index] {
+                // the wrong JSON type for the kind: skipped and counted, and
+                // the KEY is still presence (§16.2), so an optional field is
+                // present at the value it already held
                 jr.rep.kind_mismatch += 1;
                 if !json_skip_value(jr, depth + 1) { return false; }
+                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }
             } else {
                 if !F(jr, rec, index, JsonOpRead, depth) {
                     if jr.zero && jr.rep.reason == 0 {

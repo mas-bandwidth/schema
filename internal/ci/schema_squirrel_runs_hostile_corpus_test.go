@@ -75,7 +75,15 @@ type squirrelExpectedHostileMismatch struct {
 // wire-non-finite-float, which arrived with the finite-tables ruling (#2226,
 // SPEC-TABLES §3.3), passes since tables-finite/squirrel: the strict read
 // refuses the NaN as non_finite_float, the manifest's verdict.
-var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{}
+//
+// The three text-list total rows (docs/SPEC-TABLES.md §2.13) are carried: the
+// Squirrel readers, text and wire, keep every element of a list past its
+// total, so the decoded value's digest is not the engine's prefix.
+var squirrelExpectedHostileMismatches = []squirrelExpectedHostileMismatch{
+	{"conformance-text-total-after-clamp", "inputs/conformance-text-total-after-clamp.json", "accept -", "accept -", "schema-squirrel-text-list-total-r"},
+	{"conformance-text-total-past", "inputs/conformance-text-total-past.json", "accept -", "accept -", "schema-squirrel-text-list-total-r"},
+	{"wire-text-total-past", "inputs/wire-text-total-past.bin", "accept -", "accept -", "schema-squirrel-text-list-total-r"},
+}
 
 func squirrelExpectedHostileMismatchNames() []string {
 	names := make([]string, 0, len(squirrelExpectedHostileMismatches))
@@ -535,6 +543,8 @@ local run = function(name, carrier, dir, mod, root, annkey) {
     if (v == null) {
       local why = named(rr, "wire_damaged");
       if (why == "wire_damaged" || why == "malformed") why = "damaged";
+      // the corpus names a count past the int32 storage cap count_refusal
+      if (why == "count_over_extent_cap") why = "count_refusal";
       emit(name, "refuse", why, null);
       return;
     }

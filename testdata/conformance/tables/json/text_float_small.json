@@ -1,0 +1,56 @@
+{
+  "name": "",
+  "icon": "",
+  "experience": 0,
+  "tilt": 0,
+  "heading": 0,
+  "timestamp": 0,
+  "badge": 0,
+  "port": 0,
+  "epoch": 0,
+  "precision": 4.94065645841247e-324,
+  "ratings": [
+    16777216,
+    1e+10,
+    1.1754944e-38,
+    123456.79
+  ],
+  "has_loadout": false,
+  "loadout": {
+    "grade": "Silver",
+    "grades": [],
+    "podium": [
+      "None",
+      "None",
+      "None"
+    ],
+    "perks": [],
+    "primary": {
+      "damage": 21,
+      "speed": 500,
+      "penetration": 1,
+      "channel": 0,
+      "homing": false,
+      "effect": {}
+    },
+    "backups": [
+      {
+        "damage": 21,
+        "speed": 500,
+        "penetration": 1,
+        "channel": 0,
+        "homing": false,
+        "effect": {}
+      },
+      {
+        "damage": 21,
+        "speed": 500,
+        "penetration": 1,
+        "channel": 0,
+        "homing": false,
+        "effect": {}
+      }
+    ],
+    "attachments": []
+  }
+}
