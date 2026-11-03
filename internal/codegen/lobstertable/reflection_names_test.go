@@ -30,6 +30,10 @@ func TestLobsterUnitViewGeneratedNames(t *testing.T) {
 				}
 				u, err := compiler.New().Load([]string{path})
 				if err != nil {
+					// UnitView is already reserved by the common checker.
+					if reject && tc.name == "UnitView" && strings.Contains(err.Error(), "declaration UnitView collides") {
+						return
+					}
 					t.Fatal(err)
 				}
 				out, err := lobstertable.Generate(u)
