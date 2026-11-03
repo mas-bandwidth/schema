@@ -258,10 +258,17 @@ func routeMutants(in io.Reader, route []*child, pending chan<- *child) error {
 }
 
 // relay copies each routed mutant's reply from the child that owes it, in
-// routing order, flushing whenever no further reply is already owed.
+// routing order. Everything relayed is flushed before a read that may block,
+// so when a leg stalls, the harness holds every reply before the stalled
+// one and names the mutant that stalled, not an earlier one.
 func relay(pending <-chan *child, w *bufio.Writer) error {
 	head := make([]byte, replyHead)
 	for c := range pending {
+		if c.out.Buffered() < replyHead {
+			if err := w.Flush(); err != nil {
+				return err
+			}
+		}
 		if _, err := io.ReadFull(c.out, head); err != nil {
 			return fmt.Errorf("%s did not reply: %w", c.name, err)
 		}
@@ -274,25 +281,35 @@ func relay(pending <-chan *child, w *bufio.Writer) error {
 				return fmt.Errorf("%s replied short: %w", c.name, err)
 			}
 		}
-		if len(pending) == 0 {
-			if err := w.Flush(); err != nil {
-				return err
-			}
-		}
 	}
 	return w.Flush()
 }
 
-// execStarter starts <legs>/<unit>/wirefuzz <unit> <arm>, its stderr the
-// dispatcher's own, so the harness keeps every child's diagnostics.
+// stderr is the dispatcher's own stderr, shared by every child's copier.
+type stderr struct{ mu sync.Mutex }
+
+func (s *stderr) Write(b []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return os.Stderr.Write(b)
+}
+
+// execStarter starts <legs>/<unit>/wirefuzz <unit> <arm>. A child's stderr
+// is copied into the dispatcher's own, so the harness keeps every child's
+// diagnostics, yet no child holds the harness's stderr pipe: when the harness
+// kills this dispatcher on a stalled reply, its wait returns even while a
+// child is still spinning (and on Linux the child dies with the dispatcher,
+// procattr_linux.go).
 func execStarter(legs string) starter {
+	var errs stderr
 	return func(unit, arm string) (*child, error) {
 		path := filepath.Join(legs, unit, "wirefuzz")
 		if info, err := os.Stat(path); err != nil || info.IsDir() {
 			return nil, nil
 		}
 		cmd := exec.Command(path, unit, arm)
-		cmd.Stderr = os.Stderr
+		cmd.Stderr = &errs
+		cmd.SysProcAttr = childProcAttr()
 		in, err := cmd.StdinPipe()
 		if err != nil {
 			return nil, err
