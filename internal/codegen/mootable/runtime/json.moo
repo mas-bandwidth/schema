@@ -1945,7 +1945,8 @@ local St = require("./schema_tables")
 
 -- EXTRA: the facts the text form needs beyond the descriptor, keyed by the
 -- field (or element, or arm) descriptor they belong to: a flags set's variant
--- names (`flags`), and a text list's element (`tl`: opt, bound, rec).
+-- names (`flags`), and a text list's element (`tl`: opt, bound, rec; a
+-- bound of -1 is an unbounded element).
 local EXTRA: { [any]: any } = {}
 
 function J.extra(fd: any, info: any)
@@ -2740,6 +2741,13 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 	return true
 end
 
+-- readTextList places a TEXT LIST's elements (docs/SPEC-TABLES.md §2.13,
+-- §16.2), internal/tabletext's readTextList case for case. A plain list's
+-- element is its string, as the value model stores it; an optional list's is
+-- the element record, whose presence frames it. An unbounded element
+-- (tl.bound < 0) is never clamped. A list with a total keeps the prefix whose
+-- bytes fit it: the first element past the total is dropped, counted clamped
+-- once, and every later element skipped.
 local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number): boolean
 	if peek(r) ~= 91 then
 		r.bad = true
@@ -2748,7 +2756,11 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 	r.pos += 1
 	local slot = fd.slot
 	local list = fd.array == "list"
+	local plain = not tl.opt
 	local ed = St.lookup(tl.rec)
+	local function zero(): any
+		return if plain then "" else ed.new()
+	end
 	local arr: any
 	if list then
 		arr = {}
@@ -2756,10 +2768,12 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 	else
 		arr = rec[slot]
 		for i = 1, fd.bound do
-			arr[i] = ed.new()
+			arr[i] = zero()
 		end
 	end
 	local placed = 0
+	local spent = 0
+	local full = false
 	local bound = if list then 2147483647 else fd.bound
 	while true do
 		local c = peek(r)
@@ -2771,11 +2785,16 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			r.bad = true
 			return false
 		end
-		if list and placed == #arr then
-			table.insert(arr, (ed.new()))
+		if not full and list and placed == #arr then
+			table.insert(arr, zero())
 		end
+		local before = placed
 		local s = valueShape(r)
-		if placed >= bound then
+		if full then
+			if not skipValue(r, depth + 1) then
+				return false
+			end
+		elseif placed >= bound then
 			r.report.clamped += 1
 			if not skipValue(r, depth + 1) then
 				return false
@@ -2799,12 +2818,33 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			if clamped then
 				r.report.clamped += 1
 			end
-			local el = arr[placed + 1]
-			el.Value = out
-			if tl.opt then
+			if plain then
+				arr[placed + 1] = out
+			else
+				local el = arr[placed + 1]
+				el.Value = out
 				el.ValuePresent = true
 			end
 			placed += 1
+		end
+		if placed > before and fd.total ~= nil then
+			local el = arr[placed]
+			local n = if plain then #el elseif el.ValuePresent then #el.Value else 0
+			if n <= fd.total - spent then
+				spent += n
+			else
+				r.report.clamped += 1
+				if r.report.reason == nil then
+					r.report.reason = "clamped: " .. fd.owner .. "." .. fd.name
+				end
+				placed -= 1
+				full = true
+				if list then
+					table.remove(arr, placed + 1)
+				else
+					arr[placed + 1] = zero()
+				end
+			end
 		end
 		c = peek(r)
 		if c == 44 then
@@ -3596,7 +3636,9 @@ local function writeArray(w: W, fd: any, rec: any, depth: number): boolean
 		line(w, depth + 1)
 		if tl ~= nil then
 			local el = v[i]
-			if tl.opt and not el.ValuePresent then
+			if not tl.opt then
+				writeString(w :: any, el)
+			elseif not el.ValuePresent then
 				emit(w, "null")
 			else
 				writeString(w :: any, el.Value)

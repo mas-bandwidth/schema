@@ -1,8 +1,8 @@
 # Original-nine nightly readiness
 
 Run `test/conformance/nightly-readiness <lang>` for exactly one of
-`cpp c cs go rust java js dart elixir goose`. Goose, the first language past
-the original nine, runs the same expanded shape (below). The nightly workflow must preserve
+`cpp c cs go rust java js dart elixir goose moo`. Goose and MOO, the languages
+past the original nine, run the same expanded shape (below). The nightly workflow must preserve
 stdout and `build/nightly-readiness/<lang>/`, and write a passing readiness
 receipt only after exit zero. Every phase is attempted; one failed phase keeps
 the final result incomplete. A green conformance report or a manually completed
@@ -47,6 +47,7 @@ The packet/table package pairs are:
 | Dart | dart | darttable | assertions and compiled executable, normal and ludicrous |
 | Elixir | elixir | elixirtable | normal and ludicrous |
 | Goose | goose | goosetable | `goose run` and `goose run --debug`, normal and ludicrous |
+| MOO | moo | mootable | the package's golden probes under the pinned `moo`, normal and ludicrous |
 
 External table targets are `tables-maps/lists/arms/retain/view/doctags/flat-wire/
 fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
@@ -55,7 +56,9 @@ fixed-matched/fixed-twin` for C++; `tables-c-fixedform/variable/usage`;
 `tables-js-fixed-form/fixed-matched`; `tables-dart-fixed-form`;
 `tables-elixir-fixed-form/fixed-bench`; and for Goose
 `tables-goose-versioning`, `tables-goose-message-form` and the
-`tables-goose-versioning/fixedform/message-form/message-peer` negative controls. Versioning and fixed-roadmap Go tests
+`tables-goose-versioning/fixedform/message-form/message-peer` negative controls;
+and for MOO `tables-moo-fixed`, `tables-moo-message-form` and
+`tables-moo-compiler-claims`. Versioning and fixed-roadmap Go tests
 already run in their complete packages, without the legacy filtered targets'
 600-second or 20-minute suite limits.
 
@@ -91,11 +94,43 @@ reach): `retain-goose-tablewire` and `retain-goose-fuzz` run those tests
 uncapped and require them to pass. Goose has no §5.6 retirement; any
 `RETIRED` or `SKIP` marker is incomplete.
 
+## MOO
+
+MOO is behind the `schema_leg_moo` build tag. Its prerequisites build and
+probe the pinned interpreter and analyzer (`moo-toolchain-ready`, which runs
+`dist-moo` when either is missing) and build `build/conformance-harness-moo`,
+the harness with the tag, which runs the implementation phase; every other
+harness phase uses the ordinary harness.
+
+The moo CLI has no io, so MOO has no packet program on disk. Its packet
+programs are internal/codegen/moo's probes, which generate `examples` and
+`examples128`, stage the C++ goldens as moo source and run the pinned
+interpreter: `packet-normal-0` runs the golden write, read, truncation,
+hostile-value and out-of-contract probes, `packet-ludicrous-0` the ludicrous
+wire, each a `go test -json` phase whose every named probe must pass. Its
+packet features are the defaults, UTF-8, wide-text and finite gates with their
+controls.
+
+MOO's wire-fuzz leg is already one process over the whole roster
+(`test/conformance/moo/wirefuzz-driver`: `wirefuzz.moo` under the native host
+`tools/moofuzzhost`, each unit required from its own directory), so it needs
+no dispatcher. It answers the region measure itself and runs the plain
+profile, as its own and release-tier gates do; the message form of a
+variable-class root is its named absence, which this run counts as incomplete.
+
+MOO's gate recipes run `go test` under Go's default ten-minute cap. The run
+executes them through a private makefile that copies each such recipe from
+`make/moo*.mk` with `-timeout=0` added; a recipe that names a cap fails
+closed, and per-recipe hashes are recorded. Its retention controls plant their
+sabotage in the emitted runtime in-test: `retain-moo-save` and
+`retain-moo-refusal` run those tests uncapped and require them to pass. MOO
+has no §5.6 retirement; any `RETIRED` or `SKIP` marker is incomplete.
+
 Wire controls are the existing `tables[-<lang>]-wire-fuzz-negative-control`
 targets, with C#'s pack control and Elixir's refusal control. Retention controls
 are C++'s retaining differential pair; C's dropped retained field; C#'s
 `tables-cs-retain-negative-control`; Go's file-count floor and unknown-node
-controls; Rust's capacity-check overlay; Goose's in-test retention controls; Java's declared-default and node-record
+controls; Rust's capacity-check overlay; Goose's and MOO's in-test retention controls; Java's declared-default and node-record
 controls; JavaScript's cards upgrade control alongside the full native RT1
 suite; and Dart/Elixir's retained-node controls. The named controls' enumerated
 runs may use N=0; they never stand in for the six positive release runs.

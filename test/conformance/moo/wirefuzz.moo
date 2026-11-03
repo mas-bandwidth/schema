@@ -561,9 +561,11 @@ local function unit(key: string): Unit?
 				local mod = load(base .. name)
 				for k, d in mod do
 					if type(k) == "string" and string.sub(k, -10) == "Descriptor" and type(d) == "table" and d.fields ~= nil then
+						-- the region's alignment is ir.TableRegionAlign: the greatest
+						-- node alignment, a record's own or its extent's
 						local l = C.layout(d.name)
-						if l ~= nil and l.align > align then
-							align = l.align
+						if l ~= nil and l.nodeAlign > align then
+							align = l.nodeAlign
 						end
 					end
 				end

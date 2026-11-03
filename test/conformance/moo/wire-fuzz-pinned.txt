@@ -7,3 +7,12 @@
 test/conformance/moo/wire-fuzz-pinned/crews_map_count_past_l.bin mapdemo Crews retain
 test/conformance/moo/wire-fuzz-pinned/slots_map_count_past_l.bin mapdemo Slots retain
 test/conformance/moo/wire-fuzz-pinned/fleet_map_count_past_l.bin mapdemo Fleet
+# a pointer index lowered to 2, closing a cycle in the stored pointer graph: a
+# cyclic wire is damage and the whole load is discarded (docs/SPEC-TABLES.md
+# §3.1, §4; table_load.moo cyclic)
+testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin graphdemo Scene
+testdata/wire/tables/fuzz-vectors/graph_tree_cycle.bin graphdemo Scene retain
+# a widened repeated map key replaces an earlier key of a foreign kind
+# (docs/SPEC-TABLES.md §2.8; table_load.moo scan_key)
+testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin mapdemo Pairs
+testdata/wire/tables/fuzz-vectors/map_repeated_key_widen.bin mapdemo Pairs retain

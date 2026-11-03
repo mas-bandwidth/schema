@@ -1,0 +1,152 @@
+-- The moo unit registry's listing program (docs/SPEC-TABLES.md §8.7): it has
+-- the generated modules and nothing else, calls UnitView() and prints the
+-- whole build in internal/viewlisting's line format. VIEW_MODULE is filled in
+-- per unit by the corpus gate (internal/codegen/mootable/view_test.go).
+local V = require("./VIEW_MODULE")
+
+local out: { string } = {}
+
+local function put(...: any)
+	for _, s in { ... } do
+		out[#out + 1] = tostring(s)
+	end
+end
+
+-- hex16 is a 64-bit id, eight little-endian bytes, as sixteen hex digits.
+local function hex16(id: string): string
+	local parts = table.create(8)
+	for i = 8, 1, -1 do
+		parts[#parts + 1] = string.format("%02x", string.byte(id, i))
+	end
+	return table.concat(parts)
+end
+
+local function sameTags(a: { string }?, b: { string }?): boolean
+	local x, y = a or {}, b or {}
+	if #x ~= #y then
+		return false
+	end
+	for i = 1, #x do
+		if x[i] ~= y[i] then
+			return false
+		end
+	end
+	return true
+end
+
+-- ann is a row's tags and its doc, the doc last and FLATTENED to one line:
+-- each newline written \n and the escape's own backslash written \\.
+local function ann(doc: string, tags: { string }?)
+	local flat = string.gsub(doc, "\\", "\\\\")
+	flat = string.gsub(flat, "\n", "\\n")
+	put(" tags=[", table.concat(tags or {}, ","), "] doc=", flat, "\n")
+end
+
+local function yes(b: boolean): string
+	return if b then "yes" else "no"
+end
+
+local function vocabulary(what: string, row: string, set: { any })
+	for _, e in set do
+		put(what, " ", e.name, " file=", e.file, " max=", e.max, " bits=", e.storage_bits, " variants=", #e.variants)
+		ann(e.doc, e.tags)
+		for _, r in e.variants do
+			put(what, " ", e.name, " ", row, " ", r.value, " ", r.name, " id=", hex16(r.id))
+			ann(r.doc, r.tags)
+		end
+	end
+end
+
+-- holds is whether a field descriptor is, or is an array of, the union.
+local function holds(f: any, name: string): boolean
+	if f.s == "union" and f.t == name then
+		return true
+	end
+	return f.e ~= nil and f.e.s == "union" and f.e.t == name
+end
+
+-- held is whether some registry declaration has a field of the union's type:
+-- the tables in registry order, then the types (internal/viewlisting).
+local function held(v: any, name: string): boolean
+	for _, set in { v.tables, v.types } do
+		for _, t in set do
+			for _, f in t.descriptor.fields do
+				if holds(f, name) then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function unions(v: any)
+	for _, u in v.unions do
+		put("union ", u.name, " file=", u.file, " max=", u.max, " bits=", u.storage_bits, " variants=", #u.variants)
+		ann(u.doc, u.tags)
+		local h = held(v, u.name)
+		for _, a in u.variants do
+			put("union ", u.name, " arm ", a.value, " ", a.name, " id=", hex16(a.id), " payload=", a.payload_name or "-")
+			put(" record=", yes(a.payload ~= nil), " field=", yes(a.field ~= nil))
+			local f = a.field
+			if f ~= nil then
+				-- §8.1: kind is the ELEMENT kind on an array line, and a byte
+				-- buffer is an array of u8
+				local kind = f.k
+				if f.s == "arr" or f.s == "map" or f.s == "bytes" then
+					kind = f.ek
+				end
+				local bound = f.bound or 0
+				if f.s == "map" or (f.s == "arr" and f.array == "list") then
+					bound = 0
+				end
+				put(" kind=", kind, " bound=", bound, " overlay=")
+				if h then
+					put(f.arm_offset - u.payload_offset)
+				else
+					put("-")
+				end
+				-- THE GENERAL ARM PAIR (§8.7): the field descriptor and the
+				-- registry row carry one annotation
+				if f.doc ~= a.doc or not sameTags(f.tags, a.tags) then
+					put(" ARM ANNOTATION MISMATCH")
+				end
+			else
+				put(" kind=- bound=- overlay=-")
+			end
+			ann(a.doc, a.tags)
+		end
+	end
+end
+
+local function declarations(what: string, set: { any })
+	for _, r in set do
+		local d = r.descriptor
+		put(what, " ", r.name, " file=", r.file, " fields=", #d.fields)
+		-- THE TYPE PAIR (§8.7): the registry row and its descriptor carry one
+		-- annotation
+		if r.doc ~= d.doc or not sameTags(r.tags, d.tags) then
+			put(" TYPE ANNOTATION MISMATCH")
+		end
+		ann(r.doc, r.tags)
+		for _, f in d.fields do
+			put(what, " ", r.name, " field ", f.name, " json=", if f.json == "" then "-" else f.json)
+			put(" type=", f.type_name, " id=", hex16(f.id), " optional=", f.present ~= nil)
+			ann(f.doc, f.tags)
+		end
+	end
+end
+
+local v = V.UnitView()
+put("unit package=", v.package, " protocol=", hex16(v.protocol_id), "\n")
+for _, c in v.constants do
+	put("constant ", c.name, " file=", c.file, " type=", c.type_name, " float=", c.is_float, " int=", c.int_value, " real=", hex16(c.float_bits))
+	ann(c.doc, c.tags)
+end
+vocabulary("enum", "variant", v.enums)
+vocabulary("flags", "bit", v.flags)
+unions(v)
+declarations("type", v.types)
+declarations("table", v.tables)
+local text = table.concat(out)
+print(string.sub(text, 1, #text - 1))
