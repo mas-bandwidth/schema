@@ -271,11 +271,15 @@ namespace Blockdemo
         public Func<ulong, TableReport, ulong> ClampRaw;
         public Func<ulong, TableReport, ulong> ClampJsonInteger;
         public Func<ulong, bool> RequiredValidRaw;
+        // a non-required ranged integer's or bits(N) field's write-side range,
+        // Debug.Assert-checked by the writer; null where the storage is the range
+        public Func<ulong, bool> WriteValidRaw;
         public UInt128 DefaultWide;
         public int FracBits;
         public bool WideSigned;
         public Func<UInt128, TableReport, UInt128> ClampWide;
         public Func<UInt128, bool> RequiredValidWide;
+        public Func<UInt128, bool> WriteValidWide;
         public Func<object, int, UInt128> GetWide;
         public Action<object, int, UInt128> SetWide;
         public Func<object, char[]> GetChars;
@@ -4743,6 +4747,10 @@ namespace Blockdemo
                 }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
+                // a ranged integer or a bits(N) value outside its field is caller
+                // error on the write side: checked in a debug build, gone in release
+                System.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i)), "write refused: an integer outside its declared range");
+                System.Diagnostics.Debug.Assert(f.WriteValidWide == null || f.WriteValidWide(f.GetWide(value, i)), "write refused: an integer outside its declared range");
                 // A NaN OR AN INFINITY IS REFUSED BY EVERY WRITER (docs/SPEC-TABLES.md
                 // §3.3): collect precedes measure and the first output byte, so Measure
                 // and Save both answer -1.
