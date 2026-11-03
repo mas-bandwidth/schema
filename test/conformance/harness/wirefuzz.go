@@ -254,11 +254,17 @@ type oracleAnswer struct {
 	retainLost int
 	// nonFinite is the oracle's REFUSAL of a float whose bits are a NaN or an
 	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, tolerant
-	// and strict, so the whole of what a leg owes is the refusal itself.
+	// and strict, so the whole of what a leg owes is the refusal itself. It
+	// outranks any damage the read also met (§4).
 	nonFinite bool
 	// required distinguishes a semantic refusal from malformed wire. The pipe
 	// carries its refusal verdict; native regressions pin its counter and names.
 	required bool
+	// countCap says the wire holds a collection count above the int32
+	// storage cap (docs/SPEC-TABLES.md §2.9), which a leg may refuse as
+	// count_over_extent_cap where the region oracle reads damage. It is
+	// asked only of a malformed answer a leg refused (countCapped).
+	countCap bool
 }
 
 func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
@@ -582,6 +588,26 @@ func (l *wireLeg) kill() {
 // the run
 // ---------------------------------------------------------------------------
 
+// countCapped answers whether a file wire holds a collection count above the
+// int32 storage cap (docs/SPEC-TABLES.md §2.9): the builder read refuses it
+// by name where the region read counts damage.
+func (r *wireRoot) countCapped(data []byte) (capped bool) {
+	if r.message {
+		return false
+	}
+	defer func() {
+		// the oracle's own decode of the same bytes already answered; a
+		// panic here is the oracle's to report, not this question's
+		if recover() != nil {
+			capped = false
+		}
+	}()
+	var rep tabletext.Report
+	_, err := tablewire.Decode(r.model, r.model.New(r.def), data, &rep)
+	_, capped = errors.AsType[*tablewire.CountRefusal](err)
+	return capped
+}
+
 // wireVerdict compares one leg reply with the oracle's answer and names the
 // first disagreement, or "" when there is none.
 func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
@@ -600,6 +626,17 @@ func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int
 			return "the oracle refuses a non-finite float (non_finite_float); the leg did not refuse the wire"
 		}
 		return ""
+	}
+	if ans.report.Malformed && !ans.report.Refused && !ans.countCap && reply.report.Refused &&
+		!(root.variable && reply.measure < 0) {
+		// THE READ REACHED NO NON-FINITE FLOAT (docs/SPEC-TABLES.md §4):
+		// damage ends the body it is met in and the enclosing body reads on,
+		// so which floats a read reaches is defined. A leg that refuses a
+		// load the oracle reads as malformed has reached a float the rule
+		// does not reach. A count above the storage cap (§2.9) and a
+		// LoadMeasure refusal are refusals of their own and are answered
+		// elsewhere.
+		return "the leg refused the wire; the oracle reached no non-finite float and answers malformed"
 	}
 	if root.builder {
 		// a damaged load is refused whole (docs/SPEC-TABLES.md §4), so on a
@@ -975,6 +1012,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 				enumeratedCount++
 			}
 			continue
+		}
+		if ans.report.Malformed && reply.report.Refused {
+			ans.countCap = root.countCapped(mut.data)
 		}
 		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
 			leg.kill()

@@ -182,6 +182,21 @@ func TestWireVerdictNonFiniteIsARefusal(t *testing.T) {
 	}
 }
 
+// A REFUSAL THE ORACLE DID NOT REACH IS A DIVERGENCE (docs/SPEC-TABLES.md
+// §4): damage ends the body it is met in, so a leg that refuses a wire the
+// oracle reads as malformed has reached a float the rule does not reach, or
+// stopped short of one it does.
+func TestWireVerdictMalformedIsNotARefusal(t *testing.T) {
+	root := &wireRoot{unit: "probe", root: "Root"}
+	answer := oracleAnswer{report: Counts{Malformed: true}}
+	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true}, saveFail: true}, answer, 16); verdict != "" {
+		t.Fatalf("a leg that answered malformed diverged: %s", verdict)
+	}
+	if verdict := wireVerdict(root, legReply{report: Counts{Malformed: true, Refused: true}, saveFail: true}, answer, 16); verdict == "" {
+		t.Fatal("a leg that refused a wire the oracle reads as malformed did not diverge")
+	}
+}
+
 // Permanent seed2 map_pairs differential: the repeated widened key retains
 // its entry; the unknown node-table ID and the earlier incompatible key value
 // still report their own events. SPEC-TABLES 2.8 uses the final key occurrence.
