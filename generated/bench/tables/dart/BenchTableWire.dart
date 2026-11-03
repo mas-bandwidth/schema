@@ -5450,7 +5450,8 @@ String _jsonPrepare(String text, TableTextReport r) {
       continue;
     }
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 128) throw const FormatException('JSON nesting past 128');
+      // the root container is depth 0 and a container deeper than 128 is refused
+      if (depth++ > 128) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
