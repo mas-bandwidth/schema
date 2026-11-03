@@ -154,6 +154,9 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // refuses the third after it writes — an import cycle between table modules
 // (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT).
 func Refuse(u *ir.Unit) error {
+	if err := checkReflectionNames(u); err != nil {
+		return err
+	}
 	if err := lobster.CheckBases(u, Runtime()); err != nil {
 		return err
 	}
