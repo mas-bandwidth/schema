@@ -492,13 +492,13 @@ func (g *cookGen) emitRecordCheck(name string) {
 		return
 	}
 	spelled := name + "Row"
-	g.hf("\ttableCookLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
+	g.hf("\ttableCookLayoutSize(%q, tableSizeof[%s](), %d)\n", spelled, spelled, ml.Size)
 	// Go caps native struct alignment at eight. Explicit padding preserves
 	// every model offset and stride; Open enforces the model's stronger
 	// alignment on the caller-owned byte region before exposing any row.
-	g.hf("\ttableCookLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
+	g.hf("\ttableCookLayoutSize(%q, tableAlignof[%s](), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	for _, fl := range ml.Fields {
-		g.hf("\ttableCookLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
+		g.hf("\ttableCookLayoutOffset(%q, tableOffsetof[%s](%q), %d)\n",
 			spelled+"."+goname.Member(fl.Field.Name), spelled, goname.Member(fl.Field.Name), fl.Offset)
 	}
 }

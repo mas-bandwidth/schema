@@ -233,7 +233,7 @@ func dstGo(dst, stride, aux string, counted, arg int) string {
 // IN THE UNIT CHANGES NOTHING FOR ITS FIXED TABLES); in a plain unit
 // fixedStorage is the name itself.
 func (g *tableGen) offGo(owner, field string) string {
-	return fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.fixedStorage(owner), field)
+	return fmt.Sprintf("uint32(tableOffsetof[%s](%q))", g.fixedStorage(owner), field)
 }
 
 // fixedStorage is the Go type a fixed-form destination names: the <Name>Row in
@@ -653,7 +653,7 @@ func (g *tableGen) sizeofGo(f *ir.Field) string {
 		case *ir.Enum, *ir.Flags:
 			return fmt.Sprintf("uint32(unsafe.Sizeof(%s(0)))", f.Type.Name)
 		default:
-			return fmt.Sprintf("uint32(unsafe.Sizeof(%s{}))", g.fixedStorage(f.Type.Name))
+			return fmt.Sprintf("uint32(tableSizeof[%s]())", g.fixedStorage(f.Type.Name))
 		}
 	}
 	t := goFieldType(f.Type)
@@ -668,7 +668,7 @@ func (g *tableGen) sizeofGo(f *ir.Field) string {
 	if strings.HasPrefix(t, "int") || strings.HasPrefix(t, "uint") {
 		return fmt.Sprintf("uint32(unsafe.Sizeof(%s(0)))", t)
 	}
-	return fmt.Sprintf("uint32(unsafe.Sizeof(%s{}))", t)
+	return fmt.Sprintf("uint32(tableSizeof[%s]())", t)
 }
 
 func (g *tableGen) emitFixedElementLeavesAt(f *ir.Field, src, dst string, tabs int) {
@@ -1118,7 +1118,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("var %sFixedResetImage = func() []byte {\n", st.Name)
 	g.pf("\tvar def %s\n", st.Name)
 	g.pf("\t%sReset(&def)\n", st.Name)
-	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))\n")
+	g.pf("\treturn tableFixedOverlay(unsafe.Pointer(&def), tableSizeof[%s]())\n", st.Name)
 	g.pf("}()\n\n")
 	g.pf("var %sFixedHoles = tableFixedHoles(%sFixedPlan.Entries, %sFixedPlan.Count, uint32(len(%sFixedResetImage)))\n\n",
 		st.Name, st.Name, st.Name, st.Name)
@@ -1336,7 +1336,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("\t\t}\n")
 	g.pf("\t}\n")
 	g.pf("\tfor k := range n {\n")
-	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))\n")
+	g.pf("\t\tdst := tableFixedOverlay(unsafe.Pointer(&values[k]), tableSizeof[%s]())\n", st.Name)
 	g.pf("\t\tfor i := range holes {\n")
 	g.pf("\t\t\th := holes[i]\n")
 	g.pf("\t\t\tcopy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])\n")

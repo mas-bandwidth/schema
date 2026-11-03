@@ -783,7 +783,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var std []string
 	if g.home {
-		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`, `"slices"`)
+		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`, `"slices"`, `"reflect"`)
 	}
 	if g.home && g.regional {
 		std = append(std, `"sync"`, `"sync/atomic"`)
@@ -794,7 +794,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	if g.needsTime {
 		std = append(std, `"time"`)
 	}
-	if g.unsafeUsed {
+	if g.unsafeUsed || g.home {
 		std = append(std, `"unsafe"`)
 	}
 	if usesSerialize {
@@ -962,7 +962,7 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // behind an include guard; a Go package is one namespace across its files, so a
 // second copy would be a redeclaration error instead.
 func tableRuntime() string {
-	return `// TableReport is the table-wire read report — the permissive contract's
+	return tableLayoutRuntime + `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
 // exactly. Err (docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
 // for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
@@ -1023,10 +1023,9 @@ type TableReport struct {
 //
 // The descriptors carry MEMORY facts — Offset, ElemSize, CountOffset,
 // PresentOffset and TableTypeInfo.Size — exactly as the C++ reference does,
-// because Go can state them: unsafe.Offsetof and unsafe.Sizeof are constant
-// expressions of the compiler's own layout model, so the generated numbers are
-// this build's own rather than a guess about it. They are what lets one
-// generic walk drive the text form for every table.
+// because Go can state them: the compiler's own layout model answers them, so
+// the generated numbers are this build's own rather than a guess about it.
+// They are what lets one generic walk drive the text form for every table.
 
 // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
 // block carries a doc column naming this one definition, so absence costs a

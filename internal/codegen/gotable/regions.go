@@ -212,7 +212,7 @@ func tableRegionClearAbsentValue(p unsafe.Pointer,f *TableFieldInfo){
 func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	n, typ := st.Name, g.storageName(st.Name)
 	if ir.PointerTargets(g.unit)[n] {
-		g.pf("func %sEmplace(worker *TableWorker,slot *TableRef) *%s { p,ref:=worker.Alloc(int64(unsafe.Sizeof(%s{}))); *slot=ref;if p==nil{return nil};value:=(*%s)(p);%sReset(value);return value }\n", n, typ, typ, typ, n)
+		g.pf("func %sEmplace(worker *TableWorker,slot *TableRef) *%s { p,ref:=worker.Alloc(int64(tableSizeof[%s]())); *slot=ref;if p==nil{return nil};value:=(*%s)(p);%sReset(value);return value }\n", n, typ, typ, typ, n)
 	}
 	if st.IsMapEntry() || !ir.VariableTables(g.unit)[n] {
 		return
@@ -247,8 +247,8 @@ func (g *tableGen) emitRegionMember(st *ir.Struct) {
 	g.pf("// %sReadStrict is the STRICT read (docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.\n", n)
 	g.pf("func %sReadStrict(wire []byte)(*%s,error){var b %sBuilder;size:=%sLoadMeasure(wire);size=max(size,0);if !b.initSized(size){return nil,TableRefuseAllocationFailed};var report TableReport;ok:=%sLoadBuilderTolerant(&b,wire,&report);if err:=report.Err();err!=nil||!ok{b.Shutdown();if err==nil{err=TableRefuseWireDamaged};return nil,err};if !b.Lock(){b.Shutdown();return nil,TableRefuseAllocationFailed};return b.AsConst(),nil}\n", n, typ, n, n, n)
 	g.pf("type %sBuilder struct { Arena TableArena; Main TableWorker; root TableRef; region,allocation []byte }\n", n)
-	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.Init(allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
-	g.pf("func (b *%sBuilder) initSized(first int64, allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.initSized(first, allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(unsafe.Sizeof(%s{})));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
+	g.pf("func (b *%sBuilder) Init(allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.Init(allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(tableSizeof[%s]()));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
+	g.pf("func (b *%sBuilder) initSized(first int64, allocator ...TableAllocator) bool { if b.region!=nil||!b.Arena.initSized(first, allocator...){return false};b.Main=TableWorker{Arena:&b.Arena};p,ref:=b.Main.Alloc(int64(tableSizeof[%s]()));b.root=ref;if p==nil{b.Arena.Shutdown();b.root=0;return false};%sReset((*%s)(p));return true }\n", n, typ, n, typ)
 	g.pf("func (b *%sBuilder) GetRoot() *%s { if b.Arena.Locked {return nil};return (*%s)(b.Arena.At(b.root)) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) AsConst() *%s { if len(b.region)==0{return nil};return (*%s)(unsafe.Pointer(&b.region[0])) }\n", n, typ, typ)
 	g.pf("func (b *%sBuilder) Region() []byte { return b.region }\n", n)

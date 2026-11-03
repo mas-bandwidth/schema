@@ -517,18 +517,18 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 	if projection {
 		spelled = name + "BlockProjection"
 	}
-	g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%s{}), %d)\n", spelled, spelled, ml.Size)
+	g.hf("\ttableBlockLayoutSize(%q, tableSizeof[%s](), %d)\n", spelled, spelled, ml.Size)
 	// Go caps native struct alignment at eight. Explicit padding preserves
 	// every model offset and stride; Open enforces the model's stronger
 	// alignment on the caller-owned byte region before exposing any row.
-	g.hf("\ttableBlockLayoutSize(%q, unsafe.Alignof(%s{}), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
+	g.hf("\ttableBlockLayoutSize(%q, tableAlignof[%s](), %d)\n", spelled+" alignment", spelled, min(ml.Align, 8))
 	if projection {
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.Magic), 0)\n", spelled+".Magic", spelled)
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.BuildVersion), 8)\n", spelled+".BuildVersion", spelled)
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.ByteOrder), 16)\n", spelled+".ByteOrder", spelled)
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), 0)\n", spelled+".Magic", spelled, "Magic")
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), 8)\n", spelled+".BuildVersion", spelled, "BuildVersion")
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), 16)\n", spelled+".ByteOrder", spelled, "ByteOrder")
 	}
 	for _, fl := range ml.Fields {
-		g.hf("\ttableBlockLayoutOffset(%q, unsafe.Offsetof(%s{}.%s), %d)\n",
+		g.hf("\ttableBlockLayoutOffset(%q, tableOffsetof[%s](%q), %d)\n",
 			spelled+"."+goname.Member(fl.Field.Name), spelled, goname.Member(fl.Field.Name), fl.Offset)
 	}
 	if bl != nil {
@@ -537,7 +537,7 @@ func (g *blockGen) emitRecordCheck(name string, ml *ir.MemberLayout, projection 
 		// it on one side only — §19.5's named negative control — could not
 		// turn anything red here.
 		for _, a := range bl.Arrays {
-			g.hf("\ttableBlockLayoutSize(%q, unsafe.Sizeof(%sRow{}), %d)\n",
+			g.hf("\ttableBlockLayoutSize(%q, tableSizeof[%sRow](), %d)\n",
 				bl.Table.Name+"."+goname.Member(a.Field.Name)+" stride", a.ElemName, a.Stride)
 		}
 	}
@@ -638,7 +638,7 @@ func(block *%sBlock)Open(base unsafe.Pointer,bytes int64)error{
 		g.hf("\t\toffsetOf := binary.NativeEndian.Uint64(triple)\n")
 		g.hf("\t\tcount := uint64(binary.NativeEndian.Uint32(triple[8:]))\n")
 		g.hf("\t\tstride := uint64(binary.NativeEndian.Uint32(triple[12:]))\n")
-		g.hf("\t\tif stride != uint64(unsafe.Sizeof(%sRow{})) {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", a.ElemName)
+		g.hf("\t\tif stride != uint64(tableSizeof[%sRow]()) {\n\t\t\treturn TableRefuseBadLayout\n\t\t}\n", a.ElemName)
 		g.hf("\t\t// past the DECLARED MAXIMUM: the producer side refuses this too, because\n")
 		g.hf("\t\t// a consumer that sizes anything by the maximum would overflow on a\n")
 		g.hf("\t\t// count the maximum does not bound\n")

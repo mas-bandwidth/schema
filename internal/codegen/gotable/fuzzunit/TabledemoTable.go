@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/tables/goruntime"
 	"math"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -637,6 +638,24 @@ type EffectRow struct {
 // announcement carries before the first body so an endpoint's build is knowable.
 const BuildVersion uint64 = 0x93ff58e3111cb4d4
 
+// THE LAYOUT FACTS of a generated type, from this build's own compiler. A
+// constant unsafe.Sizeof or unsafe.Offsetof costs the type checker time
+// exponential in the depth of a chain of structs that each end in a struct, so
+// none is spelled over a generated type: behind a type parameter each type is
+// sized once, and the type answers fold to constants when inlined.
+func tableSizeof[T any]() uintptr                  { return unsafe.Sizeof(*(*T)(nil)) }
+func tableAlignof[T any]() uintptr                 { return unsafe.Alignof(*(*T)(nil)) }
+func tableOffsetof[T any](name string) uintptr     { return tableLayoutField[T](name).Offset }
+func tableMemberSizeof[T any](name string) uintptr { return tableLayoutField[T](name).Type.Size() }
+func tableElemSizeof[T any](name string) uintptr   { return tableLayoutField[T](name).Type.Elem().Size() }
+func tableLayoutField[T any](name string) reflect.StructField {
+	f, ok := reflect.TypeFor[T]().FieldByName(name)
+	if !ok {
+		panic("schema layout: " + reflect.TypeFor[T]().Name() + " has no field " + name)
+	}
+	return f
+}
+
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //
 // Static field descriptors for every type in the table closure: name, the
@@ -647,10 +666,9 @@ const BuildVersion uint64 = 0x93ff58e3111cb4d4
 //
 // The descriptors carry MEMORY facts — Offset, ElemSize, CountOffset,
 // PresentOffset and TableTypeInfo.Size — exactly as the C++ reference does,
-// because Go can state them: unsafe.Offsetof and unsafe.Sizeof are constant
-// expressions of the compiler's own layout model, so the generated numbers are
-// this build's own rather than a guess about it. They are what lets one
-// generic walk drive the text form for every table.
+// because Go can state them: the compiler's own layout model answers them, so
+// the generated numbers are this build's own rather than a guess about it.
+// They are what lets one generic walk drive the text form for every table.
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
@@ -1909,7 +1927,7 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 }
 
 func init() {
-	if unsafe.Sizeof(EffectRow{}) != 8 || unsafe.Offsetof(EffectRow{}.Type) != 0 {
+	if tableSizeof[EffectRow]() != 8 || tableOffsetof[EffectRow]("Type") != 0 {
 		panic("schema union row layout")
 	}
 }

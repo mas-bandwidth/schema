@@ -38,7 +38,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 	for _, n := range types {
 		st := u.Structs[n]
 		g.viewNoIds = !closure[n]
-		g.pf("tableViewPacketTypes[%d]=TableTypeInfo{Name:%q,Size:uint32(unsafe.Sizeof(%s{})),NumFields:%d,Reset:func(p unsafe.Pointer){*(*%s)(p)=%s},%s,Fields:[]TableFieldInfo{\n", g.viewPacket[n], n, n, len(st.Fields), n, viewPacketDefault(st), viewAnnotation(st.Doc, st.Tags))
+		g.pf("tableViewPacketTypes[%d]=TableTypeInfo{Name:%q,Size:uint32(tableSizeof[%s]()),NumFields:%d,Reset:func(p unsafe.Pointer){*(*%s)(p)=%s},%s,Fields:[]TableFieldInfo{\n", g.viewPacket[n], n, n, len(st.Fields), n, viewPacketDefault(st), viewAnnotation(st.Doc, st.Tags))
 		guards := tableGuardStrings(st)
 		for _, f := range st.Fields {
 			g.emitTableFieldDescriptor(st, f, guards[f.Name])
@@ -49,7 +49,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 	for _, n := range unions {
 		un := u.Unions[n]
 		g.viewNoIds = !reached[n]
-		g.pf("tableViewPacketUnions[%d]=TableUnionInfo{TagOffset:uint32(unsafe.Offsetof(%s{}.Type)),TagSize:uint32(unsafe.Sizeof(%s{}.Type)),Arms:[]TableUnionArmInfo{{Void:true},\n", g.viewUnions[n], n, n)
+		g.pf("tableViewPacketUnions[%d]=TableUnionInfo{TagOffset:uint32(tableOffsetof[%s](\"Type\")),TagSize:uint32(tableMemberSizeof[%s](\"Type\")),Arms:[]TableUnionArmInfo{{Void:true},\n", g.viewUnions[n], n, n)
 		for _, arm := range un.Variants {
 			if arm.Void() {
 				g.pf("{Void:true},\n")
@@ -57,7 +57,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 			}
 			f := *arm.F
 			f.Name = arm.Name
-			g.pf("{Offset:uint32(unsafe.Offsetof(%s{}.%s)),Table:func()*TableTypeInfo{return &tableViewPacketTypes[%d]},Reset:func(p unsafe.Pointer){(*%s)(p).%s=%s},Field:TableFieldInfo", n, member(&f), g.viewPacket[arm.Type], n, member(&f), viewPacketDefault(arm.Ref))
+			g.pf("{Offset:uint32(tableOffsetof[%s](%q)),Table:func()*TableTypeInfo{return &tableViewPacketTypes[%d]},Reset:func(p unsafe.Pointer){(*%s)(p).%s=%s},Field:TableFieldInfo", n, member(&f), g.viewPacket[arm.Type], n, member(&f), viewPacketDefault(arm.Ref))
 			g.emitTableFieldDescriptor(&ir.Struct{Name: n}, &f, "")
 			g.pf("},\n")
 		}
@@ -142,7 +142,7 @@ func generateViewFile(u *ir.Unit, closure map[string]bool, arms map[string]int) 
 				for _, arm := range un.Variants {
 					if !arm.Void() {
 						g.needsUnsafe()
-						extra = fmt.Sprintf("PayloadOffset:uint32(unsafe.Offsetof(%sRow{}.Payload)),", n)
+						extra = fmt.Sprintf("PayloadOffset:uint32(tableOffsetof[%sRow](\"Payload\")),", n)
 						break
 					}
 				}

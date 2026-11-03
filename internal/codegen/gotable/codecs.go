@@ -578,7 +578,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	if len(st.Fields) == 0 {
 		g.emitTagsStatic(tagsName(st.Name, ""), st.Tags)
 		g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
-		g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
+		g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(tableSizeof[%s]()), NumFields: 0, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
 			st.Name, st.Name, st.DeclaredName(), g.storageName(st.Name), st.Name, g.storageName(st.Name), annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 		g.pf("// %sTableType returns %s's reflection descriptor.\n", st.Name, st.Name)
 		g.pf("func %sTableType() *TableTypeInfo { return &%sTableInfo }\n\n", st.Name, st.Name)
@@ -598,7 +598,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	}
 	g.pf("}\n\n")
 	g.pf("// %sTableInfo is %s's reflection descriptor (docs/SPEC-TABLES.md §8).\n", st.Name, st.Name)
-	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(unsafe.Sizeof(%s{})), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
+	g.pf("var %sTableInfo TableTypeInfo\nfunc init() { %sTableInfo = TableTypeInfo{Name: %q, Size: uint32(tableSizeof[%s]()), NumFields: %d, Fields: %sTableFields, Reset: func(storage unsafe.Pointer) { %sReset((*%s)(storage)) }, %s} }\n\n",
 		st.Name, st.Name, st.DeclaredName(), g.storageName(st.Name), len(st.Fields), st.Name, st.Name, g.storageName(st.Name),
 		jsonArrayColumn(st)+annotationColumns(st.Doc, st.Tags, tagsName(st.Name, ""))+g.typeCodecColumns(st))
 	if g.surfaces.Message && g.messageCarries(st) {
@@ -670,23 +670,23 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		bound = strconv.FormatInt(f.Type.Size, 10)
 	}
 
-	elemSize := fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s))", g.storageName(st.Name), name)
+	elemSize := fmt.Sprintf("uint32(tableMemberSizeof[%s](%q))", g.storageName(st.Name), name)
 	if isArray && !f.IsList() && !f.IsMap() {
-		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(%s{}.%s[0]))", g.storageName(st.Name), name)
+		elemSize = fmt.Sprintf("uint32(tableElemSizeof[%s](%q))", g.storageName(st.Name), name)
 	}
 
-	offset := fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.storageName(st.Name), name)
+	offset := fmt.Sprintf("uint32(tableOffsetof[%s](%q))", g.storageName(st.Name), name)
 	countOffset := "0xffffffff"
 	if counted {
 		companion := name + "Count"
 		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
 			companion = name + "Length"
 		}
-		countOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%s))", g.storageName(st.Name), companion)
+		countOffset = fmt.Sprintf("uint32(tableOffsetof[%s](%q))", g.storageName(st.Name), companion)
 	}
 	presentOffset := "0xffffffff"
 	if f.Type.Optional {
-		presentOffset = fmt.Sprintf("uint32(unsafe.Offsetof(%s{}.%sPresent))", g.storageName(st.Name), name)
+		presentOffset = fmt.Sprintf("uint32(tableOffsetof[%s](%q))", g.storageName(st.Name), name+"Present")
 	}
 
 	if g.armOffset != nil {
@@ -707,7 +707,7 @@ func (g *tableGen) emitTableFieldDescriptor(st *ir.Struct, f *ir.Field, guard st
 		}
 	}
 	if f.IsList() || f.IsMap() {
-		elemSize = fmt.Sprintf("uint32(unsafe.Sizeof(*(*%s)(nil)))", containerElementType(g.unit, f))
+		elemSize = fmt.Sprintf("uint32(tableSizeof[%s]())", containerElementType(g.unit, f))
 		counted = true
 		// no declared bound: ArrayBound 0, and the UnboundedContainer column
 		// below is the tell (docs/SPEC-TABLES.md §8.1)
@@ -947,7 +947,7 @@ func (g *tableGen) emitUnionArms() {
 			continue
 		}
 		_, _, cookTag, _ := ir.UnionLayout(g.unit, un)
-		g.pf("tableUnionArms[%d] = TableUnionInfo{CookTagSize:%d, TagOffset:uint32(unsafe.Offsetof(%s{}.Type)), TagSize:uint32(unsafe.Sizeof(%s{}.Type)), Arms: []TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], cookTag, un.Name, un.Name)
+		g.pf("tableUnionArms[%d] = TableUnionInfo{CookTagSize:%d, TagOffset:uint32(tableOffsetof[%s](\"Type\")), TagSize:uint32(tableMemberSizeof[%s](\"Type\")), Arms: []TableUnionArmInfo{{Void:true},\n", g.unionArmSlot[un.Name], cookTag, un.Name, un.Name)
 		for _, v := range un.Variants {
 			if v.Void() {
 				g.pf("{Void:true},\n")
@@ -959,7 +959,7 @@ func (g *tableGen) emitUnionArms() {
 			if v.Body() {
 				table = v.Type + "TableType"
 			}
-			g.pf("{Offset:uint32(unsafe.Offsetof(%s{}.%s)), Table:%s, Reset:func(storage unsafe.Pointer) { value := (*%s)(storage);\n", un.Name, member(&f), table, un.Name)
+			g.pf("{Offset:uint32(tableOffsetof[%s](%q)), Table:%s, Reset:func(storage unsafe.Pointer) { value := (*%s)(storage);\n", un.Name, member(&f), table, un.Name)
 			g.emitTableResetField(&f)
 			g.pf("}, Field: TableFieldInfo")
 			// Field emits a composite's trailing comma, which is also the final

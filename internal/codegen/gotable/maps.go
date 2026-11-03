@@ -68,7 +68,7 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	}
 	g.pf("_ = value;return %s }\n", access)
 	g.pf("func %sFind(arena *TableArena,holder %s,key %s) *%s {p:=tableMapFind((*tableContainer)(unsafe.Pointer(holder)),%s,%s,arena);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)
-	g.pf("func %sErase(arena *TableArena,holder %s,key %s) bool {p:=tableMapFind((*tableContainer)(unsafe.Pointer(holder)),%s,%s,arena);return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),p,int64(unsafe.Sizeof(%s{}))) }\n", name, holder, kt, desc, kv, entry)
+	g.pf("func %sErase(arena *TableArena,holder %s,key %s) bool {p:=tableMapFind((*tableContainer)(unsafe.Pointer(holder)),%s,%s,arena);return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),p,int64(tableSizeof[%s]())) }\n", name, holder, kt, desc, kv, entry)
 	keyexpr := "entry.Key"
 	if key.Type.Kind == ir.TString {
 		keyexpr = "string(entry.Key[:entry.KeyLength])"
@@ -76,7 +76,7 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 	if key.Type.TextUnbounded() {
 		keyexpr = "tableTextString(&entry.Key,tableOptionalArena(arena))"
 	}
-	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(%s{})),tableOptionalArena(arena));for range holder.Count {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
+	g.pf("func %sEach(holder %s,visit func(%s,*%s)bool,arena ...*TableArena) bool {c:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(tableSizeof[%s]()),tableOptionalArena(arena));for range holder.Count {entry:=(*%s)(c.Next());if entry==nil||!visit(%s,%s){return false}};return true }\n", name, holder, kt, typ, entry, entry, keyexpr, access)
 	g.pf("func %sIndexMeasure(holder %s) int64 {return tableMapIndexMeasure(holder.Count)}\n", name, holder)
 	g.pf("func %sIndex(holder %s,storage []byte) TableMapIndex {return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)),%s,storage)}\n", name, holder, desc)
 	g.pf("func %sIndexFind(index TableMapIndex,holder %s,key %s) *%s {p:=tableMapIndexFind(index,(*tableContainer)(unsafe.Pointer(holder)),%s,%s);if p==nil{return nil};entry:=(*%s)(p);return %s }\n", name, holder, kt, typ, desc, kv, entry, access)

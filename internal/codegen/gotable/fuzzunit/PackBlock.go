@@ -626,7 +626,7 @@ func (block *PackConfigBlock) Open(base unsafe.Pointer, bytes int64) error {
 		offsetOf := binary.NativeEndian.Uint64(triple)
 		count := uint64(binary.NativeEndian.Uint32(triple[8:]))
 		stride := uint64(binary.NativeEndian.Uint32(triple[12:]))
-		if stride != uint64(unsafe.Sizeof(ShipEntryRow{})) {
+		if stride != uint64(tableSizeof[ShipEntryRow]()) {
 			return TableRefuseBadLayout
 		}
 		// past the DECLARED MAXIMUM: the producer side refuses this too, because

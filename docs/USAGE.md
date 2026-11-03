@@ -1641,10 +1641,14 @@ does not claim. `grade.TableEnumId()` gives the variant's hash and whether any
 variant names the value; `(&grade).TableEnumValue(id)` resolves one back.
 
 `<Name>TableType()` returns the reflection descriptor, with the same columns
-C++ carries — including the memory ones, because `unsafe.Offsetof` and
-`unsafe.Sizeof` are constant expressions of Go's own layout model rather than a
-guess about it. That is what lets ONE generic walk drive the text form for
-every table.
+C++ carries — including the memory ones, because Go's own compiler answers
+them rather than a guess about it. That is what lets ONE generic walk drive the
+text form for every table. No generated file spells a constant `unsafe.Sizeof`
+or `unsafe.Offsetof` over a generated type: Go's type checker sizes a struct
+whose last field is a struct twice over, so over a deep chain of such structs
+the constant would cost a build time exponential in the depth. The sizes and
+offsets come through type parameters instead, and a schema nested to the fixed
+form's depth bound builds in about a second.
 
 **A container with no declared bound says so by name.** A map, a `[]T` and a
 text list `[]string(M)` report `UnboundedContainer: true` with `ArrayBound: 0`

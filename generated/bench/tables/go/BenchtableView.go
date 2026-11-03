@@ -65,9 +65,9 @@ var tableViewPacketTypes [3]TableTypeInfo
 var tableViewPacketUnions [1]TableUnionInfo
 
 func init() {
-	tableViewPacketTypes[0] = TableTypeInfo{Name: "TableChatEvent", Size: uint32(unsafe.Sizeof(TableChatEvent{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*TableChatEvent)(p) = TableChatEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[0] = TableTypeInfo{Name: "TableChatEvent", Size: uint32(tableSizeof[TableChatEvent]()), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*TableChatEvent)(p) = TableChatEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "channel", JSON: "channel", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xa5013e9ad5caeda4, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Channel)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableChatEvent]("Channel")), ElemSize: uint32(tableMemberSizeof[TableChatEvent]("Channel")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 3.0, RangeIntMin: 0, RangeIntMax: 3, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -78,7 +78,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "speaker", JSON: "speaker", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", ID: 0xfbf1ac4d96ebd022, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableChatEvent{}.Speaker)), ElemSize: uint32(unsafe.Sizeof(TableChatEvent{}.Speaker)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableChatEvent]("Speaker")), ElemSize: uint32(tableMemberSizeof[TableChatEvent]("Speaker")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -89,9 +89,9 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketTypes[1] = TableTypeInfo{Name: "TableHitEvent", Size: uint32(unsafe.Sizeof(TableHitEvent{})), NumFields: 4, Reset: func(p unsafe.Pointer) { *(*TableHitEvent)(p) = TableHitEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[1] = TableTypeInfo{Name: "TableHitEvent", Size: uint32(tableSizeof[TableHitEvent]()), NumFields: 4, Reset: func(p unsafe.Pointer) { *(*TableHitEvent)(p) = TableHitEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "target_id", JSON: "target_id", TypeName: "bits(12)", DeclaredTypeName: "bits(12)", ID: 0xb7bc9ac015a25050, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.TargetID)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.TargetID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableHitEvent]("TargetID")), ElemSize: uint32(tableMemberSizeof[TableHitEvent]("TargetID")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeUintMin: 0, RangeUintMax: 4095, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -102,7 +102,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "damage", JSON: "damage", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x7f6308be8ab37fc0, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableHitEvent]("Damage")), ElemSize: uint32(tableMemberSizeof[TableHitEvent]("Damage")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 4095.0, RangeIntMin: 0, RangeIntMax: 4095, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -113,7 +113,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "hit_kind", JSON: "hit_kind", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x1fbc365b059b925, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.HitKind)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.HitKind)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableHitEvent]("HitKind")), ElemSize: uint32(tableMemberSizeof[TableHitEvent]("HitKind")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -124,7 +124,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "crit", JSON: "crit", TypeName: "bool", DeclaredTypeName: "bool", ID: 0x126167908c9aa52d, Kind: 1, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableHitEvent{}.Crit)), ElemSize: uint32(unsafe.Sizeof(TableHitEvent{}.Crit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableHitEvent]("Crit")), ElemSize: uint32(tableMemberSizeof[TableHitEvent]("Crit")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -135,9 +135,9 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketTypes[2] = TableTypeInfo{Name: "TablePickupEvent", Size: uint32(unsafe.Sizeof(TablePickupEvent{})), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*TablePickupEvent)(p) = TablePickupEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
+	tableViewPacketTypes[2] = TableTypeInfo{Name: "TablePickupEvent", Size: uint32(tableSizeof[TablePickupEvent]()), NumFields: 2, Reset: func(p unsafe.Pointer) { *(*TablePickupEvent)(p) = TablePickupEvent{} }, Doc: TableDocNone, NumTags: 0, Tags: nil, Fields: []TableFieldInfo{
 		{Name: "item_id", JSON: "item_id", TypeName: "bits(10)", DeclaredTypeName: "bits(10)", ID: 0x9e7fd06d864fbd56, Kind: 7, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.ItemID)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.ItemID)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TablePickupEvent]("ItemID")), ElemSize: uint32(tableMemberSizeof[TablePickupEvent]("ItemID")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 1023.0, RangeUintMin: 0, RangeUintMax: 1023, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -148,7 +148,7 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "amount", JSON: "amount", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TablePickupEvent{}.Amount)), ElemSize: uint32(unsafe.Sizeof(TablePickupEvent{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TablePickupEvent]("Amount")), ElemSize: uint32(tableMemberSizeof[TablePickupEvent]("Amount")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: true, RangeMin: 0.0, RangeMax: 255.0, RangeIntMin: 0, RangeIntMax: 255, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -159,9 +159,9 @@ func init() {
 			Guard: "", Table: nil,
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 	}}
-	tableViewPacketUnions[0] = TableUnionInfo{TagOffset: uint32(unsafe.Offsetof(TableEvent{}.Type)), TagSize: uint32(unsafe.Sizeof(TableEvent{}.Type)), Arms: []TableUnionArmInfo{{Void: true},
-		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*TableEvent)(p).Hit = TableHitEvent{} }, Field: TableFieldInfo{Name: "hit", JSON: "hit", TypeName: "TableHitEvent", DeclaredTypeName: "TableHitEvent", ID: 0x33732819300680aa, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Hit)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Hit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+	tableViewPacketUnions[0] = TableUnionInfo{TagOffset: uint32(tableOffsetof[TableEvent]("Type")), TagSize: uint32(tableMemberSizeof[TableEvent]("Type")), Arms: []TableUnionArmInfo{{Void: true},
+		{Offset: uint32(tableOffsetof[TableEvent]("Hit")), Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] }, Reset: func(p unsafe.Pointer) { (*TableEvent)(p).Hit = TableHitEvent{} }, Field: TableFieldInfo{Name: "hit", JSON: "hit", TypeName: "TableHitEvent", DeclaredTypeName: "TableHitEvent", ID: 0x33732819300680aa, Kind: 13, IsArray: false, Counted: false, Optional: false,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableEvent]("Hit")), ElemSize: uint32(tableMemberSizeof[TableEvent]("Hit")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -172,8 +172,8 @@ func init() {
 			Guard: "", Table: func() *TableTypeInfo { return &tableViewPacketTypes[1] },
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		},
-		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[0] }, Reset: func(p unsafe.Pointer) { (*TableEvent)(p).Chat = TableChatEvent{} }, Field: TableFieldInfo{Name: "chat", JSON: "chat", TypeName: "TableChatEvent", DeclaredTypeName: "TableChatEvent", ID: 0xf2a38d910b5b348b, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Chat)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Chat)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		{Offset: uint32(tableOffsetof[TableEvent]("Chat")), Table: func() *TableTypeInfo { return &tableViewPacketTypes[0] }, Reset: func(p unsafe.Pointer) { (*TableEvent)(p).Chat = TableChatEvent{} }, Field: TableFieldInfo{Name: "chat", JSON: "chat", TypeName: "TableChatEvent", DeclaredTypeName: "TableChatEvent", ID: 0xf2a38d910b5b348b, Kind: 13, IsArray: false, Counted: false, Optional: false,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableEvent]("Chat")), ElemSize: uint32(tableMemberSizeof[TableEvent]("Chat")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
@@ -184,8 +184,8 @@ func init() {
 			Guard: "", Table: func() *TableTypeInfo { return &tableViewPacketTypes[0] },
 			Doc: TableDocNone, NumTags: 0, Tags: nil},
 		},
-		{Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*TableEvent)(p).Pickup = TablePickupEvent{} }, Field: TableFieldInfo{Name: "pickup", JSON: "pickup", TypeName: "TablePickupEvent", DeclaredTypeName: "TablePickupEvent", ID: 0x9fa3a41c86ecb765, Kind: 13, IsArray: false, Counted: false, Optional: false,
-			ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TableEvent{}.Pickup)), ElemSize: uint32(unsafe.Sizeof(TableEvent{}.Pickup)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		{Offset: uint32(tableOffsetof[TableEvent]("Pickup")), Table: func() *TableTypeInfo { return &tableViewPacketTypes[2] }, Reset: func(p unsafe.Pointer) { (*TableEvent)(p).Pickup = TablePickupEvent{} }, Field: TableFieldInfo{Name: "pickup", JSON: "pickup", TypeName: "TablePickupEvent", DeclaredTypeName: "TablePickupEvent", ID: 0x9fa3a41c86ecb765, Kind: 13, IsArray: false, Counted: false, Optional: false,
+			ArrayBound: 0, Offset: uint32(tableOffsetof[TableEvent]("Pickup")), ElemSize: uint32(tableMemberSizeof[TableEvent]("Pickup")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 			HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 			FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
 			EnumName:    nil,
