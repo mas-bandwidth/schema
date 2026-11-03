@@ -14,9 +14,8 @@ lawful lineage is kept: an unknown field, variant, arm or slot is skipped and
 counted `unknown` (or retained), an absent field takes its default, a widening
 decodes exactly and counts `widened`, and the fixed form selects its plan by
 hash. The report holds the one reason, or `unknown`, `widened`, `retained` and
-`retain_lost`. The reason is fixed by the input: the envelope, then the
-input's own well-formedness in byte order, then the declaration in byte order
-(§6.5).
+`retain_lost`. The reason is the highest-ranked NAME of the conditions the input holds, by
+a fixed rank (§6.5).
 
 This page is the work list. The roadmap entry is `strict-only-read-2026-11-03`
 in `docs/roadmap.sexp`, one task per layer below.
@@ -30,14 +29,15 @@ in `docs/roadmap.sexp`, one task per layer below.
    `length_over_bound`** for a count or a length past the reader's bound (the
    fixed form's names), and `out_of_range` for a value. A text list's `| total`
    is `length_over_bound`.
-3. **The reason order is three phases, then byte order** (§6.5): the
-   envelope; the input well-formed by itself (`wire_damaged`,
-   `count_over_extent_cap`, `blob_over_size_cap`, `non_finite_float`,
-   `blob_shared`, and `malformed` on JSON); the declaration (`kind_mismatch`,
-   `out_of_range`, the two bound reasons, `missing_required`). This replaces
-   the counter ranking in `TableReport.Err()` (#2777's "damage outranks").
-   A NaN after damage is now `wire_damaged` and a NaN before it
-   `non_finite_float`; the float "reach" rule is gone.
+3. **The reason is chosen by a FIXED RANK OF NAMES** (§6.5; Glenn: "Solve
+   this in the simplest possible way"), not by byte position: the envelope;
+   `wire_damaged` (all framing and the pointer graph); `blob_shared`; the caps;
+   the bounds; the values (`non_finite_float`, `missing_required`,
+   `kind_mismatch`, `out_of_range`). A read reports the highest-ranked
+   condition present and may stop early only when nothing higher can still be
+   present. A NaN anywhere beside damage is `wire_damaged`; the float "reach"
+   rule is gone. This keeps #2777's "damage outranks" and replaces its counter
+   ranking.
 4. **An unknown enum variant, union arm or keyed slot stays evolution**: the
    value reads `None` (the slot is dropped) and counts `unknown`, as an unknown
    field does. The alternative is to refuse it.
@@ -73,7 +73,7 @@ everything above it is red by design until its own layer lands.
 | layer | what | gate |
 |---|---|---|
 | 0 | **The spec** (this branch): SPEC-TABLES, FIXED-FORM-ALGORITHM, SPEC, VERSIONING, LAYERS/1-framing, FIXED-FORM-VERSIONING-TESTS, rulings.json, this plan | A cold read with no memory of the drafting, its findings applied; Glenn's answers to the decisions above. It lands together with layer 2, because the spec-agreement tests read the page |
-| 1 | **The models**: `tla/Framing.tla` (the inert body and the H3 crossing span removed; the header inside its body), a new `tla/ReadOrder.tla` (the three phases and byte order, invariant `OneReason`: two walks in different orders over one input name one reason), `tla/CardVersioning.tla` (`kindMis` and `clamp` become refusals) | TLC green on a bench machine on a small instance, a reversed witness per new invariant, `tla/RUNS.tsv` rows |
+| 1 | **The models**: `tla/Framing.tla` (the inert body and the H3 crossing span removed; the header inside its body), a new `tla/ReadOrder.tla` (the fixed rank of names, invariant `OneReason`: every input has exactly one top-ranked reason, and any detection order reports it), `tla/CardVersioning.tla` (`kindMis` and `clamp` become refusals) | TLC green on a bench machine on a small instance, a reversed witness per new invariant, `tla/RUNS.tsv` rows |
 | 2 | **The Go engine and oracle**: `internal/tablewire`, `internal/tabletext`, `internal/tablecook`, the report (`tabletext.Report`) and `tables/goruntime` `TableReport` and `Err()` | `go test` of those packages; `test/conformance/harness` `TestFramingVectorsReadThroughTheEngine`; the spec-agreement tests (`compiler/specgo_*`, `internal/baseline` `TestEvolutionTableDocsAgreeWithTheGolden`, `compiler/specgo_refusal_enum_test.go`) green against this spec; a negative control per phase |
 | 3 | **The harness and corpora** (inventory (b)), re-pinned from the engine | The harness's own tests; the Go leg (layer 4's first) green on every surface; `make conformance-pin` writes from the engine until the C++ leg lands, then from C++ again |
 | 4 | **Each leg** (inventory (a)), in this order: go, cpp, c, cs, rust, java, js, dart, elixir, goose, moo, lua, luau, squirrel, lobster. Go first because it is the engine's twin; C++ second because it is the reference the pins come from; then the original nine; then the six newer ports | For the leg: every conformance surface green; its wire fuzz with zero divergences against the engine; its negative controls; no tolerant entry point in its generated output or in `internal/tablenames/<lang>.go` (a grep gate per leg) |

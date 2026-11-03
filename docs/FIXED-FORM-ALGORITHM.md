@@ -411,11 +411,9 @@ rest (§5.8 row 4).
   here, its range carried by the plan like any other.
 - **A UNION TAG past the plan's arm count, or an ENUM ORDINAL past the plan's top variant (the `ordinal` op's
   `FORGED`): `REFUSE out_of_range`** — a value with no name in the writer's set is not one the writer wrote
-  (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked.
-
-**THE PASS'S ORDER IS THE WRITER'S RECORD OFFSET.** Its checks run in increasing offset of the field in the
-WRITER's record, whatever the reader's storage order, so the first `out_of_range` it meets is the one SPEC-TABLES
-§6.5's byte order names, on either plan. There is no `| max = K` headroom on
+  (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked, and it
+  answers one name, `out_of_range`, on either plan; its diagnostic text names the first such field in the
+  WRITER's record order. There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
   compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
 
@@ -931,16 +929,19 @@ LOAD(R, file, out, capacity, report):                  -- R the static data COMP
                                                          -- 8 is the per-record hash; a body of nothing behind
                                                         -- it would make `n` the file's length (fixedform.go:563)
  10  n := rest / record_bytes ; if n > capacity:         REFUSE batch_too_large
- 11  CHECK, every record, before any byte lands       -- SPEC-TABLES §6.5 step 2, in file order
+ 11  CHECK, every record, before any byte lands       -- note the conditions; the answer is the
+                                                        -- HIGHEST-RANKED name (SPEC-TABLES §6.5)
      per record, at `at`:
-       if LE(8, at) != h:                               REFUSE no_layout
-       per counted array, text, bool, present byte and float the plan names, in writer offset order:
-         a count or length past the plan's bound:      REFUSE count_over_bound / length_over_bound
-         ill-formed used text:                          REFUSE text_ill_formed
-         a bool or present byte other than 0 or 1:      REFUSE wire_damaged
-         a NaN or an infinity:                          REFUSE non_finite_float
+       if LE(8, at) != h:                               note no_layout          -- rank 1: may stop here
+       per LIVE datum the plan names — under an ACTIVE guard, a counted array's LIVE elements only,
+       an optional's payload only when its present byte is 1:
+         a bool or present byte other than 0 or 1:      note wire_damaged       -- rank 2
+         ill-formed used text:                          note text_ill_formed    -- rank 2
+         a count or length past the plan's bound:      note count_over_bound / length_over_bound  -- rank 5
+         a NaN or an infinity:                          note non_finite_float   -- rank 6
        at := at + record_bytes
- 12  LAND, every record                               -- step 3 is the bounds pass, in file order
+     if anything was noted:                             REFUSE the highest-ranked name noted
+ 12  LAND, every record                               -- the bounds pass: `out_of_range`, the lowest rank
      per record, at `at`:
        PREFILL(out[rec], fills)                         -- §4.3
        RUN(plan, split, at+8, out[rec])                 -- §4.4, one loop, either plan
@@ -1008,11 +1009,12 @@ the state SPEC-TABLES §6.5 states for `FixedLoad`. Framing damage — no first 
 reserved byte, a ragged tail — is a refusal like any other, each by its own name (`truncated`,
 `reserved_not_zero`).
 
-**TOTAL OVER THE BATCH, AND IN SPEC-TABLES §6.5's ORDER.** A reader checks EVERY record's hash, counts,
-lengths, used text, bool and present bytes and floats — the second phase, each against the WRITER's layout —
-before the first record lands, and the first condition in byte order across the file names the refusal; only
-then does it land the records and run the bounds pass, whose first `out_of_range` in byte order is the third
-phase. A refusal of the second phase at record `k` leaves `out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never
+**TOTAL OVER THE BATCH, AND BY SPEC-TABLES §6.5's RANK.** A reader checks EVERY record's hash and its live
+counts, lengths, used text, bool and present bytes and floats, each against the WRITER's layout, before the
+first record lands, and the highest-ranked condition across the file names the refusal; it may stop early only
+at `no_layout`, which nothing after the envelope outranks. Only then does it land the records and run the
+bounds pass, whose `out_of_range` is the lowest rank and so is answered only when the check loop noted
+nothing. A refusal of the check loop leaves `out[0..k-1]` exactly as untouched as `out[k]`, so a hostile image is refused by its name and is never
 left partly landed. This answers the open question `FIXED-FORM-VERSIONING-TESTS.md` names
 beside §5.8 row 9; the one-record corpus files of that row hold under either reading.
 
@@ -1070,8 +1072,8 @@ refusal by one name (SPEC-TABLES §6.5).
 |---|---|---|
 | `MATCH` and `EMIT`, at COMPILE | `UNLAWFUL` | a writer field no reader field names, or a pair whose kinds moved off every ladder: the entry is not a lawful widening of the reader, no plan is laid for it, and a file under its hash refuses `layout_malformed` (§5.2, §5.9 #30) |
 | `widen`, `widenf` | `widened` | once per entry per record — a grown integer, `f32` into `f64`, a grown `fixed(I,F)`, **a grown enum ordinal width**. **Per EXECUTED ENTRY**: a folded element run is ONE and a full unfolded run is `min(their_n, my_n)`. A counted run executes only its live elements; a widened run is never folded, so the full-count fixture asserts that EXACT count (§5.9 #33) |
-| LOAD's CHECK loop (§5.3 step 11) | `no_layout`, `count_over_bound`, `length_over_bound`, `text_ill_formed`, `wire_damaged`, `non_finite_float` | a forged record hash, a count or length past the plan's bound, ill-formed used text, a bool or present byte other than `0` or `1`, a NaN or an infinity, the first in file order |
-| the bounds pass | `out_of_range` | a ranged scalar off the plan's end, a `bits(N)` past `2^N - 1`, a union tag past the plan's arm count, an enum ordinal past the plan's top variant (a FORGED ordinal), **on the COMPILED plan exactly as on the identity one**, in writer record offset order (§4.6) |
+| LOAD's CHECK loop (§5.3 step 11) | `no_layout`, `count_over_bound`, `length_over_bound`, `text_ill_formed`, `wire_damaged`, `non_finite_float` | a forged record hash, a count or length past the plan's bound, ill-formed used text, a bool or present byte other than `0` or `1`, a NaN or an infinity, over LIVE data only; the highest-ranked name noted (SPEC-TABLES §6.5) |
+| the bounds pass | `out_of_range` | a ranged scalar off the plan's end, a `bits(N)` past `2^N - 1`, a union tag past the plan's arm count, an enum ordinal past the plan's top variant (a FORGED ordinal), **on the COMPILED plan exactly as on the identity one** (§4.6) |
 | `copy`, `const`, `present` | none | the op lands its value and moves nothing |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **the counter stays at zero**: an append the reader knows is not an event |
 
@@ -1490,7 +1492,7 @@ reports a lock bug as a wire event, with `malformed` and no name. Where the line
 entry carries `layout_malformed` and LOAD refuses by that name, exactly as #8 says.
 
 **27. A FORGED ORDINAL REFUSES IN THE BOUNDS PASS, AND ONLY THERE.** The `ordinal` op lands `FORGED` and
-refuses nothing; the bounds pass refuses it `out_of_range` on both plans, in writer record offset order, so the
+refuses nothing; the bounds pass refuses it `out_of_range` on both plans, so the
 compiled and identity plans give one answer (§4.5, §4.6).
 
 **28. THE CORPUS'S OWN FILE NAMES.** `old_<row>.bin` / `new_<row>.bin` is the pair, and the rows that are not a

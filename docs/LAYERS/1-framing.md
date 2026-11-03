@@ -42,17 +42,17 @@ defect (fixed, with a test and a negative control) or a finding below.
 and nothing else the read produced is defined.** §4: "DAMAGE — `wire_damaged`.
 Damage is input no conforming writer produces and that the wire itself, read
 with no declaration, already shows to be wrong." §6.5: every read is the strict
-read, and the reason is fixed by the input — the envelope first, then the
-well-formedness of the whole input in byte order, then the declaration in byte
-order. Glenn, 2026-10-31: "failing to read something means the whole read is
+read, and the reason is the highest-ranked NAME of the conditions the input
+holds, by §6.5's fixed rank; `wire_damaged` outranks everything after the
+envelope. Glenn, 2026-10-31: "failing to read something means the whole read is
 undefined, in my book." and "there's no point hand wringing trying to make
 partial reads well defined. if it fails to read, it's broken and everything in
 it today is suspect. discard." Glenn, 2026-11-03: "Cut the tolerant wire. It's
 too much work. It was a mistake to try to do it." and "It's best to
 consistently refuse." Every rule below that names damage names a case of D1,
 and none of them says what a load returns after it: no partial value, no
-resume point, no default, no counter. **No read continues past damage**: the
-first damage in byte order is the answer (§6.5).
+resume point, no default, no counter. **No read needs to continue past damage**:
+only the envelope outranks it (§6.5).
 
 **D2. Evolution is not damage, and it is the only thing a read accepts.** §4:
 an unknown field, variant, arm or slot skipped and counted `unknown`, an absent
@@ -192,7 +192,7 @@ so damage inside them is D1.
 
 **L2. Damage inside a nested body is damage to the whole load (D1).** §4,
 DAMAGE DISCARDS THE WHOLE LOAD. No nesting level stops alone and no parent
-reads on past a damaged body: the first damage in byte order is the answer.
+reads on past a damaged body: damage is the answer whatever lies after it.
 
 **L3. A body's terminator is the end of its payload; a terminator that arrives
 earlier, or not by `L`, is damage (D1).** §3: "A BODY'S TERMINATOR IS THE END
@@ -308,10 +308,9 @@ position.** §3.1: "Only the ROOT body carries the node table. No nested body
 ever does." "Field order is not part of the contract (§3), so a reader finds
 it by id." The nested case is R6.
 
-**T6. A reader that cannot name the reserved id counts one `unknown` for the
-field; a reader that can counts nothing.** §3.1: "The `unknown` count for it
-is ONE, whatever the save's size ... A reader that CAN name it counts
-nothing."
+**T6. Every reader knows the reserved id, parses the node table and counts
+nothing for it.** §3.1: "EVERY READER KNOWS THE RESERVED ID, AND EVERY READER
+PARSES THE FIELD." It is exempt from the unknown-field rule.
 
 **T7. A record whose type id this root cannot place is skipped by its length,
 counted `unknown`, and keeps its index; an index above `node_count + 1`, or a
