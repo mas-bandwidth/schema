@@ -83,7 +83,7 @@ func TestPinnedNestedFloatFramingElixir(t *testing.T) {
 	if e != nil || len(paths) == 0 {
 		t.Fatalf("examples schema: %v", e)
 	}
-	u := loadUnit(t, paths...)
+	u := loadVariableRetainFixture(t, paths...)
 	m := tabletext.NewModel(u)
 	wire, e := os.ReadFile("../../../testdata/wire/tables/fuzz-vectors/arm_length_empty_float.bin")
 	if e != nil {

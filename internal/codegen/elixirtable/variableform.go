@@ -81,19 +81,21 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	fmt.Fprintf(&b, "  @string_id 0x%016X\n", ir.StringWireTypeId)
 	fmt.Fprintf(&b, "  @bytes_id 0x%016X\n", ir.BytesWireTypeId)
 	fmt.Fprintf(&b, "  @region_align %d\n", ir.TableRegionAlign(u))
-	b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
-	b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
-	b.WriteString("  # caller's list rather than the generated table.\n")
-	var known strings.Builder
-	known.WriteString("[")
-	for _, id := range ir.TableWireIds(u) {
-		fmt.Fprintf(&known, "0x%016X, ", id)
+	if len(ir.VariableTables(u)) > 0 {
+		b.WriteString("  # every id the closure can name, ascending (docs/SPEC-TABLES.md §6.6): a\n")
+		b.WriteString("  # retained id is by definition not here, and takes its entry from the\n")
+		b.WriteString("  # caller's list rather than the generated table.\n")
+		var known strings.Builder
+		known.WriteString("[")
+		for _, id := range ir.TableWireIds(u) {
+			fmt.Fprintf(&known, "0x%016X, ", id)
+		}
+		known.WriteString("]")
+		// `MapSet.new([` keeps its bracket on the call's line, the ids two columns
+		// in from the call and `])` back at the call's column (mix format)
+		knownHead := "  @known_ids MapSet.new("
+		b.WriteString(knownHead + exParseLiteral(known.String()).render(exWidth(knownHead), exWidth("  @known_ids "), 1) + ")\n\n")
 	}
-	known.WriteString("]")
-	// `MapSet.new([` keeps its bracket on the call's line, the ids two columns
-	// in from the call and `])` back at the call's column (mix format)
-	knownHead := "  @known_ids MapSet.new("
-	b.WriteString(knownHead + exParseLiteral(known.String()).render(exWidth(knownHead), exWidth("  @known_ids "), 1) + ")\n\n")
 	var tables strings.Builder
 	tables.WriteString("%{\n")
 	anyExtent := false
@@ -203,6 +205,8 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 		retain = withRetainArmKinds(retain, armKinds)
 	}
 	runtime, retain = variableIntegrity(u, runtime, retain)
+	retainAttrs, retain := restrictRetainRoots(u, names, retain)
+	b.WriteString(retainAttrs)
 	attrs, runtime, cook := restrictFormRuntime(u, names, runtime, cook)
 	b.WriteString(attrs)
 	b.WriteString(runtime)
