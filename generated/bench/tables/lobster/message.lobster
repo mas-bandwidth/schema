@@ -1107,7 +1107,7 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         message_refuse(rep, "not_a_message_root: " + root)
         return 0, false
     let d = table_of(root)
-    let wire, intact = wire_integrity_body(d, data)
+    let wire, intact = wire_integrity_body(d, data, 6)
     if not intact:
         rep.malformed = true
         rep.damaged = true

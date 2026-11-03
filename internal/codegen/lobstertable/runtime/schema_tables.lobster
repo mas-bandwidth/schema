@@ -182,10 +182,10 @@ def wire_crc32c(data:string, used:int = -1) -> int:
     return (crc ^ 0xffffffff) & 0xffffffff
 
 // Called after the form-byte check, before resolving ids or reading fields.
-def wire_integrity_body(d:TableDescriptor, data:string) -> string, bool:
+def wire_integrity_body(d:TableDescriptor, data:string, minimum:int = 5) -> string, bool:
     if not d.integrity:
         return data, true
-    if length(data) < 5:
+    if length(data) < minimum:
         return "", false
     let n = length(data) - 4
     if read_uint32_le(data, n) != wire_crc32c(data, n):
