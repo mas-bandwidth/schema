@@ -337,67 +337,175 @@ table Squad
 {
     roster map[uint8]Node
 }
+
+table Teams
+{
+    squads [..2]Squad
+}
+
+table Bag
+{
+    xs []int32
+}
+
+table Opt
+{
+    held ?Bag
+}
+
+table Gate
+{
+    on bool
+    if on
+    {
+        xs []int32
+    }
+}
 `
 
-// TestMooCookWriteRefusals: a value outside the cook's contract is refused by
-// name, never written partly (§7.6): a non-finite float of either width, a
-// data cycle, a pointer in a dead counted slot (storage the numbering does
-// not reach), and a map (the tool refuses a map-bearing unit, §7.2). Each
-// asked of a clean value first, which cooks.
-func TestMooCookWriteRefusals(t *testing.T) {
-	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
-	t.Parallel()
-	files := map[string]string{"Probe.schema": refusalSource}
-	g := generateFiles(t, files)
-	ask := func(body string) string {
-		main := "--!strict\n" + g.requireAll() + "local T = require(\"./ProbeTable\")\nlocal W = require(\"./table_cookwrite\")\n" + body + `
-local size, why = W.measure(root, v)
-local file, whyWrite = W.cook(root, v, false)
-if file == nil then print("refuse " .. whyWrite.name .. " " .. tostring(whyWrite.field)) else print("cooked " .. buffer.len(file) .. " " .. tostring(size)) end
-`
-		return g.run(t, main, nil)
-	}
-	for _, c := range []struct{ name, body, want string }{
-		{"a finite pair", `local root = "Wide"
-local v = T.NewWide()
+// refusalCases are values asked of the write: each refusal a value outside the
+// cook's contract, refused by name and never written partly (§7.6), beside
+// the clean value it departs from, which cooks. "cooked same" also cooks the
+// value `other` and requires the two files equal byte for byte.
+var refusalCases = []struct{ name, body, want string }{
+	{"a finite pair", `local root = "Wide"
+v = T.NewWide()
 v.A = 0x3fc00000
 v.B = require("./serialize").Uint64.new(0, 0x3ff80000)`, "cooked"},
-		{"an infinite float32", `local root = "Wide"
-local v = T.NewWide()
+	{"an infinite float32", `local root = "Wide"
+v = T.NewWide()
 v.A = 0x7f800000`, "refuse non_finite_float Wide.a"},
-		{"a NaN float64", `local root = "Wide"
-local v = T.NewWide()
+	{"a NaN float64", `local root = "Wide"
+v = T.NewWide()
 v.B = require("./serialize").Uint64.new(0, 0x7ff80000)`, "refuse non_finite_float Wide.b"},
-		{"a chain", `local root = "Node"
-local v = T.NewNode()
+	{"a chain", `local root = "Node"
+v = T.NewNode()
 v.Next = T.NewNode()`, "cooked"},
-		{"a cycle", `local root = "Node"
-local v = T.NewNode()
+	{"a cycle", `local root = "Node"
+v = T.NewNode()
 v.Next = v`, "refuse cycle Node"},
-		{"a pointer in a live slot", `local root = "Holder"
-local v = T.NewHolder()
+	{"a pointer in a live slot", `local root = "Holder"
+v = T.NewHolder()
 v.RefsCount = 2
 v.Refs[2] = T.NewNode()`, "cooked"},
-		{"a pointer in a dead slot", `local root = "Holder"
-local v = T.NewHolder()
+	{"a pointer in a dead slot", `local root = "Holder"
+v = T.NewHolder()
 v.RefsCount = 1
 v.Refs[2] = T.NewNode()`, "refuse unnumbered_reference Holder.refs"},
-		{"a count past its bound", `local root = "Holder"
-local v = T.NewHolder()
+	{"a count past its bound", `local root = "Holder"
+v = T.NewHolder()
 v.RefsCount = 3`, "refuse invalid_value Holder.refs"},
-		{"a map", `local root = "Squad"
-local v = T.NewSquad()`, "refuse map_in_cook Squad.roster"},
-	} {
-		got := ask(c.body)
-		if c.want == "cooked" {
-			if !strings.HasPrefix(got, "cooked ") {
-				t.Errorf("%s: want a cook, got %q", c.name, got)
+	{"an empty map", `local root = "Squad"
+v = T.NewSquad()`, "cooked"},
+	// THE ENTRIES ARE PLACED IN ASCENDING KEY ORDER (§2.8, §7.4) whatever
+	// order the value holds them in: the cook a Find can search
+	{"a map's entries out of order", `local root = "Squad"
+v = T.NewSquad()
+v.Roster = { entry(1, 10), entry(2, 20), entry(3, 30) }
+other = T.NewSquad()
+other.Roster = { entry(3, 30), entry(1, 10), entry(2, 20) }`, "cooked same"},
+	{"a repeated key", `local root = "Squad"
+v = T.NewSquad()
+v.Roster = { entry(1, 10), entry(1, 20) }`, "refuse invalid_value Squad.roster"},
+	{"a map entry that is not a record", `local root = "Squad"
+v = T.NewSquad()
+v.Roster = { entry(1, 10), 7 }`, "refuse invalid_value Squad.roster"},
+	{"a map in a live slot", `local root = "Teams"
+v = T.NewTeams()
+v.SquadsCount = 2
+v.Squads[2].Roster = { entry(4, 40) }`, "cooked"},
+	{"a map in a dead slot", `local root = "Teams"
+v = T.NewTeams()
+v.SquadsCount = 1
+v.Squads[2].Roster = { entry(4, 40) }`, "refuse invalid_value Teams.squads"},
+	// A FIELD THE SAVE ELIDES IS NOT REACHED (§2.3, §7.6): an absent optional
+	// and a field under a false guard keep their slot zero, so a list in
+	// either names bytes the region will not hold
+	{"a present optional holding a list", `local root = "Opt"
+v = T.NewOpt()
+v.Held = T.NewBag()
+v.Held.Xs = { 1, 2 }
+v.HeldPresent = true`, "cooked"},
+	{"an absent optional holding a list", `local root = "Opt"
+v = T.NewOpt()
+v.Held = T.NewBag()
+v.Held.Xs = { 1, 2 }
+v.HeldPresent = false`, "refuse invalid_value Opt.held"},
+	{"a guarded list", `local root = "Gate"
+v = T.NewGate()
+v.On = true
+v.Xs = { 1, 2 }`, "cooked"},
+	{"an unguarded list", `local root = "Gate"
+v = T.NewGate()
+v.On = false
+v.Xs = { 1, 2 }`, "refuse invalid_value Gate.xs"},
+}
+
+// refusalFailures asks every refusal case of the emitted runtime and answers
+// each answer that is not the case's; mutate, when set, plants a defect in the
+// unit's emitted files first (the negative controls).
+func refusalFailures(t *testing.T, mutate func(*testing.T, *generatedUnit)) ([]string, *generatedUnit) {
+	t.Helper()
+	g := generateFiles(t, map[string]string{"Probe.schema": refusalSource})
+	if mutate != nil {
+		mutate(t, g)
+	}
+	var fails []string
+	for _, c := range refusalCases {
+		main := "--!strict\n" + g.requireAll() + `local T = require("./ProbeTable")
+local St = require("./schema_tables")
+local W = require("./table_cookwrite")
+local function entry(key: number, id: number): any
+	local e = St.lookup("SquadRosterEntry").new()
+	e.Key = key
+	e.Value = T.NewNode()
+	e.Value.Id = id
+	return e
+end
+local v: any = nil
+local other: any = nil
+` + c.body + `
+local size, why = W.measure(root, v)
+local file, whyWrite = W.cook(root, v, false)
+if file == nil then
+	print("refuse " .. whyWrite.name .. " " .. tostring(whyWrite.field))
+else
+	local tag = "cooked"
+	if other ~= nil then
+		local o = W.cook(root, other, false)
+		tag = if o ~= nil and buffer.tostring(o) == buffer.tostring(file) then "cooked same" else "cooked differs"
+	end
+	print(tag .. " " .. buffer.len(file) .. " " .. tostring(size))
+end
+`
+		got := g.run(t, main, nil)
+		if strings.HasPrefix(c.want, "cooked") {
+			f := strings.Fields(strings.TrimPrefix(got, c.want))
+			if !strings.HasPrefix(got, c.want+" ") || len(f) != 2 || f[0] != f[1] {
+				fails = append(fails, fmt.Sprintf("%s: want %s with the measure equal to the file, got %q", c.name, c.want, got))
 			}
 			continue
 		}
 		if got != c.want {
-			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			fails = append(fails, fmt.Sprintf("%s: got %q, want %q", c.name, got, c.want))
 		}
+	}
+	return fails, g
+}
+
+// TestMooCookWriteRefusals: a value outside the cook's contract is refused by
+// name, never written partly (§7.6): a non-finite float of either width, a
+// data cycle, a pointer or a map's entries in a dead counted slot (storage
+// the numbering does not reach), a list under an absent optional or a false
+// guard, and a map whose keys repeat (a cook Find cannot search, §7.4). Each
+// asked of a clean value first, which cooks; and a map's entries are cooked
+// in key order whatever order the value holds them in.
+func TestMooCookWriteRefusals(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
+	t.Parallel()
+	fails, g := refusalFailures(t, nil)
+	for _, f := range fails {
+		t.Error(f)
 	}
 	if a := g.analyze(t); a != "" {
 		t.Fatalf("moo-analyze is not silent:\n%s", a)
@@ -407,9 +515,13 @@ local v = T.NewSquad()`, "refuse map_in_cook Squad.roster"},
 // TestMooCookWriteNegativeControls plants one defect per property into the
 // emitted table_cookwrite.moo (or the numbering it shares) and requires the
 // gate that holds the property to go red: the byte order ignored, a
-// reference delta one slot long, an unbounded array's alignment dropped, and
-// a shared byte buffer refused as the wire refuses it. The unsabotaged runs
-// above are each control's reversed witness.
+// reference delta one slot long, an unbounded array's alignment dropped, a
+// shared byte buffer refused as the wire refuses it, a wide string's code
+// units written low byte first in a big-endian cook, a map's slot delta one
+// slot long, the arrays a map's entries hold left uncarved, a map's entries
+// left in the value's order, a repeated key let through, and a field the save
+// elides carved as if it rode. The unsabotaged runs above are each control's
+// reversed witness.
 func TestMooCookWriteNegativeControls(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_cookwrite.moo)")
 	t.Parallel()
@@ -434,11 +546,18 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		mutate     func(*testing.T, *generatedUnit)
 		manifest   bool
 		constructs bool
+		refusals   bool
 	}{
-		{"order", plant("table_cookwrite.moo", "\tif ctx.big then\n\t\tbuffer.writeu32(b, at, bit32.byteswap(hi))", "\tif false then\n\t\tbuffer.writeu32(b, at, bit32.byteswap(hi))"), true, true},
-		{"delta", plant("table_cookwrite.moo", "putNum64(ctx, at, to - at)", "putNum64(ctx, at, to - at + 8)"), true, true},
-		{"align", plant("table_cookwrite.moo", "c.at = align_up(c.at, l.ealign)", "c.at = c.at"), false, true},
-		{"shared", plant("table_cookwrite.moo", "Save.number(d, value, true)", "Save.number(d, value, false)"), true, false},
+		{"order", plant("table_cookwrite.moo", "\tif ctx.big then\n\t\tbuffer.writeu32(b, at, bit32.byteswap(hi))", "\tif false then\n\t\tbuffer.writeu32(b, at, bit32.byteswap(hi))"), true, true, false},
+		{"delta", plant("table_cookwrite.moo", "putNum64(ctx, at, to - at)", "putNum64(ctx, at, to - at + 8)"), true, true, false},
+		{"align", plant("table_cookwrite.moo", "\tc.at = align_up(c.at, l.ealign)\n\tlocal start = c.at\n\tc.at += count * size\n\tif c.write then\n\t\tlocal array = c.extentAt + start\n\t\t-- an empty list's", "\tlocal start = c.at\n\tc.at += count * size\n\tif c.write then\n\t\tlocal array = c.extentAt + start\n\t\t-- an empty list's"), false, true, false},
+		{"shared", plant("table_cookwrite.moo", "Save.number(d, value, true)", "Save.number(d, value, false)"), true, false, false},
+		{"wideorder", plant("table_cookwrite.moo", "buffer.writeu8(b, at + i * 2, u // 256)\n\t\t\t\tbuffer.writeu8(b, at + i * 2 + 1, u % 256)", "buffer.writeu8(b, at + i * 2, u % 256)\n\t\t\t\tbuffer.writeu8(b, at + i * 2 + 1, u // 256)"), true, false, false},
+		{"mapslot", plant("table_cookwrite.moo", "-- an empty map's reference is null in every encoding (§2.8)\n\t\tputNum64(ctx, at, if count > 0 then array - at else 0)", "putNum64(ctx, at, if count > 0 then array - at + 8 else 0)"), true, false, false},
+		{"mapextent", plant("table_cookwrite.moo", "if hasExtentRecord(d) then\n\t\tfor i = 1, count do\n\t\t\tif not carveRecord(", "if false then\n\t\tfor i = 1, count do\n\t\t\tif not carveRecord("), true, false, false},
+		{"maporder", plant("table_cookwrite.moo", "pcall(Save.mapOrder, fd, val)", "pcall(table.clone, val)"), false, false, true},
+		{"maprepeat", plant("table_cookwrite.moo", "if not Save.keyLess(keyfd, order[i - 1], order[i]) then", "if false then"), false, false, true},
+		{"liveness", plant("table_cookwrite.moo", "if Save.guardHolds(fd, v) and (fd.present == nil or v[fd.present] == true) then", "if true then"), false, false, true},
 	} {
 		if c.manifest {
 			fails, _, _ := cookWriteFailures(t, cookWriteRows(t), c.mutate)
@@ -449,6 +568,11 @@ func TestMooCookWriteNegativeControls(t *testing.T) {
 		if c.constructs {
 			if fails, _ := constructFailures(t, c.mutate); len(fails) == 0 {
 				t.Errorf("%s: the constructs gate is still green with the defect planted", c.name)
+			}
+		}
+		if c.refusals {
+			if fails, _ := refusalFailures(t, c.mutate); len(fails) == 0 {
+				t.Errorf("%s: the refusals gate is still green with the defect planted", c.name)
 			}
 		}
 	}
