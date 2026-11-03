@@ -4,15 +4,23 @@ package goosetable_test
 // §7.6), the Go leg's TestCookWriterMatchesIndependentLayout for Goose: each
 // case's value is read from text by the tool's model, written to a wire by
 // the tool's encoder, and cooked by the tool's cooker (internal/tablecook) in
-// both byte orders. The Goose program loads the same wire through
-// schema_rt::load_table and cooks it through the generated <Root>CookMeasure
-// and <Root>Cook — the typed writer for a fixed root it carries, the region
-// writer (runtime/cook_write.goose) for every other — and the bytes must be
-// the tool's, the measure the file's length, and a capacity one byte short
-// must write nothing. The conformance harness holds the same write against
-// the C++ reference's cooks for every cook-write row of the shared corpus
-// (test/conformance/goose/accel.goose); test/conformance/goose/negative-control-accel
-// cook-numbering is its control.
+// both byte orders; the populated feature witnesses
+// (testdata/conformance/feature-witnesses/full) are cooked from their
+// committed wires the way `schema cook` cooks them. The Goose program loads
+// the same wire through schema_rt::load_table and cooks it through the
+// generated <Root>CookMeasure and <Root>Cook — the typed writer for a fixed
+// root it carries, the region writer (runtime/cook_write.goose) for every
+// other — and the bytes must be the tool's, the measure the file's length,
+// and a capacity one byte short must write nothing. The conformance harness
+// holds the same write against the C++ reference's cooks for every cook-write
+// row of the shared corpus (test/conformance/goose/accel.goose);
+// test/conformance/goose/negative-control-accel cook-numbering is its
+// control.
+//
+// TestGooseCookRegionWriterBoundsCallerIndices holds the writer's refusal
+// contract over a caller's malformed loaded value (a pointer past the node
+// table, a root table past TableUnit's), and
+// TestGooseCookRegionWriterNegativeControl breaks each clause these gates own.
 //
 // Unit tests here use no real time, no socket and no network: each run is
 // `goose run` of a generated program in t.TempDir().
@@ -23,6 +31,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -35,6 +44,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // cookWriteCases are the Go leg's cases (internal/codegen/gotable,
@@ -112,53 +122,111 @@ table Root { name string(12)
  caption ?int32
  names map[string]string(8) }
 `, []string{`{}`, `{"name":"root","leaf":{"note":"hi","data":"AQID"},"thumb":"BAUG","caption":4,"names":{"a":"x","bb":"yy"}}`}},
+	{"wstring", `package probe
+table Root { title wstring(8)
+ label string(8) = "dflt"
+ next *Root }
+`, []string{`{}`, `{"title":"h\u00e9llo \ud83d\ude00","label":"x","next":{"title":"z"}}`}},
+}
+
+// cookUnitFiles generates a unit for Goose with `override` replacing runtime
+// files, plus all.goose, which imports every generated module.
+func cookUnitFiles(t *testing.T, paths []string, override map[string][]byte) (*ir.Unit, map[string][]byte) {
+	t.Helper()
+	u, err := compiler.New().Load(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := goose.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := goosetable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	maps.Copy(files, override)
+	mods := make([]string, 0, len(files))
+	for name := range files {
+		mods = append(mods, strings.TrimSuffix(name, ".goose"))
+	}
+	sort.Strings(mods)
+	var all strings.Builder
+	for _, mod := range mods {
+		fmt.Fprintf(&all, "import .%s;\n", mod)
+	}
+	files["all.goose"] = []byte(all.String())
+	return u, files
+}
+
+// cookWire is one wire the program cooks as a root.
+type cookWire struct {
+	file, root string
 }
 
 // cookWriteProgram is the Goose side: for each wire, the load, then for
-// each byte order one line — `ok <hex>` for the cook, or `bad <why>`.
-func cookWriteProgram(region bool, n int) string {
+// each byte order one line — `ok <hex>` for the cook, or `bad <why>`. A root
+// is cooked through its typed writer or its region writer, whichever the
+// unit's generated cook module declares.
+func cookWriteProgram(ns string, files map[string][]byte, wires []cookWire) string {
+	var cooks strings.Builder
+	for name, data := range files {
+		if strings.HasSuffix(name, "Cook.goose") {
+			cooks.Write(data)
+		}
+	}
+	roots := map[string]bool{}
+	for _, w := range wires {
+		roots[w.root] = true
+	}
+	names := make([]string, 0, len(roots))
+	for r := range roots {
+		names = append(names, r)
+	}
+	sort.Strings(names)
 	var b strings.Builder
 	b.WriteString("import os;\nimport .all;\n\n")
 	b.WriteString(gooserun.HexProbe)
-	b.WriteString(`
-fn measure(data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], root: i64) -> i64 {
-`)
-	if region {
-		b.WriteString("    return probe::RootCookMeasure(data, vals, nodes, root);\n")
-	} else {
-		b.WriteString("    return probe::RootCookMeasure();\n")
+	b.WriteString("\nfn measure(r: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], root: i64) -> i64 {\n")
+	for _, r := range names {
+		if strings.Contains(cooks.String(), "fn "+r+"CookMeasure(data: ") {
+			fmt.Fprintf(&b, "    if r == %q { return %s::%sCookMeasure(data, vals, nodes, root); }\n", r, ns, r)
+		} else {
+			fmt.Fprintf(&b, "    if r == %q { return %s::%sCookMeasure(); }\n", r, ns, r)
+		}
 	}
-	b.WriteString(`}
-
-fn cook(data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], root: i64, out: u8[:], big: bool) -> bool {
-`)
-	if region {
-		b.WriteString("    return probe::RootCook(data, vals, nodes, root, out, big);\n")
-	} else {
-		b.WriteString("    var v = probe::Root { .. };\n    probe::RootCookFromLoaded(v, data, vals, root);\n    return probe::RootCook(v, out, big);\n")
+	b.WriteString("    return -2;\n}\n\nfn cook(r: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], root: i64, out: u8[:], big: bool) -> bool {\n")
+	for _, r := range names {
+		if strings.Contains(cooks.String(), "fn "+r+"CookMeasure(data: ") {
+			fmt.Fprintf(&b, "    if r == %q { return %s::%sCook(data, vals, nodes, root, out, big); }\n", r, ns, r)
+		} else {
+			fmt.Fprintf(&b, "    if r == %q {\n        var v = %s::%s { .. };\n        %s::%sCookFromLoaded(v, data, vals, root);\n        return %s::%sCook(v, out, big);\n    }\n", r, ns, r, ns, r, ns, r)
+		}
 	}
-	b.WriteString(`}
+	fmt.Fprintf(&b, `    return false;
+}
 
-fn one(file: const u8[:]) {
+fn one(file: const u8[:], r: const u8[:]) {
     var data: u8[>..] = [];
     if !read_file(file, data) { write_stdout("bad unreadable\n"); return; }
     var vals: schema_rt::LoadVal[>..] = [];
     var nodes: schema_rt::LoadNode[>..] = [];
     var report = schema_rt::LoadReport { .. };
-    let root = schema_rt::load_table(probe::TableUnit, "Root", data, vals, nodes, report);
-    if root < 0 || report.malformed || report.refused { write_stdout("bad load\n"); return; }
+    let root = schema_rt::load_table(%s::TableUnit, r, data, vals, nodes, report);
+    if root < 0 || report.malformed || report.refused { write_stdout("bad load\n"); write_stdout("bad load\n"); return; }
     var big = false;
     while true {
-        let need = measure(data, vals, nodes, root);
+        let need = measure(r, data, vals, nodes, root);
         if need < 0 { write_stdout("bad measure\n"); }
         else {
-            var file: u8[>..] = [];
-            for i in need { file.push(0xa5); }
-            var short_ok = !cook(data, vals, nodes, root, file[0..need - 1], big);
-            for x in file { if x != 0xa5 { short_ok = false; } }
+            var out: u8[>..] = [];
+            for i in need { out.push(0xa5); }
+            var short_ok = !cook(r, data, vals, nodes, root, out[0..need - 1], big);
+            for x in out { if x != 0xa5 { short_ok = false; } }
             if !short_ok { write_stdout("bad short-capacity\n"); }
-            else if !cook(data, vals, nodes, root, file, big) { write_stdout("bad refused\n"); }
-            else { write_stdout("ok "); hex(file); }
+            else if !cook(r, data, vals, nodes, root, out, big) { write_stdout("bad refused\n"); }
+            else { write_stdout("ok "); hex(out); }
         }
         if big { break; }
         big = true;
@@ -166,12 +234,135 @@ fn one(file: const u8[:]) {
 }
 
 fn main() {
-`)
-	for i := range n {
-		fmt.Fprintf(&b, "    one(\"w%d.bin\");\n", i)
+`, ns)
+	for _, w := range wires {
+		fmt.Fprintf(&b, "    one(%q, %q);\n", w.file, w.root)
 	}
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// toolCook is the tool's cook of one wire in one order: the wire decoded by
+// the tool's engine into its model, then internal/tablecook, as `schema
+// cook` does it.
+func toolCook(t *testing.T, m *tabletext.Model, root string, wire []byte, big bool) []byte {
+	t.Helper()
+	inst := m.New(m.Lookup(root))
+	var report tabletext.Report
+	if _, err := tablewire.Decode(m, inst, wire, &report); err != nil || report.Malformed {
+		t.Fatalf("the tool does not decode the %s wire: %v %+v", root, err, report)
+	}
+	cooked, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cooked
+}
+
+// cookDiffs runs the program and answers one finding per wire and order
+// whose bytes are not the tool's.
+func cookDiffs(t *testing.T, ns string, files map[string][]byte, wires []cookWire, want [][]byte) []string {
+	t.Helper()
+	files["main.goose"] = []byte(cookWriteProgram(ns, files, wires))
+	out := gooserun.Run(t, t.TempDir(), "main.goose", files)
+	lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
+	if len(lines) != len(want) {
+		t.Fatalf("the program printed %d lines, want %d:\n%s", len(lines), len(want), out)
+	}
+	var bad []string
+	for i, line := range lines {
+		name := fmt.Sprintf("%s %s", wires[i/2].file, map[bool]string{false: "little", true: "big"}[i%2 == 1])
+		hexed, ok := strings.CutPrefix(line, "ok ")
+		if !ok {
+			bad = append(bad, name+": "+line)
+			continue
+		}
+		got, err := hex.DecodeString(hexed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(got, want[i]) {
+			at := 0
+			for at < len(got) && at < len(want[i]) && got[at] == want[i][at] {
+				at++
+			}
+			bad = append(bad, fmt.Sprintf("%s: %d bytes cooked, the tool cooks %d; first difference at byte %d", name, len(got), len(want[i]), at))
+		}
+	}
+	return bad
+}
+
+// cookProbe runs one cookWriteCases entry with `override` in place and
+// answers its findings.
+func cookProbe(t *testing.T, name string, override map[string][]byte) []string {
+	t.Helper()
+	var tc struct {
+		name, schema string
+		texts        []string
+	}
+	for _, c := range cookWriteCases {
+		if c.name == name {
+			tc = c
+		}
+	}
+	if tc.name == "" {
+		t.Fatalf("no case %s", name)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Probe.schema")
+	if err := os.WriteFile(path, []byte(tc.schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, files := cookUnitFiles(t, []string{path}, override)
+	m := tabletext.NewModel(u)
+	var wires []cookWire
+	var want [][]byte
+	for i, text := range tc.texts {
+		v := m.New(m.Lookup("Root"))
+		var report tabletext.Report
+		if !m.Read(v, []byte(text), &report) {
+			t.Fatalf("oracle text %d: %+v", i, report)
+		}
+		wire, err := tablewire.Encode(m, v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := fmt.Sprintf("w%d.bin", i)
+		files[file] = wire
+		wires = append(wires, cookWire{file, "Root"})
+		for _, big := range []bool{false, true} {
+			want = append(want, toolCook(t, m, "Root", wire, big))
+		}
+	}
+	return cookDiffs(t, "probe", files, wires, want)
+}
+
+// featureWitnesses are the populated implementation witnesses
+// (testdata/conformance/feature-witnesses/full): bounded and optional text
+// lists under a text-list total, unbounded list text and map keys, an
+// optional map, an optional variable closure, a timestamp, declared forms and
+// CRC-32C integrity, and an array root.
+var featureWitnesses = []cookWire{{"Root.bin", "Root"}, {"ArrayRoot.bin", "ArrayRoot"}}
+
+// featureProbe cooks the feature witnesses with `override` in place and
+// answers its findings.
+func featureProbe(t *testing.T, override map[string][]byte) []string {
+	t.Helper()
+	dir := filepath.Join(root, "testdata", "conformance", "feature-witnesses", "full")
+	u, files := cookUnitFiles(t, []string{filepath.Join(dir, "Features.schema")}, override)
+	m := tabletext.NewModel(u)
+	var want [][]byte
+	for _, w := range featureWitnesses {
+		wire, err := os.ReadFile(filepath.Join(dir, w.file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[w.file] = wire
+		for _, big := range []bool{false, true} {
+			want = append(want, toolCook(t, m, w.root, wire, big))
+		}
+	}
+	return cookDiffs(t, "featurewitnesses", files, featureWitnesses, want)
 }
 
 func TestGooseCookWriterMatchesIndependentLayout(t *testing.T) {
@@ -179,83 +370,17 @@ func TestGooseCookWriterMatchesIndependentLayout(t *testing.T) {
 	for _, tc := range cookWriteCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			dir := t.TempDir()
-			path := filepath.Join(dir, "Probe.schema")
-			if err := os.WriteFile(path, []byte(tc.schema), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			u, err := compiler.New().Load([]string{path})
-			if err != nil {
-				t.Fatal(err)
-			}
-			m := tabletext.NewModel(u)
-			files, err := goose.Generate(u)
-			if err != nil {
-				t.Fatal(err)
-			}
-			tables, err := goosetable.Generate(u)
-			if err != nil {
-				t.Fatal(err)
-			}
-			maps.Copy(files, tables)
-			region := strings.Contains(string(files["ProbeCook.goose"]), "fn RootCookMeasure(data: ")
-			mods := make([]string, 0, len(files))
-			for name := range files {
-				mods = append(mods, strings.TrimSuffix(name, ".goose"))
-			}
-			sort.Strings(mods)
-			var all strings.Builder
-			for _, mod := range mods {
-				fmt.Fprintf(&all, "import .%s;\n", mod)
-			}
-			files["all.goose"] = []byte(all.String())
-			var want [][]byte
-			for i, text := range tc.texts {
-				v := m.New(m.Lookup("Root"))
-				var report tabletext.Report
-				if !m.Read(v, []byte(text), &report) {
-					t.Fatalf("oracle text %d: %+v", i, report)
-				}
-				wire, err := tablewire.Encode(m, v)
-				if err != nil {
-					t.Fatal(err)
-				}
-				files[fmt.Sprintf("w%d.bin", i)] = wire
-				for _, big := range []bool{false, true} {
-					cooked, err := tablecook.Cook(m, v, tablecook.Options{Big: big})
-					if err != nil {
-						t.Fatal(err)
-					}
-					want = append(want, cooked)
-				}
-			}
-			files["main.goose"] = []byte(cookWriteProgram(region, len(tc.texts)))
-			out := gooserun.Run(t, t.TempDir(), "main.goose", files)
-			lines := strings.Split(strings.TrimSuffix(string(out), "\n"), "\n")
-			if len(lines) != len(want) {
-				t.Fatalf("the program printed %d lines, want %d:\n%s", len(lines), len(want), out)
-			}
-			for i, line := range lines {
-				name := fmt.Sprintf("text %d, %s", i/2, map[bool]string{false: "little", true: "big"}[i%2 == 1])
-				hexed, ok := strings.CutPrefix(line, "ok ")
-				if !ok {
-					t.Errorf("%s: %s", name, line)
-					continue
-				}
-				got, err := hex.DecodeString(hexed)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(got, want[i]) {
-					at := 0
-					for at < len(got) && at < len(want[i]) && got[at] == want[i][at] {
-						at++
-					}
-					t.Errorf("%s: %d bytes cooked, the tool cooks %d; first difference at byte %d", name, len(got), len(want[i]), at)
-				}
+			for _, bad := range cookProbe(t, tc.name, nil) {
+				t.Error(bad)
 			}
 		})
 	}
+	t.Run("feature-witnesses", func(t *testing.T) {
+		t.Parallel()
+		for _, bad := range featureProbe(t, nil) {
+			t.Error(bad)
+		}
+	})
 }
 
 // TestGooseCookRegionWriterHonoursDeclaredForms: a pointered root that
@@ -289,4 +414,180 @@ table Uncooked | forms = "wire" {
 	if !strings.Contains(home, "let CookedCookRegionTable:") || strings.Contains(home, "UncookedCookRegionTable") {
 		t.Errorf("formsdemo_cook.goose region roots are not the cook-carrying tables:\n%s", home)
 	}
+}
+
+// boundsProgram loads the `variable` case's populated wire and hands the
+// region writer two malformed loaded values: a pointer slot naming the wire
+// node nodes.len+2, past the node table, and a root table one past
+// TableUnit's. Each must measure -1 and cook false with a poisoned buffer
+// left untouched; it prints one line per check.
+const boundsProgram = `import os;
+import .all;
+
+fn load(data: const u8[:], vals: schema_rt::LoadVal[>..]&, nodes: schema_rt::LoadNode[>..]&) -> i64 {
+    var report = schema_rt::LoadReport { .. };
+    let root = schema_rt::load_table(probe::TableUnit, "Root", data, vals, nodes, report);
+    if root < 0 || report.malformed || report.refused { write_stdout("bad load\n"); exit(1); }
+    return root;
+}
+
+fn untouched(out: const u8[:]) -> bool {
+    for x in out { if x != 0xa5 { return false; } }
+    return true;
+}
+
+fn verdict(name: const u8[:], measured: i64, cooked: bool, out: const u8[:]) {
+    if measured == -1 && !cooked && untouched(out) { write_stdout(str(name, " refused\n")); return; }
+    write_stdout(str(name, " accepted: measure ", measured, ", cook ", cooked, ", output untouched ", untouched(out), "\n"));
+}
+
+fn main() {
+    var data: u8[>..] = [];
+    if !read_file("w1.bin", data) { write_stdout("bad unreadable\n"); exit(1); }
+    var out: u8[>..] = [];
+    for i in 4096 { out.push(0xa5); }
+
+    var vals: schema_rt::LoadVal[>..] = [];
+    var nodes: schema_rt::LoadNode[>..] = [];
+    let root = load(data, vals, nodes);
+    var edited = false;
+    for v, i in vals {
+        if !edited && v.shape == schema_rt::ShapePtr && v.state == schema_rt::ValPresent {
+            vals[i].bits = schema_rt::Int128 { lo: (nodes.len + 2) as! u64, hi: 0 };
+            edited = true;
+        }
+    }
+    if !edited { write_stdout("bad no pointer slot\n"); exit(1); }
+    verdict("pointer", probe::RootCookMeasure(data, vals, nodes, root), probe::RootCook(data, vals, nodes, root, out, false), out);
+
+    var vals2: schema_rt::LoadVal[>..] = [];
+    var nodes2: schema_rt::LoadNode[>..] = [];
+    let root2 = load(data, vals2, nodes2);
+    let tab = probe::TableUnit.tables.len;
+    let measured = schema_rt::cook_region_measure(probe::TableUnit, probe::CookRegionLayout, probe::BuildVersion, tab, data, vals2, nodes2, root2);
+    let cooked = schema_rt::cook_region_write(probe::TableUnit, probe::CookRegionLayout, probe::BuildVersion, tab, data, vals2, nodes2, root2, out, false, false) >= 0;
+    verdict("table", measured, cooked, out);
+}
+`
+
+// cookBounds runs boundsProgram over the `variable` case with `override` in
+// place and answers its stdout, and whether the program ran to its end.
+func cookBounds(t *testing.T, override map[string][]byte) (string, bool) {
+	t.Helper()
+	var schema, text string
+	for _, c := range cookWriteCases {
+		if c.name == "variable" {
+			schema, text = c.schema, c.texts[1]
+		}
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Probe.schema")
+	if err := os.WriteFile(path, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, files := cookUnitFiles(t, []string{path}, override)
+	m := tabletext.NewModel(u)
+	v := m.New(m.Lookup("Root"))
+	var report tabletext.Report
+	if !m.Read(v, []byte(text), &report) {
+		t.Fatalf("oracle text: %+v", report)
+	}
+	wire, err := tablewire.Encode(m, v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files["w1.bin"] = wire
+	files["main.goose"] = []byte(boundsProgram)
+	goosePath, why := gooserun.Compiler()
+	if goosePath == "" {
+		t.Fatalf("the Goose compiler does not resolve: %s", why)
+	}
+	run := t.TempDir()
+	for name, data := range files {
+		if err := os.WriteFile(filepath.Join(run, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cmd := exec.Command(goosePath, "run", "main.goose")
+	cmd.Dir = run
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err = cmd.Run()
+	return stdout.String(), err == nil
+}
+
+// TestGooseCookRegionWriterBoundsCallerIndices: the region writer reads a
+// caller's flat value table, so an index in it out of range is a refusal,
+// never a read out of range.
+func TestGooseCookRegionWriterBoundsCallerIndices(t *testing.T) {
+	t.Parallel()
+	out, ok := cookBounds(t, nil)
+	if want := "pointer refused\ntable refused\n"; !ok || out != want {
+		t.Fatalf("the bounds program answered %q (ran to its end: %t), want %q", out, ok, want)
+	}
+}
+
+// cookSabotage replaces lines of runtime/cook_write.goose, from/to pairs,
+// failing if one is not there exactly once, so a control can never pass
+// vacuously.
+func cookSabotage(t *testing.T, pairs ...string) map[string][]byte {
+	t.Helper()
+	data := string(goosetable.Runtime()["cook_write.goose"])
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if n := strings.Count(data, pairs[i]); n != 1 {
+			t.Fatalf("sabotage: cook_write.goose holds %q %d times, want once", pairs[i], n)
+		}
+		data = strings.Replace(data, pairs[i], pairs[i+1], 1)
+	}
+	return map[string][]byte{"cook_write.goose": []byte(data)}
+}
+
+// TestGooseCookRegionWriterNegativeControl breaks one clause of the region
+// writer per control and requires the gate that owns it to go red: the
+// unbounded text blob's length and the bounded text's used length (the
+// feature witnesses' text lists, list text and map keys), the wstring code
+// unit order (the wstring case), and each bound (the bounds program, which
+// then reads out of range and aborts instead of refusing; the root's table is
+// bounded twice, and its control removes both).
+func TestGooseCookRegionWriterNegativeControl(t *testing.T) {
+	t.Parallel()
+	t.Run("unbounded-text-length", func(t *testing.T) {
+		t.Parallel()
+		bad := featureProbe(t, cookSabotage(t, "        cook_put_at(c, blob, n as! u64, 4);\n", "        cook_put_at(c, blob, (n - 1) as! u64, 4);\n"))
+		if !strings.Contains(strings.Join(bad, "\n"), "Root.bin") {
+			t.Fatalf("a wrong blob length left the feature witnesses green: %q", bad)
+		}
+	})
+	t.Run("bounded-text-length", func(t *testing.T) {
+		t.Parallel()
+		bad := featureProbe(t, cookSabotage(t, "    cook_put_at(c, at + col.len_off, n as! u64, 4);\n", "    cook_put_at(c, at + col.len_off, 0, 4);\n"))
+		if !strings.Contains(strings.Join(bad, "\n"), "Root.bin") {
+			t.Fatalf("a zero text length left the feature witnesses green: %q", bad)
+		}
+	})
+	t.Run("wstring-unit-order", func(t *testing.T) {
+		t.Parallel()
+		bad := cookProbe(t, "wstring", cookSabotage(t, "lo | (hi << 8)", "hi | (lo << 8)"))
+		if len(bad) == 0 {
+			t.Fatal("swapped code-unit bytes left the wstring case green")
+		}
+	})
+	t.Run("pointer-bound", func(t *testing.T) {
+		t.Parallel()
+		out, ok := cookBounds(t, cookSabotage(t, "    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { c.refused = true; return 0; }\n", ""))
+		if ok && strings.Contains(out, "pointer refused") {
+			t.Fatalf("without the pointer bound the writer still refused: %q", out)
+		}
+	})
+	t.Run("table-bound", func(t *testing.T) {
+		t.Parallel()
+		// both places the root's table is bounded: the check before any walk,
+		// and the walk's own bound on every table index it follows
+		out, ok := cookBounds(t, cookSabotage(t,
+			"    if c.root_tab < 0 || c.root_tab >= tables { return false; }\n", "",
+			"    if tab < 0 || tab >= c.unit.tables.len { c.refused = true; return false; }\n", ""))
+		if ok && strings.Contains(out, "table refused") {
+			t.Fatalf("without the table bound the writer still refused: %q", out)
+		}
+	})
 }

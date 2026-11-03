@@ -123,6 +123,12 @@ fn cook_elem(c: CookCtx&, s: i64, k: i64) -> i64 {
 
 // cook_live is a collection's live count: a counted array's (its declared
 // least count where it did not ride, §4.6), a list's or a map's.
+// cook_payload is a union's one payload slot, -1 where it has none.
+fn cook_payload(c: CookCtx&, s: i64) -> i64 {
+    if s < 0 || !c.vals[s].made || c.vals[s].count < 1 { return -1; }
+    return c.vals[s].first;
+}
+
 fn cook_live(c: CookCtx&, s: i64, d: const FieldDesc&) -> i64 {
     if !cook_rode(c, s) || !c.vals[s].made {
         if d.array == ArrayCounted { return d.min; }
@@ -134,9 +140,57 @@ fn cook_live(c: CookCtx&, s: i64, d: const FieldDesc&) -> i64 {
     return n;
 }
 
+// cook_edge is a pointer slot's wire node index, 0 for null; an index past
+// the node table is refused.
 fn cook_edge(c: CookCtx&, s: i64) -> i64 {
     if s < 0 || c.vals[s].state != ValPresent { return 0; }
-    return c.vals[s].bits.lo as! i64;
+    let wire = c.vals[s].bits.lo;
+    if c.vals[s].bits.hi != 0 || wire > (c.nodes.len + 1) as! u64 { c.refused = true; return 0; }
+    return wire as! i64;
+}
+
+// cook_view is a text value's bytes, a view of the input; a view outside the
+// input is refused and reads as empty.
+fn cook_view(c: CookCtx&, s: i64) -> const u8[:] {
+    let off = c.vals[s].off;
+    let n = c.vals[s].len;
+    if off < 0 || n < 0 || off > c.data.len || n > c.data.len - off { c.refused = true; return c.data[0..0]; }
+    return c.data[off..off + n];
+}
+
+// cook_table_ok bounds a table index a loaded record names.
+fn cook_table_ok(c: CookCtx&, tab: i64) -> bool {
+    if tab < 0 || tab >= c.unit.tables.len { c.refused = true; return false; }
+    return true;
+}
+
+// cook_shape_ok is THE BOUNDS CHECK of a caller's loaded value, run once
+// before any walk (§7.6: a refusal writes nothing, and a malformed index is
+// a refusal, never a read out of range): the layout matches the unit, the
+// root and its table are in range, every node names a record in range or a
+// blob inside the input, and every value's child slots lie inside the table.
+// A pointer, a record's table and a text view are bounded where they are
+// read (cook_edge, cook_table_ok, cook_view).
+fn cook_shape_ok(c: CookCtx&) -> bool {
+    let tables = c.unit.tables.len;
+    if c.lay.tabs.len != tables || c.lay.unis.len != c.unit.unions.len { return false; }
+    for t, i in c.unit.tables { if c.lay.tabs[i].cols.len < t.fields.len { return false; } }
+    for u, i in c.unit.unions { if c.lay.unis[i].cols.len < u.arms.len { return false; } }
+    if c.root_tab < 0 || c.root_tab >= tables { return false; }
+    if c.root < 0 || c.root >= c.vals.len { return false; }
+    for n in c.nodes {
+        if n.blob != 0 {
+            if n.off < 0 || n.len < 0 || n.off > c.data.len || n.len > c.data.len - n.off { return false; }
+        } else if n.val >= 0 {
+            if n.val >= c.vals.len || n.tab < 0 || n.tab >= tables { return false; }
+        }
+    }
+    for v in c.vals {
+        if !v.made { continue; }
+        if v.first < 0 || v.count < 0 || v.first > c.vals.len || v.count > c.vals.len - v.first { return false; }
+        if v.len < 0 || v.len > v.count { return false; }
+    }
+    return true;
 }
 
 fn cook_bool_of(c: CookCtx&, s: i64, d: const FieldDesc&) -> bool {
@@ -166,7 +220,9 @@ recursive fn cook_visit(c: CookCtx&, wire: i64) {
     c.index[wire] = c.order.len;
     if wire == 1 || c.nodes[wire - 2].blob != 0 { return; }
     let rec = c.nodes[wire - 2].val;
-    if rec < 0 { return; }
+    // a node that is neither a blob nor a placed record names nothing a
+    // load can reach
+    if rec < 0 { c.refused = true; return; }
     c.open[wire] = true;
     cook_edges(c, c.nodes[wire - 2].tab, rec);
     c.open[wire] = false;
@@ -175,6 +231,7 @@ recursive fn cook_visit(c: CookCtx&, wire: i64) {
 // cook_edges walks one record's by-value closure for pointer edges, in field
 // order: a field under a false guard or an absent optional is not an edge.
 recursive fn cook_edges(c: CookCtx&, tab: i64, rec: i64) {
+    if !cook_table_ok(c, tab) { return; }
     for d, i in c.unit.tables[tab].fields {
         if c.refused { return; }
         let s = cook_slot(c, rec, i);
@@ -229,7 +286,7 @@ recursive fn cook_edges_arm(c: CookCtx&, s: i64, name: const u8[:]) {
     for x, i in c.unit.unions { if x.name == name { u = i; break; } }
     if u < 0 || tag > c.unit.unions[u].arms.len { return; }
     let a = c.unit.unions[u].arms[tag - 1];
-    let p = c.vals[s].first;
+    let p = cook_payload(c, s);
     if p < 0 { return; }
     if a.shape == ShapeTab {
         if c.vals[p].made { cook_edges(c, c.vals[p].tab, p); }
@@ -282,9 +339,10 @@ fn cook_ref(c: CookCtx&, at: i64, wire: i64) -> bool {
 // used bytes (a wstring's code units, each in the cook's order), then the zero
 // tail the extent already holds.
 fn cook_text(c: CookCtx&, s: i64, d: const FieldDesc&, col: const CookCol&, at: i64) -> bool {
-    if cook_rode(c, s) { return cook_text_put(c, c.data[c.vals[s].off..c.vals[s].off + c.vals[s].len], d.wide, col, at); }
-    if !d.has_def { return cook_text_put(c, c.data[0..0], d.wide, col, at); }
-    if d.wide && d.def_s.len > 0 { return cook_refuse(c); }
+    if cook_rode(c, s) { return cook_text_put(c, cook_view(c, s), d.wide, col, at); }
+    // a wstring takes no specified default (SPEC §4.12), so an absent one is
+    // empty; a `string(N)` or `bytes(N)` is its declared default's bytes
+    if !d.has_def || d.wide { return cook_text_put(c, c.data[0..0], d.wide, col, at); }
     return cook_text_put(c, d.def_s, d.wide, col, at);
 }
 
@@ -382,8 +440,7 @@ recursive fn cook_union(c: CookCtx&, s: i64, u: i64, at: i64) -> bool {
     if tag == 0 { return true; }
     let a = c.unit.unions[u].arms[tag - 1];
     if a.shape == ShapeVoid { return true; }
-    var p: i64 = -1;
-    if c.vals[s].made { p = c.vals[s].first; }
+    let p = cook_payload(c, s);
     return cook_field(c, p, a, un.cols[tag - 1], at + un.arm);
 }
 
@@ -469,8 +526,7 @@ recursive fn cook_carve_value(c: CookCtx&, s: i64, d: const FieldDesc&, col: con
     if tag <= 0 || tag > c.unit.unions[u].arms.len { return true; }
     let a = c.unit.unions[u].arms[tag - 1];
     if a.shape == ShapeVoid { return true; }
-    var p: i64 = -1;
-    if c.vals[s].made { p = c.vals[s].first; }
+    let p = cook_payload(c, s);
     return cook_carve_field(c, p, a, c.lay.unis[u].cols[tag - 1], at + c.lay.unis[u].arm);
 }
 
@@ -527,7 +583,7 @@ recursive fn cook_carve_map(c: CookCtx&, s: i64, col: const CookCol&, slot: i64)
 // holder's extent at eight, its length, its bytes and a terminator, rounded
 // to the region's alignment; an empty or absent text is the null reference.
 fn cook_carve_text(c: CookCtx&, s: i64, d: const FieldDesc&, slot: i64) -> bool {
-    if cook_rode(c, s) { return cook_carve_blob(c, c.data[c.vals[s].off..c.vals[s].off + c.vals[s].len], slot); }
+    if cook_rode(c, s) { return cook_carve_blob(c, cook_view(c, s), slot); }
     if d.has_def && !d.optional { return cook_carve_blob(c, d.def_s, slot); }
     return cook_carve_blob(c, c.data[0..0], slot);
 }
@@ -643,22 +699,23 @@ fn cook_data(c: CookCtx&) -> bool {
 // table `root_tab`: the whole cooked file's length (a measure, `out` unused
 // and `measure` true), or the file written into out[0..length] in the order
 // `big` names. It answers -1, writing nothing, on a data cycle, a non-finite
-// float, a union tag past its arms, extent the walk does not reach, or a
-// capacity short of the length.
+// float, a union tag past its arms, extent the walk does not reach, a
+// capacity short of the length, or an index in the caller's loaded value
+// (a root, a table, a node, a child slot, a text view) out of range.
 fn cook_region_write(unit: LoadUnit, lay: CookUnitLayout, build: u64, root_tab: i64, data: const u8[:], vals: const LoadVal[:], nodes: const LoadNode[:], root: i64, out: u8[:], big: bool, measure: bool) -> i64 {
-    if root < 0 || root >= vals.len || root_tab < 0 { return -1; }
     var index: i64[>..<] = [];
     var order: i64[>..<] = [];
     var open: bool[>..<] = [];
     var offs: i64[>..<] = [];
     var exts: i64[>..<] = [];
     var c = CookCtx { unit: unit, lay: lay, data: data, vals: vals, nodes: nodes, root_tab: root_tab, root: root, region: out[0..0], big: big, index: index, order: order, open: open, offs: offs, exts: exts, refused: false, writing: false, ext_base: 0, at: 0 };
+    if !cook_shape_ok(c) { return -1; }
     let bytes, align = cook_layout(c);
-    if bytes < 0 { return -1; }
+    if bytes < 0 || c.refused { return -1; }
     let data_offset = cook_align_up(TableCookHeaderBytes, align);
     let total = data_offset + bytes + c.order.len * 16;
     // THE DRY RUN: every refusal the write can meet, before a byte is written
-    if !cook_data(c) { return -1; }
+    if !cook_data(c) || c.refused { return -1; }
     if measure { return total; }
     if out.len < total { return -1; }
     cook_begin(out[0..total], build, bytes, c.order.len, align, big);
