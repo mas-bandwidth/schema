@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -467,10 +468,41 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 				mask := (uint64(1) << f.Type.Width) - 1
 				g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
 			}
+		} else {
+			g.emitRangeAssert(f, expr, ind, width)
 		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
 	}
+}
+
+// emitRangeAssert is the WRITE CONTRACT's debug-only refusal of an integer
+// outside its declaration (docs/SPEC.md §5.1): a ranged value off its min or
+// max, or a bits(N) value wider than N. It is schema_assert, so NDEBUG removes
+// it and a release write pays nothing; a debug write (or the measure, which
+// shares this body) that would put such a value on the wire stops at the
+// assert. A | required field refuses the same value in every build, so the
+// caller gives it none. An end that sits on the storage width's own limit is
+// one no value can pass, and is left out as the read's clamp leaves it out.
+func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string, width int) {
+	var conds []string
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		clampMin, clampMax := tableClampEnds(f, width)
+		if clampMin {
+			conds = append(conds, fmt.Sprintf("%s >= %s", expr, tableIntLit(lo, f.Type.Signed, width)))
+		}
+		if clampMax {
+			conds = append(conds, fmt.Sprintf("%s <= %s", expr, tableIntLit(hi, f.Type.Signed, width)))
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		conds = append(conds, fmt.Sprintf("(uint64_t)( %s ) <= 0x%xull", expr, (uint64(1)<<f.Type.Width)-1))
+	}
+	if len(conds) == 0 {
+		return
+	}
+	g.wroteAssert = true
+	g.pf("%sschema_assert( %s ); /* a write keeps the declared bounds (SPEC.md §5.1) */\n", ind, strings.Join(conds, " && "))
 }
 
 // emitTableReadScalarFrom decodes one fixed-width scalar from the named
