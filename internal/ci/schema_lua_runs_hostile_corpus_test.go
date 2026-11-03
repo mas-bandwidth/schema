@@ -233,15 +233,15 @@ local function caseResult(c)
     if r.malformed or value == nil then return "refuse", "damaged", nil end
   elseif c[2] == "wire" then
     value = L.Load(T, c[4], payload, r)
+    -- A COUNT PAST THE INT32 STORAGE CAP is the port's count_over_extent_cap
+    -- (§2.9), which the corpus names count_refusal.
+    if r.reason == "count_over_extent_cap" then return "refuse", "count_refusal", nil end
     if r.refused > 0 then
       local form = #payload > 0 and payload:byte(1) or 0
       return "refuse", form == 2 and "message_form_as_file" or "newer_form", nil
     end
-    -- A LOAD THAT NAMED A STORAGE REFUSAL reports it: count_refusal is the
-    -- engine's CountRefusal (§2.9), not the unnamed damage the wire branch
-    -- otherwise reads. The strict read's other reasons (wire_damaged,
-    -- malformed, integrity_mismatch) stay the manifest's generic damaged.
-    if r.reason == "count_refusal" then return "refuse", r.reason, nil end
+    -- The strict read's other reasons (wire_damaged, malformed,
+    -- integrity_mismatch) stay the manifest's generic damaged.
     -- A NaN OR AN INFINITY is refused by every read, by name (docs/SPEC-TABLES.md
     -- §3.3): the strict load's reason is the corpus's non_finite_float.
     if r.reason == "non_finite_float" then return "refuse", r.reason, nil end
