@@ -1402,9 +1402,11 @@ public final class BenchMixedVariable {
         }
         TableVariable.Measure measure = new TableVariable.Measure();
         if (loadMeasure(data, measure) < 0) {
-            report.refused = true;
             if (measure.report.reason != null) {
+                report.refused = true;
                 report.reason = measure.report.reason;
+            } else {
+                report.malformed = true;
             }
             return null;
         }

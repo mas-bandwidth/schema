@@ -23,7 +23,8 @@ public final class TableVariable {
         if (report.reason == null) {
             report.reason = "non_finite_float: " + field;
         }
-        if (report.strict == null) {
+        // of two refusals in one read, the first in read order names it (§2.9)
+        if (report.strict == null && !report.refused) {
             report.strict = TableRefuseReason.nonFiniteFloat;
         }
         report.refused = true;
@@ -180,11 +181,11 @@ public final class TableVariable {
          * THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict error identity"):
          * null when the strict rule accepts the read this report describes, else the one reason it
          * refuses. A form byte the read does not carry is unknownForm whichever form-specific name
-         * reason holds; then integrityMismatch, nonFiniteFloat, any damage as wireDamaged (a
-         * malformed body, or a refusal that names no reason the strict read carries: a count past
-         * its length or the extent cap), missingRequired, blobShared, clamped and kindMismatch, in
-         * that order. unknown, widened, retained and duplicate alone never refuse. It reads the
-         * report and allocates nothing.
+         * reason holds; then integrityMismatch, nonFiniteFloat, any damage as wireDamaged (a count
+         * past its body's length included), missingRequired, countOverExtentCap for a count past
+         * the int32 storage cap, blobShared, clamped and kindMismatch, in that order. unknown,
+         * widened, retained and duplicate alone never refuse. It reads the report and allocates
+         * nothing.
          */
         public TableRefuseReason err() {
             if (strict != null) {
@@ -197,7 +198,9 @@ public final class TableVariable {
                 return TableRefuseReason.missingRequired;
             }
             if (refused) {
-                return TableRefuseReason.wireDamaged;
+                return "count_over_extent_cap".equals(reason)
+                        ? TableRefuseReason.countOverExtentCap
+                        : TableRefuseReason.wireDamaged;
             }
             if (blobShared > 0) {
                 return TableRefuseReason.blobShared;

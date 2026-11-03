@@ -42,7 +42,8 @@ public final class TableVariable {
         if (report.reason == null) {
             report.reason = "non_finite_float: " + field;
         }
-        if (report.strict == null) {
+        // of two refusals in one read, the first in read order names it (§2.9)
+        if (report.strict == null && !report.refused) {
             report.strict = TableRefuseReason.nonFiniteFloat;
         }
         report.refused = true;
@@ -201,9 +202,9 @@ public final class TableVariable {
          * report describes, else the one reason it refuses. A form byte the read
          * does not carry is unknownForm whichever form-specific name reason
          * holds; then integrityMismatch, nonFiniteFloat, any damage as
-         * wireDamaged (a malformed body, or a refusal that names no reason the
-         * strict read carries: a count past its length or the extent cap),
-         * missingRequired, blobShared, clamped and kindMismatch, in that order.
+         * wireDamaged (a count past its body's length included), missingRequired,
+         * countOverExtentCap for a count past the int32 storage cap, blobShared,
+         * clamped and kindMismatch, in that order.
          * unknown, widened, retained and duplicate alone never refuse. It reads
          * the report and allocates nothing.
          */
@@ -218,7 +219,9 @@ public final class TableVariable {
                 return TableRefuseReason.missingRequired;
             }
             if (refused) {
-                return TableRefuseReason.wireDamaged;
+                return "count_over_extent_cap".equals(reason)
+                        ? TableRefuseReason.countOverExtentCap
+                        : TableRefuseReason.wireDamaged;
             }
             if (blobShared > 0) {
                 return TableRefuseReason.blobShared;
@@ -3787,17 +3790,23 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct) (string, error) {
 		// the stop, but the oracle framing walk does (internal/tablewire
 		// extent.go FileRegionMeasure): a LIST COUNT whose elements cannot fit
 		// its own L inside a MAP VALUE the read abandoned is still
-		// count_over_length, and the file is refused, not loaded (docs/SPEC-TABLES.md
-		// §6.5 "The two load paths", §6.2, §3.3; §2.8, §2.9). The stop is not
+		// count_over_length, and the file is damaged, not loaded (docs/SPEC-TABLES.md
+		// §6.5 "The two load paths", §6.2, §3.3, §4; §2.8, §2.9). The stop is not
 		// always counted as malformed: a value ref that resolves to the wrong
 		// kind stops the entry as kind_mismatch, and the list past it is never
 		// read either. So the walk runs on every load that has not refused:
-		// measureFields IS the oracle walk, and the load refuses exactly where
-		// loadMeasure answers -1, whatever the read reported.
+		// measureFields IS the oracle walk, and the load lands nothing exactly
+		// where loadMeasure answers -1, whatever the read reported. A -1 that
+		// names a reason is that refusal (count_over_extent_cap); one that names
+		// none is damage, so the report says malformed and not refused.
 		fmt.Fprintf(&b, "        TableVariable.Measure measure = new TableVariable.Measure();\n")
 		fmt.Fprintf(&b, "        if (loadMeasure(data, measure) < 0) {\n")
-		fmt.Fprintf(&b, "            report.refused = true;\n")
-		fmt.Fprintf(&b, "            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		fmt.Fprintf(&b, "            if (measure.report.reason != null) {\n")
+		fmt.Fprintf(&b, "                report.refused = true;\n")
+		fmt.Fprintf(&b, "                report.reason = measure.report.reason;\n")
+		fmt.Fprintf(&b, "            } else {\n")
+		fmt.Fprintf(&b, "                report.malformed = true;\n")
+		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "            return null;\n")
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        nt.from = 1;\n")
@@ -5170,7 +5179,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 			fmt.Fprintf(b, "                                    v.%s.add(null);\n", m)
 			fmt.Fprintf(b, "                                    v.%sIdx.add(idx);\n", m)
 			fmt.Fprintf(b, "                                }\n")
-			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else { report.malformed = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5258,7 +5267,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            }\n")
 		} else {
-			fmt.Fprintf(b, "                            } else { if (!report.refused && (n < 0 || n > 0x7FFFFFFFL)) { report.reason = \"count_over_extent_cap\"; } report.refused = true; }\n")
+			fmt.Fprintf(b, "                            } else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else { report.malformed = true; }\n")
 		}
 		fmt.Fprintf(b, "                        }\n")
 		fmt.Fprintf(b, "                    }\n")
@@ -5383,7 +5392,7 @@ func floatOwnerName(st *ir.Struct, f *ir.Field) string {
 func writeArrayElemRead(b *strings.Builder, f *ir.Field, m, owner string) {
 	refusePrefix := func(widthExpr string) string {
 		if f.Array == ir.ArrayList {
-			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.refused = true; } else ", widthExpr)
+			return fmt.Sprintf("if (n > (long) (ar.limit - ar.off) / (%s)) { report.malformed = true; } else ", widthExpr)
 		}
 		return ""
 	}

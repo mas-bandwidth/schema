@@ -159,8 +159,8 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 // mismatch (§4), and its count is read against the ENCLOSING body as the
 // engine's mapField reads it, so a count spelled past the map's own L still
 // leaves the mismatch counted. A count whose entries cannot fit the body (each
-// entry is at least two bytes) is refused, never read as a short map: the oracle's LoadMeasure
-// answers count_over_length for it (§2.9, §6.5).
+// entry is at least two bytes) is damage, never read as a short map: the oracle's LoadMeasure
+// answers count_over_length for it (§2.9, §4, §6.5).
 // An entry whose VALUE body is damaged still stands with what decoded before
 // the damage: a malformed value is the entry's own field event, never a map
 // reset (§2.8: "the value reads its default, the entry stays"), so the entry
@@ -168,7 +168,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 func writeMapFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, retain bool, ordinal int) {
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
-	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else if(n>(long)(ar.limit-ar.off)/2){report.refused=true;}else {\n")
+	fmt.Fprintf(b, "                if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long n=ek!=13?ar.count(r.limit):ar.leb();if(!ar.fail){if(ek!=13){report.kindMismatch++;}else if(n<0||n>0x7fffffffL){if(!report.refused){report.reason=\"count_over_extent_cap\";}report.refused=true;}else if(n>(long)(ar.limit-ar.off)/2){report.malformed=true;}else {\n")
 	if retain {
 		fmt.Fprintf(b, "                    retain.discardField(path,depth,%d);\n", ordinal)
 	}

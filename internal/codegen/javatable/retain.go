@@ -119,14 +119,14 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("            }\n        }\n")
 		fmt.Fprintf(&b, "        readFieldsRetain(r, v, nt, retain, report, path, 0);\n")
 		b.WriteString("        if (report.refused) { retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear(); return null; }\n")
-		// THE SAME FRAMING WALK the plain load runs after its read: a load refuses
-		// exactly where loadMeasure answers -1 (docs/SPEC-TABLES.md §6.5), so a
-		// container whose count its framing cannot cover is refused whole here
-		// too, never retained around (§6.6).
+		// THE SAME FRAMING WALK the plain load runs after its read: a load lands
+		// nothing exactly where loadMeasure answers -1 (docs/SPEC-TABLES.md §6.5),
+		// so a container whose count its framing cannot cover is damage here too
+		// (malformed, not refused), never retained around (§4, §6.6). A -1 that
+		// names a reason is that refusal.
 		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
 		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
-		b.WriteString("            report.refused = true;\n")
-		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
+		b.WriteString("            if (measure.report.reason != null) { report.refused = true; report.reason = measure.report.reason; } else { report.malformed = true; }\n")
 		b.WriteString("            retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")
 		b.WriteString("            return null;\n")
 		b.WriteString("        }\n")
