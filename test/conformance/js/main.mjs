@@ -822,7 +822,7 @@ async function codecOf(unit, root, path) {
   const m = await load(path);
   const codec = {
     load: m[root + "Load"], save: m[root + "Save"], toJson: m[root + "ToJson"], fromJson: m[root + "FromJson"],
-    measureReason: m[root + "MeasureReason"],
+    measureReason: m[root + "MeasureReason"], readStrict: m[root + "ReadStrict"],
     report: () => new m.TableVariableReport(),
   };
   if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
@@ -964,15 +964,22 @@ async function surfaceFraming(lines, outDir) {
 }
 
 // strict-reason: the STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5)
-// for every wire a `report` or `framing` line names. The JavaScript runtime
-// carries no strict read: its variable load is the tolerant read, and its
-// report has no reason for what the strict rule refuses (clamped,
-// kind_mismatch, malformed, wire_damaged), so every case is answered absent
-// rather than spelled from the tolerant read.
-function surfaceStrictReason(lines, outDir) {
+// for every wire a `report` or `framing` line names, spelled as the enum's own
+// value name, or `ok` for a read the strict rule accepts. The reason is the
+// generated <Root>ReadStrict's own, named by its report's err(); this surface
+// only spells it. A `report` row binds the root as the report surface does and
+// a `framing` row as the framing surface does; a root neither binds is answered
+// `<case>.absent`.
+async function surfaceStrictReason(lines, outDir) {
   for (const f of lines) {
     if (f[0] !== "report" && f[0] !== "framing") { continue; }
-    writeFileSync(join(outDir, f[1] + ".absent"), "");
+    const codec = f[0] === "report" ? await wireCodec(f[2], f[3]) : await textCodec(f[2], f[3]);
+    if (codec === null) { wireAbsent(outDir, f[1]); continue; }
+    const r = codec.report();
+    const v = codec.readStrict(new Uint8Array(readFileSync(f[4])), r);
+    const why = r.err();
+    if ((v === null) !== (why !== null)) { fail(f[1] + ": the strict read's value and reason disagree " + JSON.stringify(r)); }
+    writeFileSync(join(outDir, f[1]), (why === null ? "ok" : why) + "\n");
   }
 }
 
@@ -1420,6 +1427,6 @@ switch (surface) {
   case "cook-forgery": surfaceCookForgery(lines, outDir); break;
   case "cook-reason": surfaceReason("cook", lines, outDir); break;
   case "block-reason": surfaceReason("block", lines, outDir); break;
-  case "strict-reason": surfaceStrictReason(lines, outDir); break;
+  case "strict-reason": await surfaceStrictReason(lines, outDir); break;
   default: process.exit(2);
 }
