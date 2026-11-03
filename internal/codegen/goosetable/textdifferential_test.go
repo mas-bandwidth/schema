@@ -35,7 +35,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
 	"github.com/mas-bandwidth/schema/v2/internal/tablepack"
@@ -150,7 +149,7 @@ func runGooseTextDifferential(t *testing.T, edit func(map[string][]byte)) []stri
 	if err := os.WriteFile(src, []byte(gooseTextDifferentialSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	u, err := compiler.New().Load([]string{src})
+	u, err := loadSchemaPaths([]string{src})
 	if err != nil {
 		t.Fatal(err)
 	}
