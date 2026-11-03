@@ -19,6 +19,13 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
+      - name: Whole-unit registry regression
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable -run '^TestLobster(UnitView|TableFree)' -count=1 -v
+          go test ./compiler -run 'TestLobster.*(Name|Registry|Runtime)' -count=1 -v
       - name: Packet native baseline and negative controls
         env:
           SCHEMA_SLOW: '1'
