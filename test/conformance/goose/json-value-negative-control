@@ -1,0 +1,86 @@
+#!/bin/sh
+# THE VARIABLE CLASS's text controls (docs/SPEC-TABLES.md §16.7): one clause of
+# the flat-value-table walk (internal/codegen/goosetable/runtime/json_value.goose)
+# broken in the compiler through `go build -overlay`, graphdemo regenerated
+# from it, and the harness must turn red exactly the surface that clause owns.
+#
+#   json-value-negative-control label   the writer never labels a shared node,
+#                                       so it writes the graph as a tree:
+#                                       json-write red; wire, json-read and
+#                                       json-hostile green
+#   json-value-negative-control share   a reference reads null instead of the
+#                                       node its label defined: json-read red;
+#                                       wire, json-write and json-hostile green
+set -eu
+mode=${1:-}
+root=$(pwd)
+source=internal/codegen/goosetable/runtime/json_value.goose
+case "$mode" in
+label)
+	from='    if c.count[wire] <= 1 { return jw_rec(c, out, tab, c.nodes[n].val, depth); }'
+	to='    if c.count[wire] <= 1000000 { return jw_rec(c, out, tab, c.nodes[n].val, depth); }'
+	want="json-write "
+	green="wire json-read json-hostile"
+	;;
+share)
+	from='        jr_point(c, s, l.wire);'
+	to='        jr_null(c, s);'
+	want="json-read "
+	green="wire json-write json-hostile"
+	;;
+*)
+	echo "usage: json-value-negative-control label|share" >&2
+	exit 2
+	;;
+esac
+out=build/goose-json-value-control/$mode
+rm -rf "$out"
+mkdir -p "$out"
+FROM=$from TO=$to perl -0pe 'BEGIN { $c = 0 } $c += s/\Q$ENV{FROM}\E/$ENV{TO}/g; END { exit($c == 1 ? 0 : 1) }' "$source" > "$out/runtime.goose" || {
+	echo "NEGATIVE CONTROL FAILED: the $mode clause must occur exactly once in $source" >&2
+	exit 1
+}
+printf '{"Replace":{"%s/%s":"%s/%s/runtime.goose"}}\n' "$root" "$source" "$root" "$out" > "$out/overlay.json"
+go build -tags schema_leg_goose -overlay "$root/$out/overlay.json" -o "$out/schema-goose" ./cmd/schema
+# one unit localises the clause; the ordinary conformance gate runs the corpus
+awk '($1 == "unit" && $2 == "graphdemo") || (($1 == "instance" || $1 == "json-hostile") && $3 == "graphdemo")' testdata/conformance/tables/MANIFEST.txt > "$out/manifest.txt"
+mkdir -p "$out/units"
+grep '^unit ' "$out/manifest.txt" |
+while read -r _ key paths; do
+	# shellcheck disable=SC2086
+	"$out/schema-goose" generate --lang goose --out "$out/units/$key" $paths
+done
+cat > "$out/driver" <<'DRIVER'
+#!/bin/sh
+if [ "$2" = list ]; then
+    printf '%s\n' wire json-read json-write json-hostile
+    exit 0
+fi
+exec test/conformance/goose/driver "$@"
+DRIVER
+chmod +x "$out/driver"
+printf 'goose %s/driver\n' "$out" > "$out/drivers.txt"
+# the unchanged compiler's units are green first, so a red below is the clause's
+if ! SCHEMA_GOOSE_GENERATED=build/conformance-goose build/conformance-harness run --manifest "$out/manifest.txt" --only goose --drivers "$out/drivers.txt" --work "$out/baseline" > "$out/baseline.log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: the unchanged Goose baseline is not green" >&2
+	cat "$out/baseline.log" >&2
+	exit 1
+fi
+if SCHEMA_GOOSE_GENERATED=$out/units build/conformance-harness run --manifest "$out/manifest.txt" --only goose --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: the $mode sabotage left conformance green" >&2
+	exit 1
+fi
+red=$(grep -oE '^ *goose / [a-z-]+' "$out/log" | sed 's/^ *goose \/ //' | sort -u | tr '\n' ' ')
+if [ "$red" != "$want" ]; then
+	echo "NEGATIVE CONTROL FAILED: expected [$want] red, got [$red]" >&2
+	cat "$out/log" >&2
+	exit 1
+fi
+for surface in $green; do
+	if ! grep -qE "^$surface +pass" "$out/log"; then
+		echo "NEGATIVE CONTROL FAILED: $surface did not stay green" >&2
+		cat "$out/log" >&2
+		exit 1
+	fi
+done
+echo "Goose json_value control ($mode): baseline green; the sabotage makes [$want] red, $green green"
