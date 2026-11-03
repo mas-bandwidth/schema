@@ -2255,25 +2255,44 @@ defmodule Benchtable.Table do
   # unknown (§4). It is :nested for every other body (a by-value table, an
   # element, an entry, a node record), where the id is malformed: a second
   # numbering cannot exist.
-  defp entries(bin, ids, allowed, transport),
-    do: entries(bin, ids, allowed, transport, [], [])
+  defp entries(bin, ids, allowed, transport) do
+    case entries(bin, ids, allowed, transport, [], nil) do
+      {:ok, fields, nil} ->
+        {:ok, fields, []}
+
+      {:ok, fields, node_bin} ->
+        case node_table(node_bin, ids, allowed) do
+          {:ok, ns} -> {:ok, fields, ns}
+          :error -> {:stop, fields, [], 0}
+        end
+
+      {:stop, fields, nil, rem} ->
+        {:stop, fields, [], rem}
+
+      {:stop, fields, node_bin, rem} ->
+        case node_table(node_bin, ids, allowed) do
+          {:ok, ns} -> {:stop, fields, ns, rem}
+          :error -> {:stop, fields, [], rem}
+        end
+    end
+  end
 
   # entries returns {:ok, fields, nodes} when the body ends at its terminator,
   # or {:stop, fields, nodes, remaining} when the walk stops, the fourth item
   # being the bytes the walk left un-consumed: 0 means the body ran off its own
   # end cleanly, which is the one stop that keeps the decoded prefix (§3).
-  defp entries(bin, ids, allowed, transport, acc, nodes) do
+  defp entries(bin, ids, allowed, transport, acc, node_bin) do
     case leb(bin) do
       :error ->
-        {:stop, Enum.reverse(acc), nodes, byte_size(bin)}
+        {:stop, Enum.reverse(acc), node_bin, byte_size(bin)}
 
       {0, _rest} ->
-        {:ok, Enum.reverse(acc), nodes}
+        {:ok, Enum.reverse(acc), node_bin}
 
       {ref, rest} ->
         case resolve(ids, ref) do
           :error ->
-            {:stop, Enum.reverse(acc), nodes, byte_size(rest)}
+            {:stop, Enum.reverse(acc), node_bin, byte_size(rest)}
 
           id ->
             case rest do
@@ -2284,7 +2303,7 @@ defmodule Benchtable.Table do
                   # else (§3.3), and the node id is a root's alone (§3.1): one
                   # in a body that is not its transport is malformed, the walk
                   # stops there and no field after it is read
-                  {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                  {:stop, Enum.reverse(acc), node_bin, byte_size(rest2)}
                 else
                   case slice(rest2, kind) do
                     {:ok, payload, rest3} ->
@@ -2294,17 +2313,11 @@ defmodule Benchtable.Table do
                         # kind damages the numbering and discards the load.
                         # A fixed root has no such transport arm.
                         if kind == 12 do
-                          case node_table(payload, ids, allowed) do
-                            {:ok, ns} ->
-                              # a node table riding twice: the LAST is the
-                              # numbering (§3 last-wins; framing N7)
-                              entries(rest3, ids, allowed, transport, acc, ns)
-
-                            :error ->
-                              {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
-                          end
+                          # a node table riding twice: the LAST is the
+                          # numbering (§3 last-wins; framing N7)
+                          entries(rest3, ids, allowed, transport, acc, payload)
                         else
-                          {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                          {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
                         end
                       else
                         entries(
@@ -2313,7 +2326,7 @@ defmodule Benchtable.Table do
                           allowed,
                           transport,
                           [{id, kind, payload} | acc],
-                          nodes
+                          node_bin
                         )
                       end
 
@@ -2323,16 +2336,16 @@ defmodule Benchtable.Table do
                       # accounting, but no payload exists to decode. The walk
                       # stops here and the enclosing body owns the damage (§3, §4).
                       if id == @node_id and transport == true do
-                        {:stop, Enum.reverse(acc), nodes, byte_size(rest2)}
+                        {:stop, Enum.reverse(acc), nil, byte_size(rest2)}
                       else
-                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), nodes,
+                        {:stop, Enum.reverse([{id, kind, :unframed} | acc]), node_bin,
                          byte_size(rest2)}
                       end
                   end
                 end
 
               _ ->
-                {:stop, Enum.reverse(acc), nodes, 0}
+                {:stop, Enum.reverse(acc), node_bin, 0}
             end
         end
     end
@@ -3249,7 +3262,13 @@ defmodule Benchtable.Table do
 
             case Map.fetch(un.by_id, arm_id) do
               :error ->
-                {:cont, nil, %{report | unknown: report.unknown + 1}}
+                case leb(rest) do
+                  {l, content} when byte_size(content) >= l ->
+                    {:cont, nil, %{report | unknown: report.unknown + 1}}
+
+                  _ ->
+                    {:halt, nil, %{report | malformed: true}}
+                end
 
               {:ok, name} ->
                 a = Map.fetch!(un.by_name, name)
