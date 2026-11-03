@@ -8,14 +8,28 @@
 # written to. The matrix must go red on `js / json-read` and on no other
 # surface: json-write and wire do not run the reader, so they stay green, which
 # is what says the harness found a defect in generated code and localized it.
+#
+# The write-refusal mode drops the variable writer's ranged-integer refusal
+# (TableVariableScalarHolds's min/max test) in the same kind of copy: the
+# matrix must go red on `js / write-refusal` at wref_range_high and
+# wref_range_low while `wire` stays green.
 set -eu
 
 mode=${1:-walk}
-[ "$mode" = walk ] || { echo "unknown control: $mode" >&2; exit 1; }
 src=build/tables-generated-js
-out=build/js-conformance-negative
+out=build/js-conformance-negative-$mode
 file=examples/TabledemoVariable.js
-anchor='        holder\[key\] = true;'
+case "$mode" in
+walk)
+    anchor='        holder\[key\] = true;'
+    replacement='        holder[key] = false;'
+    ;;
+write-refusal)
+    anchor='  if (d.lo !== null \&\& (v < d.lo || v > d.hi)) { return false; }'
+    replacement='  \/\/ SABOTAGED: a ranged integer writes unchecked'
+    ;;
+*) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
 
 rm -rf "$out"
 mkdir -p "$out"
@@ -26,7 +40,7 @@ if [ "$n" != 1 ]; then
     echo "negative control anchor matched $n times in $src/$file, want exactly 1" >&2
     exit 1
 fi
-sed "s/^$anchor\$/        holder[key] = false;/" "$src/$file" > "$out/generated/$file"
+sed "s/^$anchor\$/$replacement/" "$src/$file" > "$out/generated/$file"
 if cmp -s "$src/$file" "$out/generated/$file"; then
     echo "negative control patched nothing: $mode" >&2
     exit 1
@@ -42,6 +56,14 @@ if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work"
     exit 1
 fi
 cat "$out/log"
+if [ "$mode" = write-refusal ]; then
+    grep -q 'js / write-refusal: wref_range_high' "$out/log"
+    grep -q 'js / write-refusal: wref_range_low' "$out/log"
+    grep -q 'write-refusal FAIL' "$out/log"
+    grep -Eq '^ *wire +pass' "$out/log"
+    echo "JavaScript write-refusal negative control: detected by js / write-refusal"
+    exit 0
+fi
 grep -q 'js / json-read' "$out/log"
 grep -q 'json-read     FAIL' "$out/log"
 grep -Eq '^ *json-write +pass' "$out/log"
