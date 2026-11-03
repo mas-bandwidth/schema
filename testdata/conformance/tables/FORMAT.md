@@ -16,7 +16,7 @@ section is cited rather than restated.
 MANIFEST.txt          the registry: every case, by kind
 reports.txt           the read report of every evolution case  (generated)
 report-values/<case>.json  the value an evolution read leaves  (generated)
-strict-reasons.txt    the strict read's reason, every report and framing wire (pinned)
+strict-reasons.txt    the strict read's reason, every report, strict and framing wire (pinned)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
@@ -43,6 +43,7 @@ connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
 report       <case> <unit> <root> <wire file>
+strict       <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -53,6 +54,12 @@ refusal      <forgery> <reason>
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
+- **`strict`** is a wire only the `strict-reason` surface reads: one whose
+  STRICT read refuses by a reason no `report` or `framing` wire reaches
+  (`blob_shared`, `non_finite_float`, `count_over_extent_cap`). It owes a
+  strict-reasons.txt row and nothing else, so no tolerant report is owed for
+  it and no other surface sees it. The harness hands it to the driver as a
+  `report` line in the strict-reason surface's own manifest.
 - **`instance`** is one table instance in TWO forms that must agree: the wire
   bytes at `<wire file>` and the text at `json/<name>.json`. The same instance,
   both ways.
@@ -225,7 +232,7 @@ written from neither backend — with `make conformance-generate`.
 ```
 
 The STRICT read's one typed reason (docs/SPEC-TABLES.md §6.5, §11) for every
-wire a `report` or `framing` line names, at that line's root: a member of the
+wire a `report`, `strict` or `framing` line names, at that line's root: a member of the
 refusal-names enum, spelled as the enum spells it, or `ok` for a read the
 strict rule accepts. The `strict-reason` surface answers it, and
 `make conformance-strict-reasons` compares every leg against it

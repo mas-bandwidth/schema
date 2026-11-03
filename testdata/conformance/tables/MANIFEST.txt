@@ -1163,6 +1163,18 @@ report map_key_widen mapdemo Chunks testdata/wire/tables/fuzz-vectors/map_key_wi
 # with kind_mismatch 1 in every port.
 report map_depth_root_kind mapdemo Depth testdata/wire/tables/fuzz-vectors/map_depth_root_kind.bin
 
+# THE STRICT-REASON VECTORS (docs/SPEC-TABLES.md §6.5): wires whose STRICT
+# read refuses by a reason no report or framing wire reaches. Only the
+# strict-reason surface reads a `strict` line, so no tolerant report is owed
+# here; the reason each owes is in strict-reasons.txt. The bytes are
+# test/conformance/harness/strict_vectors_test.go's scripts (blob_shared
+# reuses the instance wire).
+#
+#   strict <case> <unit> <root> <wire>
+strict strict_blob_shared           blobdemo Catalog testdata/wire/tables/blob_shared.bin
+strict strict_non_finite_float      tblr1 Cfg        testdata/wire/tables/strict/strict_non_finite_float.bin
+strict strict_count_over_extent_cap listdemo Ints    testdata/wire/tables/strict/strict_count_over_extent_cap.bin
+
 # THE FRAMING VECTORS (docs/LAYERS/1-framing.md), one per rule and bound of
 # layer 1, hand-built from the rule text: the byte scripts are
 # test/conformance/harness/framing_vectors_test.go, the files are the scripts'

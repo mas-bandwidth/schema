@@ -49,16 +49,30 @@ type StrictReason struct {
 }
 
 // strictReasonCases is every case the surface answers, in manifest order:
-// the `report` lines, then the `framing` lines.
+// the `report` lines, then the `strict` lines, then the `framing` lines.
 func strictReasonCases(m *Manifest) []string {
 	var out []string
 	for _, r := range m.Reports {
+		out = append(out, r.Name)
+	}
+	for _, r := range m.Stricts {
 		out = append(out, r.Name)
 	}
 	for _, f := range m.Framings {
 		out = append(out, f.Name)
 	}
 	return out
+}
+
+// deriveStrictManifest writes the manifest the strict-reason surface reads:
+// the derived manifest with each `strict` line carried as a `report` line
+// after the report lines, so a driver runs its strict read over it as over any
+// report wire. Only this surface reads it; `harness run`'s manifest has no
+// strict line, so no other surface sees those wires.
+func deriveStrictManifest(m *Manifest, path string) error {
+	carried := *m
+	carried.Reports = append(append([]ReportCase(nil), m.Reports...), m.Stricts...)
+	return deriveManifest(&carried, path)
 }
 
 // readStrictReasons reads strict-reasons.txt.
@@ -94,7 +108,7 @@ func readStrictReasons(path string) (map[string]StrictReason, error) {
 }
 
 const strictReasonsHeader = `# THE STRICT READ'S REFUSAL REASON (docs/SPEC-TABLES.md §6.5, §11), one row
-# per wire a report or framing line of MANIFEST.txt names: the reason every
+# per wire a report, strict or framing line of MANIFEST.txt names: the reason every
 # leg's strict read owes it, as the refusal-names enum spells it, or ok.
 #
 #   <case>  <reason>  [reference=<the reference leg's answer>]
@@ -136,6 +150,10 @@ func pinStrictReasons(m *Manifest, reference driver, derived, work, path string)
 		return err
 	}
 	if err := os.MkdirAll(out, 0o755); err != nil {
+		return err
+	}
+	derived = filepath.Join(work, "strict-manifest.txt")
+	if err := deriveStrictManifest(m, derived); err != nil {
 		return err
 	}
 	code, stderr, err := runDriver(reference, derived, strictReasonSurface, out)
@@ -205,13 +223,13 @@ func strictReasons(w io.Writer, m *Manifest, reasonsPath, driversPath, work, onl
 	if err := materialise(m, work); err != nil {
 		return false, err
 	}
-	derived := filepath.Join(work, "manifest.txt")
-	if err := deriveManifest(m, derived); err != nil {
+	derived := filepath.Join(work, "strict-manifest.txt")
+	if err := deriveStrictManifest(m, derived); err != nil {
 		return false, err
 	}
 
 	var b strings.Builder
-	b.WriteString("\nSTRICT READ REASONS — leg x the " + fmt.Sprint(len(cases)) + " report and framing wires\n\n")
+	b.WriteString("\nSTRICT READ REASONS — leg x the " + fmt.Sprint(len(cases)) + " report, strict and framing wires\n\n")
 	var rows []strictDisagreement
 	var failures []string
 	for i, d := range drivers {

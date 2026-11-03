@@ -1,5 +1,5 @@
 # THE STRICT READ'S REFUSAL REASON (docs/SPEC-TABLES.md §6.5, §11), one row
-# per wire a report or framing line of MANIFEST.txt names: the reason every
+# per wire a report, strict or framing line of MANIFEST.txt names: the reason every
 # leg's strict read owes it, as the refusal-names enum spells it, or ok.
 #
 #   <case>  <reason>  [reference=<the reference leg's answer>]
@@ -72,6 +72,9 @@ r2_cfg_as_r1                           ok
 list_scalar_widen                      ok
 map_key_widen                          ok
 map_depth_root_kind                    kind_mismatch
+strict_blob_shared                     blob_shared
+strict_non_finite_float                non_finite_float
+strict_count_over_extent_cap           count_over_extent_cap
 frame_form_zero                        unknown_form
 frame_form_two_as_file                 unknown_form
 frame_form_four_planned                unknown_form

@@ -438,13 +438,17 @@ type Manifest struct {
 	Retains     []RetainCase
 	Instances   []Instance
 	Reports     []ReportCase
-	Framings    []FramingCase
-	Hostiles    []Hostile
-	Cooks       []Cook
-	CookWrites  []CookWrite
-	Blocks      []Block
-	Forgeries   []Forgery
-	Refusals    []Refusal
+	// Stricts are the wires only the strict-reason surface reads: a
+	// `strict` line names a wire whose strict read refuses by a reason no
+	// report or framing wire reaches (test/conformance/README.md).
+	Stricts    []ReportCase
+	Framings   []FramingCase
+	Hostiles   []Hostile
+	Cooks      []Cook
+	CookWrites []CookWrite
+	Blocks     []Block
+	Forgeries  []Forgery
+	Refusals   []Refusal
 }
 
 // LookupConnection returns the connection a key names.
@@ -598,6 +602,11 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: report takes case, unit, root, wire", where)
 			}
 			m.Reports = append(m.Reports, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Value: ReportValue(jsonDir, f[1])})
+		case "strict":
+			if len(f) != 5 {
+				return nil, fmt.Errorf("%s: strict takes case, unit, root, wire", where)
+			}
+			m.Stricts = append(m.Stricts, ReportCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]})
 		case "framing":
 			// THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the verdict is
 			// `refused` or the §4 report, and the value is a §16 text file or
