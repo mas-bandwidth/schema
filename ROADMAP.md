@@ -129,7 +129,7 @@ Landed: required-field, forms, integrity and text-list implementation across the
 
 C/C++/Go update: C and Go repeated-map-key widening repairs are landed, covering four C reader APIs and both Go region/builder readers with the exact shared failing input. Remaining: C unbounded text and text-form/report coverage, C++ active-construct registration, and full nightly acceptance.
 
-C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. The full-roster region driver and separate mutable-builder driver are now aligned with their reader contracts. Remaining: full nightly acceptance.
+C# update: unbounded-text and map-key copying through NativeCopyField/CopyRegion is repaired, with 5000-byte ownership regression coverage and a full native table suite passing. Repeated-map-key widening is also repaired in managed and native scans, with four-reader regression coverage and the shared failing input. The full-roster region driver and separate mutable-builder driver are now aligned with their reader contracts. Full uncapped nightly acceptance passed all 26 phases at 16dcb340f64d1d2f499334ec8e4cc1d72ed1f9c6; the frozen-source receipt is docs/validation/2026-11-02-cs-nightly.json.
 
 Rust update: the full uncapped fleet nightly passed all 24 required phases at 8bb3969aa3d3ac6044253c347525216be19606c9: 11 registered constructs, 365 native table passes with no skips/failures, all six full fuzz runs, and working negative controls. The reproducible receipt and log hashes are in docs/validation/2026-11-02-rust-nightly.json.
 
@@ -137,7 +137,7 @@ Java update: the full uncapped fleet nightly passed all 23 required phases at 68
 
 Dart update: repeated-map-key widening is repaired with plain/retaining tests and the exact shared failing input. Cursor and node-table length checks now validate remaining extent before addition; the three original overflow inputs are in the shared corpus and pass native JIT/AOT regression tests. The full-roster mixed mutable-reader profile and native second-arm lineage replacement are integrated. Cook-open cursor handling and guarded cook-write support are qualified by native JIT/AOT tests and all five cook conformance surfaces, with no absent cases. Remaining: full nightly acceptance. Elixir update: truncated payload framing is repaired for direct children and retained array elements, with 106-case native coverage. Enum collection references outside the ID table now report malformed, with 21-case native coverage and an exact shared regression input. Unknown enum collection/arm losses and retaining union-array traversal are repaired, with native plain/retain matrices, nested-record save coverage and a shared foreign-enum regression input. Full nightly acceptance remains open. Their complete retaining/fuzzer acceptance remains open.
 
-Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. Rust and Java full-roster nightly acceptance are complete at their recorded revisions; the other seven acceptance cells remain open pending their complete runs. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
+Known defects reopen the affected cells below. Historical passing receipts remain evidence for their original scope, not proof of the expanded current gate. C#, Go, Rust and Java full-roster nightly acceptance are complete at their recorded revisions; the other five acceptance cells remain open pending their complete runs. Uncommitted followups are preserved outside this snapshot; no all-nine completion or release claim is made.
 
 <!-- nova-work:variable-tables:start -->
 
@@ -162,7 +162,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | optional arrays | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | blobs (*bytes, *string) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | a caller's equal strings in two blob slots save by value | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| the wire fuzzer gate | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| the wire fuzzer gate | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | maps | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | union arms of any field type | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | string, bytes and flags defaults, and renaming a table | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ |
@@ -176,7 +176,7 @@ Known defects reopen the affected cells below. Historical passing receipts remai
 | the unit registry, UnitView | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | widening on read, and the refusal reasons | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
 | cards: the sprint's card record as a variable table (tables/cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| complete | 96% | 84% | 96% | 100% | 100% | 100% | 96% | 93% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
+| complete | 96% | 84% | 100% | 100% | 100% | 100% | 96% | 93% | 93% | 69% | 0% | 0% | 87% | 21% | 0% |
 
 [Source data](docs/roadmap.sexp)
 
