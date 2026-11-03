@@ -4972,8 +4972,8 @@ one document rather than two.
 
   **So ill-formed text never reaches storage from a wire**, which is what
   keeps the write side unrescoped: an instance a tolerant load produced is
-  always one the reference can re-save (§5). §16.3's `U+FFFD` rule is the TEXT
-  FORM's answer for storage a PROGRAM built, not the wire's, and it says so.
+  always one the reference can re-save (§5). Storage a PROGRAM built with
+  ill-formed text in it is the writer's to refuse (§16.3, `invalid_value`).
   A group above `0xFFFF` has no case here at all, because two bytes cannot
   spell one.
 
@@ -15933,7 +15933,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and the writer refuses it `invalid_value` (§16.3) |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) is `kind_mismatch`, the field at its default. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string makes the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -16148,6 +16148,8 @@ written as something else.
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
+- **Storage that is not text** — `invalid_value`: a narrow string holding
+  ill-formed UTF-8, a wide string holding an unpaired surrogate (below).
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
@@ -16209,39 +16211,16 @@ field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
 (conformance row `json-hostile str-illformed-at-bound`, verdict `refused`).
 
-**The two text types answer DIFFERENTLY, because the two failures are
-different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
-perfectly good code point that JSON has an escape for, so it is written
-`\u0000` — and only ever for storage a program built, because no read, the
-text's included, puts one there (below). A WIDE field's UNPAIRED
-SURROGATE is not a code point at all, encodes to nothing, and is written as
-one `U+FFFD`, because one unpaired surrogate is one ill-formed unit. Each
-type then takes the other half of the same distinction: a narrow field's
-ill-formed UTF-8 sequence is not a code point either and writes `U+FFFD`,
-one per maximal subpart, and a wide field's zero unit is `U+0000` and writes
-`\u0000`. **The rule underneath both is one rule** — a code point is
-escaped and preserved, and what is not a code point is replaced — and the
-two types are named separately only because each meets it through a
-different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
-text this form emits must be readable by any conforming parser, not only by
-schema's own reader.
-
-**A MAXIMAL SUBPART is the unit of that replacement**, so "one `U+FFFD` per
-ill-formed sequence" means one per maximal subpart: the longest prefix of
-the remaining ill-formed bytes, beginning at the first unconvertible byte,
-that is itself a prefix of some well-formed UTF-8 sequence,
-or, when no such prefix exists, that one byte
-(The Unicode Standard, chapter 3, "U+FFFD substitution of maximal
-subparts", Definition D93b). A byte that cannot extend the current
-subpart begins the next, so one ill-formed run can produce several
-`U+FFFD`. The unit holds for every reader and every writer of the text
-form: a reader that replaced rather than refusing would use it, and the
-read in fact REFUSES ill-formed text by name (above), so it is the two
-writers, narrow and wide, that emit the replacement. Worked from the bytes
-a writer's storage holds:
-`E2 82 41` writes `U+FFFD` then `A`; `F0 80 80 80` writes four `U+FFFD`;
-`ED A0 80` (a surrogate) writes three; `C0 AF` writes two;
-`F4 90 80 80` writes four; and a lone `FF` writes one.
+**THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
+one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,
+a perfectly good code point that JSON has an escape for, so it is written
+`\u0000`, and a WIDE field's zero unit the same — only ever for storage a
+program built, because no read puts one there (below). A narrow field's
+ill-formed UTF-8 sequence and a wide field's UNPAIRED SURROGATE are not code
+points at all, and the writer REFUSES them: `ToJsonMeasure` and `ToJson` return
+`-1` with the reason `invalid_value`, naming the field, and nothing is replaced.
+So no writer turns storage that is not text into text that reads back as
+something else.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
@@ -16339,7 +16318,7 @@ without touching a stored file.
   character, at an astral pair, at exactly `N` code units and at one past it,
   which clamps, a clamp whose cut falls between a surrogate pair, which drops
   the high half with it, storage BUILT IN CODE holding an unpaired surrogate,
-  which writes `U+FFFD`, and storage built in code holding a zero unit, which
+  which the writer refuses `invalid_value`, and storage built in code holding a zero unit, which
   writes `\u0000` (§16.3), and the same
   values through a `*wstring` blob, where nothing clamps. The two storage rows
   are built in code deliberately: no wire can deliver either (§3), and a row
@@ -17554,7 +17533,10 @@ disagreement is a defect in one of them and is fixed, not tolerated.
 **W0. The result is the whole text or nothing.** Every refusal is decided
 before a byte is handed back — §16.3's list, a deprecated enum variant
 (§2.15), a `required` value outside its declared range (§2.3), a text list
-past its declared total (§2.13): the write returns `-1`, measure returns
+past its declared total (§2.13), a table value past the depth cap (W2), and
+STORAGE THAT IS NOT TEXT, `invalid_value`: a narrow string holding ill-formed
+UTF-8 or a wide string holding an unpaired surrogate (W8), which is refused
+and never replaced: the write returns `-1`, measure returns
 `-1`, and no prefix of a text is ever a result. Measure returns exactly the
 length write produces.
 
@@ -17570,7 +17552,12 @@ finds nothing and an implementation of the fixed class alone may omit it.
 d)` is the value `x` written at DEPTH `d`, and the depth is the only state the
 layout needs: the root is at depth 0, and every member or element of a
 container written at depth `d` is written at depth `d + 1`. `INDENT(d)` is `2d`
-spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`. No other
+spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`. THE DEPTH
+CAP IS 128 AND COUNTS TABLE VALUES: a table or type value (W3) written at a
+depth past 128 refuses the write, and so does the read of an object that
+deep, so a pointer chain of 128 nodes under the root writes and reads and one
+of 129 does neither. A scalar, a string or a `null` written at depth 129 nests
+nothing and is written: the last node's null `next` does not count. No other
 whitespace is ever written outside a string: no tab, no carriage return, no
 space before a `,` or a `:`, no space after a `,`.
 
@@ -17660,11 +17647,12 @@ code point for a wide one (`wstring(N)`, after joining each surrogate pair). Eac
 | any other byte or code point below `0x20`, `U+0000` included | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
 | `/`, `DEL` (`0x7F`), every other ASCII byte | itself, raw |
 | a well-formed UTF-8 sequence, or a code point at or above `U+0080` | its UTF-8 bytes, raw — `U+2028`, `U+2029`, `U+FEFF` and `U+FFFD` included |
-| an ill-formed narrow sequence | `U+FFFD` (`EF BF BD`) per maximal subpart (§16.3) |
-| an unpaired surrogate in a wide string | `U+FFFD` (`EF BF BD`), one per unit |
+| an ill-formed narrow sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
+| an unpaired surrogate in a wide string | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
 
 No `\u` escape names anything at or above `0x20`, so none names a surrogate,
-and no escape other than these seven short forms and `\u00XX` is ever written.
+no escape other than these seven short forms and `\u00XX` is ever written, and
+`U+FFFD` is written only where the storage holds `U+FFFD`.
 
 **W9. A byte string** — `bytes(N)`, `*bytes` — is `"`, the bytes in base64,
 `"`: the standard alphabet of RFC 4648 §4 (`A`–`Z`, `a`–`z`, `0`–`9`, `+`,
@@ -17784,8 +17772,15 @@ written out of order (`map_key_order`, `map_text_order`, `feature_key_order`),
 string keys whose UTF-8 and UTF-16 orders disagree, every escape class in a
 key and in a value, float32 values whose twice-rounded check stops early
 (`text_float32_double_round`), pre-epoch and fractional timestamps, the
-integer and base64 boundaries, and a pointer chain nested deep enough that an
-indentation slip shows (`graph_chain_text`). `conformance-negative-control-key-order`
+integer and base64 boundaries, and a pointer chain exactly at the depth cap
+(`graph_chain_text`, 128 nodes) that every reader takes and every writer
+writes. The `write-refusal` rows (testdata/conformance/tables/FORMAT.md) hold
+W0 on the same surface, where the answer is `refused`: the same chain one
+node past the cap (`graph_chain_past_cap`), and storage built in code holding
+ill-formed UTF-8 (`text_refuse_illformed`) or an unpaired surrogate
+(`text_refuse_unpaired`). `conformance-negative-control-go-text-refusal`
+replaces the Go writer's refusal with a raw byte, and those two rows go red on
+`go / json-write`. `conformance-negative-control-key-order`
 is the gate's own reversed witness: it reverses the Go leg's map key order in
 the generated writer, and the matrix must go red on `go / json-write` at
 `map_key_order` and `map_text_order` while `wire` and `json-read` stay green.
@@ -17891,10 +17886,8 @@ since ill-formed text is `malformed` on the table wire and terminal on the
 packet wire (§3, SPEC.md §4.7), a `.bin` this project wrote can no longer
 carry it into storage, so the lap is byte-identical for every file that came
 through a wire and the carve-out covers only an instance a PROGRAM built with
-ill-formed text in it. Wide text takes it on the same terms, an unpaired
-surrogate writing `U+FFFD` and a zero unit `\u0000` (§16.3). The alternative
-is emitting a text no
-conforming parser can read, which §16.3 already refuses.
+ill-formed text in it, and that instance the writer refuses `invalid_value`
+(§16.3), as it refuses an unpaired surrogate in wide text.
 
 **`pack` THEN `unpack` is the other lap, and it is not byte-stable over a
 HAND-AUTHORED tree**, by the form's own rules and not by any defect: a text

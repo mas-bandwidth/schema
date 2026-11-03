@@ -3,8 +3,9 @@
 # a missing text event, a noncanonical integer accepted by the generated
 # wire reader, an absent case that writes no `.absent` answer, the 4096
 # id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
-# reader (frame-cap), and a text writer that emits map keys out of order
-# (key-order).
+# reader (frame-cap), a text writer that emits map keys out of order
+# (key-order), and a text writer that writes storage that is not text
+# (text-refusal).
 set -eu
 
 mode=$1
@@ -35,6 +36,19 @@ key-order)
     # so only the text moves
     source=$(grep -l '^func tableJSONWriteMap(' build/tables-generated-go/maps/*TableJson.go)
     sed 's/at := unsafe.Add(base, int64(i)\*int64(f.ElemSize))/at := unsafe.Add(base, int64(count-1-i)*int64(f.ElemSize)) \/\/ SABOTAGED: descending keys/' "$source" > "$out/source.gotext"
+    ;;
+text-refusal)
+    # the generated text writer WRITES storage that is not text instead of
+    # refusing it (docs/SPEC-TABLES.md §16.14, W0): the raw byte in tabledemo's
+    # narrow writer, U+FFFD in widedemo's wide one
+    source=$(grep -l 'out.invalid = true // not text: the write refuses' build/tables-generated-go/examples/*TableJson.go)
+    sed 's|out.invalid = true // not text: the write refuses|out.put(c) // SABOTAGED: written, not refused|' "$source" > "$out/source.gotext"
+    source2=$(grep -l 'out.invalid = true // not text: the write refuses' build/tables-generated-go/wide/*TableJson.go)
+    perl -0pe 's|\t\t\tout.invalid = true\n\t\t\tcontinue\n|\t\t\tcode = 0xfffd // SABOTAGED: replaced, not refused\n|' "$source2" > "$out/source2.gotext"
+    if cmp -s "$source2" "$out/source2.gotext"; then
+        echo "negative control patched nothing: $mode ($source2)" >&2
+        exit 1
+    fi
     ;;
 walk)
     source=$(grep -l 'func (in \*tableJSONIn) scanString' build/tables-generated-go/examples/*TableJson.go)
@@ -124,6 +138,11 @@ else
     elif [ "$mode" = message ]; then
         grep -q 'go / message: login_full' "$out/log"
         grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = text-refusal ]; then
+        grep -q 'go / json-write: text_refuse_illformed.json' "$out/log"
+        grep -q 'go / json-write: text_refuse_unpaired.json' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+        grep -q 'json-read     pass' "$out/log"
     elif [ "$mode" = key-order ]; then
         grep -q 'go / json-write: map_key_order.json' "$out/log"
         grep -q 'go / json-write: map_text_order.json' "$out/log"
