@@ -473,7 +473,7 @@ fixed table Huge
 	// lock carries one: handed in exactly as lockfile.Lineage hands the one a
 	// lock holds, GenerateLineage MUST NOT REFUSE IT and must not emit it.
 	hugeWalk := ir.TableFixedWalkRoot(huge)
-	hugeLayout := ir.TableFixedLayoutBytes(hugeWalk)
+	hugeLayout := ir.TableFixedLineageLayoutBytes(hugeWalk)
 	overCeiling := FixedLineageEntry{
 		Wire:   ir.TableFixedLayoutHash(hugeLayout, huge),
 		Layout: hugeLayout,

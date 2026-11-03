@@ -169,7 +169,7 @@ func plural(n int, one, many string) string {
 // [Render] produces a lineage of exactly one entry and [Update] is what carries
 // the history forward onto it.
 func renderLineage(u *ir.Unit, st *ir.Struct) []LineageEntry {
-	layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+	layout := ir.TableFixedLineageLayoutBytes(ir.TableFixedWalkRoot(st))
 	digest := ir.TableFixedDefinitionsDigest(st)
 	return []LineageEntry{{
 		Wire:   lineageWireHash(layout, digest),

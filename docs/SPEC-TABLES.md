@@ -8029,6 +8029,17 @@ three and not one.
   dropping the form in silence. The two sides agree by construction: the writer
   never produces a record the reader's own bound refuses.
 
+  **NO LAYOUT DATA IS WRITTEN FOR SUCH A TABLE EITHER.** The shared layout
+  encoder refuses an entry past 65536 by the reader's own name,
+  `layout_record_too_large`, rather than write its size in the 32-bit field
+  modulo 2^32, so no leg can emit a layout, a hash or a descriptor of the form
+  for a table the compiler has declined it to. A LOCK still records such a
+  table's lineage (§2.10), because the lock holds every fixed declaration;
+  its entries are held to the 32-bit field instead, and a record past
+  2^32-1 bytes is refused by `schema lock` and the lock check with the same
+  name. Such a table compiles and generates, keeping form `1`, and is not
+  lockable.
+
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
   — because the keyword declares the CLASS and this bound is the FORM's.** The
   MODE and the FORM are two different words (below), and 65536 is the FORM's
