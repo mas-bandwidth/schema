@@ -78,10 +78,10 @@ type refusalCase struct {
 
 // strictName is the one name §6.5 gives a pinned report (u,k,w,c,d,m,verdict
 // of testdata/conformance/tables/reports.txt) under ReadStrict's order, Go's
-// TableReport.Err(): malformed, then clamped, then kind_mismatch. A malformed
-// report the reference did not read is the file's own framing, wire_damaged.
-// unknown, widened and duplicate alone are not refusals (§6.5). "ok" is a
-// clean read.
+// TableReport.Err(): damage, then clamped, then kind_mismatch. Every malformed
+// report is damage, framing or body, and the strict read names it
+// wire_damaged (§4, §6.5). unknown, widened and duplicate alone are not
+// refusals (§6.5). "ok" is a clean read.
 func strictName(t *testing.T, row, pinned string) string {
 	t.Helper()
 	f := strings.Split(pinned, ",")
@@ -89,8 +89,6 @@ func strictName(t *testing.T, row, pinned string) string {
 		t.Fatalf("%s: pinned report %q is not u,k,w,c,d,m,verdict", row, pinned)
 	}
 	switch {
-	case f[5] == "true" && f[6] == "read":
-		return "malformed"
 	case f[5] == "true":
 		return "wire_damaged"
 	case f[3] != "0":
@@ -105,19 +103,16 @@ func strictName(t *testing.T, row, pinned string) string {
 // at a root, or "" when the root reads the form (docs/SPEC-TABLES.md, The
 // three wires; §3, §3.4, §6.5): a declared fixed root reads form 3 through its
 // own fixed reader (whose names are its own) and refuses form 1 as
-// previous_form; a variable root reads form 1 and refuses form 3 as
-// newer_form; form 2 is message_form_as_file at either; any other byte is
-// newer_form.
+// previous_form; a variable root reads form 1; every other byte at either is
+// unknown_form (§6.5, strict error identity).
 func formName(b byte, fixed bool) string {
 	switch {
 	case b == 1 && !fixed, b == 3 && fixed:
 		return ""
 	case b == 1:
 		return "previous_form"
-	case b == 2:
-		return "message_form_as_file"
 	}
-	return "newer_form"
+	return "unknown_form"
 }
 
 // emittedRoot is what a <Base>Table.luau module says of a root it declares:
@@ -277,7 +272,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 				t.Errorf("%s refuses as %s and its field is not pinned: pin it in pinnedFields", r.caseName, want)
 			}
 		}
-		if want == "ok" || want == "wire_damaged" {
+		if want == "ok" || (want == "wire_damaged" && field == "") {
 			field = "-"
 		}
 		cases = append(cases, refusalCase{key: r.caseName, unit: r.unit, root: r.root, input: r.caseName, form: -1, want: want, field: field})
@@ -294,7 +289,7 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		}
 	}
 	// every counter §6.5 refuses on does so on at least one pinned row
-	for _, name := range []string{"kind_mismatch", "clamped", "malformed"} {
+	for _, name := range []string{"kind_mismatch", "clamped", "wire_damaged"} {
 		if movedBy[name] == 0 {
 			t.Errorf("no generated report row refuses as %s", name)
 		}
@@ -421,16 +416,17 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 		refusalCase{key: "variable_short", unit: "streamdemo", root: "Feed", input: "empty", form: 1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "variable_negative_count", unit: "streamdemo", root: "Feed", input: "negative_count", form: -1, want: "wire_damaged", field: "-"},
 		refusalCase{key: "variable_early_end", unit: "streamdemo", root: "Feed", input: "early_end", form: -1, want: "wire_damaged", field: "-"},
-		// a variable root: form 2 is a message, form 3 and anything else newer
-		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "empty", form: 2, want: "message_form_as_file", field: "-"},
-		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "empty", form: 3, want: "newer_form", field: "-"},
-		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "empty", form: 127, want: "newer_form", field: "-"},
+		// a variable root: form 2, form 3 and anything else are unknown_form
+		// (§6.5, strict error identity)
+		refusalCase{key: "variable_message", unit: "streamdemo", root: "Feed", input: "empty", form: 2, want: "unknown_form", field: "-"},
+		refusalCase{key: "variable_fixed", unit: "streamdemo", root: "Feed", input: "empty", form: 3, want: "unknown_form", field: "-"},
+		refusalCase{key: "variable_unknown", unit: "streamdemo", root: "Feed", input: "empty", form: 127, want: "unknown_form", field: "-"},
 		// a fixed root: form 1 is previous_form, named by the form byte
-		// before anything behind it (The three wires, §3.4), form 2 a
-		// message, an unknown byte newer
+		// before anything behind it (The three wires, §3.4); form 2 and an
+		// unknown byte are unknown_form
 		refusalCase{key: "fixed_variable_form", unit: fixedUnit, root: fixedRoot, input: "empty", form: 1, want: "previous_form", field: "-"},
-		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "empty", form: 2, want: "message_form_as_file", field: "-"},
-		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "empty", form: 9, want: "newer_form", field: "-"},
+		refusalCase{key: "fixed_message", unit: fixedUnit, root: fixedRoot, input: "empty", form: 2, want: "unknown_form", field: "-"},
+		refusalCase{key: "fixed_newer", unit: fixedUnit, root: fixedRoot, input: "empty", form: 9, want: "unknown_form", field: "-"},
 		// a form-3 byte at a fixed root goes to its own fixed reader, which
 		// names a file shorter than the header truncated (§5.3, §3.4)
 		refusalCase{key: "fixed_own_reader", unit: fixedUnit, root: fixedRoot, input: "empty", form: 3, want: "truncated", field: "-"},
@@ -542,8 +538,8 @@ func TestLuauStrictReadRefusesByName(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"malformed", "wire_damaged", "clamped", "kind_mismatch",
-		"message_form_as_file", "newer_form", "previous_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_unknown", "ok"} {
+	for _, name := range []string{"wire_damaged", "clamped", "kind_mismatch",
+		"previous_form", "unknown_form", "integrity_mismatch", "layout_malformed", "layout_unknown", "ok"} {
 		if names[name] == 0 {
 			t.Errorf("no case answered %s", name)
 		}

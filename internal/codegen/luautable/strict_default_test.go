@@ -201,12 +201,13 @@ end
 }
 
 // referenceReason is the §6.5 name the Go report owes under the strict read's
-// order: malformed (or unframed damage) first, then clamped, then
-// kind_mismatch. The wires in this test move one counter each.
+// order: damage first, framed or not, which the strict read names
+// wire_damaged (§4), then clamped, then kind_mismatch. The wires in this test
+// move one counter each.
 func referenceReason(report tabletext.Report, ok bool) string {
 	switch {
 	case report.Malformed, !ok:
-		return "malformed"
+		return "wire_damaged"
 	case report.Clamped > 0:
 		return "clamped"
 	case report.KindMismatch > 0:

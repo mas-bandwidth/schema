@@ -149,11 +149,12 @@ end
 -- THE FIRST BYTE: the form-1 machinery a fixed table carries until form 3
 -- lands), exactly as Go's <Name>LoadText reads it through <Name>Load, so this
 -- path names form 1 and not the fixed form's previous_form. Every refusing
--- counter is TableReport.Err's, in its order, and damage the framing walk
--- refuses itself is wire_damaged.
+-- counter is TableReport.Err's, in its order; damage, framing or body, is
+-- wire_damaged, and a form byte the read does not carry is unknown_form (§6.5,
+-- strict error identity).
 local REFUSING = { "malformed", "clamped", "kindMismatch" }
 local NAMES: { [string]: string } = {
-	malformed = "malformed",
+	malformed = "wire_damaged",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
 }
@@ -166,8 +167,7 @@ local function strict_variable(root: string, wire: buffer, rep: any): any
 		return nil
 	end
 	local form = buffer.readu8(wire, 0)
-	if form == 2 then rep.reason = "message_form_as_file"; return nil end
-	if form ~= 1 then rep.reason = "newer_form"; return nil end
+	if form ~= 1 then rep.reason = "unknown_form"; return nil end
 	local v = Load.load(root, wire, rep)
 	if v == nil then
 		if rep.reason == nil then rep.reason = "wire_damaged" end

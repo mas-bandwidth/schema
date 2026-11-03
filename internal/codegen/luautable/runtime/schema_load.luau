@@ -1595,10 +1595,13 @@ end
 -- blob_shared sits where Go's Err() checks BlobShared, between malformed and
 -- clamped (§2.5), so a wire that is both clamped and blob-shared refuses as
 -- blob_shared.
-local REFUSING = { "missingRequired", "malformed", "blobShared", "clamped", "kindMismatch" }
+-- The strict read's refusing counters in TableReport.Err()'s order (§6.5):
+-- damage first, because it discards the whole load (§4), and every damage the
+-- report flags malformed is the one strict name wire_damaged.
+local REFUSING = { "malformed", "missingRequired", "blobShared", "clamped", "kindMismatch" }
 local NAMES: { [string]: string } = {
 	missingRequired = "missing_required",
-	malformed = "malformed",
+	malformed = "wire_damaged",
 	blobShared = "blob_shared",
 	clamped = "clamped",
 	kindMismatch = "kind_mismatch",
@@ -1994,7 +1997,9 @@ end
 -- for form 1, over the tolerant walk above. It resets the caller's report,
 -- applies the file's own framing (integrity, the id table and the root body's
 -- terminator) and then the refusing counters in TableReport.Err()'s order, so a
--- wire always answers one name. R.ReadStrict's fixed-form dispatch lives in
+-- wire always answers one name. A form byte it does not read is unknown_form
+-- (§6.5, strict error identity), and damage anywhere, framing or body, is
+-- wire_damaged. R.ReadStrict's fixed-form dispatch lives in
 -- schema_refusal.luau; this is the half a form-1 file reaches, including a declared
 -- fixed root handed its form-1 wire.
 function L.ReadStrict(root: string, bytes: buffer, report: any): any
@@ -2007,8 +2012,7 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	end
 	local b = bytes :: buffer
 	local form = buffer.readu8(b, 0)
-	if form == 2 then rep.reason = "message_form_as_file"; return nil end
-	if form ~= 1 then rep.reason = "newer_form"; return nil end
+	if form ~= 1 then rep.reason = "unknown_form"; return nil end
 	local d = S.lookup(root)
 	if d.integrity ~= nil and d.integrity ~= "" then
 		local body = integrityOpen(b)

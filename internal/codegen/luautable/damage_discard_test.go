@@ -117,9 +117,9 @@ func TestLuauDamageDiscardNegativeControls(t *testing.T) {
 	})
 }
 
-// Discarding a decoded value must not collapse framing refusal and field damage
-// into one diagnostic. The unopened cases previously returned wire_damaged;
-// the successfully opened field case retains its malformed witness.
+// Discarding a decoded value keeps the strict read's diagnostic: every damage
+// is wire_damaged (docs/SPEC-TABLES.md §4, §6.5), framing damage names no
+// field, and damage inside an opened field keeps that field as its witness.
 func TestLuauDamagePreservesStrictDiagnostics(t *testing.T) {
 	slowtest.Gate(t, "Luau (it runs the emitted readers)")
 	t.Parallel()
@@ -128,7 +128,7 @@ func TestLuauDamagePreservesStrictDiagnostics(t *testing.T) {
 		{"tblr1", "Cfg", "framing/frame_empty_buffer.bin", "wire_damaged -"},
 		{"tblr1", "Cfg", "framing/frame_duplicate_entry.bin", "wire_damaged -"},
 		{"tblr1", "Cfg", "framing/frame_entries_4097.bin", "wire_damaged -"},
-		{"streamdemo", "Feed", "parts_index_out_of_range.bin", "malformed parts"},
+		{"streamdemo", "Feed", "parts_index_out_of_range.bin", "wire_damaged parts"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {
 			dir, mods, _ := buildMessageUnit(t, units[tc.unit])
