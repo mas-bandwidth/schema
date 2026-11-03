@@ -1449,16 +1449,16 @@ local function stored_arm_edges(fd: any, u: any, index: { [any]: number }, out: 
 		return
 	end
 	local val = u[arm.slot]
-	local s = arm.s
-	if s == "ptr" then
+	local shape = arm.s
+	if shape == "ptr" then
 		if val then
 			out[#out + 1] = index[val]
 		end
-	elseif s == "tab" then
+	elseif shape == "tab" then
 		stored_edges(S.lookup(arm.t), val, index, out)
-	elseif s == "union" then
+	elseif shape == "union" then
 		stored_arm_edges(arm, val, index, out)
-	elseif s == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
+	elseif shape == "arr" and arm.e ~= nil and arm.e.s == "ptr" then
 		for i = 1, stored_count(arm, u, val) do
 			if val[i] then
 				out[#out + 1] = index[val[i]]
