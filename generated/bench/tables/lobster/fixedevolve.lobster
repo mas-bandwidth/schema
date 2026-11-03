@@ -1336,15 +1336,7 @@ def fixed_report_err(r:TableReport) -> string:
     return ""
 
 def fixed_crc32c(data:string, len_bytes:int) -> int:
-    var crc = 0xffffffff
-    for(len_bytes) i:
-        crc = (crc ^ read_uint8_le(data, i)) & 0xffffffff
-        for(8):
-            if (crc & 1) != 0:
-                crc = (shr(crc, 1) ^ 0x82f63b78) & 0xffffffff
-            else:
-                crc = shr(crc, 1) & 0xffffffff
-    return (crc ^ 0xffffffff) & 0xffffffff
+    return wire_crc32c(data, len_bytes)
 
 def fixed_integrity_holds(wire:string) -> bool:
     let n = length(wire) - 4

@@ -181,29 +181,31 @@ def region_size(st:LoadState, d:TableDescriptor, lo:int, hi:int) -> int, bool:
 // root table named root (Go's FileRegionMeasure): the bytes, whether the node
 // table was read whole, and whether the framing REFUSES the region (a
 // collection count past the int32 storage cap, or one its body cannot hold,
-// or a blob past 4 GiB). A wire that cannot be opened answers 0, not whole.
-def load_measure(root:string, data:string) -> int, bool, bool:
+// or a blob past 4 GiB), followed by a local diagnostic. Ordinary framing
+// failure answers 0, not whole; a checksum mismatch answers -1 and refuses
+// before any record is measured. Diagnostics are not a conformance value.
+def load_measure(root:string, data:string) -> int, bool, bool, string:
     if length(data) == 0 or data[0] != 1:
-        return 0, false, false
+        return 0, false, false, "wire_damaged"
     let d = table_of(root)
     let wire, intact = wire_integrity_body(d, data)
     if not intact:
-        return -1, false, true
+        return -1, false, true, "integrity_mismatch"
     let ids, first, ok = trailer(wire)
     if not ok:
-        return 0, false, false
+        return 0, false, false, "wire_damaged"
     let st = LoadState { data: wire, ids: ids, report: LoadReport {}, variable: false, good: false, root: nil, nodes: [], named: [], count_refused: false }
     var total, rok = region_size(st, d, 1, first)
     if not rok:
-        return -1, true, true
+        return -1, true, true, "storage_over_cap"
     let plo, phi, present, framed = node_table_bytes(st, first)
     if present and not framed:
-        return 0, false, false
+        return 0, false, false, "wire_damaged"
     var records:[NodeRecord] = []
     if present:
         let scanned, sok = scan_node_records(st, plo, phi)
         if not sok:
-            return 0, false, false
+            return 0, false, false, "wire_damaged"
         records = scanned
     for(records) rec:
         var placed:TableDescriptor? = nil
@@ -214,14 +216,14 @@ def load_measure(root:string, data:string) -> int, bool, bool:
         if placed:
             let n, nok = region_size(st, placed, rec.lo, rec.hi)
             if not nok:
-                return -1, true, true
+                return -1, true, true, "storage_over_cap"
             total += n
         elif (rec.tid == bytes_blob_id and d.place_bytes) or (rec.tid == string_blob_id and d.place_str):
             let size = rec.hi - rec.lo
             if size > 0xFFFFFFFF:
-                return -1, true, true
+                return -1, true, true, "storage_over_cap"
             var n = 8 + size
             if rec.tid == string_blob_id:
                 n++
             total += region_round(n, d.ralign)
-    return total + (length(records) + 1) * 16, true, false
+    return total + (length(records) + 1) * 16, true, false, ""
