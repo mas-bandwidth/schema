@@ -31,6 +31,7 @@ let FixedRefuseReservedNotZero: i64 = 4;
 let FixedRefuseTruncated: i64 = 6;
 let FixedRefuseInvalidValue: i64 = 14;
 let FixedRefuseClamped: i64 = 18;
+let FixedRefuseIntegrityMismatch: i64 = 22;
 let FixedRefusePreviousForm: i64 = 25;
 let FixedRefuseNewerForm: i64 = 26;
 let FixedRefuseMessageFormAsFile: i64 = 27;
@@ -50,6 +51,7 @@ fn fixed_refusal_name(code: i64) -> const u8[:] {
         6 => "truncated",
         14 => "invalid_value",
         18 => "clamped",
+        22 => "integrity_mismatch",
         25 => "previous_form",
         26 => "newer_form",
         27 => "message_form_as_file",
@@ -358,6 +360,21 @@ fn fixed_refuse(report: FixedReport&, code: i64, malformed: bool) -> i64 {
 // the layout bytes compared and never walked, the ragged tail, the caller's
 // capacity, then every record's hash. It returns the record count, or -1
 // with report.reason set; nothing is landed here.
+// fixed_open_integrity checks the form byte and then the 4-byte CRC-32C
+// trailer of a fixed root that declares integrity = "crc32c" (§2.14, §3.4).
+fn fixed_open_integrity(b: const u8[:], report: FixedReport&) -> i64 {
+    if b.len < 1 { return fixed_refuse(report, FixedRefuseTruncated, true); }
+    if b[0] != FixedForm {
+        if b[0] == 1 { return fixed_refuse(report, FixedRefusePreviousForm, false); }
+        if b[0] == 2 { return fixed_refuse(report, FixedRefuseMessageFormAsFile, false); }
+        return fixed_refuse(report, FixedRefuseNewerForm, false);
+    }
+    if !integrity_holds(b, 1) {
+        return fixed_refuse(report, FixedRefuseIntegrityMismatch, true);
+    }
+    return 0;
+}
+
 fn fixed_load_frame(b: const u8[:], layout: const u8[:], hash: u64, record_bytes: i64, capacity: i64, report: FixedReport&) -> i64 {
     if b.len < 1 { return fixed_refuse(report, FixedRefuseTruncated, true); }
     if b[0] != FixedForm {

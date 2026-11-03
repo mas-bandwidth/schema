@@ -75,6 +75,7 @@ struct LoadReport {
 // TableRefuseReason; docs/SPEC-TABLES.md §3, §3.3): a form byte other than 1
 // is refused, form 2 by name because a message is never a file's own form.
 let LoadRefuseOk: i64 = 0;
+let LoadRefuseIntegrityMismatch: i64 = 22;
 let LoadRefuseNewerForm: i64 = 26;
 let LoadRefuseMessageFormAsFile: i64 = 27;
 let LoadRefuseNonFiniteFloat: i64 = 23;
@@ -82,6 +83,7 @@ let LoadRefuseNonFiniteFloat: i64 = 23;
 // load_refusal_name is a refusal's name, the string the engine's error gives.
 fn load_refusal_name(code: i64) -> const u8[:] {
     return match code {
+        LoadRefuseIntegrityMismatch => "integrity_mismatch",
         LoadRefuseNewerForm => "newer_form",
         LoadRefuseMessageFormAsFile => "message_form_as_file",
         LoadRefuseNonFiniteFloat => "non_finite_float",
@@ -1064,6 +1066,12 @@ fn load_item(k: Loader.Enum, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, 
     return load_enum(c, r, es, e, true);
 }
 fn load_item(k: Loader.Body, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
+    if declared == KindString {
+        let t = table_index(c, e.ref);
+        make_record(c, es, t);
+        c.vals[es].state = ValPresent;
+        return item_text(c, r, c.vals[es].first, c.unit.tables[t].fields[0]);
+    }
     return load_body(c, r, es, e.ref);
 }
 fn load_item(k: Loader.Array, c: LoadCtx&, r: Rd&, es: i64, e: const FieldDesc&, declared: u8, ek: u8) -> bool {
@@ -1667,18 +1675,30 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
         report.reason = if data[0] == 2 { LoadRefuseMessageFormAsFile } else { LoadRefuseNewerForm };
         return -1;
     }
+    let t = table_index(c, root);
+    if t < 0 { report.refused = true; return -1; }
+    var file = data;
+    if unit.tables[t].integrity {
+        if !integrity_holds(data, 1) {
+            report.malformed = true;
+            report.reason = LoadRefuseIntegrityMismatch;
+            return -1;
+        }
+        file = data[0..data.len - 4];
+        c.data = file;
+    }
     // THE ID TABLE, from the end (§3): the count, then 8 x count entries
-    if data.len < 9 { report.malformed = true; return -1; }
-    let count = le_at(data, data.len - 8, 8);
-    if count > (data.len / 8) as! u64 { report.malformed = true; return -1; }
+    if file.len < 9 { report.malformed = true; return -1; }
+    let count = le_at(file, file.len - 8, 8);
+    if count > (file.len / 8) as! u64 { report.malformed = true; return -1; }
     let span = (count as! i64) * 8 + 8;
-    if span + 1 > data.len { report.malformed = true; return -1; }
-    let first = data.len - span;
+    if span + 1 > file.len { report.malformed = true; return -1; }
+    let first = file.len - span;
     for i in count as! i64 {
-        let a = le_at(data, first + i * 8, 8);
+        let a = le_at(file, first + i * 8, 8);
         for j in i {
             // ONE ID IN TWO ENTRIES: the whole wire is malformed (§3)
-            if le_at(data, first + j * 8, 8) == a { report.malformed = true; return -1; }
+            if le_at(file, first + j * 8, 8) == a { report.malformed = true; return -1; }
         }
     }
     c.ids_at = first;
@@ -1686,8 +1706,6 @@ fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal
     let body = Rd { off: 1, end: first };
     let end, terminated = body_extent(c, body);
     if terminated && end != first { report.malformed = true; return -1; }
-    let t = table_index(c, root);
-    if t < 0 { report.refused = true; return -1; }
     c.root_tab = t;
     c.root_val = fresh_record(c, t);
     c.vals[c.root_val].state = ValPresent;

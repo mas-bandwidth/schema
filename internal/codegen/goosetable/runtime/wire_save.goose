@@ -801,12 +801,17 @@ fn save_into(c: SaveCtx&, root_val: i64) -> i64 {
     edges(c, t, root_val);
     c.open[1] = false;
     if c.refusal != 0 { return c.refusal; }
+    let start = c.out.len;
     put(c, 1); // THE FORM BYTE (§3)
     body(c, t, root_val, true);
     if c.refusal != 0 { return c.refusal; }
     // THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
     for id in c.ids { put_le(c, id, 8); }
     put_le(c, c.ids.len as! u64, 8);
+    if c.unit.tables[t].integrity {
+        let sum = crc32c(c.out, start, c.out.len);
+        put_le(c, sum, 4);
+    }
     return 0;
 }
 
