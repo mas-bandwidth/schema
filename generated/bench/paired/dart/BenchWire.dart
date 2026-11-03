@@ -815,7 +815,7 @@ final class TableWireReader {
         if (kind != keyKind && keyWidens.contains(kind)) {
           kindBad = false; // the final key occurrence replaces its prior kind
           widened = 4;
-          if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
+          if (!s.skipKind(kind)) return 1 | widened;
           continue;
         }
         kindBad = kind != keyKind;
@@ -2103,6 +2103,7 @@ bool _mixedEventArm1(TableWireReader p, MixedEvent v, int kind) {
   final b = MixedHitEvent();
   mixedHitEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.hit);
   v.hit = b;
   return true;
 }
@@ -2111,6 +2112,7 @@ bool _mixedEventArm2(TableWireReader p, MixedEvent v, int kind) {
   final b = MixedChatEvent();
   mixedChatEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.chat);
   v.chat = b;
   return true;
 }
@@ -2119,6 +2121,7 @@ bool _mixedEventArm3(TableWireReader p, MixedEvent v, int kind) {
   final b = MixedPickupEvent();
   mixedPickupEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.pickup);
   v.pickup = b;
   return true;
 }
@@ -2126,12 +2129,13 @@ bool _mixedEventArm3(TableWireReader p, MixedEvent v, int kind) {
 bool _mixedEventLoadArm(TableWireReader r, MixedEvent v) {
   final ref = r.readLeb();
   if (ref == null) { r.report.malformed = true; return false; }
-  if (ref == 0) { v.armTag = 0; return true; }
+  if (ref == 0) { r.retain?.forget(v); v.armTag = 0; return true; }
   final armId = r.refToId[ref];
   if (armId == null || !r.has(1)) { r.report.malformed = true; return false; }
   final kind = r.readByte();
   final n = r.readLeb();
   if (n == null || !r.has(n)) { r.report.malformed = true; return false; }
+  r.retain?.forget(v);
   v.armTag = 0;
   final p = TableWireReader.sub(r, r.pos, r.pos + n);
   switch (armId) {
@@ -3822,6 +3826,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           final count = r.readLeb();
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <MixedEntity>[];
           var keep = count;
           if (keep < 0 || keep > 8) { keep = 8; r.report.clamped++; }
@@ -3851,6 +3856,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           final count = r.readLeb();
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (r.retain != null) { for (final old in v.stats) { r.retain!.forget(old); } }
           v.stats = <MixedStat>[];
           var keep = count;
           if (keep < 0 || keep > 80) { keep = 80; r.report.clamped++; }
@@ -4275,7 +4281,7 @@ void fixedTableWireLoadBody(TableWireReader r, FixedTable v, bool nested) {
           final len = r.readLeb();
           if (len == null || !r.has(len)) { r.report.malformed = true; return; }
           final sub = TableWireReader.sub(r, r.pos, r.pos + len);
-          if (seenValue) v.value = BenchMixed();
+          if (seenValue) { r.retain?.forget(v.value); v.value = BenchMixed(); }
           seenValue = true;
           benchMixedWireLoadBody(sub, v.value, true);
           if (sub.pos != sub.limit) { r.report.malformed = true; v.value = BenchMixed(); }
@@ -4591,81 +4597,9 @@ int fixedTableWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-FixedTable fixedTableWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = FixedTable();
-  if (report.integrityMismatch) report.malformed = false;
-  report.integrityMismatch = false;
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
-  r.report.missingFields = '';
-  r.stringBlob = false;
-  r.bytesBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeFixedTable;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  try {
-    r.scanNodeTable();
-    r.pos = 1;
-    fixedTableWireLoadBody(r, v, false);
-  } on _TableMissingRequired {
-    retain.reset();
-    return FixedTable();
-  } on _TableWireCountRefusal {
-    r.report.refused = true;
-    r.report._countRefused = true;
-    retain.reset();
-    return FixedTable();
-  }
-  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
-    retain.reset();
-    return FixedTable();
-  }
-  _collectNodeEdges(r);
-  if (r.cyclic()) {
-    r.report.malformed = true;
-    retain.reset();
-    return FixedTable();
-  }
-  if (r.report.malformed) {
-    retain.reset();
-    return FixedTable();
-  }
-  return v;
-}
-
-Uint8List fixedTableWireSaveRetain(FixedTable v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  for (final rec in retain.records) { rec.placed = false; }
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  fixedTableNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  fixedTableWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
-}
-
-int fixedTableWireMeasureRetain(FixedTable v, TableRetain retain) {
-  final report = TableWireReport();
-  return fixedTableWireSaveRetain(v, retain, report).length;
-}
+const String fixedTableWireLoadRetain = "FixedTable: retention requires a variable root and its region directory";
+const String fixedTableWireMeasureRetain = "FixedTable: retention requires a variable root and its region directory";
+const String fixedTableWireSaveRetain = "FixedTable: retention requires a variable root and its region directory";
 
 
 int? _timestampNanos(String s) {

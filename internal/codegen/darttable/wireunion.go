@@ -397,7 +397,7 @@ func (g *wireGen) emitUnionLoad(un *ir.Union) {
 	g.pf("bool %s(TableWireReader r, %s v) {\n", unionFn(un, "LoadArm"), un.Name)
 	g.pf("\tfinal ref = r.readLeb();\n")
 	g.pf("\tif (ref == null) { r.report.malformed = true; return false; }\n")
-	g.pf("\tif (ref == 0) { v.armTag = 0; return true; }\n")
+	g.pf("\tif (ref == 0) { r.retain?.forget(v); v.armTag = 0; return true; }\n")
 	g.pf("\tfinal armId = r.refToId[ref];\n")
 	g.pf("\tif (armId == null || !r.has(1)) { r.report.malformed = true; return false; }\n")
 	g.pf("\tfinal kind = r.readByte();\n")
@@ -406,6 +406,7 @@ func (g *wireGen) emitUnionLoad(un *ir.Union) {
 	// The value is RESET once the arm's framing has held (internal/tablewire
 	// unionCell): framing damage before that leaves an earlier occurrence's
 	// arm standing, and every outcome after it replaces it.
+	g.pf("\tr.retain?.forget(v);\n")
 	g.pf("\tv.armTag = 0;\n")
 	g.pf("\tfinal p = TableWireReader.sub(r, r.pos, r.pos + n);\n")
 	g.pf("\tswitch (armId) {\n")
@@ -516,6 +517,7 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%svar b = %s();\n", ind, ref.Name)
 		g.pf("%s%sWireLoadBody(%s, b, true);\n", ind, dartName(ref.Name), p)
 		g.pf("%sif (%s.pos != %s.limit) { %s.report.malformed = true; b = %s(); }\n", ind, p, p, p, ref.Name)
+		g.pf("%s%s.retain?.forget(%s);\n", ind, p, dest)
 		g.pf("%s%s = b;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
 	case isByValueTable(f):
@@ -523,11 +525,13 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		g.pf("%sfinal b = %s();\n", ind, ref.Name)
 		g.pf("%s%sWireLoadBody(%s, b, true);\n", ind, dartName(ref.Name), p)
 		g.pf("%sif (%s.pos != %s.limit) %s\n", ind, p, p, bad)
+		g.pf("%s%s.retain?.forget(%s);\n", ind, p, dest)
 		g.pf("%s%s = b;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
 	case isUnionField(f):
 		g.pf("%sfinal u = %s();\n", ind, f.Type.Name)
 		g.pf("%sif (!%s(%s, u)) return false;\n", ind, unionFn(unionRef(f), "LoadArm"), p)
+		g.pf("%s%s.retain?.forget(%s);\n", ind, p, dest)
 		g.pf("%s%s = u;\n", ind, dest)
 		g.pf("%sreturn true;\n", ind)
 	case f.CountedOnWire():

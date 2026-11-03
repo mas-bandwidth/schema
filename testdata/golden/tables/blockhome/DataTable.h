@@ -217,6 +217,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -426,6 +433,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -5167,7 +5177,10 @@ BLOCKHOME_TABLE_INLINE bool ArmorPlateLoadBody( TableReader & r, ArmorPlate & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -5383,7 +5396,7 @@ inline bool ArmorPlateLoad( ArmorPlate & value, const uint8_t * buffer, int64_t 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = ArmorPlateLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -5755,7 +5768,10 @@ BLOCKHOME_TABLE_INLINE bool ArmorConfigLoadBody( TableReader & r, ArmorConfig & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -5983,7 +5999,7 @@ inline bool ArmorConfigLoad( ArmorConfig & value, const uint8_t * buffer, int64_
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = ArmorConfigLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -6325,7 +6341,10 @@ BLOCKHOME_TABLE_INLINE bool FiringGroupLoadBody( TableReader & r, FiringGroup & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -6504,7 +6523,7 @@ inline bool FiringGroupLoad( FiringGroup & value, const uint8_t * buffer, int64_
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = FiringGroupLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -6887,7 +6906,10 @@ BLOCKHOME_TABLE_INLINE bool GunnerSettingsLoadBody( TableReader & r, GunnerSetti
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -7198,7 +7220,7 @@ inline bool GunnerSettingsLoad( GunnerSettings & value, const uint8_t * buffer, 
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = GunnerSettingsLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -7949,9 +7971,9 @@ inline const TableTypeInfo * GunnerSettingsTableType();
 inline const TableTypeInfo * ArmorPlateTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "thickness", "thickness", "float64", 0xdbae65ca25b4f315ull, 11, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, thickness ), (uint32_t) sizeof( ArmorPlate::thickness ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "material", "material", "uint32", 0x026f7568983161e0ull, 8, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, material ), (uint32_t) sizeof( ArmorPlate::material ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "layer", "layer", "uint8", 0x84e39fec29768c56ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, layer ), (uint32_t) sizeof( ArmorPlate::layer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "thickness", "thickness", "float64", 0xdbae65ca25b4f315ull, 11, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, thickness ), (uint32_t) sizeof( ArmorPlate::thickness ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "material", "material", "uint32", 0x026f7568983161e0ull, 8, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, material ), (uint32_t) sizeof( ArmorPlate::material ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "layer", "layer", "uint8", 0x84e39fec29768c56ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorPlate, layer ), (uint32_t) sizeof( ArmorPlate::layer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "ArmorPlate", (uint32_t) sizeof( ArmorPlate ), 3, fields, +[]( void * p ) { ArmorPlateReset( *(ArmorPlate *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -7960,10 +7982,10 @@ inline const TableTypeInfo * ArmorPlateTableType()
 inline const TableTypeInfo * ArmorConfigTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "front", "front", "ArmorPlate", 0x538b8c566e9e4b38ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, front ), (uint32_t) sizeof( ArmorConfig::front ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "rear", "rear", "ArmorPlate", 0x4ce65d1fbfdde703ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rear ), (uint32_t) sizeof( ArmorConfig::rear ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "rating", "rating", "float32", 0x4e79ecbefe5ff4d0ull, 10, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rating ), (uint32_t) sizeof( ArmorConfig::rating ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "tier", "tier", "uint8", 0x1e6f84ef2eb65989ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, tier ), (uint32_t) sizeof( ArmorConfig::tier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "front", "front", "ArmorPlate", 0x538b8c566e9e4b38ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, front ), (uint32_t) sizeof( ArmorConfig::front ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "rear", "rear", "ArmorPlate", 0x4ce65d1fbfdde703ull, 13, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rear ), (uint32_t) sizeof( ArmorConfig::rear ), 0xffffffffu, 0xffffffffu, ArmorPlateTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "rating", "rating", "float32", 0x4e79ecbefe5ff4d0ull, 10, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, rating ), (uint32_t) sizeof( ArmorConfig::rating ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "tier", "tier", "uint8", 0x1e6f84ef2eb65989ull, 6, false, false, false, 0, (uint32_t) offsetof( ArmorConfig, tier ), (uint32_t) sizeof( ArmorConfig::tier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "ArmorConfig", (uint32_t) sizeof( ArmorConfig ), 4, fields, +[]( void * p ) { ArmorConfigReset( *(ArmorConfig *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -7972,8 +7994,8 @@ inline const TableTypeInfo * ArmorConfigTableType()
 inline const TableTypeInfo * FiringGroupTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "barrel", "barrel", "uint32", 0x8ece059ad360b651ull, 8, false, false, false, 0, (uint32_t) offsetof( FiringGroup, barrel ), (uint32_t) sizeof( FiringGroup::barrel ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, false, false, false, 0, (uint32_t) offsetof( FiringGroup, cooldown ), (uint32_t) sizeof( FiringGroup::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "barrel", "barrel", "uint32", 0x8ece059ad360b651ull, 8, false, false, false, 0, (uint32_t) offsetof( FiringGroup, barrel ), (uint32_t) sizeof( FiringGroup::barrel ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "cooldown", "cooldown", "float32", 0xdc2cbe6953343d48ull, 10, false, false, false, 0, (uint32_t) offsetof( FiringGroup, cooldown ), (uint32_t) sizeof( FiringGroup::cooldown ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "FiringGroup", (uint32_t) sizeof( FiringGroup ), 2, fields, +[]( void * p ) { FiringGroupReset( *(FiringGroup *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -7982,10 +8004,10 @@ inline const TableTypeInfo * FiringGroupTableType()
 inline const TableTypeInfo * GunnerSettingsTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "firing_groups", "firing_groups", "FiringGroup", 0x260b8ca6b0c3db7full, 13, true, true, false, 32, (uint32_t) offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( GunnerSettings::firing_groups[0] ), (uint32_t) offsetof( GunnerSettings, firing_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "missile_groups", "missile_groups", "FiringGroup", 0x3c99105aa087f6bcull, 13, true, true, false, 4, (uint32_t) offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( GunnerSettings::missile_groups[0] ), (uint32_t) offsetof( GunnerSettings, missile_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "reload_seconds", "reload_seconds", "float32", 0xad9b64728ea52486ull, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reload_seconds ), (uint32_t) sizeof( GunnerSettings::reload_seconds ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "gunner_id", "gunner_id", "uint32", 0xbd9be53180256e02ull, 8, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, gunner_id ), (uint32_t) sizeof( GunnerSettings::gunner_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "firing_groups", "firing_groups", "FiringGroup", 0x260b8ca6b0c3db7full, 13, true, true, false, 32, (uint32_t) offsetof( GunnerSettings, firing_groups ), (uint32_t) sizeof( GunnerSettings::firing_groups[0] ), (uint32_t) offsetof( GunnerSettings, firing_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "missile_groups", "missile_groups", "FiringGroup", 0x3c99105aa087f6bcull, 13, true, true, false, 4, (uint32_t) offsetof( GunnerSettings, missile_groups ), (uint32_t) sizeof( GunnerSettings::missile_groups[0] ), (uint32_t) offsetof( GunnerSettings, missile_groups_count ), 0xffffffffu, FiringGroupTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "reload_seconds", "reload_seconds", "float32", 0xad9b64728ea52486ull, 10, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, reload_seconds ), (uint32_t) sizeof( GunnerSettings::reload_seconds ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "gunner_id", "gunner_id", "uint32", 0xbd9be53180256e02ull, 8, false, false, false, 0, (uint32_t) offsetof( GunnerSettings, gunner_id ), (uint32_t) sizeof( GunnerSettings::gunner_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "GunnerSettings", (uint32_t) sizeof( GunnerSettings ), 4, fields, +[]( void * p ) { GunnerSettingsReset( *(GunnerSettings *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

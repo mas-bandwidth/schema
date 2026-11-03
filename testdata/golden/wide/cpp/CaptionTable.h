@@ -217,6 +217,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -426,6 +433,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -5359,7 +5369,10 @@ WIDE_TABLE_INLINE bool CaptionLoadBody( TableReader & r, Caption & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -5737,7 +5750,7 @@ inline bool CaptionLoad( Caption & value, const uint8_t * buffer, int64_t bytes,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = CaptionLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -6284,7 +6297,10 @@ WIDE_TABLE_INLINE bool StampLoadBody( TableReader & r, Stamp & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -6465,7 +6481,7 @@ inline bool StampLoad( Stamp & value, const uint8_t * buffer, int64_t bytes, Tab
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = StampLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -6763,7 +6779,10 @@ WIDE_TABLE_INLINE bool LineLoadBody( TableReader & r, Line & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -6906,7 +6925,7 @@ inline bool LineLoad( Line & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = LineLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -8457,10 +8476,10 @@ inline const TableTypeInfo * LineTableType();
 inline const TableTypeInfo * CaptionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false },
+        { "title", "title", "wstring", 0xda31296c0c1b6029ull, 33, false, true, false, 7, (uint32_t) offsetof( Caption, title ), (uint32_t) sizeof( Caption::title ), (uint32_t) offsetof( Caption, title_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "line", "line", "Line", 0xbf4ba5ad694f5907ull, 13, false, false, false, 0, (uint32_t) offsetof( Caption, line ), (uint32_t) sizeof( Caption::line ), 0xffffffffu, 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "lines", "lines", "Line", 0x5ce3f9a9f1d5001cull, 13, true, true, false, 3, (uint32_t) offsetof( Caption, lines ), (uint32_t) sizeof( Caption::lines[0] ), (uint32_t) offsetof( Caption, lines_count ), 0xffffffffu, LineTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "body", "body", "Body", 0xcd4de79bc6c93295ull, 15, false, false, false, 0, (uint32_t) offsetof( Caption, body ), (uint32_t) sizeof( Caption::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "wide"; case 2: return "narrow"; case 3: return "tally"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xa633f1f655715ccaull; case 2: return 0x96569b06f223c29aull; case 3: return 0xb1e5e28e4479a274ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Body[] = { { "wide", "wide", "wstring", 0xa633f1f655715ccaull, 33, false, true, false, 4, (uint32_t) offsetof( Body, wide.value ), (uint32_t) sizeof( Body::wide.value ), (uint32_t) offsetof( Body, wide.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "narrow", "narrow", "string", 0x96569b06f223c29aull, 12, false, true, false, 4, (uint32_t) offsetof( Body, narrow.value ), (uint32_t) sizeof( Body::narrow.value ), (uint32_t) offsetof( Body, narrow.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, false, 0, (uint32_t) offsetof( Body, tally ), (uint32_t) sizeof( Body::tally ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Body, wide ), NULL, &arm_fields_Body[0], 16 }, { (uint32_t) offsetof( Body, narrow ), NULL, &arm_fields_Body[1], 12 }, { (uint32_t) offsetof( Body, tally ), NULL, &arm_fields_Body[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Body, type ), (uint32_t) sizeof( Body::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "Caption", (uint32_t) sizeof( Caption ), 4, fields, +[]( void * p ) { CaptionReset( *(Caption *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -8469,8 +8488,8 @@ inline const TableTypeInfo * CaptionTableType()
 inline const TableTypeInfo * StampTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "label", "label", "wstring", 0x39f7fcec8fcb623dull, 33, false, true, false, 4, (uint32_t) offsetof( Stamp, label ), (uint32_t) sizeof( Stamp::label ), (uint32_t) offsetof( Stamp, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+        { "seq", "seq", "uint32", 0x823b8a195ce2133cull, 8, false, false, false, 0, (uint32_t) offsetof( Stamp, seq ), (uint32_t) sizeof( Stamp::seq ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "Stamp", (uint32_t) sizeof( Stamp ), 2, fields, +[]( void * p ) { StampReset( *(Stamp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -8479,7 +8498,7 @@ inline const TableTypeInfo * StampTableType()
 inline const TableTypeInfo * LineTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+        { "text", "text", "wstring", 0xfa04f4ef1995407eull, 33, false, true, false, 4, (uint32_t) offsetof( Line, text ), (uint32_t) sizeof( Line::text ), (uint32_t) offsetof( Line, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
     };
     static const TableTypeInfo info = { "Line", (uint32_t) sizeof( Line ), 1, fields, +[]( void * p ) { LineReset( *(Line *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

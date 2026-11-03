@@ -814,7 +814,7 @@ final class TableWireReader {
         if (kind != keyKind && keyWidens.contains(kind)) {
           kindBad = false; // the final key occurrence replaces its prior kind
           widened = 4;
-          if (!s.skipKind(kind)) return (kindBad ? 2 : 1) | widened;
+          if (!s.skipKind(kind)) return 1 | widened;
           continue;
         }
         kindBad = kind != keyKind;
@@ -2092,6 +2092,7 @@ bool _tableEventArm1(TableWireReader p, TableEvent v, int kind) {
   final b = TableHitEvent();
   tableHitEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.hit);
   v.hit = b;
   return true;
 }
@@ -2100,6 +2101,7 @@ bool _tableEventArm2(TableWireReader p, TableEvent v, int kind) {
   final b = TableChatEvent();
   tableChatEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.chat);
   v.chat = b;
   return true;
 }
@@ -2108,6 +2110,7 @@ bool _tableEventArm3(TableWireReader p, TableEvent v, int kind) {
   final b = TablePickupEvent();
   tablePickupEventWireLoadBody(p, b, true);
   if (p.pos != p.limit) { p.report.malformed = true; return false; }
+  p.retain?.forget(v.pickup);
   v.pickup = b;
   return true;
 }
@@ -2115,12 +2118,13 @@ bool _tableEventArm3(TableWireReader p, TableEvent v, int kind) {
 bool _tableEventLoadArm(TableWireReader r, TableEvent v) {
   final ref = r.readLeb();
   if (ref == null) { r.report.malformed = true; return false; }
-  if (ref == 0) { v.armTag = 0; return true; }
+  if (ref == 0) { r.retain?.forget(v); v.armTag = 0; return true; }
   final armId = r.refToId[ref];
   if (armId == null || !r.has(1)) { r.report.malformed = true; return false; }
   final kind = r.readByte();
   final n = r.readLeb();
   if (n == null || !r.has(n)) { r.report.malformed = true; return false; }
+  r.retain?.forget(v);
   v.armTag = 0;
   final p = TableWireReader.sub(r, r.pos, r.pos + n);
   switch (armId) {
@@ -3818,6 +3822,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           final count = r.readLeb();
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <TableEntity>[];
           var keep = count;
           if (keep < 0 || keep > 8) { keep = 8; r.report.clamped++; }
@@ -3847,6 +3852,7 @@ void tableMixedWireLoadBody(TableWireReader r, TableMixed v, bool nested) {
           final count = r.readLeb();
           if (count == null) { r.report.malformed = true; r.pos = end; break; }
           if (elemKind != 13) { r.report.kindMismatch++; r.pos = end; break; }
+          if (r.retain != null) { for (final old in v.stats) { r.retain!.forget(old); } }
           v.stats = <TableStat>[];
           var keep = count;
           if (keep < 0 || keep > 80) { keep = 80; r.report.clamped++; }
@@ -4461,81 +4467,9 @@ int tableEntityWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-TableEntity tableEntityWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = TableEntity();
-  if (report.integrityMismatch) report.malformed = false;
-  report.integrityMismatch = false;
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
-  r.report.missingFields = '';
-  r.stringBlob = false;
-  r.bytesBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeTableEntity;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  try {
-    r.scanNodeTable();
-    r.pos = 1;
-    tableEntityWireLoadBody(r, v, false);
-  } on _TableMissingRequired {
-    retain.reset();
-    return TableEntity();
-  } on _TableWireCountRefusal {
-    r.report.refused = true;
-    r.report._countRefused = true;
-    retain.reset();
-    return TableEntity();
-  }
-  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
-    retain.reset();
-    return TableEntity();
-  }
-  _collectNodeEdges(r);
-  if (r.cyclic()) {
-    r.report.malformed = true;
-    retain.reset();
-    return TableEntity();
-  }
-  if (r.report.malformed) {
-    retain.reset();
-    return TableEntity();
-  }
-  return v;
-}
-
-Uint8List tableEntityWireSaveRetain(TableEntity v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  for (final rec in retain.records) { rec.placed = false; }
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  tableEntityNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  tableEntityWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
-}
-
-int tableEntityWireMeasureRetain(TableEntity v, TableRetain retain) {
-  final report = TableWireReport();
-  return tableEntityWireSaveRetain(v, retain, report).length;
-}
+const String tableEntityWireLoadRetain = "TableEntity: retention requires a variable root and its region directory";
+const String tableEntityWireMeasureRetain = "TableEntity: retention requires a variable root and its region directory";
+const String tableEntityWireSaveRetain = "TableEntity: retention requires a variable root and its region directory";
 
 Uint8List tableStatWireSave(TableStat v) {
   final state = WireState()..refuseSharedBlob = true;
@@ -4681,81 +4615,9 @@ int tableStatWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-TableStat tableStatWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = TableStat();
-  if (report.integrityMismatch) report.malformed = false;
-  report.integrityMismatch = false;
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
-  r.report.missingFields = '';
-  r.stringBlob = false;
-  r.bytesBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeTableStat;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  try {
-    r.scanNodeTable();
-    r.pos = 1;
-    tableStatWireLoadBody(r, v, false);
-  } on _TableMissingRequired {
-    retain.reset();
-    return TableStat();
-  } on _TableWireCountRefusal {
-    r.report.refused = true;
-    r.report._countRefused = true;
-    retain.reset();
-    return TableStat();
-  }
-  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
-    retain.reset();
-    return TableStat();
-  }
-  _collectNodeEdges(r);
-  if (r.cyclic()) {
-    r.report.malformed = true;
-    retain.reset();
-    return TableStat();
-  }
-  if (r.report.malformed) {
-    retain.reset();
-    return TableStat();
-  }
-  return v;
-}
-
-Uint8List tableStatWireSaveRetain(TableStat v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  for (final rec in retain.records) { rec.placed = false; }
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  tableStatNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  tableStatWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
-}
-
-int tableStatWireMeasureRetain(TableStat v, TableRetain retain) {
-  final report = TableWireReport();
-  return tableStatWireSaveRetain(v, retain, report).length;
-}
+const String tableStatWireLoadRetain = "TableStat: retention requires a variable root and its region directory";
+const String tableStatWireMeasureRetain = "TableStat: retention requires a variable root and its region directory";
+const String tableStatWireSaveRetain = "TableStat: retention requires a variable root and its region directory";
 
 Uint8List tableMixedWireSave(TableMixed v) {
   final state = WireState()..refuseSharedBlob = true;
@@ -4972,81 +4834,9 @@ int tableMixedWireMeasure(Uint8List data) {
   return total + nodeTotal + (records + 1) * 16;
 }
 
-TableMixed tableMixedWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {
-  retain.reset();
-  final v = TableMixed();
-  if (report.integrityMismatch) report.malformed = false;
-  report.integrityMismatch = false;
-  final r = TableWireReader(data, data.length);
-  r.report = report;
-  r.report.nonFiniteFloat = '';
-  r.report._countRefused = false;
-  if (r.report.missingFields.isNotEmpty) r.report.refused = false;
-  r.report.missingFields = '';
-  r.stringBlob = false;
-  r.bytesBlob = false;
-  r.retain = retain;
-  r.path = [1];
-  r.rootObj = v;
-  r.rootType = _kTypeTableMixed;
-  final verdict = r.open();
-  if (verdict == 1) { r.report.refused = true; return v; }
-  if (verdict == 2) { r.report.malformed = true; return v; }
-  try {
-    r.scanNodeTable();
-    r.pos = 1;
-    tableMixedWireLoadBody(r, v, false);
-  } on _TableMissingRequired {
-    retain.reset();
-    return TableMixed();
-  } on _TableWireCountRefusal {
-    r.report.refused = true;
-    r.report._countRefused = true;
-    retain.reset();
-    return TableMixed();
-  }
-  if (r.report.nonFiniteFloat.isNotEmpty || r.report.missingFields.isNotEmpty) {
-    retain.reset();
-    return TableMixed();
-  }
-  _collectNodeEdges(r);
-  if (r.cyclic()) {
-    r.report.malformed = true;
-    retain.reset();
-    return TableMixed();
-  }
-  if (r.report.malformed) {
-    retain.reset();
-    return TableMixed();
-  }
-  return v;
-}
-
-Uint8List tableMixedWireSaveRetain(TableMixed v, TableRetain retain, TableWireReport report) {
-  retain.idUsed = 0;
-  for (final rec in retain.records) { rec.placed = false; }
-  final state = WireState()..refuseSharedBlob = true;
-  state.retain = retain;
-  state.report = report;
-  state.indexRoot(v);
-  final open = <Object>{v};
-  tableMixedNumber(state, v, open);
-  final w = TableWireWriter(state);
-  w.path = [1];
-  w.putByte(1);
-  tableMixedWireSaveBodyFields(w, v);
-  _writeNodeTable(w);
-  for (final rec in retain.records) { if (!rec.discarded && !rec.placed) report.retainLost++; }
-  w.putByte(0);
-  for (final id in state.ids) { w.putU64(id); }
-  w.putU64(state.ids.length);
-  return Uint8List.fromList(w.buf);
-}
-
-int tableMixedWireMeasureRetain(TableMixed v, TableRetain retain) {
-  final report = TableWireReport();
-  return tableMixedWireSaveRetain(v, retain, report).length;
-}
+const String tableMixedWireLoadRetain = "TableMixed: retention requires a variable root and its region directory";
+const String tableMixedWireMeasureRetain = "TableMixed: retention requires a variable root and its region directory";
+const String tableMixedWireSaveRetain = "TableMixed: retention requires a variable root and its region directory";
 
 
 int? _timestampNanos(String s) {

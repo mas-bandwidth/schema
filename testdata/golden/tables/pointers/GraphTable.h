@@ -241,6 +241,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -464,6 +471,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -8683,7 +8693,10 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBody( TableReader & r, Meta & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -8870,7 +8883,7 @@ inline bool MetaLoad( Meta & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = MetaLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -9174,7 +9187,10 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBody( TableReader & r, Settings & value 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -9361,7 +9377,7 @@ inline bool SettingsLoad( Settings & value, const uint8_t * buffer, int64_t byte
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = SettingsLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -9679,7 +9695,10 @@ inline bool ListNodeLoadBody( TableReader & r, const TableNodeMap & nodes, ListN
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -9916,7 +9935,10 @@ inline bool TreeNodeLoadBody( TableReader & r, const TableNodeMap & nodes, TreeN
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10116,7 +10138,10 @@ inline bool LayerLoadBody( TableReader & r, const TableNodeMap & nodes, Layer & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10465,7 +10490,10 @@ inline bool SceneLoadBody( TableReader & r, const TableNodeMap & nodes, Scene & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -10973,7 +11001,10 @@ inline bool DepotLoadBody( TableReader & r, const TableNodeMap & nodes, Depot & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11330,7 +11361,10 @@ inline bool AlbumLoadBody( TableReader & r, const TableNodeMap & nodes, Album & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -14145,7 +14179,7 @@ inline const ListNode * ListNodeLoad( uint8_t * region, int64_t region_bytes, co
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const ListNode * root = ListNodeLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -14237,6 +14271,7 @@ inline bool ListNodeLoadBuilderTolerant( ListNodeBuilder & builder, const uint8_
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -14282,6 +14317,7 @@ inline bool ListNodeLoadBuilderTolerant( ListNodeBuilder & builder, const uint8_
     bool ok = ListNodeLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -14315,7 +14351,7 @@ inline bool ListNodeLoadBuilder( ListNodeBuilder & builder, const uint8_t * wire
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = ListNodeLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -14357,7 +14393,7 @@ inline const ListNode * ListNodeReadStrict( const uint8_t * wire_file, int64_t w
     ListNodeBuilder builder( allocator );
     TableReport report;
     const bool decoded = ListNodeLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -14957,7 +14993,7 @@ inline const TreeNode * TreeNodeLoad( uint8_t * region, int64_t region_bytes, co
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TreeNode * root = TreeNodeLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -15049,6 +15085,7 @@ inline bool TreeNodeLoadBuilderTolerant( TreeNodeBuilder & builder, const uint8_
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -15094,6 +15131,7 @@ inline bool TreeNodeLoadBuilderTolerant( TreeNodeBuilder & builder, const uint8_
     bool ok = TreeNodeLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -15127,7 +15165,7 @@ inline bool TreeNodeLoadBuilder( TreeNodeBuilder & builder, const uint8_t * wire
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = TreeNodeLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -15169,7 +15207,7 @@ inline const TreeNode * TreeNodeReadStrict( const uint8_t * wire_file, int64_t w
     TreeNodeBuilder builder( allocator );
     TableReport report;
     const bool decoded = TreeNodeLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -15771,7 +15809,7 @@ inline const Layer * LayerLoad( uint8_t * region, int64_t region_bytes, const ui
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Layer * root = LayerLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -15863,6 +15901,7 @@ inline bool LayerLoadBuilderTolerant( LayerBuilder & builder, const uint8_t * wi
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -15908,6 +15947,7 @@ inline bool LayerLoadBuilderTolerant( LayerBuilder & builder, const uint8_t * wi
     bool ok = LayerLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -15941,7 +15981,7 @@ inline bool LayerLoadBuilder( LayerBuilder & builder, const uint8_t * wire_file,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = LayerLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -15983,7 +16023,7 @@ inline const Layer * LayerReadStrict( const uint8_t * wire_file, int64_t wire_fi
     LayerBuilder builder( allocator );
     TableReport report;
     const bool decoded = LayerLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -16607,7 +16647,7 @@ inline const Scene * SceneLoad( uint8_t * region, int64_t region_bytes, const ui
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Scene * root = SceneLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -16699,6 +16739,7 @@ inline bool SceneLoadBuilderTolerant( SceneBuilder & builder, const uint8_t * wi
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -16744,6 +16785,7 @@ inline bool SceneLoadBuilderTolerant( SceneBuilder & builder, const uint8_t * wi
     bool ok = SceneLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -16777,7 +16819,7 @@ inline bool SceneLoadBuilder( SceneBuilder & builder, const uint8_t * wire_file,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = SceneLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -16819,7 +16861,7 @@ inline const Scene * SceneReadStrict( const uint8_t * wire_file, int64_t wire_fi
     SceneBuilder builder( allocator );
     TableReport report;
     const bool decoded = SceneLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -17421,7 +17463,7 @@ inline const Depot * DepotLoad( uint8_t * region, int64_t region_bytes, const ui
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Depot * root = DepotLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -17513,6 +17555,7 @@ inline bool DepotLoadBuilderTolerant( DepotBuilder & builder, const uint8_t * wi
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -17558,6 +17601,7 @@ inline bool DepotLoadBuilderTolerant( DepotBuilder & builder, const uint8_t * wi
     bool ok = DepotLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -17591,7 +17635,7 @@ inline bool DepotLoadBuilder( DepotBuilder & builder, const uint8_t * wire_file,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = DepotLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -17633,7 +17677,7 @@ inline const Depot * DepotReadStrict( const uint8_t * wire_file, int64_t wire_fi
     DepotBuilder builder( allocator );
     TableReport report;
     const bool decoded = DepotLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -18257,7 +18301,7 @@ inline const Album * AlbumLoad( uint8_t * region, int64_t region_bytes, const ui
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Album * root = AlbumLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -18349,6 +18393,7 @@ inline bool AlbumLoadBuilderTolerant( AlbumBuilder & builder, const uint8_t * wi
     nodes.count = records + 1;
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -18394,6 +18439,7 @@ inline bool AlbumLoadBuilderTolerant( AlbumBuilder & builder, const uint8_t * wi
     bool ok = AlbumLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4)
     if ( ok && !out->malformed && nodes.good )
     {
@@ -18427,7 +18473,7 @@ inline bool AlbumLoadBuilder( AlbumBuilder & builder, const uint8_t * wire_file,
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = AlbumLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -18469,7 +18515,7 @@ inline const Album * AlbumReadStrict( const uint8_t * wire_file, int64_t wire_fi
     AlbumBuilder builder( allocator );
     TableReport report;
     const bool decoded = AlbumLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -18544,7 +18590,10 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -18704,7 +18753,10 @@ GRAPHDEMO_TABLE_INLINE bool SettingsLoadBodyRetain( TableReader & r, Settings & 
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -18897,7 +18949,10 @@ inline bool ListNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -19141,7 +19196,10 @@ inline bool TreeNodeLoadBodyRetain( TableReader & r, const TableNodeMap & nodes,
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -19348,7 +19406,10 @@ inline bool LayerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, La
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -19699,7 +19760,10 @@ inline bool SceneLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sc
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20219,7 +20283,10 @@ inline bool DepotLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -20584,7 +20651,10 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -24615,72 +24685,72 @@ extern const TableTypeInfo DepotTableInfo;
 extern const TableTypeInfo AlbumTableInfo;
 
 inline const TableFieldInfo MetaTableFields[] = {
-    { "build", "build", "int32", 0x802517e298c70b03ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "build", "build", "int32", 0x802517e298c70b03ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo MetaTableInfo = { "Meta", (uint32_t) sizeof( Meta ), 2, MetaTableFields, +[]( void * p ) { MetaReset( *(Meta *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MetaTableType() { return &MetaTableInfo; }
 
 inline const TableFieldInfo SettingsTableFields[] = {
-    { "quality", "quality", "int32", 0x7a8060916400fe66ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, 0ll, 4ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "quality", "quality", "int32", 0x7a8060916400fe66ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, 0ll, 4ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo SettingsTableInfo = { "Settings", (uint32_t) sizeof( Settings ), 2, SettingsTableFields, +[]( void * p ) { SettingsReset( *(Settings *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SettingsTableType() { return &SettingsTableInfo; }
 
 inline const TableFieldInfo ListNodeTableFields[] = {
-    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ListNode::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "next", "next", "ListNode", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ListNode::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "next", "next", "ListNode", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo ListNodeTableInfo = { "ListNode", (uint32_t) sizeof( ListNode ), 3, ListNodeTableFields, +[]( void * p ) { ListNodeReset( *(ListNode *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ListNodeTableType() { return &ListNodeTableInfo; }
 
 inline const TableFieldInfo TreeNodeTableFields[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( TreeNode::label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "left", "left", "TreeNode", 0x24b070ada2041cb0ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "right", "right", "TreeNode", 0x76aaaa535714d805ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( TreeNode::label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "left", "left", "TreeNode", 0x24b070ada2041cb0ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "right", "right", "TreeNode", 0x76aaaa535714d805ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo TreeNodeTableInfo = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, TreeNodeTableFields, +[]( void * p ) { TreeNodeReset( *(TreeNode *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TreeNodeTableType() { return &TreeNodeTableInfo; }
 
 inline const TableFieldInfo LayerTableFields[] = {
-    { "depth", "depth", "int32", 0x75d8e97600b296eaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0ll, 64ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "depth", "depth", "int32", 0x75d8e97600b296eaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0ll, 64ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo LayerTableInfo = { "Layer", (uint32_t) sizeof( Layer ), 2, LayerTableFields, +[]( void * p ) { LayerReset( *(Layer *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LayerTableType() { return &LayerTableInfo; }
 
 inline const TableFieldInfo SceneTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( Scene::name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "version", "version", "int32", 0xbb62c62c9808ea37ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( Scene::version ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 99.0, 0ll, 99ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "tree", "tree", "TreeNode", 0x5b25b8ef511eb395ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "settings", "settings", "Settings", 0xee5f6d7b48b44de8ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) SettingsAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) SettingsEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &SettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "alias", "alias", "ListNode", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "ground", "ground", "Layer", 0x60839e2395be697eull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( Scene::ground ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "layers", "layers", "Layer", 0x4554e34a747022dfull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "meta", "meta", "Meta", 0x4320e9a2e32eac38ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( Scene::name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "version", "version", "int32", 0xbb62c62c9808ea37ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( Scene::version ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 99.0, 0ll, 99ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tree", "tree", "TreeNode", 0x5b25b8ef511eb395ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "settings", "settings", "Settings", 0xee5f6d7b48b44de8ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) SettingsAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) SettingsEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &SettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "alias", "alias", "ListNode", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "ground", "ground", "Layer", 0x60839e2395be697eull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( Scene::ground ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "layers", "layers", "Layer", 0x4554e34a747022dfull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "meta", "meta", "Meta", 0x4320e9a2e32eac38ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo SceneTableInfo = { "Scene", (uint32_t) sizeof( Scene ), 9, SceneTableFields, +[]( void * p ) { SceneReset( *(Scene *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SceneTableType() { return &SceneTableInfo; }
 
 inline const TableFieldInfo DepotTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "banks", "banks", "Layer", 0xdd9eb981e152e90cull, 13, true, false, NULL, NULL, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false },
-    { "spare", "spare", "Meta", 0x4339ee8ab21c8380ull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "banks", "banks", "Layer", 0xdd9eb981e152e90cull, 13, true, false, NULL, NULL, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "spare", "spare", "Meta", 0x4339ee8ab21c8380ull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo DepotTableInfo = { "Depot", (uint32_t) sizeof( Depot ), 4, DepotTableFields, +[]( void * p ) { DepotReset( *(Depot *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DepotTableType() { return &DepotTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "tint", "tint", "Colour", 0x1e4984ef2e958a4cull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "stamp", "stamp", "Stamp", 0xee7ba9ad45c64144ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "marker", "marker", "Marker", 0xeddcb72b15486e77ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "pin", "pin", "Marker", 0x77af761956600b54ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "tint", "tint", "Colour", 0x1e4984ef2e958a4cull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "stamp", "stamp", "Stamp", 0xee7ba9ad45c64144ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "marker", "marker", "Marker", 0xeddcb72b15486e77ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "pin", "pin", "Marker", 0x77af761956600b54ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 6, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }

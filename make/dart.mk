@@ -714,7 +714,7 @@ test-dart: tables-dart-cookwrite-negative-control
 .PHONY: tables-dart-retain-negative-control
 tables-dart-retain-negative-control: build/conformance-harness build/conformance-dart
 	@rm -rf build/dart-retain-nc && mkdir -p build/dart-retain-nc
-	@sed -e 's|    if (!identical(rec.owner, owner)) continue;|    continue; // SABOTAGED: no retained record is re-emitted|' \
+	@sed -e 's@  if (t == null) return;@  if (t == null || t.records.isNotEmpty) return; // SABOTAGED: no retained record is re-emitted@' \
 		internal/codegen/darttable/retainwire.go > build/dart-retain-nc/retainwire.go.txt
 	@cmp -s internal/codegen/darttable/retainwire.go build/dart-retain-nc/retainwire.go.txt && \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage matched nothing — the emitter moved"; exit 1; } || true

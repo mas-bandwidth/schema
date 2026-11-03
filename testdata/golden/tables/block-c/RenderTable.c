@@ -1886,8 +1886,10 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_field( blockdemo_table_json_i
 static SCHEMA_UNUSED int blockdemo_table_json_read_list(blockdemo_table_json_in_t * in,void * storage,const blockdemo_table_field_info_t * f,int32_t depth);
 #ifdef SCHEMA_BLOCKDEMO_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int blockdemo_table_json_read_map(blockdemo_table_json_in_t * in,void * storage,const blockdemo_table_field_info_t * f,int32_t depth);
-static SCHEMA_UNUSED int schema_blockdemo_table_json_read_unbounded_text_( blockdemo_table_json_in_t * in, void * slot );
 #endif
+#endif
+#ifdef SCHEMA_BLOCKDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_blockdemo_table_json_read_unbounded_text_( blockdemo_table_json_in_t * in, void * slot );
 #endif
 static SCHEMA_UNUSED int schema_blockdemo_table_json_timestamp_digit_( char c )
 {

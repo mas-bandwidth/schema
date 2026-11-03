@@ -729,7 +729,11 @@ func (g *tableGen) emitListMeasureField(f *ir.Field) {
 	g.pf("        // %s: a kind %d array of kind %d elements, INDEX order (§2.9)\n", f.Name, tkArray, listElementWireKind(f))
 	g.pf("        TableListCursor<%s> %s = TableListElements( ctx, value.%s );\n", g.listElementType(f), cursor, f.Name)
 	g.pf("        if ( !%s.ok ) { return -1; } // the slot and the head disagree\n", cursor)
-	g.pf("        if ( %s.count > 0 ) // an EMPTY list elides, the by-value rule (§3)\n        {\n", cursor)
+	if f.Required {
+		g.pf("        if ( true ) // | required: an empty list still rides (§2.3)\n        {\n")
+	} else {
+		g.pf("        if ( %s.count > 0 ) // an EMPTY list elides, the by-value rule (§3)\n        {\n", cursor)
+	}
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 	g.pf("            int64_t body_%s = 0;\n", f.Name)
 	g.emitArrayBodyMeasure(f, listElementWireKind(f), "body_"+f.Name, cursor+".count", cursor+"[%s]", "            ", "return -1;", "_"+f.Name)
@@ -746,7 +750,11 @@ func (g *tableGen) emitListWriteField(f *ir.Field) {
 	g.pf("    {\n")
 	g.pf("        TableListCursor<%s> %s = TableListElements( ctx, value.%s ); // %s\n", g.listElementType(f), cursor, f.Name, f.Name)
 	g.pf("        if ( !%s.ok ) { return false; }\n", cursor)
-	g.pf("        if ( %s.count > 0 ) // an EMPTY list elides, the by-value rule (§3)\n        {\n", cursor)
+	if f.Required {
+		g.pf("        if ( true ) // | required: an empty list still rides (§2.3)\n        {\n")
+	} else {
+		g.pf("        if ( %s.count > 0 ) // an EMPTY list elides, the by-value rule (§3)\n        {\n", cursor)
+	}
 	g.pf("            const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 	g.pf("            int64_t body_%s = 0;\n", f.Name)
 	// a list's count is the ARENA's rather than a declared bound, so the cache

@@ -238,6 +238,13 @@ struct TableReport
     // (docs/SPEC-TABLES.md §16.2). The wire never raises it — a body carrying an
     // id twice is legal input whose last occurrence wins, silently (§3).
     int32_t duplicate = 0;
+    // MISSING REQUIRED (docs/SPEC-TABLES.md §2.3): a record from before a
+    // field became required lacks it. Counted once per body that ends without
+    // one of its required fields (or after a body below it did), and the
+    // names are the missing fields in declaration order, comma-separated.
+    // The strict reads refuse it with the missing_required reason.
+    int32_t missing_required = 0;
+    char missing_required_fields[256] = {};
     bool malformed = false;    // damage: the whole load is refused, nothing of it is used
     // BLOB_SHARED counts the EXTRA slots that named a blob record another slot
     // already named (docs/SPEC-TABLES.md §2.5, §16.7): the tolerant read keeps
@@ -468,6 +475,9 @@ struct TableFieldInfo
     // positional aggregate initializer, and emitFieldInfo fills it from the
     // IR shape (f.IsMap() || f.IsList()) rather than from the bound column.
     bool unbounded_container;
+    // §2.3's | required: the TEXT form demands the key whenever the field's
+    // guard holds, exactly as the binary body demands the field.
+    bool required;
 };
 
 struct TableTypeInfo
@@ -8792,7 +8802,10 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBody( TableReader & r, Only & value )
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -8942,7 +8955,7 @@ inline bool OnlyLoad( Only & value, const uint8_t * buffer, int64_t bytes, Table
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const TableOpenVerdict verdict = OnlyLoadVerdict( value, buffer, bytes, out );
-    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused )
+    if ( verdict != TableOpenOk || out->malformed || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11):
         // the same value ReadStrict returns, with clamped before kind_mismatch
@@ -9285,7 +9298,10 @@ inline bool GateLoadBody( TableReader & r, const TableNodeMap & nodes, Gate & va
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11001,7 +11017,7 @@ inline const Gate * GateLoad( uint8_t * region, int64_t region_bytes, const uint
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const Gate * root = GateLoadTolerant( region, region_bytes, wire_file, wire_file_bytes, out );
-    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( root == NULL || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -11094,6 +11110,7 @@ inline bool GateLoadBuilderTolerant( GateBuilder & builder, const uint8_t * wire
     nodes.arena = true; // a resolved slot holds the node's ARENA OFFSET here
     nodes.once = true; // a blob named from two slots is one node, counted (§2.5, §16.7)
     nodes.worker = &builder.main; // and a map's entries and a list's elements are the arena's, not a node extent's (§2.8, §2.9)
+    const int32_t missing_before = out->missing_required;
     {
         TableNodeScan scan = TableNodeScanBegin( wire, wire_bytes, out, &ids_table );
         int64_t k = 0;
@@ -11151,6 +11168,7 @@ inline bool GateLoadBuilderTolerant( GateBuilder & builder, const uint8_t * wire
     bool ok = !nodes.refused && GateLoadBody( r, nodes, *root );
     // A NON-FINITE FLOAT REFUSES THE READ, the tolerant one too (§3.3)
     if ( TableNonFiniteRefused( out, non_finite_before ) ) { ok = false; }
+    if ( out->missing_required != missing_before ) { ok = false; }
     // A COUNT ABOVE THE int32 CAP is this path's refusal (docs/SPEC-TABLES.md
     // §2.9): the same whole-load outcome as damage, the root reset below
     ok = ok && !nodes.refused;
@@ -11187,7 +11205,7 @@ inline bool GateLoadBuilder( GateBuilder & builder, const uint8_t * wire_file, i
     TableReport * out = report != NULL ? report : &ignored;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const bool decoded = GateLoadBuilderTolerant( builder, wire_file, wire_file_bytes, out );
-    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused )
+    if ( !decoded || out->malformed || out->blob_shared || out->clamped || out->kind_mismatch || out->refused || out->missing_required )
     {
         // ONE TYPED REASON on the refusal path (docs/SPEC-TABLES.md §6.5, §11).
         if ( out->refuse_reason == ok )
@@ -11229,7 +11247,7 @@ inline const Gate * GateReadStrict( const uint8_t * wire_file, int64_t wire_file
     GateBuilder builder( allocator );
     TableReport report;
     const bool decoded = GateLoadBuilderTolerant( builder, wire_file, wire_file_bytes, &report );
-    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused )
+    if ( !decoded || report.malformed || report.blob_shared || report.clamped || report.kind_mismatch || report.refused || report.missing_required )
     {
         if ( reason != NULL )
         {
@@ -11295,7 +11313,10 @@ ARMDEMO_TABLE_INLINE bool OnlyLoadBodyRetain( TableReader & r, Only & value, Tab
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -11517,7 +11538,10 @@ inline bool GateLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Gat
             r.report->malformed = true;
             return false;
         }
-        if ( field_ref == 0 ) return true; // the body ENDS AT ITS OWN ZERO REFERENCE
+        if ( field_ref == 0 )
+        {
+            return true;
+        }
         if ( r.ids == NULL || field_ref > (uint64_t) r.ids->count )
         {
             r.report->malformed = true;
@@ -12745,14 +12769,14 @@ extern const TableTypeInfo OnlyTableInfo;
 extern const TableTypeInfo GateTableInfo;
 
 inline const TableFieldInfo OnlyTableFields[] = {
-    { "w", "w", "int32", 0xaf63ea4c86020456ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Only, w ), (uint32_t) sizeof( Only::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "w", "w", "int32", 0xaf63ea4c86020456ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Only, w ), (uint32_t) sizeof( Only::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo OnlyTableInfo = { "Only", (uint32_t) sizeof( Only ), 1, OnlyTableFields, +[]( void * p ) { OnlyReset( *(Only *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * OnlyTableType() { return &OnlyTableInfo; }
 
 inline const TableFieldInfo GateTableFields[] = {
-    { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, past ), (uint32_t) sizeof( Gate::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false },
+    { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, past ), (uint32_t) sizeof( Gate::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false },
 };
 inline const TableTypeInfo GateTableInfo = { "Gate", (uint32_t) sizeof( Gate ), 2, GateTableFields, +[]( void * p ) { GateReset( *(Gate *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GateTableType() { return &GateTableInfo; }
