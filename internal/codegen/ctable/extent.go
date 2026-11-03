@@ -71,7 +71,7 @@ func (g *tableGen) emitExtentBodies(members []*ir.Struct) {
 }
 
 func (g *tableGen) fieldHasExtent(f *ir.Field) bool {
-	if f.IsMap() || f.IsList() {
+	if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 		return true
 	}
 	if f.Type.Pointer {
@@ -99,6 +99,8 @@ func (g *tableGen) emitExtentField(f *ir.Field, src, dst, ind string, step *int)
 		g.pf("%s  if(!(%s_present)) { target=NULL; at=&%s; }\n", ind, src, optLabel)
 	}
 	switch {
+	case f.Type.TextUnbounded():
+		g.pf("%sif(!schema_table_text_extent_(n->ctx,n->pack_base,&%s,target ? &%s : NULL,at)) { return 0; }\n", ind, src, dst)
 	case f.IsList() || f.IsMap():
 		*step++
 		label := fmt.Sprintf("extent%d", *step)
@@ -171,6 +173,13 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 	} else {
 		g.pf("%s  if(!table_reader_span(&%s,&%s)) { return 1; }\n", ind, r, b)
 	}
+	if f.Type.TextUnbounded() {
+		g.pf("%s  if(%s.size>0) {\n", ind, b)
+		g.pf("%s    if((uint64_t)%s.size>UINT32_MAX) { %s.report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }\n", ind, b, b)
+		g.pf("%s    if(!table_extent_reserve(at,1,table_blob_storage(%s.size,1),8)) { return 0; }\n", ind, b)
+		g.pf("%s  }\n%s}\n", ind, ind)
+		return
+	}
 	if f.Array != ir.ArrayNone || f.IsMap() {
 		e := sequenceElement(f)
 		kind := sequenceWireKind(f)
@@ -191,6 +200,9 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 			g.pf("%s    if(!table_extent_reserve(at,(int64_t)%s_count,sizeof(%s),%d)) { return 0; }\n", ind, b, typ, g.sequenceAlign(f))
 		}
 		if g.fieldHasExtent(e) {
+			if !f.IsList() && !f.IsMap() && f.KeyEnum == "" && f.ArrayBound > 0 {
+				g.pf("%s    if(%s_count>%d)%s_count=%d;\n", ind, b, f.ArrayBound, b, f.ArrayBound)
+			}
 			g.pf("%s    { uint64_t i; for(i=0;i<%s_count;i++) {\n", ind, b)
 			g.pf("%s      if(!table_reader_has(&%s,1)) { goto %s; }\n", ind, b, done)
 			if f.KeyEnum != "" {
@@ -199,7 +211,14 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 			switch ref := e.Type.Ref.(type) {
 			case *ir.Struct:
 				g.pf("%s      TableReader item; if(!table_reader_span(&%s,&item)) { goto %s; }\n", ind, b, done)
-				g.pf("%s      if(!%s(item,at)) { return 0; }\n", ind, g.sym(ref.Name, "wire_extent"))
+				if ir.TextListPlain(f) && ir.TextListUnbounded(f) {
+					g.pf("%s      if(item.size>0) {\n", ind)
+					g.pf("%s        if((uint64_t)item.size>UINT32_MAX) { %s.report->reason=SCHEMA_TABLE_REFUSE_BLOB_OVER_SIZE_CAP; return 0; }\n", ind, b)
+					g.pf("%s        if(!table_extent_reserve(at,1,table_blob_storage(item.size,1),8)) { return 0; }\n", ind)
+					g.pf("%s      }\n", ind)
+				} else {
+					g.pf("%s      if(!%s(item,at)) { return 0; }\n", ind, g.sym(ref.Name, "wire_extent"))
+				}
 			case *ir.Union:
 				g.pf("%s      if(!%s(&%s,at)) { return 0; }\n", ind, g.sym(ref.Name, "wire_extent"), b)
 			}

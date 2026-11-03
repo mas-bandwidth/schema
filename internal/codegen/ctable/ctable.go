@@ -142,7 +142,8 @@ type tableGen struct {
 	anyVariable bool // the unit declares at least one variable-length table
 	anySequence bool
 	anyList     bool
-	anyMap      bool
+	anyMap           bool
+	anyUnboundedText bool
 	anyKeyed    bool // the unit declares at least one enum-keyed array
 	// blocks is the unit's BLOCK FORM surface (docs/SPEC-TABLES.md §19), nil when
 	// no table is marked `| block`. Nil is what makes the zero-cost gate
@@ -814,7 +815,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // its own.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	if len(u.Tables) == 0 {
-		return generateViewFiles(u, nil, nil, nil, false, false, false), nil
+		return generateViewFiles(u, nil, nil, nil, false, false, false, false), nil
 	}
 	bases := map[string]bool{}
 	for _, f := range u.Files {
@@ -844,6 +845,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			anyMap = anyMap || field.IsMap()
 		}
 	}
+	anyUnboundedText := ir.UnitHasUnboundedText(u)
 	blocks := ir.Blocks(u)
 	blocks = filterFormsBlocks(blocks)
 	declares := declaresForms(u)
@@ -862,7 +864,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	hasProbes := len(probed) > 0
 	messageStructs, messageUnions := messageClosure(u)
 	for _, f := range u.Files {
-		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+		g := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap || anyUnboundedText, anyList: anyList, anyMap: anyMap, anyUnboundedText: anyUnboundedText, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			messageStructs: messageStructs, messageUnions: messageUnions, includes: map[string]bool{}}
 		var members []*ir.Struct
 		members = append(members, orderTables(f.Tables)...)
@@ -871,7 +873,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 				members = append(members, st)
 			}
 		}
-		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap, anyList: anyList, anyMap: anyMap, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
+		cg := &tableGen{unit: u, file: f, lineage: lineage, anyVariable: anyVariable, anyKeyed: anyKeyed, anySequence: anyList || anyMap || anyUnboundedText, anyList: anyList, anyMap: anyMap, anyUnboundedText: anyUnboundedText, blocks: blocks, variable: variable, targets: targets, probed: probed, hasProbes: hasProbes,
 			messageStructs: messageStructs, messageUnions: messageUnions, includes: map[string]bool{}}
 		g.emitTableShapes(members)
 		if len(members) > 0 {
@@ -1007,7 +1009,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 			out[f.Base+"Table.c"] = tableSource(u, f, g, cg, members, jsonAllowed)
 		}
 	}
-	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap))
+	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap, anyUnboundedText))
 	for name, data := range out {
 		out[name] = []byte(formatCompactCFunctions(string(data)))
 	}
@@ -1086,9 +1088,9 @@ func (g *tableGen) header(u *ir.Unit, f *ir.File, members []*ir.Struct) []byte {
 			// sits behind one guard and a translation unit may hold only one of
 			// the package's headers.
 			anyBlob := len(ir.BlobPointerFields(u)) > 0
-			h.WriteString(tableBlobRuntime(anyBlob))
+			h.WriteString(tableBlobRuntime(anyBlob, g.anyUnboundedText))
 			if g.anySequence {
-				h.WriteString(tableSequenceRuntime)
+				h.WriteString(tableSequenceRuntime(g.anyUnboundedText))
 			}
 			if g.anyList {
 				h.WriteString("#ifndef SCHEMA_TABLE_LIST_RUNTIME\n#define SCHEMA_TABLE_LIST_RUNTIME\ntypedef TableSequence TableList;\n#endif\n")

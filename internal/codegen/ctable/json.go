@@ -877,6 +877,9 @@ static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const voi
 static SCHEMA_UNUSED int table_json_write_pointer( TableJsonOut * out, const void * slot, const TableFieldInfo * f, int32_t depth )
 { (void)out; (void)slot; (void)f; (void)depth; return 0; }
 #endif
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+static SCHEMA_UNUSED int schema_table_json_write_unbounded_text_( TableJsonOut * out, const void * slot );
+#endif
 static SCHEMA_UNUSED int schema_table_json_write_text_element_( TableJsonOut * out, const void * p, const TableFieldInfo * f )
 {
     const TableFieldInfo * v = &f->table->fields[0];
@@ -886,6 +889,9 @@ static SCHEMA_UNUSED int schema_table_json_write_text_element_( TableJsonOut * o
         table_json_raw( out, "null", 4 );
         return 1;
     }
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+    if ( !v->counted ) { return schema_table_json_write_unbounded_text_( out, (const uint8_t *) p + v->offset ); }
+#endif
     n = table_json_count( p, v );
     if ( n < 0 || n > v->array_bound ) { return 0; }
     table_json_write_string( out, (const char *) p + v->offset, n );
@@ -1037,6 +1043,9 @@ static SCHEMA_UNUSED int table_json_write_field( TableJsonOut * out, const void 
     }
     if ( f->kind == 12 && f->text_list == 0 )
     {
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_table_json_write_unbounded_text_( out, storage ); }
+#endif
         table_json_write_string( out, (const char *) storage, table_json_count( base, f ) );
         return 1;
     }
@@ -1966,6 +1975,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
 static SCHEMA_UNUSED int table_json_read_list(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
 #ifdef SCHEMA_TABLE_MAP_RUNTIME
 static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,const TableFieldInfo * f,int32_t depth);
+static SCHEMA_UNUSED int schema_table_json_read_unbounded_text_( TableJsonIn * in, void * slot );
 #endif
 #endif
 static SCHEMA_UNUSED int schema_table_json_timestamp_digit_( char c )
@@ -2381,6 +2391,9 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
     if ( f->kind == 12 && f->text_list == 0 )
     {
         int32_t length = 0;
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if ( !f->counted ) { return schema_table_json_read_unbounded_text_( in, storage ); }
+#endif
         if ( !table_json_scan_text( in, (char *) storage, f->array_bound, &length ) ) { return 0; }
         storage[length] = 0;
         table_json_set_count( base, f, length );
