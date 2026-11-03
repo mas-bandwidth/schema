@@ -12,6 +12,7 @@ import (
 )
 
 func TestLobsterUnitViewIncludesUnreachedFiles(t *testing.T) {
+	t.Parallel()
 	for _, tables := range []bool{false, true} {
 		t.Run(fmt.Sprintf("tables_%v", tables), func(t *testing.T) {
 			dir := t.TempDir()
@@ -99,6 +100,7 @@ print("constant omission detected")
 // Compare names, source files and declaration kinds against the compiler IR;
 // totals alone can miss a duplicated registration replacing a missing one.
 func TestLobsterUnitViewCorpus(t *testing.T) {
+	t.Parallel()
 	for _, source := range []string{"examples", "bench/corpus/BenchTable.schema"} {
 		t.Run(source, func(t *testing.T) {
 			paths := []string{filepath.Join(root, source)}

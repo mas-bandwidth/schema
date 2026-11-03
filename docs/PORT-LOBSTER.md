@@ -121,7 +121,8 @@ is the only per-table code a form emits; the walk itself is one runtime file.
 Import `<package>View.lobster` and call `<package>.UnitView()` to enumerate
 all six declaration sets. The entry point imports every file's reflection
 module, including constant-only files and packet types no table reaches.
-Table-free units have the same entry point. Packet modules keep their packet
+Table-free units have the same entry point and emit only the runtime dependencies
+of their descriptor modules. Packet modules keep their packet
 imports; a consumer opts into reflection by importing the view module.
 
 The extra output is part of generation, so runtime module file names are
@@ -473,7 +474,7 @@ reason, and `compiler/porting_test.go` holds it to the tree:
   `constant_descriptor` and `accessor_descriptor` planted bugs turn it red),
   M16 and M20 (the variable-wire load and save, every manifest instance byte
   for byte and report for report against the Go engine), I4 (per-case absent,
-  in the driver's line grammar), I10 (`TestLobsterTableFreeUnitAddsNothing`)
+  in the driver's line grammar), I10 (`TestLobsterTableFreePacketIdentity`)
   and J4 (`tables-lobster-clean`, the strict gate below).
 - **— the platform cannot:** M2 (an `int` is an unboxed 64-bit word), M3 (a
   `float` is an unboxed 64-bit slot), M4 (no inlining directive or aliasing

@@ -59,7 +59,7 @@ func emitDescriptors(g *lobster.Gen) error {
 				emitMapEntry(g, d.Name, f)
 			}
 		case *ir.Enum:
-			emitVocabulary(g, d.Name, base, "enum", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, d.VariantDeprecated, enumIDs(d))
+			emitVocabulary(g, d.Name, base, "enum", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, d.VariantDeprecated, enumIDs(g.Unit, d))
 		case *ir.Flags:
 			emitVocabulary(g, d.Name, base, "flags", d.Doc, d.Tags, d.Variants, d.VariantDocs, d.VariantTags, nil, nil)
 		case *ir.Union:
@@ -76,15 +76,9 @@ func emitDescriptors(g *lobster.Gen) error {
 		}
 	}
 	for _, un := range g.File.TableUnions {
-		armDocs := make([]string, len(un.Variants))
-		armTags := make([][]string, len(un.Variants))
-		dep := make([]bool, len(un.Variants))
-		names := make([]string, len(un.Variants))
-		for i, v := range un.Variants {
-			names[i], armDocs[i], armTags[i] = v.Name, v.Doc, v.Tags
-		}
-		emitVocabulary(g, un.Name, base, "union", un.Doc, un.Tags, names, armDocs, armTags, dep, nil)
+		emitUnionView(g, un, base)
 	}
+
 	// the key enum of every enum-keyed array: the descriptor carries the key's
 	// variants so the load needs no second registration (§2.4; PORT-LOBSTER,
 	// THE LOAD).
@@ -168,6 +162,9 @@ func emitMapEntry(g *lobster.Gen, owner string, f *ir.Field) {
 
 func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string, variants, docs []string, vtags [][]string, dep []bool, ids []uint64) {
 	g.Pf("schema_rt.view_vocabulary(%s, %s, %s, %s, [", lobster.StringLit([]byte(name)), lobster.StringLit([]byte(base)), lobster.StringLit([]byte(doc)), tagList(tags))
+	if kind != "flags" {
+		g.Pf("%s.ViewVariant { name: \"None\", id: 0 }", rt)
+	}
 	for i, v := range variants {
 		d, t := "", []string(nil)
 		if i < len(docs) {
@@ -181,7 +178,7 @@ func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string,
 		if i < len(ids) {
 			id = ids[i]
 		}
-		if i > 0 {
+		if i > 0 || kind != "flags" {
 			g.Pf(", ")
 		}
 		g.Pf("%s.ViewVariant { name: %s, id: %s, deprecated: %v, doc: %s, tags: %s }", rt,
@@ -200,25 +197,22 @@ func emitUnionView(g *lobster.Gen, un *ir.Union, base string) {
 	tags := make([][]string, len(un.Variants))
 	names := make([]string, len(un.Variants))
 	ids := make([]uint64, len(un.Variants))
+	reached := ir.TableClosureVocabulary(g.Unit)[un.Name]
 	for i, v := range un.Variants {
 		names[i], docs[i], tags[i] = v.Name, v.Doc, v.Tags
-		ids[i] = ir.TableWireId(v.WireName())
-	}
-	g.Pf("schema_rt.view_vocabulary(%s, %s, %s, %s, [", lobster.StringLit([]byte(un.Name)), lobster.StringLit([]byte(base)), lobster.StringLit([]byte(un.Doc)), tagList(un.Tags))
-	for i, v := range un.Variants {
-		if i > 0 {
-			g.Pf(", ")
+		if reached {
+			ids[i] = ir.TableWireId(v.WireName())
 		}
-		g.Pf("%s.ViewVariant { name: %s, id: %s, doc: %s, tags: %s }", rt,
-			lobster.StringLit([]byte(v.Name)), idLit(ids[i]), lobster.StringLit([]byte(v.Doc)), tagList(v.Tags))
 	}
-	g.Pf("]::%s.ViewVariant, %s)\n", rt, lobster.StringLit([]byte("union")))
+	emitVocabulary(g, un.Name, base, "union", un.Doc, un.Tags, names, docs, tags, nil, ids)
 }
 
-func enumIDs(e *ir.Enum) []uint64 {
+func enumIDs(u *ir.Unit, e *ir.Enum) []uint64 {
 	out := make([]uint64, len(e.Variants))
-	for i := range e.Variants {
-		out[i] = ir.TableWireId(e.VariantWireName(i))
+	if ir.TableClosureVocabulary(u)[e.Name] {
+		for i := range e.Variants {
+			out[i] = ir.TableWireId(e.VariantWireName(i))
+		}
 	}
 	return out
 }

@@ -13,7 +13,7 @@ import "sort"
 // TestLobsterTableRuntimeNamesAreClaimed holds it to the emitted runtime both
 // ways, and TestLobsterRuntimeNameScanGoesRed is its control.
 //
-// The claimable Lobster spellings are the two the emitter refuses by name
+// The claimable Lobster spellings are those the emitter refuses by name
 // instead: the namespace itself (a package named schema_rt) and a runtime
 // module's FILE name, because a Lobster import names a file beside the module
 // (a schema file named for a runtime module is refused in every unit, since
