@@ -61,6 +61,67 @@ namespace Benchtable
         // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
         // #7), the operator's other answer. Zero on every other path.
         public ulong LayoutHash;
+
+        // Clear returns every member to a fresh report's value, so a strict read
+        // decides on its own read alone.
+        public void Clear()
+        {
+            Unknown = 0; KindMismatch = 0; Clamped = 0; Duplicate = 0; Widened = 0;
+            MissingRequired = 0; BlobShared = 0; Retained = 0; RetainLost = 0;
+            Refused = false; Reason = null; ClampedField = null;
+            NonFiniteFloat = null; NonFiniteReason = null;
+            Verdict = default; Malformed = false; LayoutHash = 0;
+        }
+
+        // THE STRICT READ'S ONE TYPED REASON (docs/SPEC-TABLES.md §6.5, "Strict
+        // error identity"): ok when the strict rule accepts the read this report
+        // describes, else the one reason it refuses. A form byte the read does not
+        // carry is unknown_form whichever form-specific name the tolerant report
+        // holds; then integrity_mismatch, a non-finite float, any damage as
+        // wire_damaged, a missing required field, a refusal by its own name, a
+        // blob named from two slots, clamped, and kind_mismatch, in that order.
+        // unknown, widened, retained and duplicate alone never refuse. Nothing
+        // here allocates.
+        public TableRefuseReason Err()
+        {
+            switch (Reason)
+            {
+                case "newer_form": case "message_form_as_file": case "previous_form": case "unknown_form":
+                    return TableRefuseReason.unknown_form;
+                case "integrity_mismatch":
+                    return TableRefuseReason.integrity_mismatch;
+            }
+            if (NonFiniteFloat != null) { return TableRefuseReason.non_finite_float; }
+            if (Malformed) { return TableRefuseReason.wire_damaged; }
+            if (MissingRequired > 0) { return TableRefuseReason.missing_required; }
+            if (Refused) { return RefusedReason(Reason); }
+            if (BlobShared > 0) { return TableRefuseReason.blob_shared; }
+            if (Clamped > 0) { return TableRefuseReason.clamped; }
+            if (KindMismatch > 0) { return TableRefuseReason.kind_mismatch; }
+            return TableRefuseReason.ok;
+        }
+
+        // a refusal's own name as its member; a refusal that names nothing this
+        // build declares is a form it does not carry
+        static TableRefuseReason RefusedReason(string reason)
+        {
+            switch (reason)
+            {
+                case "count_over_extent_cap": return TableRefuseReason.count_over_extent_cap;
+                case "count_over_length": return TableRefuseReason.count_over_length;
+                case "blob_over_size_cap": return TableRefuseReason.blob_over_size_cap;
+                case "batch_too_large": return TableRefuseReason.batch_too_large;
+                case "plan_too_large": return TableRefuseReason.plan_too_large;
+                case "no_layout": return TableRefuseReason.no_layout;
+                case "layout_malformed": return TableRefuseReason.layout_malformed;
+                case "layout_newer": return TableRefuseReason.layout_newer;
+                case "layout_unsupported": return TableRefuseReason.layout_unsupported;
+                case "no_vocabulary": return TableRefuseReason.no_vocabulary;
+                case "second_announcement": return TableRefuseReason.second_announcement;
+                case "vocabulary_too_large": return TableRefuseReason.vocabulary_too_large;
+                default: return TableRefuseReason.unknown_form;
+            }
+        }
     }
 
     // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
@@ -7266,6 +7327,22 @@ namespace Benchtable
             return TableEntityLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // TableEntityReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool TableEntityReadStrict(TableEntity value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = TableEntityLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            TableEntityTableType().Reset(value);
+            return false;
+        }
+
         public static long TableEntityMeasureMessages(TableEntity[] values) { return TableWire.MessageSave(values, TableEntityTableType(), Span<byte>.Empty, true); }
         public static long TableEntitySaveMessages(TableEntity[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableEntityTableType(), bytes, false); }
         public static TableWire.Verdict TableEntityLoadMessages(TableEntity[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableEntityTableType(), bytes, vocabulary, report, out count); }
@@ -7362,6 +7439,22 @@ namespace Benchtable
         public static bool TableStatLoad(TableStat value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return TableStatLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // TableStatReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool TableStatReadStrict(TableStat value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = TableStatLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            TableStatTableType().Reset(value);
+            return false;
         }
 
         public static long TableStatMeasureMessages(TableStat[] values) { return TableWire.MessageSave(values, TableStatTableType(), Span<byte>.Empty, true); }
@@ -7750,6 +7843,22 @@ namespace Benchtable
             return TableMixedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // TableMixedReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool TableMixedReadStrict(TableMixed value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = TableMixedLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            TableMixedTableType().Reset(value);
+            return false;
+        }
+
         public static long TableMixedMeasureMessages(TableMixed[] values) { return TableWire.MessageSave(values, TableMixedTableType(), Span<byte>.Empty, true); }
         public static long TableMixedSaveMessages(TableMixed[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableMixedTableType(), bytes, false); }
         public static TableWire.Verdict TableMixedLoadMessages(TableMixed[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableMixedTableType(), bytes, vocabulary, report, out count); }
@@ -7864,6 +7973,22 @@ namespace Benchtable
             return TableHitEventLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // TableHitEventReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool TableHitEventReadStrict(TableHitEvent value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = TableHitEventLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            TableHitEventTableType().Reset(value);
+            return false;
+        }
+
         public static long TableHitEventMeasureMessages(TableHitEvent[] values) { return TableWire.MessageSave(values, TableHitEventTableType(), Span<byte>.Empty, true); }
         public static long TableHitEventSaveMessages(TableHitEvent[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableHitEventTableType(), bytes, false); }
         public static TableWire.Verdict TableHitEventLoadMessages(TableHitEvent[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableHitEventTableType(), bytes, vocabulary, report, out count); }
@@ -7962,6 +8087,22 @@ namespace Benchtable
             return TableChatEventLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // TableChatEventReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool TableChatEventReadStrict(TableChatEvent value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = TableChatEventLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            TableChatEventTableType().Reset(value);
+            return false;
+        }
+
         public static long TableChatEventMeasureMessages(TableChatEvent[] values) { return TableWire.MessageSave(values, TableChatEventTableType(), Span<byte>.Empty, true); }
         public static long TableChatEventSaveMessages(TableChatEvent[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, TableChatEventTableType(), bytes, false); }
         public static TableWire.Verdict TableChatEventLoadMessages(TableChatEvent[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, TableChatEventTableType(), bytes, vocabulary, report, out count); }
@@ -8058,6 +8199,22 @@ namespace Benchtable
         public static bool TablePickupEventLoad(TablePickupEvent value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return TablePickupEventLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // TablePickupEventReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool TablePickupEventReadStrict(TablePickupEvent value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = TablePickupEventLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            TablePickupEventTableType().Reset(value);
+            return false;
         }
 
         public static long TablePickupEventMeasureMessages(TablePickupEvent[] values) { return TableWire.MessageSave(values, TablePickupEventTableType(), Span<byte>.Empty, true); }

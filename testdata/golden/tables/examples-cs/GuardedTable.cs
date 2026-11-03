@@ -81,6 +81,22 @@ namespace Tabledemo
             return PatrolLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // PatrolReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool PatrolReadStrict(Patrol value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = PatrolLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            PatrolTableType().Reset(value);
+            return false;
+        }
+
         public static long PatrolCookMeasure(Patrol value) { return TableWire.Cook(value, PatrolTableType(), Span<byte>.Empty, TableByteOrder.Little, true); }
         public static bool PatrolCook(Patrol value, Span<byte> bytes, TableByteOrder order = TableByteOrder.Little) { return TableWire.Cook(value, PatrolTableType(), bytes, order, false) >= 0; }
 

@@ -118,6 +118,22 @@ namespace Blockhome
             return ArmorPlateLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // ArmorPlateReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool ArmorPlateReadStrict(ArmorPlate value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = ArmorPlateLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            ArmorPlateTableType().Reset(value);
+            return false;
+        }
+
         public static long ArmorPlateMeasureMessages(ArmorPlate[] values) { return TableWire.MessageSave(values, ArmorPlateTableType(), Span<byte>.Empty, true); }
         public static long ArmorPlateSaveMessages(ArmorPlate[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArmorPlateTableType(), bytes, false); }
         public static TableWire.Verdict ArmorPlateLoadMessages(ArmorPlate[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArmorPlateTableType(), bytes, vocabulary, report, out count); }
@@ -232,6 +248,22 @@ namespace Blockhome
             return ArmorConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // ArmorConfigReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool ArmorConfigReadStrict(ArmorConfig value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = ArmorConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            ArmorConfigTableType().Reset(value);
+            return false;
+        }
+
         public static long ArmorConfigMeasureMessages(ArmorConfig[] values) { return TableWire.MessageSave(values, ArmorConfigTableType(), Span<byte>.Empty, true); }
         public static long ArmorConfigSaveMessages(ArmorConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArmorConfigTableType(), bytes, false); }
         public static TableWire.Verdict ArmorConfigLoadMessages(ArmorConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArmorConfigTableType(), bytes, vocabulary, report, out count); }
@@ -329,6 +361,22 @@ namespace Blockhome
         public static bool FiringGroupLoad(FiringGroup value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return FiringGroupLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // FiringGroupReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool FiringGroupReadStrict(FiringGroup value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = FiringGroupLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            FiringGroupTableType().Reset(value);
+            return false;
         }
 
         public static long FiringGroupMeasureMessages(FiringGroup[] values) { return TableWire.MessageSave(values, FiringGroupTableType(), Span<byte>.Empty, true); }
@@ -566,6 +614,22 @@ namespace Blockhome
         public static bool GunnerSettingsLoad(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return GunnerSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // GunnerSettingsReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool GunnerSettingsReadStrict(GunnerSettings value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = GunnerSettingsLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            GunnerSettingsTableType().Reset(value);
+            return false;
         }
 
         public static long GunnerSettingsMeasureMessages(GunnerSettings[] values) { return TableWire.MessageSave(values, GunnerSettingsTableType(), Span<byte>.Empty, true); }

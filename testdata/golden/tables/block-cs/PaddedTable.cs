@@ -189,6 +189,22 @@ namespace Blockdemo
             return PaddedRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // PaddedRowReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool PaddedRowReadStrict(PaddedRow value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = PaddedRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            PaddedRowTableType().Reset(value);
+            return false;
+        }
+
         public static long PaddedRowMeasureMessages(PaddedRow[] values) { return TableWire.MessageSave(values, PaddedRowTableType(), Span<byte>.Empty, true); }
         public static long PaddedRowSaveMessages(PaddedRow[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PaddedRowTableType(), bytes, false); }
         public static TableWire.Verdict PaddedRowLoadMessages(PaddedRow[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PaddedRowTableType(), bytes, vocabulary, report, out count); }
@@ -321,6 +337,22 @@ namespace Blockdemo
         public static bool PaddedFrameLoad(PaddedFrame value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return PaddedFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // PaddedFrameReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool PaddedFrameReadStrict(PaddedFrame value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = PaddedFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            PaddedFrameTableType().Reset(value);
+            return false;
         }
 
         public static long PaddedFrameMeasureMessages(PaddedFrame[] values) { return TableWire.MessageSave(values, PaddedFrameTableType(), Span<byte>.Empty, true); }

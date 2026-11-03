@@ -151,6 +151,22 @@ namespace Blockhome
             return PartRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // PartRowReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool PartRowReadStrict(PartRow value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = PartRowLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            PartRowTableType().Reset(value);
+            return false;
+        }
+
         public static long PartRowMeasureMessages(PartRow[] values) { return TableWire.MessageSave(values, PartRowTableType(), Span<byte>.Empty, true); }
         public static long PartRowSaveMessages(PartRow[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, PartRowTableType(), bytes, false); }
         public static TableWire.Verdict PartRowLoadMessages(PartRow[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, PartRowTableType(), bytes, vocabulary, report, out count); }
@@ -270,6 +286,22 @@ namespace Blockhome
         public static bool PartFrameLoad(PartFrame value, ReadOnlySpan<byte> bytes, TableReport report)
         {
             return PartFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+        }
+
+        // PartFrameReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool PartFrameReadStrict(PartFrame value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = PartFrameLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            PartFrameTableType().Reset(value);
+            return false;
         }
 
         public static long PartFrameMeasureMessages(PartFrame[] values) { return TableWire.MessageSave(values, PartFrameTableType(), Span<byte>.Empty, true); }

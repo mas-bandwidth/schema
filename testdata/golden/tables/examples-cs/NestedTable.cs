@@ -118,6 +118,22 @@ namespace Tabledemo
             return ArchiveConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
         }
 
+        // ArchiveConfigReadStrict is THE STRICT READ of a whole file (docs/SPEC-TABLES.md §6.5):
+        // true and the value, or false and the one typed reason TableReport.Err
+        // decides, with the value reset. The report is cleared first and holds this
+        // read's report. A read that lands nothing and names no reason met damage.
+        public static bool ArchiveConfigReadStrict(ArchiveConfig value, ReadOnlySpan<byte> bytes, TableReport report, out TableRefuseReason reason)
+        {
+            if (report == null) { report = new TableReport(); }
+            report.Clear();
+            bool ok = ArchiveConfigLoadVerdict(value, bytes, report) == TableWire.Verdict.Ok;
+            reason = report.Err();
+            if (reason == TableRefuseReason.ok && !ok) { reason = TableRefuseReason.wire_damaged; }
+            if (reason == TableRefuseReason.ok) { return true; }
+            ArchiveConfigTableType().Reset(value);
+            return false;
+        }
+
         public static long ArchiveConfigMeasureMessages(ArchiveConfig[] values) { return TableWire.MessageSave(values, ArchiveConfigTableType(), Span<byte>.Empty, true); }
         public static long ArchiveConfigSaveMessages(ArchiveConfig[] values, Span<byte> bytes, TableReport report = null) { if (values.Length > 256 && report != null) { report.Refused = true; report.Reason = "batch_too_large"; report.Verdict = TableWire.Verdict.Refused; } return TableWire.MessageSave(values, ArchiveConfigTableType(), bytes, false); }
         public static TableWire.Verdict ArchiveConfigLoadMessages(ArchiveConfig[] values, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count) { return TableWire.MessageLoad(values, ArchiveConfigTableType(), bytes, vocabulary, report, out count); }
