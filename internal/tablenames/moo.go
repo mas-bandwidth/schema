@@ -53,7 +53,7 @@ var mooModuleKeys = map[string][]string{
 	"table_refusal.moo": {"ReadStrict", "ReadStrictNames"},
 	"table_retain.moo": {"FixedClassRefusal", "LoadRetain", "MeasureRetain", "SaveRetain", "ids", "newStore",
 		"used"},
-	"table_save.moo": {"measure", "number", "save", "setRetain"},
+	"table_save.moo": {"guardHolds", "keyLess", "mapOrder", "measure", "number", "save", "setRetain"},
 	"table_values.moo": {"BuildVersionId", "BytesBlobId", "HUGE", "Int128", "Int64", "MapKeyId",
 		"MessageVocabularyId", "NodeTableId", "StringBlobId", "TWO32", "Uint128", "Uint64", "bitsCap", "clampUtf8",
 		"clampWide", "cmp64", "crc32c", "f32to64", "finite32", "finite64", "idHex", "kindClass", "leb", "lebLen",

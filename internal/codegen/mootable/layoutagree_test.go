@@ -161,7 +161,10 @@ func TestMooLayoutAgreesWithTheCompiler(t *testing.T) {
 	t.Logf("%d records held to ir.RecordLayout", total)
 }
 
-var treeNodeRecord = regexp.MustCompile(`(\.record\("TreeNode", \{ size = \d+, align = \d+, fields = \{ \{ p = \{[^}]*\}[^}]*\}, \{ p = \{ )(\d+)`)
+// treeNodeRecord finds TreeNode.left's registered offset: the second field's
+// first piece, past whatever record facts precede the fields (the size, the
+// alignments, the extent start).
+var treeNodeRecord = regexp.MustCompile(`(\.record\("TreeNode", \{[^{]*fields = \{ \{ p = \{[^}]*\}[^}]*\}, \{ p = \{ )(\d+)`)
 
 func TestMooLayoutAgreementNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it loads the emitted cook layouts)")
