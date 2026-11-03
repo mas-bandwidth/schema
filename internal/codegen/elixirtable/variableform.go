@@ -6493,10 +6493,10 @@ const variableRetainSource = `
   defp read_arm_payload_retain(%{t: :pointer} = a, name, inner, _framed, c, arm_path) do
     {nodes, ids, report, retain} = c
 
-    case read_payload_retain(a, inner, nodes, ids, report, retain, arm_path) do
-      {:cont, v, report, retain} -> {:cont, {name, v}, report, retain}
-      {:halt, v, report, retain} -> {:halt, {name, v}, report, retain}
-    end
+    {:cont, value, report, retain} =
+      read_payload_retain(a, inner, nodes, ids, report, retain, arm_path)
+
+    {:cont, {name, value}, report, retain}
   end
 
   defp read_arm_payload_retain(%{t: :enum} = a, name, inner, _framed, c, arm_path) do
