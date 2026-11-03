@@ -82,7 +82,13 @@ const (
 	goodRow    = "good"
 	damageRow  = "damage"
 	countedRow = "counted"
+	nanRow     = "nan"
 )
+
+// nanLine is what every builder read answers for a NaN met before an over-cap
+// count: the first refusal in read order names the load (§2.9), so the read
+// refuses as non_finite_float with refused, malformed and the counters unset.
+const nanLine = "nil non_finite_float: Root.f 0 false 0 0"
 
 // The damage-after-refusal pair, in the measure unit. damage_after_cap is
 // values_cap31's root body with two fields after the over-cap values: entries
@@ -148,12 +154,12 @@ func countCapRows(t *testing.T) []countCapRow {
 	return rows
 }
 
-// runCountCap generates the probe unit, lets edit change the emitted files,
-// and answers the probe's lines keyed by "<input> <path>".
-func runCountCap(t *testing.T, rows []countCapRow, edit func(map[string][]byte)) map[string]string {
+// runCountCap generates the probe unit from schema, lets edit change the
+// emitted files, and answers the probe's lines keyed by "<input> <path>".
+func runCountCap(t *testing.T, schema string, rows []countCapRow, edit func(map[string][]byte)) map[string]string {
 	t.Helper()
 	src := filepath.Join(t.TempDir(), "probe.schema")
-	if err := os.WriteFile(src, []byte(countCapSchema), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte(schema), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	u := luarun.LoadUnit(t, src)
@@ -207,6 +213,11 @@ func countCapFaults(rows []countCapRow, got map[string]string) []string {
 				if want := "nil count_over_extent_cap 1 false 0 0"; line != want {
 					bad = append(bad, fmt.Sprintf("%s %s: %q, want %q", row.name, path, line, want))
 				}
+			case nanRow:
+				// the strict reads name the refusal without its field
+				if line != nanLine && (path == "tolerant" || line != "nil non_finite_float 0 false 0 0") {
+					bad = append(bad, fmt.Sprintf("%s %s: %q, want %q", row.name, path, line, nanLine))
+				}
 			default:
 				f := strings.Fields(line)
 				if len(f) != 6 || f[0] != "nil" || f[1] == "count_over_extent_cap" || f[3] != "true" || (row.class == countedRow && f[4] == "0") {
@@ -220,7 +231,7 @@ func countCapFaults(rows []countCapRow, got map[string]string) []string {
 			if strict != "value" {
 				bad = append(bad, fmt.Sprintf("%s strict: %q, want value", row.name, strict))
 			}
-		case capRow:
+		case capRow, nanRow:
 			if strict != row.strict {
 				bad = append(bad, fmt.Sprintf("%s strict: %q, want %s", row.name, strict, row.strict))
 			}
@@ -235,10 +246,10 @@ func countCapFaults(rows []countCapRow, got map[string]string) []string {
 
 // countCapFailed runs the probe over a runtime edit and answers the set of
 // "<input> <path>" reads that differ from §2.9.
-func countCapFailed(t *testing.T, rows []countCapRow, edit func(map[string][]byte)) map[string]bool {
+func countCapFailed(t *testing.T, schema string, rows []countCapRow, edit func(map[string][]byte)) map[string]bool {
 	t.Helper()
 	failed := map[string]bool{}
-	for _, fault := range countCapFaults(rows, runCountCap(t, rows, edit)) {
+	for _, fault := range countCapFaults(rows, runCountCap(t, schema, rows, edit)) {
 		f := strings.SplitN(fault, ":", 2)
 		failed[f[0]] = true
 	}
@@ -266,7 +277,7 @@ func editLoad(t *testing.T, files map[string][]byte, from, to string, times int)
 func TestLuaCountCapRefusal(t *testing.T) {
 	t.Parallel()
 	rows := countCapRows(t)
-	for _, fault := range countCapFaults(rows, runCountCap(t, rows, nil)) {
+	for _, fault := range countCapFaults(rows, runCountCap(t, countCapSchema, rows, nil)) {
 		t.Error(fault)
 	}
 }
@@ -314,7 +325,97 @@ func TestLuaCountCapRefusalNegativeControls(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			got := countCapFailed(t, rows, c.edit)
+			got := countCapFailed(t, countCapSchema, rows, c.edit)
+			for read := range c.want {
+				if !got[read] {
+					t.Errorf("%s: the probe did not see the %s control", read, c.name)
+				}
+			}
+			for read := range got {
+				if !c.want[read] {
+					t.Errorf("%s: red under the %s control, which should not reach it", read, c.name)
+				}
+			}
+		})
+	}
+}
+
+// countCapFloatSchema is the float unit of the shared pin table: a variable
+// root whose wire can carry a NaN and an over-cap count in either read order.
+const countCapFloatSchema = "package probe\n table Root { f float32\n values []int32 }\n"
+
+// countCapFloatRows reads the float rows of the shared pin table.
+func countCapFloatRows(t *testing.T) []countCapRow {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "goosetable", "testdata", "load_refusal_reasons.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rows []countCapRow
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) != 6 || f[1] != "float" {
+			continue
+		}
+		wire, err := hex.DecodeString(f[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		class := map[string]string{"ok": goodRow, "non_finite_float": nanRow, "count_over_extent_cap": capRow}[f[3]]
+		if class == "" {
+			t.Fatalf("%s: no class for the strict answer %s", f[0], f[3])
+		}
+		rows = append(rows, countCapRow{name: f[0], wire: wire, class: class, strict: f[3]})
+	}
+	if len(rows) != 3 {
+		t.Fatalf("%d float rows, want float_good, nan_then_over_cap and over_cap_then_nan", len(rows))
+	}
+	return rows
+}
+
+// TestLuaCountCapReadOrder holds the two-refusal rule (docs/SPEC-TABLES.md
+// §2.9): when a read meets a NaN and an over-cap count, the first in read
+// order names it. nan_then_over_cap refuses as non_finite_float and
+// over_cap_then_nan as count_over_extent_cap on every builder read.
+func TestLuaCountCapReadOrder(t *testing.T) {
+	t.Parallel()
+	rows := countCapFloatRows(t)
+	for _, fault := range countCapFaults(rows, runCountCap(t, countCapFloatSchema, rows, nil)) {
+		t.Error(fault)
+	}
+}
+
+// floatWalksOn makes the emitted load read on past a NaN float32 instead of
+// ending the body there, so the walk of nan_then_over_cap reaches the
+// over-cap count after the NaN.
+func floatWalksOn(t *testing.T, files map[string][]byte) {
+	t.Helper()
+	editLoad(t, files, "      non_finite(report, ctx, d)\n      return nil\n    end\n    x = r_f32(r)", "      non_finite(report, ctx, d)\n      return 0.0\n    end\n    x = r_f32(r)", 1)
+}
+
+// TestLuaCountCapReadOrderNegativeControl checks the order where the walk
+// reaches both refusals. The load ends a body at a NaN, so the first variant
+// reads on past it: the NaN still names the load, because the report the
+// count refusal keeps already holds it. The second variant also lets the
+// count refusal win whatever came first, and exactly nan_then_over_cap goes
+// red on every builder read.
+func TestLuaCountCapReadOrderNegativeControl(t *testing.T) {
+	t.Parallel()
+	rows := countCapFloatRows(t)
+	for _, c := range []struct {
+		name string
+		edit func(map[string][]byte)
+		want map[string]bool
+	}{
+		{"walk-on", func(files map[string][]byte) { floatWalksOn(t, files) }, map[string]bool{}},
+		{"count-wins", func(files map[string][]byte) {
+			floatWalksOn(t, files)
+			editLoad(t, files, "    if report.nonFiniteFloat ~= nil then\n      report.reason = \"non_finite_float: \"", "    if false then\n      report.reason = \"non_finite_float: \"", 1)
+		}, map[string]bool{"nan_then_over_cap tolerant": true, "nan_then_over_cap load": true, "nan_then_over_cap strict": true, "nan_then_over_cap retain": true}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got := countCapFailed(t, countCapFloatSchema, rows, c.edit)
 			for read := range c.want {
 				if !got[read] {
 					t.Errorf("%s: the probe did not see the %s control", read, c.name)

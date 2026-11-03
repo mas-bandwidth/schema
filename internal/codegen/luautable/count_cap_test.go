@@ -106,38 +106,7 @@ func TestLuauCountCapRefusal(t *testing.T) {
 		t.Fatalf("%d cap rows and good=%v, want 5 and the good row", len(capRows), inputs["good"] != nil)
 	}
 
-	dir := t.TempDir()
-	src := filepath.Join(dir, "Probe.schema")
-	if err := os.WriteFile(src, []byte(countCapSchema), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	u, err := compiler.New().Load([]string{src})
-	if err != nil {
-		t.Fatalf("the probe unit does not load: %v", err)
-	}
-	files, err := luau.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tables, err := luautable.Generate(u)
-	if err != nil {
-		t.Fatal(err)
-	}
-	maps.Copy(files, tables)
-	files["main.luau"] = []byte(countCapProbe)
-	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), body, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got := map[string]string{}
-	for line := range strings.SplitSeq(strings.TrimRight(string(luaurun.Run(t, dir, "main.luau", inputs)), "\n"), "\n") {
-		key, answer, ok := strings.Cut(line, " ")
-		if !ok {
-			t.Fatalf("the probe printed %q", line)
-		}
-		got[key] = answer
-	}
+	got := runLuauCountCap(t, countCapSchema, inputs, nil)
 
 	refusal := "nil=true reason=count_over_extent_cap refused=1 malformed=false moved=0"
 	for _, row := range capRows {
@@ -165,5 +134,138 @@ func TestLuauCountCapRefusal(t *testing.T) {
 		}
 		sort.Strings(all)
 		t.Logf("probe:\n%s", strings.Join(all, "\n"))
+	}
+}
+
+// runLuauCountCap generates the probe unit from schema, lets edit change the
+// emitted files, runs countCapProbe over inputs and answers its lines keyed by
+// "<input>.<path>".
+func runLuauCountCap(t *testing.T, schema string, inputs map[string][]byte, edit func(map[string][]byte)) map[string]string {
+	t.Helper()
+	dir := t.TempDir()
+	src := filepath.Join(dir, "Probe.schema")
+	if err := os.WriteFile(src, []byte(schema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u, err := compiler.New().Load([]string{src})
+	if err != nil {
+		t.Fatalf("the probe unit does not load: %v", err)
+	}
+	files, err := luau.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tables, err := luautable.Generate(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(files, tables)
+	if edit != nil {
+		edit(files)
+	}
+	files["main.luau"] = []byte(countCapProbe)
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := map[string]string{}
+	for line := range strings.SplitSeq(strings.TrimRight(string(luaurun.Run(t, dir, "main.luau", inputs)), "\n"), "\n") {
+		key, answer, ok := strings.Cut(line, " ")
+		if !ok {
+			t.Fatalf("the probe printed %q", line)
+		}
+		got[key] = answer
+	}
+	return got
+}
+
+// countCapFloatSchema is the float unit of the shared pin table: a variable
+// root whose wire can carry a NaN and an over-cap count in either read order.
+const countCapFloatSchema = "package probe\n table Root { f float32\n values []int32 }\n"
+
+// readOrderFaults runs the float rows of the shared pin table and answers the
+// "<input>.<path>" reads that differ from the two-refusal rule
+// (docs/SPEC-TABLES.md §2.9): the first refusal in read order names the load,
+// so nan_then_over_cap refuses as non_finite_float and over_cap_then_nan as
+// count_over_extent_cap, each with malformed unset, no counter moved and a nil
+// answer; float_good reads.
+func readOrderFaults(t *testing.T, edit func(map[string][]byte)) map[string]string {
+	t.Helper()
+	data, err := os.ReadFile("../goosetable/testdata/load_refusal_reasons.tsv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{}
+	strict := map[string]string{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		f := strings.Split(line, "\t")
+		if len(f) != 6 || f[1] != "float" {
+			continue
+		}
+		wire, err := hex.DecodeString(f[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputs[f[0]] = wire
+		strict[f[0]] = f[3]
+	}
+	if len(inputs) != 3 {
+		t.Fatalf("%d float rows, want float_good, nan_then_over_cap and over_cap_then_nan", len(inputs))
+	}
+	got := runLuauCountCap(t, countCapFloatSchema, inputs, edit)
+	bad := map[string]string{}
+	for name, reason := range strict {
+		for _, path := range countCapPaths {
+			key := name + "." + path
+			line := got[key]
+			ok := false
+			switch reason {
+			case "ok":
+				ok = line == "nil=false reason=nil refused=0 malformed=false moved=0"
+			case "count_over_extent_cap":
+				ok = line == "nil=true reason=count_over_extent_cap refused=1 malformed=false moved=0"
+			case "non_finite_float":
+				ok = strings.HasPrefix(line, "nil=true reason=non_finite_float") && strings.HasSuffix(line, " malformed=false moved=0")
+			}
+			if !ok {
+				bad[key] = line
+			}
+		}
+	}
+	return bad
+}
+
+// TestLuauCountCapReadOrder holds every builder read to the two-refusal rule
+// on the float rows of the shared pin table.
+func TestLuauCountCapReadOrder(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter")
+	t.Parallel()
+	for key, line := range readOrderFaults(t, nil) {
+		t.Errorf("%s: %s", key, line)
+	}
+}
+
+// TestLuauCountCapReadOrderNegativeControl drops the NaN the count refusal
+// kept, so the count wins whatever came first, and requires exactly
+// nan_then_over_cap to go red on every builder read.
+func TestLuauCountCapReadOrderNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter")
+	t.Parallel()
+	bad := readOrderFaults(t, func(files map[string][]byte) {
+		const from, to = "\t_nonFinite = _countNonFinite\n", "\t_nonFinite = nil\n"
+		src := files["schema_load.luau"]
+		if bytes.Count(src, []byte(from)) != 1 {
+			t.Fatalf("the emitted schema_load.luau no longer holds %q once", from)
+		}
+		files["schema_load.luau"] = bytes.ReplaceAll(src, []byte(from), []byte(to))
+	})
+	for _, path := range countCapPaths {
+		if _, ok := bad["nan_then_over_cap."+path]; !ok {
+			t.Errorf("nan_then_over_cap.%s: the probe did not see the read-order control", path)
+		}
+	}
+	if len(bad) != len(countCapPaths) {
+		t.Errorf("the control turned %d reads red, want the %d of nan_then_over_cap: %v", len(bad), len(countCapPaths), bad)
 	}
 }

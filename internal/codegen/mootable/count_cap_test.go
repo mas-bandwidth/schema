@@ -94,16 +94,55 @@ func countCapInputs(t *testing.T) (map[string][]byte, []string) {
 	return in, names
 }
 
-// countCapRed is the gate's red list, one line per input and path whose
-// answer is not §2.9's. mutate, when set, edits the emitted table_retain.moo
-// first.
-func countCapRed(t *testing.T, mutate func(string) string) []string {
+// countCapFloatInputs is the shared pin's float unit: float_good, and a NaN and
+// an over-cap count in each read order. When a read meets two refusals, the
+// first in read order names it (docs/SPEC-TABLES.md §2.9), so
+// nan_then_over_cap answers non_finite_float and over_cap_then_nan answers
+// count_over_extent_cap.
+func countCapFloatInputs(t *testing.T) (map[string][]byte, []string) {
 	t.Helper()
-	in, names := countCapInputs(t)
-	g := generateFiles(t, map[string]string{"Probe.schema": reasonSchemas["measure"]})
+	in := map[string][]byte{}
+	var names []string
+	for _, r := range reasonRows(t) {
+		if r.schema != "float" {
+			continue
+		}
+		b, err := hex.DecodeString(r.wire)
+		if err != nil {
+			t.Fatalf("%s: %v", r.name, err)
+		}
+		in[r.name] = b
+		names = append(names, r.name)
+	}
+	if !slices.Equal(names, []string{"float_good", "nan_then_over_cap", "over_cap_then_nan"}) {
+		t.Fatalf("the pin's float rows are %v", names)
+	}
+	return in, names
+}
+
+// countCapRed is the gate's red list, one line per input and path whose
+// answer is not §2.9's, over the pin's measure and float units. mutate, when
+// set, edits the emitted runtime file `file` first.
+func countCapRed(t *testing.T, file string, mutate func(string) string) []string {
+	t.Helper()
+	var bad []string
+	for _, u := range []struct {
+		unit   string
+		inputs func(*testing.T) (map[string][]byte, []string)
+	}{{"measure", countCapInputs}, {"float", countCapFloatInputs}} {
+		bad = append(bad, countCapUnitRed(t, u.unit, u.inputs, file, mutate)...)
+	}
+	return bad
+}
+
+// countCapUnitRed runs one pin unit's inputs through every builder read path.
+func countCapUnitRed(t *testing.T, unit string, inputs func(*testing.T) (map[string][]byte, []string), file string, mutate func(string) string) []string {
+	t.Helper()
+	in, names := inputs(t)
+	g := generateFiles(t, map[string]string{"Probe.schema": reasonSchemas[unit]})
 	if mutate != nil {
 		files := maps.Clone(g.files)
-		files["table_retain.moo"] = []byte(mutate(string(files["table_retain.moo"])))
+		files[file] = []byte(mutate(string(files[file])))
 		g = writeUnit(t, g.unit, files)
 	}
 	var main strings.Builder
@@ -129,7 +168,12 @@ func countCapRed(t *testing.T, mutate func(string) string) []string {
 			}
 			value, reason, refused, malformed, moved, used := a[0], a[1], a[2], a[3], a[4], a[5]
 			switch name {
-			case "good", "retained_good":
+			case "nan_then_over_cap":
+				if value != "false" || !strings.HasPrefix(reason, "non_finite_float") || refused != "0" || malformed != "false" || used != "0" {
+					bad = append(bad, fmt.Sprintf("%s/%s: value %s reason %s refused %s malformed %s store %s; want no value, non_finite_float, refused 0, malformed false, 0",
+						name, path, value, reason, refused, malformed, used))
+				}
+			case "good", "retained_good", "float_good":
 				if value != "true" || malformed != "false" || refused != "0" {
 					bad = append(bad, fmt.Sprintf("%s/%s: value %s refused %s malformed %s reason %s, want a value", name, path, value, refused, malformed, reason))
 				}
@@ -156,11 +200,13 @@ func countCapRed(t *testing.T, mutate func(string) string) []string {
 // answer for a `[]` or map count above the int32 storage cap: no value, the
 // reason count_over_extent_cap, refused set, malformed not set, no counter
 // moved and nothing left in a retaining store. The good rows read, and a count
-// AT the cap that the body cannot cover is damage, never the cap refusal.
+// AT the cap that the body cannot cover is damage, never the cap refusal. A
+// NaN met before the count is the first refusal in read order and answers
+// non_finite_float; a NaN met after it leaves the count's answer.
 func TestMooCountCapRefusal(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
 	t.Parallel()
-	for _, b := range countCapRed(t, nil) {
+	for _, b := range countCapRed(t, "", nil) {
 		t.Error(b)
 	}
 }
@@ -172,7 +218,7 @@ func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "moo (it runs the emitted table_retain.moo)")
 	t.Parallel()
 	const from = "\tif v == nil and report.reason == \"count_over_extent_cap\" then\n\t\treset_store(store)\n"
-	bad := countCapRed(t, func(src string) string {
+	bad := countCapRed(t, "table_retain.moo", func(src string) string {
 		if strings.Count(src, from) != 1 {
 			t.Fatalf("table_retain.moo carries the anchor %d times, want 1: the control would be vacuous", strings.Count(src, from))
 		}
@@ -184,6 +230,33 @@ func TestMooCountCapRefusalNegativeControl(t *testing.T) {
 	}
 	if !slices.Equal(red, []string{"retained_cap/retain_store"}) {
 		t.Fatalf("red %v, want exactly [retained_cap/retain_store]", red)
+	}
+	t.Logf("red: %s", bad[0])
+}
+
+// TestMooCountCapReadOrderNegativeControl drops the read-order rule: the load
+// answers the count whatever the walk met first, so nan_then_over_cap goes red
+// on every builder read path, and only it.
+func TestMooCountCapReadOrderNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "moo (it runs the emitted table_load.moo)")
+	t.Parallel()
+	const from = "\t\tif _countNonFinite > 0 then\n"
+	bad := countCapRed(t, "table_load.moo", func(src string) string {
+		if strings.Count(src, from) != 1 {
+			t.Fatalf("table_load.moo carries the anchor %d times, want 1: the control would be vacuous", strings.Count(src, from))
+		}
+		return strings.Replace(src, from, "\t\tif false then\n", 1)
+	})
+	var red []string
+	for _, b := range bad {
+		red = append(red, b[:strings.Index(b, ":")])
+	}
+	var want []string
+	for _, path := range countCapPaths {
+		want = append(want, "nan_then_over_cap/"+path)
+	}
+	if !slices.Equal(red, want) {
+		t.Fatalf("red %v, want exactly %v", red, want)
 	}
 	t.Logf("red: %s", bad[0])
 }
