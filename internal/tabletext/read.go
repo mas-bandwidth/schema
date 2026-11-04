@@ -619,6 +619,9 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 	}
 	in.pos++ // the opening bracket
 	first := true
+	// a skipped object's keys are held to the layer's rule too: a repeated
+	// key refuses in every object of the text (§16.2, §16.12)
+	var keys map[string]struct{}
 	for {
 		c := in.peek()
 		if c == close {
@@ -644,6 +647,13 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return false
 			}
 			in.pos++
+			if keys == nil {
+				keys = map[string]struct{}{}
+			}
+			if _, repeated := keys[string(key)]; repeated {
+				return in.fail("malformed: a repeated key")
+			}
+			keys[string(key)] = struct{}{}
 			if len(key) > 0 && key[0] == '&' && in.graph != nil {
 				if !first || !in.skippedAmpersand(string(key)) {
 					in.bad = true
@@ -682,7 +692,7 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 }
 
 // readTable places ONE table object: keys are field keys, unknown ones are
-// skipped and counted, a repeated key is last-wins and counted. The instance
+// skipped and counted, a repeated key refuses the read. The instance
 // is already at its declared defaults, so a key the text never mentions keeps
 // the default an absent field takes on the wire (§4).
 func (in *reader) readTable(inst *Instance, depth int) bool {
