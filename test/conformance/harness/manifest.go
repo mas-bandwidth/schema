@@ -77,17 +77,26 @@ type Counts struct {
 }
 
 func (c Counts) String() string {
-	verdict := "read"
-	if c.Refused {
-		verdict = "refused"
+	if c.Refused || c.Malformed {
+		return "refused"
 	}
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", c.Unknown, c.KindMismatch, c.Widened, c.Clamped, c.Duplicate, c.Malformed, verdict)
+	return "read"
 }
 
 // ParseCounts reads the "u,k,w,c,d,m,verdict" spelling every leg of the
 // harness uses.
 func ParseCounts(text string) (Counts, error) {
 	var c Counts
+	switch strings.TrimSpace(text) {
+	case "read", "ACCEPT":
+		return c, nil
+	case "refused", "REFUSED":
+		c.Refused = true
+		return c, nil
+	}
+	// Older drivers may still transport diagnostics beside their verdict.
+	// Parsing them preserves the transport; no diagnostic counter selects
+	// the read outcome or participates in comparison.
 	parts := strings.Split(strings.TrimSpace(text), ",")
 	if len(parts) != 7 {
 		return c, fmt.Errorf("a report is six counters and a verdict, not %d fields: %q", len(parts), text)
@@ -198,6 +207,10 @@ func ReportValue(jsonDir, name string) string {
 	return filepath.Join(filepath.Dir(jsonDir), "report-values", name+".json")
 }
 
+func RetainValue(jsonDir, name string) string {
+	return filepath.Join(filepath.Dir(jsonDir), "retain-values", name+".json")
+}
+
 // Verdict is the standard's answer for one hostile case.
 func (h Hostile) Verdict() string {
 	if h.Refused {
@@ -250,6 +263,8 @@ type CookWrite struct {
 	Instance string
 	Little   string
 	Big      string
+	Input    string // optional authored JSON construction input
+	Share    string // source:alias blob fields to join after construction
 }
 
 // Block is a block image (docs/SPEC-TABLES.md §19) an Open must accept, and the
@@ -402,6 +417,7 @@ type RetainCase struct {
 	Load     RetainCounts
 	SaveLost int    // the `retain_lost` the SAVE adds
 	Saves    string // the pinned save; empty is a row that does not save
+	Value    string // complete known value after the retaining read
 }
 
 // RetainCounts is a retaining load's own three: the two retention counters and
@@ -563,7 +579,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			if len(f) != 10 {
 				return nil, fmt.Errorf("%s: retain takes 10 fields and this line has %d", where, len(f))
 			}
-			rc := RetainCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4]}
+			rc := RetainCase{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Value: RetainValue(jsonDir, f[1])}
 			switch f[5] {
 			case "full":
 			case "short":
@@ -671,10 +687,27 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			m.Cooks = append(m.Cooks, Cook{Case: f[1], Unit: f[2], Root: f[3], Dump: f[4]})
 		case "cook-write":
-			if len(f) != 4 {
+			if len(f) < 4 || len(f) > 6 {
 				return nil, fmt.Errorf("%s: cook-write takes an instance and its two cooked files, little then big", where)
 			}
-			m.CookWrites = append(m.CookWrites, CookWrite{Instance: f[1], Little: f[2], Big: f[3]})
+			cw := CookWrite{Instance: f[1], Little: f[2], Big: f[3]}
+			for _, option := range f[4:] {
+				switch {
+				case strings.HasPrefix(option, "input=") && cw.Input == "":
+					cw.Input = strings.TrimPrefix(option, "input=")
+				case strings.HasPrefix(option, "share=") && cw.Share == "":
+					cw.Share = strings.TrimPrefix(option, "share=")
+				default:
+					return nil, fmt.Errorf("%s: invalid cook construction option %q", where, option)
+				}
+			}
+			if cw.Share != "" {
+				source, alias, ok := strings.Cut(cw.Share, ":")
+				if !ok || source == "" || alias == "" || source == alias || strings.Contains(alias, ":") || cw.Input == "" {
+					return nil, fmt.Errorf("%s: share requires input= and two distinct blob fields", where)
+				}
+			}
+			m.CookWrites = append(m.CookWrites, cw)
 		case "block":
 			if len(f) != 5 {
 				return nil, fmt.Errorf("%s: block takes name, unit, file, dump", where)
