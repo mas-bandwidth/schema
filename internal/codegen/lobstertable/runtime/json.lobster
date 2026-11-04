@@ -1116,9 +1116,25 @@ def j_scan_text(r:JsonReader, capacity:int, store:bool) -> string, bool, bool:
         j_refuse(r, "kind_mismatch")
         return "", false, false
     r.pos++
+    let t = r.text
+    let n = length(t)
     let parts:[string] = []
     var size = 0
     while true:
+        // Plain ASCII is copied in runs, with the same all-or-refuse bound.
+        let start = r.pos
+        while r.pos < n:
+            let c = t[r.pos]
+            if c < 0x20 or c >= 0x80 or c == '\"' or c == '\\':
+                break
+            r.pos++
+        let run = r.pos - start
+        if run > 0:
+            if capacity >= 0 and run > capacity - size:
+                j_refuse(r, "length_over_bound")
+                return "", false, false
+            push(parts, substring(t, start, run))
+            size += run
         let unit, done, ok = j_scan_unit(r)
         if not ok:
             return "", false, false
@@ -1290,7 +1306,7 @@ def j_skip_container(r:JsonReader, close:int, depth:int) -> bool:
             return false
         var keyed = false
         if close == '}':
-            let key, _, ok = j_scan_string(r, -1)
+            let key, _, ok = j_scan_string(r, json_max_key)
             if not ok:
                 return false
             if not j_key_once(r, keys, key):
@@ -1431,7 +1447,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
                 return j_required(r, rec, seen)
             if c == 0:
                 return j_refuse(r, "malformed")
-            let k, _, ok = j_scan_string(r, -1)
+            let k, _, ok = j_scan_string(r, json_max_key)
             if not ok:
                 return false
             if j_peek(r) != ':':
@@ -1475,10 +1491,10 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
 
 
 def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
-    if depth > json_max_depth:
-        return j_refuse(r, "depth_over_bound")
     let f = sl.fd
     let s = f.s
+    if depth > json_max_depth and (s == "arr" or s == "map" or s == "union" or s == "tab" or s == "ptr"):
+        return j_refuse(r, "depth_over_bound")
     if s == "sblob" or s == "bblob":
         return j_read_blob(r, sl)
     if s == "ptr":
@@ -1716,7 +1732,7 @@ def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, _, ok = j_scan_string(r, -1)
+        let key, _, ok = j_scan_string(r, json_max_key)
         if not ok:
             return false
         if not j_key_once(r, seen, key):
@@ -1831,6 +1847,8 @@ def j_place_float(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, sin
             j_refuse(r, "non_finite_float")
             return
         v = narrow
+    if f.franged and v == 0.0:
+        v = 0.0
     cell.f = v
 
 
@@ -2028,7 +2046,7 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     if j_peek(r) == '}':
         r.pos++
         return true
-    let key, _, ok = j_scan_string(r, -1)
+    let key, _, ok = j_scan_string(r, json_max_key)
     if not ok:
         return false
     if j_peek(r) != ':':
@@ -2144,12 +2162,16 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
     var c = j_peek(r)
     if c == '}':
         r.pos++
-        cell.node = new_record(d)
-        return true
+        let node = new_record(d)
+        cell.node = node
+        let seen:[bool] = []
+        for(node.fields):
+            push(seen, false)
+        return j_required(r, node, seen)
     if c == 0:
         r.bad = true
         return false
-    let key, _, ok = j_scan_string(r, -1)
+    let key, _, ok = j_scan_string(r, json_max_key)
     if not ok:
         return false
     if j_peek(r) != ':':

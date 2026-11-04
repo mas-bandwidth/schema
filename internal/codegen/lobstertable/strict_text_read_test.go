@@ -12,7 +12,7 @@ import (
 )
 
 const strictTextSchema = `package stricttextprobe
-table Node { value int32
+table Node { value int32 | required
  next *Node }
 table Root {
  n int32 | min = 0, max = 10
@@ -24,6 +24,11 @@ table Root {
  f float32
  link *Node
  other *Node
+ blob bytes(3)
+ optional ?int32
+ big int64
+ x fixed(16,16) | min = -32768, max = 32767
+ y ufixed(16,16) | min = 0, max = 65535
  need int32 | required
 }
 `
@@ -127,6 +132,8 @@ func TestLobsterStrictJSONRead(t *testing.T) {
 		{"defaults", `{"need":1}`, `{"need":1}`},
 		{"bounds", `{"need":1,"n":10,"s":"αβ","wide":"😀","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`, `{"need":1,"n":10,"s":"αβ","wide":"😀","a":[1,2],"words":["abc","de"],"keys":{"abcd":2},"f":1.5}`},
 		{"unknown", `{"need":1,"future":{"x":[1,true,null,"ok"]}}`, `{"need":1}`},
+		{"base64", `{"need":1,"blob":"YQ"}`, `{"need":1,"blob":"YQ=="}`},
+		{"optional", `{"need":1,"optional":null}`, `{"need":1}`},
 		{"sharing", `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`, `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`},
 		{"duplicate", `{"need":1,"need":2}`, ""},
 		{"escaped duplicate", `{"need":1,"\u006eeed":2}`, ""},
@@ -149,6 +156,15 @@ func TestLobsterStrictJSONRead(t *testing.T) {
 		{"low surrogate", `{"need":1,"s":"\udc00"}`, ""},
 		{"unknown surrogate", `{"need":1,"future":"\ud800"}`, ""},
 		{"malformed unknown", `{"need":1,"future":[1,,2]}`, ""},
+		{"invalid base64", `{"need":1,"blob":"Y=Q="}`, ""},
+		{"blob bound", `{"need":1,"blob":"YWJjZA=="}`, ""},
+		{"required pointee", `{"need":1,"link":{}}`, ""},
+		{"fixed boundary", `{"need":1,"x":-32768,"y":65535}`, `{"need":1,"x":-32768,"y":65535}`},
+		{"fixed signed excess", `{"need":1,"x":32767.0000152587890625}`, ""},
+		{"fixed unsigned excess", `{"need":1,"y":65536}`, ""},
+		{"fixed finer fraction", `{"need":1,"x":0.1}`, ""},
+		{"stored zero", `{"need":1,"s":"\u0000"}`, ""},
+		{"long field key", `{"need":1,"` + strings.Repeat("x", 256) + `":0}`, ""},
 		{"partial graph", `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1},"s":"abcde"}`, ""},
 		{"cycle", `{"need":1,"link":{"&node":1,"next":{"&node":1}}}`, ""},
 		{"unknown cycle", `{"need":1,"future":{"&node":1,"next":{"&node":1}}}`, ""},
@@ -163,6 +179,9 @@ func TestLobsterStrictTextRead(t *testing.T) {
 		{"escapes", `(:need 1 :s "\u03b1")`, `{"need":1,"s":"α"}`},
 		{"exact exponent", `(:need 1e0 :n 10.0)`, `{"need":1,"n":10}`},
 		{"sharing", `(:need 1 :link ("&node" 1 :value 3) :other ("&node" 1))`, `{"need":1,"link":{"&node":1,"value":3},"other":{"&node":1}}`},
+		{"exact int64 exponent", `(:need 1 :big 9007199254740993e0)`, `{"need":1,"big":9007199254740993}`},
+		{"base64", `(:need 1 :blob "YQ==")`, `{"need":1,"blob":"YQ=="}`},
+		{"optional", `(:need 1 :optional null)`, `{"need":1}`},
 		{"duplicate", `(:need 1 "need" 2)`, ""},
 		{"map duplicate", `(:need 1 :keys (("a" 1) ("\u0061" 2)))`, ""},
 		{"required", `()`, ""},
@@ -180,7 +199,50 @@ func TestLobsterStrictTextRead(t *testing.T) {
 		{"invalid number", `(:need 1e)`, ""},
 		{"leading plus", `(:need +1)`, ""},
 		{"unknown", `(:need 1 :future 2)`, ""},
+		{"base64 pad bits", `(:need 1 :blob "YR==")`, ""},
+		{"base64 padding", `(:need 1 :blob "YQ")`, ""},
+		{"required pointee", `(:need 1 :link ())`, ""},
+		{"fixed boundary", `(:need 1 :x -32768 :y 65535)`, `{"need":1,"x":-32768,"y":65535}`},
+		{"fixed signed excess", `(:need 1 :x 32767.0000152587890625)`, ""},
+		{"fixed unsigned excess", `(:need 1 :y 65536)`, ""},
+		{"fixed finer fraction", `(:need 1 :x 0.1)`, ""},
+		{"stored zero", `(:need 1 :s "\u0000")`, ""},
 		{"bare CR", "(:need 1)\r", ""},
 		{"cycle", `(:need 1 :link ("&node" 1 :next ("&node" 1)))`, ""},
 	})
+}
+
+// Removing duplicate detection must turn a refused unknown subtree into a
+// successful read. This witnesses the layer below descriptor field lookup.
+func TestLobsterStrictJSONDuplicateNegativeControl(t *testing.T) {
+	t.Parallel()
+	schema := filepath.Join(t.TempDir(), "StrictText.schema")
+	if err := os.WriteFile(schema, []byte(strictTextSchema), 0644); err != nil {
+		t.Fatal(err)
+	}
+	g, err := generateLoadUnit(t, []string{schema})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var program strings.Builder
+	for _, mod := range g.mods {
+		fmt.Fprintf(&program, "import .%s\n", mod)
+	}
+	program.WriteString(`import .json
+let input = read_file("input.json")
+assert input
+let value = schema_rt.json_read("Root", input, schema_rt.LoadReport {})
+print(if value: "read" else: "refused")
+`)
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	inputs := map[string][]byte{"input.json": []byte(`{"need":1,"future":{"x":1,"x":2}}`)}
+	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "refused\n" {
+		t.Fatalf("duplicate read: %q", out)
+	}
+	patchJson(t, g, "        if prior == key:\n            return j_refuse(r, \"duplicate_key\")", "        if prior == key and length(keys) < 0:\n            return j_refuse(r, \"duplicate_key\")")
+	if out := string(lobsterrun.Run(t, g.dir, "main.lobster", inputs)); out != "read\n" {
+		t.Fatalf("negative control did not expose dropped duplicate detection: %q", out)
+	}
 }

@@ -757,7 +757,7 @@ def t_pointer(p:TextParser, sl:Slot, n:TNode, path:string) -> bool:
         let inner = t_fill(p, n, table_of(sl.fd.t), path)
         if not inner:
             return false
-        sl.cell.tab = inner
+        sl.cell.node = inner
         return true
     if length(n.items) < 2 or n.items[0].kind != "str" or n.items[1].kind != "num":
         t_set_fail(p, "text_reference")
@@ -776,13 +776,13 @@ def t_pointer(p:TextParser, sl:Slot, n:TNode, path:string) -> bool:
         if not prior or prior.open or prior.st != sl.fd.t:
             t_set_fail(p, "text_reference")
             return false
-        sl.cell.tab = prior.node
+        sl.cell.node = prior.node
         return true
     if prior:
         t_set_fail(p, "text_reference")
         return false
     let rec = new_record(table_of(sl.fd.t))
-    sl.cell.tab = rec
+    sl.cell.node = rec
     let definition = JsonLabel { label: label, node: rec, st: sl.fd.t, open: true }
     push(p.labels, definition)
     if not t_fill_record(p, n, rec, path, 2):
