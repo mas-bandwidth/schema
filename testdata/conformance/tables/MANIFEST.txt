@@ -426,6 +426,7 @@ cook SceneValued graphdemo Scene    testdata/conformance/tables/cook/SceneValued
 # The big-endian half is not host-dependent: the order is a PARAMETER of the
 # write, settled at cook time for the target build (§7), so every leg answers
 # both halves on any host.
+cook-write feature_full           testdata/conformance/tables/cook-write/feature_full.cook testdata/conformance/tables/cook-write/feature_full-be.cook
 cook-write root_full              testdata/conformance/tables/cook-write/root_full.cook testdata/conformance/tables/cook-write/root_full-be.cook
 cook-write root_default           testdata/conformance/tables/cook-write/root_default.cook testdata/conformance/tables/cook-write/root_default-be.cook
 cook-write profile_elide          testdata/conformance/tables/cook-write/profile_elide.cook testdata/conformance/tables/cook-write/profile_elide-be.cook

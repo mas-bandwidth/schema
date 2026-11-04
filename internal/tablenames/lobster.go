@@ -38,7 +38,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"_collections_arr", "_collections_map", "_collections_ptr", "collection_construct",
 	},
 	"cook.lobster": {
-		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRead", "CookTable",
+		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRange", "CookRead", "CookTable",
 		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record", "cc_text",
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
 		"cg_add_rec", "cg_blob_index", "cg_place", "cg_rec_index", "cg_visit_edges", "cg_visit_union",
@@ -47,7 +47,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"cook_dump", "cook_f32frombits", "cook_header_bytes", "cook_magic", "cook_magic_swapped", "cook_measure",
 		"cook_open", "cook_open_named", "cook_open_reason", "cook_plan", "cook_read", "cook_table",
 		"cook_table_of", "cook_tables", "cook_union_named", "cook_union_of", "cook_unions", "cook_wide",
-		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_count", "cr_elem", "cr_entry", "cr_field",
+		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_claim", "cr_count", "cr_elem", "cr_entry", "cr_extent", "cr_field",
 		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_unbounded_text", "cr_union", "cr_units", "cr_wide", "cr_wide_at",
 		"cr_word", "cr_word32", "cw_array", "cw_elem", "cw_field", "cw_int", "cw_record", "cw_ref", "cw_ref_blob",
 		"cw_str", "cw_union", "cw_units", "cw_wide",
