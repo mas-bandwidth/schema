@@ -1065,6 +1065,17 @@ writeMap = function(T, d, val, depth, g, out) {
 local writeTextArray = function(T, d, val, depth, out) {
   local n = writeCount(d, val);
   if (n == 0) { out.append("[]"); return true; }
+  // A TEXT LIST'S TOTAL (§2.13): ToJson refuses a value whose elements hold
+  // more bytes in all than the declared total, an absent element counting zero
+  if ("total" in d) {
+    local sum = 0;
+    for (local i = 0; i < n; i++) {
+      local rec = elemAt(T, d.elem, val, i);
+      if (rec == null || (d.textlist == 2 && !rec.ValuePresent)) continue;
+      sum += rec.Value.len();
+      if (sum > d.total) return false;
+    }
+  }
   out.append("[");
   for (local i = 0; i < n; i++) {
     if (i > 0) out.append(",");

@@ -68,6 +68,17 @@ end
 -- an integer's STORAGE width (ir/blocklayout.go's elementPiece): bits(N) is
 -- a uint32 up to 32 bits and a uint64 past it, whatever narrower kind it
 -- rides the wire in; every other integer is its kind's width.
+-- is_text is UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a map key or a
+-- value of shape text, or a text list element of shape str with no bound. Its
+-- storage is one eight-byte slot naming a blob record in the holder's extent.
+local function is_text(e: any): boolean
+	return e.s == "text" or (e.s == "str" and (e.bound or 0) == 0 and not e.wide)
+end
+
+-- the region alignment an unbounded text blob is padded to, the root
+-- descriptor's, set by each CookMeasure and Cook
+local _regionAlign = FLOOR
+
 local function int_width(e: any): number
 	if e.bits ~= nil then
 		if e.bits <= 32 then return 4 end
@@ -80,6 +91,7 @@ end
 -- ir/blocklayout.go.
 value_piece = function(e: any): any
 	local s = e.s
+	if is_text(e) then return { size = 8, align = 8 } end
 	if s == "ptr" or s == "sblob" or s == "bblob" then return { size = 8, align = 8 } end
 	if s == "bool" then return { size = 1, align = 1 } end
 	if s == "float" then return e.f32 and { size = 4, align = 4 } or { size = 8, align = 8 } end
@@ -111,7 +123,7 @@ field_pieces = function(fd: any): { any }
 	local s = fd.s
 	if s == "map" then
 		out[1] = { size = 16, align = 8 }
-	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" then
+	elseif s == "ptr" or s == "sblob" or s == "bblob" or s == "text" or is_text(fd) then
 		out[1] = { size = 8, align = 8 }
 	elseif s == "str" then
 		if fd.wide then
@@ -355,7 +367,7 @@ local function arm_edges(fd: any, u: any, out: { any })
 	local val = u[arm.slot]
 	if arm.s == "tab" then
 		edges(St.lookup(arm.t), val, out)
-	elseif arm.s == "sblob" or arm.s == "bblob" or arm.s == "text" then
+	elseif arm.s == "sblob" or arm.s == "bblob" then
 		if val ~= nil then out[#out + 1] = { blob = arm.s, val = val } end
 	elseif arm.s == "ptr" then
 		if val ~= nil then out[#out + 1] = { d = St.lookup(arm.t), val = val } end
@@ -375,7 +387,7 @@ edges = function(d: any, v: any, out: { any }): { any }
 		if fd.present ~= nil and not v[fd.present] then continue end
 		local val = v[fd.slot]
 		local s = fd.s
-		if s == "sblob" or s == "bblob" or s == "text" then
+		if s == "sblob" or s == "bblob" then
 			if val ~= nil then out[#out + 1] = { blob = s, val = val } end
 		elseif s == "ptr" then
 			if val ~= nil then out[#out + 1] = { d = St.lookup(fd.t), val = val } end
@@ -539,8 +551,8 @@ local carve_element: any
 local carve_field: any
 
 field_has_extent = function(fd: any): boolean
-	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then return true end
-	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" or fd.s == "text" then return false end
+	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") or is_text(fd) then return true end
+	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then return false end
 	if fd.s == "tab" then return record_has_extent(St.lookup(fd.t)) end
 	if fd.s == "union" then return union_has_extent(St.lookup(fd.t)) end
 	if fd.s == "arr" then return field_has_extent(fd.e) end
@@ -603,6 +615,33 @@ local write_ref: any
 local write_union: any
 
 carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: number, cursor: any, w: any, index: any): boolean
+	if is_text(fd) then
+		-- UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1): a blob record in the
+		-- holder's extent at eight-byte alignment, `u32 length`, `u32 zero`, the
+		-- bytes and one zero byte, padded to the region's alignment; the slot is
+		-- the self-relative delta to it, and an empty or absent value's slot is
+		-- null
+		local n = 0
+		if not (fd.present ~= nil and v ~= nil and not v[fd.present]) then
+			if typeof(x) == "string" then n = #x elseif typeof(x) == "buffer" then n = buffer.len(x) end
+		end
+		if n == 0 then
+			if w ~= nil then put(w, fieldAt, 0, 8) end
+			return true
+		end
+		cursor.at = align_up(cursor.at, BLOB_ALIGN)
+		local start = cursor.at
+		cursor.at = start + align_up(BLOB_HEADER + n + 1, _regionAlign)
+		if w ~= nil then
+			local blob = extentBase + start
+			put(w, fieldAt, blob - fieldAt, 8)
+			put(w, blob, n, 4)
+			if w.b ~= nil then
+				if typeof(x) == "string" then buffer.writestring(w.b, blob + BLOB_HEADER, x) else buffer.copy(w.b, blob + BLOB_HEADER, x, 0, n) end
+			end
+		end
+		return true
+	end
 	if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
 		local n = live_count(fd, v, x)
 		if n == nil then return false end
@@ -635,7 +674,7 @@ carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: num
 		end
 		return true
 	end
-	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" or fd.s == "text" then return true end
+	if fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then return true end
 	local at = fieldAt
 	if fd.s == "arr" then
 		x = x or {}
@@ -683,7 +722,9 @@ carve_field = function(fd: any, v: any, x: any, fieldAt: number, extentBase: num
 end
 
 carve_element = function(e: any, x: any, at: number, extentBase: number, cursor: any, w: any, index: any): boolean
-	if e.s == "tab" then
+	if is_text(e) then
+		return carve_field(e, nil, x, at, extentBase, cursor, w, index)
+	elseif e.s == "tab" then
 		local d = St.lookup(e.t)
 		if not record_has_extent(d) then return true end
 		return carve_record(d, x, at, extentBase, cursor, w, index)
@@ -711,7 +752,7 @@ carve_record = function(d: any, v: any, recordBase: number, extentBase: number, 
 		local x = field_value(d, fd, v)
 		if fd.s == "map" or (fd.s == "arr" and fd.array == "list") then
 			if not carve_field(fd, v, x, recordBase + fl.at, extentBase, cursor, w, index) then return false end
-		elseif fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" or fd.s == "text" then
+		elseif fd.s == "ptr" or fd.s == "sblob" or fd.s == "bblob" then
 			-- a pointee and a blob are nodes, not this extent
 		elseif field_has_extent(fd) then
 			if not carve_field(fd, v, x, recordBase + fl.at, extentBase, cursor, w, index) then return false end
@@ -781,7 +822,8 @@ end
 write_value = function(e: any, x: any, at: number, w: any, index: any, holder: any): boolean
 	local s = e.s
 	if s == "ptr" then return write_ref(e, x, at, w, index) end
-	if s == "sblob" or s == "bblob" or s == "text" then return write_ref(e, x, at, w, index) end
+	if is_text(e) then return true end -- the extent walk writes its slot (§2.13.1)
+	if s == "sblob" or s == "bblob" then return write_ref(e, x, at, w, index) end
 	if s == "bool" then put(w, at, x and 1 or 0, 1); return true end
 	if s == "int" then
 		local kw = int_width(e)
@@ -809,7 +851,9 @@ write_value = function(e: any, x: any, at: number, w: any, index: any, holder: a
 		else
 			put_copy(w, at, b, nbytes)
 		end
-		if e.slot ~= nil and holder ~= nil then put(w, piece_at(e, 2, at), count, 4) end
+		-- the used length rides in every string's storage, a text list
+		-- element record's included (§2.13, §7.2)
+		put(w, piece_at(e, 2, at), count, 4)
 		return true
 	end
 	if s == "tab" then return write_record(St.lookup(e.t), x, at, w, index) end
@@ -920,6 +964,7 @@ end
 -- CookMeasure answers the whole file's length (§7.6), -1 when the cook refuses.
 function C.CookMeasure(root: any, value: any): (number, string?)
 	_refusal = nil
+	_regionAlign = (root and root.regionAlign) or FLOOR
 	local l = refused_layout(root, value)
 	if l == nil then
 		if _refusal ~= nil then return -1, "non_finite_float: " .. _refusal end
@@ -934,6 +979,7 @@ function C.Cook(root: any, value: any, order: any): (buffer?, string?)
 	local big = order_of(order)
 	if big == nil then return nil, nil end
 	_refusal = nil
+	_regionAlign = (root and root.regionAlign) or FLOOR
 	local l = refused_layout(root, value)
 	if l == nil then
 		if _refusal ~= nil then return nil, "non_finite_float: " .. _refusal end
