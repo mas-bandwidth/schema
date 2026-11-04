@@ -138,7 +138,7 @@ end
 -- the retaining save numbers the same graph the same way. A blob named twice
 -- is one node here, as it was before the walk was shared.
 local guard_holds, count_of, map_entries = D.guard_holds, D.count_of, D.map_entries
--- THE WRITE CONTRACT (descriptor.lua D.int_ok and its peers) is the same test
+-- THE WRITE CONTRACT (descriptor.lua D.int_ok, D.len_ok, D.count_ok, D.text_ok) is the test
 -- the plain save makes: a value its field cannot carry refuses (false).
 local int_ok, len_ok, count_ok, well_formed = D.int_ok, D.len_ok, D.count_ok, D.text_ok
 
