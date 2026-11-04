@@ -12,6 +12,7 @@ package tabledemo
 
 import (
 	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -37,12 +38,15 @@ func GunnerSettingsSaveMessageBody(w *TableMessageWriter, value *GunnerSettings)
 	}
 	{
 		if value.CallsignLength < 0 || value.CallsignLength > 24 {
-			return false
+			return w.Refuse()
 		}
 		if value.CallsignLength > 0 {
 			w.Put(13, TableMessageRefBitsHere)
 			if value.CallsignLength < 0 || value.CallsignLength > 24 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.Callsign[:value.CallsignLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.CallsignLength), 5)
 			w.Raw(value.Callsign[:value.CallsignLength])
@@ -61,6 +65,9 @@ func GunnerSettingsMeasureMessages(values []*GunnerSettings, report *TableReport
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !GunnerSettingsSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -85,6 +92,9 @@ func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !GunnerSettingsSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -307,12 +317,15 @@ func GunnerSettingsLoadMessagesTolerant(values []GunnerSettings, vocabulary *Tab
 func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 	{
 		if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
-			return false
+			return w.Refuse()
 		}
 		if value.DisplayNameLength > 0 {
 			w.Put(95, TableMessageRefBitsHere)
 			if value.DisplayNameLength < 0 || value.DisplayNameLength > 32 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.DisplayName[:value.DisplayNameLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.DisplayNameLength), 6)
 			w.Raw(value.DisplayName[:value.DisplayNameLength])
@@ -338,15 +351,18 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 	}
 	{
 		if value.HardpointsCount < 0 || value.HardpointsCount > 4 {
-			return false
+			return w.Refuse()
 		}
 		if value.HardpointsCount > 0 {
 			w.Put(96, TableMessageRefBitsHere)
 			if value.HardpointsCount < 0 || value.HardpointsCount > 4 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.HardpointsCount)-0, 3)
 			for i := range int(value.HardpointsCount) {
+				if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
+					return w.Refuse()
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i]), uint64(0))
 			}
 		}
@@ -374,6 +390,9 @@ func ShipEntryMeasureMessages(values []*ShipEntry, report *TableReport) int64 {
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !ShipEntrySaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -398,6 +417,9 @@ func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableRepo
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !ShipEntrySaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -721,6 +743,9 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 	{
 		if value.TickRate != 60 {
 			w.Put(7, TableMessageRefBitsHere)
+			if value.TickRate < 1 || value.TickRate > 240 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 1, Bits: 8, Base: [2]uint64{0x1, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TickRate), uint64(0))
 		}
 	}
@@ -732,7 +757,7 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 			} else {
 				id, named := value.Difficulty.TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -744,12 +769,15 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 	}
 	{
 		if value.BuildNoteLength < 0 || value.BuildNoteLength > 48 {
-			return false
+			return w.Refuse()
 		}
 		if value.BuildNoteLength > 0 {
 			w.Put(9, TableMessageRefBitsHere)
 			if value.BuildNoteLength < 0 || value.BuildNoteLength > 48 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.BuildNote[:value.BuildNoteLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.BuildNoteLength), 6)
 			w.Raw(value.BuildNote[:value.BuildNoteLength])
@@ -787,6 +815,9 @@ func GlobalSettingsMeasureMessages(values []*GlobalSettings, report *TableReport
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !GlobalSettingsSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -811,6 +842,9 @@ func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !GlobalSettingsSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1116,6 +1150,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 		probe.Measuring = true
 		probe.Bits = 0
 		if !GlobalSettingsSaveMessageBody(&probe, &value.Global) {
+			w.Reason = probe.Reason
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
@@ -1132,6 +1167,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 			probe.Measuring = true
 			probe.Bits = 0
 			if !ShipEntrySaveMessageBody(&probe, &value.Ships[i]) {
+				w.Reason = probe.Reason
 				return false
 			}
 			if probe.Bits > TableMessageRefBitsHere {
@@ -1146,6 +1182,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				probe.Measuring = true
 				probe.Bits = 0
 				if !ShipEntrySaveMessageBody(&probe, &value.Ships[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if probe.Bits > TableMessageRefBitsHere {
@@ -1158,6 +1195,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				probe.Measuring = true
 				probe.Bits = 0
 				if !ShipEntrySaveMessageBody(&probe, &value.Ships[i]) {
+					w.Reason = probe.Reason
 					return false
 				}
 				if !(probe.Bits > TableMessageRefBitsHere) {
@@ -1165,7 +1203,7 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				}
 				id, named := ShipType(i + 1).TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -1200,25 +1238,28 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 				}
 				id, named := Difficulty(i + 1).TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
+				if value.Thresholds[i] < 0 || value.Thresholds[i] > 1000 {
+					return w.Refuse()
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Thresholds[i]), uint64(0))
 			}
 		}
 	}
 	{
 		if value.ReservesCount < 0 || value.ReservesCount > 3 {
-			return false
+			return w.Refuse()
 		}
 		if value.ReservesCount > 0 {
 			w.Put(31, TableMessageRefBitsHere)
 			if value.ReservesCount < 0 || value.ReservesCount > 3 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.ReservesCount)-0, 2)
 			for i := range int(value.ReservesCount) {
@@ -1241,6 +1282,9 @@ func PackConfigMeasureMessages(values []*PackConfig, report *TableReport) int64 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !PackConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -1265,6 +1309,9 @@ func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableRe
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !PackConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
