@@ -57,9 +57,8 @@ def vp_unions(vp_unit:schema_rt.UnitView):
                     vp_kind = vp_f.ek
                 if vp_f.s == "map" or vp_f.array == "list":
                     vp_bound = 0
-                // Lobster's tagged value has one shared payload slot. Every
-                // general arm resolves through that slot, hence displacement 0.
-                vp_tail = " kind=" + string(vp_kind) + " bound=" + string(vp_bound) + " overlay=" + if vp_held: "0" else: "-"
+                // Compare the independently emitted region/cook projection columns.
+                vp_tail = " kind=" + string(vp_kind) + " bound=" + string(vp_bound) + " overlay=" + if vp_held: string(vp_f.arm_offset - vp_e.payload_offset) else: "-"
                 if vp_ann(vp_f.doc, vp_f.tags) != vp_ann(vp_variant.doc, vp_variant.tags):
                     vp_tail += " ARM ANNOTATION MISMATCH"
             print("union " + vp_e.name + " arm " + string(vp_variant.value) + " " + vp_variant.name + " id=" + vp_hex(vp_variant.id) + " payload=" + (if vp_variant.payload_name == "": "-" else: vp_variant.payload_name) + " record=" + vp_yes(vp_variant.record != nil) + " field=" + vp_yes(vp_f != nil) + vp_tail + vp_ann(vp_variant.doc, vp_variant.tags))

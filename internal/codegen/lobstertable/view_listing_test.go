@@ -71,6 +71,25 @@ func TestLobsterUnitViewListing(t *testing.T) {
 			if got := run(); got != want {
 				t.Fatalf("view listing differs:\n%s", firstViewDifference(want, got))
 			}
+			if key == "corpus-arms" {
+				path := filepath.Join(g.dir, "descriptors.lobster")
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				const anchor = "variant.field = descriptor.arms[tag - 1]"
+				if strings.Count(string(raw), anchor) != 1 {
+					t.Fatal("union overlay mutation anchor missing")
+				}
+				patched := strings.Replace(string(raw), anchor, anchor+"\n                    descriptor.arms[tag - 1].arm_offset++", 1)
+				if err := os.WriteFile(path, []byte(patched), 0644); err != nil {
+					t.Fatal(err)
+				}
+				got := run()
+				if got == want || !strings.Contains(got, "overlay=1") {
+					t.Fatalf("shifted arm did not expose its projection displacement:\n%s", got)
+				}
+			}
 			if key == "corpus-examples" {
 				// The printer reads generated descriptors: changing their field IDs
 				// must break identity with the independent IR pin.
