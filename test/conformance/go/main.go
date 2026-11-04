@@ -16,14 +16,11 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"blobdemo"
 )
 
 // ---------------------------------------------------------------------------
@@ -204,18 +201,6 @@ func surfaceWire(lines []line, out string) error {
 		}
 		size := c.measure(value)
 		if size < 0 {
-			// SPEC-TABLES §2.5 makes a blob belong to one slot, and §16.7
-			// gives a blob shared by two slots no text spelling. The Go writer's
-			// MeasureReason names that refusal; preserve it as this row's answer.
-			if c.measureReason != nil {
-				_, reason := c.measureReason(value)
-				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
-					if err := spillAbsentReason(out, f[1], reason.Error()); err != nil {
-						return err
-					}
-					continue
-				}
-			}
 			return fmt.Errorf("%s: measure refused the value", f[1])
 		}
 		if int64(cap(scratch)) < size {

@@ -93,6 +93,28 @@ func TestWireAnswersDoNotWriteRefusedStorage(t *testing.T) {
 	}
 }
 
+func TestWireWriterFailureCannotBecomeReadRefusal(t *testing.T) {
+	old := codecTable
+	t.Cleanup(func() { codecTable = old })
+	dir := t.TempDir()
+	input := filepath.Join(dir, "input")
+	if err := os.WriteFile(input, []byte{1}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	codecTable = []codec{{unit: "probe", root: "Root", fresh: func() any { return new(int) },
+		load:          func(any, []byte, *report) bool { return true },
+		measure:       func(any) int64 { return -1 },
+		measureReason: func(any) (int64, error) { return -1, blobdemo.TableRefuseBlobShared }}}
+	if err := surfaceWire([]line{{"instance", "answer", "probe", "Root", input}}, dir); err == nil {
+		t.Fatal("accepted read with no writeback did not fail")
+	}
+	for _, name := range []string{"answer", "answer.absent"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("writer failure produced a read outcome in %s: %v", name, err)
+		}
+	}
+}
+
 func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
 	for _, tc := range []struct{ accepted, writes bool }{{true, true}, {false, true}, {true, false}} {
 		accepted := tc.accepted
