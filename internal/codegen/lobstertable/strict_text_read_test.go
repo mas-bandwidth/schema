@@ -57,7 +57,8 @@ import .text_form
 import .schema_save
 let seed = read_file("seed.json")
 assert seed
-let rec = schema_rt.json_read("Root", seed, schema_rt.LoadReport {})
+let report = schema_rt.LoadReport {}
+let rec = schema_rt.json_read("Root", seed, report)
 assert rec
 let before = schema_rt.save(rec)
 def probe(i:int, accept:bool):
@@ -65,8 +66,7 @@ def probe(i:int, accept:bool):
     assert input
 `)
 	if form == "json" {
-		program.WriteString(`    let report = schema_rt.LoadReport {}
-    let ok = schema_rt.json_read_into(rec, input, report)
+		program.WriteString(`    let ok = schema_rt.json_read_into(rec, input, report)
     assert ok == accept
     if ok:
         let out, reason = schema_rt.json_write(rec)
@@ -75,6 +75,9 @@ def probe(i:int, accept:bool):
         assert schema_rt.json_read_into(rec, seed, schema_rt.LoadReport {})
     else:
         assert report.refused
+        assert schema_rt.save(rec) == before
+        assert schema_rt.json_read_into(rec, seed, report)
+        assert not report.refused and report.reason == "" and report.unknown == 0
     assert schema_rt.save(rec) == before
 `)
 	} else {
