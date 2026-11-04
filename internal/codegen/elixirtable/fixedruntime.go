@@ -359,39 +359,34 @@ const fixedRuntimeBody = `  @moduledoc """
   end
 
   @doc """
-  A string's bytes, or ArgumentError when they are not well-formed UTF-8:
-  storage that holds ill-formed text is refused by every writer
-  (docs/SPEC.md §5.1). A zero byte is not ill-formed.
+  A string's bytes, or ArgumentError when they are not well-formed UTF-8 or
+  hold a zero byte: storage that holds ill-formed text is refused by every
+  writer (docs/SPEC.md §5.1), and the fixed reader refuses a zero byte as
+  text_ill_formed. The check is the reader's own walk, so this writer never
+  writes text its reader refuses.
   """
   def utf8_text(bytes) do
-    if is_binary(bytes) and String.valid?(bytes) do
+    if is_binary(bytes) and text_ok?(1, bytes) do
       bytes
     else
-      raise ArgumentError, "#{inspect(bytes)} is not well-formed UTF-8"
+      raise ArgumentError, "#{inspect(bytes)} is not well-formed UTF-8 without a zero byte"
     end
   end
 
   @doc """
-  A wstring's units, or ArgumentError when they are not paired UTF-16: a
-  surrogate with no partner is half a character (docs/SPEC.md §5.1). A zero
-  unit is not ill-formed.
+  A wstring's units, or ArgumentError when they are not paired UTF-16 or hold
+  a zero unit: a surrogate with no partner is half a character
+  (docs/SPEC.md §5.1), and the fixed reader refuses a zero unit as
+  text_ill_formed. The check is the reader's own walk, so this writer never
+  writes text its reader refuses.
   """
   def utf16_text(units) do
-    if is_binary(units) and rem(byte_size(units), 2) == 0 and paired?(units) do
+    if is_binary(units) and text_ok?(2, units) do
       units
     else
-      raise ArgumentError, "#{inspect(units)} is not paired UTF-16"
+      raise ArgumentError, "#{inspect(units)} is not paired UTF-16 without a zero unit"
     end
   end
-
-  defp paired?(<<>>), do: true
-
-  defp paired?(<<u::little-unsigned-16, low::little-unsigned-16, rest::binary>>)
-       when u >= 0xD800 and u <= 0xDBFF and low >= 0xDC00 and low <= 0xDFFF,
-       do: paired?(rest)
-
-  defp paired?(<<u::little-unsigned-16, _::binary>>) when u >= 0xD800 and u <= 0xDFFF, do: false
-  defp paired?(<<_::little-unsigned-16, rest::binary>>), do: paired?(rest)
 
   # ---------------------------------------------------------------------------
   # THE HASH: fnv1a64 over the layout's bytes, exactly as written
