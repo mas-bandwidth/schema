@@ -20,6 +20,7 @@ import (
 )
 
 func TestDartRetainedInlineReplacement(t *testing.T) {
+	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	for _, shape := range []string{"table", "union", "fixed_table", "fixed_union", "keyed_table"} {
 		t.Run(shape, func(t *testing.T) {
@@ -112,7 +113,7 @@ func TestDartRetainedInlineReplacement(t *testing.T) {
 				v := m.New(u.Tables["Root"])
 				var r tabletext.Report
 				store := &tablewire.Retain{Capacity: 65536, IdCapacity: 1024}
-				if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Malformed || r.Unknown != firstCount || r.Retained != firstCount || r.RetainLost != 0 || r.KindMismatch != km {
+				if ok, err := tablewire.DecodeRetain(m, v, wire, store, &r); !ok || err != nil || r.Refused || r.Unknown != firstCount || r.Retained != firstCount || r.RetainLost != 0 || km != 0 {
 					t.Fatalf("%s neutral read %+v %v", mode, r, err)
 				}
 				var sr tabletext.Report

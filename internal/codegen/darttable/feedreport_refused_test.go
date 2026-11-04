@@ -58,7 +58,7 @@ func TestWireFeedCountPastBodyRefusedDart(t *testing.T) {
 
 	m := tabletext.NewModel(u)
 	var rep tabletext.Report
-	if _, err := tablewire.DecodeRegion(m, m.New(root), data, &rep); err != nil || !rep.Malformed {
+	if _, err := tablewire.DecodeRegion(m, m.New(root), data, &rep); !tablewire.ReadRefusal(err) || !rep.Refused {
 		t.Fatalf("the Go oracle does not read the pinned vector as damaged: %v %+v", err, rep)
 	}
 	if gotRep, _ := feedReportProbe(t, wire, data); !gotRep.malformed {
