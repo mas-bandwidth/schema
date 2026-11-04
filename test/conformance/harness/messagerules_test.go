@@ -206,9 +206,8 @@ func TestTheMasksWidth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// EIGHT BYTES IN A FILE: the header, the raw u64, the terminator, and the
-	// trailer's one entry and count
-	if want := 1 + 1 + 1 + 8 + 1 + 8 + 8; len(file) != want {
+	// Form 3 carries a 16-byte header followed by the raw eight-byte mask.
+	if want := 16 + 8; len(file) != want {
 		t.Errorf("a masked file is %d bytes, a raw u64 says %d", len(file), want)
 	}
 	back, ok, report, derr := decodeOne(t, model, "Masked", v, message)

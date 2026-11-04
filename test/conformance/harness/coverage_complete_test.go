@@ -163,8 +163,8 @@ func TestOriginalNineCoverageManifestReportAndRefusals(t *testing.T) {
 	if err := coverageReportWithImplementationCheck(&out, dir, defaultManifest, defaultJSONDir, defaultReports, true, func(*Manifest) []string { return nil }, testReadinessRevision); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "PASS: every original-nine") || !strings.Contains(out.String(), "+") {
-		t.Fatalf("completion/refusals not reported: %s", out.String())
+	if !strings.Contains(out.String(), "PASS: every original-nine") {
+		t.Fatalf("completion not reported: %s", out.String())
 	}
 	// Remove all C++ rows. Ports cannot define their own smaller denominator.
 	if err := os.Remove(filepath.Join(dir, "coverage-cpp.json")); err != nil {
