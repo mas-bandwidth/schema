@@ -527,9 +527,11 @@ _M.ReadEmptyUnion <- function(stream, value) {
   value.Type = _h.value;
   switch (value.Type) {
     case 1: // A
+      value.A = _M.EmptyA();
       if (!_M.ReadEmptyA(stream, value.A)) return false;
       break;
     case 2: // B
+      value.B = _M.EmptyB();
       if (!_M.ReadEmptyB(stream, value.B)) return false;
       break;
   }
