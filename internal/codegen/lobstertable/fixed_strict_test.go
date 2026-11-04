@@ -77,7 +77,7 @@ good.Tier = strictfixed.TierFirst
 let wire = strictfixed.RowFixedSave([good, good])
 assert(length(wire) > 0)
 let body = 20 + read_uint32_le(wire, 16) + 8
-let second = body + strictfixed.RowFixedRecordBytes
+let second = body + 8 + strictfixed.RowFixedRecordBytes
 let plan:[schema_rt.TableFixedEntry] = []
 for(4096): push(plan, schema_rt.TableFixedEntry {})
 let back = [strictfixed.NewRow(), strictfixed.NewRow(), strictfixed.NewRow()]
