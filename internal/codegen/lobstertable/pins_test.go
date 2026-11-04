@@ -89,15 +89,22 @@ func lobsterPinFaults(t *testing.T, schema string, pins []lobsterPin, sabotage b
 		if err != nil {
 			t.Fatal(err)
 		}
-		const from = "            read_refuse(report, \"wire_damaged\")\n        return nil\n    return rec"
-		const to = "            read_refuse(report, \"wire_damaged\")\n        return new_record(table_of(root))\n    return rec"
-		const fixedFrom = "        return fixed_record_codec(root).read_fixed(data, report)"
-		const fixedTo = "        let rec = fixed_record_codec(root).read_fixed(data, report)\n        if not rec:\n            return new_record(table_of(root))\n        return rec"
-		if strings.Count(string(src), from) != 1 || strings.Count(string(src), fixedFrom) != 1 {
+		start := strings.Index(string(src), "\ndef load(")
+		end := strings.Index(string(src), "\n// RELEASE (")
+		if start < 0 || end <= start {
 			t.Fatal("single read refusal boundary missing")
 		}
-		mutant := strings.Replace(string(src), from, to, 1)
-		mutant = strings.Replace(mutant, fixedFrom, fixedTo, 1)
+		boundary := string(src[start:end])
+		const fixedFrom = "        return fixed_record_codec(root).read_fixed(data, report)"
+		const fixedTo = "        let rec = fixed_record_codec(root).read_fixed(data, report)\n        if not rec:\n            return new_record(table_of(root))\n        return rec"
+		if strings.Count(boundary, "return nil") != 4 || strings.Count(boundary, fixedFrom) != 1 {
+			t.Fatal("single read refusal sites changed")
+		}
+		// Fixed previous-form and empty inputs refuse before native dispatch;
+		// variable refusals arrive after the walk. Sabotage each public exit.
+		boundary = strings.ReplaceAll(boundary, "return nil", "return new_record(table_of(root))")
+		boundary = strings.Replace(boundary, fixedFrom, fixedTo, 1)
+		mutant := string(src[:start]) + boundary + string(src[end:])
 		if err := os.WriteFile(path, []byte(mutant), 0o644); err != nil {
 			t.Fatal(err)
 		}
