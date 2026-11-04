@@ -249,7 +249,7 @@ Fixed now for the pro cards; never renamed.
 | `test/conformance/lobster/driver`, `ci.json`, `main.lobster` | the conformance leg | this card (driver, ci.json); conformance-leg (`main.lobster`) |
 | `make/lobster.mk` | the leg's build: `dist-lobster`, `toolchain-lobster`, `test-lobster`, `build/conformance-lobster` | this card; later cards add their own `make/lobster-*.mk` |
 | `bench/lobster/run`, `main.lobster`, `harness.lobster`, `route.sh` | the type-bench leg (BenchMixed, family gen) and the harness and output routing both legs share | schema-lobster-bench |
-| `bench/tables/lobster/leg`, `table_main.lobster` | the tables-bench leg (TableMixed on the tolerant wire, family table) | schema-lobster-bench |
+| `bench/tables/lobster/leg`, `table_main.lobster` | the tables-bench leg (TableMixed through the public Record API and native fixed codec, family table) | schema-lobster-bench |
 | `make/lobster-bench.mk` | `bench-lobster-gate` (both legs' gates, no clock) and its negative control | schema-lobster-bench |
 
 **How a module reaches its runtime.** The runtime files are emitted beside
@@ -398,19 +398,23 @@ as lines (lowercase hex for bytes).**
   `LOBSTER_TOCPP` build does), and the row names which build it measured.
 - **The bench legs as they run.** `bench/lobster/run` (BenchMixed through
   `generated/bench/lobster`, family `gen`) and `bench/tables/lobster/leg`
-  (TableMixed through `generated/bench/tables/lobster` on the tolerant wire,
-  family `table`; the timed codec is the port's one runtime walk,
-  `load_tolerant` then `save`) run their program under the pin's DEFAULT JIT
+  (TableMixed through `generated/bench/tables/lobster`, family `table`; public
+  `load` and `save` project Record values around the native fixed reader and
+  checked writer) run their program under the pin's DEFAULT JIT
   with `--runtime-no-asserts`, every row `linkage=jit,checks=contract`. The
   clock is `seconds_elapsed()`. A Lobster program has one output stream and
   the compiler warns on it, so every line the runners print is tagged `csv `
   or `log ` and `bench/lobster/route.sh` routes them to stdout and stderr and
   refuses any other line: a warning fails the leg. Both are golden-gated
-  before the clock (`make bench-lobster-gate`, on the ci-fast lobster row;
+  before the clock. The current fixed-table gate uses
+  `bench/tables/lobster/leg run --gate --wire-dir bench/corpus/fixed-table --variant-dir bench/corpus/fixed-table`
+  and corpus ID `65b15368d40f6544`. The historical form-1 corpus and default
+  arguments remain unchanged (`b51387f36d9b59c4`); the declared-fixed reader
+  now refuses those old files. Compare timings only within one corpus ID.
   `bench-lobster-gate-negative-control` flips each golden, plants a warning,
   and plants a `seconds_elapsed()` clock and a corpus name in `.lobster` files
   for `make shape-gate`, which scans `.lobster` and refuses that clock
-  outside the runner directories). **The `--cpp` row is owed**
+  outside the runner directories. **The `--cpp` row is owed**
   (`port/lobster/bench-cpp` in docs/roadmap.sexp, card
   schema-lobster-bench-cpp): `lobster --cpp` writes into the toolchain's
   `dev/` tree, which the release archive does not carry, and its output builds

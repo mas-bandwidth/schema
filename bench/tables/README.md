@@ -285,14 +285,27 @@ Stated so a reader knows what is not here, and why:
   fresh `Uint8List` and its Load a fresh object graph, so both rows carry
   allocation by design; that is the shipped API.
 
-- **`bench/tables/lobster/leg` measures the port's one runtime walk.** Lobster
-  has no reflection, so its form-1 codec is `load_tolerant` and `save` over
-  the generated descriptors into a `schema_rt.Record`, and that is what the
-  leg times (docs/PORT-LOBSTER.md, THE HARNESS). The public load answers a
+- **`bench/tables/lobster/leg` measures the public Record API.** For the
+  declared-fixed `TableMixed`, `load` and `save` use the generated adapter
+  around the native fixed reader and checked writer. Projection between native
+  storage and `schema_rt.Record` is inside the clock. The public load answers a
   fresh record with the defaults restored, so the allocation is inside the
   clock and gate 3 runs exactly what the timed round trip runs. Its rows are
   the default JIT's (`linkage=jit`); the `--cpp` row is owed
   (schema-lobster-bench-cpp). It has no fixed-form leg in `bench/paired`.
+
+  Run the current fixed-form correctness gate from the repository root:
+
+  ```sh
+  bench/tables/lobster/leg build
+  bench/tables/lobster/leg run --gate \
+    --wire-dir bench/corpus/fixed-table --variant-dir bench/corpus/fixed-table
+  ```
+
+  This selects corpus ID `65b15368d40f6544`. The historical form-1 files and
+  default directory arguments remain unchanged, with corpus ID
+  `b51387f36d9b59c4`; the current declared-fixed reader refuses that older
+  form. Results with these different corpus IDs are separate measurements.
 
 - **The `inline` column stays `unknown`** for both legs. The §4 verdict pass
   has no branch for the generated table codec, which is the same open item the

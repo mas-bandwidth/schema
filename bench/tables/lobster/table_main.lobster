@@ -1,10 +1,13 @@
 // the tables bench — the Lobster runner (bench/tables/README.md, "Registering a
 // port"; docs/PORT-LOBSTER.md, THE HARNESS).
 //
-// Measures ONE thing: the representative fixed table written and read on the
-// TOLERANT WIRE (docs/SPEC-TABLES.md §3) through the port's form-1 codec — the
-// one runtime walk over the generated descriptors (load, save) — over
-// the committed 64-record variant corpus. It is a port of
+// Measures the representative fixed table through the public Record load/save
+// API. The fixed Record adapter calls the native form-3 reader and checked
+// writer, projecting complete values between native storage and Record.
+// The 64-variant corpus is selected with --wire-dir and --variant-dir; use
+// bench/corpus/fixed-table for both to run the current fixed-form gate.
+// Historical form-1 files and runner defaults retain their original identity;
+// the current declared-fixed reader refuses those files. It is a port of
 // bench/tables/cpp/table_main.cpp's bench_table driver and keeps its contract:
 // the golden gate runs before the clock, 1 warmup + 7 measured runs (one under
 // --round K), median beside min/max/spread, rows `write` and `round_trip`, and
@@ -15,10 +18,9 @@
 //
 // WHAT LOBSTER SPELLS DIFFERENTLY, and the reason at each site:
 //
-// - Lobster has no reflection, so the port's table codec is ONE runtime walk
-//   over the generated descriptors into a schema_rt.Record (docs/PORT-LOBSTER.md,
-//   "Lobster has no reflection"). That IS the port's Load and Save, so it is
-//   what is timed; there is no typed per-table codec to measure instead.
+// - The measured surface is schema_rt.Record. Native fixed loading, checked
+//   saving, and projection into and out of Record are all inside the clock.
+//   A caller using typed native storage directly would measure a different API.
 // - The public load answers a FRESH Record with the declared defaults
 //   restored before the wire is overlaid — there is no load-into-a-reused-target
 //   form — so gate 3 runs exactly what the timed round trip runs (every
