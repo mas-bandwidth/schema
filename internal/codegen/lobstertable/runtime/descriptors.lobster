@@ -12,6 +12,10 @@ namespace schema_rt
 
 // A ViewVariant is one enum variant, flags bit or union arm (§8.3).
 class ViewVariant:
+    value:int = 0
+    payload_name:string = ""
+    record:TableDescriptor? = nil
+    field:FieldDescriptor? = nil
     name:string
     id:int
     deprecated:bool = false
@@ -20,6 +24,8 @@ class ViewVariant:
 
 // A ViewVocabulary is one enum, flags or union declaration (§8.3).
 class ViewVocabulary:
+    max:int = 0
+    storage_bits:int = 0
     name:string
     file:string
     variants:[ViewVariant]
@@ -76,8 +82,8 @@ def view_table(d:TableDescriptor, file:string, doc:string, tags:[string]):
 def view_type(d:TableDescriptor, file:string, doc:string, tags:[string]):
     push(view_types, ViewType { name: d.name, file: file, table: false, d: d, doc: doc, tags: tags })
 
-def view_vocabulary(name:string, file:string, doc:string, tags:[string], variants:[ViewVariant], kind:string):
-    let v = ViewVocabulary { name: name, file: file, variants: variants, doc: doc, tags: tags }
+def view_vocabulary(name:string, file:string, doc:string, tags:[string], variants:[ViewVariant], kind:string, max:int, storage_bits:int):
+    let v = ViewVocabulary { max: max, storage_bits: storage_bits, name: name, file: file, variants: variants, doc: doc, tags: tags }
     if kind == "enum":
         push(view_enums, v)
     elif kind == "flags":
@@ -252,3 +258,15 @@ class DeprecatedEnumShape : Shape
         return ok
 
 let _descriptors_enum = register_shape(DeprecatedEnumShape { key: "enum" })
+
+// Union payload metadata shares the descriptor objects used by the runtime.
+def view_union_arm(union_name:string, tag:int, payload_name:string, record:TableDescriptor?, general:bool):
+    for(view_unions) vocabulary:
+        if vocabulary.name == union_name:
+            let variant = vocabulary.variants[tag]
+            variant.payload_name = payload_name
+            variant.record = record
+            if general:
+                let descriptor = lookup_union(union_name)
+                if descriptor:
+                    variant.field = descriptor.arms[tag - 1]

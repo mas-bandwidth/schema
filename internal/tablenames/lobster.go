@@ -64,7 +64,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"is_deprecated_variant", "key_enums", "keyed_enum", "keyed_enum_of", "keyed_slot", "map_entries", "map_entry",
 		"map_entry_of", "set_unit", "unit_view", "variant_name", "view_constant", "view_constants", "view_enums",
 		"view_flags", "view_package", "view_protocol", "view_table", "view_tables", "view_type", "view_types",
-		"view_unions", "view_vocabulary", "view_name_before", "view_sorted_types", "view_sorted_vocabulary", "view_sorted_constants",
+		"view_unions", "view_union_arm", "view_vocabulary", "view_name_before", "view_sorted_types", "view_sorted_vocabulary", "view_sorted_constants",
 	},
 	"fixed.lobster": {
 		"fixed_file", "fixed_record",

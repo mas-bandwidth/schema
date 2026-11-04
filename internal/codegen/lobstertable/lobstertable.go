@@ -303,10 +303,12 @@ func idLit(v uint64) string {
 // one runtime walk of each form reads (docs/SPEC-TABLES.md §3, §3.1, §8.1;
 // docs/PORT-LOBSTER.md, THE TYPE MAPPING), registered by name at load.
 func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
+	wire := t.IsTable || ir.TableClosure(g.Unit)[t.Name]
 	g.Pf("// %sDescriptor — %s as data: node type id, class, and one entry per field\n", t.Name, t.Name)
 	g.Pf("// (docs/SPEC-TABLES.md §3, §8.1)\n")
 	g.Pf("let %sDescriptor = %s.table(%s.TableDescriptor {\n", t.Name, rt, rt)
 	g.Pf("    name: %s,\n", lobster.StringLit([]byte(t.Name)))
+	g.Pf("    doc: %s, tags: %s,\n", lobster.StringLit([]byte(t.Doc)), tagList(t.Tags))
 	g.Pf("    id: %s, // FNV-1a 64 of %s (§3.1)\n", idLit(ir.TableWireId(t.WireName())), t.WireName())
 	g.Pf("    table: %v,\n", t.IsTable)
 	g.Pf("    fixed: %v,\n", t.FixedDeclared)
@@ -336,7 +338,7 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 		if i == len(t.Fields)-1 {
 			sep = ""
 		}
-		g.Pf("        %s%s\n", guarded(fieldDesc(g, f, i, 0), guards[f.Name]), sep)
+		g.Pf("        %s%s\n", guarded(fieldDescWire(g, f, i, 0, wire), guards[f.Name]), sep)
 	}
 	g.Pf("    ]::%s.FieldDescriptor\n", rt)
 	g.Pf("})\n\n")
@@ -404,11 +406,23 @@ func requireHome(g *lobster.Gen, name string) {
 //	tab, union         a table or packet type by value (kind 13); a union (kind 15)
 //	arr, map           []T / [..N]T / [N]T / [E]T over an element descriptor; map[K]V
 func fieldDesc(g *lobster.Gen, f *ir.Field, ordinal, tag int) string {
+	return fieldDescWire(g, f, ordinal, tag, true)
+}
+
+func fieldDescWire(g *lobster.Gen, f *ir.Field, ordinal, tag int, wire bool) string {
+	id, jsonKey := ir.TableFieldWireId(f), ir.TableFieldJsonKey(f)
+	if !wire {
+		id, jsonKey = 0, ""
+	}
 	parts := []string{
-		"id: " + idLit(ir.TableFieldWireId(f)),
+		"id: " + idLit(id),
 		"name: " + lobster.StringLit([]byte(f.Name)),
 		"slot: " + lobster.StringLit([]byte(ir.GoExportName(f.Name))),
-		"json: " + lobster.StringLit([]byte(ir.TableFieldJsonKey(f))),
+		"json: " + lobster.StringLit([]byte(jsonKey)),
+		"type_name: " + lobster.StringLit([]byte(ir.TableTypeSpelling(f))),
+		"type_ref: " + lobster.StringLit([]byte(f.Type.Name)),
+		"doc: " + lobster.StringLit([]byte(f.Doc)),
+		"tags: " + tagList(f.Tags),
 		fmt.Sprintf("o: %d", ordinal),
 		fmt.Sprintf("k: %d", ir.TableWireFieldKind(f)),
 	}

@@ -28,7 +28,7 @@ func emitDescriptors(g *lobster.Gen) error {
 	if !have {
 		g.Runtimes = append(g.Runtimes, "descriptors")
 	}
-	base := g.File.Base
+	base := g.File.Base + ".schema"
 	g.Pf("schema_rt.set_unit(%s, %s)\n", lobster.StringLit([]byte(g.Unit.Package)), idLit(g.Unit.ProtocolId))
 	for _, t := range g.File.Tables {
 		if t.IsMapEntry() {
@@ -181,10 +181,11 @@ func emitVocabulary(g *lobster.Gen, name, base, kind, doc string, tags []string,
 		if i > 0 || kind != "flags" {
 			g.Pf(", ")
 		}
-		g.Pf("%s.ViewVariant { name: %s, id: %s, deprecated: %v, doc: %s, tags: %s }", rt,
+		g.Pf("%s.ViewVariant { value: %d, name: %s, id: %s, deprecated: %v, doc: %s, tags: %s }", rt, variantValue(kind, i),
 			lobster.StringLit([]byte(v)), idLit(id), mark, lobster.StringLit([]byte(d)), tagList(t))
 	}
-	g.Pf("]::%s.ViewVariant, %s)\n", rt, lobster.StringLit([]byte(kind)))
+	max, bits := vocabularyShape(g.Unit, name, kind)
+	g.Pf("]::%s.ViewVariant, %s, %d, %d)\n", rt, lobster.StringLit([]byte(kind)), max, bits)
 	for i, v := range variants {
 		if i < len(dep) && dep[i] {
 			g.Pf("schema_rt.deprecated_variant(%s, %s)\n", lobster.StringLit([]byte(name)), lobster.StringLit([]byte(v)))
@@ -205,6 +206,17 @@ func emitUnionView(g *lobster.Gen, un *ir.Union, base string) {
 		}
 	}
 	emitVocabulary(g, un.Name, base, "union", un.Doc, un.Tags, names, docs, tags, nil, ids)
+	for i, arm := range un.Variants {
+		if arm.Void() {
+			continue
+		}
+		record := "nil"
+		if arm.Body() {
+			record = fmt.Sprintf("schema_rt.lookup_table(%s)", lobster.StringLit([]byte(arm.Type)))
+		}
+		g.Pf("schema_rt.view_union_arm(%s, %d, %s, %s, %v)\n", lobster.StringLit([]byte(un.Name)), i+1,
+			lobster.StringLit([]byte(ir.FieldTypeSpelling(arm.F))), record, !arm.Body())
+	}
 }
 
 func enumIDs(u *ir.Unit, e *ir.Enum) []uint64 {
@@ -255,4 +267,33 @@ func join(parts []string) string {
 		out.WriteString(p)
 	}
 	return out.String()
+}
+
+func variantValue(kind string, i int) int {
+	if kind == "flags" {
+		return i
+	}
+	return i + 1
+}
+
+func vocabularyShape(u *ir.Unit, name, kind string) (int64, int) {
+	switch kind {
+	case "enum":
+		e := u.Enums[name]
+		return e.Max, e.StorageBits
+	case "flags":
+		f := u.Flags[name]
+		for _, bits := range []int{8, 16, 32, 64} {
+			if f.WireBits <= bits {
+				return int64(len(f.Variants) - 1), bits
+			}
+		}
+		return int64(len(f.Variants) - 1), 64
+	default:
+		un := u.Unions[name]
+		if un == nil {
+			un = u.TableUnions[name]
+		}
+		return un.Max, un.StorageBits
+	}
 }

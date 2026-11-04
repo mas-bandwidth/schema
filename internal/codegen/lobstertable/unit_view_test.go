@@ -116,7 +116,7 @@ func TestLobsterUnitViewCorpus(t *testing.T) {
 				t.Fatal(err)
 			}
 			var want []string
-			add := func(kind, name string) { want = append(want, kind+" "+name+" "+g.u.DeclFile[name]) }
+			add := func(kind, name string) { want = append(want, kind+" "+name+" "+g.u.DeclFile[name]+".schema") }
 			for name := range g.u.Structs {
 				add("types", name)
 			}
