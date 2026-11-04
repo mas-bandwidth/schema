@@ -88,19 +88,19 @@ func jsonProgram(g *loadUnit, rows []jsonRow) string {
 		fmt.Fprintf(&b, "import .%s\n", m)
 	}
 	b.WriteString("import .load\nimport .schema_save\nimport .strict_and_refusals\nimport .json\n")
-	b.WriteString(`def instance(root:string, i:int):
+	b.WriteString(`def instance(root:string, i:int, fixed:bool):
     let rep = schema_rt.LoadReport {}
     let wire = read_file("w{i}")
     assert wire
-    let rec = schema_rt.load(root, wire, rep)
+    let golden = read_file("j{i}")
+    assert golden
+    let rec = if fixed: schema_rt.json_read(root, golden, rep) else: schema_rt.load(root, wire, rep)
     assert rec
     let text, why = schema_rt.json_write(rec)
     if why != "":
         print("E{i} write: " + why)
     else:
         assert write_file("tw{i}", text)
-    let golden = read_file("j{i}")
-    assert golden
     let rrep = schema_rt.LoadReport {}
     let back = schema_rt.json_read(root, golden, rrep)
     if back:
@@ -128,7 +128,7 @@ def hostile(root:string, i:int):
 `)
 	for i, r := range rows {
 		if r.kind == "instance" {
-			fmt.Fprintf(&b, "instance(%s, %d)\n", lobster.StringLit([]byte(r.root)), i)
+			fmt.Fprintf(&b, "instance(%s, %d, %t)\n", lobster.StringLit([]byte(r.root)), i, g.u.Tables[r.root].FixedDeclared)
 		} else {
 			fmt.Fprintf(&b, "hostile(%s, %d)\n", lobster.StringLit([]byte(r.root)), i)
 		}
@@ -208,14 +208,19 @@ func runJsonUnit(t *testing.T, g *loadUnit, rows []jsonRow) jsonResult {
 	return res
 }
 
-// goJsonWrite is the reference engine's text of a wire: Decode, then Write,
-// closed by the newline every port's ToJson closes it with.
-func goJsonWrite(t *testing.T, u *ir.Unit, rootName string, wire []byte) []byte {
+// goJsonWrite is the reference engine's complete value as canonical text.
+// Historical fixed fixtures use their valid JSON; their old form-1 bytes
+// remain a value-projection golden, never input to the strict fixed reader.
+func goJsonWrite(t *testing.T, u *ir.Unit, rootName string, wire, golden []byte) []byte {
 	t.Helper()
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
+	if u.Tables[rootName].FixedDeclared {
+		if !m.Read(inst, golden, &rep) {
+			t.Fatalf("%s: reference refuses fixed fixture text", rootName)
+		}
+	} else if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
 		t.Fatalf("%s: the reference refuses the wire: %v", rootName, err)
 	}
 	text, err := m.Write(inst)
@@ -296,7 +301,7 @@ func TestLobsterJsonMatchesTheReference(t *testing.T) {
 			if r.kind == "instance" {
 				wire, _ := os.ReadFile(filepath.Join(root, r.wire))
 				golden, _ := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", r.name+".json"))
-				want := goJsonWrite(t, g.u, r.root, wire)
+				want := goJsonWrite(t, g.u, r.root, wire, golden)
 				if string(want) != string(golden) {
 					t.Fatalf("%s: the reference's text is not the golden; the comparison is not grounded", r.name)
 				}

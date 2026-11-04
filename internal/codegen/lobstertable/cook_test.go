@@ -142,12 +142,32 @@ const cookHexProbe = `def cookhex(b:string):
     print("end")
 `
 
-// cookProbe is the Lobster program for one row: load the wire, measure and
-// cook it in both orders, open what was written, read it back and save it.
+// cookProbe prepares a valid value, cooks it in both orders, opens the
+// results, and reads the complete value back. Fixed roots use canonical JSON;
+// the shared-blob region is built directly because its wire is refused.
 func cookProbe(g *cookUnit, row cookWriteRow) string {
 	var imports strings.Builder
 	for _, m := range g.mods {
 		fmt.Fprintf(&imports, "import .%s\n", m)
+	}
+	setup := fmt.Sprintf("    let rec = schema_rt.load(%s, w, schema_rt.LoadReport {})", lobster.StringLit([]byte(row.root)))
+	helpers := keyedRegistrations(g.u)
+	writeback := "        cookhex(schema_rt.save(back))"
+	if g.u.Tables[row.root].FixedDeclared {
+		setup = fmt.Sprintf("    let rec = schema_rt.json_read(%s, w, schema_rt.LoadReport {})", lobster.StringLit([]byte(row.root)))
+		writeback = `        let text, reason = schema_rt.json_write(back)
+        assert reason == ""
+        cookhex(text)`
+	}
+	if row.name == "blob_shared" {
+		helpers += cookSharedBlobRecord
+		setup = `    assert not schema_rt.load("Catalog", w, schema_rt.LoadReport {})
+    let rec = shared_catalog()`
+		writeback = `        let wire, wire_reason = schema_rt.save_reasoned(back)
+        let text, text_reason = schema_rt.json_write(back)
+        assert wire == "" and wire_reason == "blob_shared"
+        assert text == "" and text_reason != ""
+        cookhex("")`
 	}
 	return fmt.Sprintf(`%simport .load
 import .schema_save
@@ -156,8 +176,7 @@ import .schema_save
 def run():
     let w = read_file("w")
     assert w
-    let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(%s, w, rep)
+%s
     assert rec
     let m = %s.%sCookMeasure(rec)
     print("{m}")
@@ -169,21 +188,21 @@ def run():
     print(if %s.%sOpen(be): "ok" else: "no")
     let back = %s.%sReadCook(le)
     if back:
-        cookhex(schema_rt.save(back))
+%s
     else:
         print("nil")
     let bad = read_file("bad.cook")
     assert bad
     print(if %s.%sOpen(bad): "ok" else: "no")
 run()
-`, imports.String(), cookHexProbe, keyedRegistrations(g.u),
-		lobster.StringLit([]byte(row.root)),
+`, imports.String(), cookHexProbe, helpers, setup,
 		g.pkg, row.root,
 		g.pkg, row.root,
 		g.pkg, row.root,
 		g.pkg, row.root,
 		g.pkg, row.root,
 		g.pkg, row.root,
+		writeback,
 		g.pkg, row.root)
 }
 
@@ -199,14 +218,18 @@ type cookOutput struct {
 
 func runCookProbe(t *testing.T, g *cookUnit, row cookWriteRow, bad []byte) cookOutput {
 	t.Helper()
-	wire, err := os.ReadFile(filepath.Join(root, row.wire))
+	fixture := filepath.Join(root, row.wire)
+	if g.u.Tables[row.root].FixedDeclared {
+		fixture = filepath.Join(root, "testdata", "conformance", "tables", "json", row.name+".json")
+	}
+	wire, err := os.ReadFile(fixture)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(cookProbe(g, row)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	raw := lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"w": wire, "bad.cook": bad})
+	raw := lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"w": wire, "bad.cook": bad, "payload": {0x10, 0x20, 0x30, 0x40}})
 	lines := strings.Split(strings.TrimRight(string(raw), "\n"), "\n")
 	var out cookOutput
 	out.raw = string(raw)
@@ -250,22 +273,32 @@ func runCookProbe(t *testing.T, g *cookUnit, row cookWriteRow, bad []byte) cookO
 	return out
 }
 
-// goSaved is the reference's canonical wire for one loaded wire: the value
-// the cooked read must save back out (docs/SPEC-TABLES.md §7.5, uncook).
+// goSaved is the reference's complete cooked value: canonical JSON for a
+// fixed root, canonical wire for a variable root (docs/SPEC-TABLES.md §7.5, uncook).
 func goSaved(u *ir.Unit, row cookWriteRow, wire []byte) ([]byte, error) {
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(row.root))
 	var rep tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
+	if u.Tables[row.root].FixedDeclared {
+		text, err := os.ReadFile(filepath.Join(root, "testdata", "conformance", "tables", "json", row.name+".json"))
+		if err != nil {
+			return nil, err
+		}
+		if !m.Read(inst, text, &rep) {
+			return nil, fmt.Errorf("reference refuses fixed fixture text")
+		}
+		out, err := m.Write(inst)
+		return append(out, '\n'), err
+	} else if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
 		return nil, err
 	}
 	return tablewire.Encode(m, inst)
 }
 
-// TestLobsterCook writes the cook of every manifest cook-write row from its
-// wire, in both byte orders, and holds it byte for byte to the tool's files;
-// opens what it wrote; reads it back and saves it to the reference's canonical
-// wire. Each construct is named with the count of its rows.
+// TestLobsterCook holds every manifest cook-write row byte for byte to the
+// tool's files in both orders, then compares the complete read-back value.
+// Fixed values use canonical JSON and variable values use canonical wire;
+// a shared blob retains its identity and refuses wire/JSON write-back.
 // docs/SPEC-TABLES.md §7, §7.2, §7.6.
 func TestLobsterCook(t *testing.T) {
 	t.Parallel()
@@ -320,7 +353,7 @@ func TestLobsterCook(t *testing.T) {
 			if out.saved == nil {
 				t.Errorf("%s: ReadCook answered nil over the cook it wrote:\n%s", r.name, out.raw)
 			} else if string(out.saved) != string(want) {
-				t.Errorf("%s: the saved wire is not the reference's: %s", r.name, divergence(string(out.saved), string(want)))
+				t.Errorf("%s: the cooked value is not the reference's: %s", r.name, divergence(string(out.saved), string(want)))
 			}
 		} else {
 			t.Logf("%s: the reference's wire writer refuses the shared blob (%v); the cooked read was not compared to it", r.name, err)

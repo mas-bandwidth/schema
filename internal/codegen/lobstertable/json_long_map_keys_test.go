@@ -76,7 +76,7 @@ else:
 	if strings.Count(string(raw), anchor) != 1 {
 		t.Fatal("map-key mutation anchor must occur once")
 	}
-	if err := os.WriteFile(runtime, []byte(strings.Replace(string(raw), anchor, "let key_limit = json_max_key", 1)), 0644); err != nil {
+	if err := os.WriteFile(runtime, []byte(strings.Replace(string(raw), anchor, "let key_limit = if string_key: json_max_key else: json_max_key", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if matches() {

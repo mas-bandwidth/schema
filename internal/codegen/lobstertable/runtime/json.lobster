@@ -2329,6 +2329,7 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
 // the whole value on success; a failed read releases its candidate and leaves
 // the caller's existing record untouched.
 def json_read_into(rec:Record, text:string, report:LoadReport) -> bool:
+    read_reset(report)
     let candidate = new_record(rec.d)
     let r = JsonReader { text: text, report: report, graph: rec.d.variable }
     if length(text) >= 3 and text[0] == 0xEF and text[1] == 0xBB and text[2] == 0xBF:

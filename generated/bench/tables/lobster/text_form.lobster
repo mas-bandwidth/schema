@@ -720,7 +720,10 @@ def t_value_into(p:TextParser, sl:Slot, f:FieldDescriptor, v:TNode, path:string)
         if f.array == "counted" and length(sl.elems) > f.bound:
             t_set_fail(p, "text_bound")
             return false
-        sl.count = length(sl.elems)
+        sl.count = if f.array == "fixed": 0 else: length(sl.elems)
+        if f.array != "list":
+            while length(sl.elems) < f.bound:
+                push(sl.elems, element_zero(f))
         return true
     if f.s == "union":
         return t_set_union(p, sl, f, v, path)
