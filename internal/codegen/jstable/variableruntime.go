@@ -1667,6 +1667,9 @@ function TableVariableToJson(c, v) {
   TableVariableEntryCache = new Map();
   try {
     return TableVariableToJsonWalk(c, v);
+  } catch (e) {
+    if (e === TableVariableNotText) { return null; }
+    throw e;
   } finally {
     TableVariableEntryCache = outer;
   }
@@ -1743,7 +1746,7 @@ function TableVariableJsonField(fd, val, depth, g, out) {
       return true;
     case "str": if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; } out.push(TableVariableJsonString(val)); return true;
     // wide text's text is the same JSON string (docs/SPEC-TABLES.md §16.2;
-    // tabletext writeWString), an unpaired surrogate written as U+FFFD
+    // tabletext writeWString), and an unpaired surrogate refuses the write
     case "wstr": out.push(TableVariableJsonString(val)); return true;
     case "bytes": out.push(TableVariableBase64Text(val)); return true;
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);

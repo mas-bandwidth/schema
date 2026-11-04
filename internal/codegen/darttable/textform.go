@@ -159,7 +159,8 @@ const String _jsonHex = '0123456789abcdef';
 
 // _jsonString renders one Dart string as one JSON string (§16.3): the escapes
 // JSON names and every other code point whole, so a multi-byte character rides
-// as itself.
+// as itself. A string holding an unpaired surrogate is not text: the write
+// refuses (invalid_value, §16.14 W0) and nothing is replaced.
 String _jsonString(String s) {
   final b = StringBuffer();
   b.write('"');
@@ -183,7 +184,10 @@ String _jsonString(String s) {
       b.write(_jsonHex[rune >> 4]);
       b.write(_jsonHex[rune & 0xF]);
     } else {
-      b.write(String.fromCharCode(rune >= 0xD800 && rune <= 0xDFFF ? 0xFFFD : rune));
+      if (rune >= 0xD800 && rune <= 0xDFFF) {
+        throw StateError('invalid_value: an unpaired surrogate is not text (docs/SPEC-TABLES.md §16.14 W0)');
+      }
+      b.write(String.fromCharCode(rune));
     }
   }
   b.write('"');
@@ -453,6 +457,7 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
     out.raw('null');
     return;
   }
+  _jsonDepth(depth);
   if ((sh.count[node] ?? 0) <= 1) {
     body(null);
     return;
@@ -468,6 +473,14 @@ void _writePtr(_JOut out, Object? node, int depth, _Share sh, void Function(int?
     return;
   }
   body(sh.define(node));
+}
+
+// _jsonDepth is the depth cap (§16.14 W2): a table value written past depth
+// 128 refuses the write; a scalar, a string or a null nests nothing.
+void _jsonDepth(int depth) {
+  if (depth > 128) {
+    throw StateError('invalid_value: a table value past the depth cap of 128 (docs/SPEC-TABLES.md §16.14 W2)');
+  }
 }
 
 Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() make, void Function(Object obj, List<MapEntry<String, dynamic>> m) fill, [Object? def]) {
@@ -673,8 +686,10 @@ String _jsonPrepare(String text, TableTextReport r) {
       stripped.add(0x20);
       continue;
     }
+    // the root container is the first: one at count 130 sits at depth 129,
+    // past the cap (§16.14 W2)
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 128) throw const FormatException('JSON nesting past 128');
+      if (++depth > 129) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
@@ -768,6 +783,7 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 func (g *wireGen) emitTextToJsonBody(st *ir.Struct) {
 	fn := dartName(st.Name) + "ToJsonBody"
 	g.pf("void %s(_JOut out, %s v, int depth, _Share sh, [int? label]) {\n", fn, st.Name)
+	g.pf("\t_jsonDepth(depth);\n")
 	if st.JsonArray {
 		f := st.Fields[0]
 		g.emitJsonValue(f, "v."+fieldMember(f), 0, "\t", st.Name+"."+f.Name)

@@ -315,6 +315,7 @@ func init() {
 		Name{Name: "TableVariableJsonString", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableJsonUnion", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableJsonValue", What: "the JavaScript variable-form runtime module"},
+		Name{Name: "TableVariableNotText", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableKeyOrder", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableKeyedExtent", What: "the JavaScript variable-form runtime module"},
 		Name{Name: "TableVariableLink", What: "the JavaScript variable-form runtime module"},
