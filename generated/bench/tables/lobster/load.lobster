@@ -1524,8 +1524,8 @@ def body_at(r:Reader, rec:Record, nested:bool, entry:bool) -> bool:
             rep.malformed = true
             return false
         if ref == 0:
-            if entry and (length(seen) == 0 or not seen[0]):
-                return read_refuse(rep, "wire_damaged")
+            // An elided map key is its default (zero or empty text), as
+            // every other absent field. MapShape still checks strict order.
             let missing:[string] = []
             for(rec.fields) x, i:
                 if x.fd.required and not seen[i]:
