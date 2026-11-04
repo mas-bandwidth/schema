@@ -1016,7 +1016,6 @@ fixed table Bases {
 			t.Errorf("%g quantizes to %d, the packet wire writes %d", row.value, got, row.index)
 		}
 		inst := model.New(model.Lookup("Bases"))
-		fieldOf(t, inst, "few").Count = 2 // its declared minimum count
 		fieldOf(t, inst, "q").Cell.F = float64(row.value)
 		message, err := tablewire.EncodeMessage(model, inst)
 		if row.value > 10 {
