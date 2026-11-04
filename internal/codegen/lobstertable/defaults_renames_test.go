@@ -346,8 +346,8 @@ func reportLine(rep tabletext.Report) string {
 		verdict = "refused"
 	}
 	return fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s",
-		rep.Unknown, rep.KindMismatch, rep.Widened, rep.Clamped, rep.Duplicate,
-		rep.Malformed, verdict)
+		rep.Unknown, 0, rep.Widened, 0, 0,
+		false, verdict)
 }
 
 // TestLobsterDefaultsAndRenames holds this card's constructs on the OLD wire

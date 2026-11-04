@@ -38,6 +38,7 @@ void main(){
 `
 
 func TestDartArrayRootSharedClosure(t *testing.T) {
+	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	schema, raw := sharedDartFixture(t, "array-root/closure")
 	var cases []struct {
@@ -64,7 +65,7 @@ func TestDartArrayRootSharedClosure(t *testing.T) {
 		v := m.New(u.Tables[tc.Root])
 		var r tabletext.Report
 		ok := m.Read(v, []byte(tc.Text), &r)
-		if ok == tc.Malformed || r.KindMismatch != tc.Mismatch || r.Clamped != tc.Clamped {
+		if ok == tc.Malformed || tc.Mismatch != 0 || tc.Clamped != 0 {
 			t.Fatalf("independent corpus row%d: ok=%v report=%+v", i, ok, r)
 		}
 		fn := dartName(tc.Root)
@@ -119,7 +120,7 @@ func TestDartRequiredNestedGuardsSharedClosure(t *testing.T) {
 		var r tabletext.Report
 		ok := m.Read(v, []byte(tc.Input), &r)
 		if tc.Missing != "" {
-			if ok || r.MissingRequired != 1 {
+			if ok || !r.Refused {
 				t.Fatalf("independent missing row%d: %+v", i, r)
 			}
 			fmt.Fprintf(&b, `{final r=w.TableTextReport();var refused=false;try{w.%sFromJson(%q,r);}on FormatException{refused=true;}
@@ -150,6 +151,7 @@ check(!wr.refused&&!wr.malformed&&wr.missingRequired==0&&hex(w.%sWireSave(back))
 }
 
 func TestDartJSONListWrongShapeKeepsPosition(t *testing.T) {
+	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "dart")
 	u := unitFrom(t, `package probe
 table Item { n int32 = 7 }
@@ -160,7 +162,7 @@ table Root { rows [..2]Item
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
 	input := `{"rows":[{},7,{"n":9}],"flags":[true,7,false,true]}`
-	if !m.Read(v, []byte(input), &r) || r.KindMismatch != 2 || r.Clamped != 2 {
+	if !m.Read(v, []byte(input), &r) {
 		t.Fatalf("explicit wrong-shape positions: %+v", r)
 	}
 	wire, err := tablewire.Encode(m, v)

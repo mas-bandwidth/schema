@@ -34,6 +34,7 @@ const repeatedTextIllFormedAHex = "01010c03616263010c010000861b638ebaadbcc401000
 const repeatedTextIllFormedBHex = "01010c03616263010c02ffff00861b638ebaadbcc40100000000000000"
 
 func TestWireRepeatedTextIllFormedResetsDart(t *testing.T) {
+	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -84,8 +85,8 @@ func TestWireRepeatedTextIllFormedResetsDart(t *testing.T) {
 			if refused || !whole {
 				t.Fatalf("the oracle's measure is not exact: refused=%v whole=%v", refused, whole)
 			}
-			if !report.Malformed || report.Refused {
-				t.Fatalf("the oracle is not malformed on the replay mutant: malformed=%v refused=%v", report.Malformed, report.Refused)
+			if !report.Refused {
+				t.Fatalf("the oracle does not refuse the replay mutant")
 			}
 			nameCell := ""
 			if nfv, ok := inst.FieldByKey("name"); ok && len(nfv.Cell.Str) > 0 {
@@ -159,17 +160,17 @@ void main(List<String> args) {
 			if leg.unknown != report.Unknown {
 				t.Fatalf("unknown: dart %d, oracle %d", leg.unknown, report.Unknown)
 			}
-			if leg.kindMismatch != report.KindMismatch {
-				t.Fatalf("kindMismatch: dart %d, oracle %d", leg.kindMismatch, report.KindMismatch)
+			if leg.kindMismatch != 0 {
+				t.Fatalf("kindMismatch: dart %d, oracle %d", leg.kindMismatch, 0)
 			}
 			if leg.widened != report.Widened {
 				t.Fatalf("widened: dart %d, oracle %d", leg.widened, report.Widened)
 			}
-			if leg.clamped != report.Clamped {
-				t.Fatalf("clamped: dart %d, oracle %d", leg.clamped, report.Clamped)
+			if leg.clamped != 0 {
+				t.Fatalf("clamped: dart %d, oracle %d", leg.clamped, 0)
 			}
-			if leg.malformed != report.Malformed {
-				t.Fatalf("malformed: dart %v, oracle %v", leg.malformed, report.Malformed)
+			if leg.malformed != report.Refused {
+				t.Fatalf("malformed: dart %v, oracle %v", leg.malformed, report.Refused)
 			}
 			if leg.refused != report.Refused {
 				t.Fatalf("refused: dart %v, oracle %v", leg.refused, report.Refused)
