@@ -105,6 +105,21 @@ glue() {
 		echo "    let n = schema_rt::json_save_table($ns::TableUnit, $ns::TextUnit, root, data, vals, nodes, at, out);"
 		echo "    return if n < 0 { -2 } else { n };"
 		echo "}"
+		# the write's exact length, or -2 when it refuses: a typed record's
+		# <Root>ToJsonMeasure, and the flat value table's one writer otherwise
+		echo "fn conformance_json_measure(root: const u8[:], data: const u8[:], vals: const schema_rt::LoadVal[:], nodes: const schema_rt::LoadNode[:], at: i64) -> i64 {"
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)ToLoaded(.*/\1/p' "$1"/*Table.goose); do
+			echo "    if root == \"$r\" {"
+			echo "        var v = $ns::$r { .. }; let unit = conformance_unit();"
+			echo "        if !$ns::${r}FromLoaded(v, unit, data, vals, at) { return -2; }"
+			echo "        let n = $ns::${r}ToJsonMeasure(v);"
+			echo "        return if n < 0 { -2 } else { n };"
+			echo "    }"
+		done
+		echo "    var out: u8[>..] = [];"
+		echo "    let n = schema_rt::json_save_table($ns::TableUnit, $ns::TextUnit, root, data, vals, nodes, at, out);"
+		echo "    return if n < 0 { -2 } else { n };"
+		echo "}"
 		# json-hostile through the flat value table: the verdict of a tolerant
 		# read and the §16 text of the value it left, for a root the unit's own
 		# text glue does not name
@@ -314,6 +329,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 				if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent target-refuses-schema";
 				next
 			}
+			s == "json-write" && $1 == "write-refusal" && $3 == k { print $2 ".json absent target-refuses-schema"; next }
 			(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 			(s == "wire" && $1 == "instance" && $3 == k) ||
 			(s == "report" && $1 == "report" && $3 == k) ||

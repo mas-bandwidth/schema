@@ -218,6 +218,64 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
     }
 }
 
+// surface_write_refusal: THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md
+// §16.14, W0). The wire is loaded into the flat value table, the line's
+// damage is put into storage in code (damage_text), then the glue's
+// conformance_json_measure, which must refuse, and conformance_json_write,
+// which must refuse too: `refused`, or the text written when it does not.
+fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        if f.len < 6 || f[0] != "write-refusal" || f[2] != unit { continue; }
+        var data: u8[>..] = [];
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        load_file(f[4], data);
+        var report = schema_rt::LoadReport { .. };
+        let at = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
+        if at < 0 { write_stderr(str("driver: ", f[1], " does not load\n")); exit(1); }
+        if !damage_text(data, vals, at, f[5]) { write_stderr(str("driver: ", f[1], ": damage ", f[5], " names no text field\n")); exit(1); }
+        let name = str(f[1], ".json");
+        var json: u8[>..] = [];
+        if conformance_json_measure(f[3], data, vals, nodes, at) >= 0 {
+            if conformance_json_write(f[3], data, vals, nodes, at, json) < 0 { write_stderr(str("driver: ", f[1], ": the measure wrote and the write refused\n")); exit(1); }
+            answer(name, json);
+            continue;
+        }
+        if conformance_json_write(f[3], data, vals, nodes, at, json) >= 0 { write_stderr(str("driver: ", f[1], ": the measure refused and the write wrote\n")); exit(1); }
+        answer(name, "refused\n");
+    }
+}
+
+// damage_text puts into the root record's top-level text field what no read
+// delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): the bytes
+// 61 FF 62 in a narrow field, the UTF-16LE units 0061 D800 0062 in a wide one.
+// The bytes are appended to the data store and the field's slot (the record's
+// fields sit in descriptor order) is pointed at them.
+fn damage_text(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, at: i64, damage: const u8[:]) -> bool {
+    if damage == "none" { return true; }
+    if damage.len > 7 && damage[..7] == "narrow:" { return damage_field(data, vals, at, damage[7..], "a\xFFb"); }
+    if damage.len > 5 && damage[..5] == "wide:" { return damage_field(data, vals, at, damage[5..], "a\x00\x00\xD8b\x00"); }
+    return false;
+}
+
+fn damage_field(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, at: i64, field: const u8[:], bytes: const u8[:]) -> bool {
+    let t = conformance_unit().tables[vals[at].tab];
+    var i: i64 = 0;
+    while i < t.fields.len {
+        if t.fields[i].name == field {
+            let s = vals[at].first + i;
+            vals[s].off = data.len;
+            vals[s].len = bytes.len;
+            vals[s].state = schema_rt::ValPresent;
+            data.append(bytes);
+            return true;
+        }
+        i += 1;
+    }
+    return false;
+}
+
 // surface_retain: the RETAIN-UNKNOWN round trip (docs/SPEC-TABLES.md §6.6).
 // `full` is a buffer the whole load fits in; `short` is one byte short of the
 // LAST record, found by loading once at full and reading what it used. The
@@ -362,7 +420,11 @@ fn main() {
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
     if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
-    if argv[1] == "json-write" { surface_json(lines, unit, true); return; }
+    if argv[1] == "json-write" {
+        surface_json(lines, unit, true);
+        surface_write_refusal(lines, unit);
+        return;
+    }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);

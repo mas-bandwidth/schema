@@ -573,8 +573,9 @@ fn jv_put_stamp(out: u8[>..]&, nanos: i64) {
 }
 
 // jv_put_units writes a wstring's UTF-16LE units as a JSON string: a pair is
-// one code point, an unpaired surrogate one U+FFFD, a zero unit \u0000.
-fn jv_put_units(out: u8[>..]&, b: const u8[:]) {
+// one code point, a zero unit \u0000. An unpaired surrogate is not text: it
+// answers false and the whole write refuses (invalid_value, §16.14 W0).
+fn jv_put_units(out: u8[>..]&, b: const u8[:]) -> bool {
     let hex = "0123456789abcdef";
     out.push('"');
     let n = b.len / 2;
@@ -592,7 +593,7 @@ fn jv_put_units(out: u8[>..]&, b: const u8[:]) {
                 i += 1;
             }
         }
-        if code >= 0xD800 && code <= 0xDFFF { code = 0xFFFD; }
+        if code >= 0xD800 && code <= 0xDFFF { return false; }
         if code == '"' {
             out.append("\\\"");
         } else if code == '\\' {
@@ -619,6 +620,7 @@ fn jv_put_units(out: u8[>..]&, b: const u8[:]) {
         i += 1;
     }
     out.push('"');
+    return true;
 }
 
 // ======================================================================
@@ -832,13 +834,12 @@ recursive fn jw_field(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
         if jv_state(c.vals, s) == ValAbsent {
             json_put_string(out, if d.has_def { d.def_s } else { "" });
         } else {
-            jv_put_units(out, jw_view(c, s, d));
+            return jv_put_units(out, jw_view(c, s, d));
         }
         return true;
     }
     if d.shape == ShapeStr || d.shape == ShapeText {
-        json_put_string(out, jw_view(c, s, d));
-        return true;
+        return json_put_text(out, jw_view(c, s, d));
     }
     if d.shape == ShapeBytes {
         json_put_base64(out, jw_view(c, s, d));
@@ -864,7 +865,8 @@ fn jw_blob(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc) -> bool {
     let node = c.nodes[wire - 2];
     if node.off < 0 || node.len < 0 || node.off > c.data.len || node.len > c.data.len - node.off { return false; }
     let b = c.data[node.off..node.off + node.len];
-    if d.shape == ShapeSBlob { json_put_string(out, b); } else { json_put_base64(out, b); }
+    if d.shape == ShapeSBlob { return json_put_text(out, b); }
+    json_put_base64(out, b);
     return true;
 }
 
@@ -914,9 +916,9 @@ recursive fn jw_array(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: con
             if fd.optional && jv_state(c.vals, fs) == ValAbsent {
                 out.append("null");
             } else if fd.shape == ShapeStr && fd.wide {
-                jv_put_units(out, jw_view(c, fs, fd));
-            } else {
-                json_put_string(out, jw_view(c, fs, fd));
+                if !jv_put_units(out, jw_view(c, fs, fd)) { return false; }
+            } else if !json_put_text(out, jw_view(c, fs, fd)) {
+                return false;
             }
         } else if !jw_value(c, out, es, e, owner, ord, true, depth + 1) {
             return false;
@@ -1009,7 +1011,7 @@ recursive fn jw_map(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const
         let e = c.scratch[mark + k];
         let ks = jv_slot(c.vals, e, 0);
         if kd.shape == ShapeStr || kd.shape == ShapeText {
-            json_put_string(out, jw_view(c, ks, kd));
+            if !json_put_text(out, jw_view(c, ks, kd)) { ok = false; }
         } else {
             let v = jv_int(c.vals, ks, kd);
             out.push('"');
