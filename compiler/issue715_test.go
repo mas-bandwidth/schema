@@ -173,31 +173,21 @@ import (
 )
 
 func TestIssue715(t *testing.T) {
-	// 1. Malformed Base64 body: must report kind_mismatch == 1 and preserve declared default "ab" (len 2)
-	{
-		text := []byte("{\"tag\":\"not_valid_base64!!!\",\"past\":42}")
+	// ill-formed Base64 and mid-string '=' padding refuse the JSON read
+	// (docs/SPEC-TABLES.md §4, §16); a well-formed body reads
+	for _, body := range []string{"not_valid_base64!!!", "YQ=B"} {
 		var s Ship
 		ShipReset(&s)
 		var r TableReport
-		ok := ShipFromJSONTolerant(&s, text, &r)
-		if !ok { t.Fatal("Go case 1: FromJson failed") }
-		if r.KindMismatch != 1 { t.Fatalf("Go case 1: kind_mismatch=%d, want 1", r.KindMismatch) }
-		if r.Malformed { t.Fatal("Go case 1: malformed is true") }
-		if s.Past != 42 { t.Fatalf("Go case 1: after=%d, want 42", s.Past) }
-		if s.TagLength != 2 { t.Fatalf("Go case 1: tag_length=%d, want 2 (default wiped!)", s.TagLength) }
-		if s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 1: tag content corrupted") }
+		if ShipFromJSON(&s, []byte("{\"tag\":\""+body+"\",\"past\":42}"), &r) || r.Err() == nil {
+			t.Fatalf("%q read: %+v", body, r)
+		}
 	}
-
-	// 2. Mid-string '=' padding ("YQ=B"): must report kind_mismatch == 1 and preserve default
-	{
-		text := []byte("{\"tag\":\"YQ=B\",\"past\":42}")
-		var s Ship
-		ShipReset(&s)
-		var r TableReport
-		ok := ShipFromJSONTolerant(&s, text, &r)
-		if !ok { t.Fatal("Go case 2: FromJson failed") }
-		if r.KindMismatch != 1 { t.Fatalf("Go case 2: kind_mismatch=%d, want 1 (mid-string padding accepted!)", r.KindMismatch) }
-		if s.TagLength != 2 || s.Tag[0] != 'a' || s.Tag[1] != 'b' { t.Fatal("Go case 2: tag default not preserved") }
+	var s Ship
+	ShipReset(&s)
+	var r TableReport
+	if !ShipFromJSON(&s, []byte("{\"tag\":\"YWI=\",\"past\":42}"), &r) || s.Past != 42 || s.TagLength != 2 || s.Tag[0] != 'a' || s.Tag[1] != 'b' {
+		t.Fatalf("the well-formed body: %+v", r)
 	}
 }
 `

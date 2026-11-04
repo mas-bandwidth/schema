@@ -18,6 +18,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
 | `mapwalk/` | map walk | `go test ./internal/mapwalk` | `go test ./internal/mapwalk` |
+| `memceiling/` | memory ceiling for allocating tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `publicapi/` | external-module API gate | `go test ./internal/publicapi` | `go test ./internal/publicapi` |
 | `rfc3339/` | strict RFC 3339 timestamp parser | `go test ./internal/rfc3339` | `go test ./internal/rfc3339` |

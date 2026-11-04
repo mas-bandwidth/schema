@@ -962,39 +962,24 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // behind an include guard; a Go package is one namespace across its files, so a
 // second copy would be a redeclaration error instead.
 func tableRuntime() string {
-	return `// TableReport is the table-wire read report — the permissive contract's
-// ledger. Silence (all zero) means the data matched this reader's schema
-// exactly. Err (docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
-// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
-// build-version-mismatched. Unknown, Widened and Retained alone are not one.
+	return `// TableReport is the table-wire read report (docs/SPEC-TABLES.md §4, §6.5).
+// A read RETURNS the whole value or REFUSES the whole load: Err is nil on a read
+// that returned and the typed refusal otherwise. The counters are per-language
+// diagnostics of a read that returned and stay zero on a refusal: Unknown counts
+// the ids this reader cannot name (evolution), Widened the fields that rode
+// under a narrower kind on their own ladder, Retained and RetainLost the
+// retention ledger (§6.6). Why a read refused (Refusal, Field, Reason) is
+// diagnostic detail too, never a cross-language contract.
 type TableReport struct {
  Retained, RetainLost int32
 	Verdict      TableOpenVerdict // unsupported form is distinct from damage
-	Reason       string // why the form was refused; empty for a file read
-	Widened      int32 // a compatible wider kind preserved the value
-	Unknown      int32 // unknown field ids skipped (newer data)
-	KindMismatch int32 // known id, changed type — skipped, never misdecoded
-	Clamped      int32 // out-of-range values clamped to declared bounds
-	// ClampedField names the field or path whose value a read clamped
-	// (docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
-	// refusal carries it, apart from Reason.
-	ClampedField string
-	// NonFiniteFloat names the first NaN or infinity float a read met,
-	// <Table>.<field>: every read refuses it (docs/SPEC-TABLES.md §3.3).
-	NonFiniteFloat string
-	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
-	// A body carrying an id twice is legal input
-	// whose last occurrence wins, silently. A wire read always leaves it zero.
-	Duplicate int32
-	// MissingRequired counts required fields (docs/SPEC-TABLES.md §2.3) the
-	// record did not carry: a record an older writer produced before the field
-	// became required. The refusal names the field in Reason.
-	MissingRequired int32
-	Malformed bool // framing damage; decode stopped, partial result kept
-	// BlobShared counts the extra slots that named a blob record another slot
-	// already named (docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
-	// node, never a copy per slot, and the strict read refuses blob_shared.
-	BlobShared int32
+	Reason       string // the refusal's diagnostic text; empty on a read that returned
+	Widened      int32 // a compatible wider kind decoded the value exactly
+	Unknown      int32 // ids this reader cannot name, skipped (newer data)
+	// Refusal is the first condition the read met, TableRefuseOk on a read
+	// that returned; Field names the field it concerns where it has one.
+	Refusal TableRefuseReason
+	Field   string
 	// BuildVersionRemote and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (docs/SPEC-TABLES.md §3.3): the endpoint's
 	// announcement and this unit's own. They are zero on every other read.
@@ -1006,12 +991,25 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
-	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
-	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
-	// reports it too — the operator's other answer, a layout this build served
-	// and has retired.
+	// LayoutHash is THE FILE'S hash, set by the layout refusals
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
+	// layout.
 	LayoutHash uint64
 }
+
+// Refuse records the read's refusal (docs/SPEC-TABLES.md §6.5): the first
+// condition a read meets is the one it reports, and any later one changes
+// nothing. A read checks in its own order and stops at the first condition it
+// meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
+// OneVerdict).
+func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
+	if r == nil || r.Refusal != TableRefuseOk { return }
+	r.Refusal, r.Field = reason, field
+	if r.Reason == "" { r.Reason = reason.Error(); if field != "" { r.Reason += ": " + field } }
+}
+
+// Refused reports whether the read refused: Err is not nil.
+func (r *TableReport) Refused() bool { return r.Err() != nil }
 
 // ---- reflection (tables only, docs/SPEC-TABLES.md §8) ----
 //

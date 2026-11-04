@@ -115,7 +115,7 @@ table Root
 			text := fmt.Sprintf(f.format, zero)
 			inst := m.New(st)
 			var report tabletext.Report
-			if m.Read(inst, []byte(text), &report) || !report.Malformed {
+			if m.Read(inst, []byte(text), &report) || !report.Refused {
 				t.Fatalf("%s zero at %d: the Go oracle did not refuse %s (%+v)", f.name, i, text, report)
 			}
 			if !strings.HasPrefix(report.Reason, "text_holds_zero: ") {
@@ -129,7 +129,7 @@ table Root
 			controlText := fmt.Sprintf(f.format, control)
 			inst = m.New(st)
 			report = tabletext.Report{}
-			if !m.Read(inst, []byte(controlText), &report) || report.Malformed {
+			if !m.Read(inst, []byte(controlText), &report) || report.Refused {
 				t.Fatalf("%s control at %d: the Go oracle refused %s (%+v)", f.name, i, controlText, report)
 			}
 			ckey := fmt.Sprintf("%s_control_%d", f.name, i)
@@ -142,7 +142,7 @@ table Root
 	for i, text := range []string{`{"zz":"a\u0000b"}`, `{"t\u0000":"x"}`} {
 		inst := m.New(st)
 		var report tabletext.Report
-		if !m.Read(inst, []byte(text), &report) || report.Malformed {
+		if !m.Read(inst, []byte(text), &report) || report.Refused {
 			t.Fatalf("skipped zero %d: the Go oracle refused %s (%+v)", i, text, report)
 		}
 		key := fmt.Sprintf("skipped_%d", i)

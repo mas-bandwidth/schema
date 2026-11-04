@@ -80,7 +80,7 @@ func TestWireReportSceneReferenceMalformedDart(t *testing.T) {
 	if ok, derr := tablewire.DecodeRegion(model, inst, mutant, &rep); derr != nil || !ok {
 		t.Fatalf("oracle decode: ok=%v err=%v", ok, derr)
 	}
-	if rep.Malformed {
+	if rep.Refused {
 		t.Fatalf("oracle flags the mutant malformed: %+v", rep)
 	}
 	encoded, eerr := tablewire.Encode(model, inst)

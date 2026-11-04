@@ -77,7 +77,7 @@ func discardWireDart(t *testing.T, u *ir.Unit, root string) []byte {
 	}
 	wire[at] = 37
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup(root)), wire, &report); ok || !tablewire.ReadRefusal(err) || !report.Refused {
 		t.Fatalf("%s: the engine does not read the vector as damage: ok=%v err=%v %+v", root, ok, err, report)
 	}
 	return wire
@@ -99,7 +99,7 @@ func discardMessages(t *testing.T, u *ir.Unit) []byte {
 		t.Fatalf("announce: %v", err)
 	}
 	var rep tabletext.Report
-	if _, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Root"))}, data, vocab, &rep); ok || err != nil || !rep.Malformed {
+	if _, ok, err := tablewire.DecodeMessages(m, []*tabletext.Instance{m.New(m.Lookup("Root"))}, data, vocab, &rep); ok || !tablewire.ReadRefusal(err) || !rep.Refused {
 		t.Fatalf("the engine does not read the batch as damage: ok=%v err=%v %+v", ok, err, rep)
 	}
 	return data

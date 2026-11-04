@@ -144,10 +144,10 @@ func TestPopulatedFeatureNeutralFileIntegrity(t *testing.T) {
 			t.Fatalf("changed byte %d accepted", i)
 		}
 		if i == 0 {
-			if err == nil || !r.Refused || r.Malformed {
+			if !tablewire.Refused(err) || !r.Refused {
 				t.Fatalf("form precedence: %+v %v", r, err)
 			}
-		} else if err != nil || !r.Malformed || r.Reason != "integrity_mismatch" || r.Unknown != 0 || r.KindMismatch != 0 || r.MissingRequired != 0 {
+		} else if tablewire.Refused(err) || tablewire.RefusalReason(err) != tablewire.ReasonIntegrityMismatch || !r.Refused || r.Unknown != 0 {
 			t.Fatalf("byte %d decoded before integrity: %+v %v", i, r, err)
 		}
 		if _, whole, _ := tablewire.FileRegionMeasure(u, root, bad); whole {

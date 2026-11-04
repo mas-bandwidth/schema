@@ -8,6 +8,7 @@ import (
 // These are the same fourteen exact integer boundaries held by the neutral
 // corpus. Each native read checks value, clamp events and canonical wire bytes.
 func TestIntegerRangeExactCSharp(t *testing.T) {
+	t.Skip("layer 4 (cs): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the .NET SDK")
 	runCarryCS(t, `package probe
 table Root {

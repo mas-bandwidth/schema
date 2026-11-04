@@ -78,7 +78,7 @@ func TestRetainRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || report.Malformed {
+	if !ok || report.Refused {
 		t.Fatalf("the load reported damage on a sound wire: %+v", report)
 	}
 	// NINE RECORDS: an unknown field in the root, in `inner`, in two elements
@@ -252,7 +252,7 @@ func TestRetainExcludedClasses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !ok || report.Malformed {
+			if !ok || report.Refused {
 				t.Fatalf("%s: the load reported damage on a sound wire: %+v", c.what, report)
 			}
 			if report.RetainLost != 1 || report.Retained != 0 {
@@ -284,7 +284,7 @@ func TestRetainUnknownNodeRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || report.Malformed {
+	if !ok || report.Refused {
 		t.Fatalf("the load reported damage on a sound wire: %+v", report)
 	}
 	if report.Unknown != 1 || report.RetainLost != 1 || report.Retained != 0 {
@@ -313,9 +313,7 @@ func TestRetainIsAdditive(t *testing.T) {
 	if _, err := tablewire.DecodeRetain(m, retainInst, wire, &retain, &retaining); err != nil {
 		t.Fatal(err)
 	}
-	if plain.Unknown != retaining.Unknown || plain.KindMismatch != retaining.KindMismatch ||
-		plain.Clamped != retaining.Clamped || plain.Widened != retaining.Widened ||
-		plain.Duplicate != retaining.Duplicate || plain.Malformed != retaining.Malformed {
+	if plain.Unknown != retaining.Unknown || plain.Widened != retaining.Widened || plain.Refused != retaining.Refused {
 		t.Fatalf("retention moved a read counter: plain %+v, retaining %+v", plain, retaining)
 	}
 	// A REGION LOADED WITH RETENTION MAY BE SAVED WITHOUT IT, which drops the
@@ -380,8 +378,7 @@ func TestRetainCapacities(t *testing.T) {
 	if tightReport.RetainLost != wholeReport.RetainLost+1 {
 		t.Fatalf("retain_lost=%d, want %d", tightReport.RetainLost, wholeReport.RetainLost+1)
 	}
-	if tightReport.Unknown != wholeReport.Unknown || tightReport.Malformed ||
-		tightReport.KindMismatch != 0 || tightReport.Clamped != 0 || tightReport.Widened != 0 {
+	if tightReport.Unknown != wholeReport.Unknown || tightReport.Refused || tightReport.Widened != 0 {
 		t.Fatalf("a full buffer moved a read counter: %+v", tightReport)
 	}
 
@@ -583,7 +580,7 @@ func TestRetainWalkDepthCap(t *testing.T) {
 			// THE WALK'S VERDICT CHANGES NOTHING ELSE (§6.6): the outer framing
 			// was sound and the reader's own data is what retention off would
 			// have left, so `malformed` does not move either way.
-			if !ok || report.Malformed {
+			if !ok || report.Refused {
 				t.Fatalf("%d nested bodies: the load reported damage on a sound wire: %+v", row.depth, report)
 			}
 			if report.Retained != row.retained || report.RetainLost != row.lost {
@@ -646,7 +643,7 @@ func TestRetainDroppedRecordSpendsNoId(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ok || loadReport.Malformed {
+	if !ok || loadReport.Refused {
 		t.Fatalf("the load reported damage on a sound wire: %+v", loadReport)
 	}
 	// THE LIST FILLS AS THE SAVE WALK INTERNS, so the load keeps both records

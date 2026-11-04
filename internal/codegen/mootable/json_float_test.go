@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"math/rand/v2"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -270,15 +271,18 @@ end
 	for i, token := range tokens {
 		inst := m.New(st)
 		var r tabletext.Report
-		if !m.Read(inst, []byte(`{"f": `+token+`, "d": `+token+`}`), &r) {
-			t.Fatalf("the engine refused %q as malformed", token)
-		}
 		var f32, f64 string
-		if r.KindMismatch > 0 {
-			// which width overflowed: the engine counted one, or both
+		if !m.Read(inst, []byte(`{"f": `+token+`, "d": `+token+`}`), &r) {
+			// the strict read refuses a token past a width's range; strconv
+			// names which width overflowed
+			_, e32 := strconv.ParseFloat(token, 32)
+			d, e64 := strconv.ParseFloat(token, 64)
+			if e32 == nil {
+				t.Fatalf("the engine refused %q, which fits both widths", token)
+			}
 			f32 = "inf"
-			f64 = fmt.Sprintf("%016x", math.Float64bits(inst.Fields[1].Cell.F))
-			if r.KindMismatch == 2 {
+			f64 = fmt.Sprintf("%016x", math.Float64bits(d))
+			if e64 != nil {
 				f64 = "inf"
 			}
 		} else {

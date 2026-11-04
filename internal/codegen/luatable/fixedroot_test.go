@@ -79,18 +79,21 @@ func fixedRootEngine(t *testing.T, m *tabletext.Model, root string, data []byte)
 	ok, err := tablewire.Decode(m, m.New(def), data, &rep)
 	verdict := "read"
 	if err != nil {
+		if !tablewire.Refused(err) && tablewire.ReadRefusal(err) {
+			return "malformed" // §4: the strict read refuses the whole load
+		}
 		if !tablewire.Refused(err) {
 			t.Fatalf("root %s: the engine refused the root itself on %x: %v", root, data, err)
 		}
 		verdict = "refused"
 	}
-	if rep.Malformed || (!ok && err == nil) {
+	if rep.Refused || (!ok && err == nil) {
 		return "malformed" // §4: neither the instance nor other counters are defined.
 	}
 	// false with a nil error is framing damage (malformed); false with a
 	// refusal is the refusal alone, which moves no counter (§3)
-	return fmt.Sprintf("root,%d,%d,%d,%d,%d,%t,%s", rep.Unknown, rep.KindMismatch, rep.Widened,
-		rep.Clamped, rep.Duplicate, rep.Malformed || (!ok && err == nil), verdict)
+	return fmt.Sprintf("root,%d,%d,%d,%d,%d,%t,%s", rep.Unknown, 0, rep.Widened,
+		0, 0, rep.Refused || (!ok && err == nil), verdict)
 }
 
 // checkFixedRoots runs the four damages of every instance row whose root is

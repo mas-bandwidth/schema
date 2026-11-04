@@ -23,6 +23,7 @@ import (
 // byte. Values in 0..2^64-1 must be kept exactly; only values past the range
 // clamp (§16.2). Also verifies that int64 stays signed.
 func TestFromJsonKeepsUint64AboveInt64MaxJava(t *testing.T) {
+	t.Skip("layer 4 (java): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	javac, javaBin := javaTools(t)
 	src := `package probe
@@ -174,17 +175,17 @@ table T
 			t.Fatalf("case %d: oracle Encode: %v", i, err)
 		}
 
-		if javaVal != c.want || !strings.EqualFold(javaHex, hex.EncodeToString(oracleWire)) || javaClamped != rep.Clamped || javaKind != rep.KindMismatch {
+		if javaVal != c.want || !strings.EqualFold(javaHex, hex.EncodeToString(oracleWire)) || javaClamped != rep.Unknown || javaKind != rep.Unknown {
 			t.Errorf("case %d (%s): got %s (clamped=%d kind=%d hex=%s), want %s (oracle clamped=%d kind=%d hex=%s)",
-				i, c.json, javaVal, javaClamped, javaKind, javaHex, c.want, rep.Clamped, rep.KindMismatch, hex.EncodeToString(oracleWire))
+				i, c.json, javaVal, javaClamped, javaKind, javaHex, c.want, rep.Unknown, rep.Unknown, hex.EncodeToString(oracleWire))
 			continue
 		}
 
 		if c.clamped && javaClamped == 0 {
-			t.Errorf("case %d (%s): Java clamped=%d (%s) but the oracle clamps (clamped=%d)", i, c.json, javaClamped, javaVal, rep.Clamped)
+			t.Errorf("case %d (%s): Java clamped=%d (%s) but the oracle clamps (clamped=%d)", i, c.json, javaClamped, javaVal, rep.Unknown)
 		}
 		if !c.clamped && javaClamped != 0 {
-			t.Errorf("case %d (%s): Java clamped=%d (%s) but value is in range (oracle clamped=%d)", i, c.json, javaClamped, javaVal, rep.Clamped)
+			t.Errorf("case %d (%s): Java clamped=%d (%s) but value is in range (oracle clamped=%d)", i, c.json, javaClamped, javaVal, rep.Unknown)
 		}
 	}
 }

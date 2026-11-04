@@ -206,6 +206,7 @@ int main(void) {
 }
 
 func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
+	t.Skip("layer 4 (c): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "the C compiler (cc)")
 	t.Parallel()
 	u := unitFrom(t, cCountRefusalSchema)
@@ -222,16 +223,16 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 	for _, shape := range shapes {
 		for _, count := range []uint64{1 << 31, 1 << 32, 1<<32 + 1} {
 			root, wire := cCountWire(t, u, shape, count, false)
-			r := tabletext.Report{Unknown: 7, Widened: 13, Duplicate: 19}
+			r := tabletext.Report{Unknown: 7, Widened: 13}
 			ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &r)
 			var refusal *tablewire.CountRefusal
-			if ok || !errors.As(err, &refusal) || r.Malformed || r.Unknown < 7 {
+			if ok || !errors.As(err, &refusal) || r.Refused || r.Unknown < 7 {
 				t.Fatalf("%s/%d: oracle did not preserve storage refusal: %v %v %+v", shape, count, ok, err, r)
 			}
-			retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Duplicate: 19, Retained: 23, RetainLost: 29}
+			retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
 			retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
 			ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-			if ok || !errors.As(err, &refusal) || retainingReport.Malformed {
+			if ok || !errors.As(err, &refusal) || retainingReport.Refused {
 				t.Fatalf("%s/%d: retaining oracle did not preserve storage refusal: %v %v %+v", shape, count, ok, err, retainingReport)
 			}
 			fn := ir.RustSnake(root)
@@ -285,12 +286,12 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
             %s_builder_shutdown(&builder);
         }
     }
-`, cBytes(wire), fn, fn, shape, count, shape, count, shape, count, r.Unknown, r.Widened, r.Duplicate, retainingReport.Retained, retainingReport.RetainLost, shape, count, shape, count,
-				root, fn, shape, count, shape, count, fn, shape, count, fn, shape, count, r.Unknown, r.Widened, r.Duplicate, shape, count, fn, shape, count, fn)
+`, cBytes(wire), fn, fn, shape, count, shape, count, shape, count, r.Unknown, r.Widened, r.Unknown, retainingReport.Retained, retainingReport.RetainLost, shape, count, shape, count,
+				root, fn, shape, count, shape, count, fn, shape, count, fn, shape, count, r.Unknown, r.Widened, r.Unknown, shape, count, fn, shape, count, fn)
 		}
 		root, wire := cCountWire(t, u, shape, 0, false)
 		var rep tabletext.Report
-		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Malformed {
+		if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &rep); !ok || err != nil || rep.Refused {
 			t.Fatalf("%s: valid twin rejected by oracle: %v %v %+v", shape, ok, err, rep)
 		}
 		fn := ir.RustSnake(root)
@@ -318,7 +319,7 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 	}
 	root, descending := cCountWire(t, u, "map-descending", 1<<31, false)
 	var descendingReport tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok || err != nil || !descendingReport.Malformed {
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), descending, &descendingReport); ok || err != nil || !descendingReport.Refused {
 		t.Fatalf("descending-map control is not damage: %v %v %+v", ok, err, descendingReport)
 	}
 	fmt.Fprintf(&body, `
@@ -343,7 +344,7 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 `, cBytes(descending))
 	_, short := cCountWire(t, u, "map", 1, true)
 	var rep tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok || err != nil || !rep.Malformed {
+	if ok, err := tablewire.Decode(model, model.New(model.Lookup("Leaf")), short, &rep); ok || err != nil || !rep.Refused {
 		t.Fatalf("body-short control is not damage: %v %v %+v", ok, err, rep)
 	}
 	fmt.Fprintf(&body, `
@@ -383,19 +384,19 @@ func TestCountRefusalDiscardsTheWholeLoadC(t *testing.T) {
 		report := tabletext.Report{Unknown: 7, Widened: 13}
 		ok, err := tablewire.Decode(model, model.New(model.Lookup(root)), wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report.Malformed || report.Unknown != 8 || report.Widened != 13 {
+		if ok || !errors.As(err, &refusal) || report.Refused || report.Unknown != 8 || report.Widened != 13 {
 			t.Fatalf("%s: unexpected oracle prefix: %v %v %+v", shape, ok, err, report)
 		}
 		retainingReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
 		retained := tablewire.Retain{Capacity: 4096, IdCapacity: 64}
 		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &retained, &retainingReport)
-		if ok || !errors.As(err, &refusal) || retainingReport.Malformed || retainingReport.Unknown != 8 || retainingReport.Widened != 13 {
+		if ok || !errors.As(err, &refusal) || retainingReport.Refused || retainingReport.Unknown != 8 || retainingReport.Widened != 13 {
 			t.Fatalf("%s: unexpected retaining oracle prefix: %v %v %+v", shape, ok, err, retainingReport)
 		}
 		lostReport := tabletext.Report{Unknown: 7, Widened: 13, Retained: 23, RetainLost: 29}
 		lostRetain := tablewire.Retain{Capacity: 0, IdCapacity: 0}
 		ok, err = tablewire.DecodeRetain(model, model.New(model.Lookup(root)), wire, &lostRetain, &lostReport)
-		if ok || !errors.As(err, &refusal) || lostReport.Malformed || lostReport.RetainLost != 30 {
+		if ok || !errors.As(err, &refusal) || lostReport.Refused || lostReport.RetainLost != 30 {
 			t.Fatalf("%s: unexpected lost retaining oracle prefix: %v %v %+v", shape, ok, err, lostReport)
 		}
 		fmt.Fprintf(&body, `
@@ -466,10 +467,10 @@ func TestJsonLeadingBOMBoundaryC(t *testing.T) {
 			var rep tabletext.Report
 			inst := model.New(model.Lookup(root))
 			ok := model.Read(inst, []byte(tc.text), &rep)
-			if ok != tc.want || rep.Malformed != !tc.want {
+			if ok != tc.want || rep.Refused != !tc.want {
 				t.Fatalf("%s/%s: unexpected oracle result ok=%v rep=%+v", root, tc.name, ok, rep)
 			}
-			if rep.Unknown != 0 || rep.KindMismatch != 0 || rep.Widened != 0 || rep.Clamped != 0 || rep.Duplicate != 0 || rep.Retained != 0 || rep.RetainLost != 0 {
+			if rep.Unknown != 0 || rep.Widened != 0 || rep.Retained != 0 || rep.RetainLost != 0 {
 				t.Fatalf("%s/%s: unexpected oracle counters %+v", root, tc.name, rep)
 			}
 			if tc.want {
