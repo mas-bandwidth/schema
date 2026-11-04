@@ -316,18 +316,20 @@ class RetainCaptureImpl : RetainCapture
 // load_retain is load with retention on (docs/SPEC-TABLES.md §6.6): it reads
 // exactly what load reads and reports exactly what load reports, and beside
 // that keeps the fields this build cannot name in the caller's Retain.
-def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record:
+def load_retain(root:string, data:string, retain:Retain, report:LoadReport) -> Record?:
     retain.used = 0
     retain.ids = []
     retain.holders = []
     retain.known = known_ids()
     let mark = length(retain_captures)
     register_retain_capture(RetainCaptureImpl { retain: retain, report: report })
-    let rec = load_tolerant(root, data, report)
+    let rec = load(root, data, report)
     truncate(retain_captures, mark)
-    if rec:
-        return rec
-    return new_record(table_of(root))
+    if not rec:
+        retain.used = 0
+        retain.ids = []
+        retain.holders = []
+    return rec
 
 // An Emitter writes one retained field back onto the wire: every resolved id
 // is re-interned into THIS file's one id table, and every fixed-width length
