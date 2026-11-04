@@ -4519,7 +4519,7 @@ func TurretConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 8, Dst: dst + uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
+	out[n] = TableFixedEntry{Src: src + 8, Dst: dst + uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Size: 1, Aux: 5, Meta: tableFixedPresent, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
 	n++
 	{
 		es := src + 9

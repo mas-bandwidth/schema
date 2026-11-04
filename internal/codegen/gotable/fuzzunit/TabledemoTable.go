@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x7355022ee6f00be7)
-const _ = uint64(0x7355022ee6f00be7 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0xcad86d24d900e6c0)
+const _ = uint64(0xcad86d24d900e6c0 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -167,6 +167,8 @@ const tableFixedTextUTF8 = goruntime.TableFixedTextUTF8
 const tableFixedTextWide = goruntime.TableFixedTextWide
 const tableFixedTextBytes = goruntime.TableFixedTextBytes
 
+const tableFixedPresent = goruntime.TableFixedPresent
+
 const tableFixedNoGuard = goruntime.TableFixedNoGuard
 
 const tableFixedEntryBytes = goruntime.TableFixedEntryBytes
@@ -250,6 +252,8 @@ func tableFixedUnitsIllFormed(a0 []uint16) bool { return goruntime.TableFixedUni
 func tableFixedTextRefusal(a0 []TableFixedEntry, a1 int32, a2 []byte) string {
 	return goruntime.TableFixedTextRefusal(a0, a1, a2)
 }
+
+func tableFixedDead(a0 [][2]uint32, a1 uint32) bool { return goruntime.TableFixedDead(a0, a1) }
 
 type tableFixedLayoutEntry = goruntime.TableFixedLayoutEntry
 
@@ -2299,7 +2303,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	}
 	switch me.Kind {
 	case 35:
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Aux: te.Size - 1, Meta: tableFixedPresent, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
@@ -2327,7 +2331,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)

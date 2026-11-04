@@ -629,8 +629,8 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	base := off
 	if f.Type.Optional {
 		// the PRESENT byte lands in a Go bool, so it is normalised, not copied
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // %s present\n",
-			base, g.offGo(st.Name, member(f)+"Present"), f.Name)
+		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: 1, Aux: %d, Meta: tableFixedPresent, Guard: tableFixedNoGuard, Op: tableFixedBool} // %s present\n",
+			base, g.offGo(st.Name, member(f)+"Present"), fixedFieldBytes(f)-fixedPresentBytes, f.Name)
 		g.pf("\tn++\n")
 		base += fixedPresentBytes
 	}
@@ -640,8 +640,8 @@ func (g *tableGen) emitFixedFieldLeaves(st *ir.Struct, f *ir.Field, off int64) {
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedElementLoop(st, f, base, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, f.Name)
+		g.pf("\tout[n] = TableFixedEntry{Src: src + %d, Dst: dst + %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			base, g.offGo(st.Name, member(f)+"Count"), f.ArrayBound, fixedElementBytes(f), f.Name)
 		g.pf("\tn++\n")
 		g.emitFixedElementLoop(st, f, base+fixedCountBytes, f.ArrayBound)
 	case f.Type.Kind == ir.TString:
@@ -764,8 +764,8 @@ func (g *tableGen) emitFixedArmLeaves(un *ir.Union, v ir.UnionVariant, src, dst 
 	case f.Array == ir.ArrayFixed:
 		g.emitFixedArmLoop(f, src, valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Array == ir.ArrayCounted:
-		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
-			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, v.Name)
+		g.pf("%sout[n] = TableFixedEntry{Src: %s, Dst: %s, Size: %d, Aux: %d, Guard: tableFixedNoGuard, Op: tableFixedCount} // %s count\n",
+			ind, src, dst+" + "+g.fixedArmOffGo(un, v, "Count"), f.ArrayBound, fixedElementBytes(f), v.Name)
 		g.pf("%sn++\n", ind)
 		g.emitFixedArmLoop(f, src+" + "+strconv.FormatInt(fixedCountBytes, 10), valueDst, strconv.FormatInt(f.ArrayBound, 10), tabs)
 	case f.Type.Kind == ir.TString:

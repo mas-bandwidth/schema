@@ -35,7 +35,8 @@ const (
 	// +223: the one read (SPEC-TABLES §4, §6.5): the wire-alone check over every byte, the node table and the pointer graph, run before every variable-form body read
 	// +9: a message body refuses a field id it has carried (SPEC-TABLES §3.3)
 	// +4: a flags name twice in a JSON array refuses (SPEC-TABLES §16.2)
-	goOneTableLineBudget = 9812
+	// +44: the fixed pre-scan reads used units only, never the slack past a count or under an absent optional (SPEC-TABLES §3.4)
+	goOneTableLineBudget = 9856
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -53,7 +54,8 @@ const (
 	// +2961: a fixed table whose closure holds a union carries the fixed form in a regional unit (RootConfig, LoadoutConfig, ArchiveConfig and their closure: leaves, write bodies, checks, plans)
 	// +252: a message body refuses a repeated field id, and an enum-keyed array a repeated slot (SPEC-TABLES §3.2, §3.3)
 	// +4: a flags name twice in a JSON array refuses (SPEC-TABLES §16.2)
-	goExamplesLineBudget = 57674
+	// +44: the fixed pre-scan reads used units only, never the slack past a count or under an absent optional (SPEC-TABLES §3.4)
+	goExamplesLineBudget = 57718
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

@@ -4236,7 +4236,7 @@ func RangedSignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
+	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedSigned{}.EdgesCount)), Size: 4, Aux: 2, Guard: tableFixedNoGuard, Op: tableFixedCount} // edges count
 	n++
 	for i := range uint32(4) {
 		es := src + 64 + i*2
@@ -4371,7 +4371,7 @@ func RangedUnsignedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardL
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
+	out[n] = TableFixedEntry{Src: src + 60, Dst: dst + uint32(unsafe.Offsetof(RangedUnsigned{}.CountsCount)), Size: 4, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // counts count
 	n++
 	for i := range uint32(4) {
 		es := src + 64 + i*8

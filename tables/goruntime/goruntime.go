@@ -669,6 +669,12 @@ const (
 	TableFixedTextBytes uint8 = 3
 )
 
+// tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
+// Meta); its Aux is the source bytes of the payload behind it. A count entry's
+// Aux is the source bytes of one element. The pre-scan reads both to know
+// which bytes are slack (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+const TableFixedPresent uint8 = 1
+
 const TableFixedNoGuard uint32 = 0xFFFFFFFF
 
 const TableFixedEntryBytes int32 = 17
@@ -980,6 +986,7 @@ func TableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 		if out > 0 && raw[out-1].Op == raw[i].Op && TableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Aux == 0 && raw[i].Aux == 0 &&
 			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
 			raw[out-1].ArgW2 == raw[i].ArgW2 &&
 			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
@@ -1263,15 +1270,25 @@ func TableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
-// text entries, run before the caller's storage is touched. A count or a text
-// length past the PLAN's bound refuses by name — count_over_bound /
-// length_over_bound — and an ill-formed payload refuses text_ill_formed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
-// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
-// one destination byte is written. It walks each entry under its own guards,
-// writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
+// bool, tag and ordinal entries, run before the caller's storage is touched. A
+// count or a text length past the PLAN's bound refuses by name —
+// count_over_bound / length_over_bound — an ill-formed payload refuses
+// text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
+// tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
+// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). REFUSE is total:
+// no counter moves, nothing is decoded, and not one destination byte is
+// written. It walks each entry under its own guards, writes nothing and moves
+// no counter.
+//
+// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
+// SLACK RULE): the bytes past a counted array's count and under an absent
+// optional's present byte are slack, unspecified on read and never a refusal.
+// Each count and present byte it reads adds the slack behind it to dead, and an
+// entry inside dead is not asked.
 func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	var deadBuf [64][2]uint32
+	dead := deadBuf[:0]
 	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
@@ -1287,11 +1304,17 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
+		if p.Op != TableFixedBool && TableFixedDead(dead, p.Src) {
+			continue
+		}
 		switch p.Op {
 		case TableFixedCount:
 			v := int32(TableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
+			}
+			if p.Aux != 0 && uint32(v) < p.Size {
+				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
 			}
 		case TableFixedText:
 			unit := uint32(1)
@@ -1309,8 +1332,14 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case TableFixedBool:
 			// a bool or present byte other than 0 or 1 is damage (§4.5)
 			for k := range p.Size {
+				if TableFixedDead(dead, p.Src+k) {
+					continue
+				}
 				if src[p.Src+k] > 1 {
 					return TableRefuseWireDamaged.Error()
+				}
+				if p.Meta == TableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
+					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
 				}
 			}
 		case TableFixedTag:
@@ -1344,6 +1373,17 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 	}
 	return ""
+}
+
+// tableFixedDead is whether src offset at lies in one of the slack spans the
+// pre-scan has found.
+func TableFixedDead(dead [][2]uint32, at uint32) bool {
+	for _, d := range dead {
+		if at >= d[0] && at < d[1] {
+			return true
+		}
+	}
+	return false
 }
 
 type TableFixedLayoutEntry struct {
@@ -1957,4 +1997,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x7355022ee6f00be7
+const Version uint64 = 0xcad86d24d900e6c0

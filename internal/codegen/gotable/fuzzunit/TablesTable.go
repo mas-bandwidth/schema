@@ -5582,7 +5582,7 @@ func LoadoutConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLi
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 1, Dst: dst + uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // grades count
+	out[n] = TableFixedEntry{Src: src + 1, Dst: dst + uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), Size: 4, Aux: 1, Guard: tableFixedNoGuard, Op: tableFixedCount} // grades count
 	n++
 	for i := range uint32(4) {
 		es := src + 5 + i*1
@@ -5612,7 +5612,7 @@ func LoadoutConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLi
 		ed := dst + uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)) + i*uint32(unsafe.Sizeof(WeaponConfig{}))
 		n += WeaponConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	out[n] = TableFixedEntry{Src: src + 86, Dst: dst + uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // attachments count
+	out[n] = TableFixedEntry{Src: src + 86, Dst: dst + uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), Size: 8, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // attachments count
 	n++
 	for i := range uint32(8) {
 		es := src + 90 + i*8
@@ -5754,14 +5754,14 @@ func RootConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	n := 0
 	out[n] = TableFixedEntry{Src: src + 0, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // version_note
 	n++
-	out[n] = TableFixedEntry{Src: src + 20, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // weapons count
+	out[n] = TableFixedEntry{Src: src + 20, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), Size: 8, Aux: 22, Guard: tableFixedNoGuard, Op: tableFixedCount} // weapons count
 	n++
 	for i := range uint32(8) {
 		es := src + 24 + i*22
 		ed := dst + uint32(unsafe.Offsetof(RootConfig{}.Weapons)) + i*uint32(unsafe.Sizeof(WeaponConfig{}))
 		n += WeaponConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	out[n] = TableFixedEntry{Src: src + 200, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // profiles count
+	out[n] = TableFixedEntry{Src: src + 200, Dst: dst + uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), Size: 4, Aux: 261, Guard: tableFixedNoGuard, Op: tableFixedCount} // profiles count
 	n++
 	for i := range uint32(4) {
 		es := src + 204 + i*261

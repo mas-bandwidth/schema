@@ -3888,7 +3888,7 @@ func ShipEntryFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 44, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // hardpoints count
+	out[n] = TableFixedEntry{Src: src + 44, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.HardpointsCount)), Size: 4, Aux: 4, Guard: tableFixedNoGuard, Op: tableFixedCount} // hardpoints count
 	n++
 	for i := range uint32(4) {
 		es := src + 48 + i*4
@@ -3896,7 +3896,7 @@ func ShipEntryFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, 
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 64, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
+	out[n] = TableFixedEntry{Src: src + 64, Dst: dst + uint32(unsafe.Offsetof(ShipEntry{}.GunnerPresent)), Size: 1, Aux: 33, Meta: tableFixedPresent, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
 	n++
 	{
 		es := src + 65
@@ -3989,7 +3989,7 @@ func PackConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 379, Dst: dst + uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Size: 3, Guard: tableFixedNoGuard, Op: tableFixedCount} // reserves count
+	out[n] = TableFixedEntry{Src: src + 379, Dst: dst + uint32(unsafe.Offsetof(PackConfig{}.ReservesCount)), Size: 3, Aux: 98, Guard: tableFixedNoGuard, Op: tableFixedCount} // reserves count
 	n++
 	for i := range uint32(3) {
 		es := src + 383 + i*98
