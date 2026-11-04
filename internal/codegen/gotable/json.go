@@ -2163,6 +2163,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		// table's own field keys are — a bounded, allocation-free bitmask; a
 		// vocabulary wider than this still reads, its repeats simply stop being
 		// counted.
+		var unknownSeen map[string]struct{} // None and every name this reader cannot place, decoded
 		var seen [8]uint64
 		for {
 			c := in.peek()
@@ -2205,6 +2206,9 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			}
 			switch {
 			case slot < 0:
+				if tableJSONUnknownRepeat(&unknownSeen, key[:keyLength]) {
+					in.report.Refuse(TableRefuseMalformed, "")
+				}
 				in.report.Unknown++
 				if !in.skipValue(depth + 1) {
 					return false
@@ -2324,10 +2328,28 @@ func tableJSONReadTable(in *tableJSONIn, base unsafe.Pointer, info *TableTypeInf
 	in.pos++
  return tableJSONReadTableFields(in,base,info,depth,true)
 }
+// tableJSONUnknownRepeat reports whether an object has already carried this
+// decoded key among those the reader cannot place: a repeated key is malformed
+// whether or not the reader names it (docs/SPEC-TABLES.md §16.2).
+func tableJSONUnknownRepeat(seen *map[string]struct{}, key []byte) bool {
+	if *seen == nil {
+		*seen = map[string]struct{}{}
+	}
+	if _, ok := (*seen)[string(key)]; ok {
+		return true
+	}
+	(*seen)[string(key)] = struct{}{}
+	return false
+}
+
 func tableJSONReadTableFields(in *tableJSONIn,base unsafe.Pointer,info *TableTypeInfo,depth int32,emptyAllowed bool) bool {
 	// duplicate tracking, bounded and allocation-free: a table with more fields
 	// than this still reads, its repeats simply stop being counted
 	var seen [8]uint64
+	// a key this reader cannot place is tracked by its DECODED bytes, so a
+	// repeat refuses however it is escaped (§16.2); allocated only on the
+	// first such key
+	var unknownSeen map[string]struct{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -2364,6 +2386,9 @@ func tableJSONReadTableFields(in *tableJSONIn,base unsafe.Pointer,info *TableTyp
 			return false
 		}
 		if index < 0 {
+			if tableJSONUnknownRepeat(&unknownSeen, key[:keyLength]) {
+				in.report.Refuse(TableRefuseMalformed, "")
+			}
 			in.report.Unknown++
 			if !in.skipValue(depth + 1) {
 				return false
