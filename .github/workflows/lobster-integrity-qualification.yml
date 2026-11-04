@@ -38,7 +38,7 @@ jobs:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobsterJSONFeatureValues$' -count=1 -v
+          go test ./internal/codegen/lobstertable -run '^TestLobsterJSON(FeatureValues|Float32WriterSingleRounding)$' -count=1 -v
       - name: Whole-unit registry regression
         env:
           SCHEMA_SLOW: '1'
