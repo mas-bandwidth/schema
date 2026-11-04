@@ -2227,6 +2227,31 @@ local function arm_is_pointer(f)
   return false
 end
 
+-- measure_text places one unbounded text value's blob record in the region
+-- (docs/SPEC-TABLES.md §2.13.1; tablewire extentScan.unboundedText): eight-byte
+-- alignment, then `u32 length`, `u32 zero`, the bytes and one zero byte, padded
+-- to the region's alignment. The empty string takes no record.
+-- unbounded_text_elem is whether a list element is unbounded text: the
+-- element itself, or the one-field wrapper table a text list's element is
+-- described by (its `value`).
+local function unbounded_text_elem(T, e)
+  if e == nil then return false end
+  if e.shape == "string" then return e.unbounded == true end
+  if e.shape == "table" then
+    local st = T.Tables[e.target]
+    local v = st ~= nil and st.fields ~= nil and #st.fields == 1 and st.fields[1] or nil
+    return v ~= nil and v.shape == "string" and v.unbounded == true
+  end
+  return false
+end
+
+local function measure_text(scan, n)
+  if n == 0 then return true end
+  if n > 0xffffffff then return false end
+  scan.at = round_up(scan.at, 8) + round_up(9 + n, scan.align)
+  return true
+end
+
 local measure_record, measure_field, measure_union
 
 measure_record = function(T, ids, scan, desc, b, at, lim)
@@ -2247,6 +2272,10 @@ measure_record = function(T, ids, scan, desc, b, at, lim)
       else
         if not skip(r, kind) then return true end
       end
+    elseif kind == 12 and f.shape == "string" and f.unbounded then
+      local pat, plim = extent_body(r)
+      if pat == nil then return true end
+      if not measure_text(scan, plim - pat) then return false end
     elseif kind ~= 13 and kind ~= 14 and kind ~= 16 then
       if not skip(r, kind) then return true end
     else
@@ -2284,6 +2313,16 @@ measure_field = function(T, ids, scan, f, b, at, lim)
       if floor < 1 then floor = 1 end
       if count > (r.lim - r.at) // floor then return false end
       scan.at = round_up(scan.at, align) + count * size
+    end
+    if kind == 12 and f.shape == "array" and unbounded_text_elem(T, f.elem) then
+      local i = 0
+      while math.ult(i, count) and r.at < r.lim do
+        i = i + 1
+        local pat, plim = extent_body(r)
+        if pat == nil then return true end
+        if not measure_text(scan, plim - pat) then return false end
+      end
+      return true
     end
     if kind ~= 13 and kind ~= 15 then return true end
     local keyed = (f.shape == "array" and f.keyed ~= nil)
@@ -2359,7 +2398,7 @@ function L.LoadMeasure(T, name, bytes)
   if o == nil then return nil end
   local align = D.region_align(T, desc)
   local function size_of(st, b, at, lim)
-    local scan = { at = 0 }
+    local scan = { at = 0, align = align }
     if not measure_record(T, o.table, scan, st, b, at, lim) then return 0, false end
     return round_region(round_region(D.record_size(st), align) + scan.at, align), true
   end
