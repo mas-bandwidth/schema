@@ -1499,6 +1499,10 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				found := false
 				for bit := int64(0); bit <= f.EnumMax; bit++ {
 					if tableJSONNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
+						// A FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+						if bits&(uint64(1)<<bit) != 0 {
+							in.report.Refuse(TableRefuseMalformed, "")
+						}
 						bits |= uint64(1) << bit
 						found = true
 						break

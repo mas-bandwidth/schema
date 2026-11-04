@@ -1753,6 +1753,11 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 			found := false
 			for bit, v := range fl.Variants {
 				if v == string(name) {
+					// A FLAGS NAME TWICE IN ONE ARRAY IS DAMAGE (§16.2): a
+					// repeated name is a repeated key, and refuses malformed
+					if bits&(uint64(1)<<uint(bit)) != 0 {
+						return in.fail("malformed: " + fl.Name + " repeats " + v)
+					}
 					bits |= uint64(1) << uint(bit)
 					found = true
 					break
