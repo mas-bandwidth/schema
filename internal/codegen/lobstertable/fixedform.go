@@ -151,9 +151,6 @@ func fixedLobsterSimple(st *ir.Struct, depth int) bool {
 			if f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString {
 				return false
 			}
-			if f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 8 {
-				return false // [N]uint8 stores as a byte string in Lobster
-			}
 		}
 		if f.Type.Kind != ir.TNamed {
 			return true
@@ -176,6 +173,32 @@ func fixedLobsterSimple(st *ir.Struct, depth int) bool {
 		}
 	}
 	return true
+}
+
+// Fixed uint8 arrays use Lobster byte-string storage, including enum-keyed
+// arrays. Read/reset/projection must replace the string, never its indexed byte.
+func fixedByteArray(f *ir.Field) bool {
+	return (f.Array != ir.ArrayNone || f.KeyEnumRef != nil) &&
+		f.Type.Kind == ir.TInt && !f.Type.Signed && f.Type.Width == 8
+}
+
+func fixedArrayBound(f *ir.Field) int64 {
+	if f.KeyEnumRef != nil {
+		return f.KeyEnumRef.Max
+	}
+	return f.ArrayBound
+}
+
+func getFixedByteArray(g *lobster.Gen, f *ir.Field, expr, base string, off int64, ind string) {
+	n := fmt.Sprint(fixedArrayBound(f))
+	if f.Array == ir.ArrayCounted {
+		n = slotExpr(expr, f, "Count")
+		g.Pf("%s%s = read_int32_le(data, %s + %d)\n", ind, n, base, off)
+		off += ir.TableFixedCountBytes
+		g.Pf("%s%s = write_substring(schema_rt.zeros(%d), 0, substring(data, %s + %d, %s), false)\n", ind, expr, f.ArrayBound, base, off, n)
+		return
+	}
+	g.Pf("%s%s = substring(data, %s + %d, %s)\n", ind, expr, base, off, n)
 }
 
 // loopVar is a loop variable unique to a field and offset, so nested loops
@@ -347,6 +370,10 @@ func getPayload(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base string
 	if present != "" {
 		g.Pf("%sif %s:\n", ind, present)
 		getPayload(g, owner, f, expr, base, off, "", ind+"    ")
+		return
+	}
+	if fixedByteArray(f) {
+		getFixedByteArray(g, f, expr, base, off, ind)
 		return
 	}
 	switch {
