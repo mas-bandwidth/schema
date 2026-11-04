@@ -2333,7 +2333,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\n");
+            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2359,7 +2359,10 @@ static partial class Program
             case "block-dump": return SurfaceBlockDump(outDir);
             case "forgery": return SurfaceForgery(outDir);
             case "block-reason": return SurfaceBlockReason(outDir);
-            case "write-refusal": return SurfaceWriteRefusal(outDir);
+            case "write-refusal":
+            case "write-refusal-fixed":
+            case "write-refusal-message":
+            case "write-refusal-json": return SurfaceWriteRefusal(outDir, surface);
             default: return 2;
         }
     }
