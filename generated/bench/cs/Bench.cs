@@ -314,14 +314,17 @@ namespace Bench
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.X), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.X))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Y), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.Y))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Z), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.Z))
             {
                 return false;
@@ -1542,10 +1545,12 @@ namespace Bench
                     return false;
                 }
             }
+            Debug.Assert(float.IsFinite(value.Recoil), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.Recoil))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Drift), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.Drift))
             {
                 return false;

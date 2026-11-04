@@ -1019,6 +1019,60 @@ namespace Tabledemo
             if (value.B48 > 281474976710655ul) { value.B48 = 281474976710655ul; clamped++; }
         }
 
+        // RangedSigned's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RangedSignedFixedCheckBody(RangedSigned value)
+        {
+            if (value == null) return true;
+            if (value.I8Low > 126) return false;
+            if (value.I8High < -127) return false;
+            if (value.I8Inside < -127 || value.I8Inside > 126) return false;
+            if (value.I16Low > 32766) return false;
+            if (value.I16High < -32767) return false;
+            if (value.I16Inside < -32767 || value.I16Inside > 32766) return false;
+            if (value.I32Low > 2147483646) return false;
+            if (value.I32High < -2147483647) return false;
+            if (value.I32Inside < -2147483647 || value.I32Inside > 2147483646) return false;
+            if (value.I64Low > 9223372036854775806L) return false;
+            if (value.I64High < -9223372036854775807L) return false;
+            if (value.I64Inside < -9223372036854775807L || value.I64Inside > 9223372036854775806L) return false;
+            if (value.EdgesCount < 0 || value.EdgesCount > 4) return false;
+            return true;
+        }
+
+        // RangedUnsigned's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RangedUnsignedFixedCheckBody(RangedUnsigned value)
+        {
+            if (value == null) return true;
+            if (value.U8Low > 254) return false;
+            if (value.U8High < 1) return false;
+            if (value.U8Inside < 1 || value.U8Inside > 254) return false;
+            if (value.U16Low > 65534) return false;
+            if (value.U16High < 1) return false;
+            if (value.U16Inside < 1 || value.U16Inside > 65534) return false;
+            if (value.U32Low > 4294967294) return false;
+            if (value.U32High < 1) return false;
+            if (value.U32Inside < 1 || value.U32Inside > 4294967294) return false;
+            if (value.U64Low > 18446744073709551614ul) return false;
+            if (value.U64High < 1ul) return false;
+            if (value.U64Inside < 1ul || value.U64Inside > 18446744073709551614ul) return false;
+            if (value.CountsCount < 0 || value.CountsCount > 4) return false;
+            return true;
+        }
+
+        // RangedWidths's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RangedWidthsFixedCheckBody(RangedWidths value)
+        {
+            if (value == null) return true;
+            if (value.B8 > 255) return false;
+            if (value.B16 > 65535) return false;
+            if (value.B12 > 4095) return false;
+            if (value.B48 > 281474976710655ul) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -1467,6 +1521,9 @@ namespace Tabledemo
         {
             long need = RangedSignedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RangedSignedFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RangedSignedFixedHash);
@@ -2115,6 +2172,9 @@ namespace Tabledemo
         {
             long need = RangedUnsignedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RangedUnsignedFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RangedUnsignedFixedHash);
@@ -2677,6 +2737,9 @@ namespace Tabledemo
         {
             long need = RangedWidthsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RangedWidthsFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RangedWidthsFixedHash);

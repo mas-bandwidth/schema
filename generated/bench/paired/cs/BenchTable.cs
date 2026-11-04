@@ -1378,7 +1378,8 @@ namespace Bench
                 }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
+                    // ill-formed text is refused; a zero byte is spelled \u0000 (docs/SPEC-TABLES.md §16.3)
+                    if (!TableWire.TextWellFormed(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
                     WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
                     return true;
                 }
@@ -4619,6 +4620,15 @@ namespace Bench
                     int count = Count(value, f);
                     return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
                 }
+                if (!f.IsArray && f.Kind == 33)
+                {
+                    // a wide text holding an unpaired surrogate is caller error on the
+                    // write side: checked in a debug build, gone in release
+                    int count = Count(value, f);
+                    if (count < 0 || count > f.ArrayBound) { return false; }
+                    System.Diagnostics.Debug.Assert(UnitsWellFormed(f.GetChars(value).AsSpan(0, count)), "write refused: a wide text holding an unpaired surrogate");
+                    return true;
+                }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
                 // a ranged integer or a bits(N) value outside its field is caller
@@ -5281,6 +5291,42 @@ namespace Bench
             }
             internal static void TextClamp(TableReport report, TableFieldInfo field)
             { if (field.TextList && report.ClampedField == null) { report.ClampedField = field.TextField; } }
+            // TextWellFormed is whether text is well-formed UTF-8: TextValid without
+            // the zero-byte rule, the write contract's own text test (docs/SPEC.md §5.1).
+            internal static bool TextWellFormed(ReadOnlySpan<byte> text)
+            {
+                for (int i = 0; i < text.Length;)
+                {
+                    byte c = text[i++];
+                    if (c < 128) { continue; }
+                    int n; uint v, min;
+                    if (c >= 0xc2 && c <= 0xdf) { n = 1; v = (uint)(c & 31); min = 0x80; }
+                    else if (c >= 0xe0 && c <= 0xef) { n = 2; v = (uint)(c & 15); min = 0x800; }
+                    else if (c >= 0xf0 && c <= 0xf4) { n = 3; v = (uint)(c & 7); min = 0x10000; }
+                    else { return false; }
+                    if (n > text.Length - i) { return false; }
+                    for (int j = 0; j < n; j++)
+                    { byte b = text[i++]; if ((b & 0xc0) != 0x80) { return false; } v = (v << 6) | (uint)(b & 63); }
+                    if (v < min || v > 0x10ffff || (v >= 0xd800 && v <= 0xdfff)) { return false; }
+                }
+                return true;
+            }
+            // UnitsWellFormed is whether UTF-16 units hold no unpaired surrogate: every
+            // high surrogate is followed by a low one, and no low one stands alone.
+            internal static bool UnitsWellFormed(ReadOnlySpan<char> units)
+            {
+                for (int i = 0; i < units.Length; i++)
+                {
+                    char c = units[i];
+                    if (char.IsHighSurrogate(c))
+                    {
+                        if (i + 1 >= units.Length || !char.IsLowSurrogate(units[i + 1])) { return false; }
+                        i++;
+                    }
+                    else if (char.IsLowSurrogate(c)) { return false; }
+                }
+                return true;
+            }
             internal static bool TextValid(ReadOnlySpan<byte> text)
             {
                 for (int i = 0; i < text.Length;)
@@ -8655,6 +8701,124 @@ namespace Bench
             if (!float.IsFinite(value.Recoil)) return "BenchMixed.recoil";
             if (!double.IsFinite(value.Drift)) return "BenchMixed.drift";
             return null;
+        }
+
+        // MixedEntity's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool MixedEntityFixedCheckBody(MixedEntity value)
+        {
+            if (value == null) return true;
+            if (value.EntityId > 4095) return false;
+            if (value.PosX < -16383 || value.PosX > 16383) return false;
+            if (value.PosY < -16383 || value.PosY > 16383) return false;
+            if (value.PosZ < -16383 || value.PosZ > 16383) return false;
+            if (value.Yaw > 511) return false;
+            if (value.Pitch > 511) return false;
+            if (value.VelX < -2048 || value.VelX > 2047) return false;
+            if (value.VelY < -2048 || value.VelY > 2047) return false;
+            if (value.VelZ < -2048 || value.VelZ > 2047) return false;
+            if (value.Health < 0 || value.Health > 1000) return false;
+            if ((ulong)value.Weapon > 15) return false;
+            return true;
+        }
+
+        // MixedStat's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool MixedStatFixedCheckBody(MixedStat value)
+        {
+            if (value == null) return true;
+            if (value.StatId > 255) return false;
+            if (value.Delta < -512 || value.Delta > 511) return false;
+            return true;
+        }
+
+        // MixedHitEvent's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool MixedHitEventFixedCheckBody(MixedHitEvent value)
+        {
+            if (value == null) return true;
+            if (value.TargetId > 4095) return false;
+            if (value.Damage < 0 || value.Damage > 4095) return false;
+            if (value.HitKind < 0 || value.HitKind > 7) return false;
+            return true;
+        }
+
+        // MixedChatEvent's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool MixedChatEventFixedCheckBody(MixedChatEvent value)
+        {
+            if (value == null) return true;
+            if (value.Channel < 0 || value.Channel > 3) return false;
+            if (value.Speaker > 4095) return false;
+            return true;
+        }
+
+        // MixedPickupEvent's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool MixedPickupEventFixedCheckBody(MixedPickupEvent value)
+        {
+            if (value == null) return true;
+            if (value.ItemId > 1023) return false;
+            if (value.Amount < 0 || value.Amount > 255) return false;
+            return true;
+        }
+
+        // BenchMixed's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool BenchMixedFixedCheckBody(BenchMixed value)
+        {
+            if (value == null) return true;
+            if (value.Sequence > 65535) return false;
+            if (value.AckSequence < 0 || value.AckSequence > 65535) return false;
+            if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) return false;
+            if (value.FrameTick > 281474976710655ul) return false;
+            if (value.EntitiesCount < 0 || value.EntitiesCount > 8) return false;
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
+                {
+                    if (!MixedEntityFixedCheckBody(value.Entities[i])) return false;
+                }
+            }
+            if (value.StatsCount < 0 || value.StatsCount > 80) return false;
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < value.StatsCount && i < value.Stats.Length; ++i)
+                {
+                    if (!MixedStatFixedCheckBody(value.Stats[i])) return false;
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                if ((ulong)value.GameEvent.Type > 3) return false;
+                switch (value.GameEvent.Type)
+                {
+                    case MixedEventType.Hit:
+                        {
+                            if (!MixedHitEventFixedCheckBody(value.GameEvent.Hit)) return false;
+                            break;
+                        }
+                    case MixedEventType.Chat:
+                        {
+                            if (!MixedChatEventFixedCheckBody(value.GameEvent.Chat)) return false;
+                            break;
+                        }
+                    case MixedEventType.Pickup:
+                        {
+                            if (!MixedPickupEventFixedCheckBody(value.GameEvent.Pickup)) return false;
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) return false;
+            if (value.PlayerName != null && !TableWire.TextWellFormed(value.PlayerName.AsSpan(0, value.PlayerNameLength))) return false;
+            if (value.PayloadLength < 0 || value.PayloadLength > 16) return false;
+            if (((System.Int128)value.Flux) < unchecked((Int128)(((UInt128)0xfffffff000000000ul << 64) | 0x0ul)) || ((System.Int128)value.Flux) > unchecked((Int128)(((UInt128)0x1000000000ul << 64) | 0x0ul))) return false;
+            if (value.CrcHint > 16777215) return false;
+            if (value.Extra < 0 || value.Extra > 255) return false;
+            if (value.IdleTicks < 0 || value.IdleTicks > 15) return false;
+            return true;
         }
     }
 

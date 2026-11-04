@@ -1063,6 +1063,81 @@ namespace Tabledemo
             return null;
         }
 
+        // GunnerSettings's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool GunnerSettingsFixedCheckBody(GunnerSettings value)
+        {
+            if (value == null) return true;
+            if (value.CallsignLength < 0 || value.CallsignLength > 24) return false;
+            if (value.Callsign != null && !TableWire.TextWellFormed(value.Callsign.AsSpan(0, value.CallsignLength))) return false;
+            return true;
+        }
+
+        // ShipEntry's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool ShipEntryFixedCheckBody(ShipEntry value)
+        {
+            if (value == null) return true;
+            if (value.DisplayNameLength < 0 || value.DisplayNameLength > 32) return false;
+            if (value.DisplayName != null && !TableWire.TextWellFormed(value.DisplayName.AsSpan(0, value.DisplayNameLength))) return false;
+            if (value.HardpointsCount < 0 || value.HardpointsCount > 4) return false;
+            if (value.Hardpoints != null)
+            {
+                for (int i = 0; i < value.HardpointsCount && i < value.Hardpoints.Length; ++i)
+                {
+                    if (value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8) return false;
+                }
+            }
+            if (value.GunnerPresent)
+            {
+                if (!GunnerSettingsFixedCheckBody(value.Gunner)) return false;
+            }
+            return true;
+        }
+
+        // GlobalSettings's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool GlobalSettingsFixedCheckBody(GlobalSettings value)
+        {
+            if (value == null) return true;
+            if (value.TickRate < 1 || value.TickRate > 240) return false;
+            if ((ulong)value.Difficulty > 3) return false;
+            if (value.BuildNoteLength < 0 || value.BuildNoteLength > 48) return false;
+            if (value.BuildNote != null && !TableWire.TextWellFormed(value.BuildNote.AsSpan(0, value.BuildNoteLength))) return false;
+            return true;
+        }
+
+        // PackConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool PackConfigFixedCheckBody(PackConfig value)
+        {
+            if (value == null) return true;
+            if (!GlobalSettingsFixedCheckBody(value.Global)) return false;
+            if (value.Ships.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Ships.Slots.Length; ++i)
+                {
+                    if (!ShipEntryFixedCheckBody(value.Ships.Slots[i])) return false;
+                }
+            }
+            if (value.Thresholds.Slots != null)
+            {
+                for (int i = 0; i < 3 && i < value.Thresholds.Slots.Length; ++i)
+                {
+                    if (value.Thresholds.Slots[i] < 0 || value.Thresholds.Slots[i] > 1000) return false;
+                }
+            }
+            if (value.ReservesCount < 0 || value.ReservesCount > 3) return false;
+            if (value.Reserves != null)
+            {
+                for (int i = 0; i < value.ReservesCount && i < value.Reserves.Length; ++i)
+                {
+                    if (!ShipEntryFixedCheckBody(value.Reserves[i])) return false;
+                }
+            }
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -1409,6 +1484,9 @@ namespace Tabledemo
             long need = GunnerSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (GunnerSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GunnerSettingsFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), GunnerSettingsFixedHash);
@@ -2012,6 +2090,9 @@ namespace Tabledemo
             long need = ShipEntryFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ShipEntryFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ShipEntryFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ShipEntryFixedHash);
@@ -2583,6 +2664,9 @@ namespace Tabledemo
             long need = GlobalSettingsFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (GlobalSettingsFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(GlobalSettingsFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), GlobalSettingsFixedHash);
@@ -3558,6 +3642,9 @@ namespace Tabledemo
             long need = PackConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PackConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PackConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PackConfigFixedHash);

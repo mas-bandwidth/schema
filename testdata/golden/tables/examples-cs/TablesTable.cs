@@ -1860,6 +1860,125 @@ namespace Tabledemo
             return null;
         }
 
+        // Debuff's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool DebuffFixedCheckBody(Debuff value)
+        {
+            if (value == null) return true;
+            if (value.Amount < 0 || value.Amount > 100) return false;
+            return true;
+        }
+
+        // WeaponConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool WeaponConfigFixedCheckBody(WeaponConfig value)
+        {
+            if (value == null) return true;
+            if (value.Penetration < 0 || value.Penetration > 10) return false;
+            if (value.Channel > 63) return false;
+            if (value.Effect != null)
+            {
+                if ((ulong)value.Effect.Type > 2) return false;
+                switch (value.Effect.Type)
+                {
+                    case EffectType.Debuff:
+                        {
+                            if (!DebuffFixedCheckBody(value.Effect.Debuff)) return false;
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            return true;
+        }
+
+        // Attachment's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool AttachmentFixedCheckBody(Attachment value)
+        {
+            if (value == null) return true;
+            if (value.Slot < 0 || value.Slot > 7) return false;
+            return true;
+        }
+
+        // LoadoutConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool LoadoutConfigFixedCheckBody(LoadoutConfig value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.Grade > 3) return false;
+            if (value.GradesCount < 0 || value.GradesCount > 4) return false;
+            if (value.Grades != null)
+            {
+                for (int i = 0; i < value.GradesCount && i < value.Grades.Length; ++i)
+                {
+                    if ((ulong)value.Grades[i] > 3) return false;
+                }
+            }
+            if (value.Podium != null)
+            {
+                for (int i = 0; i < 3 && i < value.Podium.Length; ++i)
+                {
+                    if ((ulong)value.Podium[i] > 3) return false;
+                }
+            }
+            if (!WeaponConfigFixedCheckBody(value.Primary)) return false;
+            if (value.Backups != null)
+            {
+                for (int i = 0; i < 2 && i < value.Backups.Length; ++i)
+                {
+                    if (!WeaponConfigFixedCheckBody(value.Backups[i])) return false;
+                }
+            }
+            if (value.AttachmentsCount < 0 || value.AttachmentsCount > 8) return false;
+            if (value.Attachments != null)
+            {
+                for (int i = 0; i < value.AttachmentsCount && i < value.Attachments.Length; ++i)
+                {
+                    if (!AttachmentFixedCheckBody(value.Attachments[i])) return false;
+                }
+            }
+            return true;
+        }
+
+        // ProfileConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool ProfileConfigFixedCheckBody(ProfileConfig value)
+        {
+            if (value == null) return true;
+            if (value.NameLength < 0 || value.NameLength > 32) return false;
+            if (value.Name != null && !TableWire.TextWellFormed(value.Name.AsSpan(0, value.NameLength))) return false;
+            if (value.IconLength < 0 || value.IconLength > 16) return false;
+            if (!LoadoutConfigFixedCheckBody(value.Loadout)) return false;
+            return true;
+        }
+
+        // RootConfig's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RootConfigFixedCheckBody(RootConfig value)
+        {
+            if (value == null) return true;
+            if (value.VersionNoteLength < 0 || value.VersionNoteLength > 16) return false;
+            if (value.VersionNote != null && !TableWire.TextWellFormed(value.VersionNote.AsSpan(0, value.VersionNoteLength))) return false;
+            if (value.WeaponsCount < 0 || value.WeaponsCount > 8) return false;
+            if (value.Weapons != null)
+            {
+                for (int i = 0; i < value.WeaponsCount && i < value.Weapons.Length; ++i)
+                {
+                    if (!WeaponConfigFixedCheckBody(value.Weapons[i])) return false;
+                }
+            }
+            if (value.ProfilesCount < 0 || value.ProfilesCount > 4) return false;
+            if (value.Profiles != null)
+            {
+                for (int i = 0; i < value.ProfilesCount && i < value.Profiles.Length; ++i)
+                {
+                    if (!ProfileConfigFixedCheckBody(value.Profiles[i])) return false;
+                }
+            }
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -3724,6 +3843,9 @@ namespace Tabledemo
             long need = RootConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RootConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RootConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RootConfigFixedHash);
@@ -4317,6 +4439,9 @@ namespace Tabledemo
             long need = WeaponConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (WeaponConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(WeaponConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), WeaponConfigFixedHash);
@@ -5176,6 +5301,9 @@ namespace Tabledemo
             long need = LoadoutConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (LoadoutConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(LoadoutConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), LoadoutConfigFixedHash);
@@ -6137,6 +6265,9 @@ namespace Tabledemo
             long need = ProfileConfigFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (ProfileConfigFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(ProfileConfigFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), ProfileConfigFixedHash);

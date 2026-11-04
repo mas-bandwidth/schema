@@ -886,8 +886,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.sf("%s}\n", ind)
 			return
 		}
+		// a NaN or an infinity in a plain float is caller error (SPEC §4.3)
+		g.writeAssert(ind, fmt.Sprintf("float.IsFinite(%s)", name), "write refused: a NaN or an infinity in a float", "")
 		g.call(ind, fmt.Sprintf("%s.SerializeFloat(ref %s)", g.rv(), name), "")
 	case ir.TFloat64:
+		g.writeAssert(ind, fmt.Sprintf("double.IsFinite(%s)", name), "write refused: a NaN or an infinity in a double", "")
 		g.call(ind, fmt.Sprintf("%s.SerializeDouble(ref %s)", g.rv(), name), "")
 	case ir.TWString:
 		g.emitWriteWString(f, name, ind)

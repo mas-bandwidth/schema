@@ -464,6 +464,31 @@ namespace Blockhome
             return null;
         }
 
+        // PartRow's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool PartRowFixedCheckBody(PartRow value)
+        {
+            if (value == null) return true;
+            if (!GunnerSettingsFixedCheckBody(value.Gunner)) return false;
+            return true;
+        }
+
+        // PartFrame's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool PartFrameFixedCheckBody(PartFrame value)
+        {
+            if (value == null) return true;
+            if (value.PartsCount < 0 || value.PartsCount > 32) return false;
+            if (value.Parts != null)
+            {
+                for (int i = 0; i < value.PartsCount && i < value.Parts.Length; ++i)
+                {
+                    if (!PartRowFixedCheckBody(value.Parts[i])) return false;
+                }
+            }
+            return true;
+        }
+
         // ---- PartRow, the fixed form ----
 
         public const long PartRowFixedBodyBytes = 340;
@@ -1231,6 +1256,9 @@ namespace Blockhome
             long need = PartRowFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PartRowFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PartRowFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PartRowFixedHash);
@@ -14125,6 +14153,9 @@ namespace Blockhome
             long need = PartFrameFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (PartFrameFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(PartFrameFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), PartFrameFixedHash);

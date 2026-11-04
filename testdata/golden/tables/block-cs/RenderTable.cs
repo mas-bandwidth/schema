@@ -3235,6 +3235,85 @@ namespace Blockdemo
             return null;
         }
 
+        // RenderShip's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderShipFixedCheckBody(RenderShip value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.ShipType > 3) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderTurret's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderTurretFixedCheckBody(RenderTurret value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderMissile's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderMissileFixedCheckBody(RenderMissile value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.MissileType > 2) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderDynamicProp's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderDynamicPropFixedCheckBody(RenderDynamicProp value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.PropType > 3) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderStaticProp's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderStaticPropFixedCheckBody(RenderStaticProp value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.PropType > 3) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderCosmeticProp's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderCosmeticPropFixedCheckBody(RenderCosmeticProp value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.PropType > 3) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderLaser's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderLaserFixedCheckBody(RenderLaser value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.LaserType > 2) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
+        // RenderExplosion's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool RenderExplosionFixedCheckBody(RenderExplosion value)
+        {
+            if (value == null) return true;
+            if ((ulong)value.ExplosionType > 2) return false;
+            if ((ulong)value.Team > 4) return false;
+            return true;
+        }
+
         // ---- RenderCamera, the fixed form ----
 
         public const long RenderCameraFixedBodyBytes = 72;
@@ -4313,6 +4392,9 @@ namespace Blockdemo
             long need = RenderShipFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderShipFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderShipFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderShipFixedHash);
@@ -4946,6 +5028,9 @@ namespace Blockdemo
             long need = RenderTurretFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderTurretFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderTurretFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderTurretFixedHash);
@@ -5591,6 +5676,9 @@ namespace Blockdemo
             long need = RenderMissileFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderMissileFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderMissileFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderMissileFixedHash);
@@ -6239,6 +6327,9 @@ namespace Blockdemo
             long need = RenderDynamicPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderDynamicPropFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderDynamicPropFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderDynamicPropFixedHash);
@@ -6888,6 +6979,9 @@ namespace Blockdemo
             long need = RenderStaticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderStaticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderStaticPropFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderStaticPropFixedHash);
@@ -7544,6 +7638,9 @@ namespace Blockdemo
             long need = RenderCosmeticPropFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderCosmeticPropFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderCosmeticPropFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderCosmeticPropFixedHash);
@@ -8175,6 +8272,9 @@ namespace Blockdemo
             long need = RenderLaserFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderLaserFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderLaserFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderLaserFixedHash);
@@ -8821,6 +8921,9 @@ namespace Blockdemo
             long need = RenderExplosionFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (RenderExplosionFixedFiniteBody(values[k]) != null) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(RenderExplosionFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), RenderExplosionFixedHash);

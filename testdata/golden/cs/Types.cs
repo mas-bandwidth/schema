@@ -193,14 +193,17 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteVec3Batch(ref WriteBatch batch, ref Vec3 value)
         {
+            Debug.Assert(double.IsFinite(value.X), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.X))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Y), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.Y))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Z), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.Z))
             {
                 return false;
@@ -263,18 +266,22 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteQuatBatch(ref WriteBatch batch, ref Quat value)
         {
+            Debug.Assert(double.IsFinite(value.X), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.X))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Y), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.Y))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.Z), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.Z))
             {
                 return false;
             }
+            Debug.Assert(double.IsFinite(value.W), "write refused: a NaN or an infinity in a double");
             if (!batch.SerializeDouble(ref value.W))
             {
                 return false;
@@ -761,22 +768,27 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteInputBatch(ref WriteBatch batch, ref Input value)
         {
+            Debug.Assert(float.IsFinite(value.StickX), "write refused: a NaN or an infinity in a float");
             if (!batch.SerializeFloat(ref value.StickX))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.StickY), "write refused: a NaN or an infinity in a float");
             if (!batch.SerializeFloat(ref value.StickY))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Throttle), "write refused: a NaN or an infinity in a float");
             if (!batch.SerializeFloat(ref value.Throttle))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Yaw), "write refused: a NaN or an infinity in a float");
             if (!batch.SerializeFloat(ref value.Yaw))
             {
                 return false;
             }
+            Debug.Assert(float.IsFinite(value.Pitch), "write refused: a NaN or an infinity in a float");
             if (!batch.SerializeFloat(ref value.Pitch))
             {
                 return false;
