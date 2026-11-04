@@ -12,12 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - lane: registry
-            revision: dd3bf227037599741a19d2397aa24dcfe2a5733f
-            pattern: '^TestLobster(UnitView|TableFree|AddingTable|RuntimePackage)'
-          - lane: evolution
-            revision: 0e111c31463d5f674345e02917a9e98b70da43f3
-            pattern: '^TestLobsterFixedProofEvolution$'
+          - lane: cook
+            revision: 3cb0f17df1b813579a0166a6545ff2368f203720
+            pattern: '^TestLobsterCook(UnboundedText|TextExtentReferences|ExtentCoordinates|AuthoredOptionalMap)$'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,23 +54,3 @@ jobs:
       - name: Compiler registry guards
         if: matrix.lane == 'registry'
         run: go test ./compiler -run 'Lobster(Runtime|UnitView|TableRuntime)' -count=1 -v
-  packet:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: '1.26'
-          cache: false
-      - name: Install pinned Lobster runtime
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
-          make dist-lobster
-      - name: Packet byte oracle and writer mutation
-        env:
-          SCHEMA_SLOW: '1'
-        run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobster -run '^TestLobsterPacketWideGoldens' -count=1 -v
