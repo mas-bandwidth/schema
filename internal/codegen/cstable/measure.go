@@ -2,6 +2,12 @@ package cstable
 
 const tableLoadMeasureSource = `
     static long Align(long value, int alignment) { return (value + alignment - 1) & -(long)alignment; }
+    // THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure passes it is
+    // refused as storage_over_cap, and no count times an element size is summed past it.
+    internal const long StorageCap = 1099511627776;
+    // a list or map term past the storage cap is refused before it is summed
+    internal static bool StorageTermOverCap(long aligned, ulong count, long size)
+    { return size > 0 && count > 0 && (aligned > StorageCap || count > (ulong)((StorageCap - aligned) / size)); }
     static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason)
     {
         while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
@@ -28,7 +34,9 @@ const tableLoadMeasureSource = `
                 if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
                 int floor = sourceKind == 13 ? 2 : sourceKind == 12 || sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
                 if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
-                at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
+                long aligned = Align(at, f.StorageAlign);
+                if (StorageTermOverCap(aligned, n, f.StorageSize)) { reason = "storage_over_cap"; return false; }
+                at = aligned + (long)n * f.StorageSize;
             }
             for (ulong i = 0; i < n && a.Has(1); i++)
             {
@@ -128,7 +136,8 @@ const tableLoadMeasureSource = `
         long extent = 0;
         if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
         long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-        if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
+        if (size > StorageCap) { reason = "storage_over_cap"; return -1; }
+        if (!NodeFrames(root, out Reader payload, out int nodes)) { if (size + 16 > StorageCap) { reason = "storage_over_cap"; return -1; } return size + 16; }
         Reader scan = payload;
         for (int i = 0; i < nodes; i++)
         {
@@ -140,7 +149,10 @@ const tableLoadMeasureSource = `
             extent = 0;
             if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
             size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+            if (size > StorageCap) { reason = "storage_over_cap"; return -1; }
         }
+        // each term is at most the cap, so the sum never overflows
+        if (size + (nodes + 1L) * 16 > StorageCap) { reason = "storage_over_cap"; return -1; }
         return size + (nodes + 1L) * 16;
     }
 `

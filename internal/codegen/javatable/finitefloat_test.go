@@ -275,9 +275,9 @@ public final class Driver {
         }
     }
 
-    static byte[] image(int size, int at, long bits, int width) {
-        byte[] b = new byte[size];
-        TableBytes.put(b, at, bits, width, false);
+    static byte[] image(long size, long at, long bits, int width) {
+        byte[] b = new byte[Math.toIntExact(size)];
+        TableBytes.put(b, Math.toIntExact(at), bits, width, false);
         return b;
     }
 

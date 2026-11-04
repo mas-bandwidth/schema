@@ -1384,6 +1384,9 @@ public static class TableJson
             object union = f.GetChild(owner, index);
             if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
             input.Pos++;
+            // the union's object is one level below its holder, and its arm's
+            // value one below that
+            if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
             f.Arms.SetTag(union, 0);
             if (Peek(text, ref input) == '}') { input.Pos++; return true; }
             Span<byte> key = stackalloc byte[MaxKey];
@@ -1399,7 +1402,7 @@ public static class TableJson
             if (tag == 0)
             {
                 input.Report.Unknown++;
-                if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                if (!SkipValue(text, ref input, depth + 2)) { return false; }
             }
             else
             {
@@ -1409,7 +1412,7 @@ public static class TableJson
                 if (ValueShape(text, ref input) != wanted && !(payload != null && payload.Kind == 17 && !payload.IsArray && ValueShape(text, ref input) == 'z'))
                 {
                     input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
                 }
                 else
                 {
@@ -1421,7 +1424,7 @@ public static class TableJson
                     {
                         object body = arm.Payload(union);
                         arm.Table.Reset(body);
-                        if (!ReadTable(text, ref input, body, arm.Table, depth + 1)) { return false; }
+                        if (!ReadTable(text, ref input, body, arm.Table, depth + 2)) { return false; }
                     }
                     else
                     {
@@ -1466,6 +1469,8 @@ public static class TableJson
         {
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
+            // the flags array is one level below its holder, and its elements one below that
+            if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
             ulong bits = 0;
             Span<byte> name = stackalloc byte[MaxKey];
             for (; ; )
@@ -1476,7 +1481,7 @@ public static class TableJson
                 if (c != '"')
                 {
                     input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
                 }
                 else
                 {
@@ -1763,6 +1768,8 @@ public static class TableJson
         {
             if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
             input.Pos++;
+            // the keyed object is one level below its holder, and its elements one below that
+            if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
             // every slot back to its declared defaults first, so a key the text
             // omits keeps them and a repeated field key cannot leave an earlier
             // occurrence's slots standing
@@ -1803,12 +1810,12 @@ public static class TableJson
                 if (slot < 0)
                 {
                     input.Report.Unknown++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
                 }
                 else if (ValueShape(text, ref input) != shape)
                 {
                     input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
                 }
                 else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
                 {
@@ -1826,6 +1833,8 @@ public static class TableJson
         {
             if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
+            // the array is one level below its holder, and its elements one below that
+            if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
             // LAST WINS has to be true of a repeated ARRAY key too, and it is
             // wire-visible: a fixed array writes every slot, so a second,
             // shorter occurrence overlaying a prefix would leave the first
@@ -1846,20 +1855,20 @@ public static class TableJson
                     // the total dropped this element; one past [..N] is counted
                     // as well, as the wire counts its count clamp (§2.13)
                     if (++textSeen > f.ArrayBound) { input.Report.Clamped++; }
-                    if (!SkipValue(text,ref input,depth+1)) { return false; }
+                    if (!SkipValue(text,ref input,depth+2)) { return false; }
                 }
                 else if (placed >= f.ArrayBound)
                 {
                     // more elements than the reader's bound: the bounded prefix
                     // is kept and the excess counts, the wire's rule (§4)
                     input.Report.Clamped++; TableWire.TextClamp(input.Report,f);
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
                 }
                 else if (ValueShape(text, ref input) != shape && !((f.Kind == 17 || f.TextList && f.Table.Fields[0].Optional) && ValueShape(text, ref input) == 'z'))
                 {
                     if (f.Dynamic) { f.EnsureCount(value, placed + 1); }
                     input.Report.KindMismatch++;
-                    if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
                     placed++;
                 }
                 else

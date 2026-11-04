@@ -21,6 +21,10 @@ local NODE_TABLE_ID = -1 -- 0xffffffffffffffff
 local BUILD_VERSION_ID = -2 -- 0xfffffffffffffffe
 local MESSAGE_VOCABULARY_ID = -3 -- 0xfffffffffffffffd
 local STRING_BLOB_ID = 0x704be0d8faaffc58
+-- THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure
+-- passes it is refused as storage_over_cap, before anything is built
+local STORAGE_CAP = 1 << 40
+local region_measure
 local BYTES_BLOB_ID = 0x2f2ec0474f1c4fe4
 
 -- CRC-32C, the Castagnoli polynomial reflected (0x82F63B78) with the initial
@@ -2018,6 +2022,19 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
     end
     blen = n
   end
+  -- THE STORAGE CAP (§11) is checked before anything is built: one empty body
+  -- of a large fixed table commands its whole storage, and the load builds it.
+  -- No wire byte commands more than T.StorageScale bytes of storage, so a wire
+  -- shorter than STORAGE_CAP // T.StorageScale bytes cannot pass the cap and is
+  -- not measured; a longer one is measured first and refused by name past it.
+  if desc ~= nil and blen >= 1 and bytes:byte(1) == 1 and blen >= STORAGE_CAP // T.StorageScale then
+    local _, why = region_measure(T, desc, blen == #bytes and bytes or bytes:sub(1, blen))
+    if why == "storage_over_cap" then
+      report.refused = report.refused + 1
+      report.reason = "storage_over_cap"
+      return nil
+    end
+  end
   local o = open(bytes, blen, report, state)
   if o == nil then
     if report.malformed then return nil end
@@ -2144,6 +2161,7 @@ local function strict_refusal(bytes, report, root)
   if type(bytes) ~= "string" then return "wire_damaged" end
   local form = #bytes >= 1 and bytes:byte(1) or nil
   if form ~= nil and form ~= 1 then return "unknown_form" end
+  if report.reason == "storage_over_cap" then return "storage_over_cap" end
   -- A COUNT PAST THE INT32 STORAGE CAP (§2.9) sets refused too, so it is
   -- named before refused is read as a form refusal.
   if report.reason == "count_over_extent_cap" then return "count_over_extent_cap" end
@@ -2300,7 +2318,14 @@ measure_field = function(T, ids, scan, f, b, at, lim)
       if kind == 13 then floor = 2 end
       if floor < 1 then floor = 1 end
       if count > (r.lim - r.at) // floor then return false end
-      scan.at = round_up(scan.at, align) + count * size
+      -- a term past the storage cap is refused before it is summed (§11), so
+      -- no count times an element size is multiplied out past it
+      local at = round_up(scan.at, align)
+      if count > 0 and size > 0 and count > (STORAGE_CAP - at) // size then
+        scan.over = true
+        return false
+      end
+      scan.at = at + count * size
     end
     if kind ~= 13 and kind ~= 15 then return true end
     local keyed = (f.shape == "array" and f.keyed ~= nil)
@@ -2360,6 +2385,51 @@ measure_union = function(T, ids, scan, un, r)
   return true
 end
 
+-- region_measure is the measure of a form-1 file whose integrity trailer, if
+-- any, is already removed. It answers the byte count, or nil and the refusal's
+-- name when the measure passes the storage cap (§11): storage_over_cap.
+region_measure = function(T, desc, bytes)
+  local o = measure_trailer(bytes)
+  if o == nil then return nil end
+  local align = D.region_align(T, desc)
+  local function size_of(st, b, at, lim)
+    local scan = { at = 0, over = false }
+    if not measure_record(T, o.table, scan, st, b, at, lim) then return 0, false, scan.over end
+    return round_region(round_region(D.record_size(st), align) + scan.at, align), true, false
+  end
+  local total, ok, over = size_of(desc, bytes, 1, o.lim)
+  if over then return nil, "storage_over_cap" end
+  if not ok then return nil end
+  local raw = node_scan(bytes, o, {}, desc.variable, L.NewState())
+  if raw == nil then return nil end
+  local reach = desc.reach
+  local nodes, string_blob, bytes_blob = reach.nodes, reach.string_blob, reach.bytes_blob
+  for _, rec in ipairs(raw) do
+    local st = nodes[rec.tid]
+    if st ~= nil then
+      local n, rok, rover = size_of(st, bytes, rec.at, rec.lim)
+      if rover then return nil, "storage_over_cap" end
+      if not rok then return nil end
+      total = total + n
+    elseif (rec.tid == BYTES_BLOB_ID and bytes_blob) or (rec.tid == STRING_BLOB_ID and string_blob) then
+      local blen = rec.lim - rec.at
+      if blen > 0xffffffff then return nil end
+      local n = 8 + blen
+      if rec.tid == STRING_BLOB_ID then n = n + 1 end
+      total = total + round_region(n, align)
+    end
+    -- the running total is checked after every node record: each term is at
+    -- most the cap, so the sum never overflows
+    if total > STORAGE_CAP then return nil, "storage_over_cap" end
+  end
+  total = total + (#raw + 1) * 16
+  if total > STORAGE_CAP then return nil, "storage_over_cap" end
+  return total
+end
+
+-- LoadMeasure answers the byte count, or nil when the wire is refused; a wire
+-- whose measure passes the storage cap (§11) answers nil and
+-- "storage_over_cap".
 function L.LoadMeasure(T, name, bytes)
   local desc = T.Tables[name]
   if desc == nil then return nil end
@@ -2372,35 +2442,7 @@ function L.LoadMeasure(T, name, bytes)
     if string.unpack("<I4", bytes, n + 1) ~= L.crc32c(bytes:sub(1, n)) then return nil end
     bytes = bytes:sub(1, n)
   end
-  local o = measure_trailer(bytes)
-  if o == nil then return nil end
-  local align = D.region_align(T, desc)
-  local function size_of(st, b, at, lim)
-    local scan = { at = 0 }
-    if not measure_record(T, o.table, scan, st, b, at, lim) then return 0, false end
-    return round_region(round_region(D.record_size(st), align) + scan.at, align), true
-  end
-  local total, ok = size_of(desc, bytes, 1, o.lim)
-  if not ok then return nil end
-  local raw = node_scan(bytes, o, {}, desc.variable, L.NewState())
-  if raw == nil then return nil end
-  local reach = desc.reach
-  local nodes, string_blob, bytes_blob = reach.nodes, reach.string_blob, reach.bytes_blob
-  for _, rec in ipairs(raw) do
-    local st = nodes[rec.tid]
-    if st ~= nil then
-      local n, rok = size_of(st, bytes, rec.at, rec.lim)
-      if not rok then return nil end
-      total = total + n
-    elseif (rec.tid == BYTES_BLOB_ID and bytes_blob) or (rec.tid == STRING_BLOB_ID and string_blob) then
-      local blen = rec.lim - rec.at
-      if blen > 0xffffffff then return nil end
-      local n = 8 + blen
-      if rec.tid == STRING_BLOB_ID then n = n + 1 end
-      total = total + round_region(n, align)
-    end
-  end
-  return total + (#raw + 1) * 16
+  return region_measure(T, desc, bytes)
 end
 
 return L

@@ -1,0 +1,15 @@
+// The storage cap vectors (docs/SPEC-TABLES.md §11): Big's storage is 2^27
+// bytes, so 8192 of them measure past the 2^40-byte cap.
+package capcheck
+
+fixed table Big
+{
+    a [16777216]int64
+}
+
+table Root
+{
+    items []Big
+    next  *Big
+    index map[int32]int32
+}

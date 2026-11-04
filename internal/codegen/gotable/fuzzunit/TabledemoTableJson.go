@@ -1371,6 +1371,11 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
+		// the union's object is one level below its holder, and its arm's value one below that
+		if depth+1 > tableJSONMaxDepth {
+			in.bad = true
+			return false
+		}
 		tableJSONSetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize, 0)
 		if in.peek() == '}' {
 			in.pos++
@@ -1395,7 +1400,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 		if tag == 0 {
 			in.report.Unknown++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -1406,7 +1411,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			}
 			if in.valueShape() != want && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape() == 'z') {
 				in.report.KindMismatch++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			} else {
@@ -1471,6 +1476,11 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			return false
 		}
 		in.pos++
+		// the flags array is one level below its holder, and its elements one below that
+		if depth+1 > tableJSONMaxDepth {
+			in.bad = true
+			return false
+		}
 		bits := uint64(0)
 		for {
 			c := in.peek()
@@ -1484,7 +1494,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			}
 			if c != '"' {
 				in.report.KindMismatch++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			} else {
@@ -1824,6 +1834,11 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			return false
 		}
 		in.pos++
+		// the keyed object is one level below its holder, and its elements one below that
+		if depth+1 > tableJSONMaxDepth {
+			in.bad = true
+			return false
+		}
 		// every slot back to its declared defaults first, so a key the text
 		// omits keeps them and a repeated field key cannot leave an earlier
 		// occurrence's slots standing
@@ -1884,12 +1899,12 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			switch {
 			case slot < 0:
 				in.report.Unknown++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
 				in.report.KindMismatch++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			default:
@@ -1917,6 +1932,11 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			return false
 		}
 		in.pos++
+		// the array is one level below its holder, and its elements one below that
+		if depth+1 > tableJSONMaxDepth {
+			in.bad = true
+			return false
+		}
 		// LAST WINS has to be true of a repeated ARRAY key too, and it is
 		// wire-visible: a fixed array writes every slot, so a second, shorter
 		// occurrence overlaying a prefix would leave the first occurrence's
@@ -1950,12 +1970,12 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 				// more elements than the reader's bound: the bounded prefix is
 				// kept and the excess counts, the wire's rule (§4)
 				in.report.Clamped++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
 				in.report.KindMismatch++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 				placed++
@@ -2262,7 +2282,7 @@ func (v *tableJSONWide) div(d uint32) uint32 {
 	v[1] = limbs[2] | limbs[3]<<32
 	return uint32(rem)
 }
-func tableJSONWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJSONWide {
+func tableJSONWideLoad(storage unsafe.Pointer, width int64, signed bool) tableJSONWide {
 	if width == 16 {
 		return *(*tableJSONWide)(storage)
 	}
@@ -2276,7 +2296,7 @@ func tableJSONWideLoad(storage unsafe.Pointer, width uint32, signed bool) tableJ
 	}
 	return tableJSONWide{tableJSONGetRaw(storage, width), 0}
 }
-func tableJSONWideStore(storage unsafe.Pointer, width uint32, v tableJSONWide) {
+func tableJSONWideStore(storage unsafe.Pointer, width int64, v tableJSONWide) {
 	if width == 16 {
 		*(*tableJSONWide)(storage) = v
 	} else {
@@ -2902,7 +2922,7 @@ func tableJSONWriteList(out *tableJSONOut, holder unsafe.Pointer, f *TableFieldI
 	return true
 }
 func tableJSONReadList(in *tableJSONIn, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	if in.peek() != '[' || in.graph == nil || in.graph.listAdd == nil {
+	if depth+1 > tableJSONMaxDepth || in.peek() != '[' || in.graph == nil || in.graph.listAdd == nil {
 		in.bad = true
 		return false
 	}
@@ -2929,7 +2949,7 @@ func tableJSONReadList(in *tableJSONIn, holder unsafe.Pointer, f *TableFieldInfo
 		}
 		if in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z') {
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else if !tableJSONReadScalar(in, p, f, depth+1) {
@@ -2997,7 +3017,7 @@ func tableJSONWriteMap(out *tableJSONOut, p unsafe.Pointer, f *TableFieldInfo, d
 	return true
 }
 func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
-	if depth > tableJSONMaxDepth || in.peek() != '{' || in.graph == nil || in.graph.mapPlace == nil {
+	if depth+1 > tableJSONMaxDepth || in.peek() != '{' || in.graph == nil || in.graph.mapPlace == nil {
 		in.bad = true
 		return false
 	}
@@ -3066,7 +3086,7 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		in.pos++
 		if !good {
 			tableJSONDropLabel(in)
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -3088,7 +3108,7 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 			} else if shape != tableJSONShape(value) && !(value.Pointer && shape == 'z') {
 				in.report.KindMismatch++
 				tableJSONDropLabel(in)
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 				if value.Optional {
@@ -3232,8 +3252,8 @@ func tableJSONDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 // 00-23 and its minutes 00-59. Nothing may precede or follow the production.
 //
 // The count is the seconds since the Unix epoch times one billion plus the
-// fraction, so an instant outside int64's nanosecond range — the years 1678
-// through 2262, Time.UnixNano's domain — names no count and is refused too.
+// fraction, so an instant outside int64's nanosecond range — 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z,
+// Time.UnixNano's domain — names no count and is refused too.
 // The parser reads only its argument and allocates nothing.
 func rfc3339Parse(text []byte) (int64, bool) {
 	// the shortest production is "2006-01-02T15:04:05Z"
@@ -3492,7 +3512,7 @@ func tableJSONReadTimestamp(in *tableJSONIn, storage unsafe.Pointer, f *TableFie
 
 // TableTimestampError is the refusal of a time.Time that no count names: its
 // nanoseconds since the Unix epoch do not fit an int64, which is Time.UnixNano's
-// own domain, the years 1678 through 2262 (mas-bandwidth/schema docs/SPEC-TABLES.md §2.11).
+// own domain, 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z (mas-bandwidth/schema docs/SPEC-TABLES.md §2.11).
 type TableTimestampError struct {
 	Field string
 	Time  time.Time
@@ -3500,7 +3520,7 @@ type TableTimestampError struct {
 
 func (e TableTimestampError) Error() string {
 	return "timestamp_out_of_range: " + e.Field + " " + e.Time.Format(time.RFC3339Nano) +
-		" is outside the years 1678 through 2262, which a count of nanoseconds since the Unix epoch can hold"
+		" is outside 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z, which a count of nanoseconds since the Unix epoch can hold"
 }
 
 // tableTimestampNanos is the count of a time.Time, and false for a time whose

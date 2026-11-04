@@ -105,6 +105,11 @@
 #include"VOLD_rename_without_wasTable.h"
 #include "VNEW_rename_without_wasTable.h"
 // ==== END rowan/cpp-versioning-lists ===================================
+// the fixed form's hard limits (limit_files below): one OLD/NEW pair per limit
+#include "VOLD_limit_depthTable.h"
+#include "VNEW_limit_depthTable.h"
+#include "VOLD_limit_recordTable.h"
+#include "VNEW_limit_recordTable.h"
 
 static bool spill( const char * dir, const char * name, const std::vector<uint8_t> & data )
 {
@@ -1487,6 +1492,326 @@ static bool vlists_files( const char * dir )
 
 // ==== END rowan/cpp-versioning-lists =======================================
 
+// ---- the fixed form's hard limits: BEGIN ----------------------------------
+// THE FIXED FORM'S HARD LIMITS (docs/SPEC-TABLES.md §3.4's fixed_max_depth and
+// fixed_record_bound, docs/FIXED-FORM-ALGORITHM.md §1.1 and §6), two files per
+// limit, and `limits.txt` beside them saying what each file is and what this
+// reference answered:
+//
+//   old_limit_depth.bin       a layout whose deepest entry sits at depth 64, the bound
+//   hostile_limit_depth.bin   the same file with one table level spliced in: depth 65
+//   old_limit_record.bin      a record body of 65536 bytes, the bound
+//   hostile_limit_record.bin  the same file grown to 65537, the layout and every record
+//
+// THE READER IS THE NEW UNIT, whose lineage holds the OLD layout (the two
+// differ by one range, so their layout bytes match and their hashes do not).
+// The plan it reads an OLD file with is compiled from the OLD layout after that
+// layout passed §1.1's seven rules, so an at-limit file reads only while the
+// bound admits it. A FILE's layout is never walked at read time (§5.3 step 7):
+// it is byte-compared to the lineage entry its hash names, so a forged layout
+// under a known hash is refused as `layout_malformed` however deep or large it
+// claims to be. `parse=` is the other half: the file's layout bytes handed
+// straight to TableFixedParseLayout, which is where the bound's own name
+// (`layout_too_deep`, `layout_record_too_large`) is answered.
+//
+// THESE FILES ARE NOT manifest.txt ROWS. Its sweeps read every row as a lawful
+// versioning file, and a hostile row that refuses would be a row they cannot
+// read; limits.txt is read by the limit tests alone.
+static std::vector<std::string> g_limits;
+
+static const char * limit_reason( int32_t why )
+{
+    static_assert( (int32_t) vnew_limit_depth::layout_malformed == (int32_t) vnew_limit_record::layout_malformed, "one vocabulary" );
+    static_assert( (int32_t) vnew_limit_depth::layout_too_deep == (int32_t) vnew_limit_record::layout_too_deep, "one vocabulary" );
+    static_assert( (int32_t) vnew_limit_depth::layout_record_too_large == (int32_t) vnew_limit_record::layout_record_too_large, "one vocabulary" );
+    switch ( why )
+    {
+        case vnew_limit_depth::layout_unknown:          return "layout_unknown";
+        case vnew_limit_depth::layout_malformed:        return "layout_malformed";
+        case vnew_limit_depth::layout_count_mismatch:   return "layout_count_mismatch";
+        case vnew_limit_depth::layout_kind_unknown:     return "layout_kind_unknown";
+        case vnew_limit_depth::layout_kind_invalid:     return "layout_kind_invalid";
+        case vnew_limit_depth::layout_size_mismatch:    return "layout_size_mismatch";
+        case vnew_limit_depth::layout_tree_unclosed:    return "layout_tree_unclosed";
+        case vnew_limit_depth::layout_too_deep:         return "layout_too_deep";
+        case vnew_limit_depth::layout_record_too_large: return "layout_record_too_large";
+        case vnew_limit_depth::plan_too_large:          return "plan_too_large";
+        default:                                        return "other";
+    }
+}
+
+// THE LAYOUT INSIDE A FORM-3 FILE: its u32 length at byte 16, its bytes at 20.
+static const int64_t kLimitLayoutAt = 20;
+
+// THE SPEC'S NUMBERS (docs/SPEC-TABLES.md §3.4's limit markers), and not the
+// runtime's constants: a runtime bound that drifts must fail the READ below, and a
+// check written against its own constant would move with it.
+static const int32_t kLimitSpecDepth = 64;
+static const uint32_t kLimitSpecRecord = 65536u;
+
+static uint32_t limit_get32( const uint8_t * b ) { return (uint32_t) b[0] | (uint32_t) b[1] << 8 | (uint32_t) b[2] << 16 | (uint32_t) b[3] << 24; }
+static void limit_put32( uint8_t * b, uint32_t v ) { b[0] = (uint8_t) v; b[1] = (uint8_t) ( v >> 8 ); b[2] = (uint8_t) ( v >> 16 ); b[3] = (uint8_t) ( v >> 24 ); }
+
+// One entry is 17 bytes: id u64, kind u8, size u32, children u32 (§1.1).
+static uint8_t limit_kind( const uint8_t * layout, int32_t i ) { return layout[4 + 17 * i + 8]; }
+static uint32_t limit_size( const uint8_t * layout, int32_t i ) { return limit_get32( layout + 4 + 17 * i + 9 ); }
+static uint32_t limit_children( const uint8_t * layout, int32_t i ) { return limit_get32( layout + 4 + 17 * i + 13 ); }
+
+// The depth of every entry, by the pre-order child walk: the root is 0.
+static std::vector<int32_t> limit_depths( const uint8_t * layout )
+{
+    const int32_t count = (int32_t) limit_get32( layout );
+    std::vector<int32_t> depth( (size_t) count, 0 );
+    std::vector<uint32_t> left;
+    for ( int32_t i = 0; i < count; ++i )
+    {
+        while ( !left.empty() && left.back() == 0 ) { left.pop_back(); }
+        depth[(size_t) i] = (int32_t) left.size();
+        if ( !left.empty() ) { left.back()--; }
+        if ( limit_children( layout, i ) != 0 ) { left.push_back( limit_children( layout, i ) ); }
+    }
+    return depth;
+}
+
+static int32_t limit_max_depth( const uint8_t * layout )
+{
+    int32_t deepest = 0;
+    for ( int32_t d : limit_depths( layout ) ) { if ( d > deepest ) { deepest = d; } }
+    return deepest;
+}
+
+// A FILE WITH A NEW LAYOUT AND THE SAME HEADER: the hash at byte 8 and every
+// record's hash are the OLD file's, so the reader selects the OLD lineage entry
+// and meets bytes that are not that entry's.
+static std::vector<uint8_t> limit_relayout( const std::vector<uint8_t> & file, const std::vector<uint8_t> & layout, const std::vector<uint8_t> & records )
+{
+    std::vector<uint8_t> out( file.begin(), file.begin() + 16 );
+    out.resize( 20 );
+    limit_put32( out.data() + 16, (uint32_t) layout.size() );
+    out.insert( out.end(), layout.begin(), layout.end() );
+    out.insert( out.end(), records.begin(), records.end() );
+    return out;
+}
+
+static std::string limit_counters( int64_t unknown, int64_t kind_mismatch, int64_t widened, int64_t clamped, int64_t duplicate, bool malformed )
+{
+    return "counters=unknown=" + man_text( (long long) unknown ) + ",kind_mismatch=" + man_text( (long long) kind_mismatch )
+         + ",widened=" + man_text( (long long) widened ) + ",clamped=" + man_text( (long long) clamped )
+         + ",duplicate=" + man_text( (long long) duplicate ) + ",malformed=" + man_text( malformed );
+}
+
+// the 63 `.d` hops from the root to D63, whose `v` is the depth-64 entry
+#define LIMIT_D8( X ) X.d.d.d.d.d.d.d.d
+#define LIMIT_DEEP( X ) LIMIT_D8( LIMIT_D8( LIMIT_D8( LIMIT_D8( LIMIT_D8( LIMIT_D8( LIMIT_D8( X ) ) ) ) ) ) ).d.d.d.d.d.d.d.v
+
+static bool limit_depth_files( const char * dir )
+{
+    // AT THE BOUND: the OLD writer's file, read by the NEW reader.
+    std::vector<vold_limit_depth::LimitDepth> v( 1 );
+    vold_limit_depth::LimitDepthReset( v[0] );
+    v[0].lead = 0xAAAAAAAAu;
+    LIMIT_DEEP( v[0] ) = 77;
+    v[0].trail = 0xBBBBBBBBu;
+    std::vector<uint8_t> file( (size_t) vold_limit_depth::LimitDepthFixedMeasure( 1 ) );
+    if ( vold_limit_depth::LimitDepthFixedSave( v.data(), 1, file.data(), (int64_t) file.size() ) != (int64_t) file.size() )
+    {
+        std::fprintf( stderr, "old_limit_depth.bin: save refused\n" );
+        return false;
+    }
+    const uint32_t layout_bytes = limit_get32( file.data() + 16 );
+    const uint8_t * layout = file.data() + kLimitLayoutAt;
+    const int32_t at_depth = limit_max_depth( layout );
+    if ( at_depth != kLimitSpecDepth )
+    {
+        std::fprintf( stderr, "old_limit_depth.bin: the layout nests %d, want the bound %d\n", at_depth, kLimitSpecDepth );
+        return false;
+    }
+    std::vector<vnew_limit_depth::LimitDepth> back( 1 );
+    vnew_limit_depth::LimitDepthReset( back[0] );
+    vnew_limit_depth::TableReport r;
+    std::vector<vnew_limit_depth::TableFixedEntry> plan( 4096 );
+    int64_t n = vnew_limit_depth::LimitDepthFixedLoadTolerant( back.data(), 1, file.data(), (int64_t) file.size(), plan.data(), 4096, NULL, &r );
+    if ( n != 1 || r.refused || r.malformed || back[0].lead != 0xAAAAAAAAu || LIMIT_DEEP( back[0] ) != 77 || back[0].trail != 0xBBBBBBBBu ||
+         r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 )
+    {
+        std::fprintf( stderr, "old_limit_depth.bin: the NEW reader landed n=%lld refused=%d (%s) v=%d, want the record whole and no counter moved\n",
+                      (long long) n, (int) r.refused, limit_reason( (int32_t) (vnew_limit_depth::TableRefuseReason) r.reason ), (int) LIMIT_DEEP( back[0] ) );
+        return false;
+    }
+    {
+        vnew_limit_depth::TableFixedLayoutView view;
+        vnew_limit_depth::TableMessageReason why;
+        if ( !vnew_limit_depth::TableFixedParseLayout( layout, layout_bytes, view, why ) )
+        {
+            std::fprintf( stderr, "old_limit_depth.bin: the depth-64 layout parsed as %s, want accepted\n", limit_reason( (int32_t) (vnew_limit_depth::TableRefuseReason) why ) );
+            return false;
+        }
+    }
+    std::string deep = "r0";
+    for ( int k = 0; k < 63; ++k ) { deep += ".d"; }
+    deep += ".v";
+    g_limits.push_back( "file=old_limit_depth.bin limit=fixed_max_depth bound=" + man_text( kLimitSpecDepth )
+                        + " depth=" + man_text( at_depth ) + " root=LimitDepth records=1 verdict=read parse=ok "
+                        + limit_counters( r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.malformed )
+                        + " values=r0.lead=" + man_text( back[0].lead ) + "," + deep + "=" + man_text( LIMIT_DEEP( back[0] ) )
+                        + ",r0.trail=" + man_text( back[0].trail ) );
+    if ( !spill( dir, "old_limit_depth.bin", file ) ) { return false; }
+
+    // PAST THE BOUND: one table level spliced in above the deepest entry. The
+    // copy is of the deepest entry's parent, a table of one child whose size is
+    // its child's, so the grown layout breaks no rule but the depth.
+    const std::vector<int32_t> depth = limit_depths( layout );
+    int32_t deepest = 0;
+    for ( int32_t i = 0; i < (int32_t) depth.size(); ++i ) { if ( depth[(size_t) i] > depth[(size_t) deepest] ) { deepest = i; } }
+    const int32_t parent = deepest - 1;
+    if ( limit_kind( layout, parent ) != 13 || limit_children( layout, parent ) != 1 || limit_size( layout, parent ) != limit_size( layout, deepest ) )
+    {
+        std::fprintf( stderr, "hostile_limit_depth.bin: the deepest entry's parent is not a one-child table\n" );
+        return false;
+    }
+    std::vector<uint8_t> grown( layout, layout + 4 + 17 * deepest );
+    grown.insert( grown.end(), layout + 4 + 17 * parent, layout + 4 + 17 * deepest );
+    grown.insert( grown.end(), layout + 4 + 17 * deepest, layout + layout_bytes );
+    limit_put32( grown.data(), limit_get32( layout ) + 1 );
+    const int32_t over_depth = limit_max_depth( grown.data() );
+    const std::vector<uint8_t> records( file.begin() + kLimitLayoutAt + layout_bytes, file.end() );
+    const std::vector<uint8_t> hostile = limit_relayout( file, grown, records );
+    vnew_limit_depth::TableFixedLayoutView view;
+    vnew_limit_depth::TableMessageReason parsed;
+    const bool parse_ok = vnew_limit_depth::TableFixedParseLayout( grown.data(), (int64_t) grown.size(), view, parsed );
+    vnew_limit_depth::LimitDepthReset( back[0] );
+    vnew_limit_depth::TableReport h;
+    n = vnew_limit_depth::LimitDepthFixedLoadTolerant( back.data(), 1, hostile.data(), (int64_t) hostile.size(), plan.data(), 4096, NULL, &h );
+    const int32_t parse_why = (int32_t) (vnew_limit_depth::TableRefuseReason) parsed;
+    const int32_t load_why = (int32_t) (vnew_limit_depth::TableRefuseReason) h.reason;
+    if ( over_depth != kLimitSpecDepth + 1 || parse_ok || parse_why != vnew_limit_depth::layout_too_deep ||
+         n >= 0 || !h.refused || load_why != vnew_limit_depth::layout_malformed )
+    {
+        std::fprintf( stderr, "hostile_limit_depth.bin: depth %d parsed %s and loaded n=%lld refused=%d (%s), want depth 65, layout_too_deep, and the file refused layout_malformed\n",
+                      over_depth, parse_ok ? "ok" : limit_reason( parse_why ), (long long) n, (int) h.refused, limit_reason( load_why ) );
+        return false;
+    }
+    g_limits.push_back( "file=hostile_limit_depth.bin limit=fixed_max_depth bound=" + man_text( kLimitSpecDepth )
+                        + " depth=" + man_text( over_depth ) + " root=LimitDepth records=1 verdict=refused reason=" + limit_reason( load_why )
+                        + " parse=" + limit_reason( parse_why ) + " "
+                        + limit_counters( h.unknown, h.kind_mismatch, h.widened, h.clamped, h.duplicate, h.malformed ) );
+    return spill( dir, "hostile_limit_depth.bin", hostile );
+}
+
+static bool limit_record_files( const char * dir )
+{
+    // AT THE BOUND: the OLD writer's 65536-byte record, read by the NEW reader.
+    std::vector<vold_limit_record::LimitRecord> v( 1 );
+    vold_limit_record::LimitRecordReset( v[0] );
+    v[0].lead = 0xAAAAAAAAu;
+    v[0].v = 77;
+    // every one of the 65520 units used, so the record is the bound end to end:
+    // `x` throughout and a marker at the first, the middle and the last unit
+    std::memset( (void *) v[0].text, 'x', 65520 );
+    v[0].text[0] = 'L';
+    v[0].text[32761] = 'M';
+    v[0].text[65519] = 'Z';
+    v[0].text[65520] = 0;
+    v[0].text_length = 65520;
+    v[0].trail = 0xBBBBBBBBu;
+    std::vector<uint8_t> file( (size_t) vold_limit_record::LimitRecordFixedMeasure( 1 ) );
+    if ( vold_limit_record::LimitRecordFixedSave( v.data(), 1, file.data(), (int64_t) file.size() ) != (int64_t) file.size() )
+    {
+        std::fprintf( stderr, "old_limit_record.bin: save refused\n" );
+        return false;
+    }
+    const uint32_t layout_bytes = limit_get32( file.data() + 16 );
+    const uint8_t * layout = file.data() + kLimitLayoutAt;
+    if ( limit_size( layout, 0 ) != kLimitSpecRecord )
+    {
+        std::fprintf( stderr, "old_limit_record.bin: the record is %u bytes, want the bound %u\n", limit_size( layout, 0 ), kLimitSpecRecord );
+        return false;
+    }
+    std::vector<vnew_limit_record::LimitRecord> back( 1 );
+    vnew_limit_record::LimitRecordReset( back[0] );
+    vnew_limit_record::TableReport r;
+    std::vector<vnew_limit_record::TableFixedEntry> plan( 4096 );
+    int64_t n = vnew_limit_record::LimitRecordFixedLoadTolerant( back.data(), 1, file.data(), (int64_t) file.size(), plan.data(), 4096, NULL, &r );
+    if ( n != 1 || r.refused || r.malformed || back[0].lead != v[0].lead || back[0].v != v[0].v || back[0].text_length != v[0].text_length ||
+         std::memcmp( back[0].text, v[0].text, sizeof( v[0].text ) ) != 0 || back[0].trail != v[0].trail ||
+         r.unknown != 0 || r.kind_mismatch != 0 || r.widened != 0 || r.clamped != 0 || r.duplicate != 0 )
+    {
+        std::fprintf( stderr, "old_limit_record.bin: the NEW reader landed n=%lld refused=%d (%s), want the record whole and no counter moved\n",
+                      (long long) n, (int) r.refused, limit_reason( (int32_t) (vnew_limit_record::TableRefuseReason) r.reason ) );
+        return false;
+    }
+    {
+        vnew_limit_record::TableFixedLayoutView view;
+        vnew_limit_record::TableMessageReason why;
+        if ( !vnew_limit_record::TableFixedParseLayout( layout, layout_bytes, view, why ) )
+        {
+            std::fprintf( stderr, "old_limit_record.bin: the 65536-byte layout parsed as %s, want accepted\n", limit_reason( (int32_t) (vnew_limit_record::TableRefuseReason) why ) );
+            return false;
+        }
+    }
+    g_limits.push_back( "file=old_limit_record.bin limit=fixed_record_bound bound=" + man_text( kLimitSpecRecord )
+                        + " record=" + man_text( limit_size( layout, 0 ) ) + " root=LimitRecord records=1 verdict=read parse=ok "
+                        + limit_counters( r.unknown, r.kind_mismatch, r.widened, r.clamped, r.duplicate, r.malformed )
+                        + " values=r0.lead=" + man_text( back[0].lead ) + ",r0.v=" + man_text( back[0].v )
+                        + ",r0.text_length=" + man_text( back[0].text_length ) + ",r0.text[0]=" + man_text( (int) back[0].text[0] )
+                        + ",r0.text[32761]=" + man_text( (int) back[0].text[32761] ) + ",r0.text[65519]=" + man_text( (int) back[0].text[65519] )
+                        + ",r0.trail=" + man_text( back[0].trail ) );
+    if ( !spill( dir, "old_limit_record.bin", file ) ) { return false; }
+
+    // PAST THE BOUND: the root and `text` each one byte larger, and one zero byte
+    // more at the end of `text` in the record, so the grown file is a 65537-byte
+    // record under a layout that breaks no rule but the size.
+    std::vector<uint8_t> grown( layout, layout + layout_bytes );
+    const std::vector<int32_t> depth = limit_depths( layout );
+    int32_t text = -1;
+    int64_t text_end = 8; // the record's own hash, then the body
+    for ( int32_t i = 1; i < (int32_t) depth.size(); ++i )
+    {
+        if ( depth[(size_t) i] != 1 ) { continue; }
+        text_end += limit_size( layout, i );
+        if ( limit_size( layout, i ) == 4 + 65520 ) { text = i; break; }
+    }
+    if ( text < 0 )
+    {
+        std::fprintf( stderr, "hostile_limit_record.bin: the layout has no 65524-byte text at the root\n" );
+        return false;
+    }
+    limit_put32( grown.data() + 4 + 9, limit_size( layout, 0 ) + 1 );
+    limit_put32( grown.data() + 4 + 17 * text + 9, limit_size( layout, text ) + 1 );
+    std::vector<uint8_t> records( file.begin() + kLimitLayoutAt + layout_bytes, file.end() );
+    records.insert( records.begin() + text_end, (uint8_t) 0 );
+    const std::vector<uint8_t> hostile = limit_relayout( file, grown, records );
+    vnew_limit_record::TableFixedLayoutView view;
+    vnew_limit_record::TableMessageReason parsed;
+    const bool parse_ok = vnew_limit_record::TableFixedParseLayout( grown.data(), (int64_t) grown.size(), view, parsed );
+    vnew_limit_record::LimitRecordReset( back[0] );
+    vnew_limit_record::TableReport h;
+    n = vnew_limit_record::LimitRecordFixedLoadTolerant( back.data(), 1, hostile.data(), (int64_t) hostile.size(), plan.data(), 4096, NULL, &h );
+    const int32_t parse_why = (int32_t) (vnew_limit_record::TableRefuseReason) parsed;
+    const int32_t load_why = (int32_t) (vnew_limit_record::TableRefuseReason) h.reason;
+    if ( limit_size( grown.data(), 0 ) != kLimitSpecRecord + 1 || parse_ok ||
+         parse_why != vnew_limit_record::layout_record_too_large || n >= 0 || !h.refused || load_why != vnew_limit_record::layout_malformed )
+    {
+        std::fprintf( stderr, "hostile_limit_record.bin: parsed %s and loaded n=%lld refused=%d (%s), want layout_record_too_large, and the file refused layout_malformed\n",
+                      parse_ok ? "ok" : limit_reason( parse_why ), (long long) n, (int) h.refused, limit_reason( load_why ) );
+        return false;
+    }
+    g_limits.push_back( "file=hostile_limit_record.bin limit=fixed_record_bound bound=" + man_text( kLimitSpecRecord )
+                        + " record=" + man_text( limit_size( grown.data(), 0 ) ) + " root=LimitRecord records=1 verdict=refused reason=" + limit_reason( load_why )
+                        + " parse=" + limit_reason( parse_why ) + " "
+                        + limit_counters( h.unknown, h.kind_mismatch, h.widened, h.clamped, h.duplicate, h.malformed ) );
+    return spill( dir, "hostile_limit_record.bin", hostile );
+}
+
+static bool limit_files( const char * dir )
+{
+    if ( !limit_depth_files( dir ) || !limit_record_files( dir ) ) { return false; }
+    std::string text;
+    for ( const std::string & line : g_limits ) { text += line + "\n"; }
+    return spill( dir, "limits.txt", std::vector<uint8_t>( text.begin(), text.end() ) );
+}
+// ---- the fixed form's hard limits: END ------------------------------------
+
 int main( int argc, char ** argv )
 {
     if ( argc != 2 ) { std::fprintf( stderr, "usage: %s <outdir>\n", argv[0] ); return 1; }
@@ -1500,6 +1825,8 @@ int main( int argc, char ** argv )
     // ==== BEGIN rowan/cpp-versioning-lists ====
     if ( !vlists_files( dir ) ) { return 1; }
     // ==== END rowan/cpp-versioning-lists =====
+    // THE HARD LIMITS, in limits.txt and not the manifest (limit_files)
+    if ( !limit_files( dir ) ) { return 1; }
     // ---- rowan/corpus-manifest ----
     // THE MANIFEST, beside the bytes it describes (§5.7 step 1, ruling #32)
     if ( !man_write( dir ) ) { return 1; }

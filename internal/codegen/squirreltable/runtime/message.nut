@@ -123,10 +123,16 @@ _M.AnnounceRead <- function(T, v, bytes, report) {
   local maxEntries = (("MaxEntries" in v) && v.MaxEntries > 0) ? v.MaxEntries : 4096;
   local maxBytes = (("MaxBytes" in v) && v.MaxBytes > 0) ? v.MaxBytes : 65536;
   local total=bytes.len(), trailer=total-8, entries=readU64(bytes,trailer);
+  // THE ANNOUNCEMENT IS A FILE (docs/SPEC-TABLES.md §3.3), so §3's id table
+  // rules come first: more than 4096 entries, or one id named twice, is malformed
+  if(entries<0||entries>4096||entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
   if(entries>maxEntries)return refuseAnnouncement(v,report,"vocabulary_too_large");
-  if(entries>(trailer-1)/8){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
-  local bodyEnd=trailer-entries*8, ids=[];
-  for(local i=0;i<entries;i++)ids.append(readU64(bytes,bodyEnd+i*8));
+  local bodyEnd=trailer-entries*8, ids=[], named={};
+  for(local i=0;i<entries;i++){
+    local id=readU64(bytes,bodyEnd+i*8);
+    if(id in named){if(report!=null)report.malformed=true;setSlot(v,"Refused",true);return false;}
+    named[id]<-true;ids.append(id);
+  }
   local state={b=bytes,at=1,end=bodyEnd,bad=false}, versionCount=0, wordsCount=0, words=null, build=0;
   for(;;){
     local ref=readLeb(bytes,state);if(state.bad){break;}if(ref==0)break;

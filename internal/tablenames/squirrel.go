@@ -68,7 +68,7 @@ func SquirrelDeclarationSuffixes() []string {
 var squirrelModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.nut)": {
 		"Announce", "AnnounceMeasure", "AnnounceRead", "BuildVersionBytes", "Cook", "CookMeasure", "CookReason",
-		"Descriptors", "Keyed", "Package", "Roots", "TableBlockAlign", "TableBlockByteOrderBytes",
+		"Descriptors", "Keyed", "Package", "Roots", "StorageLayout", "TableBlockAlign", "TableBlockByteOrderBytes",
 		"TableBlockMagicBytes", "TableCookByteOrderBytes", "TableCookHeaderBytes", "TableCookMagicBytes",
 		"TableCookMaxAlign", "TableDocNone", "TableMessageAnnouncement", "TableMessageBatchMax",
 		"TableMessageEntriesHere", "TableMessageIds", "TableMessageRefBitsHere", "TableRegionAlign", "TableRetainKnown",
@@ -79,7 +79,7 @@ var squirrelModuleKeys = map[string][]string{
 	"the runtime files (schema_table_*.nut), each its own module table": {
 		"AnnounceRead", "Begin", "Block", "BuildVersion", "Bytes", "Cook", "CookMeasure", "Create",
 		"DefaultLimits", "Destroy", "EditTextForm", "FromJson", "FromJsonTolerant", "LoadMessages",
-		"LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
+		"LoadMeasure", "LoadRetain", "LoadText", "LoadTextForm", "MeasureMessages", "MeasureRetain", "Names", "ReadStrict",
 		"ReadStrictNames", "Rows", "SaveMessages", "SaveRetain", "SaveText", "SaveTextForm",
 		"Set", "ToJson", "ToJsonMeasure", "blobOf", "blobOfHex", "get", "getF32", "getF64", "geti32", "keyed",
 		"link", "load", "loadTolerant", "mapWriteOrder", "measure", "numberForCook", "put", "putF32", "putF64", "puti32", "report", "save",

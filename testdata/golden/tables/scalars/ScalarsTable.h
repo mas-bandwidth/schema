@@ -120,7 +120,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -193,6 +194,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::scalardemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::scalardemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::scalardemo::vocabulary_too_large;
@@ -322,7 +324,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -330,15 +332,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -368,10 +370,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -452,7 +454,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -9599,28 +9601,28 @@ inline const TableTypeInfo * SimStateTableType()
     static const TableWideRange SimState_weights_wide = { { 0ull, 0ull }, { 25600ull, 0ull } };
     static const TableWideRange SimState_axes_wide = { { 18446743644212822016ull, 18446744073709551615ull }, { 429496729600ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "tilt", "tilt", "fixed(4, 4)", 0x1e5088ef2e9bafc6ull, 20, false, false, false, 0, (uint32_t) offsetof( SimState, tilt ), (uint32_t) sizeof( SimState::tilt ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 7.0, 0, 0, 0, 0, 4, &SimState_tilt_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "angle", "angle", "fixed(16, 16)", 0x401ab8cd06158638ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, angle ), (uint32_t) sizeof( SimState::angle ), 0xffffffffu, 0xffffffffu, NULL, true, -180.0, 180.0, 0, 0, 0, 0, 16, &SimState_angle_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "position", "position", "fixed(48, 16)", 0x4cbf3a26fca1d74aull, 23, false, false, false, 0, (uint32_t) offsetof( SimState, position ), (uint32_t) sizeof( SimState::position ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &SimState_position_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "reach", "reach", "fixed(112, 16)", 0x891da1f305deb858ull, 24, false, false, false, 0, (uint32_t) offsetof( SimState, reach ), (uint32_t) sizeof( SimState::reach ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+06, 1e+06, 0, 0, 0, 0, 16, &SimState_reach_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "ticks", "ticks", "fixed(32, 0)", 0x7fd9266c6a3e25b5ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, ticks ), (uint32_t) sizeof( SimState::ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1e+06, 0, 0, 0, 0, 0, &SimState_ticks_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "ratio", "ratio", "ufixed(4, 4)", 0xfbc924118177ade4ull, 25, false, false, false, 0, (uint32_t) offsetof( SimState, ratio ), (uint32_t) sizeof( SimState::ratio ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, 0, 0, 0, 4, &SimState_ratio_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "speed", "speed", "ufixed(16, 16)", 0x2281498aa0200e40ull, 27, false, false, false, 0, (uint32_t) offsetof( SimState, speed ), (uint32_t) sizeof( SimState::speed ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0, 0, 16, &SimState_speed_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "span", "span", "ufixed(48, 16)", 0x8b7dc019093cd0e1ull, 28, false, false, false, 0, (uint32_t) offsetof( SimState, span ), (uint32_t) sizeof( SimState::span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 0, 16, &SimState_span_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "mass", "mass", "ufixed(112, 16)", 0x1f3757a2ce7b0ab1ull, 29, false, false, false, 0, (uint32_t) offsetof( SimState, mass ), (uint32_t) sizeof( SimState::mass ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2e+06, 0, 0, 0, 0, 16, &SimState_mass_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "frames", "frames", "ufixed(32, 0)", 0x23e5906728b4e66full, 27, false, false, false, 0, (uint32_t) offsetof( SimState, frames ), (uint32_t) sizeof( SimState::frames ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 0, 0, &SimState_frames_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, flux ), (uint32_t) sizeof( SimState::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &SimState_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "energy", "energy", "int128", 0xf2fd4f9140ef2f15ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, energy ), (uint32_t) sizeof( SimState::energy ), 0xffffffffu, 0xffffffffu, NULL, true, -5e+09, 5e+09, 0, 0, 0, 0, 0, &SimState_energy_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "entity_id", "entity_id", "uint128", 0x23fcfd6678e36712ull, 19, false, false, false, 0, (uint32_t) offsetof( SimState, entity_id ), (uint32_t) sizeof( SimState::entity_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "scale", "scale", "fixed(16, 16)", 0x6aacb9fbb71a1d91ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, scale ), (uint32_t) sizeof( SimState::scale ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_scale_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "samples", "samples", "fixed(16, 16)", 0xe3b1ca6a3b48dddcull, 22, true, false, false, 3, (uint32_t) offsetof( SimState, samples ), (uint32_t) sizeof( SimState::samples[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_samples_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "weights", "weights", "ufixed(8, 8)", 0xb1494b6ef08a411eull, 26, true, true, false, 4, (uint32_t) offsetof( SimState, weights ), (uint32_t) sizeof( SimState::weights[0] ), (uint32_t) offsetof( SimState, weights_count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0, 0, 0, 0, 8, &SimState_weights_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "axes", "axes", "fixed(32, 32)", 0x32969e840d9c67b8ull, 23, true, false, false, (int32_t) Axis::Max, (uint32_t) offsetof( SimState, axes ), (uint32_t) sizeof( SimState::axes.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -100.0, 100.0, 0, 0, 0, 0, 32, &SimState_axes_wide, -1, NULL, NULL, "Axis", +[]( uint64_t v ) { return EnumName( Axis( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Axis( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "seeds", "seeds", "uint128", 0x5af1ac301b4ae16dull, 19, true, true, false, 2, (uint32_t) offsetof( SimState, seeds ), (uint32_t) sizeof( SimState::seeds[0] ), (uint32_t) offsetof( SimState, seeds_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (uint32_t) offsetof( SimState, pose ), (uint32_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (uint32_t) offsetof( SimState, spawn ), (uint32_t) sizeof( SimState::spawn ), 0xffffffffu, (uint32_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "tilt", "tilt", "fixed(4, 4)", 0x1e5088ef2e9bafc6ull, 20, false, false, false, 0, (int64_t) offsetof( SimState, tilt ), (int64_t) sizeof( SimState::tilt ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 7.0, 0, 0, 0, 0, 4, &SimState_tilt_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "angle", "angle", "fixed(16, 16)", 0x401ab8cd06158638ull, 22, false, false, false, 0, (int64_t) offsetof( SimState, angle ), (int64_t) sizeof( SimState::angle ), 0xffffffffu, 0xffffffffu, NULL, true, -180.0, 180.0, 0, 0, 0, 0, 16, &SimState_angle_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "fixed(48, 16)", 0x4cbf3a26fca1d74aull, 23, false, false, false, 0, (int64_t) offsetof( SimState, position ), (int64_t) sizeof( SimState::position ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &SimState_position_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "reach", "reach", "fixed(112, 16)", 0x891da1f305deb858ull, 24, false, false, false, 0, (int64_t) offsetof( SimState, reach ), (int64_t) sizeof( SimState::reach ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+06, 1e+06, 0, 0, 0, 0, 16, &SimState_reach_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "ticks", "ticks", "fixed(32, 0)", 0x7fd9266c6a3e25b5ull, 22, false, false, false, 0, (int64_t) offsetof( SimState, ticks ), (int64_t) sizeof( SimState::ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1e+06, 0, 0, 0, 0, 0, &SimState_ticks_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "ratio", "ratio", "ufixed(4, 4)", 0xfbc924118177ade4ull, 25, false, false, false, 0, (int64_t) offsetof( SimState, ratio ), (int64_t) sizeof( SimState::ratio ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, 0, 0, 0, 4, &SimState_ratio_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "speed", "speed", "ufixed(16, 16)", 0x2281498aa0200e40ull, 27, false, false, false, 0, (int64_t) offsetof( SimState, speed ), (int64_t) sizeof( SimState::speed ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0, 0, 16, &SimState_speed_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "span", "span", "ufixed(48, 16)", 0x8b7dc019093cd0e1ull, 28, false, false, false, 0, (int64_t) offsetof( SimState, span ), (int64_t) sizeof( SimState::span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 0, 16, &SimState_span_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "mass", "mass", "ufixed(112, 16)", 0x1f3757a2ce7b0ab1ull, 29, false, false, false, 0, (int64_t) offsetof( SimState, mass ), (int64_t) sizeof( SimState::mass ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2e+06, 0, 0, 0, 0, 16, &SimState_mass_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "frames", "frames", "ufixed(32, 0)", 0x23e5906728b4e66full, 27, false, false, false, 0, (int64_t) offsetof( SimState, frames ), (int64_t) sizeof( SimState::frames ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 0, 0, &SimState_frames_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (int64_t) offsetof( SimState, flux ), (int64_t) sizeof( SimState::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &SimState_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "energy", "energy", "int128", 0xf2fd4f9140ef2f15ull, 18, false, false, false, 0, (int64_t) offsetof( SimState, energy ), (int64_t) sizeof( SimState::energy ), 0xffffffffu, 0xffffffffu, NULL, true, -5e+09, 5e+09, 0, 0, 0, 0, 0, &SimState_energy_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "entity_id", "entity_id", "uint128", 0x23fcfd6678e36712ull, 19, false, false, false, 0, (int64_t) offsetof( SimState, entity_id ), (int64_t) sizeof( SimState::entity_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "scale", "scale", "fixed(16, 16)", 0x6aacb9fbb71a1d91ull, 22, false, false, false, 0, (int64_t) offsetof( SimState, scale ), (int64_t) sizeof( SimState::scale ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_scale_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "samples", "samples", "fixed(16, 16)", 0xe3b1ca6a3b48dddcull, 22, true, false, false, 3, (int64_t) offsetof( SimState, samples ), (int64_t) sizeof( SimState::samples[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_samples_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "weights", "weights", "ufixed(8, 8)", 0xb1494b6ef08a411eull, 26, true, true, false, 4, (int64_t) offsetof( SimState, weights ), (int64_t) sizeof( SimState::weights[0] ), (int64_t) offsetof( SimState, weights_count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0, 0, 0, 0, 8, &SimState_weights_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "axes", "axes", "fixed(32, 32)", 0x32969e840d9c67b8ull, 23, true, false, false, (int32_t) Axis::Max, (int64_t) offsetof( SimState, axes ), (int64_t) sizeof( SimState::axes.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -100.0, 100.0, 0, 0, 0, 0, 32, &SimState_axes_wide, -1, NULL, NULL, "Axis", +[]( uint64_t v ) { return EnumName( Axis( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Axis( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "seeds", "seeds", "uint128", 0x5af1ac301b4ae16dull, 19, true, true, false, 2, (int64_t) offsetof( SimState, seeds ), (int64_t) sizeof( SimState::seeds[0] ), (int64_t) offsetof( SimState, seeds_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (int64_t) offsetof( SimState, pose ), (int64_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (int64_t) offsetof( SimState, spawn ), (int64_t) sizeof( SimState::spawn ), 0xffffffffu, (int64_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "SimState", (uint32_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "SimState", (int64_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -9630,11 +9632,11 @@ inline const TableTypeInfo * PoseTableType()
     static const TableWideRange Pose_y_wide = { { 18446744071743471616ull, 18446744073709551615ull }, { 1966080000ull, 0ull } };
     static const TableWideRange Pose_heading_wide = { { 0ull, 0ull }, { 23592960ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "x", "x", "fixed(48, 16)", 0xaf63f54c86021707ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, x ), (uint32_t) sizeof( Pose::x ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_x_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, y ), (uint32_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (uint32_t) offsetof( Pose, heading ), (uint32_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "x", "x", "fixed(48, 16)", 0xaf63f54c86021707ull, 23, false, false, false, 0, (int64_t) offsetof( Pose, x ), (int64_t) sizeof( Pose::x ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_x_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (int64_t) offsetof( Pose, y ), (int64_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (int64_t) offsetof( Pose, heading ), (int64_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "Pose", (uint32_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "Pose", (int64_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -9668,6 +9670,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // SCALARDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // SimStateLoadTextForm reads one SimState from the hand-editable text form
@@ -9675,6 +9692,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool SimStateLoadTextForm( const char * text, int64_t bytes, SimState & value, const char ** refusal );
+
+// SimStateLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool SimStateLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, SimState & value, const char ** refusal );
 
 // SimStateLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -9700,6 +9721,10 @@ bool SimStateEditTextForm( const char * document, int64_t document_bytes, const 
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PoseLoadTextForm( const char * text, int64_t bytes, Pose & value, const char ** refusal );
+
+// PoseLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PoseLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, Pose & value, const char ** refusal );
 
 // PoseLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

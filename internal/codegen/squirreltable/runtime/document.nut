@@ -326,9 +326,16 @@ local newNode = function(kind, start, end, text) {
     path = "", pathed = false, pairs = false, canon = null, comments = [] };
 };
 
-// newParser: p.err is the first refusal, [name, offset]
+// newParser: p.err is the first refusal, [name, offset]. THE SOURCE AS AN
+// ARRAY OF BYTES: indexing a blob is a native metamethod, and the interpreter
+// cannot grow its stack inside one, so a document nested to the depth limit
+// would die in the lexer rather than parse. A source past the byte limit is
+// refused before a byte is read, so it is not copied.
 local newParser = function(src, limits) {
-  return { src = src, n = src.len(), pos = 0, limits = limits, tokens = 0, nodes = 0,
+  local n = src.len();
+  local bytes = array(n <= limits.bytes ? n : 0);
+  for (local i = 0; i < bytes.len(); i++) bytes[i] = src[i] & 0xff;
+  return { src = bytes, n = n, pos = 0, limits = limits, tokens = 0, nodes = 0,
     alloc = 0, cur = null, outside = [], err = null };
 };
 

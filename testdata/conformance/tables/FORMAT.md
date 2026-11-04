@@ -40,6 +40,7 @@ unit         <key> <schema path>...
 instance     <name> <unit> <root> <wire file> [no-text]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
+announce-grown <name> <message> <entries> <distinct|repeat> <message|malformed>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
 report       <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
@@ -85,6 +86,21 @@ refusal      <forgery> <reason>
   variable table carries no message bytes, and every leg answers it absent,
   writing `<name>.absent` holding exactly
   `variable table: the message form is fixed tables only (SPEC-TABLES §3.3)`.
+- **`announce-grown`** reads one `message` row again over its connection's
+  announcement with the announcement's id table grown to `<entries>` entries
+  (docs/SPEC-TABLES.md §3: a table of more than 4096 entries is malformed,
+  and so is one that names an id twice; §3.3: the announcement is a file).
+  The added ids are named by nothing in the body; `repeat` makes the last
+  entry the first. The harness grows the table from the committed
+  announcement when it materialises the fixtures and hands a driver an
+  ordinary `connection` line keyed by `<name>` and an ordinary `message` line
+  on it, so the answer stays withheld. `message` owes the row's message
+  golden, because an announcement the read accepts announces the connection's
+  own vocabulary. `malformed` owes the named absence: the read refuses the
+  announcement as damage, sets no vocabulary, and every leg writes
+  `<name>.absent` holding exactly
+  `malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)`.
+  A leg that writes that reason on a row the reference accepts fails the row.
   The harness checks the reason; bytes, or any other reason, are a failure. A
   row is a refusal row exactly when its root is a variable table, which the
   harness's own tests hold.

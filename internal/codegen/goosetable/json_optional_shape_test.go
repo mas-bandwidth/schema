@@ -170,7 +170,7 @@ func TestGooseJSONOptionalKeyIsPresence(t *testing.T) {
 func TestGooseJSONOptionalKeyIsPresenceNegativeControl(t *testing.T) {
 	t.Parallel()
 	got := jsonOptionalRun(t, func(files map[string][]byte) {
-		const anchor = "                if !json_skip_value(jr, depth + 1) { return false; }\n                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }\n"
+		const anchor = "                if !json_skip_value(jr, depth + 1) { return false; }\n                if optional {\n                    s.op = JsonOpPresent;\n                    return true;\n                }\n"
 		const reversed = "                if !json_skip_value(jr, depth + 1) { return false; }\n"
 		var hit string
 		for name, data := range files {

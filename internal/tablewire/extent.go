@@ -6,45 +6,81 @@ import (
 	"math"
 )
 
+// ReasonStorageOverCap names the refusal of a wire whose region measure passes
+// the storage cap, ir.MaxSizeBytes (docs/SPEC-TABLES.md §6.5, §11).
+const ReasonStorageOverCap = "storage_over_cap"
+
+// StorageRefusal is the read's refusal of a wire whose region measure passes
+// the storage cap (docs/SPEC-TABLES.md §11). The read refuses it before it
+// builds any value, so the model's memory is bounded by the wire rather than
+// by the storage the wire commands. The report carries Refused and the name.
+type StorageRefusal struct{}
+
+func (*StorageRefusal) Error() string {
+	return ReasonStorageOverCap + ": the wire's region measure passes the 2^40-byte storage cap (docs/SPEC-TABLES.md §11)"
+}
+
 // FileRegionMeasure derives canonical region storage from framing, before
 // decoding values. In particular, dropped map entries still consume the
 // array extent declared on the wire. Generated runtimes never call this
-// independent compiler-side oracle.
+// independent compiler-side oracle. A wire past the storage cap answers -1,
+// whole and refused; FileRegionMeasureReason names it.
 func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, whole, refused bool) {
+	bytes, whole, refused, _ = FileRegionMeasureReason(u, root, data)
+	return bytes, whole, refused
+}
+
+// FileRegionMeasureReason is FileRegionMeasure with the refusal's name:
+// ReasonStorageOverCap for a wire whose measure passes the storage cap, and
+// empty for every other answer.
+func FileRegionMeasureReason(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, whole, refused bool, reason string) {
 	if len(data) == 0 || data[0] != ir.TableWireForm {
-		return 0, false, false
+		return 0, false, false, ""
 	}
 	var valid bool
 	data, valid = fileIntegrityBody(root, data)
 	if !valid {
-		return 0, false, false
+		return 0, false, false, ""
 	}
 	body, ids, ok := trailer(data)
 	if len(data) == 0 || data[0] != ir.TableWireForm || !ok {
-		return 0, false, false
+		return 0, false, false, ""
 	}
+	return regionMeasure(u, root, body, ids)
+}
+
+// regionMeasure is the measure over a body and its id table. Every term is
+// held under the storage cap before it is added: a list or map extent
+// (count times element size) in extentScan.field, a record after its scan,
+// and the running total after each node record and at the end, so no sum
+// passes the cap and none overflows.
+func regionMeasure(u *ir.Unit, root *ir.Struct, body []byte, ids []uint64) (bytes int64, whole, refused bool, reason string) {
+	over := func() (int64, bool, bool, string) { return -1, true, true, ReasonStorageOverCap }
 	align := ir.TableRegionAlign(u)
 	round := func(n int64) int64 { return (n + align - 1) & -align }
-	size := func(st *ir.Struct, body []byte) (int64, bool) {
+	size := func(st *ir.Struct, body []byte) (n int64, ok, capped bool) {
 		walk := extentScan{u: u, ids: ids}
 		if !walk.record(st, body) {
-			return 0, false
+			return 0, false, walk.over
 		}
-		return round(round(ir.RecordLayout(u, st).Size) + walk.at), true
+		return round(round(ir.RecordLayout(u, st).Size) + walk.at), true, false
 	}
-	total, ok := size(root, body)
+	total, ok, capped := size(root, body)
+	if capped || ok && total > ir.MaxSizeBytes {
+		return over()
+	}
 	if !ok {
-		return -1, true, true
+		return -1, true, true, ""
 	}
 	payload, present, framed := nodeTableBytes(body, ids, &tabletext.Report{})
 	if present && !framed {
-		return 0, false, false
+		return 0, false, false, ""
 	}
 	var records []nodeRecord
 	if present {
 		records, ok = scanNodeRecords(payload, ids)
 		if !ok {
-			return 0, false, false
+			return 0, false, false, ""
 		}
 	}
 	nodes := map[uint64]*ir.Struct{}
@@ -54,14 +90,17 @@ func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, w
 	bytesBlob, stringBlob := ir.PointerReachableBlobs(root)
 	for _, rec := range records {
 		if st := nodes[rec.TypeId]; st != nil {
-			n, ok := size(st, rec.Body)
+			n, ok, capped := size(st, rec.Body)
+			if capped {
+				return over()
+			}
 			if !ok {
-				return -1, true, true
+				return -1, true, true, ""
 			}
 			total += n
 		} else if rec.TypeId == ir.BytesWireTypeId && bytesBlob || rec.TypeId == ir.StringWireTypeId && stringBlob {
 			if uint64(len(rec.Body)) > math.MaxUint32 {
-				return -1, true, true
+				return -1, true, true, ""
 			}
 			n := int64(8 + len(rec.Body))
 			if rec.TypeId == ir.StringWireTypeId {
@@ -69,14 +108,32 @@ func FileRegionMeasure(u *ir.Unit, root *ir.Struct, data []byte) (bytes int64, w
 			}
 			total += round(n)
 		}
+		// each term is at most the cap, so the sum is checked after every
+		// record and never overflows
+		if total > ir.MaxSizeBytes {
+			return over()
+		}
 	}
-	return total + int64(len(records)+1)*16, true, false
+	total += int64(len(records)+1) * 16
+	if total > ir.MaxSizeBytes {
+		return over()
+	}
+	return total, true, false, ""
+}
+
+// storageOverCap answers whether a variable root's region measure passes the
+// storage cap. The read asks it before it builds anything.
+func storageOverCap(u *ir.Unit, root *ir.Struct, body []byte, ids []uint64) bool {
+	_, _, _, reason := regionMeasure(u, root, body, ids)
+	return reason == ReasonStorageOverCap
 }
 
 type extentScan struct {
 	u   *ir.Unit
 	ids []uint64
 	at  int64
+	// over says the scan stopped at a term past the storage cap
+	over bool
 }
 
 func (s *extentScan) reader(body []byte) wireReader { return wireReader{buf: body, ids: s.ids} }
@@ -197,6 +254,11 @@ func (s *extentScan) field(f *ir.Field, body []byte) bool {
 				return false
 			}
 			s.at = (s.at + align - 1) & -align
+			// the term is held under the storage cap before it is added
+			if count > 0 && size > 0 && int64(count) > (ir.MaxSizeBytes-s.at)/size {
+				s.over = true
+				return false
+			}
 			s.at += int64(count) * size
 		}
 		if kind == ir.TableKindString && ir.TextListUnbounded(f) {
@@ -260,6 +322,10 @@ func (s *extentScan) unboundedText(n int64) bool {
 	align := ir.TableRegionAlign(s.u)
 	s.at = (s.at + 7) & -8
 	s.at += (9 + n + align - 1) & -align
+	if s.at > ir.MaxSizeBytes {
+		s.over = true
+		return false
+	}
 	return true
 }
 func (s *extentScan) union(r *wireReader, un *ir.Union) bool {

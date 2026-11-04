@@ -681,7 +681,9 @@ public final class TableCookWrite {
             put(out, order, at, order == BIG ? hi : lo, 8);
             put(out, order, at + 8, order == BIG ? lo : hi, 8);
         } else {
-            put(out, order, at, bits(source, f.storage, f.elemSize), f.elemSize);
+            // a scalar slot is at most eight bytes wide, so its width is an int
+            int width = (int) f.elemSize;
+            put(out, order, at, bits(source, f.storage, width), width);
         }
     }
 

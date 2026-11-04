@@ -404,6 +404,10 @@ func emitDescriptor(g *goose.Gen, t *ir.Struct) {
 		lit.add("fields", "_"+t.Name+"Fields")
 	}
 	annotate(g, &lit, "_"+t.Name+"Tags", t.Doc, t.Tags)
+	layout := ir.RecordLayout(g.Unit, t)
+	lit.add("size", fmt.Sprint(layout.Size))
+	lit.add("align", fmt.Sprint(layout.Align))
+	lit.add("ralign", fmt.Sprint(ir.TableRegionAlign(g.Unit)))
 	g.Pf("// %sDescriptor — %s as data: node type id, class, and one entry per field\n", t.Name, t.Name)
 	g.Pf("// (docs/SPEC-TABLES.md §3, §8.1)\n")
 	g.Pf("let %sDescriptor: %s::TableDesc = %s;\n\n", t.Name, goose.RuntimeNamespace, lit.render("TableDesc"))
@@ -548,6 +552,17 @@ func fieldDescWire(g *goose.Gen, owner string, f *ir.Field, ordinal, tag int, wi
 		annotateField(g, &l, owner, f, ordinal, tag)
 		if f.IsTextList() && f.TextTotal > 0 {
 			l.add("text_total", fmt.Sprint(f.TextTotal))
+		}
+		// the extent term the storage measure sums (docs/SPEC-TABLES.md §6.5, §11)
+		switch {
+		case f.IsMap():
+			entry := ir.RecordLayout(g.Unit, f.MapEntry)
+			l.add("es", fmt.Sprint(entry.Size))
+			l.add("ea", fmt.Sprint(entry.Align))
+		case f.Array == ir.ArrayList:
+			size, align := ir.ListElementLayout(g.Unit, f)
+			l.add("es", fmt.Sprint(size))
+			l.add("ea", fmt.Sprint(align))
 		}
 		return l.render("FieldDesc")
 	}

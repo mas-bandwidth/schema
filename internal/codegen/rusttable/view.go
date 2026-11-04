@@ -445,8 +445,8 @@ pub struct TableFieldInfo {
     pub kind: u8,
     pub optional: bool,
     pub array_bound: i64,
-    pub offset: u32,
-    pub size: u32,
+    pub offset: u64,
+    pub size: u64,
     pub table: Option<&'static TableTypeInfo>,
     pub arms: Option<&'static TableUnionInfo>,
     pub doc: &'static str,
@@ -460,7 +460,7 @@ pub struct TableFieldInfo {
 #[derive(Clone, Copy)]
 pub struct TableTypeInfo {
     pub name: &'static str,
-    pub size: u32,
+    pub size: u64,
     pub num_fields: i32,
     pub fields: &'static [TableFieldInfo],
     pub doc: &'static str,
@@ -474,7 +474,7 @@ pub struct TableTypeInfo {
 #[derive(Clone, Copy)]
 pub struct TableUnionArmInfo {
     pub void: bool,
-    pub offset: u32,
+    pub offset: u64,
     pub table: Option<&'static TableTypeInfo>,
     pub field: Option<&'static TableFieldInfo>,
 }

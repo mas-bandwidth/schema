@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -342,7 +343,10 @@ func TestCountRefusalDiscardsTheWholeLoadCPP(t *testing.T) {
 	}
 }
 
-func runCPPCountRefusalProbe(t *testing.T, u *ir.Unit, body string) ([]byte, error) {
+// runCPPCountRefusalProbe compiles body into main over the unit's table
+// headers and any further generated headers whose names end in one of
+// include, then runs it.
+func runCPPCountRefusalProbe(t *testing.T, u *ir.Unit, body string, include ...string) ([]byte, error) {
 	t.Helper()
 	cxx := os.Getenv("CXX")
 	if cxx == "" {
@@ -370,7 +374,7 @@ func runCPPCountRefusalProbe(t *testing.T, u *ir.Unit, body string) ([]byte, err
 		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if strings.HasSuffix(name, "Table.h") {
+		if strings.HasSuffix(name, "Table.h") || slices.ContainsFunc(include, func(suffix string) bool { return strings.HasSuffix(name, suffix) }) {
 			headers = append(headers, name)
 		}
 		if strings.HasSuffix(name, ".cpp") {

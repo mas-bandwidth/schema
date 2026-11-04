@@ -5059,11 +5059,11 @@ func TeamConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount))
+		ed := dst + uint32(tableOffsetof[TeamConfig]("SpawnCount"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 4, Dst: dst + uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // banner
+	out[n] = TableFixedEntry{Src: src + 4, Dst: dst + uint32(tableOffsetof[TeamConfig]("BannerLength")), Size: 16, Aux: dst + uint32(tableOffsetof[TeamConfig]("Banner")), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // banner
 	n++
 	return n
 }
@@ -5078,13 +5078,13 @@ func GunnerConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(GunnerConfig{}.Reaction))
+		ed := dst + uint32(tableOffsetof[GunnerConfig]("Reaction"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(GunnerConfig{}.Tracking))
+		ed := dst + uint32(tableOffsetof[GunnerConfig]("Tracking"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
 		n++
 	}
@@ -5106,21 +5106,21 @@ func TurretConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLin
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Damage))
+		ed := dst + uint32(tableOffsetof[TurretConfig]("Damage"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Cooldown))
+		ed := dst + uint32(tableOffsetof[TurretConfig]("Cooldown"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 8, Dst: dst + uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
+	out[n] = TableFixedEntry{Src: src + 8, Dst: dst + uint32(tableOffsetof[TurretConfig]("GunnerPresent")), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool} // gunner present
 	n++
 	{
 		es := src + 9
-		ed := dst + uint32(unsafe.Offsetof(TurretConfig{}.Gunner))
+		ed := dst + uint32(tableOffsetof[TurretConfig]("Gunner"))
 		n += GunnerConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
@@ -5145,19 +5145,19 @@ func HullConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	n := 0
 	{
 		es := src + 0
-		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Health))
+		ed := dst + uint32(tableOffsetof[HullConfig]("Health"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	{
 		es := src + 4
-		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Mass))
+		ed := dst + uint32(tableOffsetof[HullConfig]("Mass"))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
 	for i := range uint32(3) {
 		es := src + 8 + i*14
-		ed := dst + uint32(unsafe.Offsetof(HullConfig{}.Turrets)) + i*uint32(unsafe.Sizeof(TurretConfig{}))
+		ed := dst + uint32(tableOffsetof[HullConfig]("Turrets")) + i*uint32(tableSizeof[TurretConfig]())
 		n += TurretConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
@@ -5175,7 +5175,7 @@ func ScoreBoardFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 	n := 0
 	for i := range uint32(3) {
 		es := src + 0 + i*4
-		ed := dst + uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)) + i*uint32(unsafe.Sizeof(int32(0)))
+		ed := dst + uint32(tableOffsetof[ScoreBoardRow]("PerTeam")) + i*uint32(unsafe.Sizeof(int32(0)))
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
@@ -5192,17 +5192,17 @@ func KeyedConfigFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink
 	n := 0
 	for i := range uint32(3) {
 		es := src + 0 + i*24
-		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Teams)) + i*uint32(unsafe.Sizeof(TeamConfig{}))
+		ed := dst + uint32(tableOffsetof[KeyedConfig]("Teams")) + i*uint32(tableSizeof[TeamConfig]())
 		n += TeamConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	for i := range uint32(3) {
 		es := src + 72 + i*50
-		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)) + i*uint32(unsafe.Sizeof(HullConfig{}))
+		ed := dst + uint32(tableOffsetof[KeyedConfig]("Hulls")) + i*uint32(tableSizeof[HullConfig]())
 		n += HullConfigFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	{
 		es := src + 222
-		ed := dst + uint32(unsafe.Offsetof(KeyedConfig{}.Scores))
+		ed := dst + uint32(tableOffsetof[KeyedConfig]("Scores"))
 		n += ScoreBoardFixedLeaves(out[n:], links[n:], es, ed)
 	}
 	return n
@@ -5460,9 +5460,9 @@ var TeamConfigFixedLayout = []byte{
 }
 
 var TeamConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // TeamConfig
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // TeamConfig
+	{Dst: uint32(tableOffsetof[TeamConfig]("SpawnCount")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // spawn_count
+	{Dst: uint32(tableOffsetof[TeamConfig]("BannerLength")), Stride: 0, Aux: uint32(tableOffsetof[TeamConfig]("Banner")), Counted: 0, Arg: 1, Meta: 1}, // banner
 }
 
 var TeamConfigFixedPlan = tableFixedBuildPlan(TeamConfigFixedLeaves, 2)
@@ -5492,7 +5492,7 @@ var TeamConfigFixedLineagePlans = tableFixedLineagePlans(TeamConfigFixedKnown, T
 var TeamConfigFixedResetImage = func() []byte {
 	var def TeamConfig
 	TeamConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), tableSizeof[TeamConfig]())
 }()
 
 var TeamConfigFixedHoles = tableFixedHoles(TeamConfigFixedPlan.Entries, TeamConfigFixedPlan.Count, uint32(len(TeamConfigFixedResetImage)))
@@ -5686,7 +5686,7 @@ func TeamConfigFixedLoadTolerant(values []TeamConfig, data []byte, plan []TableF
 		}
 	}
 	for k := range n {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), tableSizeof[TeamConfig]())
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5719,9 +5719,9 @@ var GunnerConfigFixedLayout = []byte{
 }
 
 var GunnerConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // GunnerConfig
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                               // GunnerConfig
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Reaction")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // reaction
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Tracking")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // tracking
 }
 
 var GunnerConfigFixedPlan = tableFixedBuildPlan(GunnerConfigFixedLeaves, 2)
@@ -5751,7 +5751,7 @@ var GunnerConfigFixedLineagePlans = tableFixedLineagePlans(GunnerConfigFixedKnow
 var GunnerConfigFixedResetImage = func() []byte {
 	var def GunnerConfig
 	GunnerConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), tableSizeof[GunnerConfig]())
 }()
 
 var GunnerConfigFixedHoles = tableFixedHoles(GunnerConfigFixedPlan.Entries, GunnerConfigFixedPlan.Count, uint32(len(GunnerConfigFixedResetImage)))
@@ -5945,7 +5945,7 @@ func GunnerConfigFixedLoadTolerant(values []GunnerConfig, data []byte, plan []Ta
 		}
 	}
 	for k := range n {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), tableSizeof[GunnerConfig]())
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -5987,13 +5987,13 @@ var TurretConfigFixedLayout = []byte{
 }
 
 var TurretConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                     // TurretConfig
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0}, // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // TurretConfig
+	{Dst: uint32(tableOffsetof[TurretConfig]("Damage")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // damage
+	{Dst: uint32(tableOffsetof[TurretConfig]("Cooldown")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(tableOffsetof[TurretConfig]("GunnerPresent")), Counted: 0, Arg: 0, Meta: 0}, // gunner ?
+	{Dst: uint32(tableOffsetof[TurretConfig]("Gunner")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},        // gunner
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Reaction")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // reaction
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Tracking")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},      // tracking
 }
 
 var TurretConfigFixedPlan = tableFixedBuildPlan(TurretConfigFixedLeaves, 5)
@@ -6027,7 +6027,7 @@ var TurretConfigFixedLineagePlans = tableFixedLineagePlans(TurretConfigFixedKnow
 var TurretConfigFixedResetImage = func() []byte {
 	var def TurretConfig
 	TurretConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), tableSizeof[TurretConfig]())
 }()
 
 var TurretConfigFixedHoles = tableFixedHoles(TurretConfigFixedPlan.Entries, TurretConfigFixedPlan.Count, uint32(len(TurretConfigFixedResetImage)))
@@ -6221,7 +6221,7 @@ func TurretConfigFixedLoadTolerant(values []TurretConfig, data []byte, plan []Ta
 		}
 	}
 	for k := range n {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), tableSizeof[TurretConfig]())
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -6272,21 +6272,21 @@ var HullConfigFixedLayout = []byte{
 }
 
 var HullConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // HullConfig
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                      // health
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                        // mass
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // turrets
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Weapon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Cannon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Missile
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // Mine
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                 // element
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                             // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // tracking
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // HullConfig
+	{Dst: uint32(tableOffsetof[HullConfig]("Health")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                    // health
+	{Dst: uint32(tableOffsetof[HullConfig]("Mass")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                      // mass
+	{Dst: uint32(tableOffsetof[HullConfig]("Turrets")), Stride: uint32(tableSizeof[TurretConfig]()), Aux: 0, Counted: 0, Arg: 0, Meta: 0}, // turrets
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // Weapon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // Cannon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // Missile
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                              // element
+	{Dst: uint32(tableOffsetof[TurretConfig]("Damage")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // damage
+	{Dst: uint32(tableOffsetof[TurretConfig]("Cooldown")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(tableOffsetof[TurretConfig]("GunnerPresent")), Counted: 0, Arg: 0, Meta: 0},                           // gunner ?
+	{Dst: uint32(tableOffsetof[TurretConfig]("Gunner")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                  // gunner
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Reaction")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                // reaction
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Tracking")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                // tracking
 }
 
 var HullConfigFixedPlan = tableFixedBuildPlan(HullConfigFixedLeaves, 17)
@@ -6329,7 +6329,7 @@ var HullConfigFixedLineagePlans = tableFixedLineagePlans(HullConfigFixedKnown, H
 var HullConfigFixedResetImage = func() []byte {
 	var def HullConfig
 	HullConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), tableSizeof[HullConfig]())
 }()
 
 var HullConfigFixedHoles = tableFixedHoles(HullConfigFixedPlan.Entries, HullConfigFixedPlan.Count, uint32(len(HullConfigFixedResetImage)))
@@ -6523,7 +6523,7 @@ func HullConfigFixedLoadTolerant(values []HullConfig, data []byte, plan []TableF
 		}
 	}
 	for k := range n {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), tableSizeof[HullConfig]())
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -6610,42 +6610,42 @@ var KeyedConfigFixedLayout = []byte{
 }
 
 var KeyedConfigFixedDst = []TableFixedDst{
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // KeyedConfig
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), Stride: uint32(unsafe.Sizeof(TeamConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // teams
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // spawn_count
-	{Dst: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), Stride: 0, Aux: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), Counted: 0, Arg: 1, Meta: 1}, // banner
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), Stride: uint32(unsafe.Sizeof(HullConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // hulls
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Hull
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Interceptor
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Gunship
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Freighter
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Health)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                  // health
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Mass)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                    // mass
-	{Dst: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), Stride: uint32(unsafe.Sizeof(TurretConfig{})), Aux: 0, Counted: 0, Arg: 0, Meta: 0},             // turrets
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Weapon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Cannon
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Missile
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Mine
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // damage
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // cooldown
-	{Dst: 0, Stride: 0, Aux: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)), Counted: 0, Arg: 0, Meta: 0},                                         // gunner ?
-	{Dst: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // gunner
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // reaction
-	{Dst: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                              // tracking
-	{Dst: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                 // scores
-	{Dst: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                // per_team
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Team
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Red
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Blue
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // Green
-	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                             // element
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // KeyedConfig
+	{Dst: uint32(tableOffsetof[KeyedConfig]("Teams")), Stride: uint32(tableSizeof[TeamConfig]()), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                 // teams
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Team
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Red
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Blue
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Green
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // element
+	{Dst: uint32(tableOffsetof[TeamConfig]("SpawnCount")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // spawn_count
+	{Dst: uint32(tableOffsetof[TeamConfig]("BannerLength")), Stride: 0, Aux: uint32(tableOffsetof[TeamConfig]("Banner")), Counted: 0, Arg: 1, Meta: 1}, // banner
+	{Dst: uint32(tableOffsetof[KeyedConfig]("Hulls")), Stride: uint32(tableSizeof[HullConfig]()), Aux: 0, Counted: 0, Arg: 0, Meta: 0},                 // hulls
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Hull
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Interceptor
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Gunship
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Freighter
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // element
+	{Dst: uint32(tableOffsetof[HullConfig]("Health")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                 // health
+	{Dst: uint32(tableOffsetof[HullConfig]("Mass")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                   // mass
+	{Dst: uint32(tableOffsetof[HullConfig]("Turrets")), Stride: uint32(tableSizeof[TurretConfig]()), Aux: 0, Counted: 0, Arg: 0, Meta: 0},              // turrets
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Weapon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Cannon
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Missile
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Mine
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // element
+	{Dst: uint32(tableOffsetof[TurretConfig]("Damage")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                               // damage
+	{Dst: uint32(tableOffsetof[TurretConfig]("Cooldown")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // cooldown
+	{Dst: 0, Stride: 0, Aux: uint32(tableOffsetof[TurretConfig]("GunnerPresent")), Counted: 0, Arg: 0, Meta: 0},                                        // gunner ?
+	{Dst: uint32(tableOffsetof[TurretConfig]("Gunner")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                               // gunner
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Reaction")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // reaction
+	{Dst: uint32(tableOffsetof[GunnerConfig]("Tracking")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                             // tracking
+	{Dst: uint32(tableOffsetof[KeyedConfig]("Scores")), Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                // scores
+	{Dst: uint32(tableOffsetof[ScoreBoardRow]("PerTeam")), Stride: uint32(unsafe.Sizeof(int32(0))), Aux: 0, Counted: 0, Arg: 0, Meta: 0},               // per_team
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Team
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Red
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Blue
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // Green
+	{Dst: 0, Stride: 0, Aux: 0, Counted: 0, Arg: 0, Meta: 0},                                                                                           // element
 }
 
 var KeyedConfigFixedPlan = tableFixedBuildPlan(KeyedConfigFixedLeaves, 60)
@@ -6710,7 +6710,7 @@ var KeyedConfigFixedLineagePlans = tableFixedLineagePlans(KeyedConfigFixedKnown,
 var KeyedConfigFixedResetImage = func() []byte {
 	var def KeyedConfig
 	KeyedConfigReset(&def)
-	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+	return tableFixedOverlay(unsafe.Pointer(&def), tableSizeof[KeyedConfig]())
 }()
 
 var KeyedConfigFixedHoles = tableFixedHoles(KeyedConfigFixedPlan.Entries, KeyedConfigFixedPlan.Count, uint32(len(KeyedConfigFixedResetImage)))
@@ -6904,7 +6904,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 		}
 	}
 	for k := range n {
-		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), tableSizeof[KeyedConfig]())
 		for i := range holes {
 			h := holes[i]
 			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
@@ -6936,7 +6936,7 @@ func KeyedConfigFixedLoadTolerant(values []KeyedConfig, data []byte, plan []Tabl
 // TeamConfigTableFields is TeamConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TeamConfigTableFields = []TableFieldInfo{
 	{Name: "spawn_count", JSON: "spawn_count", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xceec99e2d65db674, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TeamConfig{}.SpawnCount)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.SpawnCount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[TeamConfig]("SpawnCount")), ElemSize: int64(tableMemberSizeof[TeamConfig]("SpawnCount")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 64.0, RangeIntMin: 0, RangeIntMax: 64, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6948,7 +6948,7 @@ var TeamConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "banner", JSON: "banner", TypeName: "string", DeclaredTypeName: "string", ID: 0xbca0dab1c7a00ccf, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(TeamConfig{}.Banner)), ElemSize: uint32(unsafe.Sizeof(TeamConfig{}.Banner)), CountOffset: uint32(unsafe.Offsetof(TeamConfig{}.BannerLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 16, Offset: int64(tableOffsetof[TeamConfig]("Banner")), ElemSize: int64(tableMemberSizeof[TeamConfig]("Banner")), CountOffset: int64(tableOffsetof[TeamConfig]("BannerLength")), PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 24, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6965,7 +6965,7 @@ var TeamConfigTableFields = []TableFieldInfo{
 var TeamConfigTableInfo TableTypeInfo
 
 func init() {
-	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: uint32(unsafe.Sizeof(TeamConfig{})), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TeamConfigTableInfo = TableTypeInfo{Name: "TeamConfig", Size: int64(tableSizeof[TeamConfig]()), NumFields: 2, Fields: TeamConfigTableFields, Reset: func(storage unsafe.Pointer) { TeamConfigReset((*TeamConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1cf8555d11fb113a, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TeamConfigSaveBody(w, (*TeamConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TeamConfigLoadBody(&r, (*TeamConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return TeamConfigSaveBodyRetain(w, (*TeamConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TeamConfigLoadBodyRetain(&r, (*TeamConfig)(p))
@@ -6978,7 +6978,7 @@ func TeamConfigTableType() *TableTypeInfo { return &TeamConfigTableInfo }
 // GunnerConfigTableFields is GunnerConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerConfigTableFields = []TableFieldInfo{
 	{Name: "reaction", JSON: "reaction", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Reaction)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Reaction)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[GunnerConfig]("Reaction")), ElemSize: int64(tableMemberSizeof[GunnerConfig]("Reaction")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6990,7 +6990,7 @@ var GunnerConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tracking", JSON: "tracking", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(GunnerConfig{}.Tracking)), ElemSize: uint32(unsafe.Sizeof(GunnerConfig{}.Tracking)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[GunnerConfig]("Tracking")), ElemSize: int64(tableMemberSizeof[GunnerConfig]("Tracking")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7007,7 +7007,7 @@ var GunnerConfigTableFields = []TableFieldInfo{
 var GunnerConfigTableInfo TableTypeInfo
 
 func init() {
-	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: uint32(unsafe.Sizeof(GunnerConfig{})), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	GunnerConfigTableInfo = TableTypeInfo{Name: "GunnerConfig", Size: int64(tableSizeof[GunnerConfig]()), NumFields: 2, Fields: GunnerConfigTableFields, Reset: func(storage unsafe.Pointer) { GunnerConfigReset((*GunnerConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5fcbe04615411b64, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerConfigSaveBody(w, (*GunnerConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerConfigLoadBody(&r, (*GunnerConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return GunnerConfigSaveBodyRetain(w, (*GunnerConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerConfigLoadBodyRetain(&r, (*GunnerConfig)(p))
@@ -7020,7 +7020,7 @@ func GunnerConfigTableType() *TableTypeInfo { return &GunnerConfigTableInfo }
 // TurretConfigTableFields is TurretConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TurretConfigTableFields = []TableFieldInfo{
 	{Name: "damage", JSON: "damage", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[TurretConfig]("Damage")), ElemSize: int64(tableMemberSizeof[TurretConfig]("Damage")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7032,7 +7032,7 @@ var TurretConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "cooldown", JSON: "cooldown", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xdc2cbe6953343d48, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Cooldown)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Cooldown)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[TurretConfig]("Cooldown")), ElemSize: int64(tableMemberSizeof[TurretConfig]("Cooldown")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7044,7 +7044,7 @@ var TurretConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "gunner", JSON: "gunner", TypeName: "GunnerConfig", DeclaredTypeName: "GunnerConfig", ID: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TurretConfig{}.Gunner)), ElemSize: uint32(unsafe.Sizeof(TurretConfig{}.Gunner)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(TurretConfig{}.GunnerPresent)),
+		ArrayBound: 0, Offset: int64(tableOffsetof[TurretConfig]("Gunner")), ElemSize: int64(tableMemberSizeof[TurretConfig]("Gunner")), CountOffset: 0xffffffff, PresentOffset: int64(tableOffsetof[TurretConfig]("GunnerPresent")),
 		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 16,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7061,7 +7061,7 @@ var TurretConfigTableFields = []TableFieldInfo{
 var TurretConfigTableInfo TableTypeInfo
 
 func init() {
-	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: uint32(unsafe.Sizeof(TurretConfig{})), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	TurretConfigTableInfo = TableTypeInfo{Name: "TurretConfig", Size: int64(tableSizeof[TurretConfig]()), NumFields: 3, Fields: TurretConfigTableFields, Reset: func(storage unsafe.Pointer) { TurretConfigReset((*TurretConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x469dba0c16b2ad15, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return TurretConfigSaveBody(w, (*TurretConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return TurretConfigLoadBody(&r, (*TurretConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return TurretConfigSaveBodyRetain(w, (*TurretConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TurretConfigLoadBodyRetain(&r, (*TurretConfig)(p))
@@ -7074,7 +7074,7 @@ func TurretConfigTableType() *TableTypeInfo { return &TurretConfigTableInfo }
 // HullConfigTableFields is HullConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var HullConfigTableFields = []TableFieldInfo{
 	{Name: "health", JSON: "health", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Health)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Health)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[HullConfig]("Health")), ElemSize: int64(tableMemberSizeof[HullConfig]("Health")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7086,7 +7086,7 @@ var HullConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "mass", JSON: "mass", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HullConfig{}.Mass)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Mass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[HullConfig]("Mass")), ElemSize: int64(tableMemberSizeof[HullConfig]("Mass")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7098,7 +7098,7 @@ var HullConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "turrets", JSON: "turrets", TypeName: "TurretConfig", DeclaredTypeName: "TurretConfig", ID: 0x84f8260bc283608c, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(WeaponMax), Offset: uint32(unsafe.Offsetof(HullConfig{}.Turrets)), ElemSize: uint32(unsafe.Sizeof(HullConfig{}.Turrets[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(WeaponMax), Offset: int64(tableOffsetof[HullConfig]("Turrets")), ElemSize: int64(tableElemSizeof[HullConfig]("Turrets")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 20, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7115,7 +7115,7 @@ var HullConfigTableFields = []TableFieldInfo{
 var HullConfigTableInfo TableTypeInfo
 
 func init() {
-	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: uint32(unsafe.Sizeof(HullConfig{})), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	HullConfigTableInfo = TableTypeInfo{Name: "HullConfig", Size: int64(tableSizeof[HullConfig]()), NumFields: 3, Fields: HullConfigTableFields, Reset: func(storage unsafe.Pointer) { HullConfigReset((*HullConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x3066b130dfbd7890, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HullConfigSaveBody(w, (*HullConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HullConfigLoadBody(&r, (*HullConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return HullConfigSaveBodyRetain(w, (*HullConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return HullConfigLoadBodyRetain(&r, (*HullConfig)(p))
@@ -7128,7 +7128,7 @@ func HullConfigTableType() *TableTypeInfo { return &HullConfigTableInfo }
 // KeyedConfigTableFields is KeyedConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var KeyedConfigTableFields = []TableFieldInfo{
 	{Name: "teams", JSON: "teams", TypeName: "TeamConfig", DeclaredTypeName: "TeamConfig", ID: 0xbaaeb048a5a8fa6d, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Teams)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Teams[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(TeamMax), Offset: int64(tableOffsetof[KeyedConfig]("Teams")), ElemSize: int64(tableElemSizeof[KeyedConfig]("Teams")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7140,7 +7140,7 @@ var KeyedConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: TeamConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "hulls", JSON: "hulls", TypeName: "HullConfig", DeclaredTypeName: "HullConfig", ID: 0xce0ac3c25694d8ff, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(HullMax), Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Hulls)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Hulls[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(HullMax), Offset: int64(tableOffsetof[KeyedConfig]("Hulls")), ElemSize: int64(tableElemSizeof[KeyedConfig]("Hulls")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 84, CookElemSize: 68, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7152,7 +7152,7 @@ var KeyedConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: HullConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "scores", JSON: "scores", TypeName: "ScoreBoard", DeclaredTypeName: "ScoreBoard", ID: 0x1986b0b27400fb2, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(KeyedConfig{}.Scores)), ElemSize: uint32(unsafe.Sizeof(KeyedConfig{}.Scores)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[KeyedConfig]("Scores")), ElemSize: int64(tableMemberSizeof[KeyedConfig]("Scores")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 288, CookElemSize: 12, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7169,7 +7169,7 @@ var KeyedConfigTableFields = []TableFieldInfo{
 var KeyedConfigTableInfo TableTypeInfo
 
 func init() {
-	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: uint32(unsafe.Sizeof(KeyedConfig{})), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	KeyedConfigTableInfo = TableTypeInfo{Name: "KeyedConfig", Size: int64(tableSizeof[KeyedConfig]()), NumFields: 3, Fields: KeyedConfigTableFields, Reset: func(storage unsafe.Pointer) { KeyedConfigReset((*KeyedConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xd6633ae4e94deecf, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return KeyedConfigSaveBody(w, (*KeyedConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return KeyedConfigLoadBody(&r, (*KeyedConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return KeyedConfigSaveBodyRetain(w, (*KeyedConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return KeyedConfigLoadBodyRetain(&r, (*KeyedConfig)(p))
@@ -7182,7 +7182,7 @@ func KeyedConfigTableType() *TableTypeInfo { return &KeyedConfigTableInfo }
 // ScoreBoardTableFields is ScoreBoard's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ScoreBoardTableFields = []TableFieldInfo{
 	{Name: "per_team", JSON: "per_team", TypeName: "int32", DeclaredTypeName: "int32", ID: 0xf10fad739a0e1660, Kind: 4, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(TeamMax), Offset: uint32(unsafe.Offsetof(ScoreBoardRow{}.PerTeam)), ElemSize: uint32(unsafe.Sizeof(ScoreBoardRow{}.PerTeam[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(TeamMax), Offset: int64(tableOffsetof[ScoreBoardRow]("PerTeam")), ElemSize: int64(tableElemSizeof[ScoreBoardRow]("PerTeam")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100000.0, RangeIntMin: 0, RangeIntMax: 100000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -7199,7 +7199,7 @@ var ScoreBoardTableFields = []TableFieldInfo{
 var ScoreBoardTableInfo TableTypeInfo
 
 func init() {
-	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: uint32(unsafe.Sizeof(ScoreBoardRow{})), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ScoreBoardTableInfo = TableTypeInfo{Name: "ScoreBoard", Size: int64(tableSizeof[ScoreBoardRow]()), NumFields: 1, Fields: ScoreBoardTableFields, Reset: func(storage unsafe.Pointer) { ScoreBoardReset((*ScoreBoardRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x38b429bf239b38db, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ScoreBoardSaveBody(w, (*ScoreBoardRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ScoreBoardLoadBody(&r, (*ScoreBoardRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return ScoreBoardSaveBodyRetain(w, (*ScoreBoardRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ScoreBoardLoadBodyRetain(&r, (*ScoreBoardRow)(p))

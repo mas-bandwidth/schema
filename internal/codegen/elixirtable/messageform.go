@@ -772,6 +772,12 @@ const messageRuntimeBody = `  defstruct announced: false,
       count > div(size - 9, 8) ->
         {:error, :malformed}
 
+      # THE ENTRY COUNT HAS A MAXIMUM (§3, THE DISTINCTNESS CHECK IS BOUNDED
+      # WORK): a table above 4096 entries is malformed, whatever the buffer
+      # would hold.
+      count > 4096 ->
+        {:error, :malformed}
+
       true ->
         start = size - 8 - count * 8
         body = binary_part(data, 1, start - 1)

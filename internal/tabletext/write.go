@@ -297,6 +297,16 @@ func (m *Model) writePointer(w *writer, node *Instance, depth int) error {
 	return nil
 }
 
+// containerDepth refuses a container the reader would refuse: every array and
+// object is one level of §16.2's cap, a map's and a union's included, so a
+// value at depth past maxJsonDepth has no text the reader takes.
+func containerDepth(depth int, what, name string) error {
+	if depth > maxJsonDepth {
+		return fmt.Errorf("field %s: a %s nested past the depth cap of %d — every array and object is one level (docs/SPEC-TABLES.md §16.2)", name, what, maxJsonDepth)
+	}
+	return nil
+}
+
 func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 	f := fv.Def
 	switch {
@@ -329,12 +339,24 @@ func (m *Model) writeField(w *writer, fv *Field, depth int) error {
 		writeBase64(w, fv.Cell.Str)
 		return nil
 	case f.IsMap():
+		if err := containerDepth(depth, "map", f.Name); err != nil {
+			return err
+		}
 		return m.writeMap(w, fv, depth)
 	case f.KeyEnum != "":
+		if err := containerDepth(depth, "keyed array", f.Name); err != nil {
+			return err
+		}
 		return m.writeKeyed(w, fv, depth)
 	case f.IsTextList():
+		if err := containerDepth(depth, "text list", f.Name); err != nil {
+			return err
+		}
 		return m.writeTextList(w, fv, depth)
 	case f.Array != ir.ArrayNone:
+		if err := containerDepth(depth, "array", f.Name); err != nil {
+			return err
+		}
 		count := int(f.ArrayBound)
 		if f.CountedOnWire() {
 			count = fv.Count
@@ -485,6 +507,9 @@ func (m *Model) writeKeyed(w *writer, fv *Field, depth int) error {
 
 func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error {
 	if un := UnionOf(f); un != nil {
+		if err := containerDepth(depth, "union", f.Name); err != nil {
+			return err
+		}
 		// a union is an object with ONE key, the arm's name; None is {}
 		if cell.U == 0 {
 			w.raw("{}")
@@ -556,6 +581,9 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return nil
 	}
 	if fl := FlagsOf(f); fl != nil {
+		if err := containerDepth(depth, "flags array", f.Name); err != nil {
+			return err
+		}
 		bits := cell.U
 		if bits == 0 {
 			w.raw("[]")

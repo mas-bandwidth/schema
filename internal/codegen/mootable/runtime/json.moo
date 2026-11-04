@@ -2411,6 +2411,11 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		r.bad = true
 		return false
 	end
+	-- the union's object is one level below its holder, and its arm's value one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local ud = St.lookup(t)
 	local u = ud.new()
@@ -2437,13 +2442,13 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 	end
 	if arm == nil then
 		r.report.unknown += 1
-		if not skipValue(r, depth + 1) then
+		if not skipValue(r, depth + 2) then
 			return false
 		end
 	elseif arm.s == "void" then
 		if valueShape(r) ~= "z" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2456,13 +2461,13 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		-- a BODY arm: the declared type's object
 		if valueShape(r) ~= "o" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
 			local bd = St.lookup(arm.t)
 			local payload = bd.new()
-			if not readTable(r, bd, payload, depth + 1) then
+			if not readTable(r, bd, payload, depth + 2) then
 				return false
 			end
 			u[arm.slot] = payload
@@ -2478,7 +2483,7 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 			u.Type = arm.tag
 		elseif s ~= shape(arm) then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2506,6 +2511,11 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 		r.bad = true
 		return false
 	end
+	-- the flags array is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local low, high = 0, 0
 	while true do
@@ -2520,7 +2530,7 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 		end
 		if c ~= 34 then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -2687,6 +2697,11 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
+	-- the array is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local e = fd.e
 	local slot = fd.slot
@@ -2737,7 +2752,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		local s = valueShape(r)
 		if placed >= bound then
 			r.report.clamped += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif isPointerShape(e.s) and s == "z" then
@@ -2748,7 +2763,7 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 			placed += 1
 		elseif s ~= want then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 			placed += 1
@@ -2791,6 +2806,11 @@ end
 -- once, and every later element skipped, an element past [..N] still counted.
 local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number): boolean
 	if peek(r) ~= 91 then
+		r.bad = true
+		return false
+	end
+	-- the text list is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
 		r.bad = true
 		return false
 	end
@@ -2838,12 +2858,12 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			if seen > bound then
 				r.report.clamped += 1
 			end
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed >= bound then
 			r.report.clamped += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif tl.opt and s == "z" then
@@ -2853,7 +2873,7 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 			placed += 1
 		elseif s ~= "s" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 			placed += 1
@@ -2915,6 +2935,11 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
+	-- the keyed object is one level below its holder, and its elements one below that
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local e = fd.e
 	local arr = rec[fd.slot]
@@ -2962,12 +2987,12 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		end
 		if at < 0 then
 			r.report.unknown += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif valueShape(r) ~= want then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif not readScalar(r, e, arr, at, depth + 1, true, fd.name) then
@@ -3006,6 +3031,11 @@ end
 
 local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 	if peek(r) ~= 123 then
+		r.bad = true
+		return false
+	end
+	-- the map's object is one level below its holder, and its values one below that
+	if depth + 1 > MAX_DEPTH then
 		r.bad = true
 		return false
 	end
@@ -3076,17 +3106,17 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			else
 				r.report.kindMismatch += 1
 			end
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed == "mismatch" then
 			r.report.kindMismatch += 1
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif kd.s == "str" and #name > kd.bound then
 			r.report.clamped += 1
-			if not skipValue(r, depth) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -3096,8 +3126,13 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 				if value then
 					resetField(ed, vd, entry)
 				end
+			elseif valueShape(r) ~= shape(vd) then
+				-- a value of the wrong shape is skipped and counted, and its entry
+				-- stays at the value's default (§16.2), as the Go reference keeps it
+				r.report.kindMismatch += 1
+				value = skipValue(r, depth + 2)
 			else
-				value = readField(r, ed, vd, entry, depth)
+				value = readField(r, ed, vd, entry, depth + 1)
 				if value and vd.present ~= nil then
 					entry[vd.present] = true
 				end

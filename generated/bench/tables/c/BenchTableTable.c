@@ -2085,6 +2085,9 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         char c;
         if ( benchtable_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
+        /* the union's object is one level below its holder, and its arm's
+           value one below that */
+        if ( depth + 1 > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         benchtable_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( benchtable_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
         if ( !benchtable_table_json_scan_string( in, key, BENCHTABLE_K_TABLE_JSON_MAX_KEY - 1, &key_length ) ) { return 0; }
@@ -2099,7 +2102,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
         }
         else
         {
@@ -2108,14 +2111,14 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
             char want = arm != NULL ? benchtable_table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( benchtable_table_json_value_shape( in ) != want && !(arm != NULL && arm->kind == 17 && !arm->is_array && benchtable_table_json_value_shape(in) == 'z') ) {
                 in->report->kind_mismatch++;
-                if ( !benchtable_table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth+2 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
                     if ( !benchtable_table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !benchtable_table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                    if ( !benchtable_table_json_read_table( in, payload, arms->arms[tag].table, depth+2 ) ) { return 0; }
                 } else if ( !benchtable_table_json_literal( in, "null" ) ) { return 0; }
                 benchtable_table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
@@ -2158,6 +2161,8 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
         uint64_t bits = 0;
         if ( benchtable_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
+        /* the flags array is one level below its holder, and its elements one below that */
+        if ( depth + 1 > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         for ( ;; )
         {
             char c = benchtable_table_json_peek( in );
@@ -2166,7 +2171,7 @@ static SCHEMA_UNUSED int benchtable_table_json_read_scalar( benchtable_table_jso
             if ( c != '"' )
             {
                 in->report->kind_mismatch++;
-                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else
             {
@@ -2404,6 +2409,8 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
         uint64_t seen[8];
         if ( benchtable_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
         in->pos++;
+        /* the keyed object is one level below its holder, and its elements one below that */
+        if ( depth + 1 > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         for ( i = 0; i < f->array_bound; i++ )
         {
             void * slot = storage + (int64_t) i * f->elem_size;
@@ -2448,12 +2455,12 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
             if ( slot < 0 )
             {
                 in->report->unknown++;
-                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( benchtable_table_json_value_shape( in ) != shape && !(f->kind == 17 && benchtable_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
-                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( !benchtable_table_json_read_scalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
             {
@@ -2479,6 +2486,8 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
         char shape;
         if ( benchtable_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
+        /* the array is one level below its holder, and its elements one below that */
+        if ( depth + 1 > BENCHTABLE_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         int64_t spent = 0;
         int full = 0;
         if ( f->kind == 13 || f->text_list != 0 )
@@ -2502,19 +2511,19 @@ static SCHEMA_UNUSED int benchtable_table_json_read_field( benchtable_table_json
             if ( c == 0 ) { in->bad = 1; return 0; }
             if ( full )
             {
-                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( placed >= f->array_bound )
             {
                 /* more elements than the reader's bound: the bounded prefix
                    is kept and the excess counts, the wire's rule (§4) */
                 in->report->clamped++;
-                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( benchtable_table_json_value_shape( in ) != shape && !( ( f->kind == 17 || f->text_list == 2 ) && benchtable_table_json_value_shape(in) == 'z') )
             {
                 in->report->kind_mismatch++;
-                if ( !benchtable_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !benchtable_table_json_skip_value( in, depth + 2 ) ) { return 0; }
                 placed++;
             }
             else
@@ -2763,30 +2772,30 @@ static const benchtable_table_variant_info_t schema_benchtable_table_entity_dama
     { "Downed", 0 },
 };
 static const benchtable_table_field_info_t schema_benchtable_table_entity_fields_[] = {
-    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, entity_id ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->entity_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pos_x ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pos_y ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pos_z ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, yaw ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->yaw ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, pitch ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pitch ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, vel_x ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, vel_y ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, vel_z ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, health ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->health ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "weapon", "weapon", "TableWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, weapon ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->weapon ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 15, schema_benchtable_table_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "damage", "damage", "TableDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, damage ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 7, schema_benchtable_table_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, moving ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->moving ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_entity_t, firing ), (uint32_t) sizeof( ( (benchtable_table_entity_t *) 0 )->firing ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, entity_id ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->entity_id ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, pos_x ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_x ), UINT64_MAX, UINT64_MAX, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, pos_y ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_y ), UINT64_MAX, UINT64_MAX, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, pos_z ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pos_z ), UINT64_MAX, UINT64_MAX, NULL, 1, -16383.0, 16383.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, yaw ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->yaw ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, pitch ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->pitch ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, vel_x ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_x ), UINT64_MAX, UINT64_MAX, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, vel_y ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_y ), UINT64_MAX, UINT64_MAX, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, vel_z ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->vel_z ), UINT64_MAX, UINT64_MAX, NULL, 1, -2048.0, 2047.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, health ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->health ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "weapon", "weapon", "TableWeapon", 0xa0b610205f2c6e01ull, 30, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, weapon ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->weapon ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, 15, schema_benchtable_table_entity_weapon_variants_, 1, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "damage", "damage", "TableDamage", 0x7f6308be8ab37fc0ull, 9, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, damage ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->damage ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, 7, schema_benchtable_table_entity_damage_variants_, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, moving ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->moving ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_entity_t, firing ), (uint64_t) sizeof( ( (benchtable_table_entity_t *) 0 )->firing ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const benchtable_table_type_info_t schema_benchtable_table_entity_info_ = { "TableEntity", (uint32_t) sizeof( benchtable_table_entity_t ), 14, schema_benchtable_table_entity_fields_, schema_benchtable_table_entity_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
+const benchtable_table_type_info_t schema_benchtable_table_entity_info_ = { "TableEntity", (uint64_t) sizeof( benchtable_table_entity_t ), 14, schema_benchtable_table_entity_fields_, schema_benchtable_table_entity_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const benchtable_table_field_info_t schema_benchtable_table_stat_fields_[] = {
-    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_stat_t, stat_id ), (uint32_t) sizeof( ( (benchtable_table_stat_t *) 0 )->stat_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_stat_t, delta ), (uint32_t) sizeof( ( (benchtable_table_stat_t *) 0 )->delta ), 0xffffffffu, 0xffffffffu, NULL, 1, -512.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_stat_t, stat_id ), (uint64_t) sizeof( ( (benchtable_table_stat_t *) 0 )->stat_id ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_stat_t, delta ), (uint64_t) sizeof( ( (benchtable_table_stat_t *) 0 )->delta ), UINT64_MAX, UINT64_MAX, NULL, 1, -512.0, 511.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const benchtable_table_type_info_t schema_benchtable_table_stat_info_ = { "TableStat", (uint32_t) sizeof( benchtable_table_stat_t ), 2, schema_benchtable_table_stat_fields_, schema_benchtable_table_stat_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
+const benchtable_table_type_info_t schema_benchtable_table_stat_info_ = { "TableStat", (uint64_t) sizeof( benchtable_table_stat_t ), 2, schema_benchtable_table_stat_fields_, schema_benchtable_table_stat_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const benchtable_table_variant_info_t schema_benchtable_table_mixed_game_event_variants_[] = {
     { "None", 0 },
@@ -2796,66 +2805,66 @@ static const benchtable_table_variant_info_t schema_benchtable_table_mixed_game_
 };
 static const benchtable_table_union_arm_info_t schema_benchtable_table_mixed_game_event_arms_[] = {
     { 0, NULL, NULL, 0 },
-    { (uint32_t)offsetof( benchtable_table_event_t, as.hit ), &schema_benchtable_table_hit_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.hit ) },
-    { (uint32_t)offsetof( benchtable_table_event_t, as.chat ), &schema_benchtable_table_chat_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.chat ) },
-    { (uint32_t)offsetof( benchtable_table_event_t, as.pickup ), &schema_benchtable_table_pickup_event_info_, NULL, (uint32_t)sizeof( ((benchtable_table_event_t *)0)->as.pickup ) },
+    { (uint64_t)offsetof( benchtable_table_event_t, as.hit ), &schema_benchtable_table_hit_event_info_, NULL, (uint64_t)sizeof( ((benchtable_table_event_t *)0)->as.hit ) },
+    { (uint64_t)offsetof( benchtable_table_event_t, as.chat ), &schema_benchtable_table_chat_event_info_, NULL, (uint64_t)sizeof( ((benchtable_table_event_t *)0)->as.chat ) },
+    { (uint64_t)offsetof( benchtable_table_event_t, as.pickup ), &schema_benchtable_table_pickup_event_info_, NULL, (uint64_t)sizeof( ((benchtable_table_event_t *)0)->as.pickup ) },
 };
-static const benchtable_table_union_info_t schema_benchtable_table_mixed_game_event_union_ = { (uint32_t) offsetof( benchtable_table_event_t, type ), (uint32_t) sizeof( ( (benchtable_table_event_t *) 0 )->type ), schema_benchtable_table_mixed_game_event_arms_ };
+static const benchtable_table_union_info_t schema_benchtable_table_mixed_game_event_union_ = { (uint64_t) offsetof( benchtable_table_event_t, type ), (uint64_t) sizeof( ( (benchtable_table_event_t *) 0 )->type ), schema_benchtable_table_mixed_game_event_arms_ };
 static const benchtable_table_field_info_t schema_benchtable_table_mixed_fields_[] = {
-    { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, protocol_magic ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->protocol_magic ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, sequence ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ack_sequence ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ack_bits ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_bits ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, session_id ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->session_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, client_id ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->client_id ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, nonce ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->nonce ), 0xffffffffu, 0xffffffffu, NULL, 1, 1.0, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, world_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->world_time ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, frame_tick ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->frame_tick ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, server_time ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->server_time ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, (uint32_t) offsetof( benchtable_table_mixed_t, entities ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->entities[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, entities_count ), 0xffffffffu, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 0, 80, (uint32_t) offsetof( benchtable_table_mixed_t, stats ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->stats[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, stats_count ), 0xffffffffu, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, game_event ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->game_event ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 0, 4, (uint32_t) offsetof( benchtable_table_mixed_t, loadout ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 0, 15, (uint32_t) offsetof( benchtable_table_mixed_t, player_name ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->player_name ), (uint32_t) offsetof( benchtable_table_mixed_t, player_name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 0, 16, (uint32_t) offsetof( benchtable_table_mixed_t, payload ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->payload[0] ), (uint32_t) offsetof( benchtable_table_mixed_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, aim_x ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_x ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, aim_y ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_y ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, aim_z ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_z ), 0xffffffffu, 0xffffffffu, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, recoil ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->recoil ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, drift ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->drift ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, wide_key ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->wide_key ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, flux ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->flux ), 0xffffffffu, 0xffffffffu, NULL, 1, -1e+18, 1e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, ping ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ping ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 250.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, crc_hint ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->crc_hint ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, has_extra ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->has_extra ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, extra ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->extra ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_mixed_t, idle_ticks ), (uint32_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "protocol_magic", "protocol_magic", "uint16", 0x6a5a70d91aa115fdull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, protocol_magic ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->protocol_magic ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, sequence ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->sequence ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, ack_sequence ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_sequence ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, ack_bits ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ack_bits ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 4.294967295e+09, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, session_id ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->session_id ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, client_id ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->client_id ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, nonce ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->nonce ), UINT64_MAX, UINT64_MAX, NULL, 1, 1.0, 9.223372036854776e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, world_time ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->world_time ), UINT64_MAX, UINT64_MAX, NULL, 1, -1e+12, 1e+12, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, frame_tick ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->frame_tick ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 2.81474976710655e+14, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "server_time", "server_time", "float32", 0x3c460475f9be69c6ull, 10, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, server_time ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->server_time ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 65535.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "entities", "entities", "TableEntity", 0x935d0fb07bb3822aull, 13, 1, 1, 0, 0, 8, (uint64_t) offsetof( benchtable_table_mixed_t, entities ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->entities[0] ), (uint64_t) offsetof( benchtable_table_mixed_t, entities_count ), UINT64_MAX, &schema_benchtable_table_entity_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "stats", "stats", "TableStat", 0xee639cad45b1994cull, 13, 1, 1, 0, 0, 80, (uint64_t) offsetof( benchtable_table_mixed_t, stats ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->stats[0] ), (uint64_t) offsetof( benchtable_table_mixed_t, stats_count ), UINT64_MAX, &schema_benchtable_table_stat_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "game_event", "game_event", "TableEvent", 0x2e35dc5321aa5790ull, 15, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, game_event ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->game_event ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, 3, schema_benchtable_table_mixed_game_event_variants_, 1, NULL, NULL, -1, &schema_benchtable_table_mixed_game_event_union_, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, 1, 0, 0, 0, 4, (uint64_t) offsetof( benchtable_table_mixed_t, loadout ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->loadout[0] ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, 0, 1, 0, 0, 15, (uint64_t) offsetof( benchtable_table_mixed_t, player_name ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->player_name ), (uint64_t) offsetof( benchtable_table_mixed_t, player_name_length ), UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 1, 0, 0, 16, (uint64_t) offsetof( benchtable_table_mixed_t, payload ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->payload[0] ), (uint64_t) offsetof( benchtable_table_mixed_t, payload_length ), UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, aim_x ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_x ), UINT64_MAX, UINT64_MAX, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, aim_y ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_y ), UINT64_MAX, UINT64_MAX, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, aim_z ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->aim_z ), UINT64_MAX, UINT64_MAX, NULL, 1, -1.0, 1.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, recoil ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->recoil ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, drift ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->drift ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "wide_key", "wide_key", "uint64", 0xa3348580461faf16ull, 9, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, wide_key ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->wide_key ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "flux", "flux", "int64", 0xd61bdd7908af2642ull, 5, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, flux ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->flux ), UINT64_MAX, UINT64_MAX, NULL, 1, -1e+18, 1e+18, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "ping", "ping", "float32", 0xbf30e00dc53307a9ull, 10, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, ping ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->ping ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 250.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, crc_hint ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->crc_hint ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 1.6777215e+07, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, has_extra ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->has_extra ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, extra ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->extra ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_mixed_t, idle_ticks ), (uint64_t) sizeof( ( (benchtable_table_mixed_t *) 0 )->idle_ticks ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 15.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const benchtable_table_type_info_t schema_benchtable_table_mixed_info_ = { "TableMixed", (uint32_t) sizeof( benchtable_table_mixed_t ), 28, schema_benchtable_table_mixed_fields_, schema_benchtable_table_mixed_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
+const benchtable_table_type_info_t schema_benchtable_table_mixed_info_ = { "TableMixed", (uint64_t) sizeof( benchtable_table_mixed_t ), 28, schema_benchtable_table_mixed_fields_, schema_benchtable_table_mixed_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const benchtable_table_field_info_t schema_benchtable_table_hit_event_fields_[] = {
-    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, target_id ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->target_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, damage ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->damage ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, hit_kind ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->hit_kind ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_hit_event_t, crit ), (uint32_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->crit ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_hit_event_t, target_id ), (uint64_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->target_id ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_hit_event_t, damage ), (uint64_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->damage ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_hit_event_t, hit_kind ), (uint64_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->hit_kind ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 7.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_hit_event_t, crit ), (uint64_t) sizeof( ( (benchtable_table_hit_event_t *) 0 )->crit ), UINT64_MAX, UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const benchtable_table_type_info_t schema_benchtable_table_hit_event_info_ = { "TableHitEvent", (uint32_t) sizeof( benchtable_table_hit_event_t ), 4, schema_benchtable_table_hit_event_fields_, schema_benchtable_table_hit_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
+const benchtable_table_type_info_t schema_benchtable_table_hit_event_info_ = { "TableHitEvent", (uint64_t) sizeof( benchtable_table_hit_event_t ), 4, schema_benchtable_table_hit_event_fields_, schema_benchtable_table_hit_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const benchtable_table_field_info_t schema_benchtable_table_chat_event_fields_[] = {
-    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_chat_event_t, channel ), (uint32_t) sizeof( ( (benchtable_table_chat_event_t *) 0 )->channel ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 3.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_chat_event_t, speaker ), (uint32_t) sizeof( ( (benchtable_table_chat_event_t *) 0 )->speaker ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_chat_event_t, channel ), (uint64_t) sizeof( ( (benchtable_table_chat_event_t *) 0 )->channel ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 3.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_chat_event_t, speaker ), (uint64_t) sizeof( ( (benchtable_table_chat_event_t *) 0 )->speaker ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 4095.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const benchtable_table_type_info_t schema_benchtable_table_chat_event_info_ = { "TableChatEvent", (uint32_t) sizeof( benchtable_table_chat_event_t ), 2, schema_benchtable_table_chat_event_fields_, schema_benchtable_table_chat_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
+const benchtable_table_type_info_t schema_benchtable_table_chat_event_info_ = { "TableChatEvent", (uint64_t) sizeof( benchtable_table_chat_event_t ), 2, schema_benchtable_table_chat_event_fields_, schema_benchtable_table_chat_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const benchtable_table_field_info_t schema_benchtable_table_pickup_event_fields_[] = {
-    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_pickup_event_t, item_id ), (uint32_t) sizeof( ( (benchtable_table_pickup_event_t *) 0 )->item_id ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1023.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, 0, (uint32_t) offsetof( benchtable_table_pickup_event_t, amount ), (uint32_t) sizeof( ( (benchtable_table_pickup_event_t *) 0 )->amount ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_pickup_event_t, item_id ), (uint64_t) sizeof( ( (benchtable_table_pickup_event_t *) 0 )->item_id ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 1023.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, 0, 0, 0, 0, 0, (uint64_t) offsetof( benchtable_table_pickup_event_t, amount ), (uint64_t) sizeof( ( (benchtable_table_pickup_event_t *) 0 )->amount ), UINT64_MAX, UINT64_MAX, NULL, 1, 0.0, 255.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const benchtable_table_type_info_t schema_benchtable_table_pickup_event_info_ = { "TablePickupEvent", (uint32_t) sizeof( benchtable_table_pickup_event_t ), 2, schema_benchtable_table_pickup_event_fields_, schema_benchtable_table_pickup_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
+const benchtable_table_type_info_t schema_benchtable_table_pickup_event_info_ = { "TablePickupEvent", (uint64_t) sizeof( benchtable_table_pickup_event_t ), 2, schema_benchtable_table_pickup_event_fields_, schema_benchtable_table_pickup_event_reset_raw_, BENCHTABLE_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_benchtable_table_entity_from_json_( benchtable_table_entity_t * value, const char * text, int64_t bytes, benchtable_table_report_t * report )
 {

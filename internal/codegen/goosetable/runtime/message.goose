@@ -879,8 +879,10 @@ recursive fn msg_skip(r: MsgReader&, e: i64) -> bool {
     return msg_skip_bits(r, width);
 }
 
-// msg_skip_body walks a nested body it cannot name, field by field.
+// msg_skip_body walks a nested body it cannot name, field by field, at the
+// body's own depth: a body past depth 128 (message_skip_depth) is malformed.
 fn msg_skip_body(r: MsgReader&) -> bool {
+    if r.depth > 128 { return false; }
     loop {
         let ref = msg_get(r, r.voc.ref_bits);
         if !r.ok { return false; }

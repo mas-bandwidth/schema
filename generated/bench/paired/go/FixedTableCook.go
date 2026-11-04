@@ -100,14 +100,14 @@ const (
 // against, and the record it names.
 type TableCookFieldInfo struct {
 	Name          string
-	Offset        int32 // the field's offset in the record this descriptor describes
-	Size          int32 // its whole storage there, companions included
-	ElemSize      int32 // one element's size, for an array; the field's own otherwise
+	Offset        int64 // the field's offset in the record this descriptor describes
+	Size          int64 // its whole storage there, companions included
+	ElemSize      int64 // one element's size, for an array; the field's own otherwise
 	IsArray       bool
 	ArrayBound    int32 // the DECLARED bound: a counted array's N, a string's or bytes' length
 	IsPointer     bool  // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-	CountOffset   int32 // the count companion's offset, or -1 when the field has none
-	PresentOffset int32 // an optional's presence bool, or -1
+	CountOffset   int64 // the count companion's offset, or -1 when the field has none
+	PresentOffset int64 // an optional's presence bool, or -1
 	Storage       TableCookStorage
 	// Record is the record this field NAMES, behind a function so the table
 	// stays constructible in any order — Go refuses an initialisation cycle
@@ -123,7 +123,7 @@ type TableCookFieldInfo struct {
 // TableCookInfo is one cooked record's layout as DATA.
 type TableCookInfo struct {
 	Name      string
-	Size      int32
+	Size      int64
 	Align     int32
 	NumFields int32
 	Fields    []TableCookFieldInfo
@@ -134,72 +134,72 @@ type TableCookInfo struct {
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
 func init() {
-	tableCookLayoutSize("BenchMixedRow", unsafe.Sizeof(BenchMixedRow{}), 1376)
-	tableCookLayoutSize("BenchMixedRow alignment", unsafe.Alignof(BenchMixedRow{}), 8)
-	tableCookLayoutOffset("BenchMixedRow.Sequence", unsafe.Offsetof(BenchMixedRow{}.Sequence), 0)
-	tableCookLayoutOffset("BenchMixedRow.AckSequence", unsafe.Offsetof(BenchMixedRow{}.AckSequence), 4)
-	tableCookLayoutOffset("BenchMixedRow.AckBits", unsafe.Offsetof(BenchMixedRow{}.AckBits), 8)
-	tableCookLayoutOffset("BenchMixedRow.SessionID", unsafe.Offsetof(BenchMixedRow{}.SessionID), 16)
-	tableCookLayoutOffset("BenchMixedRow.ClientID", unsafe.Offsetof(BenchMixedRow{}.ClientID), 24)
-	tableCookLayoutOffset("BenchMixedRow.Nonce", unsafe.Offsetof(BenchMixedRow{}.Nonce), 32)
-	tableCookLayoutOffset("BenchMixedRow.WorldTime", unsafe.Offsetof(BenchMixedRow{}.WorldTime), 40)
-	tableCookLayoutOffset("BenchMixedRow.FrameTick", unsafe.Offsetof(BenchMixedRow{}.FrameTick), 48)
-	tableCookLayoutOffset("BenchMixedRow.ServerTime", unsafe.Offsetof(BenchMixedRow{}.ServerTime), 56)
-	tableCookLayoutOffset("BenchMixedRow.Entities", unsafe.Offsetof(BenchMixedRow{}.Entities), 64)
-	tableCookLayoutOffset("BenchMixedRow.Stats", unsafe.Offsetof(BenchMixedRow{}.Stats), 580)
-	tableCookLayoutOffset("BenchMixedRow.GameEvent", unsafe.Offsetof(BenchMixedRow{}.GameEvent), 1224)
-	tableCookLayoutOffset("BenchMixedRow.Loadout", unsafe.Offsetof(BenchMixedRow{}.Loadout), 1244)
-	tableCookLayoutOffset("BenchMixedRow.PlayerName", unsafe.Offsetof(BenchMixedRow{}.PlayerName), 1248)
-	tableCookLayoutOffset("BenchMixedRow.Payload", unsafe.Offsetof(BenchMixedRow{}.Payload), 1268)
-	tableCookLayoutOffset("BenchMixedRow.AimX", unsafe.Offsetof(BenchMixedRow{}.AimX), 1288)
-	tableCookLayoutOffset("BenchMixedRow.AimY", unsafe.Offsetof(BenchMixedRow{}.AimY), 1292)
-	tableCookLayoutOffset("BenchMixedRow.AimZ", unsafe.Offsetof(BenchMixedRow{}.AimZ), 1296)
-	tableCookLayoutOffset("BenchMixedRow.Recoil", unsafe.Offsetof(BenchMixedRow{}.Recoil), 1300)
-	tableCookLayoutOffset("BenchMixedRow.Drift", unsafe.Offsetof(BenchMixedRow{}.Drift), 1304)
-	tableCookLayoutOffset("BenchMixedRow.WideKey", unsafe.Offsetof(BenchMixedRow{}.WideKey), 1312)
-	tableCookLayoutOffset("BenchMixedRow.Flux", unsafe.Offsetof(BenchMixedRow{}.Flux), 1328)
-	tableCookLayoutOffset("BenchMixedRow.Ping", unsafe.Offsetof(BenchMixedRow{}.Ping), 1344)
-	tableCookLayoutOffset("BenchMixedRow.CrcHint", unsafe.Offsetof(BenchMixedRow{}.CrcHint), 1348)
-	tableCookLayoutOffset("BenchMixedRow.HasExtra", unsafe.Offsetof(BenchMixedRow{}.HasExtra), 1352)
-	tableCookLayoutOffset("BenchMixedRow.Extra", unsafe.Offsetof(BenchMixedRow{}.Extra), 1356)
-	tableCookLayoutOffset("BenchMixedRow.IdleTicks", unsafe.Offsetof(BenchMixedRow{}.IdleTicks), 1360)
-	tableCookLayoutSize("FixedTableRow", unsafe.Sizeof(FixedTableRow{}), 1376)
-	tableCookLayoutSize("FixedTableRow alignment", unsafe.Alignof(FixedTableRow{}), 8)
-	tableCookLayoutOffset("FixedTableRow.Value", unsafe.Offsetof(FixedTableRow{}.Value), 0)
-	tableCookLayoutSize("MixedChatEventRow", unsafe.Sizeof(MixedChatEventRow{}), 8)
-	tableCookLayoutSize("MixedChatEventRow alignment", unsafe.Alignof(MixedChatEventRow{}), 4)
-	tableCookLayoutOffset("MixedChatEventRow.Channel", unsafe.Offsetof(MixedChatEventRow{}.Channel), 0)
-	tableCookLayoutOffset("MixedChatEventRow.Speaker", unsafe.Offsetof(MixedChatEventRow{}.Speaker), 4)
-	tableCookLayoutSize("MixedEntityRow", unsafe.Sizeof(MixedEntityRow{}), 64)
-	tableCookLayoutSize("MixedEntityRow alignment", unsafe.Alignof(MixedEntityRow{}), 8)
-	tableCookLayoutOffset("MixedEntityRow.EntityID", unsafe.Offsetof(MixedEntityRow{}.EntityID), 0)
-	tableCookLayoutOffset("MixedEntityRow.PosX", unsafe.Offsetof(MixedEntityRow{}.PosX), 4)
-	tableCookLayoutOffset("MixedEntityRow.PosY", unsafe.Offsetof(MixedEntityRow{}.PosY), 8)
-	tableCookLayoutOffset("MixedEntityRow.PosZ", unsafe.Offsetof(MixedEntityRow{}.PosZ), 12)
-	tableCookLayoutOffset("MixedEntityRow.Yaw", unsafe.Offsetof(MixedEntityRow{}.Yaw), 16)
-	tableCookLayoutOffset("MixedEntityRow.Pitch", unsafe.Offsetof(MixedEntityRow{}.Pitch), 20)
-	tableCookLayoutOffset("MixedEntityRow.VelX", unsafe.Offsetof(MixedEntityRow{}.VelX), 24)
-	tableCookLayoutOffset("MixedEntityRow.VelY", unsafe.Offsetof(MixedEntityRow{}.VelY), 28)
-	tableCookLayoutOffset("MixedEntityRow.VelZ", unsafe.Offsetof(MixedEntityRow{}.VelZ), 32)
-	tableCookLayoutOffset("MixedEntityRow.Health", unsafe.Offsetof(MixedEntityRow{}.Health), 36)
-	tableCookLayoutOffset("MixedEntityRow.Weapon", unsafe.Offsetof(MixedEntityRow{}.Weapon), 40)
-	tableCookLayoutOffset("MixedEntityRow.Damage", unsafe.Offsetof(MixedEntityRow{}.Damage), 48)
-	tableCookLayoutOffset("MixedEntityRow.Moving", unsafe.Offsetof(MixedEntityRow{}.Moving), 56)
-	tableCookLayoutOffset("MixedEntityRow.Firing", unsafe.Offsetof(MixedEntityRow{}.Firing), 57)
-	tableCookLayoutSize("MixedHitEventRow", unsafe.Sizeof(MixedHitEventRow{}), 16)
-	tableCookLayoutSize("MixedHitEventRow alignment", unsafe.Alignof(MixedHitEventRow{}), 4)
-	tableCookLayoutOffset("MixedHitEventRow.TargetID", unsafe.Offsetof(MixedHitEventRow{}.TargetID), 0)
-	tableCookLayoutOffset("MixedHitEventRow.Damage", unsafe.Offsetof(MixedHitEventRow{}.Damage), 4)
-	tableCookLayoutOffset("MixedHitEventRow.HitKind", unsafe.Offsetof(MixedHitEventRow{}.HitKind), 8)
-	tableCookLayoutOffset("MixedHitEventRow.Crit", unsafe.Offsetof(MixedHitEventRow{}.Crit), 12)
-	tableCookLayoutSize("MixedPickupEventRow", unsafe.Sizeof(MixedPickupEventRow{}), 8)
-	tableCookLayoutSize("MixedPickupEventRow alignment", unsafe.Alignof(MixedPickupEventRow{}), 4)
-	tableCookLayoutOffset("MixedPickupEventRow.ItemID", unsafe.Offsetof(MixedPickupEventRow{}.ItemID), 0)
-	tableCookLayoutOffset("MixedPickupEventRow.Amount", unsafe.Offsetof(MixedPickupEventRow{}.Amount), 4)
-	tableCookLayoutSize("MixedStatRow", unsafe.Sizeof(MixedStatRow{}), 8)
-	tableCookLayoutSize("MixedStatRow alignment", unsafe.Alignof(MixedStatRow{}), 4)
-	tableCookLayoutOffset("MixedStatRow.StatID", unsafe.Offsetof(MixedStatRow{}.StatID), 0)
-	tableCookLayoutOffset("MixedStatRow.Delta", unsafe.Offsetof(MixedStatRow{}.Delta), 4)
+	tableCookLayoutSize("BenchMixedRow", tableSizeof[BenchMixedRow](), 1376)
+	tableCookLayoutSize("BenchMixedRow alignment", tableAlignof[BenchMixedRow](), 8)
+	tableCookLayoutOffset("BenchMixedRow.Sequence", tableOffsetof[BenchMixedRow]("Sequence"), 0)
+	tableCookLayoutOffset("BenchMixedRow.AckSequence", tableOffsetof[BenchMixedRow]("AckSequence"), 4)
+	tableCookLayoutOffset("BenchMixedRow.AckBits", tableOffsetof[BenchMixedRow]("AckBits"), 8)
+	tableCookLayoutOffset("BenchMixedRow.SessionID", tableOffsetof[BenchMixedRow]("SessionID"), 16)
+	tableCookLayoutOffset("BenchMixedRow.ClientID", tableOffsetof[BenchMixedRow]("ClientID"), 24)
+	tableCookLayoutOffset("BenchMixedRow.Nonce", tableOffsetof[BenchMixedRow]("Nonce"), 32)
+	tableCookLayoutOffset("BenchMixedRow.WorldTime", tableOffsetof[BenchMixedRow]("WorldTime"), 40)
+	tableCookLayoutOffset("BenchMixedRow.FrameTick", tableOffsetof[BenchMixedRow]("FrameTick"), 48)
+	tableCookLayoutOffset("BenchMixedRow.ServerTime", tableOffsetof[BenchMixedRow]("ServerTime"), 56)
+	tableCookLayoutOffset("BenchMixedRow.Entities", tableOffsetof[BenchMixedRow]("Entities"), 64)
+	tableCookLayoutOffset("BenchMixedRow.Stats", tableOffsetof[BenchMixedRow]("Stats"), 580)
+	tableCookLayoutOffset("BenchMixedRow.GameEvent", tableOffsetof[BenchMixedRow]("GameEvent"), 1224)
+	tableCookLayoutOffset("BenchMixedRow.Loadout", tableOffsetof[BenchMixedRow]("Loadout"), 1244)
+	tableCookLayoutOffset("BenchMixedRow.PlayerName", tableOffsetof[BenchMixedRow]("PlayerName"), 1248)
+	tableCookLayoutOffset("BenchMixedRow.Payload", tableOffsetof[BenchMixedRow]("Payload"), 1268)
+	tableCookLayoutOffset("BenchMixedRow.AimX", tableOffsetof[BenchMixedRow]("AimX"), 1288)
+	tableCookLayoutOffset("BenchMixedRow.AimY", tableOffsetof[BenchMixedRow]("AimY"), 1292)
+	tableCookLayoutOffset("BenchMixedRow.AimZ", tableOffsetof[BenchMixedRow]("AimZ"), 1296)
+	tableCookLayoutOffset("BenchMixedRow.Recoil", tableOffsetof[BenchMixedRow]("Recoil"), 1300)
+	tableCookLayoutOffset("BenchMixedRow.Drift", tableOffsetof[BenchMixedRow]("Drift"), 1304)
+	tableCookLayoutOffset("BenchMixedRow.WideKey", tableOffsetof[BenchMixedRow]("WideKey"), 1312)
+	tableCookLayoutOffset("BenchMixedRow.Flux", tableOffsetof[BenchMixedRow]("Flux"), 1328)
+	tableCookLayoutOffset("BenchMixedRow.Ping", tableOffsetof[BenchMixedRow]("Ping"), 1344)
+	tableCookLayoutOffset("BenchMixedRow.CrcHint", tableOffsetof[BenchMixedRow]("CrcHint"), 1348)
+	tableCookLayoutOffset("BenchMixedRow.HasExtra", tableOffsetof[BenchMixedRow]("HasExtra"), 1352)
+	tableCookLayoutOffset("BenchMixedRow.Extra", tableOffsetof[BenchMixedRow]("Extra"), 1356)
+	tableCookLayoutOffset("BenchMixedRow.IdleTicks", tableOffsetof[BenchMixedRow]("IdleTicks"), 1360)
+	tableCookLayoutSize("FixedTableRow", tableSizeof[FixedTableRow](), 1376)
+	tableCookLayoutSize("FixedTableRow alignment", tableAlignof[FixedTableRow](), 8)
+	tableCookLayoutOffset("FixedTableRow.Value", tableOffsetof[FixedTableRow]("Value"), 0)
+	tableCookLayoutSize("MixedChatEventRow", tableSizeof[MixedChatEventRow](), 8)
+	tableCookLayoutSize("MixedChatEventRow alignment", tableAlignof[MixedChatEventRow](), 4)
+	tableCookLayoutOffset("MixedChatEventRow.Channel", tableOffsetof[MixedChatEventRow]("Channel"), 0)
+	tableCookLayoutOffset("MixedChatEventRow.Speaker", tableOffsetof[MixedChatEventRow]("Speaker"), 4)
+	tableCookLayoutSize("MixedEntityRow", tableSizeof[MixedEntityRow](), 64)
+	tableCookLayoutSize("MixedEntityRow alignment", tableAlignof[MixedEntityRow](), 8)
+	tableCookLayoutOffset("MixedEntityRow.EntityID", tableOffsetof[MixedEntityRow]("EntityID"), 0)
+	tableCookLayoutOffset("MixedEntityRow.PosX", tableOffsetof[MixedEntityRow]("PosX"), 4)
+	tableCookLayoutOffset("MixedEntityRow.PosY", tableOffsetof[MixedEntityRow]("PosY"), 8)
+	tableCookLayoutOffset("MixedEntityRow.PosZ", tableOffsetof[MixedEntityRow]("PosZ"), 12)
+	tableCookLayoutOffset("MixedEntityRow.Yaw", tableOffsetof[MixedEntityRow]("Yaw"), 16)
+	tableCookLayoutOffset("MixedEntityRow.Pitch", tableOffsetof[MixedEntityRow]("Pitch"), 20)
+	tableCookLayoutOffset("MixedEntityRow.VelX", tableOffsetof[MixedEntityRow]("VelX"), 24)
+	tableCookLayoutOffset("MixedEntityRow.VelY", tableOffsetof[MixedEntityRow]("VelY"), 28)
+	tableCookLayoutOffset("MixedEntityRow.VelZ", tableOffsetof[MixedEntityRow]("VelZ"), 32)
+	tableCookLayoutOffset("MixedEntityRow.Health", tableOffsetof[MixedEntityRow]("Health"), 36)
+	tableCookLayoutOffset("MixedEntityRow.Weapon", tableOffsetof[MixedEntityRow]("Weapon"), 40)
+	tableCookLayoutOffset("MixedEntityRow.Damage", tableOffsetof[MixedEntityRow]("Damage"), 48)
+	tableCookLayoutOffset("MixedEntityRow.Moving", tableOffsetof[MixedEntityRow]("Moving"), 56)
+	tableCookLayoutOffset("MixedEntityRow.Firing", tableOffsetof[MixedEntityRow]("Firing"), 57)
+	tableCookLayoutSize("MixedHitEventRow", tableSizeof[MixedHitEventRow](), 16)
+	tableCookLayoutSize("MixedHitEventRow alignment", tableAlignof[MixedHitEventRow](), 4)
+	tableCookLayoutOffset("MixedHitEventRow.TargetID", tableOffsetof[MixedHitEventRow]("TargetID"), 0)
+	tableCookLayoutOffset("MixedHitEventRow.Damage", tableOffsetof[MixedHitEventRow]("Damage"), 4)
+	tableCookLayoutOffset("MixedHitEventRow.HitKind", tableOffsetof[MixedHitEventRow]("HitKind"), 8)
+	tableCookLayoutOffset("MixedHitEventRow.Crit", tableOffsetof[MixedHitEventRow]("Crit"), 12)
+	tableCookLayoutSize("MixedPickupEventRow", tableSizeof[MixedPickupEventRow](), 8)
+	tableCookLayoutSize("MixedPickupEventRow alignment", tableAlignof[MixedPickupEventRow](), 4)
+	tableCookLayoutOffset("MixedPickupEventRow.ItemID", tableOffsetof[MixedPickupEventRow]("ItemID"), 0)
+	tableCookLayoutOffset("MixedPickupEventRow.Amount", tableOffsetof[MixedPickupEventRow]("Amount"), 4)
+	tableCookLayoutSize("MixedStatRow", tableSizeof[MixedStatRow](), 8)
+	tableCookLayoutSize("MixedStatRow alignment", tableAlignof[MixedStatRow](), 4)
+	tableCookLayoutOffset("MixedStatRow.StatID", tableOffsetof[MixedStatRow]("StatID"), 0)
+	tableCookLayoutOffset("MixedStatRow.Delta", tableOffsetof[MixedStatRow]("Delta"), 4)
 }
 
 // tableCookLayoutSize refuses a record this runtime lays out at a different
@@ -445,7 +445,7 @@ type tableCookWriter struct {
 	at     int64
 }
 
-func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
+func (w *tableCookWriter) put(at int64, value uint64, width int64) {
 	if w.buffer == nil {
 		return
 	}

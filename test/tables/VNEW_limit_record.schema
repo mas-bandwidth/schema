@@ -1,0 +1,25 @@
+// VNEW_limit_record.schema — NEW: the fixed form's record bound, AT the bound
+//
+// docs/SPEC-TABLES.md §3.4's fixed_record_bound is 65536 bytes of record body
+// (ir.TableFixedRecordMaxBytes, every runtime's kTableFixedRecordMaxBytes).
+// lead, v, text (a u32 length and 65520 bytes) and trail are exactly 65536, and
+// one byte more and the compiler does not emit the fixed form. text is one
+// entry in a compiled plan, so the plan stays small at the bound: an array or
+// bytes field compiles one entry per element before the plan coalesces them.
+// VOLD_limit_record and VNEW_limit_record differ by v's range alone (0..100,
+// then 0..200): the layout bytes are the same and the hashes differ, so the NEW
+// reader holds the OLD layout as a lineage entry and parses it under the bound
+// when it builds its plan (docs/FIXED-FORM-ALGORITHM.md §1.1, §5).
+// test/tables/fixedform_dump.cpp writes old_limit_record.bin from the OLD unit
+// and derives hostile_limit_record.bin from it, the same file with its layout
+// grown to a 65537-byte record and one byte more in the record.
+
+package vnew_limit_record
+
+fixed table LimitRecord
+{
+    lead  uint32 = 1
+    v     int32 = 0     | min = 0, max = 200
+    text  string(65520)
+    trail uint32 = 2
+}

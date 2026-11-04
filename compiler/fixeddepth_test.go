@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -185,17 +186,28 @@ var fixedDepthLegs = []string{"c", "cpp", "cs", "dart", "elixir", "go", "java", 
 // so a leading underscore is a boundary too.
 var fixedDepthTableMark = regexp.MustCompile(`(?i)(?:\b|_)(deep_fixed|DeepFixed|deepFixed|DEEP_FIXED)[A-Za-z_]*\b`)
 
-func fixedDepthMarks(t *testing.T, lang string, u *ir.Unit) int {
+// fixedDepthMarks answers the distinct marked symbols, sorted. A leg may call a
+// symbol more or fewer times as the chain deepens (Elixir inlines a nested type
+// only up to a fixed depth and calls its helper past it), so the test compares
+// which symbols the table has, not how often they appear.
+func fixedDepthMarks(t *testing.T, lang string, u *ir.Unit) []string {
 	t.Helper()
 	files, err := New().Generate(u, lang, Options{})
 	if err != nil {
 		t.Fatalf("%s: the probe must generate — a depth is a warning, never a refusal: %v", lang, err)
 	}
-	n := 0
+	seen := map[string]bool{}
 	for _, content := range files {
-		n += len(fixedDepthTableMark.FindAllString(string(content), -1))
+		for _, m := range fixedDepthTableMark.FindAllString(string(content), -1) {
+			seen[strings.TrimPrefix(m, "_")] = true
+		}
 	}
-	return n
+	marks := make([]string, 0, len(seen))
+	for m := range seen {
+		marks = append(marks, m)
+	}
+	sort.Strings(marks)
+	return marks
 }
 
 // ONE DECLARATION, ONE FORM, ON ALL NINE LEGS — and this is the red-team finding
@@ -233,11 +245,11 @@ func TestFixedDepthInsideTheBoundEmitsOnAllNineLegs(t *testing.T) {
 	}
 	for _, lang := range fixedDepthLegs {
 		want := fixedDepthMarks(t, lang, control)
-		if want == 0 {
+		if len(want) == 0 {
 			t.Fatalf("%s: the control must emit the fixed form for a 4-deep chain, or this test proves nothing", lang)
 		}
-		if got := fixedDepthMarks(t, lang, probe); got != want {
-			t.Errorf("%s emits %d fixed-form symbols for Deep at 20 deep and %d at 4 deep — 20 is INSIDE the %d-entry bound, so the two must agree; a leg short here is a leg holding its own copy of the bound",
+		if got := fixedDepthMarks(t, lang, probe); strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("%s emits fixed-form symbols %v for Deep at 20 deep and %v at 4 deep — 20 is INSIDE the %d-entry bound, so the two must agree; a leg short here is a leg holding its own copy of the bound",
 				lang, got, want, ir.TableFixedMaxDepth)
 		}
 	}
@@ -254,8 +266,8 @@ func TestFixedDepthPastTheBoundEmitsNoFormOnAnyLeg(t *testing.T) {
 		t.Fatalf("the probe must nest past the bound; its layout nests %d", ir.TableFixedTypeDepth(st))
 	}
 	for _, lang := range fixedDepthLegs {
-		if got := fixedDepthMarks(t, lang, u); got != 0 {
-			t.Errorf("%s emits %d fixed-form symbols for a table nested %d deep — past the %d-entry bound no conforming reader takes the walk, so the writer produces bytes nobody decodes",
+		if got := fixedDepthMarks(t, lang, u); len(got) != 0 {
+			t.Errorf("%s emits fixed-form symbols %v for a table nested %d deep — past the %d-entry bound no conforming reader takes the walk, so the writer produces bytes nobody decodes",
 				lang, got, ir.TableFixedTypeDepth(st), ir.TableFixedMaxDepth)
 		}
 	}

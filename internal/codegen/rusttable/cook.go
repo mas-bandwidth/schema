@@ -1248,14 +1248,14 @@ pub enum TableCookStorage {
 // record it names.
 pub struct TableCookFieldInfo {
     pub name: &'static str,
-    pub offset: i32,      // the field's offset in the record this describes
-    pub size: i32,        // its whole storage there, companions included
-    pub elem_size: i32,   // one element's size, for an array; the field's own otherwise
+    pub offset: i64,      // the field's offset in the record this describes
+    pub size: i64,        // its whole storage there, companions included
+    pub elem_size: i64,   // one element's size, for an array; the field's own otherwise
     pub is_array: bool,
     pub array_bound: i32, // the DECLARED bound: a counted array's N, a string's length
     pub is_pointer: bool, // an eight-byte SIGNED SELF-RELATIVE delta slot (§6.3)
-    pub count_offset: i32,   // the count companion's offset, or -1
-    pub present_offset: i32, // an optional's presence bool, or -1
+    pub count_offset: i64,   // the count companion's offset, or -1
+    pub present_offset: i64, // an optional's presence bool, or -1
     pub storage: TableCookStorage,
     // the record this field NAMES, behind a function so the table stays
     // constructible in any order. None when the field is a scalar. Following it
@@ -1267,8 +1267,8 @@ pub struct TableCookFieldInfo {
 // One cooked record's layout as DATA.
 pub struct TableCookInfo {
     pub name: &'static str,
-    pub size: i32,
-    pub align: i32,
+    pub size: i64,
+    pub align: i64,
     pub num_fields: i32,
     pub fields: &'static [TableCookFieldInfo],
 }

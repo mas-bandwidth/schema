@@ -20,13 +20,13 @@ func (g *tableGen) emitListSurface(st *ir.Struct, f *ir.Field) {
 	name := st.Name + ir.GoExportName(f.Name)
 	typ := containerElementType(g.unit, f)
 	holder := "*TableList[" + typ + "]"
-	g.pf("func %sAdd(worker *TableWorker,holder %s)*%s {p:=(*%s)(tableContainerAppend(worker,(*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil{return nil};", name, holder, typ, typ, typ)
+	g.pf("func %sAdd(worker *TableWorker,holder %s)*%s {p:=(*%s)(tableContainerAppend(worker,(*tableContainer)(unsafe.Pointer(holder)),int64(tableSizeof[%s]())));if p==nil{return nil};", name, holder, typ, typ, typ)
 	if isStructRef(f.Type) && !f.Type.Pointer {
 		g.pf("%sReset(p);", f.Type.Name)
 	}
 	g.pf("return p}\n")
-	g.pf("func %sErase(arena *TableArena,holder %s,element *%s)bool {return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),unsafe.Pointer(element),int64(unsafe.Sizeof(*element)))}\n", name, holder, typ)
-	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(unsafe.Sizeof(*(*%s)(nil))),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
+	g.pf("func %sErase(arena *TableArena,holder %s,element *%s)bool {return tableContainerErase(arena,(*tableContainer)(unsafe.Pointer(holder)),unsafe.Pointer(element),int64(tableSizeof[%s]()))}\n", name, holder, typ, typ)
+	g.pf("func %sEach(holder %s,visit func(*%s)bool,arena ...*TableArena)bool {cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)),int64(tableSizeof[%s]()),tableOptionalArena(arena));for range holder.Count {p:=(*%s)(cursor.Next());if p==nil||!visit(p){return false}};return true}\n", name, holder, typ, typ, typ)
 }
 
 func (g *tableGen) emitListRead(f *ir.Field, ind string) {
@@ -41,11 +41,11 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 	g.retainDiscard("r")
 	// a widened element kind counts once the count is known to land: the
 	// builder's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
-	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(unsafe.Sizeof(*(*%s)(nil))),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};if elemKind!=%d {r.Report.Widened++};r.Report.Malformed=true;break};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, kind, kind)
+	g.pf("%sslot:=(*tableContainer)(unsafe.Pointer(&%s));if !tableContainerFill(&sub.Nodes.Carve,slot,count,int64(tableSizeof[%s]()),%d) {if sub.Nodes.Carve.Refused {r.Take(sub);return false};if elemKind!=%d {r.Report.Widened++};r.Report.Malformed=true;break};if elemKind!=%d {r.Report.Widened++};slot.Count=0\n", i, expr, typ, align, kind, kind)
 	if f.TextTotal > 0 {
 		g.pf("%sspent:=int64(0)\n", i)
 	}
-	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(unsafe.Sizeof(*(*%s)(nil)))));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
+	g.pf("%sfor i:=uint64(0);i<count;i++ { p:=(*%s)(tableContainerFillAt(&sub.Nodes.Carve,slot,int32(i),int64(tableSizeof[%s]())));if p==nil {r.Report.Malformed=true;break};landed:=false;for once:=true;once;once=false {\n", i, typ, typ)
 	j := i + "\t"
 	switch kind {
 	case tkString:
@@ -63,7 +63,7 @@ func (g *tableGen) emitListRead(f *ir.Field, ind string) {
 		g.emitReadScalar(f, "(*p)", "sub", "elemKind", j, "r.Report.Malformed=true;break")
 	}
 	g.emitTextTotalRead(f, "(*p)", j)
-	g.pf("%slanded=true };if !landed { if sub.Nodes.Carve.Worker!=nil {tableContainerErase(sub.Nodes.Carve.Worker.Arena,slot,unsafe.Pointer(p),int64(unsafe.Sizeof(*p)))};break };if sub.Nodes.Carve.Worker==nil {slot.Count++}\n%s}\n", j, i)
+	g.pf("%slanded=true };if !landed { if sub.Nodes.Carve.Worker!=nil {tableContainerErase(sub.Nodes.Carve.Worker.Arena,slot,unsafe.Pointer(p),int64(tableSizeof[%s]()))};break };if sub.Nodes.Carve.Worker==nil {slot.Count++}\n%s}\n", j, typ, i)
 	g.emitCarveReturn("r", "sub", i)
 	g.pf("%s}\n", ind)
 }
@@ -80,7 +80,7 @@ func (g *tableGen) emitListWrite(f *ir.Field, expr, writer, ind string, framed b
 		if f.IsMap() {
 			g.pf("%s cursor:=tableMapCursor((*tableContainer)(unsafe.Pointer(&%s)),%s,%s.Ids.Numbering.arena);defer cursor.Release()\n", ind, expr, g.mapDescriptor(f), writer)
 		} else {
-			g.pf("%s cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(unsafe.Sizeof(*(*%s)(nil))),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
+			g.pf("%s cursor:=tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&%s)),int64(tableSizeof[%s]()),%s.Ids.Numbering.arena)\n", ind, expr, typ, writer)
 		}
 		g.pf("%s for i:=int32(0);i<%s.Count;i++ { p:=(*%s)(cursor.Next());if p==nil {return false};\n", ind, expr, typ)
 		element := f
@@ -168,7 +168,7 @@ func (r *TableReader) wireValueExtent(f *TableFieldInfo,kind uint8,at *int64,nod
  case 1:if !r.Has(1){return bad};if r.Get8()>1&&nodes>=0{return bad}
  default:if !r.Skip(kind){return bad}}
  return TableRefuseOk}
-func tableWireArrayExtent(r TableReader,f *TableFieldInfo,keyed,arm bool,at *int64,nodes int64)TableRefuseReason{bad:=TableRefuseOk;if nodes>=0{bad=TableRefuseWireDamaged};if len(r.Buffer)<2{return TableRefuseOk};kind:=r.Get8();count,ok:=r.Leb();if !ok{return bad};if kind!=f.Kind&&!tableKindWidens(kind,f.Kind){return TableRefuseOk};if f.List||f.Map{if count>math.MaxInt32{return TableRefuseCountOverExtentCap};floor:=tableKindBytes(kind);if kind==13{floor=2};if floor<1{floor=1};if count>uint64((int64(len(r.Buffer))-r.Offset)/floor){return TableRefuseCountOverLength};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);*at+=int64(count)*int64(f.ElemSize)}
+func tableWireArrayExtent(r TableReader,f *TableFieldInfo,keyed,arm bool,at *int64,nodes int64)TableRefuseReason{bad:=TableRefuseOk;if nodes>=0{bad=TableRefuseWireDamaged};if len(r.Buffer)<2{return TableRefuseOk};kind:=r.Get8();count,ok:=r.Leb();if !ok{return bad};if kind!=f.Kind&&!tableKindWidens(kind,f.Kind){return TableRefuseOk};if f.List||f.Map{if count>math.MaxInt32{return TableRefuseCountOverExtentCap};floor:=tableKindBytes(kind);if kind==13{floor=2};if floor<1{floor=1};if count>uint64((int64(len(r.Buffer))-r.Offset)/floor){return TableRefuseCountOverLength};*at=(*at+int64(f.ElemAlign)-1)& -int64(f.ElemAlign);if f.ElemSize>0&&int64(count)>(tableStorageCap-*at)/int64(f.ElemSize){return TableRefuseStorageOverCap};*at+=int64(count)*int64(f.ElemSize)}
  if nodes>=0&&f.Map{return TableRefuseOk} // map arm
  if nodes>=0{n:=count;if !f.List&&!keyed&&f.ArrayBound>0&&n>uint64(f.ArrayBound){n=uint64(f.ArrayBound)};for range n {e:=&r;if keyed{key,ok:=r.Leb();if !ok{return bad};id,ok:=r.Resolve(key);if !ok{return bad};known:=false;for v:=uint64(1);f.KeyID!=nil&&v<=uint64(f.ArrayBound);v++{if f.KeyID(v)==id{known=true;break}};elem,ok:=r.Body();if !ok{return bad};if !known{continue};if kind!=13{e=&elem}else{body:=elem;if reason:=tableWireExtent(&body,f.Table(),at,nodes);reason!=TableRefuseOk{return reason};if body.Offset!=int64(len(body.Buffer)){return bad};continue}};if arm&&kind==13{body,ok:=r.Body();if !ok{return bad};if reason:=tableWireExtent(&body,f.Table(),at,nodes);reason!=TableRefuseOk{return reason};continue};if reason:=e.wireValueExtent(f,kind,at,nodes);reason!=TableRefuseOk{return reason}};return TableRefuseOk}
  if kind!=13&&kind!=15{return TableRefuseOk};for i:=uint64(0);i<count&&r.Has(1);i++{if keyed{if _,ok:=r.Leb();!ok{return TableRefuseOk}};if kind==13{body,ok:=r.Body();if !ok{return TableRefuseOk};if reason:=tableWireExtent(&body,f.Table(),at,nodes);reason!=TableRefuseOk{return reason}}else if reason:=tableWireUnionExtent(&r,f,at,nodes);reason!=TableRefuseOk{return reason}};return TableRefuseOk}
@@ -256,7 +256,7 @@ func tableJSONWriteList(out *tableJSONOut,holder unsafe.Pointer,f *TableFieldInf
  count:=*(*int32)(unsafe.Add(holder,8));if count<0{return false};if count==0{out.text("[]");return true};ref:=*(*int64)(holder);if ref==0{return false};p:=unsafe.Add(holder,ref);out.put('[');for i := range count {if i>0{out.put(',')};out.line(depth+1);if !tableJSONWriteScalar(out,unsafe.Add(p,uintptr(i)*uintptr(f.ElemSize)),f,depth+1){return false}};out.line(depth);out.put(']');return true
 }
 func tableJSONReadList(in *tableJSONIn,holder unsafe.Pointer,f *TableFieldInfo,depth int32) bool {
- if in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
- for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.KindMismatch++;if !in.skipValue(depth+1){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
+ if depth+1>tableJSONMaxDepth||in.peek()!='['||in.graph==nil||in.graph.listAdd==nil {in.bad=true;return false};in.pos++;clear(unsafe.Slice((*byte)(holder),16));shape:=tableJSONElementShape(f)
+ for {c:=in.peek();if c==']'{in.pos++;return true};if c==0{in.bad=true;return false};p:=in.graph.listAdd(holder,int64(f.ElemSize));if p==nil{in.bad=true;return false};if f.Kind==13&&!f.Pointer{f.Table().Reset(p)};if in.valueShape()!=shape&&!(f.Pointer&&in.valueShape()=='z'){in.report.KindMismatch++;if !in.skipValue(depth+2){return false}}else if !tableJSONReadScalar(in,p,f,depth+1){return false};c=in.peek();if c==','{in.pos++;continue};if c==']'{in.pos++;return true};in.bad=true;return false}
 }
 `

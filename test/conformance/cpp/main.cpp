@@ -197,6 +197,7 @@ struct Report
     bool malformed;
     bool refused;
     int blob_shared; // the extra slots that named a blob another slot named (§2.5)
+    bool announce;   // the message surface: the refusal was the announcement's (§3.3)
 };
 
 struct Codec
@@ -453,7 +454,7 @@ struct MsgCodec
             std::vector<ns::TableMessageEntry> entries( (size_t) ns::kTableMessageEntriesHere ); \
             ns::TableVocabulary vocabulary( entries.data(), ns::kTableMessageEntriesHere );     \
             ns::TableReport inner;                                                              \
-            if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); return false; } \
+            if ( !ns::AnnounceRead( vocabulary, a, an, &inner ) ) { copy_report( inner, r ); r->announce = true; return false; } \
             ns::type value;                                                                     \
             ns::type##Reset( value );                                                           \
             int64_t count = 1;                                                                  \
@@ -977,9 +978,17 @@ static int surface_message( const std::string & out )
         if ( !slurp( announcement_path.c_str(), announcement ) ) { fprintf( stderr, "driver: cannot read %s\n", announcement_path.c_str() ); return 1; }
         if ( !slurp( f[5].c_str(), message ) ) { fprintf( stderr, "driver: cannot read %s\n", f[5].c_str() ); return 1; }
         std::vector<uint8_t> answer;
-        Report report;
+        Report report = {};
         if ( !codec->round_trip( announcement.data(), (int64_t) announcement.size(),
-                                 message.data(), (int64_t) message.size(), answer, &report ) ) { return 1; }
+                                 message.data(), (int64_t) message.size(), answer, &report ) )
+        {
+            // an announcement the read refuses as damage sets no vocabulary
+            // (§3.3), and the row is answered by name
+            if ( !report.announce || !report.malformed ) { return 1; }
+            static const char reason[] = "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)";
+            if ( !spill( out, f[1] + ".absent", (const uint8_t *) reason, sizeof( reason ) - 1 ) ) return 1;
+            continue;
+        }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
     }
     return 0;
@@ -1527,6 +1536,7 @@ static const char * reason_name( blockdemo::TableRefuseReason reason )
         case blockdemo::text_ill_formed: return "text_ill_formed";
         case blockdemo::count_over_bound: return "count_over_bound";
         case blockdemo::length_over_bound: return "length_over_bound";
+        case blockdemo::storage_over_cap: return "storage_over_cap";
     }
     return "?";
 }

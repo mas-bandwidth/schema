@@ -135,18 +135,18 @@ struct TableBlockInfo;
 typedef struct TableBlockFieldInfo
 {
     const char * name;
-    uint32_t offset;  /* the field's offset in the record this descriptor describes */
-    uint32_t size;    /* its size there */
+    uint64_t offset;  /* the field's offset in the record this descriptor describes */
+    uint64_t size;    /* its size there */
     uint8_t kind;     /* the table-wire kind, as TableFieldInfo carries it */
     int out_of_line;  /* an out-of-line array: the triple's three members are live */
-    uint32_t offset_of_offset; /* the triple's offset_of member, or 0xffffffff */
+    uint64_t offset_of_offset; /* the triple's offset_of member, or UINT64_MAX */
     /* The COUNT COMPANION, and it is one column doing one job in both
        spellings: the triple's count member for an out-of-line array, the int32
-       used length of a string or a bytes inline, 0xffffffff when the field has
+       used length of a string or a bytes inline, UINT64_MAX when the field has
        none. */
-    uint32_t count_offset;
-    uint32_t stride_offset;    /* the triple's stride member, or 0xffffffff */
-    uint32_t stride;           /* THIS BUILD's pitch, to assert against — never to index with (§19.2) */
+    uint64_t count_offset;
+    uint64_t stride_offset;    /* the triple's stride member, or UINT64_MAX */
+    uint64_t stride;           /* THIS BUILD's pitch, to assert against — never to index with (§19.2) */
     /* ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
        already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
        and a block row without learning a second one. Where the field starts is
@@ -155,8 +155,8 @@ typedef struct TableBlockFieldInfo
     int counted;             /* count_offset names a used-length companion */
     int optional;            /* present_offset names a presence companion */
     int32_t array_bound;     /* inline slots, or a string's declared maximum; 0 for a plain scalar */
-    uint32_t elem_size;      /* ONE slot's size; the field's own when it holds one value */
-    uint32_t present_offset; /* the presence companion, or 0xffffffff */
+    uint64_t elem_size;      /* ONE slot's size; the field's own when it holds one value */
+    uint64_t present_offset; /* the presence companion, or UINT64_MAX */
     /* the ELEMENT's or the nested record's own layout. NULL when the field is a
        scalar. Following it is how a walker DESCENDS: an out-of-line array's
        rows, and a nested record's fields, are both reached through this one
@@ -174,7 +174,7 @@ typedef struct TableBlockInfo
 {
     const char * name;
     uint64_t build_version; /* the unit's (docs/SPEC-TABLES.md §20) */
-    uint32_t size;          /* the record's own sizeof: a projection's, or a row's */
+    uint64_t size;          /* the record's own sizeof: a projection's, or a row's */
     uint32_t align;
     int32_t num_fields;
     const TableBlockFieldInfo * fields;
@@ -763,7 +763,7 @@ func (g *tableGen) emitBlockRecordFields(owner string, ml *ir.MemberLayout, bl *
 		facts := ir.BlockFieldOf(g.unit, f, fl.Offset, bl != nil)
 		if bl != nil {
 			if a := bl.ArrayByName(f.Name); a != nil {
-				g.pf("    { \"%s\", %du, %du, %d, 1, %du, %du, %du, %du, 1, 1, 0, %d, 0u, 0xffffffffu, %s },\n",
+				g.pf("    { \"%s\", %du, %du, %d, 1, %du, %du, %du, %du, 1, 1, 0, %d, 0u, UINT64_MAX, %s },\n",
 					f.Name, fl.Offset, fl.Size, kind, a.OffsetOfOffset, a.CountOffset, a.StrideOffset, a.Stride,
 					a.Max, rowIndex(a.ElemName))
 				continue
@@ -779,7 +779,7 @@ func (g *tableGen) emitBlockRecordFields(owner string, ml *ir.MemberLayout, bl *
 				element = rowIndex(ref.Name)
 			}
 		}
-		g.pf("    { \"%s\", %du, %du, %d, 0, 0xffffffffu, %s, 0xffffffffu, 0u, %s, %s, %s, %d, %du, %s, %s },\n",
+		g.pf("    { \"%s\", %du, %du, %d, 0, UINT64_MAX, %s, UINT64_MAX, 0u, %s, %s, %s, %d, %du, %s, %s },\n",
 			f.Name, fl.Offset, fl.Size, kind, blockCOffset(facts.CountOffset),
 			boolC(facts.IsArray), boolC(facts.Counted), boolC(facts.Optional), facts.ArrayBound, facts.ElemSize,
 			blockCOffset(facts.PresentOffset), element)
@@ -787,10 +787,10 @@ func (g *tableGen) emitBlockRecordFields(owner string, ml *ir.MemberLayout, bl *
 }
 
 // blockCOffset spells a companion's offset, or the absent marker every other
-// 32-bit offset column in the descriptors uses.
+// 64-bit offset column in the descriptors uses.
 func blockCOffset(offset int64) string {
 	if offset < 0 {
-		return "0xffffffffu"
+		return "UINT64_MAX"
 	}
 	return fmt.Sprintf("%du", offset)
 }

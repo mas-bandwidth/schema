@@ -1000,7 +1000,13 @@ defmodule Driver do
                {:save_messages, mod.save_messages(vocab, values)} do
           {:ok, bytes}
         else
-          {verb, answer} -> {:absent, "#{root}: #{verb} answered #{inspect(answer)}"}
+          # an announcement the read refuses as damage sets no vocabulary
+          # (§3.3), and the row is answered by name
+          {:announce_read, {:error, :malformed, _vocab}} ->
+            {:refused, "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)"}
+
+          {verb, answer} ->
+            {:absent, "#{root}: #{verb} answered #{inspect(answer)}"}
         end
     end
   end

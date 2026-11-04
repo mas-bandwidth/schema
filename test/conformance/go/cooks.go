@@ -297,7 +297,7 @@ func cookText(at unsafe.Pointer, used int32) string {
 	return b.String()
 }
 
-func cookScalar(at unsafe.Pointer, storage graphdemo.TableCookStorage, width int32) (string, error) {
+func cookScalar(at unsafe.Pointer, storage graphdemo.TableCookStorage, width int64) (string, error) {
 	switch storage {
 	case graphdemo.TableCookStorageBool:
 		if *(*byte)(at) != 0 {

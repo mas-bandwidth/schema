@@ -622,6 +622,12 @@ async function surfaceMessage(lines, outDir) {
     vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
     const report = {};
     if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), report)) {
+      // an announcement the read refuses as damage sets no vocabulary
+      // (docs/SPEC-TABLES.md §3.3), and the row is answered by name
+      if (report.Malformed && !report.Reason) {
+        messageAbsent(outDir, f[1], "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)");
+        continue;
+      }
       fail(f[1] + ": the announcement was refused: " + conn[4]);
     }
     const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new runtime[f[3]]());

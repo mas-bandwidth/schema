@@ -711,6 +711,50 @@ json-hostile keyed-none-key               tabledemo PackConfig  testdata/conform
 json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,0,false,read
 json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,0,false,read
 json-hostile nesting-past-depth-cap       tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-past-depth-cap       refused
+# THE TEXT FORM'S HARD LIMITS, ON THE BOUND (docs/SPEC-TABLES.md §16.2): each
+# limit is pinned by a pair, the value AT the limit that reads and the value one
+# past it that does not.
+#
+# json_max_depth = 128: the root object is depth 0 and the value of one of its
+# keys is depth 1, so a container nested 128 deep under the root reads and one
+# nested 129 deep is malformed. `mystery` is an unknown key, so the pair rides
+# the skip walk every reader has; the at-limit read counts the one unknown key.
+json-hostile nesting-at-depth-cap         tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-at-depth-cap         1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap   tabledemo RootConfig  testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap   refused
+#
+# Every container is one level, whatever declared it: a map's object and a
+# union's object each count, as a table's object and an array do. The pairs
+# below reach the limit through mapdemo's Depth root, `one.roster` (a table,
+# then a map, then the map's Item value) and `arm.squad` (a union, then its
+# Squad payload), each ending in an unknown key's arrays. A reader that does
+# not count the map or the union object reads the one-past text.
+json-hostile nesting-at-depth-cap-through-map         mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-map         1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-map   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-map   refused
+json-hostile nesting-at-depth-cap-through-union       mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-union       1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-union mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-union refused
+# The same through a fixed table's declared path, tabledemo's RootConfig:
+# `weapons` (an array), a WeaponConfig, its `effect` union, then the Buff arm.
+json-hostile nesting-at-depth-cap-through-fixed-union       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-fixed-union       1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-fixed-union tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-fixed-union refused
+# A SKIPPED value is a container like any other: a declared array's element
+# of the wrong shape, a keyed object's key no enum names, a text list's
+# element that is not a string and a flags array's element that is not a
+# name each sit one level below their array or object, which sits one below
+# its holder. A reader that labels the skipped value at its container's own
+# level reads the one-past text.
+json-hostile nesting-at-depth-cap-through-skipped-array       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-array 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-array tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-array refused
+json-hostile nesting-at-depth-cap-through-skipped-keyed       tabledemo PackConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-keyed 1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-keyed tabledemo PackConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-keyed refused
+json-hostile nesting-at-depth-cap-through-skipped-text-list   featurewitnesses Root testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-text-list 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-text-list featurewitnesses Root testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-text-list refused
+json-hostile nesting-at-depth-cap-through-skipped-flags       tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-flags 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-flags tabledemo RootConfig testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-flags refused
+# and a map's value of the wrong shape and a union's arm no variant names.
+json-hostile nesting-at-depth-cap-through-skipped-map-value   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-map-value 0,1,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-map-value mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-map-value refused
+json-hostile nesting-at-depth-cap-through-skipped-union-arm   mapdemo Depth testdata/conformance/tables/json-hostile/nesting-at-depth-cap-through-skipped-union-arm 1,0,0,0,0,false,read
+json-hostile nesting-one-past-depth-cap-through-skipped-union-arm mapdemo Depth testdata/conformance/tables/json-hostile/nesting-one-past-depth-cap-through-skipped-union-arm refused
 json-hostile null-optional                tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-optional                0,0,0,0,0,false,read
 json-hostile null-scalar                  tabledemo PackConfig  testdata/conformance/tables/json-hostile/null-scalar                  0,1,0,0,0,false,read
 json-hostile num-bare-minus               tabledemo RootConfig  testdata/conformance/tables/json-hostile/num-bare-minus               refused
@@ -827,6 +871,20 @@ json-hostile unknown-key                  tabledemo RootConfig  testdata/conform
 json-hostile text-total-past              featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-past              0,0,0,1,0,false,read
 json-hostile text-total-at                featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-at                0,0,0,0,0,false,read
 json-hostile text-total-after-clamp       featurewitnesses Root testdata/conformance/tables/json-hostile/text-total-after-clamp       0,0,0,2,0,false,read
+# TIMESTAMP DOMAIN EDGES (docs/SPEC-TABLES.md §2.11): the int64 nanosecond
+# domain is 1677-09-21T00:12:43.145224192Z through
+# 2262-04-11T23:47:16.854775807Z. Each end reads, and one nanosecond past each
+# end is refused. The offset rows spell the same instants with a numeric
+# offset, so a reader that bounds the written date or year instead of the
+# instant gives the wrong verdict.
+json-hostile timestamp-domain-min                featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-min                0,0,0,0,0,false,read
+json-hostile timestamp-domain-max                featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-max                0,0,0,0,0,false,read
+json-hostile timestamp-domain-below-min          featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-below-min          refused
+json-hostile timestamp-domain-above-max          featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-above-max          refused
+json-hostile timestamp-domain-min-by-offset      featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-min-by-offset      0,0,0,0,0,false,read
+json-hostile timestamp-domain-max-by-offset      featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-max-by-offset      0,0,0,0,0,false,read
+json-hostile timestamp-domain-past-min-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-min-by-offset refused
+json-hostile timestamp-domain-past-max-by-offset featurewitnesses Root testdata/conformance/tables/json-hostile/timestamp-domain-past-max-by-offset refused
 # A COUNT PAST [..N] AND THE TOTAL, BOTH COUNTED (§2.13): five labels on the
 # [..4] list, where "abc" carries the sum to 9 and the total drops it and the
 # tail. The fifth element is past the count bound as well, and that clamp is
@@ -936,6 +994,18 @@ json-hostile blob-label-in-skipped-value  blobdemo Catalog testdata/conformance/
 #            message form is fixed tables only (§3.3), and every leg answers it
 #            absent with "variable table: the message form is fixed tables only
 #            (SPEC-TABLES §3.3)".
+#
+#   announce-grown <name> <message> <entries> <distinct|repeat> <answer>
+#            one message row read again over its connection's announcement
+#            with the announcement's id table grown to <entries> entries, the
+#            added ids named by nothing in the body; `repeat` makes the last
+#            entry the first. The harness grows the table when it materialises
+#            the fixtures and hands a driver an ordinary connection and message
+#            row, so the answer is withheld. <answer> is `message`, the row's
+#            own message golden, or `malformed`: the read refuses the
+#            announcement as damage, sets no vocabulary, and every leg answers
+#            the row absent with "malformed announcement: the connection carries
+#            no vocabulary (SPEC-TABLES §3.3)".
 unit backenddemo tables/backend
 unit vocabdemo   tables/vocab
 unit vocab9demo  tables/vocab9
@@ -981,6 +1051,19 @@ message peer_a     backend_conn StorePurchase testdata/wire/tables/peer_a.bin   
 message peer_b     vocab_conn   Wide00        testdata/wire/tables/peer_b.bin     testdata/wire/tables/peer_b_message.bin
 message vocab9_wide vocab9_conn Wide19 testdata/wire/tables/vocab9_wide.bin testdata/wire/tables/vocab9_wide_message.bin
 message vocab9_low  vocab9_conn Wide00 testdata/wire/tables/vocab9_low.bin  testdata/wire/tables/vocab9_low_message.bin
+
+# THE ANNOUNCEMENT'S ID TABLE IS A FILE'S (§3.3), so §3's bound is its bound:
+# THE DISTINCTNESS CHECK IS BOUNDED WORK, and a table of more than 4096 entries
+# is malformed whatever the buffer holds, as is one that names an id twice. A
+# table of exactly 4096 distinct entries is accepted and announces the
+# vocabulary the connection's own announcement does. One fixed root on each of
+# two units, a narrow vocabulary and a 9-bit one.
+announce-grown login_full_ids4096         login_full  4096 distinct message
+announce-grown login_full_ids4097         login_full  4097 distinct malformed
+announce-grown login_full_ids4096_repeat  login_full  4096 repeat   malformed
+announce-grown vocab9_wide_ids4096        vocab9_wide 4096 distinct message
+announce-grown vocab9_wide_ids4097        vocab9_wide 4097 distinct malformed
+announce-grown vocab9_wide_ids4096_repeat vocab9_wide 4096 repeat   malformed
 
 # THE `was` ROWS (docs/SPEC-TABLES.md §5, SPEC §4.2). w1_fleet carries string,
 # bytes and flags fields OFF their declared defaults beside a node holding every
@@ -1106,6 +1189,19 @@ retain retain_enum_variant tblrt1 Node testdata/wire/tables/retain_excluded_3.bi
 retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bin full full 0,1,1 0 -
 retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full full 0,1,1 0 -
 retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full full 0,1,1 0 -
+
+# THE RESOLVING WALK'S DEPTH CAP, retain_walk_depth = 64 (docs/SPEC-TABLES.md
+# §6.6), at the bound and one past it. The wire is one field RT1 cannot name
+# whose payload is a chain of nested table bodies with a scalar at the bottom.
+# The cap counts FRAMED CONTENTS: the field's own payload is not a level, its
+# body is level 1, and each nested body one more. Sixty-four is retained and
+# the save writes the wire back byte for byte. Sixty-five is dropped as one
+# retain_lost with the load ACCEPTED, never malformed: the plain read skips the
+# field by its framing either way, so `unknown` is 1 on both, and the save is
+# the empty root. The wires are internal/tablewire's `deepWire`, which
+# TestRetainWalkDepthCap holds them equal to.
+retain retain_walk_depth_64 tblrt1 Node testdata/wire/tables/retain_walk_depth_64.bin full full 1,0,1 0 testdata/wire/tables/retain_walk_depth_64.bin
+retain retain_walk_depth_65 tblrt1 Node testdata/wire/tables/retain_walk_depth_65.bin full full 0,1,1 0 testdata/wire/tables/retain_walk_depth_65_save.bin
 
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.
@@ -1296,6 +1392,13 @@ framing node_cycle_to_root                    graphdemo ListNode testdata/wire/t
 framing node_cycle_mid                        graphdemo ListNode testdata/wire/tables/framing/node_cycle_mid.bin               malformed            -
 framing node_diamond_chain                    graphdemo Scene    testdata/wire/tables/framing/node_diamond_chain.bin           0,0,0,0,0,false,read testdata/conformance/tables/framing/scene_diamond_chain.json
 framing node_chain_two                        graphdemo ListNode testdata/wire/tables/framing/node_chain_two.bin               0,0,0,0,0,false,read testdata/conformance/tables/framing/listnode_1_to_2_to_3.json
+# leb128_max_bytes = 10 (docs/SPEC-TABLES.md §3, F10), at a skipped kind-17
+# field whose value is never used: ten bytes reaching 2^64 - 1 is skipped and
+# counted unknown; a tenth byte above the 64th bit, and eleven bytes, are
+# malformed at the same position.
+framing frame_leb_ten_bytes_skipped           tblr1 Cfg testdata/wire/tables/framing/frame_leb_ten_bytes_skipped.bin           1,0,0,0,0,false,read testdata/conformance/tables/framing/cfg_silver.json
+framing frame_leb_tenth_byte_overflow_skipped tblr1 Cfg testdata/wire/tables/framing/frame_leb_tenth_byte_overflow_skipped.bin malformed            -
+framing frame_leb_eleven_bytes_skipped        tblr1 Cfg testdata/wire/tables/framing/frame_leb_eleven_bytes_skipped.bin        malformed            -
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no

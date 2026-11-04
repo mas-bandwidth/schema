@@ -115,13 +115,13 @@ const tableBuilderCollectionWireSource = `
     {
         if (field.Kind == 13) { ResetNative(pointer, field.Table); }
         else if (field.Kind == 15) { System.Runtime.InteropServices.NativeMemory.Clear((void*)pointer, (nuint)field.NativeElementSize); }
-        else { NativePut((byte*)pointer, field.GetWide != null ? field.DefaultWide : field.DefaultRaw, field.NativeElementSize); }
+        else { NativePut((byte*)pointer, field.GetWide != null ? field.DefaultWide : field.DefaultRaw, (int)field.NativeElementSize); }
     }
     public static bool BuilderKeyValid(TableFieldInfo key, ReadOnlySpan<byte> text, ulong raw, bool textual)
     {
         if (key.Kind == 12) { return textual && text.Length <= key.ArrayBound && TextValid(text); }
         if (textual) { return false; }
-        int bits = key.NativeElementSize * 8;
+        int bits = (int)key.NativeElementSize * 8; // a map key is a scalar, at most 16 bytes
         if (bits == 64) { return true; }
         if (key.Kind >= 2 && key.Kind <= 5)
         { long value = unchecked((long)raw), bound = 1L << (bits - 1); return value >= -bound && value < bound; }

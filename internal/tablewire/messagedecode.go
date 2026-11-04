@@ -949,11 +949,27 @@ func (d *bitDecoder) clampFloat(v float64, f *ir.Field) float64 {
 	return v
 }
 
+// messageSkipDepth bounds the skip walk (docs/SPEC-TABLES.md §3.3,
+// message_skip_depth). A field's skip starts at 0; a nested body, a union's
+// arm and a walked array element each go one level deeper, so the 128th
+// nested body still skips and the 129th is malformed. The bound is the
+// emitted readers' own, level for level, so an announced shape the reader
+// cannot name answers the same verdict in this engine and in every leg.
+const messageSkipDepth = 128
+
 // skip steps past one field's payload without decoding it, using the announced
 // ENTRY alone (docs/SPEC-TABLES.md §3.3). It is what makes an unknown entry
 // skippable on a body with no kind byte, and it is one walk over every table,
 // because a shape says everything a skipper needs.
 func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
+	return d.skipAt(entry, 0)
+}
+
+// skipAt is skip at a nesting depth of the walk (messageSkipDepth).
+func (d *bitDecoder) skipAt(entry ir.TableVocabularyEntry, depth int) bool {
+	if depth > messageSkipDepth {
+		return false
+	}
 	shape := entry.Shape
 	switch int(entry.Kind) {
 	case 0, ir.TableKindNoPayload:
@@ -985,9 +1001,9 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 		if !named {
 			return false
 		}
-		return d.skip(arm)
+		return d.skipAt(arm, depth+1)
 	case ir.TableKindTable:
-		return d.skipBody()
+		return d.skipBody(depth + 1)
 	case ir.TableKindPointer:
 		// A FIXED ROOT NUMBERS NO NODE, so a node index has no width to be
 		// stepped over at, and an entry of kind 17 in its batch is damage
@@ -1059,7 +1075,7 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 					return false
 				}
 			}
-			if !d.skip(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}) {
+			if !d.skipAt(ir.TableVocabularyEntry{Kind: shape.Elem, Shape: inner}, depth+1) {
 				return false
 			}
 			// A WALKED ELEMENT THAT CONSUMED NO BITS, a nested array whose
@@ -1090,8 +1106,12 @@ func (d *bitDecoder) skip(entry ir.TableVocabularyEntry) bool {
 }
 
 // skipBody walks a nested body it cannot name, field by field, against the
-// same announced vocabulary its parent resolves through.
-func (d *bitDecoder) skipBody() bool {
+// same announced vocabulary its parent resolves through, at the body's own
+// depth (messageSkipDepth).
+func (d *bitDecoder) skipBody(depth int) bool {
+	if depth > messageSkipDepth {
+		return false
+	}
 	for {
 		ref, ok := d.reference()
 		if !ok {
@@ -1101,7 +1121,7 @@ func (d *bitDecoder) skipBody() bool {
 			return true
 		}
 		entry, named := d.entry(ref)
-		if !named || !d.skip(entry) {
+		if !named || !d.skipAt(entry, depth) {
 			return false
 		}
 	}

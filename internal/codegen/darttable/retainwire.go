@@ -327,7 +327,7 @@ List<int>? _retainBody(TableWireReader r, int depth) {
     if (id == null) return null;
     if (!r.has(1)) return null;
     final kind = r.readByte();
-    final sub = _retainResolve(r, kind, depth + 1);
+    final sub = _retainResolve(r, kind, depth);
     if (sub == null) return null;
     out.addAll(_u64le(id));
     out.add(kind);
@@ -347,12 +347,12 @@ List<int>? _retainArray(TableWireReader r, int kind, int depth) {
       if (ref == null) return null;
       final id = _retainId(r, ref);
       if (id == null) return null;
-      final framed = _retainFramed(r, ek, depth + 1);
+      final framed = _retainFramed(r, ek, depth);
       if (framed == null) return null;
       out.addAll(_u64le(id));
       out.addAll(framed);
     } else {
-      final sub = _retainResolve(r, ek, depth + 1);
+      final sub = _retainResolve(r, ek, depth);
       if (sub == null) return null;
       out.addAll(sub);
     }
@@ -498,7 +498,7 @@ List<int>? _retainEmitBody(WireState state, _RetainCursor c, int end, int depth)
     if (ref == 0) return null;
     final kind = c.byte();
     if (kind == null) return null;
-    final sub = _retainEmitPayload(state, kind, c, depth + 1);
+    final sub = _retainEmitPayload(state, kind, c, depth);
     if (sub == null) return null;
     _lebOut(o, ref);
     o.add(kind);
@@ -519,12 +519,12 @@ List<int>? _retainEmitArray(WireState state, int kind, _RetainCursor c, int end,
       if (keyId == null) return null;
       final ref = state.retainRefFor(keyId);
       if (ref == 0) return null;
-      final framed = _retainEmitFramed(state, ek, c, depth + 1);
+      final framed = _retainEmitFramed(state, ek, c, depth);
       if (framed == null) return null;
       _lebOut(o, ref);
       o.addAll(framed);
     } else {
-      final sub = _retainEmitPayload(state, ek, c, depth + 1);
+      final sub = _retainEmitPayload(state, ek, c, depth);
       if (sub == null) return null;
       o.addAll(sub);
     }
@@ -587,7 +587,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	g.pf("\tr.report = report;\n")
-	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
+	g.pf("\tr.report.nonFiniteFloat = '';\n\tr.report._countRefused = false;\n\tif (r.report._storageRefused) r.report.refused = false;\n\tr.report._storageRefused = false;\n\tif (r.report.missingFields.isNotEmpty) r.report.refused = false;\n\tr.report.missingFields = '';\n")
 	g.pf("\tr.stringBlob = %v;\n", strBlob)
 	g.pf("\tr.bytesBlob = %v;\n", bytesBlob)
 	g.pf("\tr.retain = retain;\n")
@@ -599,6 +599,7 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	// is read tolerantly up to the damage (docs/SPEC-TABLES.md §3.3, §4;
 	// internal/tablewire/decode.go decodeWith), so it falls through here.
 	g.pf("\tif (verdict == 2) { r.report.malformed = true; return v; }\n")
+	g.emitStorageGate(st)
 	g.pf("\ttry {\n")
 	g.pf("\t\tr.scanNodeTable();\n")
 	g.pf("\t\tr.pos = 1;\n")

@@ -1189,6 +1189,11 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the array is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	// an ARRAY re-establishes before placing: a fixed array writes every slot,
 	// so a second, shorter occurrence overlaying a prefix would leave the
 	// first occurrence's tail standing (docs/SPEC-TABLES.md §16.2, last-wins as a
@@ -1227,7 +1232,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			// more elements than the reader's bound: the bounded prefix is
 			// kept and the excess counts, the wire's rule (§4)
 			in.report.Clamped++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case f.Type.Pointer && in.valueShape() == 'z':
@@ -1239,7 +1244,7 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 			placed++
 		case in.valueShape() != shape:
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 			placed++
@@ -1281,6 +1286,11 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the text list is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	// re-establish every element at the element record's defaults, as readArray
 	// re-establishes its slots
 	for i := range fv.Elems {
@@ -1324,12 +1334,12 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			if seen > bound {
 				in.report.Clamped++
 			}
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case placed >= bound:
 			in.report.Clamped++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case optional && in.valueShape() == 'z':
@@ -1339,7 +1349,7 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			placed++
 		case in.valueShape() != 's':
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 			placed++
@@ -1400,6 +1410,11 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the keyed object is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	// every slot back to its declared defaults ONCE, so a key the text omits
 	// keeps them and a repeated field key cannot leave an earlier occurrence's
 	// slots standing. Per-KEY the slot is not re-established: a repeated slot
@@ -1439,12 +1454,12 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		switch {
 		case slot < 0:
 			in.report.Unknown++ // a key this enum cannot name
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case in.valueShape() != shape:
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		default:
@@ -1679,6 +1694,11 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the union's object is one level below its holder, and its arm's value one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	cell.U = 0
 	cell.Tab = nil
 	cell.Arm = nil
@@ -1704,14 +1724,14 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 	}
 	if tag == 0 {
 		in.report.Unknown++
-		if !in.skipValue(depth + 1) {
+		if !in.skipValue(depth + 2) {
 			return false
 		}
 	} else if arm := un.Variants[tag-1]; arm.Void() {
 		// A PAYLOAD-FREE ARM'S VALUE IS null (§2.6): the arm name selects it
 		if in.valueShape() != 'z' {
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -1729,12 +1749,12 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			// the wrong JSON type for the arm's row: the union reads None,
 			// the event is counted, and the enclosing object continues (§16.2)
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
 			payload := in.m.New(arm.Ref)
-			if !in.readTable(payload, depth+1) {
+			if !in.readTable(payload, depth+2) {
 				return false
 			}
 			cell.U = uint64(tag)
@@ -1756,7 +1776,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			cell.Arm = fv
 		case shape != Shape(arm.F):
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		default:
@@ -1786,6 +1806,11 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the flags array is one level below its holder, and its elements one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	var bits uint64
 	for {
 		c := in.peek()
@@ -1799,7 +1824,7 @@ func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 		}
 		if c != '"' {
 			in.report.KindMismatch++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -2225,6 +2250,11 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		return false
 	}
 	in.pos++
+	// the map's object is one level below its holder, and its values one below that
+	if depth+1 > maxJsonDepth {
+		in.bad = true
+		return false
+	}
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
 	keyCapacity := maxJsonKey
@@ -2278,25 +2308,25 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		// can still spell a number an integer kind holds.
 		case over && MapKeyIsString(f):
 			in.report.Clamped++
-			if !in.skipValue(depth) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case over:
 			in.report.KindMismatch++
-			if !in.skipValue(depth) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case placed == mapKeyMismatch:
 			in.report.KindMismatch++ // a value the key kind does not hold
-			if !in.skipValue(depth) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case !MapKeyFits(f, MapKeyOf(f, entry)):
 			in.report.Clamped++ // the entry is dropped WHOLE: keys never clamp
-			if !in.skipValue(depth) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
-		case !in.readMapValue(&entry.Fields[1], depth):
+		case !in.readMapValue(&entry.Fields[1], depth+1):
 			return false
 		default:
 			id := identityOf(f, MapKeyOf(f, entry))

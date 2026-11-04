@@ -208,18 +208,18 @@ struct TableBlockInfo;
 struct TableBlockFieldInfo
 {
     const char * name;
-    uint32_t offset;  // the field's offset in the record this descriptor describes
-    uint32_t size;    // its size there
+    int64_t offset;   // the field's offset in the record this descriptor describes
+    int64_t size;     // its size there
     uint8_t kind;     // the table-wire kind, as TableFieldInfo carries it
     bool out_of_line; // an out-of-line array: the triple's three members are live
-    uint32_t offset_of_offset; // the triple's offset_of member, or 0xffffffff
+    int64_t offset_of_offset;  // the triple's offset_of member, or 0xffffffff
     // The COUNT COMPANION, and it is one column doing one job in both
     // spellings: the triple's count member for an out-of-line array, the int32
     // used length of a string or a bytes inline, 0xffffffff when the field has
     // none.
-    uint32_t count_offset;
-    uint32_t stride_offset;    // the triple's stride member, or 0xffffffff
-    uint32_t stride;           // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    int64_t count_offset;
+    int64_t stride_offset;     // the triple's stride member, or 0xffffffff
+    int64_t stride;            // THIS BUILD's pitch, to assert against — never to index with (§19.2)
     // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
     // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
     // and a block row without learning a second one. Where the field starts is
@@ -228,8 +228,8 @@ struct TableBlockFieldInfo
     bool counted;            // count_offset names a used-length companion
     bool optional;           // present_offset names a bool presence companion
     int32_t array_bound;     // inline slots, or a string's declared maximum; 0 for a plain scalar
-    uint32_t elem_size;      // ONE slot's size; the field's own when it holds one value
-    uint32_t present_offset; // the presence companion, or 0xffffffff
+    int64_t elem_size;       // ONE slot's size; the field's own when it holds one value
+    int64_t present_offset;  // the presence companion, or 0xffffffff
     // the ELEMENT's or the nested record's own layout, behind a function so the
     // whole table stays constant-initialised. NULL when the field is a scalar.
     // Following it is how a walker DESCENDS: an out-of-line array's rows, and a
@@ -247,7 +247,7 @@ struct TableBlockInfo
 {
     const char * name;
     uint64_t build_version; // the unit's (docs/SPEC-TABLES.md §20)
-    uint32_t size;          // the record's own sizeof: a projection's, or a row's
+    int64_t size;           // the record's own sizeof: a projection's, or a row's
     uint32_t align;
     int32_t num_fields;
     const TableBlockFieldInfo * fields;

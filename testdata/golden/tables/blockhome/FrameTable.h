@@ -113,7 +113,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -186,6 +187,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::blockhome::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::blockhome::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::blockhome::vocabulary_too_large;
@@ -315,7 +317,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -323,15 +325,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -361,10 +363,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -445,7 +447,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -7991,22 +7993,22 @@ inline const TableTypeInfo * PartFrameTableType();
 inline const TableTypeInfo * PartRowTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "armor", "armor", "ArmorConfig", 0xd19988b67e699194ull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, armor ), (uint32_t) sizeof( PartRow::armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, gunner ), (uint32_t) sizeof( PartRow::gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "part_id", "part_id", "uint32", 0x04d6206b33415104ull, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "slot", "slot", "uint8", 0x6a771618f6fe31d1ull, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "armor", "armor", "ArmorConfig", 0xd19988b67e699194ull, 13, false, false, false, 0, (int64_t) offsetof( PartRow, armor ), (int64_t) sizeof( PartRow::armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, false, 0, (int64_t) offsetof( PartRow, gunner ), (int64_t) sizeof( PartRow::gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "part_id", "part_id", "uint32", 0x04d6206b33415104ull, 8, false, false, false, 0, (int64_t) offsetof( PartRow, part_id ), (int64_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "slot", "slot", "uint8", 0x6a771618f6fe31d1ull, 6, false, false, false, 0, (int64_t) offsetof( PartRow, slot ), (int64_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { PartRowReset( *(PartRow *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "PartRow", (int64_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { PartRowReset( *(PartRow *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * PartFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( PartFrame, version ), (uint32_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "parts", "parts", "PartRow", 0x0c519da7a1f958c5ull, 13, true, true, false, 32, (uint32_t) offsetof( PartFrame, parts ), (uint32_t) sizeof( PartFrame::parts[0] ), (uint32_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (int64_t) offsetof( PartFrame, version ), (int64_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "parts", "parts", "PartRow", 0x0c519da7a1f958c5ull, 13, true, true, false, 32, (int64_t) offsetof( PartFrame, parts ), (int64_t) sizeof( PartFrame::parts[0] ), (int64_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "PartFrame", (uint32_t) sizeof( PartFrame ), 2, fields, +[]( void * p ) { PartFrameReset( *(PartFrame *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "PartFrame", (int64_t) sizeof( PartFrame ), 2, fields, +[]( void * p ) { PartFrameReset( *(PartFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -8040,6 +8042,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // BLOCKHOME_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // PartRowLoadTextForm reads one PartRow from the hand-editable text form
@@ -8047,6 +8064,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PartRowLoadTextForm( const char * text, int64_t bytes, PartRow & value, const char ** refusal );
+
+// PartRowLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PartRowLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, PartRow & value, const char ** refusal );
 
 // PartRowLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -8072,6 +8093,10 @@ bool PartRowEditTextForm( const char * document, int64_t document_bytes, const T
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PartFrameLoadTextForm( const char * text, int64_t bytes, PartFrame & value, const char ** refusal );
+
+// PartFrameLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PartFrameLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, PartFrame & value, const char ** refusal );
 
 // PartFrameLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

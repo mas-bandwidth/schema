@@ -578,7 +578,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 	guards := tableGuardStrings(st)
 	if len(st.Fields) == 0 {
 		g.emitTagsStatic(g.sym(st.Name, "tags"), st.Tags)
-		g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %s };\n\n",
+		g.pf("const TableTypeInfo %s = { \"%s\", (uint64_t) sizeof( %s ), 0, NULL, %s%s, %s, %s };\n\n",
 			g.sym(st.Name, "info"), st.Name, st.Name, g.sym(st.Name, "reset_raw"), g.modeColumn(st),
 			annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")), boolC(st.JsonArray))
 		return
@@ -601,7 +601,7 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		g.emitFieldDescriptor(st, f, guards[f.Name])
 	}
 	g.pf("};\n\n")
-	g.pf("const TableTypeInfo %s = { \"%s\", (uint32_t) sizeof( %s ), %d, %s, %s%s, %s, %s };\n\n",
+	g.pf("const TableTypeInfo %s = { \"%s\", (uint64_t) sizeof( %s ), %d, %s, %s%s, %s, %s };\n\n",
 		g.sym(st.Name, "info"), st.Name, st.Name, len(st.Fields), g.sym(st.Name, "fields"), g.sym(st.Name, "reset_raw"), g.modeColumn(st),
 		annotationColumns(st.Doc, st.Tags, g.sym(st.Name, "tags")), boolC(st.JsonArray))
 }
@@ -711,10 +711,10 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 			} else {
 				field = g.armDescriptorSymbol(ref.Name, v.Name)
 			}
-			g.pf("    { (uint32_t)offsetof( %s, as.%s ), %s, %s, (uint32_t)sizeof( ((%s *)0)->as.%s ) },\n", ref.Name, v.Name, target, field, ref.Name, v.Name)
+			g.pf("    { (uint64_t)offsetof( %s, as.%s ), %s, %s, (uint64_t)sizeof( ((%s *)0)->as.%s ) },\n", ref.Name, v.Name, target, field, ref.Name, v.Name)
 		}
 		g.pf("};\n")
-		g.pf("static const TableUnionInfo %s = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( ( (%s *) 0 )->type ), %s };\n",
+		g.pf("static const TableUnionInfo %s = { (uint64_t) offsetof( %s, type ), (uint64_t) sizeof( ( (%s *) 0 )->type ), %s };\n",
 			g.vocabularySymbol(st.Name, f.Name, "union"), ref.Name, ref.Name, g.vocabularySymbol(st.Name, f.Name, "arms"))
 	}
 	if f.KeyEnum != "" && f.KeyEnumRef != nil {
@@ -782,27 +782,27 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	// `( (T *) 0 )->field`, never a materialised value: an unevaluated member
 	// access names the type without an object, where a braced temporary makes
 	// the compiler build a whole value of T to take the size of one member.
-	elemSize := fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s )", st.Name, member)
+	elemSize := fmt.Sprintf("(uint64_t) sizeof( ( (%s *) 0 )->%s )", st.Name, member)
 	if isArray {
-		elemSize = fmt.Sprintf("(uint32_t) sizeof( ( (%s *) 0 )->%s[0] )", st.Name, member)
+		elemSize = fmt.Sprintf("(uint64_t) sizeof( ( (%s *) 0 )->%s[0] )", st.Name, member)
 	}
 
-	countOffset := "0xffffffffu"
+	countOffset := "UINT64_MAX"
 	if counted {
 		companion := member + "_count"
 		if f.Type.Kind == ir.TBytes || (f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString) {
 			companion = member + "_length"
 		}
-		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", st.Name, companion)
+		countOffset = fmt.Sprintf("(uint64_t) offsetof( %s, %s )", st.Name, companion)
 	}
 
 	if (f.Type.Pointer || f.Type.TextUnbounded()) && f.Array == ir.ArrayNone {
 		// a pointer's storage IS the reference slot: offset names it,
 		// elem_size is the slot's width, and there is no companion
-		elemSize = "(uint32_t) sizeof( TableRef )"
+		elemSize = "(uint64_t) sizeof( TableRef )"
 		counted = false
 		bound = "0"
-		countOffset = "0xffffffffu"
+		countOffset = "UINT64_MAX"
 	}
 	sequence := 0
 	if f.IsList() || f.IsMap() {
@@ -813,8 +813,8 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		isArray = true
 		counted = true
 		bound = "INT32_MAX"
-		elemSize = fmt.Sprintf("(uint32_t) sizeof(%s)", g.sequenceType(f))
-		countOffset = fmt.Sprintf("(uint32_t) offsetof(%s,%s.count)", st.Name, member)
+		elemSize = fmt.Sprintf("(uint64_t) sizeof(%s)", g.sequenceType(f))
+		countOffset = fmt.Sprintf("(uint64_t) offsetof(%s,%s.count)", st.Name, member)
 	}
 	table := "NULL"
 	if _, isStruct := f.Type.Ref.(*ir.Struct); f.Type.Kind == ir.TNamed && isStruct {
@@ -870,9 +870,9 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 		}
 	}
 
-	presentOffset := "0xffffffffu"
+	presentOffset := "UINT64_MAX"
 	if f.Type.Optional {
-		presentOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s_present )", st.Name, member)
+		presentOffset = fmt.Sprintf("(uint64_t) offsetof( %s, %s_present )", st.Name, member)
 	}
 
 	keyTypeName, keys, keyMax := "NULL", "NULL", "-1"
@@ -905,7 +905,7 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint64_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,

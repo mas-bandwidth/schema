@@ -46,10 +46,10 @@ func requiredCoverageShape(m *Manifest, reports map[string]Counts, jsonDir strin
 			}
 			row := shape[key]
 			row.cases++
-			// Match scoreAnswer's named-refusal rules. Variable messages
-			// require the refusal in every language; marked wire rows allow
+			// Match scoreAnswer's named-refusal rules. Variable messages and
+			// malformed announcements require the refusal in every language; marked wire rows allow
 			// it everywhere and require it for their named ports.
-			if surface == "message" && e.want == nil {
+			if surface == "message" && e.absent != "" {
 				row.namedAllowed++
 				for _, lang := range originalNine {
 					row.namedRequired[lang]++

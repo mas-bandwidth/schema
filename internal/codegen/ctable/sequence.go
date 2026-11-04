@@ -138,6 +138,14 @@ static SCHEMA_UNUSED int table_extent_reserve(int64_t * at,int64_t count,int64_t
     if(count<0 || width<=0 || *at<0 || *at>INT64_MAX-alignment || count>(INT64_MAX-*at-alignment)/width) { return 0; }
     *at=(*at+alignment-1)&~(alignment-1); *at+=count*width; return 1;
 }
+/* a list or map term past the storage cap (docs/SPEC-TABLES.md §11) is refused before it is summed */
+static SCHEMA_UNUSED int table_extent_over_cap(int64_t at,uint64_t count,int64_t width,int64_t alignment)
+{
+    if(count==0 || width<=0) { return 0; }
+    if(at<0 || at>SCHEMA_TABLE_STORAGE_CAP) { return 1; }
+    at=(at+alignment-1)&~(alignment-1);
+    return at>SCHEMA_TABLE_STORAGE_CAP || count>(uint64_t)((SCHEMA_TABLE_STORAGE_CAP-at)/width);
+}
 typedef struct TableSequenceFill
 {
     TableSequence * value; TableWorker * worker; uint8_t * array;

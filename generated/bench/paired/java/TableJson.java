@@ -36,6 +36,7 @@ public final class TableJson {
             in.rep.kindMismatch++;
             return null;
         }
+        if (!in.enter()) return null;
         in.p++;
         long bits = 0;
         while (in.peek() != ']') {
@@ -68,6 +69,7 @@ public final class TableJson {
             return null;
         }
         in.p++;
+        in.leave();
         return bits;
     }
 
@@ -454,10 +456,30 @@ public final class TableJson {
         // rejected: the last number read was the wrong shape for its kind (counted
         // kind_mismatch); the caller leaves the field's current value standing.
         boolean rejected;
+        // depth: the nesting level of the innermost open container. Every
+        // object or array the walk opens, read or skipped, goes through enter
+        // and leave, so the root container sits at 0 and the 129th level
+        // below it is refused (§16.2).
+        int depth = -1;
 
         In(byte[] t, TableVariable.Report rep) {
             this.t = t;
             this.rep = rep;
+        }
+
+        // enter opens one container level; past MAX_JSON_DEPTH the read is
+        // damaged and the caller stops.
+        public boolean enter() {
+            if (++depth > MAX_JSON_DEPTH) {
+                bad = true;
+                return false;
+            }
+            return true;
+        }
+
+        // leave closes the level enter opened.
+        public void leave() {
+            depth--;
         }
 
         // byteOrderMark skips a leading UTF-8 byte-order mark (docs/SPEC-TABLES.md
@@ -967,19 +989,17 @@ public final class TableJson {
         }
 
         // skipValue steps over one value of any shape, so an unknown key's
-        // value is dropped whole and never read as a field (§16.2, §4).
+        // value is dropped whole and never read as a field (§16.2, §4). A
+        // skipped container takes its level from the same depth counter as a
+        // read one, so a skip cannot reach past the cap.
         public void skipValue() {
-            skipValue(0);
-        }
-
-        void skipValue(int depth) {
             int c = peek();
             switch (c) {
                 case '{':
-                    skipContainer('}', depth);
+                    skipContainer('}');
                     return;
                 case '[':
-                    skipContainer(']', depth);
+                    skipContainer(']');
                     return;
                 case '"':
                     scanString();
@@ -1004,9 +1024,8 @@ public final class TableJson {
             }
         }
 
-        void skipContainer(char closing, int depth) {
-            if (depth > MAX_JSON_DEPTH) {
-                bad = true;
+        void skipContainer(char closing) {
+            if (!enter()) {
                 return;
             }
             p++; // the opening bracket
@@ -1014,6 +1033,7 @@ public final class TableJson {
                 int c = peek();
                 if (c == closing) {
                     p++;
+                    leave();
                     return;
                 }
                 if (c == 0) {
@@ -1048,13 +1068,14 @@ public final class TableJson {
                         }
                         if (c == closing) {
                             p++;
+                            leave();
                             return;
                         }
                         bad = true;
                         return;
                     }
                 }
-                skipValue(depth + 1);
+                skipValue();
                 if (bad) {
                     return;
                 }
@@ -1065,6 +1086,7 @@ public final class TableJson {
                 }
                 if (c == closing) {
                     p++;
+                    leave();
                     return;
                 }
                 bad = true;

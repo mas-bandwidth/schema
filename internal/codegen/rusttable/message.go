@@ -262,6 +262,12 @@ fn announce_read_once(
         report.malformed = true;
         return false;
     }
+    // "a table of more than 4096 entries is malformed" (§3, THE DISTINCTNESS
+    // CHECK IS BOUNDED WORK), whatever the buffer holds.
+    if trailer_count > 4096 {
+        report.malformed = true;
+        return false;
+    }
     let end = data.len() - 8 - (trailer_count as usize) * 8;
     // "a table carrying one id twice" is the whole wire malformed (§3.3).
     for i in 0..trailer_count {
@@ -800,6 +806,10 @@ pub enum TableReason {
     TimestampNotRfc3339,
     IntegrityMismatch,
     MissingRequired,
+    /// A WIRE WHOSE REGION MEASURE PASSES THE 2^40-BYTE STORAGE CAP
+    /// (docs/SPEC-TABLES.md §6.5, §11): the measure refuses it before any
+    /// value is built, and the load refuses it by this name.
+    StorageOverCap,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -839,6 +849,7 @@ impl TableReason {
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
             TableReason::IntegrityMismatch => "integrity_mismatch",
             TableReason::MissingRequired => "missing_required",
+            TableReason::StorageOverCap => "storage_over_cap",
         }
     }
 }

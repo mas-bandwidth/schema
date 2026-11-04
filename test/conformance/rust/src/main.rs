@@ -163,7 +163,7 @@ impl Drop for Aligned {
 
 use blockdemo::TableBlockInfo;
 
-unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u32) -> String {
+unsafe fn dump_scalar_block(at: *const u8, kind: u8, width: u64) -> String {
     unsafe {
         match kind {
             1 => {
@@ -1461,7 +1461,7 @@ macro_rules! message_round_trip {
         let mut vocabulary = k::TableVocabulary::new(&mut storage);
         let mut report = k::TableReport::default();
         if !k::announce_read(&mut vocabulary, $ann, &mut report) {
-            None
+            if report.malformed { Some(MessageAnswer::AnnouncementMalformed) } else { None }
         } else {
             let mut values = vec![k::$row::default(); k::TABLE_MESSAGE_BATCH_MAX];
             let (count, ok) = k::$load(&mut values, &vocabulary, $wire, &mut report);
@@ -1474,17 +1474,24 @@ macro_rules! message_round_trip {
                 if n < 0 || k::$save(&values[..count], &mut bytes, &mut ignored) != n {
                     None
                 } else {
-                    Some(bytes)
+                    Some(MessageAnswer::Bytes(bytes))
                 }
             }
         }
     }};
 }
 
+// MessageAnswer is one message row's round trip: the bytes saved back, or an
+// announcement the read refused as damage, which sets no vocabulary (§3.3).
+enum MessageAnswer {
+    Bytes(Vec<u8>),
+    AnnouncementMalformed,
+}
+
 // One message root's round trip, by its connection's unit and the row's root:
 // None for a root this leg carries no message verbs for, Some(None) for a batch
 // it refused.
-fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Option<Vec<u8>>> {
+fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Option<MessageAnswer>> {
     Some(match (unit, root) {
         ("backenddemo", "LoginRequest") => message_round_trip!(backenddemo, LoginRequestRow, login_request_load_messages, login_request_measure_messages, login_request_save_messages, ann, wire),
         ("backenddemo", "MatchResult") => message_round_trip!(backenddemo, MatchResultRow, match_result_load_messages, match_result_measure_messages, match_result_save_messages, ann, wire),
@@ -1512,7 +1519,12 @@ fn surface_message(manifest: &Manifest, out: &str) {
         let ann = slurp(&c[4]);
         let wire = slurp(&f[5]);
         match message_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
-            Some(Some(bytes)) => spill(out, &f[1], &bytes),
+            Some(Some(MessageAnswer::Bytes(bytes))) => spill(out, &f[1], &bytes),
+            Some(Some(MessageAnswer::AnnouncementMalformed)) => spill(
+                out,
+                &format!("{}.absent", f[1]),
+                "malformed announcement: the connection carries no vocabulary (SPEC-TABLES §3.3)".as_bytes(),
+            ),
             Some(None) => fail(&format!("{}: message load/save refused {}", f[1], f[5])),
             None => spill_absent(out, &f[1]),
         }

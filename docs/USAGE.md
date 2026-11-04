@@ -1641,10 +1641,14 @@ does not claim. `grade.TableEnumId()` gives the variant's hash and whether any
 variant names the value; `(&grade).TableEnumValue(id)` resolves one back.
 
 `<Name>TableType()` returns the reflection descriptor, with the same columns
-C++ carries — including the memory ones, because `unsafe.Offsetof` and
-`unsafe.Sizeof` are constant expressions of Go's own layout model rather than a
-guess about it. That is what lets ONE generic walk drive the text form for
-every table.
+C++ carries — including the memory ones, because Go's own compiler answers
+them rather than a guess about it. That is what lets ONE generic walk drive the
+text form for every table. No generated file spells a constant `unsafe.Sizeof`
+or `unsafe.Offsetof` over a generated type: Go's type checker sizes a struct
+whose last field is a struct twice over, so over a deep chain of such structs
+the constant would cost a build time exponential in the depth. The sizes and
+offsets come through type parameters instead, and a schema nested to the fixed
+form's depth bound builds in about a second.
 
 **A container with no declared bound says so by name.** A map, a `[]T` and a
 text list `[]string(M)` report `UnboundedContainer: true` with `ArrayBound: 0`
@@ -2783,8 +2787,8 @@ err := s.SetOpenedAtTime(time.Unix(0, 1760531645123456789)) // stores the count
 when := s.OpenedAtTime()                                      // a time.Time in UTC
 ```
 
-`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — the years
-1678 through 2262 — with a `TableTimestampError` naming the field, and
+`SetOpenedAtTime` refuses a time outside `Time.UnixNano`'s domain — 1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z —
+with a `TableTimestampError` naming the field, and
 stores nothing; Go's zero `time.Time{}` stores `0`. `FromJson` refuses a
 string that is not RFC 3339 by name (`Reason` is `timestamp_not_rfc3339: opened_at`), and `ToJson` writes `"2026-10-15T12:34:05.123456789Z"`.
 

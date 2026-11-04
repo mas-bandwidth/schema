@@ -20,7 +20,7 @@ func cppRuntimeNames() []Name {
 	}{
 		{what: "a blob, bytes or string field's storage and its views (docs/SPEC-TABLES.md §2.5, §2.12)", names: []string{
 			"TableBlobMeasureThunk", "TableBlobSaveThunk", "TableBlobStorage", "TableBytesSlot", "TableBytesViewOf",
-			"TableStringSlot", "TableStringViewOf", "kTableBlobHeader", "kTableBlobMaxLength",
+			"TableStringSlot", "TableStringViewOf", "kTableBlobHeader", "kTableBlobMaxLength", "kTableStorageCap",
 		}},
 		{what: "the table graph cycle check and stored-slot walk (docs/SPEC-TABLES.md §3.1, §4)", names: []string{
 			"TableCycle", "TableCycleAcyclic", "TableCycleBegin", "TableCycleEdge", "TableCycleEnd",
@@ -56,7 +56,7 @@ func cppRuntimeNames() []Name {
 			"batch_too_large", "count_over_bound", "layout_count_mismatch", "layout_kind_invalid",
 			"layout_kind_unknown", "layout_malformed", "layout_newer", "layout_record_too_large",
 			"layout_size_mismatch", "layout_too_deep", "layout_tree_unclosed", "layout_unknown", "layout_unsupported",
-			"length_over_bound", "no_layout", "plan_too_large", "text_ill_formed",
+			"length_over_bound", "no_layout", "plan_too_large", "storage_over_cap", "text_ill_formed",
 		}},
 		{what: "an enum's wire identity helpers (docs/SPEC-TABLES.md §3)", names: []string{
 			"TableEnumNamed", "TableEnumRef", "TableEnumSlot",

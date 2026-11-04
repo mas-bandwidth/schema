@@ -197,6 +197,7 @@ func (g *tableGen) emitWireExtentField(f *ir.Field, r string, bounded bool, ind 
 			}
 			g.pf("%s    if(%s_count>INT32_MAX) { %s.report->reason=11; return 0; }\n", ind, b, b)
 			g.pf("%s    if(%s_count>(uint64_t)((%s.size-%s.offset)/floor)) { %s.report->reason=10; return 0; }\n", ind, b, b, b, b)
+			g.pf("%s    if(table_extent_over_cap(*at,%s_count,(int64_t)sizeof(%s),%d)) { %s.report->reason=SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP; return 0; }\n", ind, b, typ, g.sequenceAlign(f), b)
 			g.pf("%s    if(!table_extent_reserve(at,(int64_t)%s_count,sizeof(%s),%d)) { return 0; }\n", ind, b, typ, g.sequenceAlign(f))
 		}
 		if g.fieldHasExtent(e) {

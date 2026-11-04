@@ -811,6 +811,11 @@ inline bool TableMapWireExtent( const uint8_t * body, int64_t length, int64_t & 
     const int64_t rest = length - r.offset;
     if ( n > (uint64_t) ( rest / kTableMapEntryFloor ) ) { reason = count_over_length; return false; } // an N the map's L cannot carry
     at = ( at + entry_align - 1 ) & ~( entry_align - 1 );
+    if ( n > 0 && entry_size > 0 && (int64_t) n > ( kTableStorageCap - at ) / entry_size )
+    {
+        reason = storage_over_cap;
+        return false;
+    } // a term past the storage cap is refused before it is summed (§11)
     at += (int64_t) n * entry_size;
     if ( inner == NULL ) { return true; } // no map below an entry: one depth is the whole term
     for ( uint64_t i = 0; i < n; i++ )

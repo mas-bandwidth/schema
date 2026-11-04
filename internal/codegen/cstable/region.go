@@ -72,8 +72,8 @@ const tableRegionSource = `
         public NativeValue Arm(TableFieldInfo f) { return Base == null ? default : new NativeValue(Base, At + f.Arms.NativeArmOffset) { Mutable = Mutable }; }
         public ulong Raw(TableFieldInfo f, int index)
         {
-            ulong raw = (ulong)NativeWord(Slot(f, index), f.NativeElementSize);
-            if ((f.Kind >= 2 && f.Kind <= 5 || f.Kind >= 20 && f.Kind <= 23) && f.NativeElementSize < 8) { int shift = 64 - f.NativeElementSize * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
+            ulong raw = (ulong)NativeWord(Slot(f, index), (int)f.NativeElementSize); // a scalar's width
+            if ((f.Kind >= 2 && f.Kind <= 5 || f.Kind >= 20 && f.Kind <= 23) && f.NativeElementSize < 8) { int shift = 64 - (int)f.NativeElementSize * 8; raw = unchecked((ulong)((long)(raw << shift) >> shift)); }
             return raw;
         }
         public long Pointer(TableFieldInfo f, int index) { long delta = (long)Raw(f, index); return delta == 0 ? long.MinValue : Slot(f, index) - Base + delta; }
@@ -86,7 +86,7 @@ const tableRegionSource = `
         }
         public int Count(TableFieldInfo f) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);return delta==0?0:checked((int)NativeWord(slot+delta,4));} return f.NativeCountOffset < 0 ? f.ArrayBound : (int)NativeWord(Base + At + f.NativeCountOffset, 4); }
         public UInt128 Wide(TableFieldInfo f, int index) { return NativeWord(Slot(f, index), 16); }
-        public void SetRaw(TableFieldInfo f, int index, ulong raw) { if (Base != null) { NativePut(Slot(f, index), raw, f.NativeElementSize); } }
+        public void SetRaw(TableFieldInfo f, int index, ulong raw) { if (Base != null) { NativePut(Slot(f, index), raw, (int)f.NativeElementSize); } }
         public void SetWide(TableFieldInfo f, int index, UInt128 raw) { if (Base != null) { NativePut(Slot(f, index), raw, 16); } }
         public Span<byte> Buffer(TableFieldInfo f) { if(f.Unbounded){byte* slot=Slot(f);long delta=(long)NativeWord(slot,8);return delta==0?Span<byte>.Empty:new Span<byte>(slot+delta+8,checked((int)NativeWord(slot+delta,4)));} return new Span<byte>(Slot(f), f.ArrayBound + (f.Kind == 12 ? 1 : 0)); }
         public Span<char> Chars(TableFieldInfo f) { return new Span<char>(Slot(f), f.ArrayBound + 1); }
