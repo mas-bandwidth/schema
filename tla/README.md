@@ -407,4 +407,6 @@ Repeat for each of the three cfgs. The runs are recorded in `tla/RUNS.tsv`.
 ## What this does not prove
 
 The id table's first-use order and the bytes a record writes (the conformance
-gate holds those), and graphs past four nodes and two slots a node.
+gate holds those), by-value edges (the graphs are POINTER-ONLY: a by-value edge
+splices its body's slots in at its field's position, which is the same walk),
+and graphs past four nodes and two slots a node.

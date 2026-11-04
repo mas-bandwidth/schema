@@ -19993,24 +19993,31 @@ writes this one.
 written field is its header (the id reference, then the kind byte, §3) and its
 payload. An elided field writes nothing and spends nothing in the id table
 (§22.5). A `| required` field (§2.3) is never elided: it is written whatever
-it holds, by the row's own framing. A field in an `if` group whose guard is
-FALSE is elided whatever its storage holds (§3), and a `| deprecated` field
-is written as its default (§2.10), so on this form it elides like any other
-default.
+it holds, by the row's own framing, and its EMPTY shapes are spelled out: a
+`None` union is its header and the arm reference `0`; a null pointer is its
+header and the index `0`; an empty `[E]T` is its header, `L = 2`, the element
+kind and `N = 0`; an empty counted array, map or text is its header and the
+empty body or `L = 0`; an all-default nested body is `L = 1` and its
+terminator. A field in an `if` group whose guard is FALSE is elided whatever
+its storage holds (§3). **A `| deprecated` FIELD IS WRITTEN AS HELD on this
+form**, under the same elision as any field, because a file is never
+clobbered: a value an older build wrote is carried, not reset (§2.10). The
+fixed form is the other way, and §22.6 says so.
 
 | the field | elided when | when written |
 |---|---|---|
 | a bare integer, `bool`, `bits(N)`, an enum, a `flags` mask, a fixed-point value, a 128-bit integer, a `timestamp` | it equals its declared default (zero when none is declared) | the kind of §3's mapping, the payload at its width |
 | a PLAIN `float32`/`float64` | its BIT PATTERN equals the default's, so a `-0` against a `+0` default rides (§3.3) | the bit pattern as held, never normalized |
 | a COMPRESSED float (a declared range) | its value `==` the default, so `-0` elides against `+0` (§3.3) | kind `10`, the bit pattern as held |
-| `string(N)`, `string`, `bytes(N)` | its bytes equal the declared default's (empty when none is declared) | `L` then the bytes as held, no normalization of any kind |
+| `string(N)`, `string` | its bytes equal the declared default's (empty when none is declared) | kind `12`, `L` then the bytes as held, no normalization of any kind |
 | `wstring(N)` | it is empty (it takes no default, SPEC.md §4.12) | `L` = twice the unit count, then the units |
 | a nested `T` by value (a `type` or a `table`) | its body would be its terminator alone: every field of it elided, and no retained field in it (§6.6) | kind `13`, `L`, the body |
 | `?T`, `?[..]T`, `?map` (an optional) | it is absent | ALWAYS when present, even entirely default: a present optional array or map with no element writes its two-byte body, element kind and `N = 0` |
 | `*T`, `*bytes`, `*string`, `*wstring` (a pointer or blob slot) | it is null | ALWAYS when not null, even when the node is entirely default: kind `17`, the node index (§22.3) |
-| `[N]T` of a NON-table element | EVERY element equals its default | all `N` elements |
-| `[N]T` of tables | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
+| `[N]T` whose element is NOT kind `13` | EVERY element equals its default, a plain float element compared by BIT PATTERN as above | all `N` elements |
+| `[N]T` whose element is kind `13` (a `type` or a `table`) | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
 | `[..N]T`, `[]T`, a text list | the live count is `0` | the live count and that many elements |
+| `bytes(N)` | its bytes equal the declared default's (empty when none is declared) | kind `14` over element kind `6`: `L`, `0x06`, `N`, the bytes, so two bytes `01 02` are `ref 0E 04 06 02 01 02` |
 | `[E]T` (enum-keyed) | no slot is present | the present slots in ascending ORDINAL of the key enum, each `key reference, L, element`; a slot holding its default (a table slot whose body is its terminator alone) is not present (§3.2) |
 | a union | it is `None` | the arm reference, the arm's kind byte, `L`, the arm payload (§3's arm table); a SET arm is never elided, whatever it holds |
 | a plain `map[K]V` | it holds no entry | §22.2.1 |
@@ -20038,6 +20045,15 @@ and the conformance corpus holds each row with a pinned wire (§22.7).
   the same number because measure and save walk one order (§9).
 - **A `bool` IS `0` OR `1`**, and a float is finite: a writer refuses a NaN
   and an infinity by name (§3) and never writes one.
+- **A VALUE OUTSIDE ITS FIELD'S DOMAIN IS REFUSED, `invalid_value`, ON EVERY
+  FORM**: a ranged or fixed-point value off its bounds, a `bits(N)` past `N`
+  bits, a count past its bound, a text past its capacity. Nothing is written
+  for a refused value, and no writer clamps or masks one into range. The
+  mechanism per leg is the write contract's (SPEC.md §5; mas-bandwidth/schema
+  #2792): a leg that refuses in every build refuses here, and the C, C++ and
+  other assert legs refuse in their debug builds, where a release build's
+  bytes for a broken contract are outside it ("In low level languages like
+  C/C++ our intent is to do this at debug time for speed", the project owner).
 - **KIND `31` IS NEVER WRITTEN** by a writer of this major, and kind `32` is
   written only as a payload-free arm, `L = 0` (§3).
 
@@ -20089,7 +20105,8 @@ THE ROOT** (§3.1), and the walk is pinned to the step:
    `2`, in the order they are first reached.
 2. A body is walked FIELD BY FIELD IN DECLARATION ORDER, skipping exactly the
    fields §22.2 elides because nothing is there to walk: a false guard's
-   fields, an absent optional, a null pointer.
+   fields, an absent optional, a null pointer. A `| deprecated` pointer is
+   written as held (§22.2), so it is walked and numbered like any other.
 3. A POINTER (a `*T` field, a pointer element, a pointer arm) to a node not
    yet numbered numbers it NOW, with the next index, and then the walk
    DESCENDS INTO THAT NODE before it takes the next field or element of the
@@ -20124,10 +20141,12 @@ the generated numbering walk; measure, save, `Lock` and `Cook` all walk this
 one order (§3.1, §6.3, §7.6). The corpus pins the walk with `graph_shared`,
 `stream_arm_first`, `node_diamond_chain` and `edge_graph_diamond`, whose
 chain-before-tree order a breadth-first walk numbers differently. The walk is
-modelled in `tla/NodeNumbering.tla`: the stack loop a port writes, checked
+modelled in `tla/NodeNumbering.tla` over POINTER-ONLY graphs (a by-value
+edge splices its body's slots in at its field's position, so it is the same
+walk, and the model does not draw it): the stack loop a port writes, checked
 against this recursive definition over every graph of four nodes with two
-ordered slots each, with the cycle refusal, and two reversed witnesses (slots
-walked last to first, and breadth first) that each go red.
+ordered pointer slots each, with the cycle refusal, and two reversed witnesses
+(slots walked last to first, and breadth first) that each go red.
 
 ### 22.4 Form `1`: retained unknown fields
 
@@ -20143,9 +20162,11 @@ loaded and saved again is the same bytes (`retain-save`, §6.6).
 
 ### 22.5 Form `1`: the id table
 
-**THE ID TABLE IS THE SEQUENCE OF DISTINCT NONZERO IDS IN THE ORDER THEIR
-REFERENCES FIRST APPEAR IN THE BYTES WRITTEN**, from the form byte through the
-last node record, and nothing else (§3). Because a field's header is written
+**THE ID TABLE IS THE SEQUENCE OF DISTINCT IDS IN THE ORDER THEIR REFERENCES
+FIRST APPEAR IN THE BYTES WRITTEN**, from the form byte through the last node
+record, and nothing else (§3). The reference `0` names no id, so it is never
+an entry and takes no place in the order; an id whose HASH is `0` is an
+ordinary id, entered at its first nonzero reference like any other. Because a field's header is written
 before its payload, a field's id precedes every id inside its payload; a
 union's field id precedes its arm's; an enum-keyed slot's key precedes the
 element's ids; a node record's type id precedes its body's; the node-table id
@@ -20166,8 +20187,17 @@ what a reader reports"), each a reference at `bits_required(0, E)` bits from
 the CONNECTION's vocabulary and the packet wire's payload for that
 declaration, then the body's zero reference. A quantized (compressed) float
 is the packet wire's `PUT` of its quantized index, with the packet wire's two
-roundings and no fused multiply-add (PACKET-WIRE-ALGORITHM.md §2.5). Every
-align pad bit and the final flush's pad bits are zero. **THE ANNOUNCEMENT IS A
+roundings and no fused multiply-add (PACKET-WIRE-ALGORITHM.md §2.5). **A
+COMPRESSED FLOAT ELIDES BY ITS HELD VALUE, compared `==` with its default
+BEFORE QUANTIZATION** (§3.3), so a held value that quantizes to the default's
+index but is not the default still rides. Every align pad bit and the final
+flush's pad bits are zero. A value outside its domain refuses the whole batch
+`invalid_value` (§22.2), and the bit stream never keeps a value's low bits: a
+`flags` mask is the one payload written at a width narrower than its storage
+on purpose, its bits past the writer's own variant count dropped by width, the
+row §3.3 moves for this form. **THE INTEGRITY TRAILER IS PER BATCH** when the
+root declares `integrity` (§2.14): the little-endian CRC-32C of every byte of
+the batch, form byte through the final pad, appended after it. **THE ANNOUNCEMENT IS A
 COMPILE-TIME CONSTANT** (§3.3): a form-`1` file whose body is the build version
 then the vocabulary, the vocabulary's entries in the cook projection's order
 followed by the reserved tail (§3.3, "The vocabulary"), so a backend emits it
@@ -20186,18 +20216,32 @@ There is no padding between fields (§3.4), so slack is the only byte a value
 does not decide, and it is pinned to zero. A writer stores the LIVE extent
 only: a counted array writes `count` elements and never an unused slot's
 storage, and an absent optional writes its flag `0` and skips the payload store
-(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). The lineage and the plans
-(§21.5) are compile-time data in the generated code and never ride the file.
+(FIXED-FORM-ALGORITHM.md §3.1, fixes 1 and 13). **A `| deprecated` SLOT
+CARRIES ITS DEFAULT IMAGE, FOR EVERY SHAPE** (§3.4): whatever the value holds,
+a deprecated field is written as its type's reset value would write it (a
+scalar its declared default or zero, a text its default, a counted array its
+empty count, an optional absent, a nested type its own default body), and a
+deprecated union arm of a `type` or `table` is that type's default body, an
+arm of any other shape the template's zeros, because an arm takes no specified
+default. Go copies the owner's default body and the C++ writer writes the
+field from the owner's reset value. **THE INTEGRITY TRAILER IS PER FILE** when
+the root declares `integrity` (§2.14): the little-endian CRC-32C of every byte
+before it, header, layout and every record, after the last record. The lineage
+and the plans (§21.5) are compile-time data in the generated code and never
+ride the file.
 
 **THE COOK** (§7.1, §7.2, §7.6). The header words are written in the cook's
-byte order, the two reserved words zero; the nodes are laid out in the
-numbering's order (§22.3), the root at offset `0`, each at
+byte order, the two reserved words zero; the nodes are laid out in §22.3's
+numbering order, with the one difference that a cook does not refuse a blob
+named from two slots (§22.3 step 7's `blob_shared`): a cook's slots address
+one region, so a shared blob is one node there. The root sits at offset `0`,
+each node at
 `align_up( offset, alignof )` for its own type; every byte the layout does not
 assign a value is ZERO: the padding between storage pieces and between nodes,
 an unset union arm's bytes, the slots past a counted array's live count, the
 bytes past a text's terminator, the tail that rounds `data_length` up to the
 region's alignment. A map's entries lie in ascending key order (§2.8). The
-attribution part is `16 × nodes` bytes in index order, or nothing. `schema cook`
+attribution part is always written, `16 × nodes` bytes in index order. `schema cook`
 is the reference, and a runtime's `Cook` writes its bytes in both orders
 (`cook-write`, §7.6).
 
@@ -20221,7 +20265,17 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 | `message` | every message-form batch | `SaveMessages` | the batch, byte for byte |
 | `retain-save` | every retention row | `SaveRetain` | the pinned save |
 | `cook-write` | every instance's wire | `Cook`, both byte orders | `schema cook`'s bytes |
-| `json-read` | every instance's text | `Save` of the value | the instance's wire |
+| `json-read` | every instance's text, and one HAND-AUTHORED text (`edge_map_keys_unsorted`) whose map keys arrive out of order, so a leg's BUILDER sort is what lands the bytes | `Save` of the value | the instance's wire |
+
+**THE GATE'S EXCEPTIONS, NAMED.** A value no writer can write is not a
+rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
+save by every writer, so its instances answer the named refusal on `wire` and
+it has no canonical bytes (and under the strict read it is refused on read as
+well). **Form `3`'s bytes are not a harness surface**: they are held per leg
+against the C++ reference's byte oracle, `make tables-fixedform-corpus`
+(test/tables/fixedform_dump.cpp, with the values each file holds in its
+manifest), by each leg's `tables-<lang>-fixedform` gate and the conformance
+rows that read it.
 
 Each surface compares every leg against ONE expected byte string, so two legs
 that pass write identical bytes: the cross-leg equality is a consequence and
@@ -20238,7 +20292,8 @@ before its extension; `uint32` keys across `2^31`; `uint8` keys across `128`;
 entry whose value is an empty map), `edge_text_keys` (`uint16` keys whose
 little-endian bytes sort the other way; `int32` keys at both extremes; keys
 and values at their defaults), `edge_by_name` (unbounded string keys past 127
-bytes beside their own prefix, keys `0x80` and `0xFF` as UTF-8; a present empty
+bytes, two of them sharing a 129-byte prefix and differing in the last byte,
+keys U+0080 and U+00FF as UTF-8; a present empty
 optional map; a required field at its default; the integrity trailer),
 `edge_u64_keys` (`uint64` keys at `2^63 - 1`, `2^63` and `2^64 - 1`, which a
 compare on a signed 64-bit integer orders backwards, and `string(300)` keys of
@@ -20249,11 +20304,12 @@ the tree, shares reached from an array of by-value tables) and
 declared after it, a fixed array of pointers whose first slot is null).
 
 **THE NEGATIVE CONTROLS** (`make conformance-negative-control-write-order`)
-break the Go leg's writer twice, in copies of its generated code, and require
-the gate to go red on the surface that owns the break: a loaded region's map entries
-walked DESCENDING turn `go / wire` red on `edge_map_keys`, and the numbering walk
-taking a body's fields in REVERSE turns `go / wire` red on
-`edge_graph_diamond` and `go / rewrite` red on `node_diamond_chain`; each run
-also requires the fixed instance `scalars_full`, which neither break reaches,
-to stay green, so the control localizes the break rather than reddening
-everything.
+break the Go leg's writer three times, in copies of its generated code, and
+require the gate to go red on the surface that owns the break: a loaded
+region's map entries walked DESCENDING turn `go / wire` red on
+`edge_map_keys`; a builder's map written in INSERTION ORDER turns
+`go / json-read` red on `edge_map_keys_unsorted` while `wire` stays green; and
+the numbering walk taking a body's fields in REVERSE turns `go / wire` red on
+`edge_graph_diamond` and `go / rewrite` red on `node_diamond_chain`. Each run
+also requires what its break cannot reach to stay green, so the control
+localizes the break rather than reddening everything.
