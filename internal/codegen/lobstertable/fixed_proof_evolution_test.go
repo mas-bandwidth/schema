@@ -1,7 +1,6 @@
 package lobstertable
 
 import (
-	"encoding/hex"
 	"fmt"
 	"maps"
 	"os"
@@ -58,7 +57,7 @@ func (lobsterFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string
 	st := fixedproof.RootStruct(t, u, root)
 	var dump strings.Builder
 	lobsterProofDumpFields(&dump, st, "r[i]", "", "    ")
-	script := lobsterProofImports(u) + lobsterrun.HexProbe + fmt.Sprintf(`let data = read_file("in.bin")
+	script := lobsterProofImports(u) + fmt.Sprintf(`let data = read_file("in.bin")
 assert(data)
 let r:[%[1]s.%[2]s] = []
 for(%[3]d): push(r, %[1]s.New%[2]s())
@@ -73,14 +72,13 @@ else:
     let decoded:[%[1]s.%[2]s] = []
     for(count) i:
         push(decoded, r[i])
-%[4]s    print("WIRE")
-    hex(%[1]s.%[2]sFixedSave(decoded))
+%[4]s    assert write_file("out.bin", %[1]s.%[2]sFixedSave(decoded))
 `, pkg, root, capacity, indentLobsterProof(dump.String(), "    "))
-	out := lobsterEvolutionRun(t, files, script, map[string][]byte{"in.bin": wire})
+	out, resaved := lobsterEvolutionRun(t, files, script, map[string][]byte{"in.bin": wire})
 	fields := map[string]string{}
 	count, reason := -1, ""
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	for i, line := range lines {
+	for _, line := range lines {
 		if after, ok := strings.CutPrefix(line, "REFUSED "); ok {
 			return -1, strings.TrimSpace(after), fields, nil
 		}
@@ -98,13 +96,9 @@ else:
 			}
 			fields[key] = val
 		}
-		if line == "WIRE" && i+1 < len(lines) {
-			resaved, err := hex.DecodeString(lines[i+1])
-			if err != nil {
-				t.Fatal(err)
-			}
-			return count, reason, fields, resaved
-		}
+	}
+	if count >= 0 && resaved != nil {
+		return count, reason, fields, resaved
 	}
 	t.Fatalf("native evolution probe omitted its result: %s", out)
 	return -1, "", nil, nil
@@ -208,21 +202,22 @@ r[0].Pick.Narrow = 7
 	default:
 		t.Fatalf("unknown SaveCustom scenario %q", scenario)
 	}
-	script := lobsterProofImports(u) + lobsterrun.HexProbe + fmt.Sprintf(`let r:[%[1]s.%[2]s] = []
+	script := lobsterProofImports(u) + fmt.Sprintf(`let r:[%[1]s.%[2]s] = []
 for(%[3]d): push(r, %[1]s.New%[2]s())
 %[4]slet written, wire, reason = %[1]s.%[2]sFixedSaveChecked(r, schema_rt.zeros(%[1]s.%[2]sFixedMeasure(%[3]d)))
 if written < 0:
     print("REFUSED " + reason)
 else:
-    hex(substring(wire, 0, written))
+    assert write_file("out.bin", substring(wire, 0, written))
+    print("OK")
 `, u.Package, root, count, setup)
-	out := strings.TrimSpace(lobsterEvolutionRun(t, files, script, nil))
+	out, wire := lobsterEvolutionRun(t, files, script, nil)
+	out = strings.TrimSpace(out)
 	if reason, ok := strings.CutPrefix(out, "REFUSED "); ok {
 		return nil, reason
 	}
-	wire, err := hex.DecodeString(out)
-	if err != nil {
-		t.Fatalf("native save output %q: %v", out, err)
+	if out != "OK" || wire == nil {
+		t.Fatalf("native save omitted its wire: %q", out)
 	}
 	return wire, ""
 }
@@ -242,7 +237,7 @@ func (lobsterFixedProofRunner) HasFixedRoot(t *testing.T, u *ir.Unit, root strin
 	return false
 }
 
-func lobsterEvolutionRun(t *testing.T, files map[string][]byte, script string, inputs map[string][]byte) string {
+func lobsterEvolutionRun(t *testing.T, files map[string][]byte, script string, inputs map[string][]byte) (string, []byte) {
 	t.Helper()
 	dir := t.TempDir()
 	for name, data := range files {
@@ -253,5 +248,10 @@ func lobsterEvolutionRun(t *testing.T, files map[string][]byte, script string, i
 	if err := os.WriteFile(filepath.Join(dir, "main.lobster"), []byte(script), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return string(lobsterrun.Run(t, dir, "main.lobster", inputs))
+	out := string(lobsterrun.Run(t, dir, "main.lobster", inputs))
+	wire, err := os.ReadFile(filepath.Join(dir, "out.bin"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	return out, wire
 }
