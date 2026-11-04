@@ -17,7 +17,7 @@ import (
 // entry remains present even when its key and value both elide. Its default
 // still participates in the strict ascending-key check.
 func TestLobsterMapDefaultKey(t *testing.T) {
-	u := lobsterUnitOf(t, "package mapdefault\ntable Integers { entries map[uint8]int32 }\ntable Strings { entries map[string(8)]int32 }\n")
+	u := lobsterUnitOf(t, "package mapdefault\ntable Integers { entries map[int8]int32 }\ntable Strings { entries map[string(8)]int32 }\n")
 	wire := func(entries []byte, count byte, withKey bool) []byte {
 		payload := append([]byte{13, count}, entries...)
 		b := append([]byte{1, 1, 14, byte(len(payload))}, payload...)
@@ -32,7 +32,14 @@ func TestLobsterMapDefaultKey(t *testing.T) {
 	}
 	good := wire([]byte{1, 0}, 1, false)
 	duplicate := wire([]byte{1, 0, 1, 0}, 2, false)
-	descending := wire([]byte{4, 2, 6, 2, 0, 1, 0}, 2, true)
+	ascending := wire([]byte{4, 2, 2, 255, 0, 1, 0, 4, 2, 2, 1, 0}, 3, true)
+	badKeys := map[string][]byte{
+		"descending":              wire([]byte{4, 2, 2, 2, 0, 1, 0}, 2, true),
+		"explicit-default-repeat": wire([]byte{4, 2, 2, 0, 0, 1, 0}, 2, true),
+		"repeated-key-field":      wire([]byte{7, 2, 2, 0, 2, 2, 0, 0}, 1, true),
+		"incompatible-key-kind":   wire([]byte{4, 2, 6, 1, 0}, 1, true),
+		"truncated-key":           wire([]byte{3, 2, 2, 0}, 1, true),
+	}
 	m := tabletext.NewModel(u)
 	for _, name := range []string{"Integers", "Strings"} {
 		inst := m.New(m.Lookup(name))
@@ -48,8 +55,13 @@ func TestLobsterMapDefaultKey(t *testing.T) {
 		}
 	}
 	var report tabletext.Report
-	if ok, _ := tablewire.Decode(m, m.New(m.Lookup("Integers")), descending, &report); ok {
-		t.Fatal("descending key followed by default key accepted")
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Integers")), ascending, &report); !ok || err != nil {
+		t.Fatalf("negative, default, positive keys refused: %v", err)
+	}
+	for name, bad := range badKeys {
+		if ok, _ := tablewire.Decode(m, m.New(m.Lookup("Integers")), bad, &report); ok {
+			t.Fatalf("%s accepted", name)
+		}
 	}
 	t.Logf("minimal default-key wire (%d bytes): %x", len(good), good)
 	files, err := lobster.Generate(u)
@@ -67,8 +79,8 @@ import .retain_unknown
 import .region_measure
 let good = read_file("good")
 let duplicate = read_file("duplicate")
-let descending = read_file("descending")
-assert good and duplicate and descending
+let ascending = read_file("ascending")
+assert good and duplicate and ascending
 for(["Integers", "Strings"]) name:
     let rep = schema_rt.LoadReport {}
     let rec = schema_rt.load(name, good, rep)
@@ -88,10 +100,20 @@ for(["Integers", "Strings"]) name:
     assert not schema_rt.load(name, duplicate, rep)
     let _n, _whole, bad = schema_rt.load_measure(name, duplicate)
     assert bad
-assert not schema_rt.load("Integers", descending, schema_rt.LoadReport {})
+let ordered = schema_rt.load("Integers", ascending, schema_rt.LoadReport {})
+assert ordered and length(ordered.fields[0].entries) == 3
+for(ordered.fields[0].entries) value, i:
+    let entry = value.tab
+    assert entry and entry.fields[0].cell.i == i - 1
+schema_rt.release(ordered)
+for(["descending", "explicit-default-repeat", "repeated-key-field", "incompatible-key-kind", "truncated-key"]) name:
+    let bad = read_file(name)
+    assert bad and not schema_rt.load("Integers", bad, schema_rt.LoadReport {})
 print("PASS")
 `
-	out, _ := lobsterEvolutionRun(t, files, program, map[string][]byte{"good": good, "duplicate": duplicate, "descending": descending})
+	inputs := map[string][]byte{"good": good, "duplicate": duplicate, "ascending": ascending}
+	maps.Copy(inputs, badKeys)
+	out, _ := lobsterEvolutionRun(t, files, program, inputs)
 	if strings.TrimSpace(out) != "PASS" {
 		t.Fatalf("default map key: %s", out)
 	}
