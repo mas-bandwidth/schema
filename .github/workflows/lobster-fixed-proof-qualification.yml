@@ -9,8 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
           cache: false
@@ -19,11 +19,22 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
-      - name: Check workflow, source goldens and table emitter
-        run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable
+      - name: Check action pins
+        run: go test ./internal/ci -run "^TestEveryActionIsPinnedToACommit$" -count=1
       - name: Compare all 49 rows with the live C++ oracle
         env:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           go test ./internal/codegen/lobstertable -run '^TestLobsterFixedProofSuite' -count=1 -v
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: Check workflow, source goldens and table emitter
+        run: go test ./internal/ci ./internal/goldens ./internal/codegen/lobstertable
