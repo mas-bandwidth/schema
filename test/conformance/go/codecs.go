@@ -766,6 +766,21 @@ var codecTable = []codec{
 	row("listdemo", "Bounded", listdemo.BoundedReset, listdemo.BoundedLoad, listdemo.BoundedMeasure, listdemo.BoundedSave, listdemo.BoundedFromJSON, listdemo.BoundedToJSONMeasure, listdemo.BoundedToJSON, listdemo.BoundedCookMeasure, listdemo.BoundedCookFrom, func(r *listdemo.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	regionRow("tblframe", "Bounded", tblframe.BoundedLoadMeasure, tblframe.BoundedLoad, tblframe.BoundedMeasure, tblframe.BoundedSave,
+		func(text []byte, r *tblframe.TableReport) (*tblframe.Bounded, []byte, bool) {
+			var b tblframe.BoundedBuilder
+			if !b.Init() {
+				return nil, nil, false
+			}
+			defer b.Shutdown()
+			ok := tblframe.BoundedFromJSON(&b, text, r)
+			if !b.Lock() {
+				return nil, nil, false
+			}
+			return b.AsConst(), b.Region(), ok
+		}, tblframe.BoundedToJSONMeasure, tblframe.BoundedToJSON, tblframe.BoundedCookMeasure, tblframe.BoundedCookFrom, func(r *tblframe.TableReport) report {
+			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+		}),
 	regionRow("tblframe", "Cfg", tblframe.CfgLoadMeasure, tblframe.CfgLoad, tblframe.CfgMeasure, tblframe.CfgSave,
 		func(text []byte, r *tblframe.TableReport) (*tblframe.Cfg, []byte, bool) {
 			var b tblframe.CfgBuilder
