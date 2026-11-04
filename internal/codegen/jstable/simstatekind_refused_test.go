@@ -40,7 +40,7 @@ func TestSimStateKindPassDamageRefusedJavaScript(t *testing.T) {
 	// THE GO ORACLE reads the mutant as damaged.
 	m := tabletext.NewModel(u)
 	var rep tabletext.Report
-	if _, err := tablewire.DecodeRegion(m, m.New(m.Lookup("SimState")), mutant, &rep); err != nil || !rep.Malformed {
+	if ok, err := tablewire.DecodeRegion(m, m.New(m.Lookup("SimState")), mutant, &rep); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("the oracle does not read the kind #391 mutant as damaged: %v %+v", err, rep)
 	}
 
