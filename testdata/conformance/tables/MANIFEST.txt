@@ -1364,6 +1364,11 @@ write-refusal-fixed fref_text_illformed  tabledemo RootConfig    testdata/wire/t
 write-refusal-fixed fref_text_wellformed tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   61C3A962         wrote
 write-refusal-fixed fref_wide_unpaired   widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   0061D8000062     refused
 write-refusal-fixed fref_wide_paired     widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   0061D83DDE000062 wrote
+# A zero byte or unit in fixed text: the fixed reader refuses it as
+# text_ill_formed, so the fixed writer refuses it too and never writes a record
+# its own reader would refuse.
+write-refusal-fixed fref_text_zero       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   610062           refused
+write-refusal-fixed fref_wide_zero       widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   006100000062     refused
 
 # AND THROUGH THE MESSAGE FORM'S SaveMessages (docs/SPEC-TABLES.md §3.3, §22.6):
 # <unit> is the CONNECTION whose announced vocabulary the batch of one is
