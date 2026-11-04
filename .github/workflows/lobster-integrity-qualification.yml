@@ -1,4 +1,4 @@
-name: Lobster focused JSON qualification
+name: Lobster integrity qualification
 on:
   push:
     branches: [codex/schema-lobster-integrity-linux-check]
@@ -19,9 +19,47 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
+      - name: Shared CI repair regression
+        run: go test ./internal/goldens ./internal/ci -run '^Test(Golden|SchemaSharedHostileCorpus)' -count=1 -v
       - name: JSON feature value identity
         env:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           go test ./internal/codegen/lobstertable -run '^TestLobsterJSON(FeatureValues|Float32WriterSingleRounding)$' -count=1 -v
+      - name: Whole-unit registry regression
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable -run '^TestLobster(UnitView|TableFree|RuntimePackage)' -count=1 -v
+      - name: Packet native baseline and negative controls
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobster/... -count=1 -timeout 480s -v
+      - name: Native integrity regression and negative control
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable -run '^TestLobster(VariableWireIntegrity|MessageIntegrity)$' -count=1 -v
+      - name: Fixed-form evolution and integrity
+        env:
+          SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          make build/fixedform-corpus/.stamp
+          go test ./internal/codegen/lobstertable -run '^TestLobsterFixedForm' -count=1 -timeout 300s -v
+      - name: Complete native table baseline and compiler checks
+        env:
+          SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable ./internal/tablenames -count=1 -timeout 600s -v
+      - name: Compiler Lobster name contracts
+        if: always()
+        run: go test ./compiler -run 'TestLobster.*(Name|Registry|Runtime)' -count=1 -v
