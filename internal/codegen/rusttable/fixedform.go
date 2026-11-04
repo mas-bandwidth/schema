@@ -349,12 +349,14 @@ use crate::*;
 		g.emitFixedScatterUnion(un)
 		g.emitFixedClampUnion(un)
 		g.emitFixedFiniteUnion(un)
+		g.emitRowCheckUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
 		g.emitFixedClampBody(st)
 		g.emitFixedFiniteBody(st)
+		g.emitRowCheckBody(st)
 	}
 	for _, st := range roots {
 		g.emitFixedRoot(st)
@@ -1228,6 +1230,7 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
+	writeRowCheckBatch(g.pf, st, "    ")
 	if finite {
 		g.pf("    // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.\n")
 		g.pf("    if values.iter().any(|value| !%s(value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "fixed_finite_body"))

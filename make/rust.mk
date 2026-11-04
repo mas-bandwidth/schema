@@ -1474,6 +1474,63 @@ conformance-negative-control-rust-write-refusal: build/conformance-harness build
 
 test-rust: conformance-negative-control-rust-write-refusal
 
+# THE RUST LEG's ROW-WRITER NEGATIVE CONTROLS (docs/SPEC.md §5.1, the write
+# contract): the fixed form's FixedSave and the message form's SaveMessages
+# hold every value of the batch to <t>_check_row under debug_assert! before the
+# first byte. Each control copies build/tables-generated-rust, deletes ONE
+# ranged-integer clause from one check_row in the copy, rebuilds the
+# conformance driver against the copy in the dev profile (its own target
+# directory, so the normal driver is not touched), and requires the matrix red
+# on the writer's own surface while the surface reading the same form stays
+# green. No tracked file is written to.
+#
+# rust_wref_row_control: $(1) the control's directory, $(2) the generated file
+# under the copy, $(3) the clause's `if` line (the clause is it and the two
+# lines after it), $(4) the surface that must go red, $(5) the surface that
+# must stay green, $(6) what the save does without the clause.
+define rust_wref_row_control
+	@rm -rf $(1) && mkdir -p $(1)/driver
+	@cp -R build/tables-generated-rust $(1)/generated
+	@for toml in $(1)/generated/*/Cargo.toml; do \
+		sed -i.orig 's|path = "\.\./\.\./\.\./|path = "../../../../|' $$toml && rm -f $$toml.orig || exit 1; \
+	done
+	@file=$(1)/generated/$(2); \
+	n=$$(grep -cF '$(3)' $$file); \
+	[ "$$n" = 1 ] || { echo "NEGATIVE CONTROL: the check_row clause matched $$n times in $$file, want exactly 1"; exit 1; }; \
+	awk -v a='$(3)' 'index($$0, a) { skip = 3 } skip > 0 { skip--; next } { print }' \
+		build/tables-generated-rust/$(2) > $$file; \
+	if grep -qF '$(3)' $$file; then echo "NEGATIVE CONTROL: the check_row clause was not removed"; exit 1; fi
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
+		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(1)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(1)/driver/driver && chmod +x $(1)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(1)" > $(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(1)/drivers.txt \
+			--work $(1)/work > $(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(6) left the Rust matrix green"; \
+		cat $(1)/log; exit 1; \
+	fi
+	@cat $(1)/log
+	@grep -Eq '^ *$(4) *FAIL' $(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(4) is not marked FAIL"; exit 1; }
+	@grep -Eq '^ *$(5) +pass' $(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(5) did not stay green"; exit 1; }
+	@echo "Rust $(4) negative control: $(6) is detected by rust / $(4), and $(5) stays green"
+endef
+
+.PHONY: conformance-negative-control-rust-write-refusal-fixed
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_row_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,if value.penetration < 0_i32 || value.penetration > 10_i32 {,write-refusal-fixed,wire,a FixedSave that writes WeaponConfig.penetration off its range)
+
+.PHONY: conformance-negative-control-rust-write-refusal-message
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_row_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_fixed.rs,if value.quantity < 1_u8 || value.quantity > 99_u8 {,write-refusal-message,message,a SaveMessages that writes StorePurchase.quantity off its range)
+
+test-rust: conformance-negative-control-rust-write-refusal-fixed conformance-negative-control-rust-write-refusal-message
+
 # I4 (docs/PORTING.md): PER-CASE ABSENT. A case this driver cannot answer on a
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust
