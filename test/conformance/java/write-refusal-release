@@ -1,0 +1,97 @@
+#!/bin/sh
+# THE JAVA LEG's RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a
+# value). The write contract's VALUE checks are asserts, live under -ea alone;
+# a count or a length that indexes a value's own storage is bounded in EVERY
+# build, refused before the first byte rather than thrown mid-write. This gate
+# runs the write-refusal surfaces through the RELEASE shape (no -ea) and
+# requires the storage rows refused there:
+#
+#   write-refusal-fixed    fref_count (weapons 9 > storage 8) and fref_length
+#                          (version_note 17 > storage 16) refused, their _ok
+#                          twins written;
+#   write-refusal-message  mref_length (sku 33 > storage 32) refused,
+#                          mref_length_ok written.
+#
+# The variable form holds a List and a String, so its count and length index
+# no storage of the writer's: wref_count and wref_length are value contracts
+# there, asserted, and the gate prints their release verdicts without
+# requiring one.
+#
+# gate:    the leg's release classpath.
+# control: checkStorage dropped from a COPY of the generated RootConfigFixed's
+#          save, compiled ahead of the classpath; the gate must go RED on
+#          fref_count and fref_length (the save throws mid-write, so the
+#          surface answers nothing for them).
+#
+# usage: write-refusal-release <gate|control> [java] [javac]   (run from the repository root)
+set -eu
+
+mode=${1:-gate}
+java=${2:-java}
+javac=${3:-javac}
+root=$(pwd)
+out=build/write-refusal-storage-release-java-$mode
+rm -rf "$out"
+mkdir -p "$out"
+
+cp=$root/build/conformance-java
+if [ "$mode" = control ]; then
+    src=build/tables-generated-java/examples/RootConfigFixed.java
+    bound='            if (!checkStorage(values[k]) || !finite(values[k])) {'
+    blind='            if (!finite(values[k])) {'
+    n=$(grep -cxF "$bound" "$src" || true)
+    [ "$n" = 1 ] || { echo "negative control: the storage bound matched $n lines in $src, want 1 — the emitter moved" >&2; exit 1; }
+    mkdir -p "$out/src" "$out/classes"
+    awk -v bound="$bound" -v blind="$blind" '$0 == bound { print blind; next } { print }' "$src" > "$out/src/RootConfigFixed.java"
+    "$javac" --release 17 -nowarn -cp build/conformance-java -d "$out/classes" "$out/src/RootConfigFixed.java"
+    cp=$root/$out/classes:$cp
+elif [ "$mode" != gate ]; then
+    echo "unknown mode: $mode" >&2; exit 1
+fi
+
+# the RELEASE shape for every surface: no -ea anywhere
+printf '#!/bin/sh\nexec %s -cp %s Driver "$@"\n' "$java" "$cp" > "$out/driver"
+chmod +x "$out/driver"
+printf 'java %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+# the release run answers `wrote` for the asserted value rows, so the
+# harness's own verdict is red by design; the rows below are the gate
+build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+
+verdict() { cat "$out/work/out/java/$1/$2" 2>/dev/null || echo "nothing (the surface did not answer)"; }
+red=0
+need() {
+    got=$(verdict "$1" "$2")
+    if [ "$got" = "$3" ]; then
+        echo "  $1 / $2: $got"
+    else
+        echo "  $1 / $2: $got, want $3"
+        red=1
+    fi
+}
+echo "java release storage rows:"
+need write-refusal-fixed fref_count refused
+need write-refusal-fixed fref_count_ok wrote
+need write-refusal-fixed fref_length refused
+need write-refusal-fixed fref_length_ok wrote
+need write-refusal-message mref_length refused
+need write-refusal-message mref_length_ok wrote
+echo "  write-refusal / wref_count: $(verdict write-refusal wref_count) (a List: a value contract, asserted)"
+echo "  write-refusal / wref_length: $(verdict write-refusal wref_length) (a String: a value contract, asserted)"
+
+if [ "$mode" = gate ]; then
+    if [ "$red" != 0 ]; then
+        grep -E '^(write-refusal|  java / write-refusal)' "$out/log" || true
+        echo "write-refusal-storage-release-java: a storage row is not refused in the release build" >&2
+        exit 1
+    fi
+    echo "write-refusal-storage-release-java: every storage row refused without -ea"
+    exit 0
+fi
+[ "$red" != 0 ] || { echo "NEGATIVE CONTROL FAILED: the storage bound dropped left the release gate green" >&2; exit 1; }
+for row in fref_count fref_length; do
+    [ "$(verdict write-refusal-fixed $row)" != refused ] || {
+        echo "NEGATIVE CONTROL FAILED: $row stayed refused with the storage bound dropped" >&2; exit 1; }
+done
+[ "$(verdict write-refusal-message mref_length)" = refused ] || {
+    echo "NEGATIVE CONTROL FAILED: the message row went red too; the control is not localized" >&2; exit 1; }
+echo "negative control: the storage bound dropped from RootConfigFixed's save turns the java release storage gate RED on fref_count and fref_length"

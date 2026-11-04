@@ -1,0 +1,102 @@
+#!/bin/sh
+# THE DART LEG's RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a
+# value). The write contract's VALUE checks are asserts, compiled in by
+# --enable-asserts alone; a count or a length that indexes a value's own
+# storage is bounded in EVERY build, refused before the first byte rather than
+# a RangeError mid-write. This gate runs the write-refusal surfaces through the
+# RELEASE AOT binary (build/conformance-dart, no asserts) and requires the
+# storage rows refused there:
+#
+#   write-refusal-fixed    fref_count (weapons 9 > storage 8) and fref_length
+#                          (version_note 17 > storage 16) refused, their _ok
+#                          twins written;
+#   write-refusal-message  mref_length (sku 33 > storage 32) refused,
+#                          mref_length_ok written.
+#
+# The variable form holds a List and a String, so its count and length index
+# no storage of the writer's: wref_count and wref_length are value contracts
+# there, asserted, and the gate prints their release verdicts without
+# requiring one.
+#
+# gate:    the leg's release binary.
+# control: rootConfigFixedStorageBody's call dropped from a COPY of the
+#          generated RootConfig fixed save, the driver AOT-compiled against it
+#          WITHOUT asserts; the gate must go RED on fref_count and fref_length.
+#
+# usage: write-refusal-release <gate|control> [dart]   (run from the repository root)
+set -eu
+
+mode=${1:-gate}
+dart=${2:-dart}
+root=$(pwd)
+out=build/write-refusal-storage-release-dart-$mode
+rm -rf "$out"
+mkdir -p "$out"
+
+driver=$root/build/conformance-dart
+if [ "$mode" = control ]; then
+    dir=examples lib=TablesFixed.dart
+    bound='    if (!rootConfigFixedStorageBody(values[k])) return -1;'
+    mkdir -p "$out/build/tables-generated-dart/$dir" "$out/test/conformance/dart"
+    for d in "$root"/build/*; do
+        [ -e "$out/build/$(basename "$d")" ] || ln -s "$d" "$out/build/$(basename "$d")"
+    done
+    for d in "$root"/build/tables-generated-dart/*; do
+        [ -e "$out/build/tables-generated-dart/$(basename "$d")" ] || ln -s "$d" "$out/build/tables-generated-dart/$(basename "$d")"
+    done
+    cp "$root"/build/tables-generated-dart/$dir/*.dart "$out/build/tables-generated-dart/$dir/"
+    copy="$out/build/tables-generated-dart/$dir/$lib"
+    n=$(grep -cxF "$bound" "$copy" || true)
+    [ "$n" = 1 ] || { echo "negative control: the storage bound matched $n lines in $lib, want 1 — the emitter moved" >&2; exit 1; }
+    grep -vxF "$bound" "$root/build/tables-generated-dart/$dir/$lib" > "$copy"
+    cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
+    "$dart" compile exe -o "$out/conformance-dart" "$out/test/conformance/dart/main.dart" >/dev/null
+    driver=$root/$out/conformance-dart
+elif [ "$mode" != gate ]; then
+    echo "unknown mode: $mode" >&2; exit 1
+fi
+
+# the RELEASE binary for every surface: no asserts anywhere
+printf 'dart %s\n' "$driver" > "$out/drivers.txt"
+# the release run answers `wrote` for the asserted value rows, so the
+# harness's own verdict is red by design; the rows below are the gate
+build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1 || true
+
+verdict() { cat "$out/work/out/dart/$1/$2" 2>/dev/null || echo "nothing (the surface did not answer)"; }
+red=0
+need() {
+    got=$(verdict "$1" "$2")
+    if [ "$got" = "$3" ]; then
+        echo "  $1 / $2: $got"
+    else
+        echo "  $1 / $2: $got, want $3"
+        red=1
+    fi
+}
+echo "dart release storage rows:"
+need write-refusal-fixed fref_count refused
+need write-refusal-fixed fref_count_ok wrote
+need write-refusal-fixed fref_length refused
+need write-refusal-fixed fref_length_ok wrote
+need write-refusal-message mref_length refused
+need write-refusal-message mref_length_ok wrote
+echo "  write-refusal / wref_count: $(verdict write-refusal wref_count) (a List: a value contract, asserted)"
+echo "  write-refusal / wref_length: $(verdict write-refusal wref_length) (a String: a value contract, asserted)"
+
+if [ "$mode" = gate ]; then
+    if [ "$red" != 0 ]; then
+        grep -E '^(write-refusal|  dart / write-refusal)' "$out/log" || true
+        echo "write-refusal-storage-release-dart: a storage row is not refused in the release build" >&2
+        exit 1
+    fi
+    echo "write-refusal-storage-release-dart: every storage row refused by the release AOT binary"
+    exit 0
+fi
+[ "$red" != 0 ] || { echo "NEGATIVE CONTROL FAILED: the storage bound dropped left the release gate green" >&2; exit 1; }
+for row in fref_count fref_length; do
+    [ "$(verdict write-refusal-fixed $row)" != refused ] || {
+        echo "NEGATIVE CONTROL FAILED: $row stayed refused with the storage bound dropped" >&2; exit 1; }
+done
+[ "$(verdict write-refusal-message mref_length)" = refused ] || {
+    echo "NEGATIVE CONTROL FAILED: the message row went red too; the control is not localized" >&2; exit 1; }
+echo "negative control: the storage bound dropped from RootConfig's fixed save turns the dart release storage gate RED on fref_count and fref_length"

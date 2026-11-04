@@ -1082,11 +1082,12 @@
     {
       "name": "dart-write-refusal",
       "when": "pull-request",
-      "why": "the Dart leg's write-contract controls for the fixed and message writers (docs/SPEC.md §5.1): one ranged-integer check deleted from a copy of a generated <T>FixedCheckBody (WeaponConfig.penetration for the fixed form's save, StorePurchase.quantity for the message form's MeasureMessages and SaveMessages), the driver AOT-compiled against the copy with --enable-asserts, and write-refusal-fixed or write-refusal-message required red on its two out-of-range rows alone with wire and message green. One AOT compile and one harness run of the Dart leg each, 13 s each on the studio; a row of their own because dart-conformance already carries eight AOT compiles.",
+      "why": "the Dart leg's write-contract controls for the fixed and message writers (docs/SPEC.md §5.1): one ranged-integer check deleted from a copy of a generated <T>FixedCheckBody (WeaponConfig.penetration for the fixed form's save, StorePurchase.quantity for the message form's MeasureMessages and SaveMessages), the driver AOT-compiled against the copy with --enable-asserts, and write-refusal-fixed or write-refusal-message required red on its two out-of-range rows alone with wire and message green. One AOT compile and one harness run of the Dart leg each, 13 s each on the studio; a row of their own because dart-conformance already carries eight AOT compiles. The release storage gate's control (test/conformance/dart/write-refusal-release control) rides here too: rootConfigFixedStorageBody's call dropped from a copy of RootConfig's fixed save, the driver AOT-compiled WITHOUT asserts, and write-refusal-storage-release-dart required red on fref_count and fref_length with mref_length still refused; one AOT compile and one harness run.",
       "dart": "3.13.2",
       "targets": [
         "conformance-negative-control-dart-write-refusal-fixed",
-        "conformance-negative-control-dart-write-refusal-message"
+        "conformance-negative-control-dart-write-refusal-message",
+        "write-refusal-storage-release-dart-negative-control"
       ]
     },
     {
@@ -1247,10 +1248,11 @@
     {
       "name": "java-write-refusal",
       "when": "pull-request",
-      "why": "the Java leg's write-contract controls for the fixed and message writers (docs/SPEC.md §5.1; test/conformance/java/write-refusal-control): one ranged-integer check deleted from a copy of a generated fixed class's checkWrite (WeaponConfigFixed.penetration for the fixed form's save, StorePurchaseFixed.quantity for the message form's measureMessages and saveMessages), compiled ahead of the conformance classpath, and write-refusal-fixed or write-refusal-message required red on its two out-of-range rows alone under -ea, with wire or message green. One small javac and one harness run of the Java leg each, 6 s each on the studio.",
+      "why": "the Java leg's write-contract controls for the fixed and message writers (docs/SPEC.md §5.1; test/conformance/java/write-refusal-control): one ranged-integer check deleted from a copy of a generated fixed class's checkWrite (WeaponConfigFixed.penetration for the fixed form's save, StorePurchaseFixed.quantity for the message form's measureMessages and saveMessages), compiled ahead of the conformance classpath, and write-refusal-fixed or write-refusal-message required red on its two out-of-range rows alone under -ea, with wire or message green. One small javac and one harness run of the Java leg each, 6 s each on the studio. The release storage gate's control (test/conformance/java/write-refusal-release control) rides here too: checkStorage dropped from a copy of RootConfigFixed's save, compiled ahead of the classpath and run WITHOUT -ea, and write-refusal-storage-release-java required red on fref_count and fref_length with mref_length still refused; one small javac and one harness run.",
       "targets": [
         "conformance-negative-control-java-write-refusal-fixed",
-        "conformance-negative-control-java-write-refusal-message"
+        "conformance-negative-control-java-write-refusal-message",
+        "write-refusal-storage-release-java-negative-control"
       ],
       "java": "21"
     },
