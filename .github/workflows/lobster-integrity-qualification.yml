@@ -19,6 +19,26 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
+      - name: Build cook compiler for native generated refresh
+        run: |
+          git fetch origin codex/schema-lobster-cook-text --depth=1
+          git worktree add ../cook-source FETCH_HEAD
+          mkdir -p build/cook-compiler
+          git -C ../cook-source rev-parse HEAD > build/cook-compiler/product-head.txt
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go -C ../cook-source build -o "$GITHUB_WORKSPACE/build/cook-compiler/schema" ./cmd/schema
+          shasum -a 256 build/cook-compiler/schema > build/cook-compiler/sha256.txt
+      - name: Preserve cook compiler
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: lobster-cook-compiler
+          path: build/cook-compiler/
+          retention-days: 7
+      - name: Cook unbounded text and storage regression
+        env:
+          SCHEMA_SLOW: '1'
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable -run '^TestLobsterCook(UnboundedText|ExtentCoordinates|AuthoredOptionalMap)$' -count=1 -v
       - name: Shared CI repair regression
         run: go test ./internal/goldens ./internal/ci -run '^Test(Golden|SchemaSharedHostileCorpus)' -count=1 -v
       - name: JSON feature value identity
