@@ -94,6 +94,7 @@ def rrun(root:string, file:string, cap:int, idcap:int):
     let retain = schema_rt.Retain { capacity: cap, id_capacity: idcap, used: 0, ids: [], known: [] }
     let rep = schema_rt.LoadReport {}
     let rec = schema_rt.load_retain(root, data, retain, rep)
+    assert rec
     print(rline(rep))
     labels = []
     push(labels, rec)
