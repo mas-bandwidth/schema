@@ -1621,7 +1621,7 @@ func fixedFiniteNeededStruct(st *ir.Struct, seen map[string]bool) bool {
 	}
 	seen[st.Name] = true
 	for _, f := range st.Fields {
-		if fixedFiniteNeededField(f, seen) {
+		if !f.Deprecated && fixedFiniteNeededField(f, seen) {
 			return true
 		}
 	}
@@ -1658,7 +1658,9 @@ func emitFixedFiniteBodyFn(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// first NaN or infinity, named <Owner>.<field>, or \"\".\n")
 	g.Pf("def %sFixedFiniteBody(v:%s) -> string:\n", st.Name, st.Name)
 	for _, f := range st.Fields {
-		emitFixedFiniteField(g, f, st.Name, "v", "    ")
+		if !f.Deprecated {
+			emitFixedFiniteField(g, f, st.Name, "v", "    ")
+		}
 	}
 	g.Pf("    return \"\"\n\n")
 }

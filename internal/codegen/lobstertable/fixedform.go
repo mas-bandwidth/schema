@@ -186,9 +186,19 @@ func loopVar(f *ir.Field, off int64) string {
 
 // putFields emits the stores for a type's fields at the constant offsets.
 func putFields(g *lobster.Gen, st *ir.Struct, val, base string) {
+	for _, f := range st.Fields {
+		if f.Deprecated {
+			g.Pf("    let fixed_defaults = New%s()\n", st.Name)
+			break
+		}
+	}
 	off := int64(0)
 	for _, f := range st.Fields {
-		putField(g, st, f, val+"."+ir.GoExportName(f.Name), base, off, "", "    ")
+		owner := val
+		if f.Deprecated {
+			owner = "fixed_defaults"
+		}
+		putField(g, st, f, owner+"."+ir.GoExportName(f.Name), base, off, "", "    ")
 		off += ir.TableFixedFieldBytes(f)
 	}
 }
