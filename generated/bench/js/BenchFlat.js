@@ -11,11 +11,10 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
-// read verdict; reader obligations ride in every mode.
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the writer
+// refuses an out-of-contract value, in every build (docs/SPEC.md §5.1:
+// NODE_ENV selects nothing). Read<Name>Flat(view, numBits, value) -> bool,
+// the family read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -27,11 +26,6 @@
 // scope is safe: single threaded per realm, consumed in the same op that
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
-
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -87,89 +81,11 @@ function validText(bytes, length) {
 
 // ---- type BenchPacket: the flat codec ----
 
-function writeBenchPacketFlatProduction(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
-  lo = (((((value.a >>> 0) - 4294967196) >>> 0) & 0xff) | (((value.b) & 0xffff) << 8));
-  v = (((((value.c >>> 0) - 4293967296) >>> 0) & 0x1fffff) | ((value.bits7 & 0x7f) << 21)) >>> 0;
-  view.setUint32(0, (lo | (v << 24)) >>> 0, true);
-  lo = v >>> 8;
-  v = ((value.bits13 & 0x1fff)) >>> 0;
-  view.setUint32(4, (lo | (v << 20)) >>> 0, true);
-  lo = v >>> 12;
-  lo = (lo | (((value.bits23 & 0x7fffff) | ((value.flag ? 1 : 0) << 23)) << 1)) >>> 0;
-  x = value.x;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  view.setUint32(8, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  x = value.y;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  view.setUint32(12, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  x = value.z;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  view.setUint32(16, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  SC.setBigUint64(0, value.big, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(20, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = SC.getUint32(4, true);
-  view.setUint32(24, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  view.setUint32(28, lo, true);
-  lo = 0;
-  wi = 32;
-  for (let i0 = 0; i0 < 17; i0++) {
-    v = (((value.blob[i0]) & 0xff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeBenchPacketFlatChecked(view, value) {
-  let v = 0, x = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+// WriteBenchPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold BenchPacketMaxBytes.
+export function WriteBenchPacketFlat(view, value) {
+  let v = 0, x = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -187,46 +103,28 @@ function writeBenchPacketFlatChecked(view, value) {
   view.setUint32(4, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
   lo = (lo | (((value.bits23 & 0x7fffff) | ((value.flag ? 1 : 0) << 23)) << 1)) >>> 0;
-  x = value.x;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.x);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(8, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
-  x = value.y;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.y);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
-  x = value.z;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.z);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   SC.setBigUint64(0, value.big, true);
@@ -255,11 +153,6 @@ function writeBenchPacketFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteBenchPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold BenchPacketMaxBytes.
-export const WriteBenchPacketFlat = PRODUCTION ? writeBenchPacketFlatProduction : writeBenchPacketFlatChecked;
 
 // ReadBenchPacketFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -353,23 +246,10 @@ export function ReadBenchPacketFlat(view, numBits, value) {
 
 // ---- type BenchInts: the flat codec ----
 
-function writeBenchIntsFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = (((((value.f0 >>> 0) - 4294967196) >>> 0) & 0xff) | (((value.f1) & 0xffff) << 8));
-  v = (((((value.f2 >>> 0) - 4293967296) >>> 0) & 0x1fffff) | (((value.f3) & 0x3) << 21) | (((((value.f4 >>> 0) - 4294967281) >>> 0) & 0x1f) << 23)) >>> 0;
-  view.setUint32(0, (lo | (v << 24)) >>> 0, true);
-  lo = v >>> 8;
-  v = (((value.f5) & 0x3ff) | (((((value.f6 >>> 0) - 4294965248) >>> 0) & 0xfff) << 10) | (((value.f7) & 0xff) << 22)) >>> 0;
-  view.setUint32(4, (lo | (v << 20)) >>> 0, true);
-  lo = v >>> 12;
-  v = (((((value.f8 >>> 0) - 4294367296) >>> 0) & 0x1fffff) | (((value.f9) & 0x7f) << 21)) >>> 0;
-  view.setUint32(8, (lo | (v << 18)) >>> 0, true);
-  lo = v >>> 14;
-  view.setUint32(12, lo, true);
-  return 14;
-}
-
-function writeBenchIntsFlatChecked(view, value) {
+// WriteBenchIntsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold BenchIntsMaxBytes.
+export function WriteBenchIntsFlat(view, value) {
   let v = 0, lo = 0;
   if (!Number.isInteger(value.f0) || value.f0 < -100 || value.f0 > 100) {
     return -1;
@@ -414,11 +294,6 @@ function writeBenchIntsFlatChecked(view, value) {
   view.setUint32(12, lo, true);
   return 14;
 }
-
-// WriteBenchIntsFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold BenchIntsMaxBytes.
-export const WriteBenchIntsFlat = PRODUCTION ? writeBenchIntsFlatProduction : writeBenchIntsFlatChecked;
 
 // ReadBenchIntsFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -475,8 +350,7 @@ export function ReadBenchIntsFlat(view, numBits, value) {
 // ---- type BenchBits: the flat codec ----
 
 // WriteBenchBitsFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract, so the checked and production builds share this one
-// writer. The buffer behind view must hold BenchBitsMaxBytes.
+// writer contract. The buffer behind view must hold BenchBitsMaxBytes.
 export function WriteBenchBitsFlat(view, value) {
   let v = 0, lo = 0;
   lo = ((value.b7 & 0x7f) | ((value.b13 & 0x1fff) << 7));
@@ -538,29 +412,10 @@ export function ReadBenchBitsFlat(view, numBits, value) {
 
 // ---- type MixedEntity: the flat codec ----
 
-function writeMixedEntityFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  lo = ((value.entityId & 0xfff) | (((((value.posX >>> 0) - 4294950913) >>> 0) & 0x7fff) << 12));
-  v = (((((value.posY >>> 0) - 4294950913) >>> 0) & 0x7fff) | (((((value.posZ >>> 0) - 4294950913) >>> 0) & 0x7fff) << 15)) >>> 0;
-  view.setUint32(0, (lo | (v << 27)) >>> 0, true);
-  lo = v >>> 5;
-  v = ((value.yaw & 0x1ff) | ((value.pitch & 0x1ff) << 9) | (((((value.velX >>> 0) - 4294965248) >>> 0) & 0xfff) << 18)) >>> 0;
-  view.setUint32(4, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = (((((value.velY >>> 0) - 4294965248) >>> 0) & 0xfff) | (((((value.velZ >>> 0) - 4294965248) >>> 0) & 0xfff) << 12)) >>> 0;
-  view.setUint32(8, (lo | (v << 23)) >>> 0, true);
-  lo = v >>> 9;
-  lo = (lo | ((((value.health) & 0x3ff) | ((value.weapon & 0xf) << 10)) << 15)) >>> 0;
-  SC.setBigUint64(0, value.damage, true);
-  v = SC.getUint32(0, true) & 0xff;
-  view.setUint32(12, (lo | (v << 29)) >>> 0, true);
-  lo = v >>> 3;
-  lo = (lo | (((value.moving ? 1 : 0) | ((value.firing ? 1 : 0) << 1)) << 5)) >>> 0;
-  view.setUint32(16, lo, true);
-  return 17;
-}
-
-function writeMixedEntityFlatChecked(view, value) {
+// WriteMixedEntityFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold MixedEntityMaxBytes.
+export function WriteMixedEntityFlat(view, value) {
   let v = 0, lo = 0;
   if (!Number.isInteger(value.posX) || value.posX < -16383 || value.posX > 16383) {
     return -1;
@@ -608,11 +463,6 @@ function writeMixedEntityFlatChecked(view, value) {
   view.setUint32(16, lo, true);
   return 17;
 }
-
-// WriteMixedEntityFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold MixedEntityMaxBytes.
-export const WriteMixedEntityFlat = PRODUCTION ? writeMixedEntityFlatProduction : writeMixedEntityFlatChecked;
 
 // ReadMixedEntityFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -671,14 +521,10 @@ export function ReadMixedEntityFlat(view, numBits, value) {
 
 // ---- type MixedStat: the flat codec ----
 
-function writeMixedStatFlatProduction(view, value) {
-  let lo = 0;
-  lo = ((value.statId & 0xff) | (((((value.delta >>> 0) - 4294966784) >>> 0) & 0x3ff) << 8));
-  view.setUint32(0, lo, true);
-  return 3;
-}
-
-function writeMixedStatFlatChecked(view, value) {
+// WriteMixedStatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold MixedStatMaxBytes.
+export function WriteMixedStatFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.delta) || value.delta < -512 || value.delta > 511) {
     return -1;
@@ -687,11 +533,6 @@ function writeMixedStatFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 3;
 }
-
-// WriteMixedStatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold MixedStatMaxBytes.
-export const WriteMixedStatFlat = PRODUCTION ? writeMixedStatFlatProduction : writeMixedStatFlatChecked;
 
 // ReadMixedStatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -710,14 +551,10 @@ export function ReadMixedStatFlat(view, numBits, value) {
 
 // ---- type MixedHitEvent: the flat codec ----
 
-function writeMixedHitEventFlatProduction(view, value) {
-  let lo = 0;
-  lo = ((value.targetId & 0xfff) | (((value.damage) & 0xfff) << 12) | (((value.hitKind) & 0x7) << 24) | ((value.crit ? 1 : 0) << 27));
-  view.setUint32(0, lo, true);
-  return 4;
-}
-
-function writeMixedHitEventFlatChecked(view, value) {
+// WriteMixedHitEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold MixedHitEventMaxBytes.
+export function WriteMixedHitEventFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.damage) || value.damage < 0 || value.damage > 4095) {
     return -1;
@@ -729,11 +566,6 @@ function writeMixedHitEventFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 4;
 }
-
-// WriteMixedHitEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold MixedHitEventMaxBytes.
-export const WriteMixedHitEventFlat = PRODUCTION ? writeMixedHitEventFlatProduction : writeMixedHitEventFlatChecked;
 
 // ReadMixedHitEventFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -756,14 +588,10 @@ export function ReadMixedHitEventFlat(view, numBits, value) {
 
 // ---- type MixedChatEvent: the flat codec ----
 
-function writeMixedChatEventFlatProduction(view, value) {
-  let lo = 0;
-  lo = (((value.channel) & 0x3) | ((value.speaker & 0xfff) << 2));
-  view.setUint32(0, lo, true);
-  return 2;
-}
-
-function writeMixedChatEventFlatChecked(view, value) {
+// WriteMixedChatEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold MixedChatEventMaxBytes.
+export function WriteMixedChatEventFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
     return -1;
@@ -772,11 +600,6 @@ function writeMixedChatEventFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 2;
 }
-
-// WriteMixedChatEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold MixedChatEventMaxBytes.
-export const WriteMixedChatEventFlat = PRODUCTION ? writeMixedChatEventFlatProduction : writeMixedChatEventFlatChecked;
 
 // ReadMixedChatEventFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -795,14 +618,10 @@ export function ReadMixedChatEventFlat(view, numBits, value) {
 
 // ---- type MixedPickupEvent: the flat codec ----
 
-function writeMixedPickupEventFlatProduction(view, value) {
-  let lo = 0;
-  lo = ((value.itemId & 0x3ff) | (((value.amount) & 0xff) << 10));
-  view.setUint32(0, lo, true);
-  return 3;
-}
-
-function writeMixedPickupEventFlatChecked(view, value) {
+// WriteMixedPickupEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold MixedPickupEventMaxBytes.
+export function WriteMixedPickupEventFlat(view, value) {
   let lo = 0;
   if (!Number.isInteger(value.amount) || value.amount < 0 || value.amount > 255) {
     return -1;
@@ -811,11 +630,6 @@ function writeMixedPickupEventFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 3;
 }
-
-// WriteMixedPickupEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold MixedPickupEventMaxBytes.
-export const WriteMixedPickupEventFlat = PRODUCTION ? writeMixedPickupEventFlatProduction : writeMixedPickupEventFlatChecked;
 
 // ReadMixedPickupEventFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -834,55 +648,10 @@ export function ReadMixedPickupEventFlat(view, numBits, value) {
 
 // ---- union MixedEvent: the flat codec ----
 
-function writeMixedEventFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = ((value.type & 0x3));
-  sb = 2;
-  switch (value.type) {
-    case 1: {
-      v = ((value.hit.targetId & 0xfff) | (((value.hit.damage) & 0xfff) << 12) | (((value.hit.hitKind) & 0x7) << 24) | ((value.hit.crit ? 1 : 0) << 27)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 28;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (28 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.chat.channel) & 0x3) | ((value.chat.speaker & 0xfff) << 2)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 14;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (14 - sb);
-      }
-      break;
-    }
-    case 3: {
-      v = ((value.pickup.itemId & 0x3ff) | (((value.pickup.amount) & 0xff) << 10)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 18;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (18 - sb);
-      }
-      break;
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeMixedEventFlatChecked(view, value) {
+// WriteMixedEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold MixedEventMaxBytes.
+export function WriteMixedEventFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.type) || value.type < 0 || value.type > 3) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
@@ -944,11 +713,6 @@ function writeMixedEventFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteMixedEventFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold MixedEventMaxBytes.
-export const WriteMixedEventFlat = PRODUCTION ? writeMixedEventFlatProduction : writeMixedEventFlatChecked;
 
 // ReadMixedEventFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1028,475 +792,11 @@ export function ReadMixedEventFlat(view, numBits, value) {
 
 // ---- type BenchMixed: the flat codec ----
 
-function writeBenchMixedFlatProduction(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
-  view.setUint32(0, (49374 | ((value.sequence & 0xffff) << 16)), true);
-  lo = (((value.ackSequence) & 0xffff));
-  v = ((value.ackBits >>> 0)) >>> 0;
-  view.setUint32(4, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  SC.setBigUint64(0, value.sessionId, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = SC.getUint32(4, true);
-  view.setUint32(12, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = (((value.clientId) >>> 0)) >>> 0;
-  view.setUint32(16, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  SC.setBigUint64(0, value.nonce, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(20, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = SC.getUint32(4, true);
-  view.setUint32(24, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  SC.setBigUint64(0, value.worldTime - -1000000000000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(28, (lo | (v << 16)) >>> 0, true);
-  lo = v >>> 16;
-  v = SC.getUint32(4, true) & 0x1ff;
-  lo = (lo | (v << 16)) >>> 0;
-  SC.setBigUint64(0, value.frameTick, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(32, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = SC.getUint32(4, true) & 0xffff;
-  view.setUint32(36, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = (((value.serverTime) & 0xffffff) | (((((value.entitiesCount >>> 0) - 1) >>> 0) & 0x7) << 24)) >>> 0;
-  view.setUint32(40, (lo | (v << 9)) >>> 0, true);
-  lo = v >>> 23;
-  wi = 44;
-  sb = 4;
-  for (let i0 = 0; i0 < value.entitiesCount; i0++) {
-    const e0 = value.entities[i0];
-    v = ((e0.entityId & 0xfff) | (((((e0.posX >>> 0) - 4294950913) >>> 0) & 0x7fff) << 12)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 27;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (27 - sb);
-    }
-    v = (((((e0.posY >>> 0) - 4294950913) >>> 0) & 0x7fff) | (((((e0.posZ >>> 0) - 4294950913) >>> 0) & 0x7fff) << 15)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 30;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (30 - sb);
-    }
-    v = ((e0.yaw & 0x1ff) | ((e0.pitch & 0x1ff) << 9) | (((((e0.velX >>> 0) - 4294965248) >>> 0) & 0xfff) << 18)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 30;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (30 - sb);
-    }
-    v = (((((e0.velY >>> 0) - 4294965248) >>> 0) & 0xfff) | (((((e0.velZ >>> 0) - 4294965248) >>> 0) & 0xfff) << 12)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 24;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (24 - sb);
-    }
-    v = (((e0.health) & 0x3ff) | ((e0.weapon & 0xf) << 10)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 14;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (14 - sb);
-    }
-    SC.setBigUint64(0, e0.damage, true);
-    v = SC.getUint32(0, true) & 0xff;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-    v = ((e0.moving ? 1 : 0) | ((e0.firing ? 1 : 0) << 1)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 2;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (2 - sb);
-    }
-  }
-  v = (((value.statsCount) & 0x7f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 7;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (7 - sb);
-  }
-  for (let i0 = 0; i0 < value.statsCount; i0++) {
-    const e0 = value.stats[i0];
-    v = ((e0.statId & 0xff) | (((((e0.delta >>> 0) - 4294966784) >>> 0) & 0x3ff) << 8)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 18;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (18 - sb);
-    }
-  }
-  v = ((value.gameEvent.type & 0x3)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  switch (value.gameEvent.type) {
-    case 1: {
-      v = ((value.gameEvent.hit.targetId & 0xfff) | (((value.gameEvent.hit.damage) & 0xfff) << 12) | (((value.gameEvent.hit.hitKind) & 0x7) << 24) | ((value.gameEvent.hit.crit ? 1 : 0) << 27)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 28;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (28 - sb);
-      }
-      break;
-    }
-    case 2: {
-      v = (((value.gameEvent.chat.channel) & 0x3) | ((value.gameEvent.chat.speaker & 0xfff) << 2)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 14;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (14 - sb);
-      }
-      break;
-    }
-    case 3: {
-      v = ((value.gameEvent.pickup.itemId & 0x3ff) | (((value.gameEvent.pickup.amount) & 0xff) << 10)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 18;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (18 - sb);
-      }
-      break;
-    }
-  }
-  for (let i0 = 0; i0 < 4; i0++) {
-    v = (((value.loadout[i0]) & 0xff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-  }
-  v = (((value.playerNameLength) & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.playerNameLength; i0 += 4) {
-      v = (value.playerName[i0] | (value.playerName[i0 + 1] << 8) | (value.playerName[i0 + 2] << 16) | (value.playerName[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.playerNameLength; i0++) {
-      v = value.playerName[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  v = (((value.payloadLength) & 0x1f)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.payloadLength; i0 += 4) {
-      v = (value.payload[i0] | (value.payload[i0 + 1] << 8) | (value.payload[i0 + 2] << 16) | (value.payload[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.payloadLength; i0++) {
-      v = value.payload[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  x = Math.fround(value.aimX);
-  n = Math.fround(Math.fround(x - -1.0) / 2.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
-  if (v > 200) { v = 200; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  x = Math.fround(value.aimY);
-  n = Math.fround(Math.fround(x - -1.0) / 2.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
-  if (v > 200) { v = 200; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  x = Math.fround(value.aimZ);
-  n = Math.fround(Math.fround(x - -1.0) / 2.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 200.0) + 0.5));
-  if (v > 200) { v = 200; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  x = value.recoil;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.drift, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  bg = value.wideKey;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  bg = value.flux - -1267650600228229401496703205376n;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true) & 0x3f;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 6;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (6 - sb);
-  }
-  v = (((value.ping) & 0xffff) | (0 << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 20;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (20 - sb);
-  }
-  sb = (sb + 7) & -8;
-  if (sb === 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    lo = 0;
-    sb = 0;
-  }
-  v = ((value.crcHint & 0xffffff) | ((value.hasExtra ? 1 : 0) << 24)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  v = (((value.extra) & 0xff) | (((value.idleTicks) & 0xf) << 8)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 12;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (12 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeBenchMixedFlatChecked(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
+// WriteBenchMixedFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold BenchMixedMaxBytes.
+export function WriteBenchMixedFlat(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
   if (!Number.isInteger(value.ackSequence) || value.ackSequence < 0 || value.ackSequence > 65535) {
     return -1;
@@ -1880,18 +1180,12 @@ function writeBenchMixedFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
-  x = value.recoil;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.recoil);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1899,6 +1193,9 @@ function writeBenchMixedFlatChecked(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isFinite(value.drift)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
   SC.setFloat64(0, value.drift, true);
   v = SC.getUint32(0, true);
@@ -2048,11 +1345,6 @@ function writeBenchMixedFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteBenchMixedFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold BenchMixedMaxBytes.
-export const WriteBenchMixedFlat = PRODUCTION ? writeBenchMixedFlatProduction : writeBenchMixedFlatChecked;
 
 // ReadBenchMixedFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

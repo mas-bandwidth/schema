@@ -9,31 +9,15 @@
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
 
 // ---- type RenderSprite: the flat codec ----
 
-function writeRenderSpriteFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  SC.setBigUint64(0, value.sortKey, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(4, v, true);
-  view.setUint32(8, (((value.meshId) >>> 0)), true);
-  view.setUint32(12, (((value.materialId) >>> 0)), true);
-  lo = (((value.layer) & 0xff) | ((value.team & 0x3) << 8));
-  view.setUint32(16, lo, true);
-  return 18;
-}
-
-function writeRenderSpriteFlatChecked(view, value) {
+// WriteRenderSpriteFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold RenderSpriteMaxBytes.
+export function WriteRenderSpriteFlat(view, value) {
   let v = 0, lo = 0;
   SC.setBigUint64(0, value.sortKey, true);
   v = SC.getUint32(0, true);
@@ -49,11 +33,6 @@ function writeRenderSpriteFlatChecked(view, value) {
   view.setUint32(16, lo, true);
   return 18;
 }
-
-// WriteRenderSpriteFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold RenderSpriteMaxBytes.
-export const WriteRenderSpriteFlat = PRODUCTION ? writeRenderSpriteFlatProduction : writeRenderSpriteFlatChecked;
 
 // ReadRenderSpriteFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -90,69 +69,10 @@ export function ReadRenderSpriteFlat(view, numBits, value) {
 
 // ---- type RenderBlock: the flat codec ----
 
-function writeRenderBlockFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  view.setUint32(0, (((value.workerIndex) >>> 0)), true);
-  view.setUint32(4, (((value.spriteCountHint) >>> 0)), true);
-  lo = (((value.spritesCount) & 0x7f));
-  wi = 8;
-  sb = 7;
-  for (let i0 = 0; i0 < value.spritesCount; i0++) {
-    const e0 = value.sprites[i0];
-    SC.setBigUint64(0, e0.sortKey, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = (((e0.meshId) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = (((e0.materialId) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 10;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (10 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeRenderBlockFlatChecked(view, value) {
+// WriteRenderBlockFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold RenderBlockMaxBytes.
+export function WriteRenderBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   view.setUint32(0, (((value.workerIndex) >>> 0)), true);
   if (!Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
@@ -219,11 +139,6 @@ function writeRenderBlockFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteRenderBlockFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold RenderBlockMaxBytes.
-export const WriteRenderBlockFlat = PRODUCTION ? writeRenderBlockFlatProduction : writeRenderBlockFlatChecked;
 
 // ReadRenderBlockFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
