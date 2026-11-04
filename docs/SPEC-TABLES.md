@@ -17877,17 +17877,12 @@ caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
 trip §1 promises, and `unpack` → `pack` is byte-stable, with the
-ill-formed UTF-8 case handled under §16.3: its text can be longer than the
-bytes were and the field's own bound then clamps it. That lap is not byte-identical, it is
-COUNTED (`clamped`, which §17.4 makes a nonzero exit), and the FIXED POINT IS
-REACHED IN ONE LAP — after the first write every string is well-formed, so the
-second text and the third agree. **The carve-out is narrower than it was**:
-since ill-formed text is `malformed` on the table wire and terminal on the
-packet wire (§3, SPEC.md §4.7), a `.bin` this project wrote can no longer
-carry it into storage, so the lap is byte-identical for every file that came
-through a wire and the carve-out covers only an instance a PROGRAM built with
-ill-formed text in it, and that instance the writer refuses `invalid_value`
-(§16.3), as it refuses an unpaired surrogate in wide text.
+ill-formed UTF-8 case handled under §16.3: ill-formed text is `malformed` on
+the table wire and terminal on the packet wire (§3, SPEC.md §4.7), so a
+`.bin` cannot carry it into storage, and an instance a PROGRAM built with
+ill-formed text or an unpaired surrogate in it is refused `invalid_value` by
+the writer, never replaced. So the lap is byte-identical for every file that
+came through a wire, and there is no carve-out.
 
 **`pack` THEN `unpack` is the other lap, and it is not byte-stable over a
 HAND-AUTHORED tree**, by the form's own rules and not by any defect: a text
