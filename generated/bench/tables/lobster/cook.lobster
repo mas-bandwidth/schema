@@ -898,6 +898,9 @@ class CookRead:
     tids:[int] = []
     nodes:[Record?] = []
     blobs:[string] = []
+    // Directory identity survives uncooking: two slots naming one blob
+    // must still be refused by the wire and JSON writers (§2.5).
+    blob_nodes:[Node?] = []
 
 // Check containment before adding the self-relative delta or multiplying.
 // Lists, maps and text blobs share their holder's node extent (§7.4).
@@ -1092,6 +1095,7 @@ def cr_field(c:CookRead, at:int, sl:Slot, cf:CookField) -> void:
         let slot = cr_ref(c, at)
         if slot >= 0:
             sl.cell.blob = c.blobs[slot]
+            sl.cell.blob_node = c.blob_nodes[slot]
     elif s == "union":
         cr_union(c, at, sl.cell, fd)
     elif s == "str":
@@ -1141,6 +1145,7 @@ def cr_elem(c:CookRead, at:int, e:FieldDescriptor, v:Value, vsize:int, countoff:
         let slot = cr_ref(c, at)
         if slot >= 0:
             v.blob = c.blobs[slot]
+            v.blob_node = c.blob_nodes[slot]
     elif s == "tab":
         let ct = cook_table_of(e.t)
         if ct:
@@ -1269,6 +1274,7 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
         push(c.tids, cr_word(c, e + 8))
         push(c.nodes, nil)
         push(c.blobs, "")
+        push(c.blob_nodes, nil)
         i++
     i = 0
     while i < count:
@@ -1282,6 +1288,7 @@ def cook_read(data:string, build:int, desc:TableDescriptor, t:CookTable) -> Reco
             if start + n > end:
                 return nil
             c.blobs[i] = substring(data, start, n)
+            c.blob_nodes[i] = Node { kind: if c.tids[i] == string_blob_id: 2 else: 3, rec: nil, blob: c.blobs[i] }
         else:
             for(registered_tables()) td:
                 if td.id == c.tids[i]:
