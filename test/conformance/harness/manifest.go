@@ -691,6 +691,11 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: cook-write takes an instance and its two cooked files, little then big", where)
 			}
 			cw := CookWrite{Instance: f[1], Little: f[2], Big: f[3]}
+			for _, prior := range m.CookWrites {
+				if prior.Instance == cw.Instance {
+					return nil, fmt.Errorf("%s: duplicate cook-write instance %q", where, cw.Instance)
+				}
+			}
 			for _, option := range f[4:] {
 				switch {
 				case strings.HasPrefix(option, "input=") && cw.Input == "":
