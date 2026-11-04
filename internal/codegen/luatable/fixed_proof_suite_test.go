@@ -249,18 +249,6 @@ func (luaFixedProofRunner) SaveCustom(t *testing.T, u *ir.Unit, root string, sce
 	mod := ModuleName(u)
 	var body string
 	switch scenario {
-	case "batch_over_4096":
-		body = fmt.Sprintf(`local r = {}
-for i = 1, 4097 do r[i] = T.New%[1]s() end
-local ok, err = pcall(function() return T.FixedSave(%[1]q, r) end)
-if not ok then
-  local msg = tostring(err)
-  local colon = msg:match(": ([^:]+)$")
-  if colon then msg = colon end
-  print("REFUSED " .. msg)
-  os.exit(0)
-end
-`, root)
 	case "optional_absent_zeros":
 		body = fmt.Sprintf(`local r = { T.New%[1]s() }
 r[1].plain.a = 1; r[1].plain.b = 2

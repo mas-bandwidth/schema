@@ -49,9 +49,10 @@ func (lobsterFixedProofRunner) LoadLineage(t *testing.T, u *ir.Unit, root string
 	}
 	maps.Copy(files, tables)
 	if capacity < 0 {
-		// The native API takes caller-owned records; the shared fixtures need
-		// at most a handful. An explicit capacity is used unchanged.
-		capacity = 16
+		// Every fixed record contains an eight-byte hash, so this file-size
+		// bound supplies enough caller storage without imposing a hidden cap.
+		// Explicit capacities are passed through unchanged.
+		capacity = len(wire) / 8
 	}
 	pkg := u.Package
 	st := fixedproof.RootStruct(t, u, root)

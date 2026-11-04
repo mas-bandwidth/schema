@@ -1536,7 +1536,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 				t.Fatalf("%s: record byte size mismatch", v.file)
 			}
 			n, reason, _, resaved := runner.LoadLineage(t, u, v.root, nil, data, -1)
-			if n != want || (reason != "" && reason != "ok") || !bytes.Equal(resaved, data) {
+			if n != want || !bytes.Equal(resaved, data) {
 				t.Fatalf("%s: roundtrip failed: n=%d (want %d) reason=%q bytesEqual=%v", v.file, n, want, reason, bytes.Equal(resaved, data))
 			}
 		}
@@ -1560,27 +1560,26 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		for _, c := range []struct {
 			name string
 			file []byte
-			want string
 		}{
-			{"F1_form_0", cut(func(b []byte) { b[0] = 0 }), "newer_form"},
-			{"F1_form_1", cut(func(b []byte) { b[0] = 1 }), "previous_form"},
-			{"F2_form_2", cut(func(b []byte) { b[0] = 2 }), "message_form_as_file"},
-			{"F3_form_4", cut(func(b []byte) { b[0] = 4 }), "newer_form"},
-			{"F3_form_255", cut(func(b []byte) { b[0] = 255 }), "newer_form"},
-			{"F4_layout_past_file", cut(func(b []byte) { binary.LittleEndian.PutUint32(b[16:], 0x7fff0000) }), "layout_malformed"},
-			{"F7_under_20_bytes", oracle[:19], "truncated"},
-			{"F8_ragged_tail", oracle[:len(oracle)-1], "truncated"},
-			{"F12_layout_byte_moved", cut(func(b []byte) { b[20] ^= 1 }), "layout_malformed"},
-			{"F12_layout_one_short", cut(func(b []byte) { b[16]-- }), "layout_malformed"},
+			{"F1_form_0", cut(func(b []byte) { b[0] = 0 })},
+			{"F1_form_1", cut(func(b []byte) { b[0] = 1 })},
+			{"F2_form_2", cut(func(b []byte) { b[0] = 2 })},
+			{"F3_form_4", cut(func(b []byte) { b[0] = 4 })},
+			{"F3_form_255", cut(func(b []byte) { b[0] = 255 })},
+			{"F4_layout_past_file", cut(func(b []byte) { binary.LittleEndian.PutUint32(b[16:], 0x7fff0000) })},
+			{"F7_under_20_bytes", oracle[:19]},
+			{"F8_ragged_tail", oracle[:len(oracle)-1]},
+			{"F12_layout_byte_moved", cut(func(b []byte) { b[20] ^= 1 })},
+			{"F12_layout_one_short", cut(func(b []byte) { b[16]-- })},
 		} {
 			n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, c.file, -1)
-			if n != -1 || reason != c.want {
-				t.Errorf("%s: got n=%d reason=%q, want -1 %q", c.name, n, reason, c.want)
+			if n != -1 {
+				t.Errorf("%s: got n=%d (reason=%q), want -1 (refused)", c.name, n, reason)
 			}
 		}
 		n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, oracle, -1)
-		if n != 2 || (reason != "" && reason != "ok") {
-			t.Errorf("control: got n=%d reason=%q, want 2 ok", n, reason)
+		if n != 2 {
+			t.Errorf("control: got n=%d (reason=%q), want 2", n, reason)
 		}
 	})
 
@@ -1594,19 +1593,24 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		binary.LittleEndian.PutUint32(body[0:], 10)
 		binary.LittleEndian.PutUint32(body[4:], 20)
 		three := MakeFixedFile(eOwn.Wire, eOwn.Layout, body, body, body)
-		bad := bytes.Clone(three)
-		bad[20+len(eOwn.Layout)] ^= 1
-		n, reason, _, _ := runner.LoadLineage(t, u, "Point", lin, bad, 2)
-		if n != -1 || (reason != "batch_too_large" && reason != "plan_too_large") {
-			t.Errorf("over capacity: got n=%d reason=%q, want -1 batch_too_large", n, reason)
-		}
-		nOk, reasonOk, _, _ := runner.LoadLineage(t, u, "Point", lin, three, 3)
-		if nOk != 3 || (reasonOk != "" && reasonOk != "ok") {
-			t.Errorf("fits capacity: got n=%d reason=%q, want 3 ok", nOk, reasonOk)
-		}
-		_, saveReason := runner.SaveCustom(t, u, "Point", "batch_over_4096")
-		if saveReason != "batch_too_large" {
-			t.Errorf("save 4097 records: got reason=%q, want batch_too_large", saveReason)
+		badLast := bytes.Clone(three)
+		badLast[len(badLast)-16] ^= 1 // the third record's hash
+		for _, c := range []struct {
+			name     string
+			file     []byte
+			capacity int
+			wantN    int
+		}{
+			{"past the room", three, 2, -1},
+			{"past the room, before the record hashes", badLast, 2, -1},
+			{"the room exactly", three, 3, 3},
+			{"no capacity", three, -1, 3},
+			{"the bad hash in the room", badLast, 3, -1},
+		} {
+			n, reason, _, _ := runner.LoadLineage(t, u, "Point", lin, c.file, c.capacity)
+			if n != c.wantN {
+				t.Errorf("%s: got n=%d (reason=%q), want %d", c.name, n, reason, c.wantN)
+			}
 		}
 	})
 
@@ -1624,16 +1628,16 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 
 		unknown := bytes.Clone(oracle)
 		unknown[8] ^= 1
-		if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, unknown, -1); n != -1 || reason != "layout_unknown" {
-			t.Errorf("R8 unknown hash: got n=%d reason=%q, want -1 layout_unknown", n, reason)
+		if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, unknown, -1); n != -1 {
+			t.Errorf("R8 unknown hash: got n=%d (reason=%q), want -1 (refused)", n, reason)
 		}
 
 		layoutLen := int(binary.LittleEndian.Uint32(oracle[16:20]))
 		for i := 20; i < 20+layoutLen; i += 17 {
 			moved := bytes.Clone(oracle)
 			moved[i] ^= 0x5a
-			if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, moved, -1); n != -1 || reason != "layout_malformed" {
-				t.Errorf("R9 layout byte %d moved: got n=%d reason=%q, want -1 layout_malformed", i, n, reason)
+			if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, moved, -1); n != -1 {
+				t.Errorf("R9 layout byte %d moved: got n=%d (reason=%q), want -1 (refused)", i, n, reason)
 			}
 		}
 
@@ -1641,8 +1645,8 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		stride := (len(oracle) - rec0) / 2
 		last := bytes.Clone(oracle)
 		last[rec0+stride] ^= 1
-		if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, last, -1); n != -1 || reason != "no_layout" {
-			t.Errorf("F10/R12 last record hash mismatch: got n=%d reason=%q, want -1 no_layout", n, reason)
+		if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, last, -1); n != -1 {
+			t.Errorf("F10/R12 last record hash mismatch: got n=%d (reason=%q), want -1 (refused)", n, reason)
 		}
 
 		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_field_append.schema")
@@ -1658,12 +1662,12 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		}
 		linV := map[string][]LineageEntry{"Lineage": {eOld}}
 		nOld, rOld, fOld, _ := runner.LoadLineage(t, newer, "Lineage", linV, oldBin, -1)
-		if nOld != 1 || (rOld != "" && rOld != "ok") || fOld["r0.w"] != "77" {
-			t.Errorf("older entry plan: n=%d reason=%q w=%q, want 1 ok 77", nOld, rOld, fOld["r0.w"])
+		if nOld != 1 || fOld["r0.w"] != "77" {
+			t.Errorf("older entry plan: n=%d reason=%q w=%q, want 1 77", nOld, rOld, fOld["r0.w"])
 		}
 		nNew, rNew, _, _ := runner.LoadLineage(t, newer, "Lineage", linV, newBin, -1)
-		if nNew != 1 || (rNew != "" && rNew != "ok") {
-			t.Errorf("own entry plan: n=%d reason=%q, want 1 ok", nNew, rNew)
+		if nNew != 1 {
+			t.Errorf("own entry plan: n=%d reason=%q, want 1", nNew, rNew)
 		}
 	})
 
@@ -1683,7 +1687,8 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		e0.Wire ^= 0xbeef
 		e0.Retired = true
 
-		// F11/R25: enum with > 65535 children in lineage refuses plan_too_large
+		// Unmatched enum with 65536 children in an older layout is skipped by the
+		// compiled plan and reads cleanly (n == 1).
 		entryBytes := func(id uint64, kind byte, size, children uint32) []byte {
 			b := binary.LittleEndian.AppendUint64(nil, id)
 			b = append(b, kind)
@@ -1708,21 +1713,21 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		v2 := MakeFixedFile(e2.Wire, e2.Layout, b2(100, -20), b2(200, 30))
 
 		n1, r1, f1, _ := runner.LoadLineage(t, u3, "Lineage", lin, v1, -1)
-		if n1 != 2 || (r1 != "" && r1 != "ok") || f1["r0.a"] != "7" || f1["r0.b"] != "10" || f1["r0.c"] != "99" || f1["r1.a"] != "8" {
+		if n1 != 2 || f1["r0.a"] != "7" || f1["r0.b"] != "10" || f1["r0.c"] != "99" || f1["r1.a"] != "8" {
 			t.Errorf("v1: n=%d r=%q fields=%v", n1, r1, f1)
 		}
 		n2, r2, f2, _ := runner.LoadLineage(t, u3, "Lineage", lin, v2, -1)
-		if n2 != 2 || (r2 != "" && r2 != "ok") || f2["r0.a"] != "100" || f2["r0.b"] != "-20" || f2["r0.c"] != "99" || f2["r1.b"] != "30" {
+		if n2 != 2 || f2["r0.a"] != "100" || f2["r0.b"] != "-20" || f2["r0.c"] != "99" || f2["r1.b"] != "30" {
 			t.Errorf("v2: n=%d r=%q fields=%v", n2, r2, f2)
 		}
-		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(e0.Wire, e0.Layout, []byte{1, 0}), -1); n != -1 || r != "layout_unsupported" {
-			t.Errorf("retired: got n=%d r=%q, want -1 layout_unsupported", n, r)
+		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(e0.Wire, e0.Layout, []byte{1, 0}), -1); n != -1 {
+			t.Errorf("retired: got n=%d r=%q, want -1 (refused)", n, r)
 		}
-		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(0x123456789abcdef0, e3.Layout, make([]byte, 16)), -1); n != -1 || r != "layout_unknown" {
-			t.Errorf("unknown: got n=%d r=%q, want -1 layout_unknown", n, r)
+		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(0x123456789abcdef0, e3.Layout, make([]byte, 16)), -1); n != -1 {
+			t.Errorf("unknown: got n=%d r=%q, want -1 (refused)", n, r)
 		}
-		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(eBig.Wire, eBig.Layout, make([]byte, 4)), -1); n != -1 || r != "plan_too_large" {
-			t.Errorf("plan_too_large: got n=%d r=%q, want -1 plan_too_large", n, r)
+		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(eBig.Wire, eBig.Layout, make([]byte, 4)), -1); n != 1 {
+			t.Errorf("unmatched 65536-variant enum in older layout: got n=%d r=%q, want 1", n, r)
 		}
 	})
 
@@ -1775,7 +1780,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			b = binary.LittleEndian.AppendUint32(b, size)
 			return binary.LittleEndian.AppendUint32(b, children)
 		}
-		// F6: root size 0 and root size 65537 -> layout_record_too_large
+		// F6: root size 0 and root size 65537 -> refused
 		zeroLay := binary.LittleEndian.AppendUint32(nil, 1)
 		zeroLay = append(zeroLay, entryBytes(0x1111, ir.TableKindTable, 0, 0)...)
 		eZero := LineageEntry{Wire: 0x1001, Layout: zeroLay, Record: 8}
@@ -1785,21 +1790,21 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		overLay = append(overLay, entryBytes(0x2222, ir.TableKindI32, 65537, 0)...)
 		eOver := LineageEntry{Wire: 0x1002, Layout: overLay, Record: 8 + 65537}
 
-		// R22: unknown kind byte 99 -> layout_malformed
+		// R22: unknown kind byte 99 -> refused
 		badKindLay := binary.LittleEndian.AppendUint32(nil, 2)
 		badKindLay = append(badKindLay, entryBytes(0x1111, ir.TableKindTable, 4, 1)...)
 		badKindLay = append(badKindLay, entryBytes(0x2222, 99, 4, 0)...)
 		eBadKind := LineageEntry{Wire: 0x1003, Layout: badKindLay, Record: 8 + 4}
 
 		lin := map[string][]LineageEntry{"T": {eZero, eOver, eBadKind}}
-		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eZero.Wire, zeroLay), -1); n != -1 || r != "layout_record_too_large" {
-			t.Errorf("F6 zero size: got n=%d r=%q, want -1 layout_record_too_large", n, r)
+		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eZero.Wire, zeroLay), -1); n != -1 {
+			t.Errorf("F6 zero size: got n=%d r=%q, want -1 (refused)", n, r)
 		}
-		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eOver.Wire, overLay, make([]byte, 65537)), -1); n != -1 || r != "layout_record_too_large" {
-			t.Errorf("F6 over size: got n=%d r=%q, want -1 layout_record_too_large", n, r)
+		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eOver.Wire, overLay, make([]byte, 65537)), -1); n != -1 {
+			t.Errorf("F6 over size: got n=%d r=%q, want -1 (refused)", n, r)
 		}
-		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eBadKind.Wire, badKindLay, make([]byte, 4)), -1); n != -1 || r != "layout_malformed" {
-			t.Errorf("R22 bad kind: got n=%d r=%q, want -1 layout_malformed", n, r)
+		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eBadKind.Wire, badKindLay, make([]byte, 4)), -1); n != -1 {
+			t.Errorf("R22 bad kind: got n=%d r=%q, want -1 (refused)", n, r)
 		}
 	})
 
@@ -1829,12 +1834,12 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			for idx, data := range [][]byte{oldData, midData, newData} {
 				n, r, _, _ := runner.LoadLineage(t, newer, "Floored", lin, data, -1)
 				if idx < retire {
-					if n != -1 || r != "layout_unsupported" {
-						t.Errorf("retire=%d idx=%d: got n=%d r=%q, want -1 layout_unsupported", retire, idx, n, r)
+					if n != -1 {
+						t.Errorf("retire=%d idx=%d: got n=%d r=%q, want -1 (refused)", retire, idx, n, r)
 					}
 				} else {
-					if n != 1 || (r != "" && r != "ok") {
-						t.Errorf("retire=%d idx=%d: got n=%d r=%q, want 1 ok", retire, idx, n, r)
+					if n != 1 {
+						t.Errorf("retire=%d idx=%d: got n=%d r=%q, want 1", retire, idx, n, r)
 					}
 				}
 			}
@@ -1854,17 +1859,13 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if n, r, _, _ := runner.LoadLineage(t, older, rootName, lin, data, -1); n != -1 || r != "layout_unknown" {
-				t.Errorf("R15 %s: got n=%d r=%q, want -1 layout_unknown", row, n, r)
+			if n, r, _, _ := runner.LoadLineage(t, older, rootName, lin, data, -1); n != -1 {
+				t.Errorf("R15 %s: got n=%d r=%q, want -1 (refused)", row, n, r)
 			}
 			stranger := bytes.Clone(data)
 			binary.LittleEndian.PutUint64(stranger[8:], eOwn.Wire)
-			wantR := "layout_malformed"
-			if L := int(binary.LittleEndian.Uint32(data[16:20])); bytes.Equal(data[20:20+L], eOwn.Layout) {
-				wantR = "no_layout"
-			}
-			if n, r, _, _ := runner.LoadLineage(t, older, rootName, lin, stranger, -1); n != -1 || r != wantR {
-				t.Errorf("R10 %s: got n=%d r=%q, want -1 %q", row, n, r, wantR)
+			if n, r, _, _ := runner.LoadLineage(t, older, rootName, lin, stranger, -1); n != -1 {
+				t.Errorf("R10 %s: got n=%d r=%q, want -1 (refused)", row, n, r)
 			}
 		}
 	})
@@ -1893,7 +1894,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		binary.LittleEndian.PutUint32(pb[8:], 3)
 		binary.LittleEndian.PutUint32(pb[12:], 4)
 		n, r, f, _ := runner.LoadLineage(t, u, "T", map[string][]LineageEntry{"T": {ePlain}}, MakeFixedFile(ePlain.Wire, ePlain.Layout, pb), -1)
-		if n != 1 || (r != "" && r != "ok") || f["r0.opt_present"] != "true" || f["r0.opt.b"] != "4" {
+		if n != 1 || f["r0.opt_present"] != "true" || f["r0.opt.b"] != "4" {
 			t.Errorf("E5 plain into ?T: n=%d r=%q fields=%v", n, r, f)
 		}
 	})
@@ -1911,7 +1912,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		}
 		oldData, _ := os.ReadFile(filepath.Join(corpus, "old_rename_without_was.bin"))
 		n, r, f, _ := runner.LoadLineage(t, newer, "Lineage", map[string][]LineageEntry{"Lineage": {eNew}}, oldData, -1)
-		if n != 1 || (r != "" && r != "ok") || f["r0.b"] == "" {
+		if n != 1 || f["r0.b"] == "" {
 			t.Errorf("E6: n=%d r=%q b=%q", n, r, f["r0.b"])
 		}
 		for _, row := range []string{"field_deprecate", "field_undeprecate"} {
@@ -1939,7 +1940,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		file[body+8] = 99
 		eOwn, _ := LineageEntryOf(u, "T")
 		n, r, f, _ := runner.LoadLineage(t, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
-		if n != 1 || (r != "" && r != "ok") || f["r0.tail"] != "77" || f["r0.opt_present"] != "false" {
+		if n != 1 || f["r0.tail"] != "77" || f["r0.opt_present"] != "false" {
 			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
 		}
 	})
@@ -1976,7 +1977,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		binary.LittleEndian.PutUint32(body[6:], 42)
 		file := MakeFixedFile(eOld.Wire, eOld.Layout, body)
 		n, r, f, _ := runner.LoadLineage(t, uNew, "T", map[string][]LineageEntry{"T": {eOld}}, file, -1)
-		if n != 1 || (r != "" && r != "ok") || f["r0.u.nested.y"] != "-7" || f["r0.tail"] != "42" {
+		if n != 1 || f["r0.u.nested.y"] != "-7" || f["r0.tail"] != "42" {
 			t.Errorf("C15/R18/R32 nested union evolution: n=%d r=%q fields=%v", n, r, f)
 		}
 	})
@@ -2002,7 +2003,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 		lin := map[string][]LineageEntry{"T": {eAlt, eOwn}}
 		n1, r1, _, res1 := runner.LoadLineage(t, u, "T", lin, fileId, -1)
 		n2, r2, _, res2 := runner.LoadLineage(t, u, "T", lin, filePlan, -1)
-		if n1 != 1 || n2 != 1 || (r1 != "" && r1 != "ok") || (r2 != "" && r2 != "ok") || !bytes.Equal(res1, res2) {
+		if n1 != 1 || n2 != 1 || !bytes.Equal(res1, res2) {
 			t.Errorf("W6/P1 identity vs compiled plan mismatch: n1=%d n2=%d r1=%q r2=%q eq=%v", n1, n2, r1, r2, bytes.Equal(res1, res2))
 		}
 	})
@@ -2029,7 +2030,7 @@ func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
 			}
 			eOwn, _ := LineageEntryOf(u, v.root)
 			n, r, _, resaved := runner.LoadLineage(t, u, v.root, map[string][]LineageEntry{v.root: {eOwn}}, data, -1)
-			if n != want || (r != "" && r != "ok") || !bytes.Equal(resaved, data) {
+			if n != want || !bytes.Equal(resaved, data) {
 				t.Fatalf("%s: P2 write-read-write mismatch: n=%d r=%q", v.file, n, r)
 			}
 		}

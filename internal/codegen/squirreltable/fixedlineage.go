@@ -241,7 +241,6 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 		return nil, "layout_malformed"
 	}
 	i := 0
-	refusal := ""
 	var parse func() *fixedLayoutNode
 	parse = func() *fixedLayoutNode {
 		if i >= len(entries) {
@@ -251,10 +250,6 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 		i++
 		if !((e.kind >= 1 && e.kind <= 16) || (e.kind >= 18 && e.kind <= 30) || e.kind == 32 || e.kind == 33 || e.kind == fixedKindOptional || e.kind == 36) {
 			return nil
-		}
-		if e.kind == ir.TableKindEnum && e.children > 65535 {
-			refusal = "plan_too_large"
-			return &fixedLayoutNode{id: e.id, kind: e.kind, size: e.size}
 		}
 		n := &fixedLayoutNode{
 			id:   e.id,
@@ -271,9 +266,6 @@ func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
 		return n
 	}
 	root := parse()
-	if refusal != "" {
-		return nil, refusal
-	}
 	if root == nil || i != len(entries) || root.kind != ir.TableKindTable {
 		return nil, "layout_malformed"
 	}
