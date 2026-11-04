@@ -286,16 +286,17 @@ func tableWireVerify(r TableReader, scratch []uint64) TableRefuseReason {
   if !c.record(int64(c.graph[2*(i-1)+1])) { return c.failed() }
  }
  if c.nodes==0 { return TableRefuseOk }
- // a record no pointer names is unreachable, and a blob named twice is shared
+ // a blob named twice is shared, and a record no pointer names is unreachable
  for i:=uint64(2); i<=c.nodes+1; i++ {
-  degree:=uint32(c.graph[2*(i-1)])
-  if degree==0 { return TableRefuseWireDamaged }
-  if degree>1 {
+  if uint32(c.graph[2*(i-1)])>1 {
    rec:=c.records
    rec.Offset=int64(c.graph[2*(i-1)+1])
    ref,_:=rec.Leb()
    if id,_:=rec.Resolve(ref); id==tableWireBytesID || id==tableWireStringID { return TableRefuseBlobShared }
   }
+ }
+ for i:=uint64(2); i<=c.nodes+1; i++ {
+  if uint32(c.graph[2*(i-1)])==0 { return TableRefuseWireDamaged }
  }
  // Kahn's algorithm from the root: a record a cycle holds is never released
  c.release=true

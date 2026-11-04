@@ -160,7 +160,7 @@ func TestWidenArmReadsWireWidth(t *testing.T) {
 	}
 }
 
-func TestMatchedWidthMismatchSkips(t *testing.T) {
+func TestMatchedWidthMismatchRefuses(t *testing.T) {
 	var ids TableIds
 	buf := make([]byte, 256)
 	w := TableWriter{Buffer: buf, Ids: &ids}
@@ -171,7 +171,7 @@ func TestMatchedWidthMismatchSkips(t *testing.T) {
 	got := finish(&w)
 	var loaded Root
 	var report TableReport
-	if !RootLoad(&loaded, got, &report) || !report.Refused() || report.Widened != 0 || loaded.B != 0 {
+	if RootLoad(&loaded, got, &report) || !report.Refused() || report.Widened != 0 || loaded.B != 0 {
 		t.Fatalf("mismatch: b=%d report=%+v", loaded.B, report)
 	}
 }

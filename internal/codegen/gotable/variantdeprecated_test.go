@@ -212,7 +212,7 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 		if ok, err := tablewire.Decode(m, inst, wire, &report); !ok || err != nil {
 			t.Fatalf("oracle wire: %v %+v", err, report)
 		}
-		if report.Unknown != 0 || report.Clamped != 0 || report.KindMismatch != 0 || report.Malformed {
+		if report.Unknown != 0 || report.Refused {
 			t.Fatalf("oracle wire counted an event: %+v", report)
 		}
 		if inst.Fields[0].Cell.U != uint64(tabletext.EnumValue(u.Enums["Ship"], "Scout")) {
@@ -231,7 +231,7 @@ func TestDeprecatedVariantReadsDefaultWriteRefused(t *testing.T) {
 		if !m.Read(inst, text, &report) {
 			t.Fatalf("oracle text: %+v", report)
 		}
-		if report.Unknown != 0 || report.Clamped != 0 || report.KindMismatch != 0 || report.Malformed {
+		if report.Unknown != 0 || report.Refused {
 			t.Fatalf("oracle text counted an event: %+v", report)
 		}
 		if inst.Fields[0].Cell.U != uint64(tabletext.EnumValue(u.Enums["Ship"], "Scout")) || inst.Fields[1].Elems[0].U != 0 {

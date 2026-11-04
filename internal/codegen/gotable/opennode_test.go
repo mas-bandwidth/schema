@@ -52,7 +52,7 @@ func TestPointerNamingAnOpenNodeIsRefusedGo(t *testing.T) {
 	}
 	cyclic[at+1] = 2
 	var report tabletext.Report
-	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), cyclic, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.Decode(m, m.New(m.Lookup("Graph")), cyclic, &report); ok || err == nil || !report.Refused {
 		t.Fatalf("the engine does not refuse the cycle: ok=%v err=%v %+v", ok, err, report)
 	}
 	shared := encode(`{"a":5,"next":{"&node":1,"a":6},"also":{"&node":1}}`)

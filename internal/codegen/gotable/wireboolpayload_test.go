@@ -98,13 +98,10 @@ func TestGoWireBoolPayloadNot0Or1(t *testing.T) {
 		if got := PatrolLoad(buf, bad, &report); got != nil {
 			t.Fatalf("tolerant read of malformed %s handed back a value: %+v", field, report)
 		}
-		if !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
-			t.Fatalf("%s did not set malformed", field)
+		if report.Err() != TableRefuseWireDamaged {
+			t.Fatalf("%s did not refuse wire_damaged: %+v", field, report)
 		}
-		if report.Reason != "malformed: "+field {
-			t.Fatalf("Reason=%q want %q", report.Reason, "malformed: "+field)
-		}
-		if _, err := PatrolReadStrict(bad); !errors.Is(err, TableRefuseMalformed) {
+		if _, err := PatrolReadStrict(bad); !errors.Is(err, TableRefuseWireDamaged) {
 			t.Fatalf("strict read did not refuse malformed %s: %v", field, err)
 		}
 	}

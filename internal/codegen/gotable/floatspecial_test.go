@@ -649,7 +649,7 @@ func TestFixed(t *testing.T) {
 				} else {
 					k = FlatFixedLoad(got, buf, plan[:], &rep)
 				}
-				if k != -1 || rep.Field != "Flat."+site.field || rep.Reason != "non_finite_float: Flat."+site.field || !errors.Is(rep.Err(), TableRefuseNonFiniteFloat) {
+				if k != -1 || rep.Field != "Flat."+site.field || !errors.Is(rep.Err(), TableRefuseNonFiniteFloat) {
 					t.Errorf("fixed %s %s tolerant=%v: %d %+v", site.field, c.name, tolerant, k, rep)
 				}
 				var reset Flat

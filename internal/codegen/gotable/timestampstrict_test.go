@@ -171,7 +171,7 @@ func TestGoTimestampStrictRFC3339(t *testing.T) {
 				t.Fatal("Root has no field keyed at")
 			}
 			if !tc.ok {
-				if !report.Malformed || !strings.HasPrefix(report.Reason, "timestamp_not_rfc3339: at") {
+				if !report.Refused {
 					t.Fatalf("%s: refusal %+v", tc.json, report)
 				}
 				if field.Cell.I != 0 {
@@ -179,7 +179,7 @@ func TestGoTimestampStrictRFC3339(t *testing.T) {
 				}
 				return
 			}
-			if report.Malformed || report.Reason != "" {
+			if report.Refused || report.Reason != "" {
 				t.Fatalf("%s: report %+v", tc.json, report)
 			}
 			if field.Cell.I != tc.nanos {

@@ -262,8 +262,8 @@ func TestKindIsItsOwn(t *testing.T) {
  copy(b2[idIdx:idIdx+8], nBytes[:])
  got = Session{}
  r = TableReport{}
- if !SessionLoad(&got, b2, &r) || !r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || got.N != 0 || got.Ended != 42 {
-  t.Fatalf("kind 36 skipped over int32 field: %+v %+v", r, got)
+ if SessionLoad(&got, b2, &r) || r.Err() == nil || got.N != 0 || got.Ended != 0 {
+  t.Fatalf("kind 36 over an int32 field read: %+v %+v", r, got)
  }
 }
 `)

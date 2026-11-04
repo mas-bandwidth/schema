@@ -1418,7 +1418,7 @@ func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 				// the read (docs/SPEC-TABLES.md §16.2)
 				if code >= 0xd800 && code <= 0xdfff {
 					if in.report != nil {
-						in.report.Refuse(TableRefuseMalformed, "string_lone_surrogate")
+						in.report.Refuse(TableRefuseMalformed, "")
 					}
 					in.bad = true
 					return 0, false
