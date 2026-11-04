@@ -115,6 +115,43 @@ func TestWireWriterFailureCannotBecomeReadRefusal(t *testing.T) {
 	}
 }
 
+func TestVariableFramingBoundedWalksArrayElements(t *testing.T) {
+	c := findCodec("tblframe", "Bounded")
+	if c == nil {
+		t.Fatal("variable framing array root has no codec")
+	}
+	value := c.fresh()
+	var rep report
+	if !c.fromJson(value, []byte(`{"items":[{"v":7},{"v":9}],"tag":41}`), &rep) {
+		t.Fatal("valid variable framing value refused")
+	}
+	size := c.measure(value)
+	if size <= 0 {
+		t.Fatal("valid variable framing value has no wire")
+	}
+	wire := make([]byte, size)
+	if c.save(value, wire) != size || wire[0] != 1 {
+		t.Fatal("framing witness did not write form 1")
+	}
+	read := c.fresh()
+	if !c.load(read, wire, &rep) {
+		t.Fatal("valid form-1 array refused")
+	}
+	back := make([]byte, c.measure(read))
+	if c.save(read, back) != int64(len(back)) || !bytes.Equal(wire, back) {
+		t.Fatal("accepted array did not preserve its complete writeback")
+	}
+	for _, name := range []string{"array_elem_terminator_early", "array_elem_L_past_body"} {
+		damaged, err := os.ReadFile(filepath.Join("../../../testdata/wire/tables/framing", name+".bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.load(c.fresh(), damaged, &rep) {
+			t.Fatalf("damaged element %s was accepted", name)
+		}
+	}
+}
+
 func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
 	for _, tc := range []struct{ accepted, writes bool }{{true, true}, {false, true}, {true, false}} {
 		accepted := tc.accepted
