@@ -54,12 +54,16 @@ case "$mypy_got" in
 esac
 
 # THE PATH GATE. The leg's files: its make fragments and scripts, its Go
-# packages and its conformance driver. A line that names the pinned path
+# packages, its conformance driver, and the staged serialize.py's code and
+# Makefile. A line that names the pinned path
 # (dist/python-3.11.18/bin/python3.11) is no PATH lookup; the patterns below
 # match a command word, not a path component.
-files=$(cd "$root" && find make internal/codegen test/conformance compiler \
-	\( -path 'make/python*' -o -path 'internal/codegen/python*' -o -path 'test/conformance/python*' -o -path 'compiler/*python*' \) \
-	-type f 2>/dev/null | sort)
+files=$(cd "$root" && {
+	find make internal/codegen test/conformance compiler \
+		\( -path 'make/python*' -o -path 'internal/codegen/python*' -o -path 'test/conformance/python*' -o -path 'compiler/*python*' \) \
+		-type f 2>/dev/null
+	find third_party/serialize.py \( -name Makefile -o -name '*.py' -o -name '*.sh' -o -name '*.mk' \) -type f 2>/dev/null
+} | sort)
 if [ -z "$files" ]; then
 	refuse "found none of the leg's files under $root; the gate would have checked nothing"
 fi
