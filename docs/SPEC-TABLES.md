@@ -6562,7 +6562,7 @@ plain float's NaN or infinity.
 field, a variant, an arm or a key names it, and never at resolve time. The
 difference from the variable form is that the reader now SKIPS it by the announced
 shape rather than by a length on the wire, and the result is the same: the field
-is stepped over exactly and one event counts. **The skip walk is bounded at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, union arm or element skip past 128 levels refuses (recommended name `wire_damaged`). <!-- limit name=message_skip_depth value=128 -->
+is stepped over exactly and one event counts. **The skip walk is bounded at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body past 128 levels refuses (recommended name `wire_damaged`); a union arm adds no level of its own, as on the file form. <!-- limit name=message_skip_depth value=128 -->
 
 **A FIELD WHOSE ANNOUNCED KIND IS NOT THE ONE THIS READER DECLARES IS §4's
 ORDINARY kind mismatch, AND IT REFUSES AT `AnnounceRead`**, for every entry this
@@ -8565,9 +8565,11 @@ hand-editable text form alone refuses an unknown name, §6.5):
   decidable from the wire alone apply to its bytes as to every other byte
   (§6.5), so damage inside an unknown field refuses the load. That walk, and
   every other walk of the binary forms, holds ONE NESTING BOUND, normative for
-  every reader and every path: the root body is at depth 0, each framed
-  payload inside a payload (a table body, an array, keyed or map body, a union
-  arm) is one level deeper, depth 128 passes and 129 refuses. The compiler
+  every reader and every path: the root body is at depth 0, and each
+  STRUCTURAL container inside it (a table body, an array, a keyed or map body)
+  is one level deeper; a union arm or keyed entry adds no level of its own, so
+  a scalar arm adds none and an arm holding a body adds the body's one. Depth
+  128 passes and 129 refuses. The compiler
   refuses a declaration whose by-value nesting passes it, so no conforming
   writer produces an input the bound refuses. A pointer does not nest: a node
   record is walked from depth 0. <!-- limit name=binary_max_depth value=128 -->
