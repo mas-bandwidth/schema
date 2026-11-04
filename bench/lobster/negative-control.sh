@@ -51,15 +51,15 @@ flip() { # flip <src> <dst>: copy with the first byte inverted
 # baselines
 st=0; bench/lobster/run --gate > "$W/base-packet.log" 2>&1 || st=$?
 expect packet-baseline 0 "OK (gate only" "$W/base-packet.log" "$st"
-st=0; bench/tables/lobster/leg run --gate > "$W/base-table.log" 2>&1 || st=$?
+st=0; bench/tables/lobster/leg run --gate --wire-dir bench/corpus/fixed-table --variant-dir bench/corpus/fixed-table > "$W/base-table.log" 2>&1 || st=$?
 expect table-baseline 0 "OK (gate only" "$W/base-table.log" "$st"
 
 # packet-golden and table-golden
 flip testdata/wire/bench_mixed.bin "$W/wire/bench_mixed.bin"
-flip testdata/wire/bench_table.bin "$W/wire/bench_table.bin"
+flip bench/corpus/fixed-table/bench_table.bin "$W/wire/bench_table.bin"
 st=0; bench/lobster/run --gate --wire-dir "$ROOT/$W/wire" > "$W/packet-golden.log" 2>&1 || st=$?
 expect packet-golden 1 "variant 0 is not the wire golden" "$W/packet-golden.log" "$st"
-st=0; bench/tables/lobster/leg run --gate --wire-dir "$ROOT/$W/wire" > "$W/table-golden.log" 2>&1 || st=$?
+st=0; bench/tables/lobster/leg run --gate --wire-dir "$ROOT/$W/wire" --variant-dir bench/corpus/fixed-table > "$W/table-golden.log" 2>&1 || st=$?
 expect table-golden 1 "variant 0 is not the wire golden" "$W/table-golden.log" "$st"
 
 # warning
