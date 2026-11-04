@@ -1,8 +1,3 @@
-// Copyright 2026 Glenn Lewis. All rights reserved.
-//
-// Use of this source code is governed by the Reticulum License
-// that can be found in the LICENSE file.
-
 // Package fixedproof provides the leg-independent 49-row fixed-table proof
 // driver shared across target table backends (L2, S2, X1).
 //
