@@ -219,13 +219,9 @@ func deriveManifest(m *Manifest, path string) error {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
 	}
 	for _, fc := range m.Framings {
-		// the verdict and the value file are the answer and stay withheld; a
-		// driver still has to know which rows owe the report alone
-		marker := ""
-		if fc.Value == "" {
-			marker = " no-value"
-		}
-		fmt.Fprintf(&b, "framing %s %s %s %s%s\n", fc.Name, fc.Unit, fc.Root, fc.Wire, marker)
+		// Every accepted read owes its complete value; neither the expected
+		// verdict nor the presence of a golden travels to the driver.
+		fmt.Fprintf(&b, "framing %s %s %s %s\n", fc.Name, fc.Unit, fc.Root, fc.Wire)
 	}
 	for _, h := range m.Hostiles {
 		fmt.Fprintf(&b, "json-hostile %s %s %s %s\n", h.Name, h.Unit, h.Root, h.Tree)
