@@ -272,6 +272,9 @@ public static class TableJson
         public bool Measuring;
         public long Offset;
         public bool Overflow;
+        // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+        // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+        public bool Invalid;
         internal TableWire.Graph Graph;
 
         public void Raw(ReadOnlySpan<byte> data)
@@ -411,15 +414,10 @@ public static class TableJson
         o.Put((byte)(0x80 | (code & 0x3f)));
     }
 
-    // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-    // byte-transparent — the wire imposes no encoding (§3) and a string may
-    // hold anything — so the WRITER is where that obligation is met: a byte
-    // that is not part of a well-formed sequence is written as U+FFFD, one per
-    // bad byte, and never raw. A text this walk writes is therefore readable by
-    // any conforming parser, which a raw byte would not be. The cost is stated
-    // plainly: for a string holding invalid UTF-8, the round trip is NOT
-    // byte-identical, because the alternative is emitting a text that is not
-    // JSON.
+    // A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts
+    // anything else into storage, so a byte that is not part of a well-formed
+    // sequence was put there by a program: the write REFUSES (invalid_value,
+    // docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
     static void WriteString(ref Out o, ReadOnlySpan<byte> s)
     {
         o.Put((byte)'"');
@@ -431,7 +429,7 @@ public static class TableJson
             int width;
             if (Utf8(s, i, out width) < 0)
             {
-                WriteUtf8(ref o, 0xfffd); // one per bad byte
+                o.Invalid = true; // not text: the write refuses (§16.14 W0)
             }
             else
             {
@@ -2039,13 +2037,14 @@ public static class TableJson
         o.Measuring = measuring;
         o.Offset = 0;
         o.Overflow = false;
+        o.Invalid = false;
         if (info.Variable) { o.Graph = TableWire.Number(value, info); if (o.Graph == null) { return -1; } }
         if (!WriteValue(ref o, value, info, 0)) { return -1; }
         // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
         // writer emits it — this one, the C++ walk and schema unpack — and
         // every reader accepts a text with or without.
         o.Put((byte)'\n');
-        if (o.Overflow) { return -1; }
+        if (o.Overflow || o.Invalid) { return -1; }
         return o.Offset;
     }
 }
