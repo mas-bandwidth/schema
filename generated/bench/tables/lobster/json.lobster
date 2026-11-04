@@ -2226,7 +2226,10 @@ def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        let key, over, ok = j_scan_stored(r, json_max_key)
+        // Schema string keys carry their declared extent; field-name limits
+        // do not bound map data. Unbounded text uses the scanner's -1 mode.
+        let key_limit = if kf.s == "text": -1 else: if string_key: kf.bound else: json_max_key
+        let key, over, ok = j_scan_stored(r, key_limit)
         if not ok:
             return false
         if j_peek(r) != ':':
