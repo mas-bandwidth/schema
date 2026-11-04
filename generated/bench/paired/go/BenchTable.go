@@ -2006,6 +2006,12 @@ const (
 	tableFixedTextBytes uint8 = 3
 )
 
+// tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
+// Meta); its Aux is the source bytes of the payload behind it. A count entry's
+// Aux is the source bytes of one element. The pre-scan reads both to know
+// which bytes are slack (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+const tableFixedPresent uint8 = 1
+
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
@@ -2314,6 +2320,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Aux == 0 && raw[i].Aux == 0 &&
 			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
 			raw[out-1].ArgW2 == raw[i].ArgW2 &&
 			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
@@ -2589,15 +2596,25 @@ func tableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
-// text entries, run before the caller's storage is touched. A count or a text
-// length past the PLAN's bound refuses by name — count_over_bound /
-// length_over_bound — and an ill-formed payload refuses text_ill_formed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
-// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
-// one destination byte is written. It walks each entry under its own guards,
-// writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
+// bool, tag and ordinal entries, run before the caller's storage is touched. A
+// count or a text length past the PLAN's bound refuses by name —
+// count_over_bound / length_over_bound — an ill-formed payload refuses
+// text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
+// tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
+// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). REFUSE is total:
+// no counter moves, nothing is decoded, and not one destination byte is
+// written. It walks each entry under its own guards, writes nothing and moves
+// no counter.
+//
+// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
+// SLACK RULE): the bytes past a counted array's count and under an absent
+// optional's present byte are slack, unspecified on read and never a refusal.
+// Each count and present byte it reads adds the slack behind it to dead, and an
+// entry inside dead is not asked.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	var deadBuf [64][2]uint32
+	dead := deadBuf[:0]
 	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
@@ -2613,11 +2630,17 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
+		if p.Op != tableFixedBool && tableFixedDead(dead, p.Src) {
+			continue
+		}
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
+			}
+			if p.Aux != 0 && uint32(v) < p.Size {
+				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
 			}
 		case tableFixedText:
 			unit := uint32(1)
@@ -2635,8 +2658,14 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case tableFixedBool:
 			// a bool or present byte other than 0 or 1 is damage (§4.5)
 			for k := range p.Size {
+				if tableFixedDead(dead, p.Src+k) {
+					continue
+				}
 				if src[p.Src+k] > 1 {
 					return TableRefuseWireDamaged.Error()
+				}
+				if p.Meta == tableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
+					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
 				}
 			}
 		case tableFixedTag:
@@ -2670,6 +2699,17 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 	}
 	return ""
+}
+
+// tableFixedDead is whether src offset at lies in one of the slack spans the
+// pre-scan has found.
+func tableFixedDead(dead [][2]uint32, at uint32) bool {
+	for _, d := range dead {
+		if at >= d[0] && at < d[1] {
+			return true
+		}
+	}
+	return false
 }
 
 type tableFixedLayoutEntry struct {
@@ -3216,7 +3256,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	}
 	switch me.Kind {
 	case 35:
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Aux: te.Size - 1, Meta: tableFixedPresent, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
@@ -3244,7 +3284,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -7139,6 +7179,952 @@ func BenchMixedReadStrict(wire []byte) (*BenchMixed, error) {
 		return nil, report.Err()
 	}
 	return value, nil
+}
+
+// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's layout and then the values
+// in declared order, every field at its declared storage width. The writer is
+// constant-offset stores; the reader is ONE loop over ONE plan.
+
+func MixedEntityFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.EntityID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.PosZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 16
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Yaw))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 20
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Pitch))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 24
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 28
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 32
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.VelZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 36
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Health))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 40
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Weapon))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 41
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Damage))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 49
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Moving))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 50
+		ed := dst + uint32(unsafe.Offsetof(MixedEntity{}.Firing))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	return n
+}
+
+func MixedEntityFixedWriteBody(b []byte, value *MixedEntity) {
+	tableFixedPut32(b[0:], uint32(value.EntityID))
+	tableFixedPut32(b[4:], uint32(value.PosX))
+	tableFixedPut32(b[8:], uint32(value.PosY))
+	tableFixedPut32(b[12:], uint32(value.PosZ))
+	tableFixedPut32(b[16:], uint32(value.Yaw))
+	tableFixedPut32(b[20:], uint32(value.Pitch))
+	tableFixedPut32(b[24:], uint32(value.VelX))
+	tableFixedPut32(b[28:], uint32(value.VelY))
+	tableFixedPut32(b[32:], uint32(value.VelZ))
+	tableFixedPut32(b[36:], uint32(value.Health))
+	tableFixedPut8(b[40:], uint8(value.Weapon))
+	tableFixedPut64(b[41:], uint64(value.Damage))
+	{
+		p := uint8(0)
+		if value.Moving {
+			p = 1
+		}
+		tableFixedPut8(b[49:], p)
+	}
+	{
+		p := uint8(0)
+		if value.Firing {
+			p = 1
+		}
+		tableFixedPut8(b[50:], p)
+	}
+}
+
+func MixedStatFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.StatID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedStat{}.Delta))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func MixedStatFixedWriteBody(b []byte, value *MixedStat) {
+	tableFixedPut32(b[0:], uint32(value.StatID))
+	tableFixedPut32(b[4:], uint32(value.Delta))
+}
+
+func MixedHitEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.TargetID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Damage))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.HitKind))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(MixedHitEvent{}.Crit))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	return n
+}
+
+func MixedHitEventFixedWriteBody(b []byte, value *MixedHitEvent) {
+	tableFixedPut32(b[0:], uint32(value.TargetID))
+	tableFixedPut32(b[4:], uint32(value.Damage))
+	tableFixedPut32(b[8:], uint32(value.HitKind))
+	{
+		p := uint8(0)
+		if value.Crit {
+			p = 1
+		}
+		tableFixedPut8(b[12:], p)
+	}
+}
+
+func MixedChatEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedChatEvent{}.Channel))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedChatEvent{}.Speaker))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func MixedChatEventFixedWriteBody(b []byte, value *MixedChatEvent) {
+	tableFixedPut32(b[0:], uint32(value.Channel))
+	tableFixedPut32(b[4:], uint32(value.Speaker))
+}
+
+func MixedPickupEventFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.ItemID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(MixedPickupEvent{}.Amount))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func MixedPickupEventFixedWriteBody(b []byte, value *MixedPickupEvent) {
+	tableFixedPut32(b[0:], uint32(value.ItemID))
+	tableFixedPut32(b[4:], uint32(value.Amount))
+}
+
+func BenchMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Sequence))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 4
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AckSequence))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AckBits))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 12
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.SessionID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 20
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ClientID))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 24
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Nonce))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 32
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.WorldTime))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 40
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.FrameTick))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 48
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.ServerTime))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	out[n] = TableFixedEntry{Src: src + 52, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.EntitiesCount)), Size: 8, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
+	n++
+	for i := range uint32(8) {
+		es := src + 56 + i*51
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Entities)) + i*uint32(unsafe.Sizeof(MixedEntity{}))
+		n += MixedEntityFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	out[n] = TableFixedEntry{Src: src + 464, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.StatsCount)), Size: 80, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
+	n++
+	for i := range uint32(80) {
+		es := src + 468 + i*8
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Stats)) + i*uint32(unsafe.Sizeof(MixedStat{}))
+		n += MixedStatFixedLeaves(out[n:], links[n:], es, ed)
+	}
+	{
+		es := src + 1108
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.GameEvent))
+		out[n] = TableFixedEntry{Src: es, Dst: ed + uint32(unsafe.Offsetof(MixedEvent{}.Type)), Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy} // the tag
+		n++
+		{ // arm hit, ordinal 1
+			guardAt := n
+			n += MixedHitEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Hit)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 1, ArgW: 1})
+			}
+		}
+		{ // arm chat, ordinal 2
+			guardAt := n
+			n += MixedChatEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Chat)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 2, ArgW: 1})
+			}
+		}
+		{ // arm pickup, ordinal 3
+			guardAt := n
+			n += MixedPickupEventFixedLeaves(out[n:], links[n:], es+1, ed+uint32(unsafe.Offsetof(MixedEvent{}.Pickup)))
+			for q := guardAt; q < n; q++ {
+				links[q] = append(links[q], TableFixedGuardLink{Guard: es, Arg: 3, ArgW: 1})
+			}
+		}
+	}
+	for i := range uint32(4) {
+		es := src + 1122 + i*1
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Loadout)) + i*uint32(unsafe.Sizeof(uint8(0)))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	out[n] = TableFixedEntry{Src: src + 1126, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerNameLength)), Size: 15, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.PlayerName)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 1} // player_name
+	n++
+	out[n] = TableFixedEntry{Src: src + 1145, Dst: dst + uint32(unsafe.Offsetof(BenchMixed{}.PayloadLength)), Size: 16, Aux: dst + uint32(unsafe.Offsetof(BenchMixed{}.Payload)), Guard: tableFixedNoGuard, Op: tableFixedText, Meta: 3} // payload
+	n++
+	{
+		es := src + 1165
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimX))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1169
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimY))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1173
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.AimZ))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1177
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Recoil))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1181
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Drift))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1189
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.WideKey))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 16, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1205
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Flux))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 16, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1221
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Ping))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 2, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1223
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.CrcHint))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1227
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.HasExtra))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 1, Guard: tableFixedNoGuard, Op: tableFixedBool}
+		n++
+	}
+	{
+		es := src + 1228
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.Extra))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 1232
+		ed := dst + uint32(unsafe.Offsetof(BenchMixed{}.IdleTicks))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func BenchMixedFixedWriteBody(b []byte, value *BenchMixed) {
+	tableFixedPut32(b[0:], uint32(value.Sequence))
+	tableFixedPut32(b[4:], uint32(value.AckSequence))
+	tableFixedPut32(b[8:], uint32(value.AckBits))
+	tableFixedPut64(b[12:], uint64(value.SessionID))
+	tableFixedPut32(b[20:], uint32(value.ClientID))
+	tableFixedPut64(b[24:], uint64(value.Nonce))
+	tableFixedPut64(b[32:], uint64(value.WorldTime))
+	tableFixedPut64(b[40:], uint64(value.FrameTick))
+	tableFixedPut32(b[48:], uint32(value.ServerTime))
+	tableFixedPut32(b[52:], uint32(value.EntitiesCount))
+	{
+		livei := min(max(int64(value.EntitiesCount), 0), 8)
+		for i := range livei {
+			clear(b[56:][i*51 : i*51+51])
+			MixedEntityFixedWriteBody(b[56:][i*51:], &value.Entities[i])
+		}
+		clear(b[56:][livei*51 : 408])
+	}
+	tableFixedPut32(b[464:], uint32(value.StatsCount))
+	{
+		livei := min(max(int64(value.StatsCount), 0), 80)
+		for i := range livei {
+			clear(b[468:][i*8 : i*8+8])
+			MixedStatFixedWriteBody(b[468:][i*8:], &value.Stats[i])
+		}
+		clear(b[468:][livei*8 : 640])
+	}
+	tableFixedPut8(b[1108:], uint8(value.GameEvent.Type))
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		MixedHitEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Hit)
+	case MixedEventTypeChat:
+		MixedChatEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Chat)
+	case MixedEventTypePickup:
+		MixedPickupEventFixedWriteBody(b[1108:][1:], &value.GameEvent.Pickup)
+	}
+	for i := range int64(4) {
+		tableFixedPut8(b[1122:][i*1:], uint8(value.Loadout[i]))
+	}
+	tableFixedPut32(b[1126:], uint32(value.PlayerNameLength))
+	copy(b[1126:][4:], value.PlayerName[:min(uint32(value.PlayerNameLength), 15)])
+	tableFixedPut32(b[1145:], uint32(value.PayloadLength))
+	copy(b[1145:][4:], value.Payload[:min(uint32(value.PayloadLength), 16)])
+	tableFixedPutF32(b[1165:], value.AimX)
+	tableFixedPutF32(b[1169:], value.AimY)
+	tableFixedPutF32(b[1173:], value.AimZ)
+	tableFixedPutF32(b[1177:], value.Recoil)
+	tableFixedPutF64(b[1181:], value.Drift)
+	tableFixedPut128(b[1189:], value.WideKey.Lo, value.WideKey.Hi)
+	tableFixedPut128(b[1205:], value.Flux.Lo, value.Flux.Hi)
+	tableFixedPut16(b[1221:], uint16(value.Ping))
+	tableFixedPut32(b[1223:], uint32(value.CrcHint))
+	{
+		p := uint8(0)
+		if value.HasExtra {
+			p = 1
+		}
+		tableFixedPut8(b[1227:], p)
+	}
+	tableFixedPut32(b[1228:], uint32(value.Extra))
+	tableFixedPut32(b[1232:], uint32(value.IdleTicks))
+}
+
+// MixedEntity's read-side bounds: each value outside them counts one in over.
+func MixedEntityFixedBoundsBody(value *MixedEntity, over *int32) {
+	_, _ = value, over
+	if value.EntityID > 4095 {
+		(*over)++
+	}
+	if value.PosX < -16383 || value.PosX > 16383 {
+		(*over)++
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		(*over)++
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		(*over)++
+	}
+	if value.Yaw > 511 {
+		(*over)++
+	}
+	if value.Pitch > 511 {
+		(*over)++
+	}
+	if value.VelX < -2048 || value.VelX > 2047 {
+		(*over)++
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		(*over)++
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		(*over)++
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		(*over)++
+	}
+	if uint64(value.Weapon) > 15 {
+		(*over)++
+	}
+}
+
+// MixedStat's read-side bounds: each value outside them counts one in over.
+func MixedStatFixedBoundsBody(value *MixedStat, over *int32) {
+	_, _ = value, over
+	if value.StatID > 255 {
+		(*over)++
+	}
+	if value.Delta < -512 || value.Delta > 511 {
+		(*over)++
+	}
+}
+
+// MixedHitEvent's read-side bounds: each value outside them counts one in over.
+func MixedHitEventFixedBoundsBody(value *MixedHitEvent, over *int32) {
+	_, _ = value, over
+	if value.TargetID > 4095 {
+		(*over)++
+	}
+	if value.Damage < 0 || value.Damage > 4095 {
+		(*over)++
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		(*over)++
+	}
+}
+
+// MixedChatEvent's read-side bounds: each value outside them counts one in over.
+func MixedChatEventFixedBoundsBody(value *MixedChatEvent, over *int32) {
+	_, _ = value, over
+	if value.Channel < 0 || value.Channel > 3 {
+		(*over)++
+	}
+	if value.Speaker > 4095 {
+		(*over)++
+	}
+}
+
+// MixedPickupEvent's read-side bounds: each value outside them counts one in over.
+func MixedPickupEventFixedBoundsBody(value *MixedPickupEvent, over *int32) {
+	_, _ = value, over
+	if value.ItemID > 1023 {
+		(*over)++
+	}
+	if value.Amount < 0 || value.Amount > 255 {
+		(*over)++
+	}
+}
+
+// BenchMixed's read-side bounds: each value outside them counts one in over.
+func BenchMixedFixedBoundsBody(value *BenchMixed, over *int32) {
+	_, _ = value, over
+	if value.Sequence > 65535 {
+		(*over)++
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		(*over)++
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		(*over)++
+	}
+	if value.FrameTick > 281474976710655 {
+		(*over)++
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		(*over)++
+	}
+	for i := range int64(value.EntitiesCount) {
+		MixedEntityFixedBoundsBody(&value.Entities[i], over)
+	}
+	for i := range int64(value.StatsCount) {
+		MixedStatFixedBoundsBody(&value.Stats[i], over)
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		(*over)++
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		MixedHitEventFixedBoundsBody(&value.GameEvent.Hit, over)
+	case MixedEventTypeChat:
+		MixedChatEventFixedBoundsBody(&value.GameEvent.Chat, over)
+	case MixedEventTypePickup:
+		MixedPickupEventFixedBoundsBody(&value.GameEvent.Pickup, over)
+	}
+	if value.AimX < -1.0 || value.AimX > 1.0 {
+		(*over)++
+	} else if value.AimX == 0 {
+		value.AimX = 0
+	}
+	if value.AimY < -1.0 || value.AimY > 1.0 {
+		(*over)++
+	} else if value.AimY == 0 {
+		value.AimY = 0
+	}
+	if value.AimZ < -1.0 || value.AimZ > 1.0 {
+		(*over)++
+	} else if value.AimZ == 0 {
+		value.AimZ = 0
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		(*over)++
+	}
+	if value.Ping > 64000 {
+		(*over)++
+	}
+	if value.CrcHint > 16777215 {
+		(*over)++
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		(*over)++
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		(*over)++
+	}
+}
+
+// BenchMixedFixedFiniteBody is BenchMixed's read-side finite rule (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
+func BenchMixedFixedFiniteBody(value *BenchMixed) string {
+	if value.AimX-value.AimX != 0 {
+		return "BenchMixed.aim_x"
+	}
+	if value.AimY-value.AimY != 0 {
+		return "BenchMixed.aim_y"
+	}
+	if value.AimZ-value.AimZ != 0 {
+		return "BenchMixed.aim_z"
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return "BenchMixed.recoil"
+	}
+	if value.Drift-value.Drift != 0 {
+		return "BenchMixed.drift"
+	}
+	return ""
+}
+
+// MixedEntity's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedEntityFixedCheckBody(value *MixedEntity) bool {
+	_ = value
+	if value.EntityID > 4095 {
+		return false
+	}
+	if value.PosX < -16383 || value.PosX > 16383 {
+		return false
+	}
+	if value.PosY < -16383 || value.PosY > 16383 {
+		return false
+	}
+	if value.PosZ < -16383 || value.PosZ > 16383 {
+		return false
+	}
+	if value.Yaw > 511 {
+		return false
+	}
+	if value.Pitch > 511 {
+		return false
+	}
+	if value.VelX < -2048 || value.VelX > 2047 {
+		return false
+	}
+	if value.VelY < -2048 || value.VelY > 2047 {
+		return false
+	}
+	if value.VelZ < -2048 || value.VelZ > 2047 {
+		return false
+	}
+	if value.Health < 0 || value.Health > 1000 {
+		return false
+	}
+	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	return true
+}
+
+// MixedStat's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedStatFixedCheckBody(value *MixedStat) bool {
+	_ = value
+	if value.StatID > 255 {
+		return false
+	}
+	if value.Delta < -512 || value.Delta > 511 {
+		return false
+	}
+	return true
+}
+
+// MixedHitEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedHitEventFixedCheckBody(value *MixedHitEvent) bool {
+	_ = value
+	if value.TargetID > 4095 {
+		return false
+	}
+	if value.Damage < 0 || value.Damage > 4095 {
+		return false
+	}
+	if value.HitKind < 0 || value.HitKind > 7 {
+		return false
+	}
+	return true
+}
+
+// MixedChatEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedChatEventFixedCheckBody(value *MixedChatEvent) bool {
+	_ = value
+	if value.Channel < 0 || value.Channel > 3 {
+		return false
+	}
+	if value.Speaker > 4095 {
+		return false
+	}
+	return true
+}
+
+// MixedPickupEvent's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func MixedPickupEventFixedCheckBody(value *MixedPickupEvent) bool {
+	_ = value
+	if value.ItemID > 1023 {
+		return false
+	}
+	if value.Amount < 0 || value.Amount > 255 {
+		return false
+	}
+	return true
+}
+
+// BenchMixed's write-side contract (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §3.1): false is TableRefuseInvalidValue.
+func BenchMixedFixedCheckBody(value *BenchMixed) bool {
+	var z, hi uint64
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if n := int(value.PlayerNameLength); uint(n) > 15 {
+		return false
+	} else {
+		p := value.PlayerName[:n]
+		if len(p) >= 8 {
+			x := tableFixedGet64(p)
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+			p = p[8:]
+		}
+		if len(p) > 0 {
+			var x uint64
+			if n >= 8 {
+				x = tableFixedGet64(value.PlayerName[n-8:])
+			} else {
+				m := uint64(1)<<(8*uint(n)) - 1
+				x = tableFixedGet64(value.PlayerName[:])&m | 0x0101010101010101&^m
+			}
+			hi |= x
+			z |= (x - 0x0101010101010101) &^ x
+		}
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	if z&0x8080808080808080 != 0 {
+		return false
+	}
+	if hi&0x8080808080808080 != 0 {
+		return BenchMixedFixedCheckBodyExact(value)
+	}
+	return true
+}
+
+// BenchMixedFixedCheckBodyExact is BenchMixedFixedCheckBody with each string asked by
+// tableFixedUTF8Ok: the answer for text with a byte at or past 0x80 (§3.1).
+func BenchMixedFixedCheckBodyExact(value *BenchMixed) bool {
+	_ = value
+	if value.Sequence > 65535 {
+		return false
+	}
+	if value.AckSequence < 0 || value.AckSequence > 65535 {
+		return false
+	}
+	if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+		return false
+	}
+	if value.FrameTick > 281474976710655 {
+		return false
+	}
+	if value.ServerTime < 0 || value.ServerTime > 16776960 {
+		return false
+	}
+	if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
+		return false
+	}
+	for i := int64(value.EntitiesCount) - 1; i >= 0; i-- {
+		if !MixedEntityFixedCheckBody(&value.Entities[i]) {
+			return false
+		}
+	}
+	if value.StatsCount < 0 || value.StatsCount > 80 {
+		return false
+	}
+	for i := int64(value.StatsCount) - 1; i >= 0; i-- {
+		if !MixedStatFixedCheckBody(&value.Stats[i]) {
+			return false
+		}
+	}
+	if uint32(value.GameEvent.Type) > 3 {
+		return false
+	}
+	switch value.GameEvent.Type {
+	case MixedEventTypeHit:
+		if !MixedHitEventFixedCheckBody(&value.GameEvent.Hit) {
+			return false
+		}
+	case MixedEventTypeChat:
+		if !MixedChatEventFixedCheckBody(&value.GameEvent.Chat) {
+			return false
+		}
+	case MixedEventTypePickup:
+		if !MixedPickupEventFixedCheckBody(&value.GameEvent.Pickup) {
+			return false
+		}
+	}
+	if uint32(value.PlayerNameLength) > 15 || !tableFixedUTF8Ok(value.PlayerName[:value.PlayerNameLength]) {
+		return false
+	}
+	if value.PayloadLength < 0 || value.PayloadLength > 16 {
+		return false
+	}
+	if value.AimX != value.AimX || value.AimX < -1.0 || value.AimX > 1.0 {
+		return false
+	}
+	if value.AimY != value.AimY || value.AimY < -1.0 || value.AimY > 1.0 {
+		return false
+	}
+	if value.AimZ != value.AimZ || value.AimZ < -1.0 || value.AimZ > 1.0 {
+		return false
+	}
+	if value.Recoil-value.Recoil != 0 {
+		return false
+	}
+	if value.Drift-value.Drift != 0 {
+		return false
+	}
+	if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+		return false
+	}
+	if value.Ping > 64000 {
+		return false
+	}
+	if value.CrcHint > 16777215 {
+		return false
+	}
+	if value.Extra < 0 || value.Extra > 255 {
+		return false
+	}
+	if value.IdleTicks < 0 || value.IdleTicks > 15 {
+		return false
+	}
+	return true
 }
 
 // ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----

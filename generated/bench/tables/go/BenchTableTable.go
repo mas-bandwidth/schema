@@ -2062,6 +2062,12 @@ const (
 	tableFixedTextBytes uint8 = 3
 )
 
+// tableFixedPresent marks a bool entry as an optional's PRESENT byte (its
+// Meta); its Aux is the source bytes of the payload behind it. A count entry's
+// Aux is the source bytes of one element. The pre-scan reads both to know
+// which bytes are slack (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, THE SLACK RULE).
+const tableFixedPresent uint8 = 1
+
 const tableFixedNoGuard uint32 = 0xFFFFFFFF
 const tableFixedEntryBytes int32 = 17
 
@@ -2370,6 +2376,7 @@ func tableFixedBuildPlan(emit func([]TableFixedEntry, [][]TableFixedGuardLink, u
 		if out > 0 && raw[out-1].Op == raw[i].Op && tableFixedRuns(raw[i].Op) &&
 			raw[out-1].Guard == raw[i].Guard && raw[out-1].Arg == raw[i].Arg &&
 			raw[out-1].ArgW == raw[i].ArgW && raw[out-1].Meta == raw[i].Meta &&
+			raw[out-1].Aux == 0 && raw[i].Aux == 0 &&
 			raw[out-1].Guard2 == raw[i].Guard2 && raw[out-1].Arg2 == raw[i].Arg2 &&
 			raw[out-1].ArgW2 == raw[i].ArgW2 &&
 			raw[out-1].GuardIndex == raw[i].GuardIndex && raw[out-1].GuardCount == raw[i].GuardCount &&
@@ -2645,15 +2652,25 @@ func tableFixedUnitsIllFormed(units []uint16) bool {
 	return false
 }
 
-// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count and
-// text entries, run before the caller's storage is touched. A count or a text
-// length past the PLAN's bound refuses by name — count_over_bound /
-// length_over_bound — and an ill-formed payload refuses text_ill_formed
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11,
-// §5.8 row 8). REFUSE is total: no counter moves, nothing is decoded, and not
-// one destination byte is written. It walks each entry under its own guards,
-// writes nothing and moves no counter.
+// tableFixedTextRefusal is the fixed read's PRE-SCAN of the plan's count, text,
+// bool, tag and ordinal entries, run before the caller's storage is touched. A
+// count or a text length past the PLAN's bound refuses by name —
+// count_over_bound / length_over_bound — an ill-formed payload refuses
+// text_ill_formed, a bool or present byte other than 0 or 1 wire_damaged, and a
+// tag or ordinal past its set out_of_range (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4,
+// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §5.4 fix 11, §5.8 row 8). REFUSE is total:
+// no counter moves, nothing is decoded, and not one destination byte is
+// written. It walks each entry under its own guards, writes nothing and moves
+// no counter.
+//
+// THE CONTENT RULES APPLY TO THE USED UNITS AND TO NOTHING ELSE (§3.4, THE
+// SLACK RULE): the bytes past a counted array's count and under an absent
+// optional's present byte are slack, unspecified on read and never a refusal.
+// Each count and present byte it reads adds the slack behind it to dead, and an
+// entry inside dead is not asked.
 func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) string {
+	var deadBuf [64][2]uint32
+	dead := deadBuf[:0]
 	for i := range count {
 		p := plan[i]
 		// THE GUARD AT ITS FULL WIDTH, never its first byte (§5.2): an arm's
@@ -2669,11 +2686,17 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
 			continue
 		}
+		if p.Op != tableFixedBool && tableFixedDead(dead, p.Src) {
+			continue
+		}
 		switch p.Op {
 		case tableFixedCount:
 			v := int32(tableFixedGet32(src[p.Src:]))
 			if v < 0 || v > int32(p.Size) {
 				return TableRefuseCountOverBound.Error()
+			}
+			if p.Aux != 0 && uint32(v) < p.Size {
+				dead = append(dead, [2]uint32{p.Src + 4 + uint32(v)*p.Aux, p.Src + 4 + p.Size*p.Aux})
 			}
 		case tableFixedText:
 			unit := uint32(1)
@@ -2691,8 +2714,14 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		case tableFixedBool:
 			// a bool or present byte other than 0 or 1 is damage (§4.5)
 			for k := range p.Size {
+				if tableFixedDead(dead, p.Src+k) {
+					continue
+				}
 				if src[p.Src+k] > 1 {
 					return TableRefuseWireDamaged.Error()
+				}
+				if p.Meta == tableFixedPresent && src[p.Src+k] == 0 && p.Aux != 0 {
+					dead = append(dead, [2]uint32{p.Src + k + 1, p.Src + k + 1 + p.Aux})
 				}
 			}
 		case tableFixedTag:
@@ -2726,6 +2755,17 @@ func tableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 		}
 	}
 	return ""
+}
+
+// tableFixedDead is whether src offset at lies in one of the slack spans the
+// pre-scan has found.
+func tableFixedDead(dead [][2]uint32, at uint32) bool {
+	for _, d := range dead {
+		if at >= d[0] && at < d[1] {
+			return true
+		}
+	}
+	return false
 }
 
 type tableFixedLayoutEntry struct {
@@ -3272,7 +3312,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 	}
 	switch me.Kind {
 	case 35:
-		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Guard: guard, Op: tableFixedBool, Arg: arg})
+		tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: 1, Aux: te.Size - 1, Meta: tableFixedPresent, Guard: guard, Op: tableFixedBool, Arg: arg})
 		tableFixedCompileEntry(c, theirs, ti+1, theirAt+1, mine, mi+1, dst, myAt, guard, arg, census)
 	case 13:
 		tableFixedMatchChildren(c, theirs, ti, theirAt, mine, mi, dst, at, guard, arg, census)
@@ -3300,7 +3340,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			// bounded at 4 must land 4 and COUNT, not be admitted because this
 			// reader grew to 8. n is their_n held to this reader's storage,
 			// which is their_n itself on every legal widening.
-			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Guard: guard, Op: tableFixedCount, Arg: arg})
+			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: auxAt, Size: n, Aux: tel.Size, Guard: guard, Op: tableFixedCount, Arg: arg})
 		}
 		for i := range n {
 			tableFixedCompileEntry(c, theirs, ti+1, theirBase+i*tel.Size, mine, mi+1, dst, at+i*d.Stride, guard, arg, census && i == 0)
@@ -7560,14 +7600,14 @@ func TableMixedFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink,
 		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 4, Guard: tableFixedNoGuard, Op: tableFixedCopy}
 		n++
 	}
-	out[n] = TableFixedEntry{Src: src + 54, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
+	out[n] = TableFixedEntry{Src: src + 54, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.EntitiesCount)), Size: 8, Aux: 51, Guard: tableFixedNoGuard, Op: tableFixedCount} // entities count
 	n++
 	for i := range uint32(8) {
 		es := src + 58 + i*51
 		ed := dst + uint32(unsafe.Offsetof(TableMixed{}.Entities)) + i*uint32(unsafe.Sizeof(TableEntity{}))
 		n += TableEntityFixedLeaves(out[n:], links[n:], es, ed)
 	}
-	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
+	out[n] = TableFixedEntry{Src: src + 466, Dst: dst + uint32(unsafe.Offsetof(TableMixed{}.StatsCount)), Size: 80, Aux: 8, Guard: tableFixedNoGuard, Op: tableFixedCount} // stats count
 	n++
 	for i := range uint32(80) {
 		es := src + 470 + i*8
