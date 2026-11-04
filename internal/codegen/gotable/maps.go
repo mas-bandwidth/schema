@@ -84,6 +84,7 @@ func (g *tableGen) emitMapSurface(st *ir.Struct, f *ir.Field) {
 func (g *tableGen) emitMapWrite(f *ir.Field, expr, writer, ind string, framed bool) {
 	g.emitListWrite(f, expr, writer, ind, framed)
 }
+
 // emitMapRead reads a map (docs/SPEC-TABLES.md §2.8): an array of entry
 // bodies whose header lies inside its own L, each key read before its entry
 // lands, keys strictly ascending as this reader decodes them (a repeated or a

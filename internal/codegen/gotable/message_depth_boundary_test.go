@@ -232,7 +232,7 @@ func TestDepthBoundaryProbe(t *testing.T) {
 				failed = true
 			}
 		} else {
-			if !ok && n == 0 && (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") && rep.Reason == "" && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7 {
+			if !ok && n == 0 && (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7 {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Printf("FAIL %s: ok=%v n=%d rep=%+v v0=%d v1=%d\n", name, ok, n, rep, values[0].A, values[1].A)

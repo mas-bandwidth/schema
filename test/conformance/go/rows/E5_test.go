@@ -57,9 +57,8 @@ func e5Check(ok bool, what string) {
 }
 
 func e5Silent(r1 tblp1.TableReport) bool {
-	return r1.Verdict == tblp1.TableOpenOk && !r1.Malformed &&
-		r1.Unknown == 0 && r1.KindMismatch == 0 && r1.Widened == 0 &&
-		r1.Clamped == 0 && r1.Duplicate == 0
+	return r1.Verdict == tblp1.TableOpenOk && !r1.Refused() &&
+		r1.Unknown == 0 && r1.Widened == 0
 }
 
 func e5Slurp(path string) []byte {
@@ -201,7 +200,7 @@ func TestRowE5(t *testing.T) {
 	nn := tblp3.ChainFixedLoad(back3, p3File, plan3, &fr3)
 	again3 := make([]byte, len(p3File))
 	n = tblp3.ChainFixedSave(back3, again3)
-	e5Check(nn == 1 && fr3.Verdict == tblp3.TableOpenOk && !fr3.Malformed &&
+	e5Check(nn == 1 && fr3.Verdict == tblp3.TableOpenOk && !fr3.Refused() &&
 		n == int64(len(again3)) && bytes.Equal(again3, p3File),
 		"P3's present file: read and saved back, the bytes are identical")
 
@@ -211,7 +210,7 @@ func TestRowE5(t *testing.T) {
 	nn1 := tblp1.ChainFixedLoad(back1, p1File, plan1, &fr1)
 	again1 := make([]byte, len(p1File))
 	n = tblp1.ChainFixedSave(back1, again1)
-	e5Check(nn1 == 1 && fr1.Verdict == tblp1.TableOpenOk && !fr1.Malformed &&
+	e5Check(nn1 == 1 && fr1.Verdict == tblp1.TableOpenOk && !fr1.Refused() &&
 		n == int64(len(again1)) && bytes.Equal(again1, p1File),
 		"P1's plain-nesting file: read and saved back, the bytes are identical")
 
@@ -220,7 +219,7 @@ func TestRowE5(t *testing.T) {
 	nnA := tblp3.ChainFixedLoad(backA, aFile, plan3, &frA)
 	againA := make([]byte, len(aFile))
 	n = tblp3.ChainFixedSave(backA, againA)
-	e5Check(nnA == 1 && frA.Verdict == tblp3.TableOpenOk && !frA.Malformed &&
+	e5Check(nnA == 1 && frA.Verdict == tblp3.TableOpenOk && !frA.Refused() &&
 		n == int64(len(againA)) && bytes.Equal(againA, aFile),
 		"P3's absent file: read and saved back, the bytes are identical")
 
@@ -236,7 +235,6 @@ func TestRowE5(t *testing.T) {
 }
 
 func e5SilentP3(r tblp3.TableReport) bool {
-	return r.Verdict == tblp3.TableOpenOk && !r.Malformed &&
-		r.Unknown == 0 && r.KindMismatch == 0 && r.Widened == 0 &&
-		r.Clamped == 0 && r.Duplicate == 0
+	return r.Verdict == tblp3.TableOpenOk && !r.Refused() &&
+		r.Unknown == 0 && r.Widened == 0
 }

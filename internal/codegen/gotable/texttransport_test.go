@@ -61,13 +61,13 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	}
 	text := base64.StdEncoding.EncodeToString(wire)
 	got, err := RootLoadText(text, nil)
-	if got != nil || err == nil || err.Error() != "malformed" || !errors.Is(err, TableRefuseMalformed) {
-		t.Fatalf("nil report: value %v, error %v; want nil and malformed", got != nil, err)
+	if got != nil || !errors.Is(err, TableRefuseWireDamaged) {
+		t.Fatalf("nil report: value %v, error %v; want nil and wire_damaged", got != nil, err)
 	}
 	var r TableReport
 	got, err = RootLoadText(text, &r)
-	if got != nil || err == nil || err.Error() != "malformed" || !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil, malformed, Malformed", got != nil, err, r)
+	if got != nil || !errors.Is(err, TableRefuseWireDamaged) || r.Err() == nil {
+		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil and wire_damaged", got != nil, err, r)
 	}
 	// A supplied report receives THIS read's report: earlier counts in it
 	// neither leak into the verdict nor survive the call.
@@ -78,8 +78,8 @@ func TestTableWireOverATextTransport(t *testing.T) {
 }
 `
 
-// A fixed table read from a wider writer's wire: the tolerant Load clamps the
-// string and answers true; LoadText refuses it as clamped, by name.
+// A fixed table read from a wider writer's wire: the read refuses the string
+// past its bound, and LoadText refuses it length_over_bound.
 const textTransportClampSchema = `package probe
 fixed table Wide {
 	id uint32
@@ -106,17 +106,17 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	WideSave(&w, buf)
 	var v Root
 	var tolerant TableReport
-	if !RootLoad(&v, buf, &tolerant) || !tolerant.Refused() {
-		t.Fatalf("fixture is not the recoverable shape: %+v", tolerant)
+	if RootLoad(&v, buf, &tolerant) || tolerant.Err() == nil {
+		t.Fatalf("a name past its bound read: %+v", tolerant)
 	}
 	got, err := RootLoadText(text, nil)
-	if got != nil || err == nil || err.Error() != "clamped" || !errors.Is(err, TableRefuseOutOfRange) {
-		t.Fatalf("nil report: value %v, error %v; want nil and clamped", got != nil, err)
+	if got != nil || !errors.Is(err, TableRefuseLengthOverBound) {
+		t.Fatalf("nil report: value %v, error %v; want nil and length_over_bound", got != nil, err)
 	}
 	var r TableReport
 	got, err = RootLoadText(text, &r)
-	if got != nil || err == nil || err.Error() != "clamped" || !r.Refused() {
-		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil, clamped, Clamped", got != nil, err, r)
+	if got != nil || !errors.Is(err, TableRefuseLengthOverBound) || r.Err() == nil {
+		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil and length_over_bound", got != nil, err, r)
 	}
 }
 `

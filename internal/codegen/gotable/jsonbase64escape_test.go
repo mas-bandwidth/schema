@@ -47,11 +47,12 @@ func TestJsonBase64BodyDecodesEscapesFirst(t *testing.T) {
 		t.Helper()
 		inst := m.New(st)
 		var rep tabletext.Report
-		if !m.Read(inst, []byte(text), &rep) || rep.Malformed {
-			t.Fatalf("%s: engine refused (%+v)", text, rep)
+		ok := m.Read(inst, []byte(text), &rep)
+		if ok != (wantMismatch == 0) || rep.Refused == ok {
+			t.Fatalf("%s: engine verdict %v (%+v), want a refusal exactly when the base64 is ill-formed", text, ok, rep)
 		}
-		if rep.KindMismatch != wantMismatch {
-			t.Fatalf("%s: engine KindMismatch = %d, want %d (%+v)", text, rep.KindMismatch, wantMismatch, rep)
+		if !ok {
+			return
 		}
 		fb, _ := inst.FieldByKey("b")
 		if !bytes.Equal(fb.Cell.Str, want) {
@@ -105,11 +106,12 @@ func TestBase64Escapes(t *testing.T) {
 			t.Fatal("Init")
 		}
 		var rep TableReport
-		if !RootFromJSON(&b, []byte(tc.text), &rep) || (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") {
-			t.Fatalf("%s: RootFromJSONTolerant refused (%+v)", tc.name, rep)
+		if ok := RootFromJSON(&b, []byte(tc.text), &rep); ok != (tc.wantMismatch == 0) || rep.Refused() == ok {
+			t.Fatalf("%s: verdict %v (%+v), want a refusal exactly when the base64 is ill-formed", tc.name, ok, rep)
 		}
-		if rep.Refused() != (tc.wantMismatch != 0) {
-			t.Fatalf("%s: KindMismatch = %d, want %d (%+v)", tc.name, rep.Refusal, tc.wantMismatch, rep)
+		if tc.wantMismatch != 0 {
+			b.Shutdown()
+			continue
 		}
 		r := b.GetRoot()
 		got := r.B[:r.BLength]

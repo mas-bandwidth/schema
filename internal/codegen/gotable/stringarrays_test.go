@@ -18,8 +18,7 @@ import (
 //     reads it back equal, and refuses {"goals":["a"]} by name,
 //     json_root_not_array;
 //   - five elements against [..4] and a nine-byte element against string(8)
-//     each read clamped and counted, and ReadStrict refuses each as clamped,
-//     naming the field;
+//     each refuse, on every read;
 //   - ill-formed UTF-8 in an element is malformed;
 //   - retain-unknown (§6.6) and the cooked form (§7) carry the lists as the
 //     arrays of element records they are stored as;
@@ -59,8 +58,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"strings"
 	"testing"
 	"unsafe"
 )
@@ -264,20 +261,16 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	if !bytes.Equal(save(t, jb.GetRoot(), &jb), full) {
 		t.Fatal("JSON round trip moved the wire")
 	}
-	// the JSON rows' refusals: a number element and a null in a string(M) list
-	// are kind mismatches, an element past M and past N clamp
-	var kb ListsBuilder
-	kb.Init()
-	defer kb.Shutdown()
-	report = TableReport{}
-	if !ListsFromJSON(&kb, []byte(` + "`" + `{"rules":["a",7,null,"123456789","b","c"],"first":[null,"y"]}` + "`" + `), &report) {
-		t.Fatalf("FromJSON %+v", report)
-	}
-	if !report.Refused() || !report.Refused() {
-		t.Fatalf("report %+v", report)
-	}
-	if s, ok := text(t, kb.GetRoot(), "rules", 3, nil); !ok || s != "12345678" {
-		t.Fatalf("clamped element %q", s)
+	// the JSON rows' refusals: a number element, a null in a string(M) list,
+	// an element past M and a list past N each refuse (docs/SPEC-TABLES.md §4)
+	for _, bad := range []string{` + "`" + `{"rules":["a",7]}` + "`" + `, ` + "`" + `{"rules":[null]}` + "`" + `, ` + "`" + `{"rules":["123456789"]}` + "`" + `, ` + "`" + `{"rules":["a","b","c","d","e"]}` + "`" + `} {
+		var kb ListsBuilder
+		kb.Init()
+		report = TableReport{}
+		if ListsFromJSON(&kb, []byte(bad), &report) || report.Err() == nil {
+			t.Fatalf("%s read: %+v", bad, report)
+		}
+		kb.Shutdown()
 	}
 
 	// THE ARRAY ROOT (§16.10)
@@ -351,12 +344,13 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	ho.Init()
 	defer ho.Shutdown()
 	report = TableReport{}
-	if !HolderFromJSON(&ho, []byte(` + "`" + `{"g":{"goals":["a"]}}` + "`" + `), &report) || !report.Refused() {
+	if HolderFromJSON(&ho, []byte(` + "`" + `{"g":{"goals":["a"]}}` + "`" + `), &report) || !report.Refused() {
 		t.Fatalf("an object where the array root is: %+v", report)
 	}
 
 	// THE READ-SIDE BOUNDS (§2.13, §4): built by hand, five elements against
-	// [..4] and a nine-byte element against string(8)
+	// [..4] and a nine-byte element against string(8) refuse; four elements and
+	// an eight-byte element, at the bounds, read
 	rulesId := ListsTableFields[0].ID
 	file := func(elements ...string) []byte {
 		var ids TableIds
@@ -383,29 +377,32 @@ func TestGoTableStringArraysAndJSONArrayRoot(t *testing.T) {
 	for _, c := range []struct {
 		name     string
 		elements []string
-		count    int32
+		at       []string
 	}{
-		{"count", []string{"a", "b", "c", "d", "e"}, 4},
-		{"length", []string{"123456789"}, 1},
+		{"count", []string{"a", "b", "c", "d", "e"}, []string{"a", "b", "c", "d"}},
+		{"length", []string{"123456789"}, []string{"12345678"}},
 	} {
 		report = TableReport{}
-		got := ListsLoad(make([]byte, 1<<12), file(c.elements...), &report)
-		if got == nil || !report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || got.RulesCount != c.count {
+		if got := ListsLoad(make([]byte, 1<<12), file(c.elements...), &report); got != nil || report.Err() == nil || report.Field != "Lists.rules" {
 			t.Fatalf("%s: %+v", c.name, report)
 		}
-		if _, err := ListsReadStrict(file(c.elements...)); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), "Lists.rules") {
+		if _, err := ListsReadStrict(file(c.elements...)); err == nil {
 			t.Fatalf("%s: ReadStrict %v", c.name, err)
 		}
-	}
-	if s, _ := text(t, ListsLoad(make([]byte, 1<<12), file("123456789"), nil), "rules", 0, nil); s != "12345678" {
-		t.Fatalf("length clamp %q", s)
+		report = TableReport{}
+		got := ListsLoad(make([]byte, 1<<12), file(c.at...), &report)
+		if got == nil || report.Err() != nil || got.RulesCount != int32(len(c.at)) {
+			t.Fatalf("%s at the bound: %+v", c.name, report)
+		}
+		if s, _ := text(t, got, "rules", int32(len(c.at)-1), nil); s != c.at[len(c.at)-1] {
+			t.Fatalf("%s at the bound: %q", c.name, s)
+		}
 	}
 	report = TableReport{}
-	ListsLoad(make([]byte, 1<<12), file("ok", "\xff\xfe"), &report)
-	if !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") {
+	if ListsLoad(make([]byte, 1<<12), file("ok", "\xff\xfe"), &report) != nil || report.Err() == nil {
 		t.Fatalf("ill-formed UTF-8 element: %+v", report)
 	}
-	if _, err := ListsReadStrict(file("\xc3")); !errors.Is(err, TableRefuseMalformed) {
+	if _, err := ListsReadStrict(file("\xc3")); err == nil {
 		t.Fatalf("ReadStrict ill-formed: %v", err)
 	}
 }

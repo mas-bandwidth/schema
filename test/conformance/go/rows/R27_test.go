@@ -238,7 +238,7 @@ func TestRowR27(t *testing.T) {
 	plan := make([]tblp3.TableFixedEntry, 64)
 	var report tblp3.TableReport
 	n := tblp3.ChainFixedLoad(loaded, file, plan, &report)
-	if report.Malformed || report.Verdict != tblp3.TableOpenOk {
+	if report.Refused() || report.Verdict != tblp3.TableOpenOk {
 		t.Fatalf("R27: the read of the row is not clean: n=%d report=%+v", n, report)
 	}
 

@@ -31,7 +31,7 @@ func TestGoFileLoadOfDamagedFeedChainIsRefused(t *testing.T) {
 	}
 	model := tabletext.NewModel(unitFrom(t, string(source)))
 	var report tabletext.Report
-	if ok, err := tablewire.DecodeRegion(model, model.New(model.Lookup("Feed")), wire, &report); ok || err != nil || !report.Malformed {
+	if ok, err := tablewire.DecodeRegion(model, model.New(model.Lookup("Feed")), wire, &report); ok || err == nil || !report.Refused {
 		t.Fatalf("the oracle does not refuse the mutant as damage: ok=%v err=%v %+v", ok, err, report)
 	}
 	test := fmt.Sprintf(`package streamdemo

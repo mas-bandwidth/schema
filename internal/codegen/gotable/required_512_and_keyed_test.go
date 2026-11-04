@@ -243,9 +243,7 @@ func TestWideRequiredPast512(t *testing.T) {
 		if WideFromJSON(&b, []byte("{\"req515\":10,\"req515\":11,\"req518\":20}"), &r) || r.Err() == nil {
 			t.Fatalf("WideFromJSON took a repeated key: %+v", r)
 		}
-		if !r.Refused() || b.GetRoot().Req515 != 11 {
-			t.Fatalf("WideFromJSON duplicate req515 report = %+v val=%d, want Duplicate=1 val=11", r, b.GetRoot().Req515)
-		}
+
 	}
 }
 `

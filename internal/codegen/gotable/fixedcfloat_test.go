@@ -233,10 +233,10 @@ func TestFixedCFloatResolutionRefinesNonInteger(t *testing.T) {
 func TestFixedCFloatAtTheBoundsExactly(t *testing.T) {
 	dir := t.TempDir()
 	for _, c := range []struct {
-		name    string
-		bits    uint32
-		want    uint32
-		past    int32
+		name string
+		bits uint32
+		want uint32
+		past int32
 	}{
 		// 1.0 is the OLD max exactly: inside.
 		{"old_max", 0x3F800000, 0x3F800000, 0},

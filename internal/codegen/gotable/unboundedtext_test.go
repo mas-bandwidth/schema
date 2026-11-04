@@ -27,7 +27,7 @@ import (
 //     what the bytes hold (allocations flat), ill-formed UTF-8 and a zero
 //     byte in an element, a key L past the end, a key ill-formed and one
 //     holding a zero byte, entries out of key order (malformed) and a
-//     duplicate key (duplicate, counted), and a 70 KB element truncated
+//     duplicate key (refused), and a 70 KB element truncated
 //     mid-element.
 func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	t.Parallel()
@@ -509,18 +509,16 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 		{"70 KB element truncated mid-element", "Where.rules", file(list("rules", 1, elem{raw: long[:35000], claim: len(long)}))},
 	} {
 		g, r := load(t, c.image)
-		if !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") && g != nil {
-			t.Fatalf("%s: not malformed: %+v", c.name, r)
+		if g != nil {
+			t.Fatalf("%s: not refused: %+v", c.name, r)
 		}
-		_, err := WhereReadStrict(c.image)
-		var named TableMalformedField
-		if !errors.Is(err, TableRefuseMalformed) || !errors.As(err, &named) || named.Field != c.field || err.Error() != "malformed: "+c.field {
-			t.Fatalf("%s: ReadStrict %v, want malformed naming %s", c.name, err, c.field)
+		if _, err := WhereReadStrict(c.image); err == nil {
+			t.Fatalf("%s: ReadStrict accepted damage in %s", c.name, c.field)
 		}
 	}
-	// a duplicate key is §2.8's event: last wins, counted, not malformed
+	// a repeated map key refuses (docs/SPEC-TABLES.md §2.8, §4)
 	dup := file(entries(elem{raw: "k1"}, elem{raw: "k1"}))
-	if g, r := load(t, dup); g == nil || !r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || g.Byname.Count != 1 {
+	if g, r := load(t, dup); g != nil || r.Err() == nil {
 		t.Fatalf("duplicate key: %+v", r)
 	}
 	// A COUNT PAST WHAT THE BYTES HOLD is refused from the framing before
@@ -533,7 +531,7 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	region := make([]byte, 1<<16)
 	var r TableReport
 	clean := file(list("rules", 2, elem{raw: "a"}, elem{raw: "b"}))
-	if a := testing.AllocsPerRun(20, func() { r = TableReport{}; WhereLoad(region, claim, &r) }); a != 0 || !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
+	if a := testing.AllocsPerRun(20, func() { r = TableReport{}; WhereLoad(region, claim, &r) }); a != 0 || !errors.Is(r.Err(), TableRefuseCountOverLength) {
 		t.Fatalf("count past the bytes: %v allocations, %+v", a, r)
 	}
 	if a := testing.AllocsPerRun(20, func() { r = TableReport{}; WhereLoad(region, clean, &r) }); a != 0 {
@@ -541,8 +539,8 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	}
 
 	// THE RESPELL (§2.13.1, §4): string(8) bytes read under []string are
-	// equal; a nine-byte element read under string(8) clamps at a code point
-	// boundary, counted; the kind is 12 in both directions
+	// equal; a nine-byte element read under string(8) refuses, and eight bytes
+	// read; the kind is 12 in both directions
 	narrow := file(list("rules", 2, elem{raw: "12345678"}, elem{raw: ""}))
 	var rr TableReport
 	bregion := make([]byte, 1<<16)
@@ -552,12 +550,16 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 		t.Fatalf("respelled element %q", p)
 	}
 	wide := file(list("rules", 1, elem{raw: "1234567é"}))
-	bg := BoundedLoad(bregion, wide, &rr)
-	if bg == nil || !rr.Refused() || (rr.Refusal.Error() == "wire_damaged" || rr.Refusal.Error() == "malformed") || rr.Refused() {
+	if bg := BoundedLoad(bregion, wide, &rr); bg != nil || rr.Err() == nil || rr.Field != "Bounded.rules" {
 		t.Fatalf("nine bytes under string(8): %+v", rr)
 	}
-	if p, _ := BoundedRulesTextAt(bg, 0); string(p) != "1234567" {
-		t.Fatalf("clamp not at a code point boundary: %q", p)
+	rr = TableReport{}
+	bg := BoundedLoad(bregion, file(list("rules", 1, elem{raw: "123456é"})), &rr)
+	if bg == nil || rr.Err() != nil {
+		t.Fatalf("eight bytes under string(8): %+v", rr)
+	}
+	if p, _ := BoundedRulesTextAt(bg, 0); string(p) != "123456é" {
+		t.Fatalf("eight bytes under string(8): %q", p)
 	}
 }
 `

@@ -46,7 +46,7 @@ table Root { link *Child
 	store := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: 1024}
 	report = tabletext.Report{}
 	ok, err := tablewire.DecodeRetain(reader, value, wire, store, &report)
-	if !ok || err != nil || report.Malformed {
+	if !ok || err != nil || report.Refused {
 		t.Fatalf("oracle read %v %v %+v", ok, err, report)
 	}
 	want, err := tablewire.EncodeRetain(reader, value, store, &report)
@@ -108,9 +108,9 @@ func TestRetainedFloatIsTestedLikeAKnownOne(t *testing.T) {
   }{
    var root Root;store:=TableRetain{Bytes:make([]byte,256),Ids:make([]TableRetainID,8)};store.reset(unsafe.Pointer(&root),[]TableNodeDirEntry{{TypeID:RootTableType().ID}})
    var report TableReport;r:=TableRetainReader{tableRetainPlainReader:TableReader{Buffer:c.payload,Report:&report},Retain:&store,Path:tableRetainPath{at:unsafe.Pointer(&root),node:1}}
-   if !r.capture(0x123,c.kind,"Root")||(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed"){t.Fatalf("kind %d: the capture failed framing %+v",c.kind,report)}
+   if r.capture(0x123,c.kind,"Root")!=c.finite{t.Fatalf("kind %d: the capture answered against finite=%v %+v",c.kind,c.finite,report)}
    if c.finite&&(report.Refused()||report.Retained!=1){t.Errorf("kind %d finite: %+v",c.kind,report)}
-   if !c.finite&&(report.Field!="Root.0x0000000000000123"||report.Retained!=0||store.Used!=0){t.Errorf("kind %d non-finite: %+v",c.kind,report)}
+   if !c.finite&&(report.Err()!=TableRefuseNonFiniteFloat||report.Field!="Root.0x0000000000000123"||report.Retained!=0||store.Used!=0){t.Errorf("kind %d non-finite: %+v",c.kind,report)}
   }
  }
  `)
@@ -150,6 +150,6 @@ func TestRetainUnknownNodeRecord(t *testing.T) {
 	}
 	runGenerated(t, string(schema), fmt.Sprintf(`package tblrt1
  import("testing";"unsafe")
- func TestUnknownNode(t *testing.T){wire:=[]byte{%s};size:=NodeLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&raw[0])))&15;region:=raw[offset:offset+uintptr(size)];store:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,128)};report:=TableReport{Clamped:3};value:=NodeLoadRetain(region,wire,&store,&report);if value==nil||value.Head!=0||report.RetainLost!=1||report.Unknown!=1||(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed")||!report.Refused(){t.Fatalf("unplaceable node retention: %%+v",report)}}
+ func TestUnknownNode(t *testing.T){wire:=[]byte{%s};size:=NodeLoadMeasure(wire);if size<0{t.Fatal("measure")};raw:=make([]byte,size+16);offset:=(-uintptr(unsafe.Pointer(&raw[0])))&15;region:=raw[offset:offset+uintptr(size)];store:=TableRetain{Bytes:make([]byte,4096),Ids:make([]TableRetainID,128)};report:=TableReport{Unknown:3};value:=NodeLoadRetain(region,wire,&store,&report);if value==nil||value.Head!=0||report.RetainLost!=1||report.Unknown!=1||report.Refused(){t.Fatalf("unplaceable node retention: %%+v",report)}}
  `, byteLiterals(wire)))
 }
