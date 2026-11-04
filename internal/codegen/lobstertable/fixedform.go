@@ -103,7 +103,7 @@ func emitFixedTable(g *lobster.Gen, st *ir.Struct) {
 	g.Pf("// %sDecode reads a TRUSTED form-3 file of %s records written by this\n", name, st.Name)
 	g.Pf("// build's own layout (%s, §2), asserting the header and every record\n", st.Name)
 	g.Pf("// hash. It is not a read of untrusted data: %sLoad is the strict\n", name)
-	g.Pf("// read and %sLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).\n", name)
+	g.Pf("// read (docs/SPEC-TABLES.md §6.5).\n")
 	g.Pf("def %sDecode(data:string) -> [%s]:\n", name, st.Name)
 	g.Pf("    let layout = %sLayoutBytes()\n", name)
 	g.Pf("    assert read_uint8_le(data, 0) == 3\n")
