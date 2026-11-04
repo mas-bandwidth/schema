@@ -166,13 +166,12 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			t.Logf("refused unit %s (%d rows): %v", key, len(byUnit[key]), err)
-			skipped += len(byUnit[key])
-			continue
+			t.Fatalf("unit %s: %v", key, err)
 		}
+		all := compareReadOutcomes(t, g, byUnit[key])
 		var rows []loadRow
 		var want [][]byte
-		for _, row := range byUnit[key] {
+		for i, row := range byUnit[key] {
 			wire := row.data
 			if wire == nil {
 				if wire, err = os.ReadFile(filepath.Join(root, row.wire)); err != nil {
@@ -181,7 +180,9 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 			}
 			out, goErr := goSave(g, row.root, wire)
 			if goErr != nil {
-				t.Logf("instance %s is refused by the Go writer and not compared: %v", row.name, goErr)
+				if all.goLine[i] == "read" {
+					t.Fatalf("%s: accepted value cannot save: %v", row.name, goErr)
+				}
 				skipped++
 				continue
 			}
@@ -209,7 +210,7 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 	if compared == 0 {
 		t.Fatalf("compared %d instances: the comparison is vacuous", compared)
 	}
-	t.Logf("%d instances saved byte for byte and re-loaded equal to the reference's; %d skipped by name", compared, skipped)
+	t.Logf("%d instances saved byte for byte and re-loaded equal to the reference's; %d whole-load refusals checked", compared, skipped)
 }
 
 // TestLobsterTableSaveNegativeControl patches the emitted save runtime in

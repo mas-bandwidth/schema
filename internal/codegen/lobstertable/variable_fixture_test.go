@@ -31,3 +31,19 @@ func generateVariableFixtureUnit(t *testing.T, paths []string) (*loadUnit, error
 	}
 	return generateLoadUnit(t, converted)
 }
+
+// compareReadOutcomes includes refused rows; selecting writable values must
+// never silently remove an invalid acceptance from a feature's test corpus.
+func compareReadOutcomes(t *testing.T, g *loadUnit, rows []loadRow) unitResult {
+	t.Helper()
+	result := runUnit(t, g, rows)
+	for i, row := range rows {
+		if result.lob[2*i] != result.goLine[i] {
+			t.Errorf("%s: acceptance %s, reference %s", row.name, result.lob[2*i], result.goLine[i])
+		}
+		if result.lob[2*i+1] != result.goDump[i] {
+			t.Errorf("%s: value differs at %s", row.name, divergence(result.lob[2*i+1], result.goDump[i]))
+		}
+	}
+	return result
+}

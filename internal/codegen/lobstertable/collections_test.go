@@ -218,7 +218,7 @@ func TestLobsterCollections(t *testing.T) {
 	sort.Strings(order)
 	var total collectionCounts
 	selected, reports, instances, values, saved := 0, 0, 0, 0, 0
-	skipped, myBlob, m17 := 0, 0, false
+	myBlob, m17 := 0, false
 	for _, key := range order {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
@@ -283,9 +283,7 @@ func TestLobsterCollections(t *testing.T) {
 			}
 			out, goErr := goSave(g, row.root, wire)
 			if goErr != nil {
-				t.Logf("instance %s is refused by the Go writer and not compared: %v", row.name, goErr)
-				skipped++
-				continue
+				t.Fatalf("%s: accepted value cannot save: %v", row.name, goErr)
 			}
 			kept = append(kept, row)
 			want = append(want, out)
@@ -325,8 +323,8 @@ func TestLobsterCollections(t *testing.T) {
 	if !m17 {
 		t.Fatalf("M17 was not exercised: no blob_large instance was compared")
 	}
-	t.Logf("maps=%d blobs=%d unbounded-arrays=%d over %d units; %d report rows and %d instance rows loaded, %d values equal the reference's; %d instances saved byte for byte and re-loaded; %d skipped by name",
-		total.maps, total.blobs, total.lists, selected, reports, instances, values, saved, skipped)
+	t.Logf("maps=%d blobs=%d unbounded-arrays=%d over %d units; %d report rows and %d instance rows loaded, %d values equal the reference's; %d instances saved byte for byte and re-loaded",
+		total.maps, total.blobs, total.lists, selected, reports, instances, values, saved)
 }
 
 // TestLobsterCollectionsNegativeControl breaks one construct — the map

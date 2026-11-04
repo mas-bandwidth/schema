@@ -161,7 +161,8 @@ const saveRel = `def save_rel(root:string, file:string):
     if not rec:
         print("")
         print("refused")
-        print("0")
+        print("1")
+        print("nil")
         return
     let out = schema_rt.save(rec)
     let saved = hexs(out)

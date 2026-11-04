@@ -170,7 +170,7 @@ func TestLobsterVariableClass(t *testing.T) {
 
 		var saveRows []loadRow
 		var want [][]byte
-		for _, row := range unitRows {
+		for i, row := range unitRows {
 			if row.kind != "instance" {
 				continue
 			}
@@ -182,7 +182,9 @@ func TestLobsterVariableClass(t *testing.T) {
 			}
 			out, goErr := goSave(g, row.root, wire)
 			if goErr != nil {
-				t.Logf("instance %s is refused by the Go writer and not compared: %v", row.name, goErr)
+				if res.goLine[i] == "read" {
+					t.Fatalf("%s: accepted value cannot save: %v", row.name, goErr)
+				}
 				continue
 			}
 			saveRows = append(saveRows, row)
