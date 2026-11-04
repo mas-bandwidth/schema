@@ -22,7 +22,7 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 	for i := range values {
 		pointers[i] = &values[i]
 	}
-	return messageCodec{unit: unit, root: root, run: func(announcement, wire []byte, fuzz bool) ([]byte, report, bool) {
+	return messageCodec{unit: unit, root: root, run: func(announcement, wire []byte, _ bool) ([]byte, report, bool) {
 		var r R
 		v := own
 		if announcement != nil {
@@ -44,10 +44,7 @@ func messageRow[T, R, V any](unit, root string, reset func(*T), fresh func() *V,
 		}
 		count, ok := load(values, v, wire, &r)
 		rep := snap(&r)
-		if fuzz {
-			count = 1
-			rep.malformed = rep.malformed || !ok && !rep.refused
-		} else if !ok {
+		if !ok {
 			return nil, rep, false
 		}
 		if count < 1 || count > 256 {
