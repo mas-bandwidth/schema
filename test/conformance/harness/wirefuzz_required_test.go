@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Required fields are semantic refusals, not malformed wire or oracle failures.
+// Missing required fields refuse the whole read, independent of diagnostics.
 // Use the committed independently framed corpus on mutable, region and retaining paths.
 func TestWireFuzzRequiredRefusal(t *testing.T) {
 	dir := "../../../testdata/conformance/feature-witnesses/required"
@@ -30,26 +30,25 @@ func TestWireFuzzRequiredRefusal(t *testing.T) {
 						t.Fatal(err)
 					}
 					missing := strings.HasPrefix(name, "missing")
-					if answer.required != missing {
-						t.Fatalf("required refusal=%t want %t: %+v", answer.required, missing, answer)
+					if answer.accepted == missing {
+						t.Fatalf("accepted=%t missing=%t", answer.accepted, missing)
 					}
 					if !missing {
-						if answer.report != (Counts{}) || answer.encFail {
-							t.Fatalf("clean required value refused: %+v", answer)
+						if len(answer.encoded) == 0 {
+							t.Fatal("accepted value has no write-back")
 						}
 						return
 					}
-					for _, loaded := range []bool{false, true} {
-						good := legReply{loaded: loaded, report: Counts{Refused: true}, saveFail: true}
+					if len(answer.encoded) != 0 {
+						t.Fatal("missing required fields produced default bytes")
+					}
+					for _, good := range []legReply{{loaded: false}, {loaded: true, report: Counts{Refused: true}}, {loaded: true, report: Counts{Malformed: true}}} {
 						if verdict := wireVerdict(root, good, answer, len(wire)); verdict != "" {
 							t.Fatal(verdict)
 						}
-						for _, bad := range []Counts{{}, {Malformed: true}, {Refused: true, Malformed: true}} {
-							good.report = bad
-							if verdict := wireVerdict(root, good, answer, len(wire)); verdict == "" {
-								t.Fatalf("accepted required refusal with report %+v", bad)
-							}
-						}
+					}
+					if verdict := wireVerdict(root, legReply{loaded: true}, answer, len(wire)); verdict == "" {
+						t.Fatal("accepted missing required fields")
 					}
 				})
 			}

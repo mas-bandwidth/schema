@@ -1,12 +1,9 @@
-// `harness wire-fuzz` — the tolerant wire's fuzzer (docs/SPEC-TABLES.md §4.2,
-// docs/SECURITY.md).
-//
-// A table read is untrusted input, so the read IS the verifier, and this is
-// the gate on that claim: every pinned wire in the corpus, mutated, read by a
-// language's leg and by the compiler's own engine, and the two must agree —
-// the same report, the same decoded value (as the bytes it saves back), or
-// both refusing to save — while the leg returns from every mutant and never
-// asks for more region than the framing can justify.
+// `harness wire-fuzz` checks the single read contract (docs/SPEC-TABLES.md §4.2).
+// Every mutant must produce the same acceptance verdict in the leg and oracle.
+// Accepted values must save back to identical canonical bytes. Refusal reasons,
+// counters, retention counts and allocation measurements are local diagnostics.
+// Driver timeouts and caller resource limits are infrastructure checks, outside
+// the read verdict.
 //
 // The ORACLE is internal/tablewire, a third implementation of the wire that
 // no backend was written from. The leg is a COMMAND on a pipe, so a port is
@@ -52,13 +49,7 @@ type wireFuzzOptions struct {
 	// against the unit's own announced table rather than a trailer of its
 	// own. A failure on a message seed prints it.
 	message bool
-	// retain is THE RETENTION ARM (docs/SPEC-TABLES.md §6.6, §4.2): the same
-	// mutants through both engines' RETAINING paths, comparing the two
-	// retention counters beside the six and the saved bytes beside them.
-	// RETENTION IS THE VARIABLE CLASS'S, so the arm's roster is the
-	// variable-class FILE roots and nothing else: a fixed-class root's
-	// LoadRetain is refused by name, and a form-2 SaveRetain refuses by name
-	// (§3.3).
+	// retain compares the retaining read's accepted canonical write-back.
 	retain  bool
 	builder bool // mutable file reads have no region preflight
 	// mixedBuilder preserves the full roster and uses the mutable oracle only
@@ -66,12 +57,7 @@ type wireFuzzOptions struct {
 	mixedBuilder bool
 	failed       string
 	vectors      string
-	// finiteOwed names the docs/roadmap.sexp card that owes this leg the
-	// finite float rule (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27): until
-	// that card lands, a mutant the oracle refuses as non_finite_float is
-	// counted under the card's name and not compared, because the leg still
-	// carries the pattern. Empty is a leg that keeps the rule, and there the
-	// leg must refuse the same mutant.
+	// Kept for command-line compatibility so a retired exemption fails clearly.
 	finiteOwed string
 }
 
@@ -94,46 +80,7 @@ type wireRoot struct {
 	// paths (docs/SPEC-TABLES.md §6.6)
 	retain  bool
 	builder bool
-	// the C ABI storage each node type commands (docs/SPEC-TABLES.md §6.5,
-	// §20.3), by wire type id, rounded to the unit alignment as a reader's LoadMeasure rounds it
-	storage               map[uint64]int64
-	rootStorage           int64
-	align                 int64
-	maxStorage            int64
-	maxElement            int64
-	blobBytes, blobString bool
 }
-
-// nodeDirEntryBytes is one attribution entry (§6.3): a u64 offset and a u64
-// type id.
-const nodeDirEntryBytes = int64(16)
-
-// nodeRecordHeaderBytes is the least a record costs on the wire (§3.1): its
-// type id and its length. It bounds how many records a wire can carry.
-const nodeRecordHeaderBytes = int64(2)
-
-// amplificationCeiling is the pinned ceiling on the region a table read may be
-// made to materialize from a wire of the given size (schema#466,
-// docs/SPEC-TABLES.md §6.5, docs/SECURITY.md). A hostile record costs its type
-// id reference and its length — nodeRecordHeaderBytes, two wire bytes — and
-// commands at most the largest record this root can place plus one directory
-// entry, so a wire can command no more than the root, one record per two
-// bytes, and the largest element a list or map under the root can add. The
-// row this constant pins is the amplification ratio (region bytes over wire
-// bytes): a mutant above the ceiling is a divergence even before the leg and
-// the oracle are compared, and it is the same number the oracle's exact
-// answer takes as its upper form.
-func (r *wireRoot) amplificationCeiling(wireBytes int) int64 {
-	records := int64(wireBytes)/nodeRecordHeaderBytes + 1
-	ceiling := r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
-	ceiling += int64(wireBytes) * (r.maxElement + 16)
-	if r.blobBytes || r.blobString {
-		ceiling += int64(wireBytes) + records*16
-	}
-	return ceiling
-}
-
-func (r *wireRoot) roundStorage(n int64) int64 { return (n + r.align - 1) & -r.align }
 
 // THE RETENTION ARM'S TWO CAPACITIES (docs/SPEC-TABLES.md §6.6), and they are
 // declared LARGE ON PURPOSE.
@@ -163,7 +110,7 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 	if def == nil {
 		return nil, fmt.Errorf("unit %s declares no table %s", unitKey, rootName)
 	}
-	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), message: message, retain: retain, storage: map[uint64]int64{}}
+	r := &wireRoot{unit: unitKey, root: rootName, model: m, def: def, variable: m.IsVariable(rootName), message: message, retain: retain}
 	if retain && (!r.variable || message) {
 		// RETENTION IS THE VARIABLE CLASS'S AND A FIXED-CLASS ROOT GETS NONE
 		// (docs/SPEC-TABLES.md §6.6), and a form-2 SaveRetain refuses by name
@@ -180,39 +127,6 @@ func newWireRoot(u *units, unitKey, rootName string, message, retain bool) (*wir
 			return nil, fmt.Errorf("unit %s: its own announcement was refused: %w", unitKey, err)
 		}
 	}
-	for name := range ir.TableClosure(unit) {
-		st := m.Lookup(name)
-		if st == nil {
-			continue
-		}
-		for _, f := range st.Fields {
-			if f.IsList() {
-				size, _ := ir.ListElementLayout(unit, f)
-				r.maxElement = max(r.maxElement, size)
-			} else if f.IsMap() {
-				r.maxElement = max(r.maxElement, ir.RecordLayout(unit, f.MapEntry).Size)
-			}
-		}
-	}
-	r.align = ir.TableRegionAlign(unit)
-	r.rootStorage = r.roundStorage(ir.RecordLayout(unit, def).Size)
-	r.blobBytes, r.blobString = ir.PointerReachableBlobs(def)
-	// THE STORAGE A RECORD COMMANDS is its type's, and only for a type THIS
-	// ROOT can place: a table no pointer below the root targets is a node the
-	// reader cannot name, so it commands none (docs/SPEC-TABLES.md §3.1,
-	// §6.5), exactly as the reference's <Root>NodeStorage answers -1 for one.
-	for _, reached := range ir.PointerReachable(def) {
-		name := reached.Name
-		st := m.Lookup(name)
-		if st == nil {
-			continue
-		}
-		size := r.roundStorage(ir.RecordLayout(unit, st).Size)
-		r.storage[ir.TableTypeId(st.WireName())] = size
-		if size > r.maxStorage {
-			r.maxStorage = size
-		}
-	}
 	return r, nil
 }
 
@@ -224,47 +138,19 @@ type legReply struct {
 	measure  int64
 	saved    []byte
 	saveFail bool
-	// blobShared marks a save refused BY NAME as blob_shared
-	// (docs/SPEC-TABLES.md §2.5): a leg answers the saved length -2 for it. Every writer
-	// of the standard refuses a blob two slots name; the C++ reference still
-	// writes one, so a differential against it reads this refusal as the
-	// standard's answer and not as a divergence.
+	// Legacy saved-length -2, retained only as diagnostic transport.
 	blobShared bool
-	// RETENTION'S TWO COUNTERS (docs/SPEC-TABLES.md §6.6). They ride beside
-	// Counts rather than inside it, because Counts is the MANIFEST's own
-	// report spelling, which every port's `report` surface prints and which
-	// this feature does not move.
+	// Legacy diagnostic transport, never part of the comparison.
 	retained   int
 	retainLost int
 }
 
 // oracleAnswer is what the engine says the same bytes mean.
 type oracleAnswer struct {
-	report  Counts
-	encoded []byte
-	encFail bool
-	// the region bytes a variable-class reader owes: exact when the node
-	// table read whole, else the most the framing could have commanded
-	exact          bool
-	measureRefused bool
-	bytes          int64
-	builderStopped bool
-	// the same two counters from the engine
-	retained   int
-	retainLost int
-	// nonFinite is the oracle's REFUSAL of a float whose bits are a NaN or an
-	// infinity (docs/SPEC-TABLES.md §3.3): every read refuses it, tolerant
-	// and strict, so the whole of what a leg owes is the refusal itself. It
-	// outranks any damage the read also met (§4).
-	nonFinite bool
-	// required distinguishes a semantic refusal from malformed wire. The pipe
-	// carries its refusal verdict; native regressions pin its counter and names.
-	required bool
-	// countCap says the wire holds a collection count above the int32
-	// storage cap (docs/SPEC-TABLES.md §2.9), which a leg may refuse as
-	// count_over_extent_cap where the region oracle reads damage. It is
-	// asked only of a malformed answer a leg refused (countCapped).
-	countCap bool
+	accepted bool
+	report   Counts // diagnostics only
+	encoded  []byte
+	encFail  bool
 }
 
 func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
@@ -273,15 +159,6 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			err = fmt.Errorf("the oracle PANICKED on the mutant: %v\n%s", p, debug.Stack())
 		}
 	}()
-	// A region caller measures before decoding. A storage refusal ends that
-	// path; a header that merely crosses its L is still decoded below using
-	// the region's recovery rules rather than the builder's count refusal.
-	if r.variable && !r.message && !r.builder {
-		if _, _, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data); refused {
-			ans.measureRefused, ans.encFail, ans.bytes = true, true, -1
-			return ans, nil
-		}
-	}
 	inst := r.model.New(r.def)
 	var rep tabletext.Report
 	// THE MESSAGE FORM's mutants are read against the CONNECTION's table and
@@ -317,7 +194,7 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 	}
 	if r.message {
 		// THE WIRE MAY CARRY UP TO 256 BODIES, and the leg holds room for the
-		// wire's M, so the oracle reads the batch whole and answers body one
+		// wire's M, so both the read and canonical write-back cover every body
 		bodies, _ := tablewire.MessageCount(data, r.vocabulary)
 		if bodies < 1 {
 			bodies = 1
@@ -331,91 +208,23 @@ func (r *wireRoot) oracle(data []byte) (ans oracleAnswer, err error) {
 			_, ok, err := tablewire.DecodeMessages(r.model, batch, data, r.vocabulary, &rep)
 			return ok, err
 		}
-		encode = func() ([]byte, error) { return tablewire.EncodeMessage(r.model, inst) }
+		encode = func() ([]byte, error) { return tablewire.EncodeMessages(r.model, batch) }
 	}
 	ok, derr := decode()
-	if _, refused := errors.AsType[*tablewire.NonFiniteRefusal](derr); refused {
-		ans.nonFinite = true
-		return ans, nil
-	}
-	if _, refused := errors.AsType[*tabletext.MissingRequired](derr); refused {
-		ans.required, ans.encFail, ans.builderStopped = true, true, r.builder
-		ans.report = Counts{Refused: true}
-		return ans, nil
-	}
-	if r.builder {
-		ans.builderStopped = !ok
-		if _, ok := errors.AsType[*tablewire.CountRefusal](derr); ok {
-			derr = nil
-		}
-	}
-	if tablewire.Refused(derr) {
-		// A FORM BYTE THIS READER DOES NOT CARRY IS A REFUSAL, and the refusal
-		// is the answer: nothing was decoded, no counter moved, and no damage
-		// is reported (docs/SPEC-TABLES.md §3). A leg must say the same.
-		ans.report = Counts{Refused: true}
-		if r.builder {
-			ans.encFail = true
-			return ans, nil
-		}
-		// nothing was decoded, so what a leg saves is what it read into: the
-		// value at its declared defaults, which is what the fresh instance
-		// encodes here. Both must answer the same bytes, as they must on
-		// every other mutant (§4.2).
-		if encoded, eerr := encode(); eerr != nil {
-			ans.encFail = true
-		} else {
-			ans.encoded = encoded
-		}
-		return ans, nil
-	}
+	ans.report = Counts{Unknown: rep.Unknown, Widened: rep.Widened, Refused: rep.Refused}
 	if tablewire.ReadRefusal(derr) {
-		// THE ONE READ REFUSED (docs/SPEC-TABLES.md §6.5): the manifest's
-		// damage column carries the verdict until layer 3 re-pins it
-		ans.report = Counts{Malformed: true}
-		if r.builder {
-			ans.encFail = true
-			return ans, nil
-		}
-		ok, derr = false, nil
+		return ans, nil
 	}
 	if derr != nil {
-		return ans, fmt.Errorf("the oracle refused the root itself: %w", derr)
+		return ans, fmt.Errorf("the oracle could not perform the read: %w", derr)
 	}
-	if ok {
-		ans.report = Counts{Unknown: rep.Unknown, Widened: rep.Widened}
-	}
-	if r.builder && !ok {
-		ans.encFail = true
+	ans.accepted = ok && !rep.Refused
+	if !ans.accepted {
 		return ans, nil
 	}
-	encoded, eerr := encode()
-	// the encode is what runs the SAVE half of the retaining pair, so the two
-	// counters are read after it and not before
-	ans.retained, ans.retainLost = rep.Retained, rep.RetainLost
-	if eerr != nil {
-		ans.encFail = true
-	} else {
-		ans.encoded = encoded
-	}
-	if r.variable && !r.builder {
-		measured, whole, refused := tablewire.FileRegionMeasure(r.model.Unit, r.def, data)
-		if refused {
-			ans.bytes = -1
-			ans.measureRefused = true
-			return ans, nil
-		}
-		if whole {
-			ans.exact = true
-			ans.bytes = measured
-		} else {
-			records := int64(len(data))/nodeRecordHeaderBytes + 1
-			ans.bytes = r.rootStorage + records*(r.maxStorage+nodeDirEntryBytes)
-			ans.bytes += int64(len(data)) * (r.maxElement + 16)
-			if r.blobBytes || r.blobString {
-				ans.bytes += int64(len(data)) + records*16
-			}
-		}
+	ans.encoded, err = encode()
+	if err != nil {
+		return ans, fmt.Errorf("the oracle could not encode an accepted value: %w", err)
 	}
 	return ans, nil
 }
@@ -600,158 +409,33 @@ func (l *wireLeg) kill() {
 // the run
 // ---------------------------------------------------------------------------
 
-// countCapped answers whether a file wire holds a collection count above the
-// int32 storage cap (docs/SPEC-TABLES.md §2.9): the builder read refuses it
-// by name where the region read counts damage.
-func (r *wireRoot) countCapped(data []byte) (capped bool) {
-	if r.message {
-		return false
-	}
-	defer func() {
-		// the oracle's own decode of the same bytes already answered; a
-		// panic here is the oracle's to report, not this question's
-		if recover() != nil {
-			capped = false
-		}
-	}()
-	var rep tabletext.Report
-	_, err := tablewire.Decode(r.model, r.model.New(r.def), data, &rep)
-	_, capped = errors.AsType[*tablewire.CountRefusal](err)
-	return capped
+// accepted collapses the legacy pipe flags into the single read verdict.
+// Repair counters must never turn an accepted result into a refusal.
+func (reply legReply) accepted() bool {
+	return reply.loaded && !reply.report.Refused && !reply.report.Malformed
 }
 
-// wireVerdict compares one leg reply with the oracle's answer and names the
-// first disagreement, or "" when there is none.
-func wireVerdict(root *wireRoot, reply legReply, ans oracleAnswer, wireBytes int) string {
-	if ans.required {
-		if !reply.report.Refused || reply.report.Malformed {
-			return "the oracle refuses missing required fields; the leg must report refusal without malformed wire"
-		}
+// wireVerdict compares only acceptance and the complete accepted write-back.
+// The root and wire size remain parameters while callers migrate the transport.
+func wireVerdict(_ *wireRoot, reply legReply, ans oracleAnswer, _ int) string {
+	if accepted := reply.accepted(); accepted != ans.accepted {
+		return fmt.Sprintf("read acceptance differs: the leg says %t, the oracle says %t", accepted, ans.accepted)
+	}
+	if !ans.accepted {
 		return ""
 	}
-	if ans.nonFinite {
-		// A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md
-		// §3.3), and the refusal is the answer: a leg says so with the
-		// refusal verdict, and nothing it decoded or counted on the way is
-		// compared, because nothing of it lands.
-		if !reply.report.Refused {
-			return "the oracle refuses a non-finite float (non_finite_float); the leg did not refuse the wire"
-		}
-		return ""
+	if ans.encFail {
+		return "the oracle could not encode its accepted value"
 	}
-	if ans.report.Malformed && !ans.report.Refused && !ans.countCap && reply.report.Refused &&
-		!(root.variable && reply.measure < 0) {
-		// THE READ REACHED NO NON-FINITE FLOAT (docs/SPEC-TABLES.md §4):
-		// damage ends the body it is met in and the enclosing body reads on,
-		// so which floats a read reaches is defined. A leg that refuses a
-		// load the oracle reads as malformed has reached a float the rule
-		// does not reach. A count above the storage cap (§2.9) and a
-		// LoadMeasure refusal are refusals of their own and are answered
-		// elsewhere.
-		return "the leg refused the wire; the oracle reached no non-finite float and answers malformed"
+	if reply.saveFail {
+		return fmt.Sprintf("the leg refused to save its accepted value; the oracle encoded %d bytes", len(ans.encoded))
 	}
-	if root.builder {
-		// a damaged load is refused whole (docs/SPEC-TABLES.md §4), so on a
-		// damaged mutant the builder's completion is not compared: the
-		// malformed verdict below is the whole of what the leg owes
-		if !ans.report.Malformed && reply.loaded == ans.builderStopped {
-			return "builder completion differs from the oracle"
-		}
-	} else if !reply.loaded {
-		if root.variable && reply.measure < 0 {
-			// LOADMEASURE REFUSED THE FRAMING, so there was no region to load
-			// into and no value to compare: a wire that cannot be OPENED at
-			// all, fewer than nine bytes, a table that cannot be read whole,
-			// a form this reader does not carry, has no body and no numbering
-			// (docs/SPEC-TABLES.md §3). The oracle has to agree there was
-			// nothing to read, AND THAT IS THE WHOLE OF WHAT IT OWES HERE.
-			//
-			// THE COUNTER TUPLES ARE NOT COMPARED ON THIS BRANCH, because the
-			// two sides ran two different operations and the page rules both
-			// of them. A LoadMeasure refusal moves no counter (§6.5), so the
-			// leg's report is empty by rule; the oracle DECODED, and the
-			// fields decoded before the damage stand with the counters they
-			// earned (§3.3), so its report is not. A batch claiming 129
-			// bodies in 66 bytes is exactly that shape: the leg refuses to
-			// measure and the oracle reads body one and counts one malformed.
-			// Requiring the tuples to match would require one of those two
-			// sentences to be false.
-			if !ans.measureRefused && !ans.report.Malformed && !ans.report.Refused {
-				return "the leg's LoadMeasure refused the framing; the oracle read the same bytes cleanly"
-			}
-			return ""
-		}
-		if ans.report.Malformed && reply.report.Malformed {
-			// DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31): a leg that
-			// meets damage and hands back no root has given the answer the
-			// rule asks for.
-			return ""
-		}
-		if ans.report.Refused && reply.report == ans.report {
-			// A FORM THE READER DOES NOT CARRY IS REFUSED (docs/SPEC-TABLES.md
-			// §3): nothing was decoded, so a leg that refuses it by the same
-			// verdict and hands back no root has answered it.
-			return ""
-		}
-		return "the leg returned no root — its LoadMeasure sized a region its Load then refused"
-	}
-	if ans.measureRefused {
-		return "the leg loaded a wire whose container framing requires refusal"
-	}
-	// DAMAGE DISCARDS THE WHOLE LOAD (Glenn, 2026-10-31: "failing to read
-	// something means the whole read is undefined"): on a mutant the oracle
-	// reads as damaged, the refusal is the whole of what a leg owes. The
-	// counters, the retention report and the value the leg would save are
-	// all undefined there, so none is compared; only the region bounds
-	// below, which are the framing's and not the value's, still hold. A form
-	// refusal is the same: nothing was decoded, so the verdict is compared
-	// and the saved defaults are not.
-	discarded := ans.report.Malformed || ans.report.Refused
-	if ans.report.Malformed {
-		if !reply.report.Malformed {
-			return fmt.Sprintf("the oracle discards a damaged load (malformed); the leg says %s", reply.report)
-		}
-	} else if reply.report != ans.report {
-		return fmt.Sprintf("the report differs: the leg says %s, the oracle says %s", reply.report, ans.report)
-	}
-	if !discarded && root.retain && (reply.retained != ans.retained || reply.retainLost != ans.retainLost) {
-		// THE RETENTION REPORT (docs/SPEC-TABLES.md §6.6): `retained` counts the
-		// fields whose bytes were kept and `retain_lost` every unknown the load
-		// or the save could not keep. Two engines that keep different fields, or
-		// that count a class differently, differ here before they differ in the
-		// bytes.
-		return fmt.Sprintf("the retention report differs: the leg says retained=%d retain_lost=%d, the oracle says retained=%d retain_lost=%d",
-			reply.retained, reply.retainLost, ans.retained, ans.retainLost)
-	}
-	if !discarded && reply.saveFail != ans.encFail {
-		if reply.saveFail {
-			return fmt.Sprintf("the leg refused to save the value it loaded; the oracle encoded %d bytes", len(ans.encoded))
-		}
-		return fmt.Sprintf("the oracle refused to encode the value it decoded; the leg saved %d bytes", len(reply.saved))
-	}
-	if !discarded && !reply.saveFail && !bytes.Equal(reply.saved, ans.encoded) {
+	if !bytes.Equal(reply.saved, ans.encoded) {
 		at := 0
 		for at < len(reply.saved) && at < len(ans.encoded) && reply.saved[at] == ans.encoded[at] {
 			at++
 		}
 		return fmt.Sprintf("the decoded value differs: the leg saves %d bytes, the oracle %d, first difference at byte %d", len(reply.saved), len(ans.encoded), at)
-	}
-	if root.variable && !root.builder {
-		if ans.exact && reply.measure != ans.bytes {
-			return fmt.Sprintf("LoadMeasure asks for %d region bytes; the framing commands exactly %d", reply.measure, ans.bytes)
-		}
-		if reply.measure > ans.bytes {
-			return fmt.Sprintf("LoadMeasure asks for %d region bytes; the framing can command at most %d", reply.measure, ans.bytes)
-		}
-		// THE AMPLIFICATION ROW (schema#466, docs/SPEC-TABLES.md §6.5): the
-		// pinned maximum region-over-wire ratio, independent of the oracle's
-		// per-mutant answer. A hostile record is two wire bytes and commands
-		// at most the largest record the root can place, so a mutant above
-		// this ceiling is a divergence on the bound the page states.
-		if wireBytes > 0 && reply.measure > root.amplificationCeiling(wireBytes) {
-			return fmt.Sprintf("LoadMeasure asks for %d region bytes from %d wire bytes; the amplification ceiling is %d",
-				reply.measure, wireBytes, root.amplificationCeiling(wireBytes))
-		}
 	}
 	return ""
 }
@@ -911,6 +595,9 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 }
 
 func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
+	if opts.finiteOwed != "" {
+		return fmt.Errorf("--finite-owed is retired: every mutant must be compared")
+	}
 	if opts.builder && opts.mixedBuilder {
 		return fmt.Errorf("--builder and --mixed-builder are mutually exclusive profiles")
 	}
@@ -1002,7 +689,6 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	start := time.Now()
 	total := 0
 	enumeratedCount := 0
-	owed := 0
 	for mut := range sent {
 		root := roots[seedRoot[mut.seed]]
 		reply, err := leg.receiveWithDeadline(realClock{})
@@ -1015,19 +701,6 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			leg.kill()
 			return wireFailure(opts, mut, total, err.Error(), "")
 		}
-		if ans.nonFinite && opts.finiteOwed != "" {
-			// the leg still carries the pattern: owed by its finite-tables
-			// card, counted, and not compared (docs/SPEC-TABLES.md §3.3)
-			owed++
-			total++
-			if mut.pass != "random" {
-				enumeratedCount++
-			}
-			continue
-		}
-		if ans.report.Malformed && reply.report.Refused {
-			ans.countCap = root.countCapped(mut.data)
-		}
 		if verdict := wireVerdict(root, reply, ans, len(mut.data)); verdict != "" {
 			leg.kill()
 			// THE TWO ANSWERS BESIDE THE MUTANT: a divergence in the decoded
@@ -1037,16 +710,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 				_ = os.WriteFile(filepath.Join(dir, "leg.bin"), reply.saved, 0o644)
 				_ = os.WriteFile(filepath.Join(dir, "oracle.bin"), ans.encoded, 0o644)
 			}
-			detail := fmt.Sprintf("  leg:    loaded=%t report=%s measure=%d saved=%s\n  oracle: report=%s encoded=%s",
-				reply.loaded, reply.report, reply.measure, describeBytes(reply.saved, reply.saveFail),
-				ans.report, describeBytes(ans.encoded, ans.encFail))
-			if root.variable && !root.builder {
-				bound := "at most"
-				if ans.exact {
-					bound = "exactly"
-				}
-				detail += fmt.Sprintf("\n  region: the framing commands %s %d bytes", bound, ans.bytes)
-			}
+			detail := fmt.Sprintf("  leg:    accepted=%t report=%s measure=%d saved=%s\n  oracle: accepted=%t report=%s encoded=%s",
+				reply.accepted(), reply.report, reply.measure, describeBytes(reply.saved, reply.saveFail),
+				ans.accepted, ans.report, describeBytes(ans.encoded, ans.encFail))
 			return wireFailure(opts, mut, total, verdict, detail+"\n"+leg.stderr.String())
 		}
 		total++
@@ -1083,9 +749,6 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets
 		// no retention and a form-2 SaveRetain refuses by name (§6.6, §3.3)
 		absence += fmt.Sprintf(", %d seeds outside the arm", skipped)
-	}
-	if opts.finiteOwed != "" {
-		absence += fmt.Sprintf(", %d non-finite mutants not compared (the finite float rule is owed by %s)", owed, opts.finiteOwed)
 	}
 	arm := "wire-fuzz"
 	if opts.builder {

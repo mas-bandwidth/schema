@@ -9,7 +9,7 @@ import (
 )
 
 // The harness owns the mutations and oracle. This process only binds a
-// roster entry to its generated codec and returns the report and saved value.
+// roster entry to its generated codec and returns one read verdict and the accepted saved value.
 func wireFuzz(builder bool) error {
 	in, out := bufio.NewReader(os.Stdin), bufio.NewWriter(os.Stdout)
 	read := func(v any) error { return binary.Read(in, binary.LittleEndian, v) }
@@ -92,7 +92,7 @@ func wireFuzz(builder bool) error {
 		}
 		var rep report
 		var retained, lost int32
-		loaded := true
+		loaded := false
 		regionBytes := int64(-1)
 		saved := int64(-1)
 		var buffer []byte
@@ -109,9 +109,9 @@ func wireFuzz(builder bool) error {
 		} else if m := messages[index]; m != nil {
 			var available bool
 			buffer, rep, available = m.run(nil, wire, true)
+			loaded = available
 			if m.loadMeasure != nil {
 				regionBytes = m.loadMeasure(wire)
-				loaded = available
 			}
 			if buffer != nil {
 				saved = int64(len(buffer))
@@ -122,14 +122,20 @@ func wireFuzz(builder bool) error {
 			loaded = c.load(value, wire, &rep)
 			if c.loadMeasure != nil {
 				regionBytes = c.loadMeasure(wire)
-			} else {
-				loaded = true
 			}
-			saved = c.measure(value)
-			if saved >= 0 {
-				buffer = make([]byte, saved)
-				saved = c.save(value, buffer)
+			if loaded && !rep.refused && !rep.malformed {
+				saved = c.measure(value)
+				if saved >= 0 {
+					buffer = make([]byte, saved)
+					saved = c.save(value, buffer)
+				}
 			}
+		}
+		// The old header stays transport-compatible, but a refused read never
+		// publishes a default or partial value through its saved payload.
+		loaded = loaded && !rep.refused && !rep.malformed
+		if !loaded {
+			buffer, saved = nil, -1
 		}
 		for _, v := range []any{loaded, rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, rep.malformed, rep.refused, regionBytes, retained, lost, saved} {
 			if err := write(v); err != nil {
