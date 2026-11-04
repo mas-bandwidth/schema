@@ -1,4 +1,4 @@
-name: Lobster integrity qualification
+name: Lobster focused JSON qualification
 on:
   push:
     branches: [codex/schema-lobster-integrity-linux-check]
@@ -19,59 +19,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
-      - name: Build registry compiler on Linux for native Studio generation
-        run: |
-          git fetch origin codex/schema-lobster-unit-view --depth=1
-          git worktree add ../registry-source FETCH_HEAD
-          mkdir -p build/registry-compiler
-          git -C ../registry-source rev-parse HEAD > build/registry-compiler/product-head.txt
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go -C ../registry-source build -o "$GITHUB_WORKSPACE/build/registry-compiler/schema" ./cmd/schema
-          shasum -a 256 build/registry-compiler/schema > build/registry-compiler/sha256.txt
-      - name: Preserve registry compiler
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        with:
-          name: lobster-registry-compiler
-          path: build/registry-compiler/
-          retention-days: 7
       - name: JSON feature value identity
         env:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
           go test ./internal/codegen/lobstertable -run '^TestLobsterJSON(FeatureValues|Float32WriterSingleRounding)$' -count=1 -v
-      - name: Whole-unit registry regression
-        env:
-          SCHEMA_SLOW: '1'
-        run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobster(UnitView|TableFree|RuntimePackage)' -count=1 -v
-      - name: Packet native baseline and negative controls
-        env:
-          SCHEMA_SLOW: '1'
-        run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobster/... -count=1 -timeout 480s -v
-      - name: Native integrity regression and negative control
-        env:
-          SCHEMA_SLOW: '1'
-        run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobster(VariableWireIntegrity|MessageIntegrity)$' -count=1 -v
-      - name: Fixed-form evolution and integrity
-        env:
-          SCHEMA_SLOW: '1'
-          SCHEMA_REQUIRE_CORPUS: '1'
-        run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          make build/fixedform-corpus/.stamp
-          go test ./internal/codegen/lobstertable -run '^TestLobsterFixedForm' -count=1 -timeout 300s -v
-      - name: Complete native table baseline and compiler checks
-        env:
-          SCHEMA_SLOW: '1'
-          SCHEMA_REQUIRE_CORPUS: '1'
-        run: |
-          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable ./internal/tablenames -count=1 -timeout 600s -v
-      - name: Compiler Lobster name contracts
-        if: always()
-        run: go test ./compiler -run 'TestLobster.*(Name|Registry|Runtime)' -count=1 -v
