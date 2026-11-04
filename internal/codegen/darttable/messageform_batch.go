@@ -136,7 +136,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// rather than masked to the width, and so is ill-formed text. Debug only,
 	// a Dart assert. A flags value is not in it: this form masks a flags value
 	// to its declared width on purpose (docs/SPEC-TABLES.md §3.3).
-	g.pf("%s", fixedBatchCheck(st, "values"))
+	g.pf("%s", fixedBatchCheck(st, "values", false))
 	g.pf("  final w = TableBitWriter(Uint8List(0))..measuring = true;\n")
 	g.pf("  for (final value in values) {\n")
 	g.pf("    if (!%sSaveMessageBody(w, value)) return -1;\n", lower)
@@ -150,12 +150,12 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "Uint8List buffer", "TableReport report"})
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
-	if st.Integrity != "" {
-		g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
-	} else {
-		g.pf("  if (buffer.length < 2) return -1;\n")
-	}
-	g.pf("%s", fixedBatchCheck(st, "values"))
+	// NOTHING IS WRITTEN ON A REFUSAL (docs/SPEC.md §5.1): the measuring pass
+	// runs every refusal the body writer makes (the contract's assert, a
+	// union tag, a NaN, a count or a length past its storage) before the
+	// first byte reaches the caller's buffer, and sizes it, so the writing
+	// pass below cannot refuse.
+	g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
 	g.pf("  buffer[0] = 2;\n  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {
 		g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2, need - 4));\n")

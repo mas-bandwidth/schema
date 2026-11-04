@@ -1279,6 +1279,16 @@ bool tableFixedUtf8WellFormed(Uint8List bytes, int used) {
   return true;
 }
 
+/// tableFixedHoldsZero is the fixed writer's zero rule (docs/SPEC.md §5.1):
+/// the fixed reader refuses a zero byte or a zero unit among a text's used
+/// units as text_ill_formed, so the fixed writer never stores one.
+bool tableFixedHoldsZero(List<int> units, int used) {
+  for (var i = 0; i < used; i++) {
+    if (units[i] == 0) return true;
+  }
+  return false;
+}
+
 /// tableFixedWideWellFormed is the writer's wide text rule (docs/SPEC.md
 /// §5.1): every surrogate among the used units is paired. A zero unit is not
 /// this rule's business.
@@ -4495,7 +4505,7 @@ void mixedEntityFixedDecode(
 /// MixedEntity's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool mixedEntityFixedCheckBody(MixedEntity value) {
+bool mixedEntityFixedCheckBody(MixedEntity value, bool fixed) {
   if (!(value.entityId >= 0 && value.entityId <= 4095)) return false;
   if (!(value.posX >= -16383 && value.posX <= 16383)) return false;
   if (!(value.posY >= -16383 && value.posY <= 16383)) return false;
@@ -4557,7 +4567,7 @@ void mixedStatFixedDecode(
 /// MixedStat's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool mixedStatFixedCheckBody(MixedStat value) {
+bool mixedStatFixedCheckBody(MixedStat value, bool fixed) {
   if (!(value.statId >= 0 && value.statId <= 255)) return false;
   if (!(value.delta >= -512 && value.delta <= 511)) return false;
   return true;
@@ -4621,7 +4631,7 @@ void mixedHitEventFixedDecode(
 /// MixedHitEvent's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool mixedHitEventFixedCheckBody(MixedHitEvent value) {
+bool mixedHitEventFixedCheckBody(MixedHitEvent value, bool fixed) {
   if (!(value.targetId >= 0 && value.targetId <= 4095)) return false;
   if (!(value.damage >= 0 && value.damage <= 4095)) return false;
   if (!(value.hitKind >= 0 && value.hitKind <= 7)) return false;
@@ -4675,7 +4685,7 @@ void mixedChatEventFixedDecode(
 /// MixedChatEvent's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool mixedChatEventFixedCheckBody(MixedChatEvent value) {
+bool mixedChatEventFixedCheckBody(MixedChatEvent value, bool fixed) {
   if (!(value.channel >= 0 && value.channel <= 3)) return false;
   if (!(value.speaker >= 0 && value.speaker <= 4095)) return false;
   return true;
@@ -4728,7 +4738,7 @@ void mixedPickupEventFixedDecode(
 /// MixedPickupEvent's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool mixedPickupEventFixedCheckBody(MixedPickupEvent value) {
+bool mixedPickupEventFixedCheckBody(MixedPickupEvent value, bool fixed) {
   if (!(value.itemId >= 0 && value.itemId <= 1023)) return false;
   if (!(value.amount >= 0 && value.amount <= 255)) return false;
   return true;
@@ -5085,7 +5095,7 @@ String benchMixedFixedFiniteBody(BenchMixed value) {
 /// BenchMixed's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool benchMixedFixedCheckBody(BenchMixed value) {
+bool benchMixedFixedCheckBody(BenchMixed value, bool fixed) {
   if (!(value.sequence >= 0 && value.sequence <= 65535)) return false;
   if (!(value.ackSequence >= 0 && value.ackSequence <= 65535)) return false;
   if (!(value.ackBits >= 0 && value.ackBits <= 4294967295)) return false;
@@ -5094,23 +5104,23 @@ bool benchMixedFixedCheckBody(BenchMixed value) {
   if (!(value.frameTick >= 0 && value.frameTick <= 281474976710655)) return false;
   if (value.entitiesCount < 1 || value.entitiesCount > 8) return false;
   for (var i = 0; i < value.entitiesCount; i++) {
-    if (!mixedEntityFixedCheckBody(value.entities[i])) return false;
+    if (!mixedEntityFixedCheckBody(value.entities[i], fixed)) return false;
   }
   if (value.statsCount < 0 || value.statsCount > 80) return false;
   for (var i = 0; i < value.statsCount; i++) {
-    if (!mixedStatFixedCheckBody(value.stats[i])) return false;
+    if (!mixedStatFixedCheckBody(value.stats[i], fixed)) return false;
   }
   switch (value.gameEvent.type) {
     case 0:
       break;
     case 1:
-      if (!mixedHitEventFixedCheckBody(value.gameEvent.hit)) return false;
+      if (!mixedHitEventFixedCheckBody(value.gameEvent.hit, fixed)) return false;
       break;
     case 2:
-      if (!mixedChatEventFixedCheckBody(value.gameEvent.chat)) return false;
+      if (!mixedChatEventFixedCheckBody(value.gameEvent.chat, fixed)) return false;
       break;
     case 3:
-      if (!mixedPickupEventFixedCheckBody(value.gameEvent.pickup)) return false;
+      if (!mixedPickupEventFixedCheckBody(value.gameEvent.pickup, fixed)) return false;
       break;
     default:
       return false;
@@ -5119,10 +5129,21 @@ bool benchMixedFixedCheckBody(BenchMixed value) {
   }
   if (value.playerNameLength < 0 || value.playerNameLength > 15) return false;
   if (!tableFixedUtf8WellFormed(value.playerName, value.playerNameLength)) return false;
+  if (fixed && tableFixedHoldsZero(value.playerName, value.playerNameLength)) return false;
   if (value.payloadLength < 0 || value.payloadLength > 16) return false;
   if (!(value.crcHint >= 0 && value.crcHint <= 16777215)) return false;
   if (!(value.extra >= 0 && value.extra <= 255)) return false;
   if (!(value.idleTicks >= 0 && value.idleTicks <= 15)) return false;
+  return true;
+}
+
+/// BenchMixed's storage bound (docs/SPEC.md §5.1): false when a count or a
+/// length would index past the storage it counts. Checked in every build.
+bool benchMixedFixedStorageBody(BenchMixed value) {
+  if (value.entitiesCount < 0 || value.entitiesCount > 8) return false;
+  if (value.statsCount < 0 || value.statsCount > 80) return false;
+  if (value.playerNameLength < 0 || value.playerNameLength > 15) return false;
+  if (value.payloadLength < 0 || value.payloadLength > 16) return false;
   return true;
 }
 
@@ -5169,7 +5190,14 @@ String fixedTableFixedFiniteBody(FixedTable value) {
 /// FixedTable's write contract (docs/SPEC.md §5.1): false on the first field
 /// that holds what its declaration does not admit. A save asserts it over
 /// the whole batch before the first byte is stored.
-bool fixedTableFixedCheckBody(FixedTable value) {
-  if (!benchMixedFixedCheckBody(value.value)) return false;
+bool fixedTableFixedCheckBody(FixedTable value, bool fixed) {
+  if (!benchMixedFixedCheckBody(value.value, fixed)) return false;
+  return true;
+}
+
+/// FixedTable's storage bound (docs/SPEC.md §5.1): false when a count or a
+/// length would index past the storage it counts. Checked in every build.
+bool fixedTableFixedStorageBody(FixedTable value) {
+  if (!benchMixedFixedStorageBody(value.value)) return false;
   return true;
 }
