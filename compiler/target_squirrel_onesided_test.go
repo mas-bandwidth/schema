@@ -1,8 +1,9 @@
 // The ONE-SIDED INTEGER RANGE on the Squirrel table surface
 // (docs/SPEC-TABLES.md §4.3, SPEC §4.6): `a int64 | min = 0` bounds only the
 // low side, the checker fills the high side from the kind's own limit, and the
-// descriptor's lo/hi pair is what the runtime clamps a read against. The
-// expected bytes and verdicts are computed by the schema-go engine
+// descriptor's lo/hi pair is what a read is checked against: a value past it
+// refuses the read (§6.5). The expected bytes and verdicts are computed by
+// the schema-go engine
 // (internal/tablewire over internal/tabletext), never typed by hand.
 package compiler
 
@@ -39,8 +40,7 @@ local report = {
   duplicate = 0, malformed = false, refused = false
 };
 local v = L.loadTolerant(T, "OneSided", inputs.wire, report);
-print("accepted " + ((v != null && !report.malformed && !report.refused) ? "true" : "false") + "\n");
-print("clamped " + report.clamped.tostring() + "\n");
+print("accepted " + ((v != null && !report.malformed && !report.refused && report.clamped == 0 && report.kindMismatch == 0) ? "true" : "false") + "\n");
 print("a " + v.A.tostring() + "\n");
 print("b " + v.B.tostring() + "\n");
 local b = S.save(T, "OneSided", v);
@@ -56,9 +56,9 @@ type squirrelOneSidedCase struct {
 }
 
 // squirrelOneSidedOracle writes one raw value on one field, decodes that wire
-// through schema-go's engine, and returns its verdict, clamp count, field
-// values and save of the loaded instance.
-func squirrelOneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc squirrelOneSidedCase) (wire, saved []byte, accepted bool, clamped int, a int64, b uint64) {
+// through schema-go's engine, and returns its verdict and, when it accepts,
+// the field values and the save of the loaded instance.
+func squirrelOneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc squirrelOneSidedCase) (wire, saved []byte, accepted bool, a int64, b uint64) {
 	t.Helper()
 	st := u.Tables["OneSided"]
 	idx := 0
@@ -75,14 +75,17 @@ func squirrelOneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc
 	read := model.New(st)
 	var report tabletext.Report
 	var ok bool
-	if ok, err = tablewire.Decode(model, read, wire, &report); !ok || err != nil {
-		t.Fatalf("%s: the schema-go engine refused its own wire: ok=%v err=%v", tc.name, ok, err)
+	if ok, err = tablewire.Decode(model, read, wire, &report); !ok {
+		if tablewire.RefusalReason(err) != tablewire.ReasonOutOfRange || !report.Refused {
+			t.Fatalf("%s: the schema-go engine refused other than out_of_range: %v %+v", tc.name, err, report)
+		}
+		return wire, nil, false, 0, 0
 	}
 	saved, err = tablewire.Encode(model, read)
 	if err != nil {
 		t.Fatalf("%s: re-encode: %v", tc.name, err)
 	}
-	return wire, saved, ok, report.Clamped, read.Fields[0].Cell.I, read.Fields[1].Cell.U
+	return wire, saved, ok, read.Fields[0].Cell.I, read.Fields[1].Cell.U
 }
 
 func TestSquirrelCarriesOneSidedIntegerRanges(t *testing.T) {
@@ -120,26 +123,26 @@ func TestSquirrelCarriesOneSidedIntegerRanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			wire, wantSaved, wantAccepted, wantClamped, wantA, wantB := squirrelOneSidedOracle(t, model, u, tc)
+			wire, wantSaved, wantAccepted, wantA, wantB := squirrelOneSidedOracle(t, model, u, tc)
 			out := strings.TrimSpace(string(sqrun.Run(t, dir, "main.nut", map[string][]byte{"wire": wire})))
 			lines := strings.Split(out, "\n")
-			if len(lines) != 5 {
-				t.Fatalf("the probe printed %d lines, want 5:\n%s", len(lines), out)
+			if len(lines) != 4 {
+				t.Fatalf("the probe printed %d lines, want 4:\n%s", len(lines), out)
 			}
 			if want := "accepted " + strconv.FormatBool(wantAccepted); lines[0] != want {
 				t.Errorf("the Squirrel load verdict is %q, schema-go's is %q", lines[0], want)
 			}
-			if want := "clamped " + strconv.Itoa(wantClamped); lines[1] != want {
-				t.Errorf("the Squirrel load's counter is %q, schema-go's is %q", lines[1], want)
+			if !wantAccepted {
+				return
 			}
-			if want := "a " + strconv.FormatInt(wantA, 10); lines[2] != want {
-				t.Errorf("the Squirrel load's a is %q, schema-go's is %q", lines[2], want)
+			if want := "a " + strconv.FormatInt(wantA, 10); lines[1] != want {
+				t.Errorf("the Squirrel load's a is %q, schema-go's is %q", lines[1], want)
 			}
-			if want := "b " + strconv.FormatUint(wantB, 10); lines[3] != want {
-				t.Errorf("the Squirrel load's b is %q, schema-go's is %q", lines[3], want)
+			if want := "b " + strconv.FormatUint(wantB, 10); lines[2] != want {
+				t.Errorf("the Squirrel load's b is %q, schema-go's is %q", lines[2], want)
 			}
-			if want := "saved " + hex.EncodeToString(wantSaved); lines[4] != want {
-				t.Errorf("the Squirrel save is %q, schema-go's is %q", lines[4], want)
+			if want := "saved " + hex.EncodeToString(wantSaved); lines[3] != want {
+				t.Errorf("the Squirrel save is %q, schema-go's is %q", lines[3], want)
 			}
 		})
 	}
