@@ -656,8 +656,9 @@ cannot be combined with `--message` or `--mixed-builder`. `--retain` keeps the
 variable-file retention domain; no profile compares allocation or retention
 counters. Native resource and allocator tests remain separate gates.
 
-A legacy `go-refusal=<reason>` instance marker specifies refusal for every
-port. Drivers may emit `refused` or the historical `<case>.absent` file; the
+The `wire-refused` instance marker specifies refusal for every port. Legacy
+`go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
+compatibility metadata; they do not select a language or a shared reason. Drivers may emit `refused` or the historical `<case>.absent` file; the
 file's diagnostic text is ignored. This expected semantic refusal scores PASS.
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.
