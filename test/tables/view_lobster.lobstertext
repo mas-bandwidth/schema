@@ -1,0 +1,83 @@
+import .VIEW_MODULE
+
+def vp_bool(vp_value:bool) -> string:
+    return if vp_value: "true" else: "false"
+
+def vp_yes(vp_value:bool) -> string:
+    return if vp_value: "yes" else: "no"
+
+def vp_hex(vp_value:int) -> string:
+    return number_to_string(vp_value, 16, 16)
+
+def vp_ann(vp_doc:string, vp_tags:[string]) -> string:
+    var vp_flat = ""
+    for(length(vp_doc)) vp_i:
+        if vp_doc[vp_i] == 92:
+            vp_flat += "\\\\"
+        elif vp_doc[vp_i] == 10:
+            vp_flat += "\\n"
+        else:
+            vp_flat += substring(vp_doc, vp_i, 1)
+    var vp_joined = ""
+    for(vp_tags) vp_tag, vp_i:
+        if vp_i > 0:
+            vp_joined += ","
+        vp_joined += vp_tag
+    return " tags=[" + vp_joined + "] doc=" + vp_flat
+
+def vp_vocab(vp_kind:string, vp_label:string, vp_set:[schema_rt.ViewVocabulary]):
+    for(vp_set) vp_e:
+        print(vp_kind + " " + vp_e.name + " file=" + vp_e.file + " max=" + string(vp_e.max) + " bits=" + string(vp_e.storage_bits) + " variants=" + string(length(vp_e.variants)) + vp_ann(vp_e.doc, vp_e.tags))
+        for(vp_e.variants) vp_variant:
+            print(vp_kind + " " + vp_e.name + " " + vp_label + " " + string(vp_variant.value) + " " + vp_variant.name + " id=" + vp_hex(vp_variant.id) + vp_ann(vp_variant.doc, vp_variant.tags))
+
+def vp_has_holder(vp_set:[schema_rt.ViewType], vp_name:string) -> bool:
+    for(vp_set) vp_type:
+        let vp_d = vp_type.d
+        if vp_d:
+            for(vp_d.fields) vp_f:
+                if vp_f.type_ref == vp_name:
+                    return true
+    return false
+
+def vp_unions(vp_unit:schema_rt.UnitView):
+    for(vp_unit.unions) vp_e:
+        print("union " + vp_e.name + " file=" + vp_e.file + " max=" + string(vp_e.max) + " bits=" + string(vp_e.storage_bits) + " variants=" + string(length(vp_e.variants)) + vp_ann(vp_e.doc, vp_e.tags))
+        let vp_held = vp_has_holder(vp_unit.tables, vp_e.name) or vp_has_holder(vp_unit.types, vp_e.name)
+        for(vp_e.variants) vp_variant:
+            var vp_tail = " kind=- bound=- overlay=-"
+            let vp_f = vp_variant.field
+            if vp_f:
+                var vp_kind = vp_f.k
+                var vp_bound = vp_f.bound
+                if vp_f.s == "arr" or vp_f.s == "map" or vp_f.s == "bytes":
+                    vp_kind = vp_f.ek
+                if vp_f.s == "map" or vp_f.array == "list":
+                    vp_bound = 0
+                // Lobster's tagged value has one shared payload slot. Every
+                // general arm resolves through that slot, hence displacement 0.
+                vp_tail = " kind=" + string(vp_kind) + " bound=" + string(vp_bound) + " overlay=" + if vp_held: "0" else: "-"
+                if vp_ann(vp_f.doc, vp_f.tags) != vp_ann(vp_variant.doc, vp_variant.tags):
+                    vp_tail += " ARM ANNOTATION MISMATCH"
+            print("union " + vp_e.name + " arm " + string(vp_variant.value) + " " + vp_variant.name + " id=" + vp_hex(vp_variant.id) + " payload=" + (if vp_variant.payload_name == "": "-" else: vp_variant.payload_name) + " record=" + vp_yes(vp_variant.record != nil) + " field=" + vp_yes(vp_f != nil) + vp_tail + vp_ann(vp_variant.doc, vp_variant.tags))
+
+def vp_declarations(vp_kind:string, vp_set:[schema_rt.ViewType]):
+    for(vp_set) vp_type:
+        let vp_d = vp_type.d
+        assert vp_d
+        var vp_tail = ""
+        if vp_ann(vp_type.doc, vp_type.tags) != vp_ann(vp_d.doc, vp_d.tags):
+            vp_tail = " TYPE ANNOTATION MISMATCH"
+        print(vp_kind + " " + vp_type.name + " file=" + vp_type.file + " fields=" + string(length(vp_d.fields)) + vp_tail + vp_ann(vp_type.doc, vp_type.tags))
+        for(vp_d.fields) vp_f:
+            print(vp_kind + " " + vp_type.name + " field " + vp_f.name + " json=" + (if vp_f.json == "": "-" else: vp_f.json) + " type=" + vp_f.type_name + " id=" + vp_hex(vp_f.id) + " optional=" + vp_bool(vp_f.present != "") + vp_ann(vp_f.doc, vp_f.tags))
+
+let vp_unit = VIEW_PACKAGE.UnitView()
+print("unit package=" + vp_unit.package + " protocol=" + vp_hex(vp_unit.protocol_id))
+for(vp_unit.constants) vp_c:
+    print("constant " + vp_c.name + " file=" + vp_c.file + " type=" + vp_c.type_name + " float=" + vp_bool(vp_c.is_float) + " int=" + string(vp_c.int_value) + " real=" + vp_hex(schema_rt.f64bits(vp_c.float_value)) + vp_ann(vp_c.doc, vp_c.tags))
+vp_vocab("enum", "variant", vp_unit.enums)
+vp_vocab("flags", "bit", vp_unit.flags)
+vp_unions(vp_unit)
+vp_declarations("type", vp_unit.types)
+vp_declarations("table", vp_unit.tables)
