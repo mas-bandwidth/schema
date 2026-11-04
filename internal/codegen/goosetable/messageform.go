@@ -228,7 +228,10 @@ func f32Lit(v float32) string {
 // putScalar writes ONE value at the width its declaration states (§3.3's
 // payload table): a bool one bit, a float finite-only (quantized by the
 // packet wire's rule when compressed), an integer raw at its storage width or
-// ranged as value - base, an enum as the reference naming its variant.
+// ranged as value - base, an enum as the reference naming its variant. An
+// integer off its declared range or a bits(N) value past N is REFUSED
+// invalid_value, never masked or wrapped (docs/SPEC.md §5.1); a flags value
+// rides masked to its declared width on purpose (§3.3).
 func (e *msgEmit) putScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMessageShape, expr string) {
 	if en := enumOf(f); en != nil {
 		e.putEnum(ind, en, expr)
@@ -255,6 +258,9 @@ func (e *msgEmit) putScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMess
 		}
 		e.put(ind, "schema_rt::fixed_f32_bits("+expr+")", 32)
 		return
+	}
+	for _, b := range scalarBounds(f) {
+		e.p(ind, "if %s { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", b.over(expr))
 	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	if e.fx.kindOf(f) == kInt128 {
@@ -346,11 +352,17 @@ func (e *msgEmit) putValue(ind int, f *ir.Field, entry ir.TableVocabularyEntry, 
 			bits = ir.TableMessageCountBits(entry.Shape)
 		}
 		e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.length, pl.length, f.Type.Size)
+		if f.Type.Kind == ir.TString {
+			// a string's used bytes are well-formed UTF-8 (docs/SPEC.md §5.1)
+			e.p(ind, "if !schema_rt::text_utf8_ok(%s, 0, %s) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, pl.length)
+		}
 		e.put(ind, fmt.Sprintf("(%s as! u64)", pl.length), int64(bits))
 		e.p(ind, "schema_rt::msg_align(w, out);") // THE TEXT ALIGN (§3.3): a string(N) and a bytes(N) align before their bytes
 		e.p(ind, "schema_rt::msg_put_bytes(w, out, %s, %s);", pl.val, pl.length)
 	case f.Type.Kind == ir.TWString:
 		e.p(ind, "if %s < 0 || %s > %d { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.length, pl.length, f.Type.Size)
+		// wide text pairs every surrogate (docs/SPEC.md §5.1)
+		e.p(ind, "if !schema_rt::text_utf16_paired(%s, %s) { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", pl.val, pl.length)
 		e.put(ind, fmt.Sprintf("(%s as! u64)", pl.length), int64(ir.TableMessageBitsRequired(0, entry.Shape.Max)))
 		i := e.loopVar()
 		e.p(ind, "var %s: i64 = 0;", i)

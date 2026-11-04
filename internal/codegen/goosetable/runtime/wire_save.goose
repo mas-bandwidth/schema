@@ -155,7 +155,8 @@ fn refuse(c: SaveCtx&, code: i64) {
 // Every build refuses it, named invalid_value: an integer its kind's width
 // cannot hold, one off its declared range, a bits(N) value past 2^N - 1, a
 // counted array's count past its bound or negative, a text, bytes or wide
-// text length past its bound or negative.
+// text length past its bound or negative, a string that is not UTF-8, wide
+// text with an unpaired surrogate.
 
 // int_fits: integer v, written at kind `kind`, is in the set d declares. A
 // 128-bit or fixed-point kind holds its range on the raw scale (ir.TableRawRange).
@@ -194,15 +195,20 @@ fn int_fits(v: Int128, d: const FieldDesc&, kind: u8) -> bool {
 }
 
 // text_fits: a present text, bytes or wide text value's length is within
-// its bound (bytes for text and bytes, code units for wide text) and its view
-// within the input; an unbounded text takes any length.
+// its bound (bytes for text and bytes, code units for wide text), its view
+// within the input, and its text well-formed: UTF-8 for a string, paired
+// surrogates for wide text. An unbounded text takes any length.
 fn text_fits(c: SaveCtx&, s: i64, d: const FieldDesc&) -> bool {
     if state_of(c, s) == ValAbsent { return true; }
     let n = c.vals[s].len;
-    if n < 0 || c.vals[s].off < 0 || c.vals[s].off + n > c.data.len { return false; }
-    if d.shape == ShapeText { return true; }
+    let off = c.vals[s].off;
+    if n < 0 || off < 0 || off + n > c.data.len { return false; }
+    if d.shape == ShapeText { return text_utf8_ok(c.data, off, n); }
     let cap = if d.wide { d.bound * 2 } else { d.bound };
-    return n <= cap;
+    if n > cap { return false; }
+    if d.shape != ShapeStr { return true; }
+    if d.wide { return n % 2 == 0 && text_utf16_paired_le(c.data, off, n); }
+    return text_utf8_ok(c.data, off, n);
 }
 
 // count_fits: an array's count is in [0, its bound] for a counted array, and
