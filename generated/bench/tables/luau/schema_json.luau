@@ -1832,18 +1832,16 @@ local function line(w: any, depth: number)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
 end
 
--- §16.3's write-side rule for a narrow text: the strict reader refuses
--- ill-formed UTF-8, a U+0000 (which no wire carries) and a value past its
--- bound, so the writer refuses the value rather than emitting a text that
--- reads back differently (§2.13, §4.2). The refusal is named by Go's name
--- for the same value (§16.3, the write refuses what the strict read refuses).
+-- §16.3's write-side rule for a narrow text: ill-formed UTF-8 and a value
+-- past its bound are refused rather than written as a text that reads back
+-- differently (§2.13, §4.2), named by Go's name for the same value. A zero
+-- byte is written, spelled \u0000 (write_string); it is not refused.
 local refuse_reason: string = ""
 local function narrow_text_ok(s: string, bound: number): boolean
   if bound >= 0 and #s > bound then refuse_reason = "clamped"; return false end
   local i = 1
   while i <= #s do
     local c = s:byte(i)
-    if c == 0 then refuse_reason = "text_holds_zero"; return false end
     if c < 0x80 then
       i = i + 1
     else
@@ -1855,14 +1853,13 @@ local function narrow_text_ok(s: string, bound: number): boolean
   return true
 end
 
--- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
--- (the units the wire's kind 33 and the strict reader refuse).
+-- §16.3's write-side rule for a wide text: no lone surrogate and nothing past
+-- its bound. A zero unit is written, spelled \u0000 (write_wstring).
 local function wide_text_ok(units: { number }, bound: number): boolean
   if bound >= 0 and #units > bound then refuse_reason = "clamped"; return false end
   local i = 1
   while i <= #units do
     local u = units[i]
-    if u == 0 then refuse_reason = "text_holds_zero"; return false end
     if u >= 0xd800 and u <= 0xdbff then
       local low = units[i + 1]
       if low == nil or low < 0xdc00 or low > 0xdfff then refuse_reason = "string_not_utf8"; return false end

@@ -442,6 +442,8 @@ end
 --   D.count_ok  a bounded or fixed array of at most its bound elements
 --   D.enum_ok   an enum value that names one of its variants
 --   D.tag_ok    a union value whose tag is 0 or one of its arms
+--   D.text_ok   a string's bytes well-formed UTF-8, a wstring's units free
+--               of an unpaired surrogate (D.utf8_ok, D.units_ok)
 -- A nil is the field's absence and passes every one.
 local function wide_less(signed, a, b)
   if a.hi ~= b.hi then
@@ -505,6 +507,69 @@ function D.enum_ok(d, x)
   return false
 end
 
+-- WELL-FORMED UTF-8 (docs/SPEC.md §5.1 row 8): no overlong form, no encoded
+-- surrogate, nothing past U+10FFFF and no cut sequence. It is spelled byte by
+-- byte rather than through utf8.len, whose answer for a surrogate differs
+-- between Lua 5.3 and 5.4. A zero byte is well-formed here; the writers that
+-- refuse one test it themselves.
+function D.utf8_ok(s)
+  local i, n = 1, #s
+  while i <= n do
+    local c = s:byte(i)
+    if c < 0x80 then
+      i = i + 1
+    elseif c >= 0xc2 and c <= 0xdf then
+      if i + 1 > n then return false end
+      local b1 = s:byte(i + 1)
+      if b1 < 0x80 or b1 > 0xbf then return false end
+      i = i + 2
+    elseif c >= 0xe0 and c <= 0xef then
+      if i + 2 > n then return false end
+      local b1, b2 = s:byte(i + 1), s:byte(i + 2)
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf then return false end
+      if c == 0xe0 and b1 < 0xa0 then return false end
+      if c == 0xed and b1 > 0x9f then return false end
+      i = i + 3
+    elseif c >= 0xf0 and c <= 0xf4 then
+      if i + 3 > n then return false end
+      local b1, b2, b3 = s:byte(i + 1), s:byte(i + 2), s:byte(i + 3)
+      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf or b3 < 0x80 or b3 > 0xbf then return false end
+      if c == 0xf0 and b1 < 0x90 then return false end
+      if c == 0xf4 and b1 > 0x8f then return false end
+      i = i + 4
+    else
+      return false
+    end
+  end
+  return true
+end
+
+-- UTF-16 units with every surrogate paired: a high unit followed by a low
+-- one, and no low unit alone.
+function D.units_ok(u)
+  local i, n = 1, #u
+  while i <= n do
+    local x = u[i]
+    if type(x) == "number" and x >= 0xd800 and x <= 0xdfff then
+      if x > 0xdbff then return false end
+      local lo = u[i + 1]
+      if type(lo) ~= "number" or lo < 0xdc00 or lo > 0xdfff then return false end
+      i = i + 2
+    else
+      i = i + 1
+    end
+  end
+  return true
+end
+
+function D.text_ok(d, x)
+  if x == nil then return true end
+  local s = d.shape
+  if s == "string" then return type(x) ~= "string" or D.utf8_ok(x) end
+  if s == "wstring" then return type(x) ~= "table" or D.units_ok(x) end
+  return true
+end
+
 function D.tag_ok(u, x)
   if type(x) ~= "table" then return true end
   local tag = x.tag or 0
@@ -524,6 +589,7 @@ local function invalid_value(T, d, val, where, seen)
     if not D.int_ok(d, val) then return where .. " holds an integer outside its declared range" end
   elseif s == "string" or s == "bytes" or s == "wstring" then
     if not D.len_ok(d, val) then return where .. " holds a length past its bound" end
+    if not D.text_ok(d, val) then return where .. " holds ill-formed text" end
   elseif s == "enum" then
     if not D.enum_ok(d, val) then return where .. " holds a value outside its enum" end
   elseif s == "array" then

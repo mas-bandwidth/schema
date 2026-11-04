@@ -699,16 +699,123 @@ censusPair = function(f: any, w: Node, r: Node, c: Census)
 	end
 end
 
+local function deprecatedValue(f: any, value: any, record: any): any
+	if value == nil then return nil end
+	if f.s == "enum" then
+		local pair = f.vs[value]
+		if pair ~= nil and pair[3] == true then return pair end
+	elseif f.s == "arr" and f.e ~= nil and f.e.s == "enum" then
+		local count = if f.array == "counted" then (record[f.slot .. "Count"] or 0) else (f.bound or 0)
+		for i = 1, count do
+			local pair = f.e.vs[value[i]]
+			if pair ~= nil and pair[3] == true then return pair end
+		end
+	end
+	return nil
+end
+
+-- THE WRITE CONTRACT (docs/SPEC.md §5.1): checkStruct walks a record the
+-- writer is about to store, in writeStruct's order and under its presence
+-- rule, and answers the first value its declaration does not admit, so F.save
+-- refuses a batch before any byte of it is stored. A NaN or an infinity is
+-- non_finite_float; an integer off its width, its declared range or its
+-- bits(N), an enum ordinal no variant names, a union tag no arm names, a
+-- count or length past its bound or its storage, and ill-formed text are
+-- invalid_value; each names <Owner>.<field>. A flags value is stored whole.
+local function invalid(f: any): Refusal
+	return { name = "invalid_value", malformed = false, field = _owner .. "." .. (f.name or _field) }
+end
+
+local function checkLeaf(f: any, n: Node, v: any): Refusal?
+	if f.s == "float" then
+		if n.kind == 10 then
+			local bits = doubleToF32(v)
+			if bit32.band(bits, 0x7F800000) == 0x7F800000 then return nonFinite(f) end
+		else
+			if v ~= v or v == math.huge or v == -math.huge then return nonFinite(f) end
+		end
+	elseif f.s == "int" then
+		if not S.int_ok(f, v) then return invalid(f) end
+	elseif f.s == "enum" then
+		local x = if typeof(v) == "integer" then integer.tonumber(v) else v
+		if x ~= nil and x ~= 0 and (f.vs == nil or f.vs[x] == nil) then return invalid(f) end
+	end
+	return nil
+end
+
+local checkStruct: (d: any, n: Node, value: any) -> Refusal?
+
+local function checkOne(f: any, n: Node, value: any): Refusal?
+	local slot = f.slot
+	local own = value
+	if slot ~= nil then own = value[slot] end
+	if f.s == "str" or f.s == "bytes" then
+		if slot == nil then return nil end
+		local length = value[slot .. "Length"] or 0
+		local unit = if f.s == "str" and f.wide then 2 else 1
+		if length < 0 or length > (n.size - COUNT) // unit or (f.bound ~= nil and f.bound > 0 and length > f.bound) then
+			return invalid(f)
+		end
+		if length > 0 and (typeof(own) ~= "buffer" or length * unit > buffer.len(own)) then return invalid(f) end
+		if f.s == "str" and length > 0 and not S.text_ok(own, length * unit, f.wide) then return invalid(f) end
+	elseif f.s == "tab" then
+		return checkStruct(S.lookup(f.t), n, own)
+	elseif f.s == "union" then
+		local tag = (own and own.Type) or 0
+		if tag ~= 0 then
+			local d = S.lookup(f.t)
+			local arm = d.arms[tag]
+			local c = childAt(n, tag)
+			if arm == nil or c == nil then return invalid(f) end
+			if arm.s ~= "void" then
+				local owner = _owner
+				_owner = d.name
+				local why = checkOne(arm, c, own)
+				_owner = owner
+				return why
+			end
+		end
+	elseif f.s == "arr" then
+		local e = f.e
+		local count = f.bound or 0
+		local c = childAt(n, if f.array == "keyed" then 2 else 1) :: Node
+		if f.array == "counted" then
+			count = value[slot .. "Count"] or 0
+			if count < 0 or count > (f.bound or 0) or COUNT + count * c.size > n.size then return invalid(f) end
+		end
+		local items = value[slot]
+		for i = 1, count do
+			local why = checkOne(e, c, if items ~= nil then items[i] else nil)
+			if why ~= nil then return why end
+		end
+	else
+		return checkLeaf(f, n, own)
+	end
+	return nil
+end
+
+checkStruct = function(d: any, n: Node, value: any): Refusal?
+	if value == nil then return nil end
+	for _, f in d.fields do
+		local c = childById(n, f.id)
+		_owner, _field = d.name, f.name
+		if c ~= nil and (f.present == nil or value[f.present]) then
+			local pair = deprecatedValue(f, value[f.slot], value)
+			if pair ~= nil then return { name = "invalid_value", field = d.name .. "." .. f.name, variant = pair[1] } :: any end
+			local why = checkOne(f, if f.present ~= nil then childAt(c, 1) :: Node else c, value)
+			if why ~= nil then return why end
+		end
+	end
+	return nil
+end
+
 local function writeLeaf(f: any, n: Node, v: any, buf: buffer, off: number)
 	if f.s == "bool" then
 		buffer.writeu8(buf, off, v and 1 or 0)
 	elseif f.s == "float" then
 		if n.kind == 10 then
-			local bits = doubleToF32(v)
-			if bit32.band(bits, 0x7F800000) == 0x7F800000 then error(nonFinite(f), 0) end
-			buffer.writeu32(buf, off, bits)
+			buffer.writeu32(buf, off, doubleToF32(v))
 		else
-			if v ~= v or v == math.huge or v == -math.huge then error(nonFinite(f), 0) end
 			buffer.writef64(buf, off, v)
 		end
 	elseif f.s == "enum" then
@@ -803,30 +910,12 @@ function writeOne(f: any, n: Node, value: any, buf: buffer)
 	end
 end
 
-local function deprecatedValue(f: any, value: any, record: any): any
-	if value == nil then return nil end
-	if f.s == "enum" then
-		local pair = f.vs[value]
-		if pair ~= nil and pair[3] == true then return pair end
-	elseif f.s == "arr" and f.e ~= nil and f.e.s == "enum" then
-		local count = if f.array == "counted" then (record[f.slot .. "Count"] or 0) else (f.bound or 0)
-		for i = 1, count do
-			local pair = f.e.vs[value[i]]
-			if pair ~= nil and pair[3] == true then return pair end
-		end
-	end
-	return nil
-end
 
 function writeStruct(d: any, n: Node, value: any, buf: buffer)
 	-- FIXED-WRITE-ANCHOR
 	for _, f in d.fields do
 		local c = childById(n, f.id)
 		_owner, _field = d.name, f.name
-		if c ~= nil and (f.present == nil or value[f.present]) then
-			local pair = deprecatedValue(f, value[f.slot], value)
-			if pair ~= nil then error({ name = "invalid_value", field = d.name .. "." .. f.name, variant = pair[1] }, 0) end
-		end
 		if c ~= nil then
 			if f.present ~= nil then
 				local present = value[f.present]
@@ -848,8 +937,15 @@ local function put64(buf: buffer, at: number, v: integer) buffer.writeinteger(bu
 -- save writes one file: the form header, the writer's layout, and each record
 -- behind its own eight-byte hash (docs/FIXED-FORM-ALGORITHM.md §2, §3), then
 -- for a root that declares integrity = "crc32c" the four-byte trailer
--- (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING).
-function F.save(d: any, fixed: Fixed, values: { any }): buffer
+-- (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING). A batch holding a value the
+-- write contract refuses (checkStruct) answers nil and the refusal, checked
+-- over every record before the first byte is stored.
+function F.save(d: any, fixed: Fixed, values: { any }): (buffer?, Refusal?)
+	local root = compile(fixed)
+	for _, v in values do
+		local why = checkStruct(d, root, v)
+		if why ~= nil then return nil, why end
+	end
 	local layout = fixed.layout
 	local trailer = if declaresIntegrity(d) then TRAILER else 0
 	local bytes = HEADER + 4 + 4 + #layout * ENTRY
@@ -868,7 +964,6 @@ function F.save(d: any, fixed: Fixed, values: { any }): buffer
 		put32(out, p + 13, e.children)
 		p = p + ENTRY
 	end
-	local root = compile(fixed)
 	local rec = buffer.create(fixed.recordBytes)
 	for _, v in values do
 		buffer.fill(rec, 0, 0, fixed.recordBytes)

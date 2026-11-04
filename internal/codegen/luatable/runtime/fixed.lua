@@ -18,20 +18,20 @@ local maxRecords = 4096
 
 -- A FLOAT IN THE FIXED FORM IS FINITE (docs/SPEC-TABLES.md §3.3, §3.4): the
 -- record carries the bit pattern of a finite value, -0 and the subnormals
--- exactly. A NaN or an infinity is refused on write and refused on read from
--- the record's raw bits, before they become a number, as the named refusal
--- non_finite_float.
+-- exactly. A NaN or an infinity is refused on write (check_value, below) and
+-- refused on read from the record's raw bits, before they become a number, as
+-- the named refusal non_finite_float.
 local F32_EXP = 0x7f800000
 local F64_EXP = 0x7ff0000000000000
 
 local function pack_float(f32, v)
-  if f32 then
-    local p = string.pack("<f", v)
-    if string.unpack("<I4", p) & F32_EXP == F32_EXP then error("non_finite_float", 0) end
-    return p
-  end
-  if v - v ~= 0 then error("non_finite_float", 0) end
+  if f32 then return string.pack("<f", v) end
   return string.pack("<d", v)
+end
+
+local function finite(f32, v)
+  if f32 then return string.unpack("<I4", string.pack("<f", v)) & F32_EXP ~= F32_EXP end
+  return v - v == 0
 end
 
 local function unpack_float(f32, buf, pos)
@@ -124,14 +124,11 @@ local function encode_array(T, d, v, size, elemSize)
     return table.concat(parts)
   end
   local n = #v
-  if n > d.bound then error("count_over_bound") end
   parts[#parts + 1] = string.pack("<i4", n)
   for i = 1, n do
     parts[#parts + 1] = encode_value(T, d.elem, v[i], elemSize)
   end
-  local used = 4 + n * elemSize
-  if used > size then error("count_over_bound") end
-  parts[#parts + 1] = zeros(size - used)
+  parts[#parts + 1] = zeros(size - (4 + n * elemSize))
   return table.concat(parts)
 end
 
@@ -140,24 +137,27 @@ local function encode_union(T, d, v, size)
   local ud = T.FixedUnions[d.target]
   if ud == nil then error("fixed: no union descriptor for " .. tostring(d.target)) end
   local tag = v.tag or 0
-  if tag > #ud.arms then tag = 0 end
   local parts = { pack_uint(tag, ud.tag) }
   local arm = ud.arms[tag]
+  local used = ud.tag
   if arm ~= nil and tag ~= 0 then
-    local fd = T.Unions[d.target].arms[tag].field
-    local payload = encode_value(T, fd, v[arm.slot], arm.size)
-    parts[#parts + 1] = payload
-  else
-    parts[#parts + 1] = zeros(size - ud.tag)
+    local un = T.Unions[d.target].arms[tag]
+    if un.field ~= nil then
+      parts[#parts + 1] = encode_value(T, un.field, v[un.slot], arm.size)
+      used = used + arm.size
+    end
   end
+  parts[#parts + 1] = zeros(size - used)
   return table.concat(parts)
 end
 
 encode_value = function(T, d, v, size, elemSize)
   local s = d.shape
   if s == "int" then
+    -- an integer rides at its STORAGE width, the slot's size (a bits(N) is
+    -- four or eight bytes, docs/FIXED-FORM-ALGORITHM.md §3), not its wire kind's
     if d.timestamp then return pack_int(v or 0, 8, true) end
-    return pack_int(v or 0, d.width, d.signed)
+    return pack_int(v or 0, size or d.width, d.signed)
   elseif s == "wide" then
     return pack_wide(v)
   elseif s == "bool" then
@@ -165,14 +165,13 @@ encode_value = function(T, d, v, size, elemSize)
   elseif s == "float" then
     return pack_float(d.f32, v or 0.0)
   elseif s == "string" or s == "bytes" then
+    -- nil is the field's absence: the empty text
+    v = v or ""
     local n = #v
-    local cap = size - 4
-    if n > cap then error("length_over_bound") end
-    return string.pack("<i4", n) .. string.sub(v, 1, n) .. zeros(cap - n)
+    return string.pack("<i4", n) .. v .. zeros(size - 4 - n)
   elseif s == "wstring" then
+    v = v or {}
     local n = #v
-    local cap = math.floor((size - 4) / 2)
-    if n > cap then error("length_over_bound") end
     local parts = { string.pack("<i4", n) }
     for i = 1, n do
       parts[#parts + 1] = string.pack("<I2", v[i] or 0)
@@ -227,10 +226,84 @@ encode_table = function(T, name, v)
   return table.concat(parts)
 end
 
+-- THE WRITE CONTRACT (docs/SPEC.md §5.1): check_table walks the record the
+-- encoder is about to pack, in the encoder's own order and under its presence
+-- rule, and names the first value its declaration does not admit, so a refused
+-- write packs nothing. An integer off its width, its declared range or its
+-- bits(N), an enum value that names no variant, a union tag that names no arm
+-- and ill-formed text are invalid_value; a NaN or an infinity is
+-- non_finite_float; a count past the array's bound is count_over_bound and a
+-- length past the text's is length_over_bound. A flags value is stored whole.
+local check_table
+
+local function check_value(T, d, v, size, elemSize, where)
+  local s = d.shape
+  if s == "int" or s == "wide" then
+    if not D.int_ok(d, v) then return "invalid_value: " .. where end
+  elseif s == "float" then
+    if not finite(d.f32, v or 0.0) then return "non_finite_float" end
+  elseif s == "string" or s == "bytes" then
+    v = v or ""
+    if #v > size - 4 or not D.len_ok(d, v) then return "length_over_bound" end
+    if not D.text_ok(d, v) then return "invalid_value: " .. where end
+  elseif s == "wstring" then
+    v = v or {}
+    if #v > (size - 4) // 2 or not D.len_ok(d, v) then return "length_over_bound" end
+    if not D.text_ok(d, v) then return "invalid_value: " .. where end
+  elseif s == "enum" then
+    if not D.enum_ok(d, v) then return "invalid_value: " .. where end
+  elseif s == "table" then
+    return check_table(T, d.target, v)
+  elseif s == "union" then
+    local tag = (v and v.tag) or 0
+    if tag ~= 0 then
+      local ud, un = T.FixedUnions[d.target], T.Unions[d.target]
+      if math.type(tag) ~= "integer" or tag < 0 or tag > #ud.arms then return "invalid_value: " .. where end
+      local arm, ua = ud.arms[tag], un.arms[tag]
+      if ua.field ~= nil then return check_value(T, ua.field, v[ua.slot], arm.size, nil, un.name .. "." .. ua.name) end
+    end
+  elseif s == "array" then
+    v = v or {}
+    if d.list then return nil end
+    local n
+    if d.keyed then
+      n = d.bound or #d.keyed
+    else
+      if #v > d.bound or (not d.fixed and elemSize ~= nil and 4 + #v * elemSize > size) then return "count_over_bound" end
+      n = d.fixed and d.bound or #v
+    end
+    for i = 1, n do
+      if v[i] ~= nil then
+        local why = check_value(T, d.elem, v[i], elemSize, nil, where)
+        if why ~= nil then return why end
+      end
+    end
+  end
+  return nil
+end
+
+check_table = function(T, name, v)
+  local desc = T.Tables[name]
+  v = v or {}
+  local sizes = T.FixedFields[name]
+  for i, f in ipairs(desc.fields) do
+    local fs = sizes[i].size
+    local x = v[f.name]
+    local why = nil
+    if not f.optional then
+      why = check_value(T, f, x, fs, sizes[i].elem, name .. "." .. f.name)
+    elseif v[f.name .. "_present"] == true and x ~= nil then
+      why = check_value(T, f, x, fs - 1, sizes[i].elem, name .. "." .. f.name)
+    end
+    if why ~= nil then return why end
+  end
+  return nil
+end
+
 decode_value = function(T, d, buf, pos, size, elemSize)
   local s = d.shape
   if s == "int" then
-    local w = d.timestamp and 8 or d.width
+    local w = d.timestamp and 8 or (size or d.width)
     local signed = d.timestamp or d.signed
     return unpack_int(buf, pos, w, signed)
   elseif s == "wide" then
@@ -279,9 +352,8 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     if tag > #ud.arms then tag = 0 end
     local v = { tag = tag }
     if tag ~= 0 then
-      local arm = ud.arms[tag]
-      local fd = T.Unions[d.target].arms[tag].field
-      v[arm.slot] = decode_value(T, fd, buf, pos + ud.tag, arm.size)
+      local arm, ua = ud.arms[tag], T.Unions[d.target].arms[tag]
+      if ua.field ~= nil then v[ua.slot] = decode_value(T, ua.field, buf, pos + ud.tag, arm.size) end
     end
     return v, pos + size
   elseif s == "array" then
@@ -583,15 +655,19 @@ end
 
 -- F.write writes the header and ONE record (docs/FIXED-FORM-ALGORITHM.md §2,
 -- §3.1): the template is the hash and a zeroed body, and each field lands at
--- its constant offset, little-endian, at its declared width.
+-- its constant offset, little-endian, at its declared width. A refusal is
+-- nil and its reason, with nothing written: a retired variant by name, then
+-- the write contract (check_table).
 function F.write(T, name, value)
   local f = T.Fixed[name]
   if f == nil then error("fixed: no fixed descriptor for table " .. tostring(name)) end
   -- docs/SPEC-TABLES.md §2.15: a retired variant is refused, by name
   local refused = D.refuse_deprecated(T, name, value)
-  if refused ~= nil then error(refused, 0) end
+  if refused ~= nil then return nil, refused end
+  local why = check_table(T, name, value)
+  if why ~= nil then return nil, why end
   local body = encode_table(T, name, value)
-  if #body ~= f.size then error("layout_malformed") end
+  if #body ~= f.size then return nil, "layout_malformed" end
   local header = string.char(formByte) .. zeros(7) .. pack_uint(f.hash, 8) .. pack_uint(#f.layout, 4) .. f.layout
   return header .. pack_uint(f.hash, 8) .. body
 end

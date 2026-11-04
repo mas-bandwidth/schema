@@ -105,38 +105,7 @@ end
 -- (docs/SPEC-TABLES.md §2.13, §3), as a string(N) field's is; Go's Save
 -- refuses a value that breaks it.
 local function text_ok(s)
-  local i, n = 1, #s
-  while i <= n do
-    local c = s:byte(i)
-    if c == 0 then return false end
-    if c < 0x80 then
-      i = i + 1
-    elseif c >= 0xc2 and c <= 0xdf then
-      if i + 1 > n then return false end
-      local b1 = s:byte(i + 1)
-      if b1 < 0x80 or b1 > 0xbf then return false end
-      i = i + 2
-    elseif c >= 0xe0 and c <= 0xef then
-      if i + 2 > n then return false end
-      local b1, b2 = s:byte(i + 1), s:byte(i + 2)
-      if b1 == nil or b2 == nil then return false end
-      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf then return false end
-      if c == 0xe0 and b1 < 0xa0 then return false end
-      if c == 0xed and b1 > 0x9f then return false end
-      i = i + 3
-    elseif c >= 0xf0 and c <= 0xf4 then
-      if i + 3 > n then return false end
-      local b1, b2, b3 = s:byte(i + 1), s:byte(i + 2), s:byte(i + 3)
-      if b1 == nil or b2 == nil or b3 == nil then return false end
-      if b1 < 0x80 or b1 > 0xbf or b2 < 0x80 or b2 > 0xbf or b3 < 0x80 or b3 > 0xbf then return false end
-      if c == 0xf0 and b1 < 0x90 then return false end
-      if c == 0xf4 and b1 > 0x8f then return false end
-      i = i + 4
-    else
-      return false
-    end
-  end
-  return true
+  return not s:find("\0", 1, true) and D.utf8_ok(s)
 end
 
 -- THE NODE NUMBERING (§3.1, internal/tablewire/nodes.go) is the one pointer
@@ -144,7 +113,7 @@ end
 -- the retaining save, the cook's layout and the JSON text form. A shared blob
 -- refuses the save by name (blob_shared, §2.5, §16.7).
 local guard_holds, count_of, map_entries = D.guard_holds, D.count_of, D.map_entries
-local int_ok, len_ok, count_ok = D.int_ok, D.len_ok, D.count_ok
+local int_ok, len_ok, count_ok, well_formed = D.int_ok, D.len_ok, D.count_ok, D.text_ok
 
 local function number_nodes(T, desc, root)
   return D.number_nodes(T, desc, root, true)
@@ -262,10 +231,12 @@ local function write_keyed_one(T, ids, nodes, e, val, w)
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
     if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     w_raw(w, val)
   elseif s == "wstring" then
     if val == nil or #val == 0 then return true, false end
     if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     for i = 1, #val do
       w_raw(w, string.pack("<I2", val[i]))
     end
@@ -344,6 +315,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     end
   elseif s == "string" then
     if not len_ok(fd, x) then return false end
+    if not well_formed(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 12)
@@ -354,6 +326,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
     -- little-endian, L their byte count; it rides when it holds a unit
     if not len_ok(fd, x) then return false end
+    if not well_formed(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
@@ -364,6 +337,7 @@ write_field = function(T, ids, nodes, fd, v, w)
     end
   elseif s == "bytes" then
     if not len_ok(fd, x) then return false end
+    if not well_formed(fd, x) then return false end
     if (fd.optional or fd.required) or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 14)
@@ -585,11 +559,13 @@ write_element = function(T, ids, nodes, e, val, body)
   elseif s == "string" then
     val = val or ""
     if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     w_leb(body, #val)
     w_raw(body, val)
   elseif s == "wstring" then
     val = val or {}
     if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     local parts = {}
     for i = 1, #val do
       parts[#parts + 1] = string.pack("<I2", val[i])
@@ -599,6 +575,7 @@ write_element = function(T, ids, nodes, e, val, body)
   elseif s == "bytes" then
     val = val or ""
     if not len_ok(e, val) then return false end
+    if not well_formed(e, val) then return false end
     w_leb(body, #val)
     w_raw(body, val)
   else
@@ -671,14 +648,17 @@ write_union_at = function(T, ids, nodes, f, val, body)
     if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then
     if not len_ok(f, val) then return false end
+    if not well_formed(f, val) then return false end
     w_raw(body, val)
   elseif s == "wstring" then
     if not len_ok(f, val) then return false end
+    if not well_formed(f, val) then return false end
     for i = 1, #val do
       w_raw(body, string.pack("<I2", val[i]))
     end
   elseif s == "bytes" then
     if not len_ok(f, val) then return false end
+    if not well_formed(f, val) then return false end
     w_u8(body, 6)
     w_leb(body, #val)
     w_raw(body, val)
@@ -814,6 +794,7 @@ S.Typed = {
   same_float = same_float,
   id_ref = id_ref,
   field = write_field,
+  utf8_ok = D.utf8_ok,
   -- a field header, the reference to its id then its kind byte: one call, and
   -- one string when the reference is under 128
   head = function(w, ids, id, kind)

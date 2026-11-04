@@ -22,7 +22,8 @@ import (
 // scalar part unrolled, and the two write the same bytes. A body refuses
 // (false) where the walk does: an integer outside its width, its declared
 // range or its bits(N), and a string past its bound, each tested against
-// constants (the walk's D.int_ok and D.len_ok).
+// constants (the walk's D.int_ok and D.len_ok), and a string that is not
+// well-formed UTF-8 (the walk's D.text_ok, through SV.Typed.utf8_ok).
 func init() { RegisterPass(emitTypedSave) }
 
 // typedIntCheck is the refusal test a typed integer leaf carries: the one interval
@@ -111,7 +112,7 @@ func emitTypedSave(m *Module) error {
 	for _, h := range []struct{ use, local, value string }{
 		{"head", "head", "SV.Typed.head"}, {"leb", "leb", "SV.Typed.leb"}, {"raw", "raw", "SV.Typed.raw"},
 		{"float", "wfloat", "SV.Typed.float"}, {"same_float", "same", "SV.Typed.same_float"},
-		{"char", "char", "string.char"}, {"pack", "pack", "string.pack"}, {"field", "field", "SV.Typed.field"},
+		{"utf8", "utf8_ok", "SV.Typed.utf8_ok"}, {"char", "char", "string.char"}, {"pack", "pack", "string.pack"}, {"field", "field", "SV.Typed.field"},
 	} {
 		if used[h.use] {
 			m.Printf("local %s = %s\n", h.local, h.value)
@@ -173,11 +174,12 @@ func emitTypedBody(out *strings.Builder, st *ir.Struct, used map[string]bool) {
 			fmt.Fprintf(&body, "    do\n      local x = %s\n      if not same(%v, x, %s) then\n        head(w, ids, %s, %d)\n        if not wfloat(w, %v, x) then return false end\n      end\n    end\n",
 				slot, f.Type.Kind == ir.TFloat32, defaultExpr(f), id, kind, f.Type.Kind == ir.TFloat32)
 		case "string":
-			used["head"], used["leb"], used["raw"] = true, true, true
+			used["head"], used["leb"], used["raw"], used["utf8"] = true, true, true, true
 			check := ""
 			if f.Type.Size > 0 {
 				check = fmt.Sprintf("        if #x > %d then return false end\n", f.Type.Size)
 			}
+			check += "        if not utf8_ok(x) then return false end\n"
 			fmt.Fprintf(&body, "    do\n      local x = %s\n      if x ~= %s then\n%s        head(w, ids, %s, 12)\n        leb(w, #x)\n        raw(w, x)\n      end\n    end\n",
 				slot, defaultExpr(f), check, id)
 		default:

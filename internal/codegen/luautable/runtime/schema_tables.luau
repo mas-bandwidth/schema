@@ -235,4 +235,138 @@ function S.keyed(tableName: string, fieldName: string): any
 	return table.freeze(acc)
 end
 
+-- a number or an integer as the other domain, for the range compare
+local function as_number(v: any): any
+	if typeof(v) == "integer" then return integer.tonumber(v) end
+	return v
+end
+
+local function is128(x: any): boolean
+	return typeof(x) == "table" and x.lo ~= nil and x.hi ~= nil
+end
+
+-- the declared range's compare, the load's own (schema_load.luau cmp_lt):
+-- a 128-bit value high half first then the low half unsigned, an integer by
+-- the integer library, a number by its own order
+local function int_less(signed: boolean, a: any, b: any): boolean
+	if is128(a) and is128(b) then
+		if a.hi ~= b.hi then
+			if signed then return integer.lt(a.hi, b.hi) end
+			return integer.ult(a.hi, b.hi)
+		end
+		return integer.ult(a.lo, b.lo)
+	end
+	if typeof(a) == "integer" and typeof(b) == "integer" then
+		if signed then return integer.lt(a, b) end
+		return integer.ult(a, b)
+	end
+	return as_number(a) < as_number(b)
+end
+
+local function bound_shift(v: any, fbits: number): any
+	if is128(v) then
+		if fbits >= 64 then return { lo = 0i, hi = integer.lshift(v.lo, integer.create(fbits - 64)) } end
+		local hi = integer.lshift(v.hi, integer.create(fbits))
+		hi = integer.bor(hi, integer.rshift(v.lo, integer.create(64 - fbits)))
+		return { lo = integer.lshift(v.lo, integer.create(fbits)), hi = hi }
+	end
+	if typeof(v) == "integer" then return integer.lshift(v, integer.create(fbits)) end
+	return v * (2 ^ fbits)
+end
+
+-- THE WRITE CONTRACT'S INTEGER TEST (docs/SPEC.md §5.1 rows 1 and 2), shared
+-- by the variable writer (schema_save.luau) and the fixed writer
+-- (schema_fixed.luau): an integer within its storage width, its declared
+-- range (raw; a fixed field's bounds shifted by F) and its bits(N). A nil is
+-- the field's absence.
+function S.int_ok(e: any, val: any): boolean
+	if val == nil then return true end
+	local kw = e.kw
+	local signed = e.signed == true
+	local x = val
+	if kw == 16 then
+		if not is128(x) then return false end
+	elseif typeof(x) == "integer" then
+		if kw < 8 then
+			x = integer.tonumber(x)
+		end
+	elseif typeof(x) ~= "number" or x ~= math.floor(x) then
+		return false
+	end
+	if typeof(x) == "number" and kw < 8 then
+		local top = 2 ^ (kw * 8)
+		if signed then
+			if x < -top / 2 or x >= top / 2 then return false end
+		elseif x < 0 or x >= top then
+			return false
+		end
+	end
+	local lo, hi = e.lo, e.hi
+	if lo ~= nil and hi ~= nil then
+		if e.fbits ~= nil and e.fbits > 0 then lo, hi = bound_shift(lo, e.fbits), bound_shift(hi, e.fbits) end
+		if int_less(signed, x, lo) or int_less(signed, hi, x) then return false end
+	end
+	if e.bits ~= nil and e.bits > 0 and e.bits < kw * 8 then
+		local bmax: any = 2 ^ e.bits - 1
+		if typeof(x) == "integer" then bmax = integer.create(bmax) end
+		if int_less(false, bmax, x) then return false end
+	end
+	return true
+end
+
+-- WELL-FORMED TEXT, the write contract's text rule (docs/SPEC.md §5.1 row 8):
+-- the first n bytes of a narrow text are UTF-8 with no truncated sequence, no
+-- overlong form, no encoded surrogate and nothing past U+10FFFF; the n bytes
+-- of a wide text are UTF-16 units with every surrogate paired. A zero byte or
+-- unit is well-formed here; a writer that refuses one tests it itself. A used
+-- length past the buffer is not text either.
+function S.text_ok(b: buffer?, n: number, wide: boolean?): boolean
+	if b == nil or n <= 0 then return true end
+	if n > buffer.len(b) then return false end
+	if wide then
+		local units = n // 2
+		local i = 0
+		while i < units do
+			local u = buffer.readu16(b, i * 2)
+			if u >= 0xD800 and u <= 0xDFFF then
+				if u > 0xDBFF or i + 1 >= units then return false end
+				local low = buffer.readu16(b, (i + 1) * 2)
+				if low < 0xDC00 or low > 0xDFFF then return false end
+				i = i + 2
+			else
+				i = i + 1
+			end
+		end
+		return true
+	end
+	local i = 0
+	while i < n do
+		local b0 = buffer.readu8(b, i)
+		if b0 < 0x80 then
+			i = i + 1
+		else
+			local need, cp
+			if b0 >= 0xC2 and b0 <= 0xDF then
+				need, cp = 1, b0 - 0xC0
+			elseif b0 >= 0xE0 and b0 <= 0xEF then
+				need, cp = 2, b0 - 0xE0
+			elseif b0 >= 0xF0 and b0 <= 0xF4 then
+				need, cp = 3, b0 - 0xF0
+			else
+				return false
+			end
+			if i + need >= n then return false end
+			for k = 1, need do
+				local x = buffer.readu8(b, i + k)
+				if x < 0x80 or x > 0xBF then return false end
+				cp = cp * 64 + (x - 0x80)
+			end
+			local min = if need == 1 then 0x80 elseif need == 2 then 0x800 else 0x10000
+			if cp < min or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return false end
+			i = i + 1 + need
+		end
+	end
+	return true
+end
+
 return table.freeze(S)
