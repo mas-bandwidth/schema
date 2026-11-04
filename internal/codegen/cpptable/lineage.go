@@ -278,6 +278,13 @@ func (g *tableGen) lineageEntries(st *ir.Struct) []fixedKnown {
 	return out
 }
 
+// collectKnownRanges lays one older writer's ranged leaves onto the READER's
+// storage (docs/FIXED-FORM-ALGORITHM.md §4.5): the leaves and the match are
+// the shared helpers' (ir.TableFixedWriterRanges, ir.TableFixedWriterField),
+// so this reference holds the same fields every leg holds. A scalar is one
+// row; a fixed array is one row per element at its stride, each element held
+// to the writer's range the same as a scalar. The bounds are the writer's, on
+// the raw scale.
 func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnownRange {
 	if readerU == nil || reader == nil || writer == nil {
 		return nil
@@ -287,56 +294,37 @@ func collectKnownRanges(readerU *ir.Unit, reader, writer *ir.Struct) []fixedKnow
 		return nil
 	}
 	var out []fixedKnownRange
-	for i := range rl.Fields {
-		fl := &rl.Fields[i]
-		if fl.Field == nil {
-			continue
+	for _, r := range ir.TableFixedWriterRanges(writer) {
+		for i := range rl.Fields {
+			fl := &rl.Fields[i]
+			if fl.Field == nil {
+				continue
+			}
+			if _, ok := ir.TableFixedWriterField(fl.Field, r); !ok {
+				continue
+			}
+			w := ir.TableFixedStorageBytes(fl.Field.Type)
+			sgn := uint8(0)
+			if ir.TableKindSigned(r.Kind) {
+				sgn = 1
+			}
+			slots := int64(1)
+			if fl.Field.Array == ir.ArrayFixed {
+				slots = fl.Field.ArrayBound
+			}
+			for k := int64(0); k < slots; k++ {
+				out = append(out, fixedKnownRange{
+					dst:    uint32(fl.Offset + k*w),
+					width:  uint8(w),
+					signed: sgn,
+					lo:     r.Lo,
+					hi:     r.Hi,
+				})
+			}
+			break
 		}
-		wf := knownRangeField(writer, fl.Field.Name)
-		if wf == nil || !wf.HasIntRange || !fl.Field.HasIntRange {
-			continue
-		}
-		w := ir.TableFixedStorageBytes(wf.Type)
-		if w <= 0 || w > 8 || ir.TableFixedStorageBytes(fl.Field.Type) != w {
-			continue
-		}
-		if ir.TableScalarKind(wf) != ir.TableScalarKind(fl.Field) {
-			continue
-		}
-		sgn := uint8(0)
-		if ir.TableKindSigned(ir.TableScalarKind(wf)) {
-			sgn = 1
-		}
-		// THE WRITER'S BOUNDS ON THE RAW SCALE (schema#1811): the pass compares
-		// the stored raw, so a fixed field's whole-unit bounds are shifted by F
-		// first (ir.TableRawRange, the helper every other clamp uses). A bound
-		// that does not fit the int64 lanes bounds nothing here: skip it rather
-		// than clamp to a zero it never declared.
-		lo, hi, ok := ir.TableRawRange(wf)
-		if !ok || !lo.IsInt64() || !hi.IsInt64() {
-			continue
-		}
-		out = append(out, fixedKnownRange{
-			dst:    uint32(fl.Offset),
-			width:  uint8(w),
-			signed: sgn,
-			lo:     lo.Int64(),
-			hi:     hi.Int64(),
-		})
 	}
 	return out
-}
-
-func knownRangeField(st *ir.Struct, name string) *ir.Field {
-	if st == nil {
-		return nil
-	}
-	for _, f := range st.Fields {
-		if f != nil && f.Name == name {
-			return f
-		}
-	}
-	return nil
 }
 
 func remoteTable(u *ir.Unit, wireName string) *ir.Struct {

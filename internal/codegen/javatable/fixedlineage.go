@@ -35,28 +35,17 @@ type FixedLineageEntry struct {
 	Record  int64
 	Retired bool
 	Reason  string
-	// Ranges are the WRITER's bounded leaves this entry carries, so the
-	// compiled lane's bounds pass can hold an endpoint to what IT could have
-	// written and never to this reader's wider own (ALGORITHM §4.6: "the
-	// bounds this pass holds are the plan's — the writer's own for the lineage
-	// entry the plan was compiled for"). A fixed-point's whole-unit bounds are
-	// already shifted by F here — the RAW scale the wire carries.
-	Ranges []FixedRangeSpec
-}
-
-// FixedRangeSpec is one bounded leaf of a lineage entry's WRITER: the field's
-// name, matched against this reader's own spelling of it, and the writer's
-// declared bounds on the raw scale. A bound that does not fit the int64
-// lanes bounds nothing and is skipped by whoever builds the entry.
-type FixedRangeSpec struct {
-	Name string
-	Lo   int64
-	Hi   int64
+	// Ranges are the WRITER's ranged integer leaves this entry carries
+	// (ir.TableFixedWriterRanges), so the compiled lane's bounds pass can hold
+	// an endpoint to what IT could have written and never to this reader's
+	// wider own (docs/FIXED-FORM-ALGORITHM.md §4.5). A fixed-point's whole-unit
+	// bounds are already shifted by F here — the RAW scale the wire carries.
+	Ranges []ir.TableFixedWriterRange
 }
 
 // FixedLineageOf computes the entry a unit's OWN build locks for table `name`:
-// its layout bytes, the wire hash over them and the definitions digest, and its
-// record size. It is what a lock records at commit, and it is how a test — or a
+// its layout bytes, the wire hash over them and the definitions digest, its
+// record size, and its ranged leaves. It is what a lock records at commit, and it is how a test — or a
 // build reading a sibling generation — states an older entry without a lock.
 //
 // THE HASH IS THE COMPILER'S OWN FUNCTION and never a private re-derivation
@@ -74,6 +63,7 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,
 			Record: 8 + fixedTypeBytes(st),
+			Ranges: ir.TableFixedWriterRanges(st),
 		}, true
 	}
 	return FixedLineageEntry{}, false

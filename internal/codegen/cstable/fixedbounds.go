@@ -235,22 +235,21 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 }
 
 // fixedWriterBound is one bounded leaf of a lineage entry's WRITER, resolved
-// onto this reader's value: the reader's field (same storage width and kind —
-// a ranged field narrows its width only by the ladder, and the reference's
-// collectKnownRanges skips a pair whose widths differ) and the writer's raw
-// bounds.
+// onto this reader's value: the reader's field (the same scalar kind, so the
+// same width and scale, ir.TableFixedWriterField) and the writer's raw bounds.
 type fixedWriterBound struct {
 	field  *ir.Field
 	lo, hi *big.Int
 }
 
 // fixedWriterBounds resolves every lineage entry's ranged leaves against this
-// reader's own fields BY NAME — the match the reference's collectKnownRanges
-// makes — so the compiled lane's bounds pass holds an endpoint to what IT declared
-// and never to this reader's wider own (§4.6, bill §12.5). The identity entry
-// needs none: its writer IS this reader, and the reader's own pass holds it. A
-// field this reader cannot name bounds nothing. The answer is nil when no
-// entry bounds anything, so a table without ranged writers emits no clamp.
+// reader's own fields (ir.TableFixedWriterField: the same name and scalar
+// kind, a range the storage does not already hold), so the compiled lane's
+// bounds pass holds an endpoint to what IT declared, then to this reader's own
+// (§4.5). The identity entry needs none: its writer IS this reader, and the
+// reader's own pass holds it. A fixed array is one row, its clamp walking every
+// slot. The answer is nil when no entry bounds anything, so a table without
+// ranged writers emits no clamp.
 func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry, hash uint64) [][]fixedWriterBound {
 	var all [][]fixedWriterBound
 	any := false
@@ -259,11 +258,10 @@ func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 		if e.Wire != hash {
 			for _, spec := range e.Ranges {
 				for _, f := range st.Fields {
-					if f.Name != spec.Name {
-						continue
+					if _, ok := ir.TableFixedWriterField(f, spec); ok {
+						rows = append(rows, fixedWriterBound{field: f, lo: big.NewInt(spec.Lo), hi: big.NewInt(spec.Hi)})
+						break
 					}
-					rows = append(rows, fixedWriterBoundsOfField(f, spec.Lo, spec.Hi)...)
-					break
 				}
 			}
 		}
@@ -276,22 +274,6 @@ func (g *tableGen) fixedWriterBounds(st *ir.Struct, entries []FixedLineageEntry,
 		return nil
 	}
 	return all
-}
-
-// fixedWriterBoundsOfField spells one writer-bound spec at this reader's
-// field: a fixed array is one row per slot; a counted array's live count is a
-// run-time fact a static clamp does not carry, so it bounds nothing (the
-// reader's own §4.6 pass walks a counted array's live elements).
-func fixedWriterBoundsOfField(f *ir.Field, lo, hi int64) []fixedWriterBound {
-	blo, bhi := big.NewInt(lo), big.NewInt(hi)
-	if f.Array == ir.ArrayFixed {
-		out := make([]fixedWriterBound, 0, f.ArrayBound)
-		for i := int64(0); i < f.ArrayBound; i++ {
-			out = append(out, fixedWriterBound{field: f, lo: blo, hi: bhi})
-		}
-		return out
-	}
-	return []fixedWriterBound{{field: f, lo: blo, hi: bhi}}
 }
 
 // emitFixedWriterClamp writes ONE lineage entry's writer-bounds pass: a
