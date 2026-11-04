@@ -40,6 +40,7 @@ marks_unknown_variant read
 message_as_file    refused
 nested_arm_trailing refused
 nopayload_named_field refused
+oversized_fixed_previous_form refused
 p1_as_p2           refused
 p1_as_p3           refused
 p1_empty_as_p2     refused
