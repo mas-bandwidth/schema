@@ -1008,6 +1008,26 @@ public final class TableVariable {
         return off + w <= limit ? off + w : -1;
     }
 
+    // textWellFormed reports whether s has a UTF-8 spelling: every surrogate
+    // in it is paired (docs/SPEC.md §5.1). A zero char is not its business.
+    public static boolean textWellFormed(String s) {
+        if (s == null) {
+            return true;
+        }
+        for (int i = 0, n = s.length(); i < n; i++) {
+            char c = s.charAt(i);
+            if (Character.isHighSurrogate(c)) {
+                if (i + 1 == n || !Character.isLowSurrogate(s.charAt(i + 1))) {
+                    return false;
+                }
+                i++;
+            } else if (Character.isLowSurrogate(c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static long utf8Len(String s) {
         if (s == null) {
             return 0;
@@ -1608,10 +1628,17 @@ public final class TableVariable {
     }
 
     static boolean wideValid(char[] text) {
+        return wideValid(text, false);
+    }
+
+    // wideValid with zeroOk passes a zero unit: the text writer spells it
+    // as the six-character escape of U+0000 (docs/SPEC-TABLES.md §16.3), and
+    // only the binary writer refuses it.
+    static boolean wideValid(char[] text, boolean zeroOk) {
         if (text == null) return false;
         for (int i = 0; i < text.length; i++) {
             char c = text[i];
-            if (c == 0 || Character.isLowSurrogate(c)) return false;
+            if ((c == 0 && !zeroOk) || Character.isLowSurrogate(c)) return false;
             if (Character.isHighSurrogate(c)) {
                 if (++i == text.length || !Character.isLowSurrogate(text[i])) return false;
             }
@@ -1767,6 +1794,9 @@ public final class TableVariable {
     // reset() empties it for the next save while keeping its arrays, so a
     // reused Saver numbers a graph with nothing allocated per node.
     public static final class NodeGraph {
+        // text is set by the text writer's walk, which writes a zero unit of
+        // wide text as the escape of U+0000 where the binary writer refuses it.
+        public boolean text;
         private Object[] keys = new Object[16];
         private long[] keyIndex = new long[16];
         private int[] keyUses = new int[16];
@@ -4124,6 +4154,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	if !st.IsTable || st.CarriesForm("json") {
 		fmt.Fprintf(b, "    public static byte[] toJson(Value v) {\n")
 		fmt.Fprintf(b, "        TableVariable.NodeGraph graph = new TableVariable.NodeGraph();\n")
+		fmt.Fprintf(b, "        graph.text = true;\n")
 		fmt.Fprintf(b, "        graph.setOpen(v, true);\n")
 		fmt.Fprintf(b, "        if (!buildGraph(graph, v)) { return null; }\n")
 		fmt.Fprintf(b, "        graph.setOpen(v, false);\n")
@@ -5639,7 +5670,7 @@ func writeVariableGraphField(b *strings.Builder, f *ir.Field) {
 		fmt.Fprintf(b, "        v.%s = order_%s(v.%s);\n", m, m, m)
 	}
 	if f.Type.Kind == ir.TWString {
-		fmt.Fprintf(b, "        if (!TableVariable.wideValid(v.%s) || v.%s.length > %d) return false;\n", m, m, f.Type.Size)
+		fmt.Fprintf(b, "        if (!TableVariable.wideValid(v.%s, g.text) || v.%s.length > %d) return false;\n", m, m, f.Type.Size)
 	}
 	if un := variableUnion(f); un != nil {
 		if f.Array != ir.ArrayNone {

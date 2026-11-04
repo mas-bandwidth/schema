@@ -42,11 +42,30 @@ public final class MixedChatEventFixed {
         TableFixed.put32(b, at + 4, v.speaker);
     }
 
-    // checkWrite is writeBody's contract walk, called once through `assert`.
-    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
-    // which is what makes a save one template and a straight line of stores.
-    private static boolean checkWrite(Value v) {
-        assert v != null;
+    // checkWrite is the write contract (docs/SPEC.md §5.1) over one value
+    // and everything it holds by value: false on the first field that holds
+    // what its declaration does not admit. It runs through `assert` alone,
+    // so without -ea the writer trusts.
+    static boolean checkWrite(Value v) {
+        if ((long) v.channel < 0 || (long) v.channel > 3) {
+            return false;
+        }
+        if ((v.speaker >>> 12) != 0) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * checkWrite over the first count values of a batch, asserted before a save stores its first
+     * byte.
+     */
+    public static boolean checkWriteBatch(Value[] values, int count) {
+        for (int k = 0; k < count; k++) {
+            if (values[k] != null && !checkWrite(values[k])) {
+                return false;
+            }
+        }
         return true;
     }
 

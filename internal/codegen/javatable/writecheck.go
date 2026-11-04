@@ -22,8 +22,9 @@ import (
 // The contracts: a ranged integer inside its min/max (scalars and every
 // element of an array of them), a bits(N) value inside N bits, a bounded or
 // fixed array's count inside its bounds, a string(N) or bytes(N) inside N
-// bytes, and an enum ordinal inside its set (0, None, through the last
-// variant).
+// bytes, an enum ordinal inside its set (0, None, through the last
+// variant), and narrow text with no unpaired surrogate, so that it has a
+// UTF-8 spelling. A wide string's surrogates are refused in every build.
 
 // writeCheckCond is the Java condition under which ONE value of field f (an
 // element's field for an array) breaks the write contract, over expr; ""
@@ -60,9 +61,13 @@ func writeCheckCond(f *ir.Field, expr string) string {
 			}
 		}
 	case ir.TString:
+		// a Java String is UTF-16: an unpaired surrogate in it has no UTF-8
+		// spelling, which is how ill-formed narrow text reaches this writer
+		wellFormed := fmt.Sprintf("!TableVariable.textWellFormed(%s)", expr)
 		if f.Type.Size > 0 && !f.Type.TextUnbounded() {
-			return fmt.Sprintf("TableVariable.utf8Len(%s) > %dL", expr, f.Type.Size)
+			return fmt.Sprintf("%s || TableVariable.utf8Len(%s) > %dL", wellFormed, expr, f.Type.Size)
 		}
+		return wellFormed
 	case ir.TBytes:
 		if f.Type.Size > 0 && f.Array == ir.ArrayNone {
 			return fmt.Sprintf("%s != null && %s.length > %d", expr, expr, f.Type.Size)

@@ -1730,6 +1730,19 @@ conformance-negative-control-dart-absent: build/conformance-harness build/confor
 conformance-negative-control-dart-write-refusal: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control write-refusal "$(DART)"
 
+# THE FIXED AND MESSAGE WRITERS' WRITE-CONTRACT CONTROLS (docs/SPEC.md §5.1):
+# one ranged-integer check deleted from a copy of a generated <T>FixedCheckBody,
+# the driver AOT-compiled against it with --enable-asserts, and
+# `write-refusal-fixed` or `write-refusal-message` red on its two out-of-range
+# rows alone with wire and message green (test/conformance/dart/negative-control).
+.PHONY: conformance-negative-control-dart-write-refusal-fixed
+conformance-negative-control-dart-write-refusal-fixed: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal-fixed "$(DART)"
+
+.PHONY: conformance-negative-control-dart-write-refusal-message
+conformance-negative-control-dart-write-refusal-message: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal-message "$(DART)"
+
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block

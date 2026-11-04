@@ -76,6 +76,34 @@ public final class MixedEventFixed {
         }
     }
 
+    /**
+     * the write contract (docs/SPEC.md §5.1): the tag names an arm, and the selected arm holds what
+     * its declaration admits. Asserted (-ea).
+     */
+    static boolean checkWrite(Value v) {
+        switch (v.type) {
+            case 0:
+                return true;
+            case 1:
+                if (!MixedHitEventFixed.checkWrite(v.hit)) {
+                    return false;
+                }
+                return true;
+            case 2:
+                if (!MixedChatEventFixed.checkWrite(v.chat)) {
+                    return false;
+                }
+                return true;
+            case 3:
+                if (!MixedPickupEventFixed.checkWrite(v.pickup)) {
+                    return false;
+                }
+                return true;
+            default:
+                return false;
+        }
+    }
+
     /** the tag, then the selected arm; an unselected arm keeps what it held. */
     public static void scatter(byte[] b, int at, Value v, TableFixed.Report r) {
         v.type = (b[at + 0] & 0xFF);

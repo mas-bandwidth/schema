@@ -17,10 +17,11 @@ set -e
 # and overrides with JAVA=java
 JAVA=${JAVA:-dist/jdk-21.0.12.1/Contents/Home/bin/java}
 
-# The write-refusal surface answers from the DEBUG configuration: the write
+# The write-refusal surfaces answer from the DEBUG configuration: the write
 # contract's checks are asserts, live under -ea alone. Every other surface runs
 # the release shape.
-if [ "$2" = "write-refusal" ]; then
-    exec "$JAVA" -ea -cp build/conformance-java Driver "$@"
-fi
+case "$2" in
+    write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+        exec "$JAVA" -ea -cp build/conformance-java Driver "$@" ;;
+esac
 exec "$JAVA" -cp build/conformance-java Driver "$@"

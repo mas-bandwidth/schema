@@ -40,6 +40,7 @@ import 'BenchFixed.dart'
         TableMessageReader,
         TableReport,
         TableVocabulary,
+        fixedTableFixedCheckBody,
         fixedTableFixedDecode,
         fixedTableFixedFiniteBody,
         fixedTableFixedWriteBody,
@@ -607,6 +608,7 @@ int fixedTableFixedSave(List<FixedTable> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  assert(values.take(count).every(fixedTableFixedCheckBody), 'write contract: FixedTable');
   // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
   // record is asked before the first byte is written, so a refusal
   // leaves the caller's bytes as they were.
@@ -855,6 +857,7 @@ int fixedTableMeasureMessages(List<FixedTable> values, TableReport report) {
     report.Refuse('batch_too_large');
     return -1;
   }
+  assert(values.every(fixedTableFixedCheckBody), 'write contract: FixedTable');
   final w = TableBitWriter(Uint8List(0))..measuring = true;
   for (final value in values) {
     if (!fixedTableSaveMessageBody(w, value)) return -1;
@@ -876,6 +879,7 @@ int fixedTableSaveMessages(
     return -1;
   }
   if (buffer.length < 2) return -1;
+  assert(values.every(fixedTableFixedCheckBody), 'write contract: FixedTable');
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));

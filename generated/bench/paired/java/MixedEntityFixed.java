@@ -90,11 +90,57 @@ public final class MixedEntityFixed {
         TableFixed.put8(b, at + 50, v.firing ? 1 : 0);
     }
 
-    // checkWrite is writeBody's contract walk, called once through `assert`.
-    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
-    // which is what makes a save one template and a straight line of stores.
-    private static boolean checkWrite(Value v) {
-        assert v != null;
+    // checkWrite is the write contract (docs/SPEC.md §5.1) over one value
+    // and everything it holds by value: false on the first field that holds
+    // what its declaration does not admit. It runs through `assert` alone,
+    // so without -ea the writer trusts.
+    static boolean checkWrite(Value v) {
+        if ((v.entityId >>> 12) != 0) {
+            return false;
+        }
+        if ((long) v.posX < -16383 || (long) v.posX > 16383) {
+            return false;
+        }
+        if ((long) v.posY < -16383 || (long) v.posY > 16383) {
+            return false;
+        }
+        if ((long) v.posZ < -16383 || (long) v.posZ > 16383) {
+            return false;
+        }
+        if ((v.yaw >>> 9) != 0) {
+            return false;
+        }
+        if ((v.pitch >>> 9) != 0) {
+            return false;
+        }
+        if ((long) v.velX < -2048 || (long) v.velX > 2047) {
+            return false;
+        }
+        if ((long) v.velY < -2048 || (long) v.velY > 2047) {
+            return false;
+        }
+        if ((long) v.velZ < -2048 || (long) v.velZ > 2047) {
+            return false;
+        }
+        if ((long) v.health < 0 || (long) v.health > 1000) {
+            return false;
+        }
+        if ((((long) v.weapon) & 0xffL) > 15L) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * checkWrite over the first count values of a batch, asserted before a save stores its first
+     * byte.
+     */
+    public static boolean checkWriteBatch(Value[] values, int count) {
+        for (int k = 0; k < count; k++) {
+            if (values[k] != null && !checkWrite(values[k])) {
+                return false;
+            }
+        }
         return true;
     }
 
