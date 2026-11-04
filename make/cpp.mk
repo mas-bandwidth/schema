@@ -225,7 +225,7 @@ TABLES_CPP_SOAK_RELEASE_ITERATIONS ?= 250000
 TABLES_CXXFLAGS_RELEASE = $(TABLES_CXXFLAGS) -O2 -DNDEBUG
 CPP_RELEASE_DIR := build/cpp-release
 
-$(CPP_RELEASE_DIR)/tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h make/cpp.mk
+$(CPP_RELEASE_DIR)/tables: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h test/tables/wirebuilder.h test/tables/floatnan.h make/cpp.mk
 	@mkdir -p $(CPP_RELEASE_DIR)
 	$(CXX) $(TABLES_CXXFLAGS_RELEASE) $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 

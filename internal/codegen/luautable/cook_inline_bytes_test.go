@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
@@ -177,6 +178,7 @@ func runLuauErr(t *testing.T, dir, main string, inputs map[string][]byte) ([]byt
 // byte-keyed arrays populated, and the records the load reads all cook to
 // schema-go's internal/tablecook file, byte for byte.
 func TestLuauCookWritesInlineByteArrays(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted cook writer)")
 	t.Parallel()
 	if why := paddedCookGate(t, nil); why != "" {
 		t.Fatal(why)
@@ -187,6 +189,7 @@ func TestLuauCookWritesInlineByteArrays(t *testing.T) {
 // slots as a list again, the walk every other array takes, and requires the
 // gate red.
 func TestLuauCookWritesInlineByteArraysNegativeControl(t *testing.T) {
+	slowtest.Gate(t, "the pinned Luau interpreter (it runs the emitted cook writer)")
 	t.Parallel()
 	why := paddedCookGate(t, func(t *testing.T, files map[string][]byte) {
 		const from = "\tlocal bytes = typeof(x) == \"buffer\"\n"

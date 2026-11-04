@@ -2160,7 +2160,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp read_payload(%{t: :int} = f, payload, _nodes, _ids, report) do
     v = int_of(payload, f.width, f.signed)
-    {clamped, report} = clamp_int(v, f, report)
+    {v, report} = clamp_int(v, f, report)
+    {clamped, report} = clamp_bits(v, f, report)
 
     {:cont, clamped, report}
   end
@@ -2800,7 +2801,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp read_widened(f, kind, payload, report) do
     v = int_of(payload, kind_width(kind), f.signed)
-    {clamped, report} = clamp_int(v, f, report)
+    {v, report} = clamp_int(v, f, report)
+    {clamped, report} = clamp_bits(v, f, report)
     widened = if Map.get(f, :map_key, false), do: report.widened, else: report.widened + 1
     {clamped, %{report | widened: widened}}
   end
@@ -3424,6 +3426,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     do: {hi, %{report | clamped: report.clamped + 1}}
 
   defp clamp_int(v, _f, report), do: {v, report}
+
+  # A bits(N) field rides as the narrowest unsigned kind that holds it, so its
+  # payload can carry a value above 2^N - 1; that value clamps to the top of
+  # the field, after the declared range (docs/SPEC-TABLES.md §4).
+  defp clamp_bits(v, %{bits: bits}, report) when is_integer(bits) and bits > 0 do
+    top = Bitwise.bsl(1, bits) - 1
+    if v > top, do: {top, %{report | clamped: report.clamped + 1}}, else: {v, report}
+  end
+
+  defp clamp_bits(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)

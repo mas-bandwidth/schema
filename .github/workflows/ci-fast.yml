@@ -347,9 +347,15 @@ jobs:
             echo "::error::gofmt differs — run gofmt -w on the files above"
             exit 1
           fi
+      # EVERY LINT BELOW RUNS WHATEVER THE ONE ABOVE IT ANSWERED: a red gofmt
+      # must not hide a red slow-gate scan or a red internal/ci behind it, so
+      # each step after gofmt carries `if: !cancelled()` and the job reports
+      # every lint that is red, not only the first.
       - name: go mod tidy
+        if: ${{ !cancelled() }}
         run: go mod tidy -diff
       - name: go vet
+        if: ${{ !cancelled() }}
         run: go vet ./...
       # MODERNIZE (issue #1424). The full `lint` job runs this on a branch push
       # but a pull request into fixed-table-form skips it, because that job is
@@ -358,6 +364,7 @@ jobs:
       # pin below is the one ci-full.yml carries — the version gopls's own
       # module tags — and is bumped by hand in both files together.
       - name: modernize
+        if: ${{ !cancelled() }}
         run: go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.23.0 ./...
       # THE SLOW-GATE SCAN (schema#988, G5). internal/slowtest.Gate skips a test
       # that shells out to a toolchain unless SCHEMA_SLOW=1 is set, and a skipped
@@ -366,14 +373,25 @@ jobs:
       # such recipe line BY NAME, costs milliseconds, and is on the FAST lane
       # because the regression it catches is somebody adding the fifteenth.
       - name: the positive gate targets still set SCHEMA_SLOW (schema#988)
+        if: ${{ !cancelled() }}
         run: make slow-gate-scan
       # CI LINTS ITSELF (issues #470, #472), over every workflow file in the
       # tree — this one included: every `uses:` names a full commit SHA with the
       # tag in a trailing comment, nothing runs @latest, and every csproj
       # agrees with the one .NET SDK pin.
       - name: CI lints itself — action pins and the .NET SDK pin
+        if: ${{ !cancelled() }}
         run: go test ./internal/ci/
+      # THE TREE-WIDE SCANS. The link-and-citation
+      # gate (internal/docgate) reads every page and every Go comment, and the
+      # toolchain-gate scan (internal/slowtest) reads every test file, so either
+      # can go red from a diff in a package go-test-touched never selects. Both
+      # are pure Go and take seconds, so they ride every push.
+      - name: the tree-wide scans — doc links and citations, the toolchain gate
+        if: ${{ !cancelled() }}
+        run: go test ./internal/docgate/ ./internal/slowtest/
       - name: bench scripts parse
+        if: ${{ !cancelled() }}
         run: bash -n bench/run.sh
 
   # THE BLOCK ZERO-COST GATE, byte-identity half (the `generated` job's third

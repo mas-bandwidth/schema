@@ -1408,9 +1408,10 @@
     {
       "name": "elixir-discard",
       "when": "pull-request",
-      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md \u00a74): the plain read's discard is removed from a copy of the emitter through go test -overlay, and TestDamageDiscardsTheWholeLoadElixir must go red with a framing vector handed back as a value. It generates and runs three units under the overlay, which is why it is a group of its own.",
+      "why": "the Elixir whole-load discard control (docs/SPEC-TABLES.md \u00a74): the plain read's discard is removed from a copy of the emitter through go test -overlay, and TestDamageDiscardsTheWholeLoadElixir must go red with a framing vector handed back as a value. It generates and runs three units under the overlay. The reach control shares the group: its sabotaged reach replays three damage-then-NaN vectors, each required to go red on the refusal.",
       "targets": [
-        "tables-elixir-discard-negative-control"
+        "tables-elixir-discard-negative-control",
+        "tables-elixir-reach-negative-control"
       ],
       "otp": "29.0.5",
       "elixir": "1.20.4"

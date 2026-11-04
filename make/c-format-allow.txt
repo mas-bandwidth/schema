@@ -78,6 +78,10 @@ build/tables-generated-c/examples/WideBlock.c
 build/tables-generated-c/examples/WideBlock.h
 build/tables-generated-c/examples/WideTable.c
 build/tables-generated-c/examples/WideTable.h
+build/tables-generated-c/featurewitnesses/FeaturesTable.c
+build/tables-generated-c/featurewitnesses/FeaturesTable.h
+build/tables-generated-c/featurewitnesses/FeaturewitnessesView.c
+build/tables-generated-c/featurewitnesses/FeaturewitnessesView.h
 build/tables-generated-c/g1/G1Block.c
 build/tables-generated-c/g1/G1Block.h
 build/tables-generated-c/g1/G1Table.c
