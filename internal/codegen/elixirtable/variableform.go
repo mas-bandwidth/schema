@@ -226,7 +226,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 func withoutArrayRoots(source string) string {
 	for _, block := range []string{
 		`  defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value)
+    validate_record(desc, value, &String.valid?/1)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
@@ -3134,17 +3134,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp field_active?(_f, _desc, _value), do: true
 
-  defp validate_record(desc, value) do
+  # The binary writers hold an unbounded text to tableUtf8Valid, which refuses
+  # a zero byte as well; the text writer holds it to well-formed UTF-8 alone,
+  # because it spells a zero byte \u0000 (docs/SPEC-TABLES.md §16.3).
+  defp validate_record(desc, value), do: validate_record(desc, value, &utf8_valid?/1)
+
+  defp validate_record(desc, value, text_ok?) do
     Enum.each(desc.fields, fn f ->
       if Map.get(f, :text_list, false) and field_active?(f, desc, value) do
-        validate_text_list(f, Map.get(value, f.name, f.default))
+        validate_text_list(f, Map.get(value, f.name, f.default), text_ok?)
       end
 
       if Map.get(f, :unbounded, false) and field_active?(f, desc, value) do
         text = Map.get(value, f.name, f.default)
 
         unless Map.get(f, :optional, false) and text == nil do
-          if not is_binary(text) or not utf8_valid?(text), do: throw(:invalid_value)
+          if not is_binary(text) or not text_ok?.(text), do: throw(:invalid_value)
         end
       end
 
@@ -3659,7 +3664,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if String.valid?(prefix), do: prefix, else: utf8_prefix(prefix, byte_size(prefix) - 1)
   end
 
-  defp validate_text_list(f, elements) do
+  defp validate_text_list(f, elements, text_ok?) do
     if not is_list(elements), do: throw(:invalid_value)
     bound = Map.get(f, :array_bound, 0)
     if bound > 0 and length(elements) > bound, do: throw(:invalid_value)
@@ -3670,7 +3675,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       value = Map.get(element, "value", default)
 
       if not (f.text_optional and value == nil) do
-        if not is_binary(value) or not utf8_valid?(value) or
+        if not is_binary(value) or not text_ok?.(value) or
              (not Map.get(f, :text_unbounded, false) and byte_size(value) > f.text_size),
            do: throw(:invalid_value)
       end
@@ -3919,12 +3924,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_object(%{json_array: true, fields: [field]} = desc, value, depth, _label) do
-    validate_record(desc, value)
+    validate_record(desc, value, &String.valid?/1)
     json_field(field, Map.get(value, field.name, field.default), depth)
   end
 
   defp json_object(desc, value, depth, label) do
-    validate_record(desc, value)
+    validate_record(desc, value, &String.valid?/1)
     value = Map.merge(defaults(desc), value)
 
     # an absent optional writes no key: presence is the key (§2.3, §16.2)
@@ -4020,7 +4025,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     entry_desc = Map.fetch!(@tables, f.elem)
     value_field = entry_desc.fields |> Enum.at(1)
     pairs = map_entries(f, values)
-    Enum.each(pairs, &validate_record(entry_desc, &1))
+    Enum.each(pairs, fn pair -> validate_record(entry_desc, pair, &String.valid?/1) end)
 
     if pairs == [] do
       "{}"
