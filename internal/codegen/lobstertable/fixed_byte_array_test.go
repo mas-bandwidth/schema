@@ -24,7 +24,7 @@ fixed table Row {
     nested Leaf
     optional ?Leaf
     choice Choice
-    ranged [2]uint8 | min = 1, max = 200
+    ranged [2]uint8 | min = 0, max = 200
 }
 `)
 	files, err := lobster.Generate(u)
