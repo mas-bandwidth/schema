@@ -1,0 +1,26 @@
+// Variable report reader copied from test/tables/A2.schema.
+// The field vocabulary is unchanged; the variable root admits the historical
+// body encoding so each report tests evolution or payload refusal directly.
+// Any invalid known field refuses the complete read.
+package reportarms
+
+type Body
+{
+    n uint32
+}
+
+union Value
+{
+    a int64
+    b float32
+    c string(8)
+    d Body
+    e Body
+}
+
+table Root
+{
+    id    uint32
+    value Value
+    tail  uint32
+}

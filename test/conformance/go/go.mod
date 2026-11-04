@@ -146,3 +146,23 @@ replace featurewitnesses => ../../../build/tables-generated-go/featurewitnesses
 require tblframe v0.0.0
 
 replace tblframe => ../../../build/tables-generated-go/framing
+
+require reportmessages v0.0.0
+
+replace reportmessages => ../../../build/tables-generated-go/reportmessages
+
+require reportarms v0.0.0
+
+replace reportarms => ../../../build/tables-generated-go/reportarms
+
+require reportscalars v0.0.0
+
+replace reportscalars => ../../../build/tables-generated-go/reportscalars
+
+require reportkeyed1 v0.0.0
+
+replace reportkeyed1 => ../../../build/tables-generated-go/reportkeyed1
+
+require reportkeyed2 v0.0.0
+
+replace reportkeyed2 => ../../../build/tables-generated-go/reportkeyed2

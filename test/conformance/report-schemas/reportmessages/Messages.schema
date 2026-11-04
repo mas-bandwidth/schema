@@ -1,0 +1,124 @@
+// Variable report reader copied from tables/messages/Messages.schema.
+// The field vocabulary is unchanged; the variable root admits the historical
+// body encoding so each report tests evolution or payload refusal directly.
+// Any invalid known field refuses the complete read.
+package reportmessages
+
+const MaxPath = 64
+
+enum Mode { Read, Write }
+
+flags Capabilities { Trace, Verbose }
+
+// a type beside the tables: a type arm and a table arm are one framing
+type Cursor
+{
+    line   uint32
+    column uint32
+}
+
+type Ping
+{
+    nonce uint32
+}
+
+// depth three: the origin of an insert
+table User
+{
+    name string(16)
+}
+
+table Script
+{
+    path string(MaxPath)
+    line uint32
+}
+
+union Origin
+{
+    user   User
+    script Script
+    pid    uint32     | min = 0, max = 1000
+    note   string(24)
+}
+
+// depth two: an edit's body
+table Selection
+{
+    start Cursor
+    stop  Cursor | was = "end"
+}
+
+table InsertText
+{
+    at      Cursor
+    text    string(32)
+    origin  Origin
+    origins [..2]Origin
+    modes   ?[..2]Mode
+}
+
+table RemoveText
+{
+    span Selection
+}
+
+union EditBody
+{
+    insert InsertText
+    remove RemoveText
+    tally  int32       | min = 0, max = 100, was = "count"
+    marks  [..3]uint16
+    blob   bytes(4)
+    mode   Mode
+}
+
+table Edit
+{
+    revision uint32
+    body     EditBody
+}
+
+// depth one: the message set
+table OpenDocument
+{
+    path   string(MaxPath)
+    mode   Mode = Read
+    cursor Cursor
+}
+
+table SaveDocument
+{
+    path  string(MaxPath)
+    force bool
+}
+
+table Transaction
+{
+    reason      string(16)
+    edits       [..3]Edit
+    pending     [2]EditBody
+    checkpoints ?[2]uint32
+    snapshots   ?[2]Selection
+}
+
+union ToolBody
+{
+    open     OpenDocument
+    save     SaveDocument
+    transact Transaction
+    ping     Ping
+    caps     Capabilities
+    spans    [2]int32
+    origin   Origin
+    ack
+}
+
+table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+    history  [..2]ToolBody
+    trace    ?[..3]Script
+    marks    ?[2]Mode
+}

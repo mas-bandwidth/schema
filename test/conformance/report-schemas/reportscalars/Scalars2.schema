@@ -1,0 +1,43 @@
+// Variable report reader copied from test/tables/Scalars2.schema.
+// The field vocabulary is unchanged; the variable root admits the historical
+// body encoding so each report tests evolution or payload refusal directly.
+// Any invalid known field refuses the complete read.
+package reportscalars
+
+const MaxWorldUnits = 30000
+
+enum Axis { X, Y, Z }
+
+type Pose
+{
+    x       fixed(48, 16) = 0.5 | min = -MaxWorldUnits, max = MaxWorldUnits
+    y       fixed(48, 16)       | min = -MaxWorldUnits, max = MaxWorldUnits
+    heading ufixed(16, 16)      | min = 0, max = 360
+}
+
+table SimState
+{
+    tilt     fixed(4, 4)    | min = -8, max = 7
+    angle    int32          | min = -180, max = 180
+    position fixed(48, 16)  | min = -1000, max = 1000
+    reach    fixed(112, 16) | min = -1000000, max = 1000000
+
+    ratio  ufixed(4, 4)    | min = 0, max = 15
+    speed  ufixed(16, 16)  | min = 0, max = 10
+    span   ufixed(48, 16)  | min = 0, max = 281474976710655
+    mass   ufixed(112, 16) | min = 0, max = 2000000
+    frames ufixed(32, 0)   | min = 0, max = 4294967295
+
+    flux   int64         | min = -5000000000, max = 5000000000
+    energy int128 = -250 | min = -5000000000, max = 5000000000
+
+    scale fixed(16, 16) = 1.0 | min = -8, max = 8
+
+    samples [3]fixed(16, 16)    | min = -8, max = 8
+    weights [..4]ufixed(8, 8)   | min = 0, max = 100
+    axes    [Axis]fixed(32, 32) | min = -100, max = 100
+    seeds   [..2]uint128
+
+    pose  Pose
+    spawn ?Pose
+}

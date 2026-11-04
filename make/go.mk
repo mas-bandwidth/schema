@@ -149,7 +149,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/Framing.schema test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
+build/tables-generated-go/.stamp: bin/schema make/go.mk $(wildcard test/conformance/report-schemas/*/*.schema) test/tables/Framing.schema test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema $(wildcard examples-wide/*.schema) tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-go
 	./bin/schema generate --lang go --out build/tables-generated-go/examples tables/examples
 	# The pointer corpus exercises the wire, region and cook read surfaces.
@@ -174,6 +174,16 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/Framing.sche
 	./bin/schema generate --lang go --out build/tables-generated-go/a2 test/tables/A2.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/k1 test/tables/K1.schema
 	./bin/schema generate --lang go --out build/tables-generated-go/k2 test/tables/K2.schema
+	./bin/schema generate --lang go --out build/tables-generated-go/reportmessages test/conformance/report-schemas/reportmessages
+	$(call go_table_module,reportmessages,reportmessages)
+	./bin/schema generate --lang go --out build/tables-generated-go/reportarms test/conformance/report-schemas/reportarms
+	$(call go_table_module,reportarms,reportarms)
+	./bin/schema generate --lang go --out build/tables-generated-go/reportscalars test/conformance/report-schemas/reportscalars
+	$(call go_table_module,reportscalars,reportscalars)
+	./bin/schema generate --lang go --out build/tables-generated-go/reportkeyed1 test/conformance/report-schemas/reportkeyed1
+	$(call go_table_module,reportkeyed1,reportkeyed1)
+	./bin/schema generate --lang go --out build/tables-generated-go/reportkeyed2 test/conformance/report-schemas/reportkeyed2
+	$(call go_table_module,reportkeyed2,reportkeyed2)
 	./bin/schema generate --lang go --out build/tables-generated-go/framing test/tables/Framing.schema
 	$(call go_table_module,framing,tblframe)
 	./bin/schema generate --lang go --out build/tables-generated-go/r1 test/tables/R1.schema
