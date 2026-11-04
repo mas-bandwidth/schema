@@ -53,15 +53,17 @@ func generateViewFiles(u *ir.Unit, closure map[string]bool, variable, targets ma
 	}
 	h.WriteString("\n#ifdef __cplusplus\nextern \"C\" {\n#endif\n")
 	h.WriteString(viewRecords)
-	g.emitTableResetDeclarations(v.outside)
+	if len(v.outside) > 0 {
+		g.emitTableResetDeclarations(v.outside)
+	}
 	for _, st := range v.outside {
 		g.emitTableReset(st)
 		g.pf("extern const TableTypeInfo %s;\n", g.sym(st.Name, "info"))
-		g.pf("static SCHEMA_UNUSED const TableTypeInfo * %s(void) { return &%s; }\n", g.api(st.Name, "table_type"), g.sym(st.Name, "info"))
+		g.pf("static SCHEMA_UNUSED const TableTypeInfo * %s( void ) { return &%s; }\n", g.api(st.Name, "table_type"), g.sym(st.Name, "info"))
 	}
 	h.WriteString(g.body.String())
 	g.body.Reset()
-	fmt.Fprintf(&h, "const UnitViewInfo * %s(void);\nstatic SCHEMA_UNUSED const UnitViewInfo * unit_view(void) { return %s(); }\n", g.sym("unit", "view"), g.sym("unit", "view"))
+	fmt.Fprintf(&h, "const UnitViewInfo * %s( void );\nstatic SCHEMA_UNUSED const UnitViewInfo * unit_view( void ) { return %s(); }\n", g.sym("unit", "view"), g.sym("unit", "view"))
 	h.WriteString("#ifdef __cplusplus\n}\n#endif\n#endif\n")
 	var c strings.Builder
 	c.WriteString(banner)
@@ -154,12 +156,18 @@ typedef struct UnitViewInfo
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const ViewType * types;
-    int32_t num_tables;     const ViewType * tables;
-    int32_t num_enums;      const ViewVocabulary * enums;
-    int32_t num_flags;      const ViewVocabulary * flags;
-    int32_t num_unions;     const ViewVocabulary * unions;
-    int32_t num_constants;  const ViewConstant * constants;
+    int32_t num_types;
+    const ViewType * types;
+    int32_t num_tables;
+    const ViewType * tables;
+    int32_t num_enums;
+    const ViewVocabulary * enums;
+    int32_t num_flags;
+    const ViewVocabulary * flags;
+    int32_t num_unions;
+    const ViewVocabulary * unions;
+    int32_t num_constants;
+    const ViewConstant * constants;
 } UnitViewInfo;
 
 `
@@ -169,7 +177,7 @@ typedef struct UnitViewInfo
 // process, ODR-safe, and no mutable state on the surface a caller sees.
 func (v *viewGen) emitRegistry(g *tableGen) {
 	u := v.unit
-	g.pf("const UnitViewInfo * %s(void)\n{\n", g.sym("unit", "view"))
+	g.pf("const UnitViewInfo * %s( void )\n{\n", g.sym("unit", "view"))
 
 	enums, flags, unions := v.vocabularies()
 	var enumRows, flagRows, unionRows []viewVocab
@@ -355,9 +363,9 @@ func constantIntValue(value *big.Int) string {
 	}
 	if value.IsInt64() {
 		if value.Int64() == -1<<63 {
-			return "(-INT64_C(9223372036854775807)-1)"
+			return "( -INT64_C( 9223372036854775807 ) - 1 )"
 		}
-		return "INT64_C(" + value.String() + ")"
+		return "INT64_C( " + value.String() + " )"
 	}
 	return fmt.Sprintf("(int64_t) 0x%016xull", value.Uint64())
 }

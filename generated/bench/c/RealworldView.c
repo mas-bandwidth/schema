@@ -134,7 +134,7 @@ static const realworld_table_field_info_t schema_realworld_real_packet_fields_[]
 
 const realworld_table_type_info_t schema_realworld_real_packet_info_ = { "RealPacket", (uint32_t) sizeof( realworld_real_packet_t ), 97, schema_realworld_real_packet_fields_, schema_realworld_real_packet_reset_raw_, REALWORLD_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const realworld_unit_view_info_t * schema_realworld_unit_view_(void)
+const realworld_unit_view_info_t * schema_realworld_unit_view_( void )
 {
     static const realworld_view_variant_t PacketMode_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, REALWORLD_TABLE_DOC_NONE, 0, NULL },

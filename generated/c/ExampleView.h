@@ -385,12 +385,18 @@ typedef struct example_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const example_view_type_t * types;
-    int32_t num_tables;     const example_view_type_t * tables;
-    int32_t num_enums;      const example_view_vocabulary_t * enums;
-    int32_t num_flags;      const example_view_vocabulary_t * flags;
-    int32_t num_unions;     const example_view_vocabulary_t * unions;
-    int32_t num_constants;  const example_view_constant_t * constants;
+    int32_t num_types;
+    const example_view_type_t * types;
+    int32_t num_tables;
+    const example_view_type_t * tables;
+    int32_t num_enums;
+    const example_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const example_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const example_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const example_view_constant_t * constants;
 } example_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -557,7 +563,7 @@ static SCHEMA_UNUSED void example_arm_align_reset( example_arm_align_t * value )
 static SCHEMA_UNUSED void schema_example_arm_align_reset_raw_( void * storage ) { example_arm_align_reset( (example_arm_align_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arm_align_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arm_align_table_type(void) { return &schema_example_arm_align_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arm_align_table_type( void ) { return &schema_example_arm_align_info_; }
 static SCHEMA_UNUSED void example_arm_array_reset( example_arm_array_t * value )
 {
     value->lead = 0;
@@ -571,7 +577,7 @@ static SCHEMA_UNUSED void example_arm_array_reset( example_arm_array_t * value )
 static SCHEMA_UNUSED void schema_example_arm_array_reset_raw_( void * storage ) { example_arm_array_reset( (example_arm_array_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arm_array_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arm_array_table_type(void) { return &schema_example_arm_array_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arm_array_table_type( void ) { return &schema_example_arm_array_info_; }
 static SCHEMA_UNUSED void example_arm_empty_reset( example_arm_empty_t * value )
 {
     value->lead = 0;
@@ -583,7 +589,7 @@ static SCHEMA_UNUSED void example_arm_empty_reset( example_arm_empty_t * value )
 static SCHEMA_UNUSED void schema_example_arm_empty_reset_raw_( void * storage ) { example_arm_empty_reset( (example_arm_empty_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arm_empty_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arm_empty_table_type(void) { return &schema_example_arm_empty_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arm_empty_table_type( void ) { return &schema_example_arm_empty_info_; }
 static SCHEMA_UNUSED void example_arms_agree_reset( example_arms_agree_t * value )
 {
     value->lead = 0;
@@ -596,7 +602,7 @@ static SCHEMA_UNUSED void example_arms_agree_reset( example_arms_agree_t * value
 static SCHEMA_UNUSED void schema_example_arms_agree_reset_raw_( void * storage ) { example_arms_agree_reset( (example_arms_agree_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arms_agree_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arms_agree_table_type(void) { return &schema_example_arms_agree_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arms_agree_table_type( void ) { return &schema_example_arms_agree_info_; }
 static SCHEMA_UNUSED void example_arms_disagree_reset( example_arms_disagree_t * value )
 {
     value->lead = 0;
@@ -609,7 +615,7 @@ static SCHEMA_UNUSED void example_arms_disagree_reset( example_arms_disagree_t *
 static SCHEMA_UNUSED void schema_example_arms_disagree_reset_raw_( void * storage ) { example_arms_disagree_reset( (example_arms_disagree_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arms_disagree_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arms_disagree_table_type(void) { return &schema_example_arms_disagree_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arms_disagree_table_type( void ) { return &schema_example_arms_disagree_info_; }
 static SCHEMA_UNUSED void example_arms_nested_reset( example_arms_nested_t * value )
 {
     value->lead = 0;
@@ -624,7 +630,7 @@ static SCHEMA_UNUSED void example_arms_nested_reset( example_arms_nested_t * val
 static SCHEMA_UNUSED void schema_example_arms_nested_reset_raw_( void * storage ) { example_arms_nested_reset( (example_arms_nested_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arms_nested_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arms_nested_table_type(void) { return &schema_example_arms_nested_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arms_nested_table_type( void ) { return &schema_example_arms_nested_info_; }
 static SCHEMA_UNUSED void example_arr_eleven_reset( example_arr_eleven_t * value )
 {
     example_eleven_reset( &value->items[0] );
@@ -634,7 +640,7 @@ static SCHEMA_UNUSED void example_arr_eleven_reset( example_arr_eleven_t * value
 static SCHEMA_UNUSED void schema_example_arr_eleven_reset_raw_( void * storage ) { example_arr_eleven_reset( (example_arr_eleven_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arr_eleven_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arr_eleven_table_type(void) { return &schema_example_arr_eleven_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arr_eleven_table_type( void ) { return &schema_example_arr_eleven_info_; }
 static SCHEMA_UNUSED void example_arr_nested_reset( example_arr_nested_t * value )
 {
     value->lead = 0;
@@ -647,7 +653,7 @@ static SCHEMA_UNUSED void example_arr_nested_reset( example_arr_nested_t * value
 static SCHEMA_UNUSED void schema_example_arr_nested_reset_raw_( void * storage ) { example_arr_nested_reset( (example_arr_nested_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arr_nested_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arr_nested_table_type(void) { return &schema_example_arr_nested_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arr_nested_table_type( void ) { return &schema_example_arr_nested_info_; }
 static SCHEMA_UNUSED void example_arr_tri3_reset( example_arr_tri3_t * value )
 {
     example_tri3_reset( &value->items[0] );
@@ -658,7 +664,7 @@ static SCHEMA_UNUSED void example_arr_tri3_reset( example_arr_tri3_t * value )
 static SCHEMA_UNUSED void schema_example_arr_tri3_reset_raw_( void * storage ) { example_arr_tri3_reset( (example_arr_tri3_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arr_tri3_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arr_tri3_table_type(void) { return &schema_example_arr_tri3_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arr_tri3_table_type( void ) { return &schema_example_arr_tri3_info_; }
 static SCHEMA_UNUSED void example_arr_uneven_reset( example_arr_uneven_t * value )
 {
     value->lead = 0;
@@ -671,7 +677,7 @@ static SCHEMA_UNUSED void example_arr_uneven_reset( example_arr_uneven_t * value
 static SCHEMA_UNUSED void schema_example_arr_uneven_reset_raw_( void * storage ) { example_arr_uneven_reset( (example_arr_uneven_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_arr_uneven_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_arr_uneven_table_type(void) { return &schema_example_arr_uneven_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_arr_uneven_table_type( void ) { return &schema_example_arr_uneven_info_; }
 static SCHEMA_UNUSED void example_block_reset( example_block_t * value )
 {
     memset( value->data, 0, sizeof( value->data ) );
@@ -681,7 +687,7 @@ static SCHEMA_UNUSED void example_block_reset( example_block_t * value )
 static SCHEMA_UNUSED void schema_example_block_reset_raw_( void * storage ) { example_block_reset( (example_block_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_block_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_block_table_type(void) { return &schema_example_block_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_block_table_type( void ) { return &schema_example_block_info_; }
 static SCHEMA_UNUSED void example_chat_reset( example_chat_t * value )
 {
     memset( value->text, 0, sizeof( value->text ) );
@@ -691,7 +697,7 @@ static SCHEMA_UNUSED void example_chat_reset( example_chat_t * value )
 static SCHEMA_UNUSED void schema_example_chat_reset_raw_( void * storage ) { example_chat_reset( (example_chat_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_chat_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_chat_table_type(void) { return &schema_example_chat_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_chat_table_type( void ) { return &schema_example_chat_info_; }
 static SCHEMA_UNUSED void example_compressed_probe_reset( example_compressed_probe_t * value )
 {
     value->boundary = 0.0f;
@@ -701,7 +707,7 @@ static SCHEMA_UNUSED void example_compressed_probe_reset( example_compressed_pro
 static SCHEMA_UNUSED void schema_example_compressed_probe_reset_raw_( void * storage ) { example_compressed_probe_reset( (example_compressed_probe_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_compressed_probe_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_compressed_probe_table_type(void) { return &schema_example_compressed_probe_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_compressed_probe_table_type( void ) { return &schema_example_compressed_probe_info_; }
 static SCHEMA_UNUSED void example_default_arm_reset( example_default_arm_t * value )
 {
     example_probe_config_reset( &value->entries[0] );
@@ -713,7 +719,7 @@ static SCHEMA_UNUSED void example_default_arm_reset( example_default_arm_t * val
 static SCHEMA_UNUSED void schema_example_default_arm_reset_raw_( void * storage ) { example_default_arm_reset( (example_default_arm_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_default_arm_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_default_arm_table_type(void) { return &schema_example_default_arm_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_default_arm_table_type( void ) { return &schema_example_default_arm_info_; }
 static SCHEMA_UNUSED void example_default_bulk_arm_reset( example_default_bulk_arm_t * value )
 {
     example_default_arm_reset( &value->payload );
@@ -724,7 +730,7 @@ static SCHEMA_UNUSED void example_default_bulk_arm_reset( example_default_bulk_a
 static SCHEMA_UNUSED void schema_example_default_bulk_arm_reset_raw_( void * storage ) { example_default_bulk_arm_reset( (example_default_bulk_arm_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_default_bulk_arm_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_default_bulk_arm_table_type(void) { return &schema_example_default_bulk_arm_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_default_bulk_arm_table_type( void ) { return &schema_example_default_bulk_arm_info_; }
 static SCHEMA_UNUSED void example_default_choice_packet_reset( example_default_choice_packet_t * value )
 {
     memset( &value->choice, 0, sizeof( value->choice ) );
@@ -733,7 +739,7 @@ static SCHEMA_UNUSED void example_default_choice_packet_reset( example_default_c
 static SCHEMA_UNUSED void schema_example_default_choice_packet_reset_raw_( void * storage ) { example_default_choice_packet_reset( (example_default_choice_packet_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_default_choice_packet_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_default_choice_packet_table_type(void) { return &schema_example_default_choice_packet_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_default_choice_packet_table_type( void ) { return &schema_example_default_choice_packet_info_; }
 static SCHEMA_UNUSED void example_eleven_reset( example_eleven_t * value )
 {
     value->a = 0;
@@ -743,7 +749,7 @@ static SCHEMA_UNUSED void example_eleven_reset( example_eleven_t * value )
 static SCHEMA_UNUSED void schema_example_eleven_reset_raw_( void * storage ) { example_eleven_reset( (example_eleven_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_eleven_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_eleven_table_type(void) { return &schema_example_eleven_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_eleven_table_type( void ) { return &schema_example_eleven_info_; }
 static SCHEMA_UNUSED void example_empty_a_reset( example_empty_a_t * value )
 {
     memset( value, 0, sizeof( *value ) );
@@ -752,7 +758,7 @@ static SCHEMA_UNUSED void example_empty_a_reset( example_empty_a_t * value )
 static SCHEMA_UNUSED void schema_example_empty_a_reset_raw_( void * storage ) { example_empty_a_reset( (example_empty_a_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_empty_a_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_empty_a_table_type(void) { return &schema_example_empty_a_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_empty_a_table_type( void ) { return &schema_example_empty_a_info_; }
 static SCHEMA_UNUSED void example_empty_b_reset( example_empty_b_t * value )
 {
     memset( value, 0, sizeof( *value ) );
@@ -761,7 +767,7 @@ static SCHEMA_UNUSED void example_empty_b_reset( example_empty_b_t * value )
 static SCHEMA_UNUSED void schema_example_empty_b_reset_raw_( void * storage ) { example_empty_b_reset( (example_empty_b_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_empty_b_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_empty_b_table_type(void) { return &schema_example_empty_b_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_empty_b_table_type( void ) { return &schema_example_empty_b_info_; }
 static SCHEMA_UNUSED void example_expression_probe_reset( example_expression_probe_t * value )
 {
     value->hardpoint_index = 0;
@@ -771,7 +777,7 @@ static SCHEMA_UNUSED void example_expression_probe_reset( example_expression_pro
 static SCHEMA_UNUSED void schema_example_expression_probe_reset_raw_( void * storage ) { example_expression_probe_reset( (example_expression_probe_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_expression_probe_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_expression_probe_table_type(void) { return &schema_example_expression_probe_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_expression_probe_table_type( void ) { return &schema_example_expression_probe_info_; }
 static SCHEMA_UNUSED void example_extreme_probe_reset( example_extreme_probe_t * value )
 {
     value->floor_bound = 0;
@@ -784,7 +790,7 @@ static SCHEMA_UNUSED void example_extreme_probe_reset( example_extreme_probe_t *
 static SCHEMA_UNUSED void schema_example_extreme_probe_reset_raw_( void * storage ) { example_extreme_probe_reset( (example_extreme_probe_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_extreme_probe_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_extreme_probe_table_type(void) { return &schema_example_extreme_probe_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_extreme_probe_table_type( void ) { return &schema_example_extreme_probe_info_; }
 static SCHEMA_UNUSED void example_extreme_row_reset( example_extreme_row_t * value )
 {
     value->clamped_floor = 0;
@@ -796,7 +802,7 @@ static SCHEMA_UNUSED void example_extreme_row_reset( example_extreme_row_t * val
 static SCHEMA_UNUSED void schema_example_extreme_row_reset_raw_( void * storage ) { example_extreme_row_reset( (example_extreme_row_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_extreme_row_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_extreme_row_table_type(void) { return &schema_example_extreme_row_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_extreme_row_table_type( void ) { return &schema_example_extreme_row_info_; }
 static SCHEMA_UNUSED void example_f13_reset( EXAMPLE_F13 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -805,7 +811,7 @@ static SCHEMA_UNUSED void example_f13_reset( EXAMPLE_F13 * value )
 static SCHEMA_UNUSED void schema_example_f13_reset_raw_( void * storage ) { example_f13_reset( (EXAMPLE_F13 *) storage ); }
 
 extern const example_table_type_info_t schema_example_f13_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_f13_table_type(void) { return &schema_example_f13_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_f13_table_type( void ) { return &schema_example_f13_info_; }
 static SCHEMA_UNUSED void example_handle_reset( example_handle_t * value )
 {
     value->object_id = 0;
@@ -815,7 +821,7 @@ static SCHEMA_UNUSED void example_handle_reset( example_handle_t * value )
 static SCHEMA_UNUSED void schema_example_handle_reset_raw_( void * storage ) { example_handle_reset( (example_handle_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_handle_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_handle_table_type(void) { return &schema_example_handle_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_handle_table_type( void ) { return &schema_example_handle_info_; }
 static SCHEMA_UNUSED void example_heartbeat_reset( example_heartbeat_t * value )
 {
     memset( value, 0, sizeof( *value ) );
@@ -824,7 +830,7 @@ static SCHEMA_UNUSED void example_heartbeat_reset( example_heartbeat_t * value )
 static SCHEMA_UNUSED void schema_example_heartbeat_reset_raw_( void * storage ) { example_heartbeat_reset( (example_heartbeat_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_heartbeat_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_heartbeat_table_type(void) { return &schema_example_heartbeat_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_heartbeat_table_type( void ) { return &schema_example_heartbeat_info_; }
 static SCHEMA_UNUSED void example_holds_empty_union_reset( example_holds_empty_union_t * value )
 {
     value->lead = 0;
@@ -835,7 +841,7 @@ static SCHEMA_UNUSED void example_holds_empty_union_reset( example_holds_empty_u
 static SCHEMA_UNUSED void schema_example_holds_empty_union_reset_raw_( void * storage ) { example_holds_empty_union_reset( (example_holds_empty_union_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_holds_empty_union_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_holds_empty_union_table_type(void) { return &schema_example_holds_empty_union_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_holds_empty_union_table_type( void ) { return &schema_example_holds_empty_union_info_; }
 static SCHEMA_UNUSED void example_holds_uneven_reset( example_holds_uneven_t * value )
 {
     value->lead = 0;
@@ -846,7 +852,7 @@ static SCHEMA_UNUSED void example_holds_uneven_reset( example_holds_uneven_t * v
 static SCHEMA_UNUSED void schema_example_holds_uneven_reset_raw_( void * storage ) { example_holds_uneven_reset( (example_holds_uneven_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_holds_uneven_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_holds_uneven_table_type(void) { return &schema_example_holds_uneven_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_holds_uneven_table_type( void ) { return &schema_example_holds_uneven_info_; }
 static SCHEMA_UNUSED void example_input_reset( example_input_t * value )
 {
     value->stick_x = 0.0f;
@@ -867,7 +873,7 @@ static SCHEMA_UNUSED void example_input_reset( example_input_t * value )
 static SCHEMA_UNUSED void schema_example_input_reset_raw_( void * storage ) { example_input_reset( (example_input_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_input_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_input_table_type(void) { return &schema_example_input_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_input_table_type( void ) { return &schema_example_input_info_; }
 static SCHEMA_UNUSED void example_input_packet_reset( example_input_packet_t * value )
 {
     value->synchronize_sequence = 0;
@@ -881,7 +887,7 @@ static SCHEMA_UNUSED void example_input_packet_reset( example_input_packet_t * v
 static SCHEMA_UNUSED void schema_example_input_packet_reset_raw_( void * storage ) { example_input_packet_reset( (example_input_packet_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_input_packet_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_input_packet_table_type(void) { return &schema_example_input_packet_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_input_packet_table_type( void ) { return &schema_example_input_packet_info_; }
 static SCHEMA_UNUSED void example_narrow_reset( example_narrow_t * value )
 {
     value->n = 0;
@@ -890,7 +896,7 @@ static SCHEMA_UNUSED void example_narrow_reset( example_narrow_t * value )
 static SCHEMA_UNUSED void schema_example_narrow_reset_raw_( void * storage ) { example_narrow_reset( (example_narrow_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_narrow_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_narrow_table_type(void) { return &schema_example_narrow_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_narrow_table_type( void ) { return &schema_example_narrow_info_; }
 static SCHEMA_UNUSED void example_probe_array_reset( example_probe_array_t * value )
 {
     example_probe_sample_reset( &value->samples[0] );
@@ -901,7 +907,7 @@ static SCHEMA_UNUSED void example_probe_array_reset( example_probe_array_t * val
 static SCHEMA_UNUSED void schema_example_probe_array_reset_raw_( void * storage ) { example_probe_array_reset( (example_probe_array_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_array_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_array_table_type(void) { return &schema_example_probe_array_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_array_table_type( void ) { return &schema_example_probe_array_info_; }
 static SCHEMA_UNUSED void example_probe_bits_reset( example_probe_bits_t * value )
 {
     value->small = 0;
@@ -914,7 +920,7 @@ static SCHEMA_UNUSED void example_probe_bits_reset( example_probe_bits_t * value
 static SCHEMA_UNUSED void schema_example_probe_bits_reset_raw_( void * storage ) { example_probe_bits_reset( (example_probe_bits_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_bits_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_bits_table_type(void) { return &schema_example_probe_bits_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_bits_table_type( void ) { return &schema_example_probe_bits_info_; }
 static SCHEMA_UNUSED void example_probe_collider_reset( example_probe_collider_t * value )
 {
     value->armor = 0;
@@ -928,7 +934,7 @@ static SCHEMA_UNUSED void example_probe_collider_reset( example_probe_collider_t
 static SCHEMA_UNUSED void schema_example_probe_collider_reset_raw_( void * storage ) { example_probe_collider_reset( (example_probe_collider_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_collider_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_collider_table_type(void) { return &schema_example_probe_collider_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_collider_table_type( void ) { return &schema_example_probe_collider_info_; }
 static SCHEMA_UNUSED void example_probe_config_reset( example_probe_config_t * value )
 {
     value->retries = -1;
@@ -938,7 +944,7 @@ static SCHEMA_UNUSED void example_probe_config_reset( example_probe_config_t * v
 static SCHEMA_UNUSED void schema_example_probe_config_reset_raw_( void * storage ) { example_probe_config_reset( (example_probe_config_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_config_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_config_table_type(void) { return &schema_example_probe_config_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_config_table_type( void ) { return &schema_example_probe_config_info_; }
 static SCHEMA_UNUSED void example_probe_header_reset( example_probe_header_t * value )
 {
     value->version = 0;
@@ -948,7 +954,7 @@ static SCHEMA_UNUSED void example_probe_header_reset( example_probe_header_t * v
 static SCHEMA_UNUSED void schema_example_probe_header_reset_raw_( void * storage ) { example_probe_header_reset( (example_probe_header_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_header_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_header_table_type(void) { return &schema_example_probe_header_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_header_table_type( void ) { return &schema_example_probe_header_info_; }
 static SCHEMA_UNUSED void example_probe_report_reset( example_probe_report_t * value )
 {
     example_probe_header_reset( &value->header );
@@ -959,7 +965,7 @@ static SCHEMA_UNUSED void example_probe_report_reset( example_probe_report_t * v
 static SCHEMA_UNUSED void schema_example_probe_report_reset_raw_( void * storage ) { example_probe_report_reset( (example_probe_report_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_report_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_report_table_type(void) { return &schema_example_probe_report_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_report_table_type( void ) { return &schema_example_probe_report_info_; }
 static SCHEMA_UNUSED void example_probe_ring_reset( example_probe_ring_t * value )
 {
     value->radius = 0;
@@ -968,7 +974,7 @@ static SCHEMA_UNUSED void example_probe_ring_reset( example_probe_ring_t * value
 static SCHEMA_UNUSED void schema_example_probe_ring_reset_raw_( void * storage ) { example_probe_ring_reset( (example_probe_ring_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_ring_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_ring_table_type(void) { return &schema_example_probe_ring_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_ring_table_type( void ) { return &schema_example_probe_ring_info_; }
 static SCHEMA_UNUSED void example_probe_sample_reset( example_probe_sample_t * value )
 {
     value->active = 1;
@@ -986,7 +992,7 @@ static SCHEMA_UNUSED void example_probe_sample_reset( example_probe_sample_t * v
 static SCHEMA_UNUSED void schema_example_probe_sample_reset_raw_( void * storage ) { example_probe_sample_reset( (example_probe_sample_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_sample_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_sample_table_type(void) { return &schema_example_probe_sample_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_sample_table_type( void ) { return &schema_example_probe_sample_info_; }
 static SCHEMA_UNUSED void example_probe_slab_reset( example_probe_slab_t * value )
 {
     value->width = 0;
@@ -996,7 +1002,7 @@ static SCHEMA_UNUSED void example_probe_slab_reset( example_probe_slab_t * value
 static SCHEMA_UNUSED void schema_example_probe_slab_reset_raw_( void * storage ) { example_probe_slab_reset( (example_probe_slab_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_probe_slab_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_probe_slab_table_type(void) { return &schema_example_probe_slab_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_probe_slab_table_type( void ) { return &schema_example_probe_slab_info_; }
 static SCHEMA_UNUSED void example_quantized_position_reset( example_quantized_position_t * value )
 {
     value->x = 0;
@@ -1007,7 +1013,7 @@ static SCHEMA_UNUSED void example_quantized_position_reset( example_quantized_po
 static SCHEMA_UNUSED void schema_example_quantized_position_reset_raw_( void * storage ) { example_quantized_position_reset( (example_quantized_position_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_quantized_position_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_quantized_position_table_type(void) { return &schema_example_quantized_position_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_quantized_position_table_type( void ) { return &schema_example_quantized_position_info_; }
 static SCHEMA_UNUSED void example_quantized_rotation_reset( example_quantized_rotation_t * value )
 {
     value->x = 0;
@@ -1019,7 +1025,7 @@ static SCHEMA_UNUSED void example_quantized_rotation_reset( example_quantized_ro
 static SCHEMA_UNUSED void schema_example_quantized_rotation_reset_raw_( void * storage ) { example_quantized_rotation_reset( (example_quantized_rotation_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_quantized_rotation_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_quantized_rotation_table_type(void) { return &schema_example_quantized_rotation_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_quantized_rotation_table_type( void ) { return &schema_example_quantized_rotation_info_; }
 static SCHEMA_UNUSED void example_quantized_velocity_reset( example_quantized_velocity_t * value )
 {
     value->x = 0;
@@ -1030,7 +1036,7 @@ static SCHEMA_UNUSED void example_quantized_velocity_reset( example_quantized_ve
 static SCHEMA_UNUSED void schema_example_quantized_velocity_reset_raw_( void * storage ) { example_quantized_velocity_reset( (example_quantized_velocity_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_quantized_velocity_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_quantized_velocity_table_type(void) { return &schema_example_quantized_velocity_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_quantized_velocity_table_type( void ) { return &schema_example_quantized_velocity_info_; }
 static SCHEMA_UNUSED void example_quat_reset( example_quat_t * value )
 {
     value->x = 0.0;
@@ -1042,7 +1048,7 @@ static SCHEMA_UNUSED void example_quat_reset( example_quat_t * value )
 static SCHEMA_UNUSED void schema_example_quat_reset_raw_( void * storage ) { example_quat_reset( (example_quat_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_quat_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_quat_table_type(void) { return &schema_example_quat_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_quat_table_type( void ) { return &schema_example_quat_info_; }
 static SCHEMA_UNUSED void example_regain_after_align_reset( example_regain_after_align_t * value )
 {
     value->lead = 0;
@@ -1059,7 +1065,7 @@ static SCHEMA_UNUSED void example_regain_after_align_reset( example_regain_after
 static SCHEMA_UNUSED void schema_example_regain_after_align_reset_raw_( void * storage ) { example_regain_after_align_reset( (example_regain_after_align_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_regain_after_align_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_regain_after_align_table_type(void) { return &schema_example_regain_after_align_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_regain_after_align_table_type( void ) { return &schema_example_regain_after_align_info_; }
 static SCHEMA_UNUSED void example_render_block_reset( example_render_block_t * value )
 {
     value->worker_index = 0;
@@ -1072,7 +1078,7 @@ static SCHEMA_UNUSED void example_render_block_reset( example_render_block_t * v
 static SCHEMA_UNUSED void schema_example_render_block_reset_raw_( void * storage ) { example_render_block_reset( (example_render_block_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_render_block_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_render_block_table_type(void) { return &schema_example_render_block_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_render_block_table_type( void ) { return &schema_example_render_block_info_; }
 static SCHEMA_UNUSED void example_render_sprite_reset( example_render_sprite_t * value )
 {
     value->sort_key = 0;
@@ -1085,7 +1091,7 @@ static SCHEMA_UNUSED void example_render_sprite_reset( example_render_sprite_t *
 static SCHEMA_UNUSED void schema_example_render_sprite_reset_raw_( void * storage ) { example_render_sprite_reset( (example_render_sprite_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_render_sprite_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_render_sprite_table_type(void) { return &schema_example_render_sprite_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_render_sprite_table_type( void ) { return &schema_example_render_sprite_info_; }
 static SCHEMA_UNUSED void example_rigid_body_reset( example_rigid_body_t * value )
 {
     example_vec3_reset( &value->position );
@@ -1098,7 +1104,7 @@ static SCHEMA_UNUSED void example_rigid_body_reset( example_rigid_body_t * value
 static SCHEMA_UNUSED void schema_example_rigid_body_reset_raw_( void * storage ) { example_rigid_body_reset( (example_rigid_body_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_rigid_body_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_rigid_body_table_type(void) { return &schema_example_rigid_body_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_rigid_body_table_type( void ) { return &schema_example_rigid_body_info_; }
 static SCHEMA_UNUSED void example_ship_create_reset( example_ship_create_t * value )
 {
     value->ship_type = EXAMPLE_SHIP_TYPE_NONE;
@@ -1116,7 +1122,7 @@ static SCHEMA_UNUSED void example_ship_create_reset( example_ship_create_t * val
 static SCHEMA_UNUSED void schema_example_ship_create_reset_raw_( void * storage ) { example_ship_create_reset( (example_ship_create_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_ship_create_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_ship_create_table_type(void) { return &schema_example_ship_create_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_ship_create_table_type( void ) { return &schema_example_ship_create_info_; }
 static SCHEMA_UNUSED void example_sole_reset( example_sole_t * value )
 {
     value->only = 0;
@@ -1125,7 +1131,7 @@ static SCHEMA_UNUSED void example_sole_reset( example_sole_t * value )
 static SCHEMA_UNUSED void schema_example_sole_reset_raw_( void * storage ) { example_sole_reset( (example_sole_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_sole_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_sole_table_type(void) { return &schema_example_sole_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_sole_table_type( void ) { return &schema_example_sole_info_; }
 static SCHEMA_UNUSED void example_span_chunk_reset( example_span_chunk_t * value )
 {
     memset( value->values, 0, sizeof( value->values ) );
@@ -1134,7 +1140,7 @@ static SCHEMA_UNUSED void example_span_chunk_reset( example_span_chunk_t * value
 static SCHEMA_UNUSED void schema_example_span_chunk_reset_raw_( void * storage ) { example_span_chunk_reset( (example_span_chunk_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_chunk_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_chunk_table_type(void) { return &schema_example_span_chunk_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_chunk_table_type( void ) { return &schema_example_span_chunk_info_; }
 static SCHEMA_UNUSED void example_span_f64_reset( example_span_f64_t * value )
 {
     memset( value->values, 0, sizeof( value->values ) );
@@ -1143,7 +1149,7 @@ static SCHEMA_UNUSED void example_span_f64_reset( example_span_f64_t * value )
 static SCHEMA_UNUSED void schema_example_span_f64_reset_raw_( void * storage ) { example_span_f64_reset( (example_span_f64_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_f64_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_f64_table_type(void) { return &schema_example_span_f64_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_f64_table_type( void ) { return &schema_example_span_f64_info_; }
 static SCHEMA_UNUSED void example_span_i64_reset( example_span_i64_t * value )
 {
     memset( value->values, 0, sizeof( value->values ) );
@@ -1152,7 +1158,7 @@ static SCHEMA_UNUSED void example_span_i64_reset( example_span_i64_t * value )
 static SCHEMA_UNUSED void schema_example_span_i64_reset_raw_( void * storage ) { example_span_i64_reset( (example_span_i64_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_i64_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_i64_table_type(void) { return &schema_example_span_i64_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_i64_table_type( void ) { return &schema_example_span_i64_info_; }
 static SCHEMA_UNUSED void example_span_one_reset( example_span_one_t * value )
 {
     memset( value->values, 0, sizeof( value->values ) );
@@ -1161,7 +1167,7 @@ static SCHEMA_UNUSED void example_span_one_reset( example_span_one_t * value )
 static SCHEMA_UNUSED void schema_example_span_one_reset_raw_( void * storage ) { example_span_one_reset( (example_span_one_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_one_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_one_table_type(void) { return &schema_example_span_one_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_one_table_type( void ) { return &schema_example_span_one_info_; }
 static SCHEMA_UNUSED void example_span_tail_reset( example_span_tail_t * value )
 {
     memset( value->values, 0, sizeof( value->values ) );
@@ -1171,7 +1177,7 @@ static SCHEMA_UNUSED void example_span_tail_reset( example_span_tail_t * value )
 static SCHEMA_UNUSED void schema_example_span_tail_reset_raw_( void * storage ) { example_span_tail_reset( (example_span_tail_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_tail_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_tail_table_type(void) { return &schema_example_span_tail_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_tail_table_type( void ) { return &schema_example_span_tail_info_; }
 static SCHEMA_UNUSED void example_span_twice_reset( example_span_twice_t * value )
 {
     memset( value->a, 0, sizeof( value->a ) );
@@ -1181,7 +1187,7 @@ static SCHEMA_UNUSED void example_span_twice_reset( example_span_twice_t * value
 static SCHEMA_UNUSED void schema_example_span_twice_reset_raw_( void * storage ) { example_span_twice_reset( (example_span_twice_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_twice_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_twice_table_type(void) { return &schema_example_span_twice_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_twice_table_type( void ) { return &schema_example_span_twice_info_; }
 static SCHEMA_UNUSED void example_span_u64_reset( example_span_u64_t * value )
 {
     memset( value->values, 0, sizeof( value->values ) );
@@ -1190,7 +1196,7 @@ static SCHEMA_UNUSED void example_span_u64_reset( example_span_u64_t * value )
 static SCHEMA_UNUSED void schema_example_span_u64_reset_raw_( void * storage ) { example_span_u64_reset( (example_span_u64_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_span_u64_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_span_u64_table_type(void) { return &schema_example_span_u64_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_span_u64_table_type( void ) { return &schema_example_span_u64_info_; }
 static SCHEMA_UNUSED void example_strs_reset( example_strs_t * value )
 {
     value->lead = 0;
@@ -1204,7 +1210,7 @@ static SCHEMA_UNUSED void example_strs_reset( example_strs_t * value )
 static SCHEMA_UNUSED void schema_example_strs_reset_raw_( void * storage ) { example_strs_reset( (example_strs_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_strs_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_strs_table_type(void) { return &schema_example_strs_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_strs_table_type( void ) { return &schema_example_strs_info_; }
 static SCHEMA_UNUSED void example_test_reset( example_test_t * value )
 {
     value->test_a = 0;
@@ -1216,7 +1222,7 @@ static SCHEMA_UNUSED void example_test_reset( example_test_t * value )
 static SCHEMA_UNUSED void schema_example_test_reset_raw_( void * storage ) { example_test_reset( (example_test_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_test_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_test_table_type(void) { return &schema_example_test_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_test_table_type( void ) { return &schema_example_test_info_; }
 static SCHEMA_UNUSED void example_test_data_reset( example_test_data_t * value )
 {
     value->a = 0;
@@ -1247,7 +1253,7 @@ static SCHEMA_UNUSED void example_test_data_reset( example_test_data_t * value )
 static SCHEMA_UNUSED void schema_example_test_data_reset_raw_( void * storage ) { example_test_data_reset( (example_test_data_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_test_data_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_test_data_table_type(void) { return &schema_example_test_data_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_test_data_table_type( void ) { return &schema_example_test_data_info_; }
 static SCHEMA_UNUSED void example_tri3_reset( example_tri3_t * value )
 {
     value->a = 0;
@@ -1257,7 +1263,7 @@ static SCHEMA_UNUSED void example_tri3_reset( example_tri3_t * value )
 static SCHEMA_UNUSED void schema_example_tri3_reset_raw_( void * storage ) { example_tri3_reset( (example_tri3_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_tri3_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_tri3_table_type(void) { return &schema_example_tri3_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_tri3_table_type( void ) { return &schema_example_tri3_info_; }
 static SCHEMA_UNUSED void example_trio_reset( example_trio_t * value )
 {
     value->a = 0;
@@ -1268,7 +1274,7 @@ static SCHEMA_UNUSED void example_trio_reset( example_trio_t * value )
 static SCHEMA_UNUSED void schema_example_trio_reset_raw_( void * storage ) { example_trio_reset( (example_trio_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_trio_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_trio_table_type(void) { return &schema_example_trio_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_trio_table_type( void ) { return &schema_example_trio_info_; }
 static SCHEMA_UNUSED void example_trio_first_reset( example_trio_first_t * value )
 {
     example_trio_reset( &value->inner );
@@ -1278,7 +1284,7 @@ static SCHEMA_UNUSED void example_trio_first_reset( example_trio_first_t * value
 static SCHEMA_UNUSED void schema_example_trio_first_reset_raw_( void * storage ) { example_trio_first_reset( (example_trio_first_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_trio_first_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_trio_first_table_type(void) { return &schema_example_trio_first_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_trio_first_table_type( void ) { return &schema_example_trio_first_info_; }
 static SCHEMA_UNUSED void example_trio_sole_reset( example_trio_sole_t * value )
 {
     example_trio_reset( &value->inner );
@@ -1287,7 +1293,7 @@ static SCHEMA_UNUSED void example_trio_sole_reset( example_trio_sole_t * value )
 static SCHEMA_UNUSED void schema_example_trio_sole_reset_raw_( void * storage ) { example_trio_sole_reset( (example_trio_sole_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_trio_sole_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_trio_sole_table_type(void) { return &schema_example_trio_sole_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_trio_sole_table_type( void ) { return &schema_example_trio_sole_info_; }
 static SCHEMA_UNUSED void example_trio_straddle_reset( example_trio_straddle_t * value )
 {
     value->pad0 = 0;
@@ -1302,7 +1308,7 @@ static SCHEMA_UNUSED void example_trio_straddle_reset( example_trio_straddle_t *
 static SCHEMA_UNUSED void schema_example_trio_straddle_reset_raw_( void * storage ) { example_trio_straddle_reset( (example_trio_straddle_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_trio_straddle_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_trio_straddle_table_type(void) { return &schema_example_trio_straddle_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_trio_straddle_table_type( void ) { return &schema_example_trio_straddle_info_; }
 static SCHEMA_UNUSED void example_vec2_reset( example_vec2_t * value )
 {
     value->x = 0.0;
@@ -1312,7 +1318,7 @@ static SCHEMA_UNUSED void example_vec2_reset( example_vec2_t * value )
 static SCHEMA_UNUSED void schema_example_vec2_reset_raw_( void * storage ) { example_vec2_reset( (example_vec2_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_vec2_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_vec2_table_type(void) { return &schema_example_vec2_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_vec2_table_type( void ) { return &schema_example_vec2_info_; }
 static SCHEMA_UNUSED void example_vec3_reset( example_vec3_t * value )
 {
     value->x = 0.0;
@@ -1323,7 +1329,7 @@ static SCHEMA_UNUSED void example_vec3_reset( example_vec3_t * value )
 static SCHEMA_UNUSED void schema_example_vec3_reset_raw_( void * storage ) { example_vec3_reset( (example_vec3_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_vec3_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_vec3_table_type(void) { return &schema_example_vec3_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_vec3_table_type( void ) { return &schema_example_vec3_info_; }
 static SCHEMA_UNUSED void example_vec3_sole_reset( example_vec3_sole_t * value )
 {
     example_vec3_reset( &value->v );
@@ -1332,7 +1338,7 @@ static SCHEMA_UNUSED void example_vec3_sole_reset( example_vec3_sole_t * value )
 static SCHEMA_UNUSED void schema_example_vec3_sole_reset_raw_( void * storage ) { example_vec3_sole_reset( (example_vec3_sole_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_vec3_sole_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_vec3_sole_table_type(void) { return &schema_example_vec3_sole_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_vec3_sole_table_type( void ) { return &schema_example_vec3_sole_info_; }
 static SCHEMA_UNUSED void example_w1_reset( EXAMPLE_W1 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -1342,7 +1348,7 @@ static SCHEMA_UNUSED void example_w1_reset( EXAMPLE_W1 * value )
 static SCHEMA_UNUSED void schema_example_w1_reset_raw_( void * storage ) { example_w1_reset( (EXAMPLE_W1 *) storage ); }
 
 extern const example_table_type_info_t schema_example_w1_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_w1_table_type(void) { return &schema_example_w1_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_w1_table_type( void ) { return &schema_example_w1_info_; }
 static SCHEMA_UNUSED void example_w13_reset( EXAMPLE_W13 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -1352,7 +1358,7 @@ static SCHEMA_UNUSED void example_w13_reset( EXAMPLE_W13 * value )
 static SCHEMA_UNUSED void schema_example_w13_reset_raw_( void * storage ) { example_w13_reset( (EXAMPLE_W13 *) storage ); }
 
 extern const example_table_type_info_t schema_example_w13_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_w13_table_type(void) { return &schema_example_w13_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_w13_table_type( void ) { return &schema_example_w13_info_; }
 static SCHEMA_UNUSED void example_w17_reset( EXAMPLE_W17 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -1362,7 +1368,7 @@ static SCHEMA_UNUSED void example_w17_reset( EXAMPLE_W17 * value )
 static SCHEMA_UNUSED void schema_example_w17_reset_raw_( void * storage ) { example_w17_reset( (EXAMPLE_W17 *) storage ); }
 
 extern const example_table_type_info_t schema_example_w17_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_w17_table_type(void) { return &schema_example_w17_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_w17_table_type( void ) { return &schema_example_w17_info_; }
 static SCHEMA_UNUSED void example_w26_reset( EXAMPLE_W26 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -1372,7 +1378,7 @@ static SCHEMA_UNUSED void example_w26_reset( EXAMPLE_W26 * value )
 static SCHEMA_UNUSED void schema_example_w26_reset_raw_( void * storage ) { example_w26_reset( (EXAMPLE_W26 *) storage ); }
 
 extern const example_table_type_info_t schema_example_w26_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_w26_table_type(void) { return &schema_example_w26_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_w26_table_type( void ) { return &schema_example_w26_info_; }
 static SCHEMA_UNUSED void example_w50_reset( EXAMPLE_W50 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -1382,7 +1388,7 @@ static SCHEMA_UNUSED void example_w50_reset( EXAMPLE_W50 * value )
 static SCHEMA_UNUSED void schema_example_w50_reset_raw_( void * storage ) { example_w50_reset( (EXAMPLE_W50 *) storage ); }
 
 extern const example_table_type_info_t schema_example_w50_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_w50_table_type(void) { return &schema_example_w50_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_w50_table_type( void ) { return &schema_example_w50_info_; }
 static SCHEMA_UNUSED void example_w52_reset( EXAMPLE_W52 * value )
 {
     memset( value->items, 0, sizeof( value->items ) );
@@ -1392,7 +1398,7 @@ static SCHEMA_UNUSED void example_w52_reset( EXAMPLE_W52 * value )
 static SCHEMA_UNUSED void schema_example_w52_reset_raw_( void * storage ) { example_w52_reset( (EXAMPLE_W52 *) storage ); }
 
 extern const example_table_type_info_t schema_example_w52_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_w52_table_type(void) { return &schema_example_w52_info_; }
+static SCHEMA_UNUSED const example_table_type_info_t * example_w52_table_type( void ) { return &schema_example_w52_info_; }
 static SCHEMA_UNUSED void example_wide_reset( example_wide_t * value )
 {
     value->w = 0;
@@ -1401,9 +1407,9 @@ static SCHEMA_UNUSED void example_wide_reset( example_wide_t * value )
 static SCHEMA_UNUSED void schema_example_wide_reset_raw_( void * storage ) { example_wide_reset( (example_wide_t *) storage ); }
 
 extern const example_table_type_info_t schema_example_wide_info_;
-static SCHEMA_UNUSED const example_table_type_info_t * example_wide_table_type(void) { return &schema_example_wide_info_; }
-const example_unit_view_info_t * schema_example_unit_view_(void);
-static SCHEMA_UNUSED const example_unit_view_info_t * example_unit_view(void) { return schema_example_unit_view_(); }
+static SCHEMA_UNUSED const example_table_type_info_t * example_wide_table_type( void ) { return &schema_example_wide_info_; }
+const example_unit_view_info_t * schema_example_unit_view_( void );
+static SCHEMA_UNUSED const example_unit_view_info_t * example_unit_view( void ) { return schema_example_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

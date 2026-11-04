@@ -46,7 +46,7 @@ static const bench_table_field_info_t schema_bench_bench_packet_fields_[] = {
 
 const bench_table_type_info_t schema_bench_bench_packet_info_ = { "BenchPacket", (uint32_t) sizeof( bench_bench_packet_t ), 12, schema_bench_bench_packet_fields_, schema_bench_bench_packet_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const bench_unit_view_info_t * schema_bench_unit_view_(void)
+const bench_unit_view_info_t * schema_bench_unit_view_( void )
 {
     static const bench_view_variant_t MixedWeapon_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, BENCH_TABLE_DOC_NONE, 0, NULL },

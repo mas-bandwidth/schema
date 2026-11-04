@@ -377,12 +377,18 @@ typedef struct wide_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const wide_view_type_t * types;
-    int32_t num_tables;     const wide_view_type_t * tables;
-    int32_t num_enums;      const wide_view_vocabulary_t * enums;
-    int32_t num_flags;      const wide_view_vocabulary_t * flags;
-    int32_t num_unions;     const wide_view_vocabulary_t * unions;
-    int32_t num_constants;  const wide_view_constant_t * constants;
+    int32_t num_types;
+    const wide_view_type_t * types;
+    int32_t num_tables;
+    const wide_view_type_t * tables;
+    int32_t num_enums;
+    const wide_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const wide_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const wide_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const wide_view_constant_t * constants;
 } wide_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -405,7 +411,7 @@ static SCHEMA_UNUSED void wide_narrow_fifteen_reset( wide_narrow_fifteen_t * val
 static SCHEMA_UNUSED void schema_wide_narrow_fifteen_reset_raw_( void * storage ) { wide_narrow_fifteen_reset( (wide_narrow_fifteen_t *) storage ); }
 
 extern const wide_table_type_info_t schema_wide_narrow_fifteen_info_;
-static SCHEMA_UNUSED const wide_table_type_info_t * wide_narrow_fifteen_table_type(void) { return &schema_wide_narrow_fifteen_info_; }
+static SCHEMA_UNUSED const wide_table_type_info_t * wide_narrow_fifteen_table_type( void ) { return &schema_wide_narrow_fifteen_info_; }
 static SCHEMA_UNUSED void wide_wide_four_reset( wide_wide_four_t * value )
 {
     memset( value->text, 0, sizeof( value->text ) );
@@ -415,7 +421,7 @@ static SCHEMA_UNUSED void wide_wide_four_reset( wide_wide_four_t * value )
 static SCHEMA_UNUSED void schema_wide_wide_four_reset_raw_( void * storage ) { wide_wide_four_reset( (wide_wide_four_t *) storage ); }
 
 extern const wide_table_type_info_t schema_wide_wide_four_info_;
-static SCHEMA_UNUSED const wide_table_type_info_t * wide_wide_four_table_type(void) { return &schema_wide_wide_four_info_; }
+static SCHEMA_UNUSED const wide_table_type_info_t * wide_wide_four_table_type( void ) { return &schema_wide_wide_four_info_; }
 static SCHEMA_UNUSED void wide_wide_interop_reset( wide_wide_interop_t * value )
 {
     memset( value->caption, 0, sizeof( value->caption ) );
@@ -425,7 +431,7 @@ static SCHEMA_UNUSED void wide_wide_interop_reset( wide_wide_interop_t * value )
 static SCHEMA_UNUSED void schema_wide_wide_interop_reset_raw_( void * storage ) { wide_wide_interop_reset( (wide_wide_interop_t *) storage ); }
 
 extern const wide_table_type_info_t schema_wide_wide_interop_info_;
-static SCHEMA_UNUSED const wide_table_type_info_t * wide_wide_interop_table_type(void) { return &schema_wide_wide_interop_info_; }
+static SCHEMA_UNUSED const wide_table_type_info_t * wide_wide_interop_table_type( void ) { return &schema_wide_wide_interop_info_; }
 static SCHEMA_UNUSED void wide_wide_seven_reset( wide_wide_seven_t * value )
 {
     memset( value->text, 0, sizeof( value->text ) );
@@ -435,9 +441,9 @@ static SCHEMA_UNUSED void wide_wide_seven_reset( wide_wide_seven_t * value )
 static SCHEMA_UNUSED void schema_wide_wide_seven_reset_raw_( void * storage ) { wide_wide_seven_reset( (wide_wide_seven_t *) storage ); }
 
 extern const wide_table_type_info_t schema_wide_wide_seven_info_;
-static SCHEMA_UNUSED const wide_table_type_info_t * wide_wide_seven_table_type(void) { return &schema_wide_wide_seven_info_; }
-const wide_unit_view_info_t * schema_wide_unit_view_(void);
-static SCHEMA_UNUSED const wide_unit_view_info_t * wide_unit_view(void) { return schema_wide_unit_view_(); }
+static SCHEMA_UNUSED const wide_table_type_info_t * wide_wide_seven_table_type( void ) { return &schema_wide_wide_seven_info_; }
+const wide_unit_view_info_t * schema_wide_unit_view_( void );
+static SCHEMA_UNUSED const wide_unit_view_info_t * wide_unit_view( void ) { return schema_wide_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

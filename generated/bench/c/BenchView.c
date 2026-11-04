@@ -172,7 +172,7 @@ static const bench_table_field_info_t schema_bench_mixed_stat_fields_[] = {
 
 const bench_table_type_info_t schema_bench_mixed_stat_info_ = { "MixedStat", (uint32_t) sizeof( bench_mixed_stat_t ), 2, schema_bench_mixed_stat_fields_, schema_bench_mixed_stat_reset_raw_, BENCH_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const bench_unit_view_info_t * schema_bench_unit_view_(void)
+const bench_unit_view_info_t * schema_bench_unit_view_( void )
 {
     static const bench_view_variant_t MixedWeapon_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, BENCH_TABLE_DOC_NONE, 0, NULL },

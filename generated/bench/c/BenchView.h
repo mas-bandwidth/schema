@@ -377,12 +377,18 @@ typedef struct bench_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const bench_view_type_t * types;
-    int32_t num_tables;     const bench_view_type_t * tables;
-    int32_t num_enums;      const bench_view_vocabulary_t * enums;
-    int32_t num_flags;      const bench_view_vocabulary_t * flags;
-    int32_t num_unions;     const bench_view_vocabulary_t * unions;
-    int32_t num_constants;  const bench_view_constant_t * constants;
+    int32_t num_types;
+    const bench_view_type_t * types;
+    int32_t num_tables;
+    const bench_view_type_t * tables;
+    int32_t num_enums;
+    const bench_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const bench_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const bench_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const bench_view_constant_t * constants;
 } bench_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -421,7 +427,7 @@ static SCHEMA_UNUSED void bench_bench_bits_reset( bench_bench_bits_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_bits_reset_raw_( void * storage ) { bench_bench_bits_reset( (bench_bench_bits_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_bits_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type(void) { return &schema_bench_bench_bits_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type( void ) { return &schema_bench_bench_bits_info_; }
 static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 {
     value->f0 = 0;
@@ -439,7 +445,7 @@ static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_ints_reset_raw_( void * storage ) { bench_bench_ints_reset( (bench_bench_ints_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_ints_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type(void) { return &schema_bench_bench_ints_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type( void ) { return &schema_bench_bench_ints_info_; }
 static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
 {
     value->sequence = 0;
@@ -480,7 +486,7 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_mixed_reset_raw_( void * storage ) { bench_bench_mixed_reset( (bench_bench_mixed_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_mixed_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_mixed_table_type(void) { return &schema_bench_bench_mixed_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_mixed_table_type( void ) { return &schema_bench_bench_mixed_info_; }
 static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value )
 {
     value->a = 0;
@@ -500,7 +506,7 @@ static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value
 static SCHEMA_UNUSED void schema_bench_bench_packet_reset_raw_( void * storage ) { bench_bench_packet_reset( (bench_bench_packet_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_packet_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type(void) { return &schema_bench_bench_packet_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type( void ) { return &schema_bench_bench_packet_info_; }
 static SCHEMA_UNUSED void bench_mixed_chat_event_reset( bench_mixed_chat_event_t * value )
 {
     value->channel = 0;
@@ -510,7 +516,7 @@ static SCHEMA_UNUSED void bench_mixed_chat_event_reset( bench_mixed_chat_event_t
 static SCHEMA_UNUSED void schema_bench_mixed_chat_event_reset_raw_( void * storage ) { bench_mixed_chat_event_reset( (bench_mixed_chat_event_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_chat_event_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_chat_event_table_type(void) { return &schema_bench_mixed_chat_event_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_chat_event_table_type( void ) { return &schema_bench_mixed_chat_event_info_; }
 static SCHEMA_UNUSED void bench_mixed_entity_reset( bench_mixed_entity_t * value )
 {
     value->entity_id = 0;
@@ -532,7 +538,7 @@ static SCHEMA_UNUSED void bench_mixed_entity_reset( bench_mixed_entity_t * value
 static SCHEMA_UNUSED void schema_bench_mixed_entity_reset_raw_( void * storage ) { bench_mixed_entity_reset( (bench_mixed_entity_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_entity_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_entity_table_type(void) { return &schema_bench_mixed_entity_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_entity_table_type( void ) { return &schema_bench_mixed_entity_info_; }
 static SCHEMA_UNUSED void bench_mixed_hit_event_reset( bench_mixed_hit_event_t * value )
 {
     value->target_id = 0;
@@ -544,7 +550,7 @@ static SCHEMA_UNUSED void bench_mixed_hit_event_reset( bench_mixed_hit_event_t *
 static SCHEMA_UNUSED void schema_bench_mixed_hit_event_reset_raw_( void * storage ) { bench_mixed_hit_event_reset( (bench_mixed_hit_event_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_hit_event_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_hit_event_table_type(void) { return &schema_bench_mixed_hit_event_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_hit_event_table_type( void ) { return &schema_bench_mixed_hit_event_info_; }
 static SCHEMA_UNUSED void bench_mixed_pickup_event_reset( bench_mixed_pickup_event_t * value )
 {
     value->item_id = 0;
@@ -554,7 +560,7 @@ static SCHEMA_UNUSED void bench_mixed_pickup_event_reset( bench_mixed_pickup_eve
 static SCHEMA_UNUSED void schema_bench_mixed_pickup_event_reset_raw_( void * storage ) { bench_mixed_pickup_event_reset( (bench_mixed_pickup_event_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_pickup_event_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_pickup_event_table_type(void) { return &schema_bench_mixed_pickup_event_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_pickup_event_table_type( void ) { return &schema_bench_mixed_pickup_event_info_; }
 static SCHEMA_UNUSED void bench_mixed_stat_reset( bench_mixed_stat_t * value )
 {
     value->stat_id = 0;
@@ -564,9 +570,9 @@ static SCHEMA_UNUSED void bench_mixed_stat_reset( bench_mixed_stat_t * value )
 static SCHEMA_UNUSED void schema_bench_mixed_stat_reset_raw_( void * storage ) { bench_mixed_stat_reset( (bench_mixed_stat_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_mixed_stat_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_stat_table_type(void) { return &schema_bench_mixed_stat_info_; }
-const bench_unit_view_info_t * schema_bench_unit_view_(void);
-static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view(void) { return schema_bench_unit_view_(); }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_mixed_stat_table_type( void ) { return &schema_bench_mixed_stat_info_; }
+const bench_unit_view_info_t * schema_bench_unit_view_( void );
+static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view( void ) { return schema_bench_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

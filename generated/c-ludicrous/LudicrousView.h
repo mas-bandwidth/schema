@@ -377,12 +377,18 @@ typedef struct ludicrous_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const ludicrous_view_type_t * types;
-    int32_t num_tables;     const ludicrous_view_type_t * tables;
-    int32_t num_enums;      const ludicrous_view_vocabulary_t * enums;
-    int32_t num_flags;      const ludicrous_view_vocabulary_t * flags;
-    int32_t num_unions;     const ludicrous_view_vocabulary_t * unions;
-    int32_t num_constants;  const ludicrous_view_constant_t * constants;
+    int32_t num_types;
+    const ludicrous_view_type_t * types;
+    int32_t num_tables;
+    const ludicrous_view_type_t * tables;
+    int32_t num_enums;
+    const ludicrous_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const ludicrous_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const ludicrous_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const ludicrous_view_constant_t * constants;
 } ludicrous_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -413,7 +419,7 @@ static SCHEMA_UNUSED void ludicrous_degenerate_probe_reset( ludicrous_degenerate
 static SCHEMA_UNUSED void schema_ludicrous_degenerate_probe_reset_raw_( void * storage ) { ludicrous_degenerate_probe_reset( (ludicrous_degenerate_probe_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_degenerate_probe_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_degenerate_probe_table_type(void) { return &schema_ludicrous_degenerate_probe_info_; }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_degenerate_probe_table_type( void ) { return &schema_ludicrous_degenerate_probe_info_; }
 static SCHEMA_UNUSED void ludicrous_fixed_probe_reset( ludicrous_fixed_probe_t * value )
 {
     value->angle = 0;
@@ -426,7 +432,7 @@ static SCHEMA_UNUSED void ludicrous_fixed_probe_reset( ludicrous_fixed_probe_t *
 static SCHEMA_UNUSED void schema_ludicrous_fixed_probe_reset_raw_( void * storage ) { ludicrous_fixed_probe_reset( (ludicrous_fixed_probe_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_fixed_probe_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_probe_table_type(void) { return &schema_ludicrous_fixed_probe_info_; }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_probe_table_type( void ) { return &schema_ludicrous_fixed_probe_info_; }
 static SCHEMA_UNUSED void ludicrous_fixed_quat_reset( ludicrous_fixed_quat_t * value )
 {
     value->x = 0;
@@ -438,7 +444,7 @@ static SCHEMA_UNUSED void ludicrous_fixed_quat_reset( ludicrous_fixed_quat_t * v
 static SCHEMA_UNUSED void schema_ludicrous_fixed_quat_reset_raw_( void * storage ) { ludicrous_fixed_quat_reset( (ludicrous_fixed_quat_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_fixed_quat_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_quat_table_type(void) { return &schema_ludicrous_fixed_quat_info_; }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_quat_table_type( void ) { return &schema_ludicrous_fixed_quat_info_; }
 static SCHEMA_UNUSED void ludicrous_fixed_vec_reset( ludicrous_fixed_vec_t * value )
 {
     value->x = 0;
@@ -449,7 +455,7 @@ static SCHEMA_UNUSED void ludicrous_fixed_vec_reset( ludicrous_fixed_vec_t * val
 static SCHEMA_UNUSED void schema_ludicrous_fixed_vec_reset_raw_( void * storage ) { ludicrous_fixed_vec_reset( (ludicrous_fixed_vec_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_fixed_vec_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_vec_table_type(void) { return &schema_ludicrous_fixed_vec_info_; }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_fixed_vec_table_type( void ) { return &schema_ludicrous_fixed_vec_info_; }
 static SCHEMA_UNUSED void ludicrous_ludicrous_state_reset( ludicrous_ludicrous_state_t * value )
 {
     value->mode = LUDICROUS_DRIVE_MODE_NONE;
@@ -464,7 +470,7 @@ static SCHEMA_UNUSED void ludicrous_ludicrous_state_reset( ludicrous_ludicrous_s
 static SCHEMA_UNUSED void schema_ludicrous_ludicrous_state_reset_raw_( void * storage ) { ludicrous_ludicrous_state_reset( (ludicrous_ludicrous_state_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_ludicrous_state_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_ludicrous_state_table_type(void) { return &schema_ludicrous_ludicrous_state_info_; }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_ludicrous_state_table_type( void ) { return &schema_ludicrous_ludicrous_state_info_; }
 static SCHEMA_UNUSED void ludicrous_unsigned_probe_reset( ludicrous_unsigned_probe_t * value )
 {
     value->angle = 0;
@@ -479,7 +485,7 @@ static SCHEMA_UNUSED void ludicrous_unsigned_probe_reset( ludicrous_unsigned_pro
 static SCHEMA_UNUSED void schema_ludicrous_unsigned_probe_reset_raw_( void * storage ) { ludicrous_unsigned_probe_reset( (ludicrous_unsigned_probe_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_unsigned_probe_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_unsigned_probe_table_type(void) { return &schema_ludicrous_unsigned_probe_info_; }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_unsigned_probe_table_type( void ) { return &schema_ludicrous_unsigned_probe_info_; }
 static SCHEMA_UNUSED void ludicrous_wide_probe_reset( ludicrous_wide_probe_t * value )
 {
     value->entity_id = serialize_uint128_make( 0ull, 0ull );
@@ -492,9 +498,9 @@ static SCHEMA_UNUSED void ludicrous_wide_probe_reset( ludicrous_wide_probe_t * v
 static SCHEMA_UNUSED void schema_ludicrous_wide_probe_reset_raw_( void * storage ) { ludicrous_wide_probe_reset( (ludicrous_wide_probe_t *) storage ); }
 
 extern const ludicrous_table_type_info_t schema_ludicrous_wide_probe_info_;
-static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_wide_probe_table_type(void) { return &schema_ludicrous_wide_probe_info_; }
-const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_(void);
-static SCHEMA_UNUSED const ludicrous_unit_view_info_t * ludicrous_unit_view(void) { return schema_ludicrous_unit_view_(); }
+static SCHEMA_UNUSED const ludicrous_table_type_info_t * ludicrous_wide_probe_table_type( void ) { return &schema_ludicrous_wide_probe_info_; }
+const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_( void );
+static SCHEMA_UNUSED const ludicrous_unit_view_info_t * ludicrous_unit_view( void ) { return schema_ludicrous_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

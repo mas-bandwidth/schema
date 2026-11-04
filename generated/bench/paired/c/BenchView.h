@@ -86,12 +86,18 @@ typedef struct bench_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const bench_view_type_t * types;
-    int32_t num_tables;     const bench_view_type_t * tables;
-    int32_t num_enums;      const bench_view_vocabulary_t * enums;
-    int32_t num_flags;      const bench_view_vocabulary_t * flags;
-    int32_t num_unions;     const bench_view_vocabulary_t * unions;
-    int32_t num_constants;  const bench_view_constant_t * constants;
+    int32_t num_types;
+    const bench_view_type_t * types;
+    int32_t num_tables;
+    const bench_view_type_t * tables;
+    int32_t num_enums;
+    const bench_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const bench_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const bench_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const bench_view_constant_t * constants;
 } bench_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -118,7 +124,7 @@ static SCHEMA_UNUSED void bench_bench_bits_reset( bench_bench_bits_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_bits_reset_raw_( void * storage ) { bench_bench_bits_reset( (bench_bench_bits_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_bits_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type(void) { return &schema_bench_bench_bits_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_bits_table_type( void ) { return &schema_bench_bench_bits_info_; }
 static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 {
     value->f0 = 0;
@@ -136,7 +142,7 @@ static SCHEMA_UNUSED void bench_bench_ints_reset( bench_bench_ints_t * value )
 static SCHEMA_UNUSED void schema_bench_bench_ints_reset_raw_( void * storage ) { bench_bench_ints_reset( (bench_bench_ints_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_ints_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type(void) { return &schema_bench_bench_ints_info_; }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_ints_table_type( void ) { return &schema_bench_bench_ints_info_; }
 static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value )
 {
     value->a = 0;
@@ -156,9 +162,9 @@ static SCHEMA_UNUSED void bench_bench_packet_reset( bench_bench_packet_t * value
 static SCHEMA_UNUSED void schema_bench_bench_packet_reset_raw_( void * storage ) { bench_bench_packet_reset( (bench_bench_packet_t *) storage ); }
 
 extern const bench_table_type_info_t schema_bench_bench_packet_info_;
-static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type(void) { return &schema_bench_bench_packet_info_; }
-const bench_unit_view_info_t * schema_bench_unit_view_(void);
-static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view(void) { return schema_bench_unit_view_(); }
+static SCHEMA_UNUSED const bench_table_type_info_t * bench_bench_packet_table_type( void ) { return &schema_bench_bench_packet_info_; }
+const bench_unit_view_info_t * schema_bench_unit_view_( void );
+static SCHEMA_UNUSED const bench_unit_view_info_t * bench_unit_view( void ) { return schema_bench_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

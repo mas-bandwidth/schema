@@ -103,7 +103,7 @@ static const ludicrous_table_field_info_t schema_ludicrous_wide_probe_fields_[] 
 
 const ludicrous_table_type_info_t schema_ludicrous_wide_probe_info_ = { "WideProbe", (uint32_t) sizeof( ludicrous_wide_probe_t ), 5, schema_ludicrous_wide_probe_fields_, schema_ludicrous_wide_probe_reset_raw_, LUDICROUS_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_(void)
+const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_( void )
 {
     static const ludicrous_view_variant_t DriveMode_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, LUDICROUS_TABLE_DOC_NONE, 0, NULL },
@@ -124,7 +124,7 @@ const ludicrous_unit_view_info_t * schema_ludicrous_unit_view_(void)
         { "WideProbe", "Ludicrous.schema", 0, &schema_ludicrous_wide_probe_info_, LUDICROUS_TABLE_DOC_NONE, 0, NULL },
     };
     static const ludicrous_view_constant_t constants[] = {
-        { "MaxWorldUnits", "Ludicrous.schema", "int64", 0, INT64_C(30000), 0.0, LUDICROUS_TABLE_DOC_NONE, 0, NULL },
+        { "MaxWorldUnits", "Ludicrous.schema", "int64", 0, INT64_C( 30000 ), 0.0, LUDICROUS_TABLE_DOC_NONE, 0, NULL },
     };
     static const ludicrous_unit_view_info_t info = { "ludicrous", 0xf4a226f4166d919bull,
         7, types,

@@ -377,12 +377,18 @@ typedef struct realworld_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const realworld_view_type_t * types;
-    int32_t num_tables;     const realworld_view_type_t * tables;
-    int32_t num_enums;      const realworld_view_vocabulary_t * enums;
-    int32_t num_flags;      const realworld_view_vocabulary_t * flags;
-    int32_t num_unions;     const realworld_view_vocabulary_t * unions;
-    int32_t num_constants;  const realworld_view_constant_t * constants;
+    int32_t num_types;
+    const realworld_view_type_t * types;
+    int32_t num_tables;
+    const realworld_view_type_t * tables;
+    int32_t num_enums;
+    const realworld_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const realworld_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const realworld_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const realworld_view_constant_t * constants;
 } realworld_unit_view_info_t;
 
 /* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
@@ -494,9 +500,9 @@ static SCHEMA_UNUSED void realworld_real_packet_reset( realworld_real_packet_t *
 static SCHEMA_UNUSED void schema_realworld_real_packet_reset_raw_( void * storage ) { realworld_real_packet_reset( (realworld_real_packet_t *) storage ); }
 
 extern const realworld_table_type_info_t schema_realworld_real_packet_info_;
-static SCHEMA_UNUSED const realworld_table_type_info_t * realworld_real_packet_table_type(void) { return &schema_realworld_real_packet_info_; }
-const realworld_unit_view_info_t * schema_realworld_unit_view_(void);
-static SCHEMA_UNUSED const realworld_unit_view_info_t * realworld_unit_view(void) { return schema_realworld_unit_view_(); }
+static SCHEMA_UNUSED const realworld_table_type_info_t * realworld_real_packet_table_type( void ) { return &schema_realworld_real_packet_info_; }
+const realworld_unit_view_info_t * schema_realworld_unit_view_( void );
+static SCHEMA_UNUSED const realworld_unit_view_info_t * realworld_unit_view( void ) { return schema_realworld_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

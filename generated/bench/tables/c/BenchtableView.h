@@ -84,19 +84,22 @@ typedef struct benchtable_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const benchtable_view_type_t * types;
-    int32_t num_tables;     const benchtable_view_type_t * tables;
-    int32_t num_enums;      const benchtable_view_vocabulary_t * enums;
-    int32_t num_flags;      const benchtable_view_vocabulary_t * flags;
-    int32_t num_unions;     const benchtable_view_vocabulary_t * unions;
-    int32_t num_constants;  const benchtable_view_constant_t * constants;
+    int32_t num_types;
+    const benchtable_view_type_t * types;
+    int32_t num_tables;
+    const benchtable_view_type_t * tables;
+    int32_t num_enums;
+    const benchtable_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const benchtable_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const benchtable_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const benchtable_view_constant_t * constants;
 } benchtable_unit_view_info_t;
 
-/* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
-
-
-const benchtable_unit_view_info_t * schema_benchtable_unit_view_(void);
-static SCHEMA_UNUSED const benchtable_unit_view_info_t * benchtable_unit_view(void) { return schema_benchtable_unit_view_(); }
+const benchtable_unit_view_info_t * schema_benchtable_unit_view_( void );
+static SCHEMA_UNUSED const benchtable_unit_view_info_t * benchtable_unit_view( void ) { return schema_benchtable_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif

@@ -25,7 +25,7 @@ static const wide_table_field_info_t schema_wide_wide_seven_fields_[] = {
 
 const wide_table_type_info_t schema_wide_wide_seven_info_ = { "WideSeven", (uint32_t) sizeof( wide_wide_seven_t ), 1, schema_wide_wide_seven_fields_, schema_wide_wide_seven_reset_raw_, WIDE_TABLE_DOC_NONE, 0, NULL, 0 };
 
-const wide_unit_view_info_t * schema_wide_unit_view_(void)
+const wide_unit_view_info_t * schema_wide_unit_view_( void )
 {
     static const wide_view_type_t types[] = {
         { "NarrowFifteen", "WideText.schema", 0, &schema_wide_narrow_fifteen_info_, WIDE_TABLE_DOC_NONE, 0, NULL },

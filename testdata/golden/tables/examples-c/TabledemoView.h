@@ -96,19 +96,22 @@ typedef struct tabledemo_unit_view_info_t
 {
     const char * package;
     uint64_t protocol_id;
-    int32_t num_types;      const tabledemo_view_type_t * types;
-    int32_t num_tables;     const tabledemo_view_type_t * tables;
-    int32_t num_enums;      const tabledemo_view_vocabulary_t * enums;
-    int32_t num_flags;      const tabledemo_view_vocabulary_t * flags;
-    int32_t num_unions;     const tabledemo_view_vocabulary_t * unions;
-    int32_t num_constants;  const tabledemo_view_constant_t * constants;
+    int32_t num_types;
+    const tabledemo_view_type_t * types;
+    int32_t num_tables;
+    const tabledemo_view_type_t * tables;
+    int32_t num_enums;
+    const tabledemo_view_vocabulary_t * enums;
+    int32_t num_flags;
+    const tabledemo_view_vocabulary_t * flags;
+    int32_t num_unions;
+    const tabledemo_view_vocabulary_t * unions;
+    int32_t num_constants;
+    const tabledemo_view_constant_t * constants;
 } tabledemo_unit_view_info_t;
 
-/* ---- prefill: the declared defaults, in place (docs/SPEC-TABLES.md) ---- */
-
-
-const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_(void);
-static SCHEMA_UNUSED const tabledemo_unit_view_info_t * tabledemo_unit_view(void) { return schema_tabledemo_unit_view_(); }
+const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void );
+static SCHEMA_UNUSED const tabledemo_unit_view_info_t * tabledemo_unit_view( void ) { return schema_tabledemo_unit_view_(); }
 #ifdef __cplusplus
 }
 #endif
