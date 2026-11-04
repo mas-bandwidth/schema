@@ -14,6 +14,7 @@
 // T is a unit's table module; root is the root table's schema name; text is
 // a string or a blob; report is the caller's §4 report, filled in place.
 local _M = vargv[0];
+local _require = vargv[1];
 
 local MIN = 0x8000000000000000;
 local MAXU = 0xffffffffffffffff;
@@ -895,13 +896,16 @@ local checkRequired = function(T, c, r, v, seen) {
   return false;
 };
 
-local countBlob = function(kind, val, g) {
+// a *string is keyed by its slot's record token where the load noted one, and
+// by its value otherwise (load.nut, stringIdentity), as the wire save keys it
+local countBlob = function(kind, val, g, holder = null, key = null) {
   if (val == null) return true;
-  if (val in g.blobs[kind]) {
+  local id = (kind == "s" && holder != null) ? _require("schema_table_load").stringIdentity(holder, key, val) : val;
+  if (id in g.blobs[kind]) {
     g.reason = "blob_shared";
     return false;
   }
-  g.blobs[kind][val] <- true;
+  g.blobs[kind][id] <- true;
   return true;
 };
 
@@ -909,13 +913,13 @@ countInstance = function(T, c, v, g) {
   foreach (fd in c.fields) {
     if (!guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
-    if (!countField(T, fd, v[fd.member], g)) return false;
+    if (!countField(T, fd, v[fd.member], g, v, fd.member)) return false;
   }
   return true;
 };
-countField = function(T, d, val, g) {
+countField = function(T, d, val, g, holder = null, key = null) {
   switch (d.shape) {
-    case "sblob": return countBlob("s", val, g);
+    case "sblob": return countBlob("s", val, g, holder, key);
     case "bblob": return countBlob("b", val, g);
     case "str": case "wstr": case "bytes": return true;
     case "ptr": return countNode(T, tableDesc(T, d.table), val, g);
@@ -923,7 +927,7 @@ countField = function(T, d, val, g) {
       local n = isKeyed(d) ? d.bound : writeCount(d, val);
       for (local i = 0; i < n; i++) {
         if (val == null || i >= val.len()) break;
-        if (!countCell(T, d.elem, val[i], g)) return false;
+        if (!countCell(T, d.elem, val[i], g, val, i)) return false;
       }
       return true;
     }
@@ -938,10 +942,10 @@ countField = function(T, d, val, g) {
       return true;
     }
   }
-  return countCell(T, d, val, g);
+  return countCell(T, d, val, g, holder, key);
 };
-countCell = function(T, d, val, g) {
-  if (d.shape == "sblob") return countBlob("s", val, g);
+countCell = function(T, d, val, g, holder = null, key = null) {
+  if (d.shape == "sblob") return countBlob("s", val, g, holder, key);
   if (d.shape == "bblob") return countBlob("b", val, g);
   if (d.shape == "ptr") return countNode(T, tableDesc(T, d.table), val, g);
   if (d.shape == "union") {
@@ -954,7 +958,7 @@ countCell = function(T, d, val, g) {
       if (inst == null) return true;
       return countInstance(T, tableDesc(T, p.table), inst, g);
     }
-    return countField(T, p, val[p.member], g);
+    return countField(T, p, val[p.member], g, val, p.member);
   }
   if (d.shape == "tab" && val != null) return countInstance(T, tableDesc(T, d.table), val, g);
   return true;

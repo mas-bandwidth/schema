@@ -154,8 +154,17 @@ end
 -- before it answers nil; nothing the walk met after the refusal reaches the
 -- report.
 local REPORT_FIELDS = {
-  "malformed", "refused", "unknown", "kindMismatch", "clamped", "widened",
-  "duplicate", "blobShared", "missingRequired", "wireDamaged", "reason",
+  "malformed",
+  "refused",
+  "unknown",
+  "kindMismatch",
+  "clamped",
+  "widened",
+  "duplicate",
+  "blobShared",
+  "missingRequired",
+  "wireDamaged",
+  "reason",
   "nonFiniteFloat",
 }
 
@@ -251,7 +260,7 @@ local function r_f32(r)
 end
 
 local function r_bytes(r, n)
-  if r.at + n > r.lim then
+  if not fits(r, n) then
     r.bad = true
     return ""
   end
@@ -292,7 +301,7 @@ local function skip(r, kind)
   end
   if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 or kind == 33 then
     local n = r_leb(r)
-    if r.bad or n < 0 or r.at + n > r.lim then return false end
+    if r.bad or not fits(r, n) then return false end
     r.at = r.at + n
     return true
   end
@@ -303,7 +312,7 @@ local function skip(r, kind)
       if r.at + 1 > r.lim then return false end
       r_u8(r)
       local n = r_leb(r)
-      if r.bad or n < 0 or r.at + n > r.lim then return false end
+      if r.bad or not fits(r, n) then return false end
       r.at = r.at + n
     end
     return true
@@ -405,7 +414,7 @@ local function node_scan(bytes, o, report, variable, st)
         break
       end
       local n = r_leb(w)
-      if w.bad or n < 0 or w.at + n > w.lim then
+      if w.bad or not fits(w, n) then
         bad = true
         break
       end
@@ -437,7 +446,7 @@ local function node_scan(bytes, o, report, variable, st)
       return nil
     end
     local n = r_leb(rec)
-    if rec.bad or n < 0 or rec.at + n > rec.lim then
+    if rec.bad or not fits(rec, n) then
       report.malformed = true
       report.wireDamaged = true
       return nil
@@ -959,6 +968,7 @@ local function map_key(ctx, kf, b, at, lim, key)
     if ctx.table[ref] == kf.id then
       if kind ~= kf.kind and widens(kind, kf.kind) then
         widened = true
+        kindbad = false -- this occurrence replaces the earlier key kind
         local x = scalar_at(scan, kf, kind, junk)
         if x == nil then return key, false, kindbad, widened end
         key = x
@@ -1041,14 +1051,17 @@ read_array_body = function(T, ctx, fd, r, endpos, prior, reuse)
     report.malformed = true
     return nil
   end
+  -- a count whose spelling ends past the body's own end CROSSED L: the
+  -- measure, bounded by L, saw no count there (internal/tablewire extent.go)
+  local crossed = r.at > endpos
   r.lim = math.max(r.at, endpos)
-  local out, selected = array_elements(T, ctx, fd, r, ek, count, prior, reuse)
+  local out, selected = array_elements(T, ctx, fd, r, ek, count, prior, reuse, crossed)
   r.lim, r.bad = lim, bad
   return out, selected
 end
 
 -- the elements of an array body, read from the reader sub, bounded to the body
-array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
+array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
   local report = ctx.report
 
   if fd.shape == "bytes" then
@@ -1088,11 +1101,19 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
       report.kindMismatch = report.kindMismatch + 1
       return nil, true
     end
-    -- PAST THE INT32 STORAGE CAP the load refuses as count_over_extent_cap
-    -- (§2.8, §2.9): not damage, so refuse_count holds the report as it stood
-    -- and the load answers nil. A count AT the cap decodes normally.
+    -- PAST THE INT32 STORAGE CAP (§2.8, §2.9; internal/tablewire
+    -- collectionCap): a count inside the map's L is the load's refusal,
+    -- count_over_extent_cap, the one LoadMeasure names first, so refuse_count
+    -- holds the report as it stood and the load answers nil. A count whose
+    -- spelling CROSSED L is read against the parent (§3) where the measure,
+    -- bounded by L, sees no count, so it is the region's recovery instead:
+    -- damage, the walk resuming after L. A count AT the cap decodes normally.
     if above(count, 0x7fffffff) then
-      refuse_count(ctx)
+      if crossed then
+        report.malformed = true
+      else
+        refuse_count(ctx)
+      end
       return {}
     end
     local entry = T.Tables[fd.entry]
@@ -1192,8 +1213,9 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
       return nil, false
     end
     -- a list past the int32 storage cap refuses below and moves no counter
-    -- (§2.9), the widening included
-    if not (fd.list and above(count, 0x7fffffff)) then report.widened = report.widened + 1 end
+    -- (§2.9), the widening included; one whose count crossed L is damage
+    -- below, and damage counts the widening (internal/tablewire capDamages)
+    if not (fd.list and above(count, 0x7fffffff) and not crossed) then report.widened = report.widened + 1 end
   end
 
   if fd.keyed ~= nil then
@@ -1338,11 +1360,15 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse)
   end
   local keep = count
   if fd.list then
-    -- PAST THE INT32 STORAGE CAP the load refuses as count_over_extent_cap
-    -- (§2.9): not damage, so refuse_count holds the report as it stood and
-    -- the load answers nil. A count AT the cap decodes normally.
+    -- PAST THE INT32 STORAGE CAP, the map's rule above: inside L the load's
+    -- refusal, count_over_extent_cap; crossing L the region's damage. A count
+    -- AT the cap decodes normally.
     if above(count, 0x7fffffff) then
-      refuse_count(ctx)
+      if crossed then
+        report.malformed = true
+      else
+        refuse_count(ctx)
+      end
       return {}
     end
   elseif above(count, fd.bound) then
@@ -2113,9 +2139,7 @@ function L.LoadTolerant(T, name, bytes, report, state, into)
   -- A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
   -- stored is walked once every index has resolved, by the save's numbering,
   -- which answers nil for a reference to a node whose descent is still open.
-  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then
-    report.malformed = true
-  end
+  if not report.malformed and D.number_nodes(T, desc, root, false) == nil then report.malformed = true end
   release(ctx)
   if report.malformed then return nil end
   return root

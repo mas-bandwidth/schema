@@ -383,3 +383,16 @@ reach_overlong_body_then_nan tabledemo ProfileConfig testdata/wire/tables/fuzz-v
 message_skip_depth_at_limit backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_skip_depth_at_limit.bin message
 message_skip_depth_over_limit backenddemo LoginRequest testdata/wire/tables/fuzz-vectors/message_skip_depth_over_limit.bin message
 # ---- END THE MESSAGE SKIP DEPTH LIMIT ----
+
+# A MAP COUNT PAST THE INT32 STORAGE CAP INSIDE ITS L (§2.8, §2.9): LoadMeasure
+# refuses it as count_over_extent_cap, and a builder read stops on it with
+# malformed unset and no counter moved. A builder's count refusal rides the
+# completion and the save failure, never the report's refused flag, so the
+# Squirrel driver once answered `refused` where the builder oracle reads.
+map_count_cap mapdemo Docs testdata/wire/tables/fuzz-vectors/map_count_cap.bin
+
+# THE REGION'S ALIGNMENT IS ITS EXTENTS' TOO (§2.8, §6.5; ir.TableRegionAlign):
+# one []uint128 element in a root whose own record aligns to eight rounds the
+# region to sixteen, so the framing commands 80 bytes. The Luau driver's
+# LoadMeasure took the records' alignment alone and asked for 72.
+region_align_extent_uint128 widelist Wide testdata/wire/tables/fuzz-vectors/region_align_extent_uint128.bin
