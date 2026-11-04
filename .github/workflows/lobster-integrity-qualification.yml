@@ -19,9 +19,9 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
           make dist-lobster
-      - name: Cook unbounded text and storage regression
+      - name: JSON key, text and float value regressions
         env:
           SCHEMA_SLOW: '1'
         run: |
           export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
-          go test ./internal/codegen/lobstertable -run '^TestLobsterCook(UnboundedText|ExtentCoordinates|AuthoredOptionalMap)$' -count=1 -v
+          go test ./internal/codegen/lobstertable -run '^TestLobster(JSONLongMapKeys|JSONFeatureValues|JSONFloat32WriterSingleRounding)$' -count=1 -v
