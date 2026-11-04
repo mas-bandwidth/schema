@@ -456,8 +456,9 @@ func TestGooseFixedFormRoundTripsEveryFixedRoot(t *testing.T) {
 
 // fixedImage lays out lawful records from the IR's constant sizes
 // (docs/FIXED-FORM-ALGORITHM.md §3): every count, length, tag, ordinal and
-// ranged value inside its declared bounds, a bool 0 or 1, text of letters,
-// and every byte of slack zero — the bytes a conforming writer writes.
+// ranged value inside its declared bounds, a bool 0 or 1, a plain float
+// finite, text of letters, and every byte of slack zero — the bytes a
+// conforming writer writes.
 type fixedImage struct {
 	b    []byte
 	seed uint32
@@ -589,8 +590,21 @@ func (m *fixedImage) elem(f *ir.Field) {
 		m.put(m.next()&(uint64(1)<<uint(t.Width)-1), w)
 		return
 	}
+	start := len(m.b)
 	for range w {
 		m.b = append(m.b, byte(m.next()))
+	}
+	// a plain float is finite (docs/SPEC-TABLES.md §3.3): an all-ones
+	// exponent loses its lowest bit
+	switch t.Kind {
+	case ir.TFloat32:
+		if bits := binary.LittleEndian.Uint32(m.b[start:]); bits&0x7f800000 == 0x7f800000 {
+			binary.LittleEndian.PutUint32(m.b[start:], bits&^0x00800000)
+		}
+	case ir.TFloat64:
+		if bits := binary.LittleEndian.Uint64(m.b[start:]); bits&0x7ff0000000000000 == 0x7ff0000000000000 {
+			binary.LittleEndian.PutUint64(m.b[start:], bits&^0x0010000000000000)
+		}
 	}
 }
 

@@ -479,8 +479,9 @@ func (e *fixedEmit) writeElem(ind int, f *ir.Field, pl place) {
 // ---------------------------------------------------------------------------
 // THE WRITE CONTRACT (docs/FIXED-FORM-ALGORITHM.md §3.1): a count outside
 // 0..Max, a length outside 0..N, a value off its declared min/max, an ordinal
-// or a union tag past its set, text breaking its content rule — over the
-// LIVE extent only — refuse the batch before a byte is stored.
+// or a union tag past its set, text breaking its content rule, a NaN or an
+// infinity — over the LIVE extent only — refuse the batch before a byte is
+// stored.
 // ---------------------------------------------------------------------------
 
 func (e *fixedEmit) checkField(ind int, base string, f *ir.Field) {
@@ -544,9 +545,18 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 		for _, b := range scalarBounds(f) {
 			e.p(ind, "if %s { return false; }", b.over(pl.val))
 		}
-	case kF32, kF64:
+	case kF32:
 		if lo, hi, ok := floatBounds(f); ok {
 			e.p(ind, "if !(%s >= %s && %s <= %s) { return false; }", pl.val, lo, pl.val, hi)
+		} else {
+			// a PLAIN float is finite or refused (docs/SPEC-TABLES.md §3.3)
+			e.p(ind, "if (schema_rt::fixed_f32_bits(%s) & 0x7F800000) == 0x7F800000 { return false; }", pl.val)
+		}
+	case kF64:
+		if lo, hi, ok := floatBounds(f); ok {
+			e.p(ind, "if !(%s >= %s && %s <= %s) { return false; }", pl.val, lo, pl.val, hi)
+		} else {
+			e.p(ind, "if (schema_rt::fixed_f64_bits(%s) & 0x7FF0000000000000) == 0x7FF0000000000000 { return false; }", pl.val)
 		}
 	}
 }
@@ -844,7 +854,7 @@ func elemNeedsCheck(f *ir.Field) bool {
 		case ir.TString, ir.TWString, ir.TBytes:
 			return true
 		}
-		return f.HasFloatRange || len(scalarBounds(f)) > 0
+		return f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 || len(scalarBounds(f)) > 0
 	}, true)
 }
 

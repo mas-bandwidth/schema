@@ -857,7 +857,7 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 		{
 			".Tilt = -128", ".Angle = -180", ".Position = -65536000",
 			".Reach.lo = 18446744041941551616", ".Reach.hi = 18446744073709551615", // -500000 x 2^16
-			".Ratio = 255", ".Speed = 655360", ".Frames = 4294967295",
+			".Ratio = 240", ".Speed = 655360", ".Frames = 4294967295",
 			".Mass.lo = 131071967232", ".Mass.hi = 0", // 1999999.5 x 2^16
 			".Flux = -5000000000",
 			".Energy.lo = 4999999999", ".Energy.hi = 0",
@@ -865,16 +865,23 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 			".WeightsCount = 2", ".Weights[0] = 25600", ".Weights[1] = 1",
 		},
 		{
-			// THE 128-BIT CLAMP: both lanes past the declared max, an int128
-			// (6000000000 over 5000000000) and a fixed(112, 16) (1000001 x 2^16
-			// over 1000000 x 2^16); the offsets ride, and the read clamps each
-			".Energy.lo = 6000000000", ".Energy.hi = 0",
-			".Reach.lo = 65536065536", ".Reach.hi = 0",
-		},
-		{
 			".Energy.lo = 18446744068709551616", ".Energy.hi = 18446744073709551615", // -5000000000
 			".Reach.lo = 65536000000", ".Reach.hi = 0",
 		},
+	}
+	// A VALUE PAST ITS DECLARED MAX IS REFUSED, never written for the read
+	// to clamp (docs/SPEC.md §5.1): both 128-bit lanes past the max, an
+	// int128 (6000000000 over 5000000000) and a fixed(112, 16) (1000001 x 2^16
+	// over 1000000 x 2^16), and a ufixed(4, 4) raw 255 over its max of 15
+	for _, over := range [][]string{
+		{".Energy.lo = 6000000000", ".Energy.hi = 0"},
+		{".Reach.lo = 65536065536", ".Reach.hi = 0"},
+		{".Ratio = 255"},
+	} {
+		refused := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: [][]string{over}})
+		if refused.saveReason != "invalid_value" {
+			t.Fatalf("the save of %v answered %s, want invalid_value:\n%s", over, refused.saveReason, refused.raw)
+		}
 	}
 	saved := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: values})
 	if saved.saveReason != "ok" {
@@ -889,18 +896,15 @@ func TestGooseMessageFormCarriesWideKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the Go reference refuses to encode what it read: %v", err)
 	}
-	// Ratio's raw 255 is 15.9375 under a declared max of 15: the offset rides
-	// (its width spells it) and both readers clamp it to 240 (§3.3, a ranged
-	// offset above the sender's max reconstructs and clamps), so the save of
-	// what was READ is the reference's encode, and the Goose load of the
-	// original batch lands the clamped value with the clamp counted.
+	// every value is inside its declared set, so the save of what was READ is
+	// the reference's encode, and the Goose load of the batch clamps nothing
 	var back [][]string
 	for _, inst := range insts {
 		back = append(back, gooseInstAssign(t, "", inst))
 	}
 	r := gooseMsgProbe(t, gooseMsgCase{unit: u, root: "SimState", values: back, data: batch})
 	r.agrees(t, want, len(values))
-	if r.loadClamped != 3 {
-		t.Fatalf("the load counted %d clamps, want 3 (Ratio, and the 128-bit Energy and Reach)", r.loadClamped)
+	if r.loadClamped != 0 {
+		t.Fatalf("the load counted %d clamps, want 0", r.loadClamped)
 	}
 }

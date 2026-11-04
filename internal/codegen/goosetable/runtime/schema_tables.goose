@@ -11,6 +11,102 @@ namespace schema_rt;
 
 import .schema_rt;
 
+// ---- WELL-FORMED TEXT (docs/SPEC.md §5.1): what every writer asks of text a
+// program built ----
+
+// text_utf8_ok: the n bytes at b[at..] are well-formed UTF-8 — no overlong
+// form, no surrogate, nothing past U+10FFFF, no truncated tail, as Go's
+// utf8.Valid answers. A zero byte is text: the fixed form's rule, which
+// refuses one, is fixed_utf8_ok.
+fn text_utf8_ok(b: const u8[:], at: i64, n: i64) -> bool {
+    var i: i64 = 0;
+    while i < n {
+        let c = b[at + i];
+        if c < 0x80 {
+            i += 1;
+            continue;
+        }
+        var need: i64 = 0;
+        var lo: u8 = 0x80;
+        var hi: u8 = 0xBF;
+        if c >= 0xC2 && c <= 0xDF {
+            need = 1;
+        } else if c == 0xE0 {
+            need = 2;
+            lo = 0xA0;
+        } else if c >= 0xE1 && c <= 0xEC {
+            need = 2;
+        } else if c == 0xED {
+            need = 2;
+            hi = 0x9F;
+        } else if c >= 0xEE && c <= 0xEF {
+            need = 2;
+        } else if c == 0xF0 {
+            need = 3;
+            lo = 0x90;
+        } else if c >= 0xF1 && c <= 0xF3 {
+            need = 3;
+        } else if c == 0xF4 {
+            need = 3;
+            hi = 0x8F;
+        } else {
+            return false;
+        }
+        if i + need >= n { return false; }
+        let c1 = b[at + i + 1];
+        if c1 < lo || c1 > hi { return false; }
+        var k: i64 = 2;
+        while k <= need {
+            let ck = b[at + i + k];
+            if ck < 0x80 || ck > 0xBF { return false; }
+            k += 1;
+        }
+        i += need + 1;
+    }
+    return true;
+}
+
+// text_utf16_paired_le: the n bytes at b[at..], little-endian code units, pair
+// every surrogate. A zero unit is text here.
+fn text_utf16_paired_le(b: const u8[:], at: i64, n: i64) -> bool {
+    let units = n / 2;
+    var i: i64 = 0;
+    while i < units {
+        let u = b[at + 2 * i] | (b[at + 2 * i + 1] as u16) << 8;
+        if u >= 0xD800 && u <= 0xDBFF {
+            if i + 1 >= units { return false; }
+            let lo = b[at + 2 * i + 2] | (b[at + 2 * i + 3] as u16) << 8;
+            if lo < 0xDC00 || lo > 0xDFFF { return false; }
+            i += 2;
+        } else if u >= 0xDC00 && u <= 0xDFFF {
+            return false;
+        } else {
+            i += 1;
+        }
+    }
+    return true;
+}
+
+// text_utf16_paired: the first n units of wide-text storage pair every
+// surrogate. A zero unit is text here.
+fn text_utf16_paired(s: const u16[:], n: i64) -> bool {
+    var i: i64 = 0;
+    while i < n {
+        let u = s[i];
+        if u >= 0xD800 && u <= 0xDBFF {
+            if i + 1 >= n { return false; }
+            let lo = s[i + 1];
+            if lo < 0xDC00 || lo > 0xDFFF { return false; }
+            i += 2;
+        } else if u >= 0xDC00 && u <= 0xDFFF {
+            return false;
+        } else {
+            i += 1;
+        }
+    }
+    return true;
+}
+
 // The shapes a field descriptor takes (docs/PORT-GOOSE.md, THE TYPE MAPPING).
 let ShapeBool: u8 = 1;   // bool
 let ShapeInt: u8 = 2;    // an integer at its kind's width; bits(N) and fixed too

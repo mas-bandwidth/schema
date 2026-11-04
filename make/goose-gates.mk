@@ -201,7 +201,9 @@ tables-goose-release:
 	$(MAKE) tables-goose-fixedform-negative-control tables-goose-strict-negative-control \
 		tables-goose-strict-emitter-negative-control tables-goose-runtime-home-negative-control \
 		tables-goose-unit-home-negative-control
-	$(MAKE) conformance-negative-control-goose conformance-negative-control-goose-write-refusal tables-goose-accel-negative-control \
+	$(MAKE) conformance-negative-control-goose conformance-negative-control-goose-write-refusal \
+		conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message \
+		tables-goose-accel-negative-control \
 		tables-goose-order-negative-control tables-goose-fuzz-negative-control \
 		tables-goose-usage-negative-control tables-goose-names-negative-control \
 		tables-goose-accessor-negative-control

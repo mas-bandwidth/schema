@@ -58,6 +58,13 @@ build/conformance-moo: build/schema-moo $(MOO_CONFORMANCE_MANIFEST) make/moo-con
 #                                        wire and report green)
 # conformance-negative-control-moo-write-refusal  the save's integer range
 #                                        (write-refusal red, wire green)
+# conformance-negative-control-moo-write-refusal-fixed  the fixed writer's
+#                                        integer range (write-refusal-fixed
+#                                        red, wire green)
+# conformance-negative-control-moo-write-refusal-message  the message
+#                                        writer's integer range
+#                                        (write-refusal-message red, message
+#                                        green)
 .PHONY: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing
 conformance-negative-control-moo: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control report
@@ -72,6 +79,14 @@ conformance-negative-control-moo-framing: toolchain-moo build/conformance-harnes
 conformance-negative-control-moo-write-refusal: toolchain-moo build/conformance-harness
 	sh test/conformance/moo/negative-control write-refusal
 
-# all three ride test-moo (make/moo.mk), as every leg's conformance controls ride its
+.PHONY: conformance-negative-control-moo-write-refusal-fixed conformance-negative-control-moo-write-refusal-message
+conformance-negative-control-moo-write-refusal-fixed: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control write-refusal-fixed
+
+conformance-negative-control-moo-write-refusal-message: toolchain-moo build/conformance-harness
+	sh test/conformance/moo/negative-control write-refusal-message
+
+# all of them ride test-moo (make/moo.mk), as every leg's conformance controls ride its
 # own test target
-test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing conformance-negative-control-moo-write-refusal
+test-moo: conformance-negative-control-moo conformance-negative-control-moo-walk conformance-negative-control-moo-framing conformance-negative-control-moo-write-refusal \
+	conformance-negative-control-moo-write-refusal-fixed conformance-negative-control-moo-write-refusal-message
