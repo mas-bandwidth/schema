@@ -558,16 +558,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "packages: $PACKAGES"
+          # go test stops any one package at 10 minutes by default; on the
+          # four-core hosted runner goosetable, gotable and javatable each run
+          # past that when a broad diff runs them side by side, so the package
+          # limit is 25 minutes, inside the job's 30
           if [ "$BROAD" = yes ]; then
             # a broad diff's own gate is the full suite in ci-full.yml; here it
             # is bounded so the lane keeps its budget, and the short run still
             # catches the ordinary mistake in minutes rather than at merge
             echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
             # shellcheck disable=SC2086
-            go test -short $PACKAGES
+            go test -short -timeout 25m $PACKAGES
           else
             # shellcheck disable=SC2086
-            go test $PACKAGES
+            go test -timeout 25m $PACKAGES
           fi
           # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
           # leg-gate is skipped on PRs below main. tables-go-fixedform is the
@@ -701,13 +705,20 @@ jobs:
       # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
       # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
+      # A host without the python3-venv package (ensurepip absent) gets the
+      # same venv with the system pip installing into it.
       - name: the pinned clang-format (C and C++ legs)
         if: matrix.leg == 'c' || matrix.leg == 'cpp'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          python3 -m venv "$RUNNER_TEMP/clang-format"
-          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
           echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
