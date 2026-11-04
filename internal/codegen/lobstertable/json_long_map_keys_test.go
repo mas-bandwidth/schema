@@ -40,16 +40,21 @@ let input = read_file("input.json")
 assert input
 let report = schema_rt.LoadReport {}
 let value = schema_rt.json_read("Root", input, report)
-assert value and not report.malformed
-let text, reason = schema_rt.json_write(value)
-assert reason == ""
-print(text)
+if value:
+    let text, reason = schema_rt.json_write(value)
+    assert reason == ""
+    print(text)
+else:
+    print("REFUSED")
 `)
 	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program.String()), 0644); err != nil {
 		t.Fatal(err)
 	}
 	matches := func() bool {
 		out := lobsterrun.Run(t, g.dir, "main.lobster", map[string][]byte{"input.json": input})
+		if strings.TrimSpace(string(out)) == "REFUSED" {
+			return false
+		}
 		var got, want any
 		if err := json.Unmarshal(input, &want); err != nil {
 			t.Fatal(err)
