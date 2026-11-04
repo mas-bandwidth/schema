@@ -227,8 +227,8 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
-          DART="$(command -v dart)" || { echo "::error::the runner has no dart on PATH"; exit 1; }
-          export DART
+          # the runner's own Dart, where it has one; make/dart.mk's dist path otherwise
+          if command -v dart >/dev/null 2>&1; then DART="$(command -v dart)"; export DART; fi
           mkdir -p build/nightly/reference-report
           record=build/nightly/reference-report/readiness-cpp.txt
           echo fail > "$record"
