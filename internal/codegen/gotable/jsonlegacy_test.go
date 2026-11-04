@@ -70,14 +70,10 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	var v F
 	FReset(&v)
 	var r TableReport
-	if !FFromJSONWith(&v, []byte(nullText), &r, TableJSONOptions{}) || !r.Refused() {
-		t.Fatalf("without NullAsEmpty: report %+v, want kind_mismatch 1", r)
-	}
-	// the strict With (docs/SPEC-TABLES.md §6.5) refuses the same text, with the count
-	FReset(&v)
-	r = TableReport{}
-	if FFromJSONWith(&v, []byte(nullText), &r, TableJSONOptions{}) || !r.Refused() || r.Err() == nil {
-		t.Fatalf("strict With without NullAsEmpty: report %+v, want a refusal with kind_mismatch 1", r)
+	// without the option a null is the wrong JSON type for an array: refused
+	// (docs/SPEC-TABLES.md §16.2)
+	if FFromJSONWith(&v, []byte(nullText), &r, TableJSONOptions{}) || r.Err() == nil {
+		t.Fatalf("without NullAsEmpty: report %+v, want a refusal", r)
 	}
 	FReset(&v)
 	r = TableReport{}
@@ -320,10 +316,9 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	t.Parallel()
 	const nullText = "{\"names\":null,\"kids\":null,\"n\":3}"
 
-	// (a) without the option: two kind mismatches, plain call and With alike;
-	// both are strict (docs/SPEC-TABLES.md §6.5) and refuse with the count,
-	// and their tolerant twins answer true with it
-	for _, path := range []string{"plain", "with", "tolerant", "tolerant with"} {
+	// (a) without the option: the plain call and With alike refuse
+	// (docs/SPEC-TABLES.md §6.5)
+	for _, path := range []string{"plain", "with"} {
 		b := &LBuilder{}
 		if !b.Init() {
 			t.Fatal("Init")
@@ -333,16 +328,11 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 		switch path {
 		case "plain":
 			ok = LFromJSON(b, []byte(nullText), &r)
-		case "with":
-			ok = LFromJSONWith(b, []byte(nullText), &r, TableJSONOptions{})
-		case "tolerant":
-			ok = LFromJSON(b, []byte(nullText), &r)
 		default:
 			ok = LFromJSONWith(b, []byte(nullText), &r, TableJSONOptions{})
 		}
-		want := path == "tolerant" || path == "tolerant with"
-		if ok != want || !r.Refused() {
-			t.Fatalf("%s read of the null text without NullAsEmpty: ok %v kind_mismatch %d, want %v 2", path, ok, r.Refusal, want)
+		if ok || !r.Refused() {
+			t.Fatalf("%s read of the null text without NullAsEmpty: ok %v %+v, want a refusal", path, ok, r)
 		}
 		b.Shutdown()
 	}
@@ -358,8 +348,8 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 	}
 
 	// a null ELEMENT keeps its own row's verdict under the option
-	if _, r, ok := readL(t, "{\"names\":[\"a\",null]}", legacy); !ok || !r.Refused() {
-		t.Fatalf("null element under NullAsEmpty: ok %v kind_mismatch %d, want true 1", ok, r.Refusal)
+	if _, r, ok := readL(t, "{\"names\":[\"a\",null]}", legacy); ok || !r.Refused() {
+		t.Fatalf("null element under NullAsEmpty: ok %v %+v, want a refusal", ok, r)
 	}
 
 	// a map and a bounded array take the same option
@@ -370,19 +360,23 @@ func TestGoJsonLegacyOptions(t *testing.T) {
 			t.Fatal("Init")
 		}
 		var r TableReport
-		if !MFromJSON(mb, []byte(mText), &r) || !r.Refused() {
-			t.Fatalf("map/bounded null without the option: kind_mismatch %d, want 2", r.Refusal)
+		if MFromJSON(mb, []byte(mText), &r) || !r.Refused() {
+			t.Fatalf("map/bounded null without the option: %+v, want a refusal", r)
 		}
 		mb.Shutdown()
-		// a filled value, then the same keys again as null: last-wins empties both
-		m, r, ok := readM(t, "{\"tags\":{\"k\":1},\"slots\":[1],\"tags\":null,\"slots\":null}", TableJSONOptions{NullAsEmpty: true})
-		if !ok || r.Unknown != 0 || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-			t.Fatalf("map/bounded null under NullAsEmpty: ok %v report %+v, want two duplicates and nothing else", ok, r)
+		// a key repeated as null is a repeated key: refused
+		if _, r, ok := readM(t, "{\"tags\":{\"k\":1},\"slots\":[1],\"tags\":null,\"slots\":null}", TableJSONOptions{NullAsEmpty: true}); ok || r.Err() == nil {
+			t.Fatalf("a repeated key under NullAsEmpty read: %+v", r)
+		}
+		// under the option a null reads as empty and writes nothing
+		m, r, ok := readM(t, mText, TableJSONOptions{NullAsEmpty: true})
+		if !ok || r.Err() != nil {
+			t.Fatalf("map/bounded null under NullAsEmpty: ok %v report %+v", ok, r)
 		}
 		n := MToJSONMeasureWith(m, legacy)
 		buf := make([]byte, n)
 		if MToJSONWith(m, buf, legacy) != n || string(buf) != "{}" {
-			t.Fatalf("map/bounded after a null read writes %q, want {} (last-wins emptied both)", buf)
+			t.Fatalf("map/bounded after a null read writes %q, want {}", buf)
 		}
 		filled, _, _ := readM(t, "{\"tags\":{\"k\":1},\"slots\":[1]}", TableJSONOptions{})
 		n = MToJSONMeasureWith(filled, legacy)

@@ -720,8 +720,8 @@ func TestKeyed(t *testing.T) {
 			}
 			var got Keyed
 			var rep TableReport
-			if KeyedLoad(&got, wire, &rep) || rep.Reason != "non_finite_float: Keyed.ks" || math.Float64bits(got.Ks[1]) != 0 {
-				t.Errorf("keyed %s: tolerant %+v landed %#x", c.name, rep, math.Float64bits(got.Ks[1]))
+			if KeyedLoad(&got, wire, &rep) || rep.Err() != TableRefuseNonFiniteFloat || math.Float64bits(got.Ks[1]) != 0 {
+				t.Errorf("keyed %s: the read %+v landed %#x", c.name, rep, math.Float64bits(got.Ks[1]))
 			}
 			if _, err := KeyedReadStrict(wire); !errors.Is(err, TableRefuseNonFiniteFloat) {
 				t.Errorf("keyed %s: strict %v", c.name, err)

@@ -66,8 +66,8 @@ func TestTableWireOverATextTransport(t *testing.T) {
 	}
 	var r TableReport
 	got, err = RootLoadText(text, &r)
-	if got != nil || err == nil || err.Error() != "malformed" || !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
-		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil, malformed, Malformed", got != nil, err, r)
+	if got != nil || !errors.Is(err, TableRefuseWireDamaged) || r.Err() == nil {
+		t.Fatalf("supplied report: value %v, error %v, report %+v; want nil and wire_damaged", got != nil, err, r)
 	}
 	// A supplied report receives THIS read's report: earlier counts in it
 	// neither leak into the verdict nor survive the call.
@@ -78,8 +78,8 @@ func TestTableWireOverATextTransport(t *testing.T) {
 }
 `
 
-// A fixed table read from a wider writer's wire: the tolerant Load clamps the
-// string and answers true; LoadText refuses it as clamped, by name.
+// A fixed table read from a wider writer's wire: the read refuses the string
+// past its bound, and LoadText refuses it length_over_bound.
 const textTransportClampSchema = `package probe
 fixed table Wide {
 	id uint32

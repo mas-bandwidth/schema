@@ -65,7 +65,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
-	"strings"
 	"testing"
 )
 

@@ -497,15 +497,13 @@ func t04GoE9(t *testing.T) {
 // `report.Widened++` inside the per-entry loop, and §5.4's "a folded element run
 // is ONE" is the copy/present fold (`tableFixedRuns` folds only
 // `tableFixedCopy`/`tableFixedBool`), so a widen run is never folded. `count`
-// and `text` clamp once per entry. AND THE TITLE'S LAST CLAUSE: §5.4 says
+// and `text` past their bounds refuse in the pre-scan. AND THE TITLE'S LAST CLAUSE: §5.4 says
 // "`copy`, `const`, `present`, `ordinal` ... the op lands its value and moves
 // nothing; the remap to `None` is the BOUNDS PASS's to count, on BOTH plans"
 // (docs/FIXED-FORM-ALGORITHM.md §5.4, fix 27). The `ordinal` and `const` op
-// cases therefore carry NO `report.Clamped++`; the forged ordinal/union tag is
-// counted by `tableFixedForgedBounds`, the bounds pass the compiled read runs
-// over the record's source, while the identity plan — which carries no
-// `ordinal` or unguarded `const` entry — has its own forged tag counted by the
-// storage clamp (§5.8 row 12, schema#1254).
+// cases therefore carry no counter; a forged ordinal or union tag refuses in the
+// pre-scan the compiled read runs over the record's source, before any
+// destination byte (§4.5, §4.6).
 func t04GoR16(t *testing.T) {
 	run := funcSource(tableFixedRuntime, "func tableFixedRun(")
 	if run == "" {
