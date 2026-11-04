@@ -77,7 +77,7 @@ good.Tier = strictfixed.TierFirst
 let wire = strictfixed.RowFixedSave([good, good])
 assert(length(wire) > 0)
 let body = 20 + read_uint32_le(wire, 16) + 8
-let second = body + strictfixed.RowFixedRecordBytes
+let second = body + 8 + strictfixed.RowFixedRecordBytes
 let plan:[schema_rt.TableFixedEntry] = []
 for(4096): push(plan, schema_rt.TableFixedEntry {})
 let back = [strictfixed.NewRow(), strictfixed.NewRow(), strictfixed.NewRow()]
@@ -85,30 +85,38 @@ let report = schema_rt.TableReport {}
 var passed = 0
 if strictfixed.RowFixedLoad(back, wire, plan, report) == 2 and strictfixed.RowFixedSave([back[0], back[1]]) == wire:
     passed += 1
+else:
+    print("valid round trip failed: " + report.reason)
 let damaged:[string] = [
-    write_int8_le(wire, second + %[1]d, 2),
-    write_int8_le(wire, second + %[2]d, 2),
-    write_int8_le(wire, second + %[2]d + 1, 2),
-    write_int8_le(wire, second + %[3]d + 4, 2),
-    write_int32_le(wire, second + %[4]d, 11),
-    write_float32_le(wire, second + %[5]d, 2.0),
-    write_int8_le(wire, second + %[6]d, 3),
+    write_int8_le(copy(wire), second + %[1]d, 2),
+    write_int8_le(copy(wire), second + %[2]d, 2),
+    write_int8_le(copy(wire), second + %[2]d + 1, 2),
+    write_int8_le(copy(wire), second + %[3]d + 4, 2),
+    write_int32_le(copy(wire), second + %[4]d, 11),
+    write_float32_le(copy(wire), second + %[5]d, 2.0),
+    write_int8_le(copy(wire), second + %[6]d, 3),
     substring(wire, 0, length(wire) - 1),
     ""
 ]
+var case_index = 0
 for(damaged) bad:
     for(back) r: r.Seq = 123
     let n = strictfixed.RowFixedLoad(back, bad, plan, report)
     if n == -1 and back[0].Seq == 7 and back[1].Seq == 7 and back[2].Seq == 7:
         passed += 1
+    else:
+        print("damage case " + string(case_index) + " returned " + string(n) + ": " + report.reason)
+    case_index += 1
 // Inactive optional payload and counted-array slack are not values.
-var slack = write_int8_le(wire, second + %[2]d, 0)
+var slack = write_int8_le(copy(wire), second + %[2]d, 0)
 slack = write_int8_le(slack, second + %[2]d + 1, 255)
 slack = write_int32_le(slack, second + %[2]d + 2, 99)
 slack = write_int8_le(slack, second + %[3]d + 4 + 8, 255)
 slack = write_int32_le(slack, second + %[3]d + 4 + 8 + 1, 99)
 if strictfixed.RowFixedLoad(back, slack, plan, report) == 2 and not back[1].OptionalPresent and back[1].LiveCount == 1:
     passed += 1
+else:
+    print("inactive storage failed: " + report.reason)
 print(passed)
 `, offsets["flag"], offsets["optional"], offsets["live"], offsets["ranged"], offsets["ratio"], offsets["tier"])
 	run := func(t *testing.T, files map[string][]byte) string {
