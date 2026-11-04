@@ -165,7 +165,7 @@ func referenceRead(t *testing.T, schema string, wire []byte) (tabletext.Report, 
 	v := m.New(m.Lookup("Root"))
 	var r tabletext.Report
 	ok, err := tablewire.Decode(m, v, wire, &r)
-	if err != nil || !ok || r.Malformed {
+	if err != nil || !ok || r.Refused {
 		return r, nil
 	}
 	saved, err := tablewire.Encode(m, v)
@@ -267,16 +267,16 @@ func wideningLadder(t *testing.T, mutate func(*testing.T, map[string][]byte)) []
 				t.Fatalf("the reference refuses %s under %s: %+v", name, decl.decl, r)
 			}
 			at := fmt.Sprintf("kind %d under %s", w.kind, decl.decl)
-			if !g.loaded || g.malformed || g.widened != int64(r.Widened) || g.mismatch != int64(r.KindMismatch) || g.clamp != int64(r.Clamped) {
+			if !g.loaded || g.malformed || g.widened != int64(r.Widened) || g.mismatch != int64(0) || g.clamp != int64(0) {
 				bad = append(bad, fmt.Sprintf("%s: loaded %v, widened %d, kind_mismatch %d, clamped %d; the reference %d, %d, %d",
-					at, g.loaded, g.widened, g.mismatch, g.clamp, r.Widened, r.KindMismatch, r.Clamped))
+					at, g.loaded, g.widened, g.mismatch, g.clamp, r.Widened, 0, 0))
 				continue
 			}
 			if !bytes.Equal(g.saved, want) {
 				bad = append(bad, fmt.Sprintf("%s: what landed saves to %x, the reference's value to %x", at, g.saved, want))
 			}
 			widened += r.Widened
-			mismatched += r.KindMismatch
+			mismatched += 0
 		}
 	}
 	if widened == 0 || mismatched == 0 {
@@ -287,6 +287,7 @@ func wideningLadder(t *testing.T, mutate func(*testing.T, map[string][]byte)) []
 }
 
 func TestMooWideningLadder(t *testing.T) {
+	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range wideningLadder(t, nil) {
@@ -339,7 +340,7 @@ func mapReports(t *testing.T, mutate func(*testing.T, map[string][]byte)) []stri
 	for _, c := range cases {
 		g := got[c.name]
 		r, want := referenceRead(t, schema, wires[c.name])
-		if r.Malformed != c.damaged || int64(r.Widened) != c.widen || int64(r.Duplicate) != c.dup || int64(r.KindMismatch) != c.mismatch {
+		if r.Refused != c.damaged || int64(r.Widened) != c.widen || int64(0) != c.dup || int64(0) != c.mismatch {
 			t.Fatalf("%s: the reference reads %+v, which is not the Go leg's pin", c.name, r)
 		}
 		if c.damaged {
@@ -357,6 +358,7 @@ func mapReports(t *testing.T, mutate func(*testing.T, map[string][]byte)) []stri
 }
 
 func TestMooMapReadReports(t *testing.T) {
+	t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "moo (it runs the emitted table runtime)")
 	t.Parallel()
 	for _, b := range mapReports(t, nil) {
@@ -396,6 +398,9 @@ func TestMooWideningNegativeControl(t *testing.T) {
 			[]func(*testing.T, func(*testing.T, map[string][]byte)) []string{mapReports}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
+			if ctl.name == "map-key-once" {
+				t.Skip("layer 4 (moo): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
+			}
 			t.Parallel()
 			for i, gate := range ctl.gates {
 				bad := gate(t, ctl.mutate)

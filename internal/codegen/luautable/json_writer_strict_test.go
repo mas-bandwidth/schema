@@ -91,16 +91,10 @@ func strictGoName(r tabletext.Report) string {
 		return r.Reason
 	}
 	switch {
-	case r.Malformed:
+	case r.Refused:
 		return "malformed"
-	case r.Clamped > 0:
-		return "clamped"
-	case r.KindMismatch > 0:
-		return "kind_mismatch"
 	case r.Unknown > 0:
 		return "unknown"
-	case r.Duplicate > 0:
-		return "duplicate"
 	case r.Widened > 0:
 		return "widened"
 	}

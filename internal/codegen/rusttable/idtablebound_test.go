@@ -241,10 +241,10 @@ func TestRustIdTableReaderContract(t *testing.T) {
 		inst := m.New(root)
 		var rep tabletext.Report
 		ok, err := tablewire.DecodeRegion(m, inst, wire, &rep)
-		if err != nil {
+		if err != nil && !tablewire.ReadRefusal(err) {
 			t.Fatalf("%s: unexpected DecodeRegion error: %v", name, err)
 		}
-		if ok != wantOK || rep.Malformed != wantMalformed || rep.Unknown != wantUnknown {
+		if ok != wantOK || rep.Refused != wantMalformed || (ok && rep.Unknown != wantUnknown) {
 			t.Fatalf("%s: DecodeRegion = (ok=%v, rep=%+v), want (ok=%v, malformed=%v, unknown=%d)",
 				name, ok, rep, wantOK, wantMalformed, wantUnknown)
 		}

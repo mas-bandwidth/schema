@@ -23,7 +23,7 @@ func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
 				return w.Refuse()
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SpawnCount), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SpawnCount), uint64(0))
 		}
 	}
 	{
@@ -65,6 +65,12 @@ func TeamConfigMeasureMessages(values []*TeamConfig, report *TableReport) int64 
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableReport) int64 {
@@ -86,17 +92,16 @@ func TeamConfigSaveMessages(values []*TeamConfig, buffer []byte, report *TableRe
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
-	}
 	return 2 + w.Bits/8
 }
 func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 	TeamConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -104,9 +109,16 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
@@ -115,35 +127,27 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 4) {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload1 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := payload1.Signed(entry.Shape.Kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
-						} else if v > 64 {
-							v = 64
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "TeamConfig.spawn_count")
+						if v < 0 || v > 64 {
+							r.Report.Refuse(TableRefuseOutOfRange, "TeamConfig.spawn_count")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.SpawnCount = int32(v)
 					}
@@ -159,37 +163,33 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					start := r.Bits.Offset / 8
 					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
 					if !tableUTF8Valid(text) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					kept := tableUTF8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
+					if n > 16 {
+						r.Report.Refuse(TableRefuseLengthOverBound, "TeamConfig.banner")
+						return false
 					}
 					clear(value.Banner[:])
-					copy(value.Banner[:], text[:kept])
-					value.BannerLength = int32(kept)
+					copy(value.Banner[:], text)
+					value.BannerLength = int32(n)
 				}
 				if widened {
 					r.Report.Widened++
@@ -198,19 +198,16 @@ func TeamConfigLoadMessageBody(r *TableMessageReader, value *TeamConfig) bool {
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// TeamConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// TeamConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// TeamConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// TeamConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -218,35 +215,22 @@ func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, da
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := TeamConfigLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			TeamConfigReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func TeamConfigLoadMessagesTolerant(values []TeamConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !TeamConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !TeamConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				TeamConfigReset(&values[j])
 			}
@@ -266,9 +250,12 @@ func GunnerConfigSaveMessageBody(w *TableMessageWriter, value *GunnerConfig) boo
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			w.Put(11, TableMessageRefBitsHere)
 			if value.Reaction-value.Reaction != 0 {
+				return w.Refuse()
+			}
+			if value.Reaction-value.Reaction != 0 {
 				return false
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
 		}
 	}
 	{
@@ -304,6 +291,12 @@ func GunnerConfigMeasureMessages(values []*GunnerConfig, report *TableReport) in
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *TableReport) int64 {
@@ -325,17 +318,16 @@ func GunnerConfigSaveMessages(values []*GunnerConfig, buffer []byte, report *Tab
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
-	}
 	return 2 + w.Bits/8
 }
 func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) bool {
 	GunnerConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -343,9 +335,16 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xb75aa3662201646a:
 			{
@@ -354,29 +353,27 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload2 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload2.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						b := payload2.Get32()
 						if b&0x7f800000 == 0x7f800000 {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "GunnerConfig.reaction")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "GunnerConfig.reaction")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							v := math.Float32frombits(b)
 							value.Reaction = v
@@ -394,32 +391,26 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload3 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload3.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						b := payload3.Get8()
 						if b > 1 {
-							r.Report.Malformed = true
-							if r.Report.Reason == "" {
-								r.Report.Reason = "malformed: Tracking"
-							}
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.Tracking = b != 0
 					}
@@ -431,19 +422,16 @@ func GunnerConfigLoadMessageBody(r *TableMessageReader, value *GunnerConfig) boo
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// GunnerConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// GunnerConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// GunnerConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// GunnerConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -451,35 +439,22 @@ func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := GunnerConfigLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			GunnerConfigReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func GunnerConfigLoadMessagesTolerant(values []GunnerConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !GunnerConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !GunnerConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				GunnerConfigReset(&values[j])
 			}
@@ -499,18 +474,24 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
 			w.Put(100, TableMessageRefBitsHere)
 			if value.Damage-value.Damage != 0 {
+				return w.Refuse()
+			}
+			if value.Damage-value.Damage != 0 {
 				return false
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Damage)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Damage)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			w.Put(101, TableMessageRefBitsHere)
 			if value.Cooldown-value.Cooldown != 0 {
+				return w.Refuse()
+			}
+			if value.Cooldown-value.Cooldown != 0 {
 				return false
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Cooldown)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Cooldown)), uint64(0))
 		}
 	}
 	{
@@ -546,6 +527,12 @@ func TurretConfigMeasureMessages(values []*TurretConfig, report *TableReport) in
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *TableReport) int64 {
@@ -567,17 +554,16 @@ func TurretConfigSaveMessages(values []*TurretConfig, buffer []byte, report *Tab
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
-	}
 	return 2 + w.Bits/8
 }
 func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) bool {
 	TurretConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -585,9 +571,16 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
@@ -596,29 +589,27 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload4 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						b := payload4.Get32()
 						if b&0x7f800000 == 0x7f800000 {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.damage")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "TurretConfig.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							v := math.Float32frombits(b)
 							value.Damage = v
@@ -636,29 +627,27 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload5 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload5.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						b := payload5.Get32()
 						if b&0x7f800000 == 0x7f800000 {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "TurretConfig.cooldown")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "TurretConfig.cooldown")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							v := math.Float32frombits(b)
 							value.Cooldown = v
@@ -676,12 +665,8 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				if !GunnerConfigLoadMessageBody(r, &value.Gunner) {
@@ -695,19 +680,16 @@ func TurretConfigLoadMessageBody(r *TableMessageReader, value *TurretConfig) boo
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// TurretConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// TurretConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// TurretConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// TurretConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -715,35 +697,22 @@ func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := TurretConfigLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			TurretConfigReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func TurretConfigLoadMessagesTolerant(values []TurretConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !TurretConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !TurretConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				TurretConfigReset(&values[j])
 			}
@@ -763,18 +732,24 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
 			w.Put(14, TableMessageRefBitsHere)
 			if value.Health-value.Health != 0 {
+				return w.Refuse()
+			}
+			if value.Health-value.Health != 0 {
 				return false
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			w.Put(15, TableMessageRefBitsHere)
 			if value.Mass-value.Mass != 0 {
+				return w.Refuse()
+			}
+			if value.Mass-value.Mass != 0 {
 				return false
 			}
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Mass)), uint64(0))
+			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Mass)), uint64(0))
 		}
 	}
 	{
@@ -856,6 +831,12 @@ func HullConfigMeasureMessages(values []*HullConfig, report *TableReport) int64 
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableReport) int64 {
@@ -877,17 +858,16 @@ func HullConfigSaveMessages(values []*HullConfig, buffer []byte, report *TableRe
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
-	}
 	return 2 + w.Bits/8
 }
 func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 	HullConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -895,9 +875,16 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x7f69d4b5288ba9cf:
 			{
@@ -906,29 +893,27 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						b := payload12.Get32()
 						if b&0x7f800000 == 0x7f800000 {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.health")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "HullConfig.health")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							v := math.Float32frombits(b)
 							value.Health = v
@@ -946,29 +931,27 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					var raw [16]byte
 					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
 					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						b := payload13.Get32()
 						if b&0x7f800000 == 0x7f800000 {
-							tableNonFiniteFloat(&r.Report.NonFiniteFloat, "HullConfig.mass")
+							r.Report.Refuse(TableRefuseNonFiniteFloat, "HullConfig.mass")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						} else {
 							v := math.Float32frombits(b)
 							value.Mass = v
@@ -986,34 +969,39 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					base := &value.Turrets
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 						id, ok := r.Vocabulary.Name(ref)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Weapon
 						known := key.TableEnumValue(id)
 						var scratch TurretConfig
@@ -1035,19 +1023,16 @@ func HullConfigLoadMessageBody(r *TableMessageReader, value *HullConfig) bool {
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// HullConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// HullConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// HullConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// HullConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -1055,35 +1040,22 @@ func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, da
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := HullConfigLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			HullConfigReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func HullConfigLoadMessagesTolerant(values []HullConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !HullConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !HullConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				HullConfigReset(&values[j])
 			}
@@ -1249,6 +1221,12 @@ func KeyedConfigMeasureMessages(values []*KeyedConfig, report *TableReport) int6
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *TableReport) int64 {
@@ -1270,17 +1248,16 @@ func KeyedConfigSaveMessages(values []*KeyedConfig, buffer []byte, report *Table
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
-	}
 	return 2 + w.Bits/8
 }
 func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool {
 	KeyedConfigReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -1288,9 +1265,16 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xbaaeb048a5a8fa6d:
 			{
@@ -1299,34 +1283,39 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					base := &value.Teams
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 						id, ok := r.Vocabulary.Name(ref)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Team
 						known := key.TableEnumValue(id)
 						var scratch TeamConfig
@@ -1352,34 +1341,39 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					base := &value.Hulls
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 						id, ok := r.Vocabulary.Name(ref)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Hull
 						known := key.TableEnumValue(id)
 						var scratch HullConfig
@@ -1405,12 +1399,8 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				if !ScoreBoardLoadMessageBody(r, &value.Scores) {
@@ -1423,19 +1413,16 @@ func KeyedConfigLoadMessageBody(r *TableMessageReader, value *KeyedConfig) bool 
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// KeyedConfigLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// KeyedConfigLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// KeyedConfigReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// KeyedConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -1443,35 +1430,22 @@ func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, 
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := KeyedConfigLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			KeyedConfigReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func KeyedConfigLoadMessagesTolerant(values []KeyedConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !KeyedConfigLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !KeyedConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				KeyedConfigReset(&values[j])
 			}
@@ -1519,7 +1493,7 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 				if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
 					return w.Refuse()
 				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 17, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PerTeam[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 17, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PerTeam[i]), uint64(0))
 			}
 		}
 	}
@@ -1528,10 +1502,12 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 }
 func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool {
 	ScoreBoardReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -1539,9 +1515,16 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
@@ -1550,34 +1533,39 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					base := &value.PerTeam
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
+					var seenKeys [64]uint64
+					seenKey := seenKeys[:0]
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
 						id, ok := r.Vocabulary.Name(ref)
 						if !ok {
-							r.Report.Malformed = true
+							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
+						for _, k := range seenKey {
+							if k == id {
+								r.Report.Refuse(TableRefuseWireDamaged, "")
+								return false
+							}
+						}
+						seenKey = append(seenKey, id)
 						var key Team
 						known := key.TableEnumValue(id)
 						var scratch int32
@@ -1590,24 +1578,20 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
+								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
 							payload32 := TableReader{Buffer: raw[:], Report: &r.Report}
 							if !payload32.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
+								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
 							{
 								v := payload32.Signed(element.Shape.Kind)
-								if v < 0 {
-									v = 0
-									r.Report.Clamped++
-									tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
-								} else if v > 100000 {
-									v = 100000
-									r.Report.Clamped++
-									tableTextClamped(&r.Report.ClampedField, "ScoreBoard.per_team")
+								if v < 0 || v > 100000 {
+									r.Report.Refuse(TableRefuseOutOfRange, "ScoreBoard.per_team")
+									r.Report.Refuse(TableRefuseWireDamaged, "")
+									return false
 								}
 								(*p) = int32(v)
 							}
@@ -1621,7 +1605,7 @@ func ScoreBoardLoadMessageBody(r *TableMessageReader, value *ScoreBoardRow) bool
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}

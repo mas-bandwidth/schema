@@ -50,7 +50,7 @@ func TestRetainedReplacementCorpusElixir(t *testing.T) {
 				store := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 				var read, save tabletext.Report
 				ok, e := tablewire.DecodeRetain(m, value, wire, &store, &read)
-				if e != nil || !ok || read.Malformed || read.Unknown != row.Unknown || read.KindMismatch != row.KindMismatch || read.Retained != row.Retained || read.RetainLost != row.LoadLost {
+				if e != nil || !ok || read.Refused || read.Unknown != row.Unknown || read.Retained != row.Retained || read.RetainLost != row.LoadLost {
 					t.Fatalf("%s independent load: %v %v %+v", row.Name, ok, e, read)
 				}
 				out, e := tablewire.EncodeRetain(m, value, &store, &save)

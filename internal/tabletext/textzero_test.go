@@ -63,7 +63,7 @@ func roundTrip(t *testing.T, m *tabletext.Model, inst *tabletext.Instance, label
 	}
 	back := m.New(inst.Def)
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, back, wire, &r); !ok || err != nil || r.Malformed {
+	if ok, err := tablewire.Decode(m, back, wire, &r); !ok || err != nil || r.Refused {
 		t.Fatalf("%s: the wire Encode wrote decodes damaged: ok=%v err=%v report=%+v wire=%x", label, ok, err, r, wire)
 	}
 	text, err := m.Write(back)
@@ -102,7 +102,7 @@ func TestPackTextReaderRefusesZeroInText(t *testing.T) {
 				t.Errorf("%s: Read accepted a zero in text: %s", label, text)
 				continue
 			}
-			if !r.Malformed || r.Reason != "text_holds_zero: "+form.reason {
+			if !r.Refused || r.Reason != "text_holds_zero: "+form.reason {
 				t.Errorf("%s: report %+v, want Malformed with Reason text_holds_zero: %s", label, r, form.reason)
 			}
 			roundTrip(t, m, inst, label)
@@ -134,7 +134,7 @@ func TestPackTextReaderRefusesZeroInText(t *testing.T) {
 	} {
 		inst := m.New(root)
 		var r tabletext.Report
-		if !m.Read(inst, []byte(text), &r) || r.Malformed || r.Unknown != 1 {
+		if !m.Read(inst, []byte(text), &r) || r.Refused || r.Unknown != 1 {
 			t.Errorf("%s: a skipped zero is not the event: %+v", text, r)
 		}
 	}
@@ -145,7 +145,7 @@ func TestPackTextReaderRefusesZeroInText(t *testing.T) {
 func TestPackTextReaderRefusesZeroInBuildNote(t *testing.T) {
 	t.Parallel()
 	m, inst, r := read(t, "GlobalSettings", `{"build_note":"a\u0000b"}`)
-	if !r.Malformed || r.Reason != "text_holds_zero: GlobalSettings.build_note" {
+	if !r.Refused || r.Reason != "text_holds_zero: GlobalSettings.build_note" {
 		t.Fatalf("report %+v, want Malformed with Reason text_holds_zero: GlobalSettings.build_note", r)
 	}
 	roundTrip(t, m, inst, "build_note")

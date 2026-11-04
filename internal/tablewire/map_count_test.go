@@ -25,8 +25,8 @@ func TestMapBuilderCountCap(t *testing.T) {
 		report := tabletext.Report{Unknown: 3}
 		ok, err := tablewire.Decode(m, m.New(m.Lookup("Root")), wire, &report)
 		var refusal *tablewire.CountRefusal
-		if ok || !errors.As(err, &refusal) || report != (tabletext.Report{Unknown: 3}) {
-			t.Fatalf("count %d must refuse before entries without adding damage: %v %v %+v", count, ok, err, report)
+		if ok || !errors.As(err, &refusal) || !report.Refused || report.Unknown != 0 {
+			t.Fatalf("count %d must refuse count_over_extent_cap: %v %v %+v", count, ok, err, report)
 		}
 	}
 }

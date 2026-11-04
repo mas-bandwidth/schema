@@ -189,12 +189,9 @@ func loadFixEEngineFor(t *testing.T, units map[string][]string, unitKey, rootNam
 	}
 	o.loaded = true
 	o.counts = loadFixECounts{
-		unknown:      rep.Unknown,
-		kindMismatch: rep.KindMismatch,
-		widened:      rep.Widened,
-		clamped:      rep.Clamped,
-		duplicate:    rep.Duplicate,
-		malformed:    rep.Malformed || !ok,
+		unknown:   rep.Unknown,
+		widened:   rep.Widened,
+		malformed: rep.Refused || !ok,
 	}
 	enc, eerr := tablewire.Encode(m, inst)
 	if eerr != nil {

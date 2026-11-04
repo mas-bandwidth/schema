@@ -32,9 +32,13 @@ const (
 	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
 	// -4: variable region and retain loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +5: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
-	// +10: the message writer refuses a ranged integer, a bits(N) value and ill-formed text instead of masking them, naming invalid_value through (*TableMessageWriter).Refuse (SPEC.md §5.1, SPEC-TABLES §22.6)
-	// -7: a refused message batch leaves the buffer untouched: SaveMessages measures first, and the measure carries the batch-size refusal (SPEC.md §5.1); the text writer refuses a count past its storage instead of clamping it
-	goOneTableLineBudget = 9578
+	// +223: the one read (SPEC-TABLES §4, §6.5): the wire-alone check over every byte, the node table and the pointer graph, run before every variable-form body read
+	// +9: a message body refuses a field id it has carried (SPEC-TABLES §3.3)
+	// +4: a flags name twice in a JSON array refuses (SPEC-TABLES §16.2)
+	// +44: the fixed pre-scan reads used units only, never the slack past a count or under an absent optional (SPEC-TABLES §3.4)
+	// +9: the message save refuses a ranged value or a flags bit its bits would truncate (SPEC-TABLES §3.3, §5)
+	// +3: the message writer refuses at the site (ill-formed text, a count below its minimum), and the save measures first so a refused batch leaves the buffer untouched (SPEC.md §5.1)
+	goOneTableLineBudget = 9868
 	// +369: the strict measure's damage checks in the emitted runtime (schema-go-fuzz-measure-accepts-malformed)
 	// +109: the variable reader names the form byte on its refusal (schema-go-prose-reasons-become-names)
 	// +22: a truncated fixed load answers malformed by class and truncated by name (schema-go-fixed-load-truncated-refusal-matches-strict-test, 703169488)
@@ -48,9 +52,14 @@ const (
 	// +28: TableTextMalformed, TableMalformedField, and (TableReport).Err's malformed-field check live in tables/goruntime so units with and without unbounded text share one TableReport.
 	// -100: variable loads report newer_form on any form byte != 2 (SPEC-TABLES §6.5)
 	// +8: a builder load's count past the int32 storage cap names count_over_extent_cap in the report and in (TableReport).Err (SPEC-TABLES §2.9)
-	// +268: the message writer refuses a ranged integer, a bits(N) value and ill-formed text instead of masking them, naming invalid_value through (*TableMessageWriter).Refuse (SPEC.md §5.1, SPEC-TABLES §22.6)
-	// -109: a refused message batch leaves the buffer untouched: SaveMessages measures first, and the measure carries the batch-size refusal (SPEC.md §5.1); the text writer refuses a count past its storage instead of clamping it
-	goExamplesLineBudget = 59642
+	// -5027: the one read: no tolerant twins, no clamp or kind-mismatch counting, the wire-alone check shared in the runtime
+	// +2961: a fixed table whose closure holds a union carries the fixed form in a regional unit (RootConfig, LoadoutConfig, ArchiveConfig and their closure: leaves, write bodies, checks, plans)
+	// +252: a message body refuses a repeated field id, and an enum-keyed array a repeated slot (SPEC-TABLES §3.2, §3.3)
+	// +4: a flags name twice in a JSON array refuses (SPEC-TABLES §16.2)
+	// +44: the fixed pre-scan reads used units only, never the slack past a count or under an absent optional (SPEC-TABLES §3.4)
+	// +168: the message save refuses a value outside its declaration, and a ranged value or a flags bit its bits would truncate (SPEC-TABLES §3.3, §5)
+	// +45: the message writer refuses at the site (ill-formed text, a count below its minimum), and the save measures first so a refused batch leaves the buffer untouched (SPEC.md §5.1)
+	goExamplesLineBudget = 57931
 )
 
 // TestGoGeneratedSizeBudget pins the size of the Go table emitter's output at

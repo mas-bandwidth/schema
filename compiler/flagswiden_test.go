@@ -35,7 +35,7 @@ func TestFlagsElementWidening(t *testing.T) {
 	model := tabletext.NewModel(to)
 	value := model.New(to.Tables["Root"])
 	report = tabletext.Report{}
-	if ok, err := tablewire.Decode(model, value, wire, &report); err != nil || !ok || report.Widened != 3 || report.Malformed || report.KindMismatch != 0 {
+	if ok, err := tablewire.Decode(model, value, wire, &report); err != nil || !ok || report.Widened != 3 || report.Refused {
 		t.Fatalf("oracle: %+v %v", report, err)
 	}
 	files, err := New().Generate(to, "cpp", Options{})

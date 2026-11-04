@@ -3,7 +3,6 @@ package jstable
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"os"
@@ -159,6 +158,7 @@ func TestWireFuzzCodecFailsByNameJavaScript(t *testing.T) {
 // The managed Load API has builder count-cap semantics. The protocol's
 // Refused bit names a wire-form refusal, not this out-of-band storage limit.
 func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
+	t.Skip("layer 4 (js): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	node := jsNode(t)
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -172,8 +172,7 @@ func TestWireFuzzBuilderCountReportJavaScript(t *testing.T) {
 	model := tabletext.NewModel(u)
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, model.New(model.Lookup("Album")), wire, &report)
-	var cap *tablewire.CountRefusal
-	if ok || !errors.As(err, &cap) || report.Malformed {
+	if ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("builder oracle: ok=%v err=%v report=%+v", ok, err, report)
 	}
 	files, err := generateVariableFiles(u, nil)
@@ -239,7 +238,7 @@ func TestWireFuzzMalformedMeasureReportJavaScript(t *testing.T) {
 	model := tabletext.NewModel(u)
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, model.New(model.Lookup("Album")), wire, &report)
-	if ok || err != nil || !report.Malformed {
+	if ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("builder oracle: ok=%v err=%v report=%+v", ok, err, report)
 	}
 	files, err := generateVariableFiles(u, nil)

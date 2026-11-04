@@ -45,7 +45,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			w.Put(uint64(value.PayloadLength)-0, 17)
 			w.Align()
 			for i := range int(value.PayloadLength) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 0, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Payload[i]), uint64(0))
 			}
 		}
 	}
@@ -60,7 +60,7 @@ func WideBlobSaveMessageBody(w *TableMessageWriter, value *WideBlob) bool {
 			}
 			w.Put(uint64(value.SamplesCount)-0, 17)
 			for i := range int(value.SamplesCount) {
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Samples[i]), uint64(0))
+				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 7, Packing: 0, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Samples[i]), uint64(0))
 			}
 		}
 	}
@@ -87,6 +87,12 @@ func WideBlobMeasureMessages(values []*WideBlob, report *TableReport) int64 {
 	if w.Overflow {
 		return -1
 	}
+	if w.Over != 0 {
+		if report != nil {
+			report.Refuse(TableRefuseInvalidValue, "")
+		}
+		return -1
+	}
 	return 2 + w.Bits/8
 }
 func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport) int64 {
@@ -108,17 +114,16 @@ func WideBlobSaveMessages(values []*WideBlob, buffer []byte, report *TableReport
 	if w.Overflow {
 		return -1
 	}
-	if report != nil {
-		report.Clamped += w.Clamped
-	}
 	return 2 + w.Bits/8
 }
 func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 	WideBlobReset(value)
+	var seenIDs [64]uint64
+	seen := seenIDs[:0]
 	for {
 		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -126,9 +131,16 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 		}
 		entry, ok := r.Vocabulary.Entry(ref)
 		if !ok || entry.ID >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
+		for _, id := range seen {
+			if id == entry.ID {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
+			}
+		}
+		seen = append(seen, entry.ID)
 		switch entry.ID {
 		case 0x39f7fcec8fcb623d:
 			{
@@ -137,37 +149,33 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					start := r.Bits.Offset / 8
 					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					text := r.Bits.Buffer[start : start+int64(n)]
 					if !tableUTF8Valid(text) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					kept := tableUTF8Clamp(text, min(int64(n), int64(70000)))
-					if kept < int64(n) {
-						r.Report.Clamped++
+					if n > 70000 {
+						r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.label")
+						return false
 					}
 					clear(value.Label[:])
-					copy(value.Label[:], text[:kept])
-					value.LabelLength = int32(kept)
+					copy(value.Label[:], text)
+					value.LabelLength = int32(n)
 				}
 				if widened {
 					r.Report.Widened++
@@ -180,32 +188,28 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 					if false {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					start := r.Bits.Offset / 8
 					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					kept := min(n, uint64(70000))
-					if kept < n {
-						r.Report.Clamped++
+					if n > 70000 {
+						r.Report.Refuse(TableRefuseLengthOverBound, "WideBlob.payload")
+						return false
 					}
 					clear(value.Payload[:])
-					copy(value.Payload[:], r.Bits.Buffer[start:start+int64(kept)])
-					value.PayloadLength = int32(kept)
+					copy(value.Payload[:], r.Bits.Buffer[start:start+int64(n)])
+					value.PayloadLength = int32(n)
 				}
 				if widened {
 					r.Report.Widened++
@@ -218,50 +222,38 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 7) {
 						widened = true
 					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
+						r.Report.Refuse(TableRefuseKindMismatch, "")
+						return false
 					}
 				}
 				{
 					base := &value.Samples
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					keep := min(n, uint64(70000))
-					if keep < n {
-						r.Report.Clamped++
+					if n > 70000 {
+						r.Report.Refuse(TableRefuseCountOverBound, "WideBlob.samples")
+						return false
 					}
-					walk := n
-					if element.Shape.Bits >= 0 {
-						walk = keep
-					}
-					for i := uint64(0); i < walk; i++ {
-						var scratch uint16
-						p := &scratch
-						if i < keep {
-							p = &base[i]
-						}
+					for i := uint64(0); i < n; i++ {
+						p := &base[i]
 						{
 							var raw [16]byte
 							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
+								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
 							payload7 := TableReader{Buffer: raw[:], Report: &r.Report}
 							if !payload7.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
+								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
 							}
 							{
@@ -270,11 +262,7 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 							}
 						}
 					}
-					if walk < n && !r.Bits.Skip(int64(n-walk)*element.Shape.Bits) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.SamplesCount = int32(keep)
+					value.SamplesCount = int32(n)
 				}
 				if widened {
 					r.Report.Widened++
@@ -283,19 +271,16 @@ func WideBlobLoadMessageBody(r *TableMessageReader, value *WideBlob) bool {
 		default:
 			r.Report.Unknown++
 			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
 	}
 }
 
-// WideBlobLoadMessagesTolerant is the TOLERANT message read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.3): the counters are
-// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every
-// value it had written reset (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-// WideBlobLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever
-// WideBlobReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every
-// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.
+// WideBlobLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
+// count of 0 and every value it had written reset. A supplied report receives this read's report;
+// report.Err() is the reason.
 func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
 	read := report
 	if read == nil {
@@ -303,35 +288,22 @@ func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data [
 	} else {
 		*read = TableReport{}
 	}
-	count, ok := WideBlobLoadMessagesTolerant(values, vocabulary, data, read)
-	if !ok {
-		return count, false
-	}
-	if read.Err() != nil {
-		for i := range count {
-			WideBlobReset(&values[i])
+	r, count := tableMessageBatchOpen(vocabulary, data, read)
+	defer func() {
+		*read = r.Report
+		if read.Refused() {
+			tableRefused(read)
 		}
-		return 0, false
-	}
-	return count, true
-}
-func WideBlobLoadMessagesTolerant(values []WideBlob, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
-	if report == nil {
-		var ignored TableReport
-		report = &ignored
-	}
-	r, count := tableMessageBatchOpen(vocabulary, data, report)
-	pre := r.Report.Malformed
-	r.Report.Malformed = false
-	defer func() { r.Report.Malformed = r.Report.Malformed || pre; *report = r.Report }()
+	}()
 	if count < 0 {
 		return 0, false
 	}
 	if count > int64(len(values)) {
-		return count, tableMessageRefuse(&r.Report, "batch_too_large")
+		tableMessageRefuse(&r.Report, "batch_too_large")
+		return 0, false
 	}
 	for i := range count {
-		if !WideBlobLoadMessageBody(&r, &values[i]) || tableNonFiniteRefused(&r.Report) || r.Report.Malformed {
+		if !WideBlobLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
 			for j := range i + 1 {
 				WideBlobReset(&values[j])
 			}

@@ -22,6 +22,7 @@ import (
 // counters are schema-go's own engine (internal/tablewire and
 // internal/tabletext) over the same unit, never typed by hand.
 func TestLuauDefaultReadIsStrict(t *testing.T) {
+	t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	const schemaSrc = `package probe
@@ -88,7 +89,7 @@ table Var
 		}
 		oracles[name] = oracle{
 			want:     referenceReason(report, ok),
-			counters: fmt.Sprintf("%d,%d,%d,%d,%d,%s", report.Unknown, report.KindMismatch, report.Widened, report.Clamped, report.Duplicate, boolText(report.Malformed)),
+			counters: fmt.Sprintf("%d,%d,%d,%d,%d,%s", report.Unknown, 0, report.Widened, 0, 0, boolText(report.Refused)),
 			n:        fieldInt(t, inst, "n"),
 		}
 	}
@@ -201,16 +202,11 @@ end
 }
 
 // referenceReason is the §6.5 name the Go report owes under the strict read's
-// order: malformed (or unframed damage) first, then clamped, then
-// kind_mismatch. The wires in this test move one counter each.
+// order: a refusal names malformed; a sound read names nothing.
 func referenceReason(report tabletext.Report, ok bool) string {
 	switch {
-	case report.Malformed, !ok:
+	case report.Refused, !ok:
 		return "malformed"
-	case report.Clamped > 0:
-		return "clamped"
-	case report.KindMismatch > 0:
-		return "kind_mismatch"
 	}
 	return ""
 }

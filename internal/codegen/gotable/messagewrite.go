@@ -2,7 +2,6 @@ package gotable
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -55,19 +54,19 @@ func (g *tableGen) emitMessageWrite(st *ir.Struct) {
 	// sizes the text, and answers -1 before its first byte when the measure
 	// refuses or the buffer is short.
 	if st.Integrity != "" {
-		g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};return 6+w.Bits/8}\n", n, typ, n)
-		g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if need:=%sMeasureMessages(values,report);need<0||int64(len(buffer))<need{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:len(buffer)-4]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return tableIntegritySeal(buffer,2+w.Bits/8)}\n", n, typ, n, n)
+		g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if w.Over!=0{if report!=nil{report.Refuse(TableRefuseInvalidValue,\"\")};return -1};return 6+w.Bits/8}\n", n, typ, n)
+		g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if need:=%sMeasureMessages(values,report);need<0||int64(len(buffer))<need{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:len(buffer)-4]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};return tableIntegritySeal(buffer,2+w.Bits/8)}\n", n, typ, n, n)
 		return
 	}
-	g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};return 2+w.Bits/8}\n", n, typ, n)
-	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if need:=%sMeasureMessages(values,report);need<0||int64(len(buffer))<need{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if report!=nil{report.Clamped+=w.Clamped};return 2+w.Bits/8}\n", n, typ, n, n)
+	g.pf("func %sMeasureMessages(values []*%s,report *TableReport)int64 {if len(values)<1||len(values)>TableMessageBatchMax{if report!=nil{tableMessageRefuse(report,\"batch_too_large\")};return -1};w:=TableMessageWriter{TableBitWriter:TableBitWriter{Measuring:true}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};if w.Over!=0{if report!=nil{report.Refuse(TableRefuseInvalidValue,\"\")};return -1};return 2+w.Bits/8}\n", n, typ, n)
+	g.pf("func %sSaveMessages(values []*%s,buffer []byte,report *TableReport)int64 {if need:=%sMeasureMessages(values,report);need<0||int64(len(buffer))<need{return -1};buffer[0]=2;buffer[1]=byte(len(values)-1);w:=TableMessageWriter{TableBitWriter:TableBitWriter{Buffer:buffer[2:]}};for _,value:=range values {if value==nil||!%sSaveMessageBody(&w,value){if report!=nil&&w.Reason!=\"\"{tableMessageRefuse(report,w.Reason)};return -1}};w.Align();if w.Overflow{return -1};return 2+w.Bits/8}\n", n, typ, n, n)
 }
 
 // messageInvalid is the message writer's refusal of a value its declaration
 // does not admit (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §22.6): the body names
 // invalid_value and returns false, so MeasureMessages and SaveMessages answer
 // -1 with that reason and write nothing. A value is never masked, wrapped or
-// clamped into its width; a flags value alone is masked, on purpose (§3.3).
+// clamped into its width, a flags bit past its declared width among them (§3.3).
 const messageInvalid = `return w.Refuse()`
 
 func (g *tableGen) emitMessageRides(f *ir.Field, expr, ind string) string {
@@ -165,6 +164,13 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 		}
 		g.pf("%sif %s==%sNone{w.Put(0,TableMessageRefBitsHere)}else{id,named:=%s.TableEnumID();if !named{%s};slot:=tableMessageNameSlot(id);if slot==0{return false};w.Put(slot,TableMessageRefBitsHere)}\n", ind, expr, f.Type.Name, expr, messageInvalid)
 	default:
+		// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
+		// §5, §3.3): the bounds the variable and fixed saves refuse are the
+		// message save's too, so a value the read would refuse, or one whose
+		// offset the ranged width would truncate, refuses invalid_value
+		if cond := writeBoundViolation(f, expr); cond != "" {
+			g.pf("%sif %s { %s }\n", ind, cond, messageInvalid)
+		}
 		lo, hi := "uint64("+expr+")", "uint64(0)"
 		switch entry.Kind {
 		case 1:
@@ -186,24 +192,8 @@ func (g *tableGen) emitMessageValue(f *ir.Field, entry ir.TableVocabularyEntry, 
 				lo = expr + ".Lo"
 				hi = expr + ".Hi"
 			}
-			// A RANGED INTEGER OFF ITS BOUNDS, OR A bits(N) VALUE PAST N, IS
-			// REFUSED (docs/SPEC.md §5.1 rows 1-2, docs/SPEC-TABLES.md §22.6):
-			// the offset from the base can fit the width and still name a
-			// value past max, and below min it wraps
-			if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits {
-				var conds []string
-				for _, b := range scalarRangeBounds(f, expr) {
-					conds = append(conds, b.cond)
-				}
-				if b, ok := scalarWidthBound(f, expr); ok {
-					conds = append(conds, b.cond)
-				}
-				if len(conds) > 0 {
-					g.pf("%sif %s { %s }\n", ind, strings.Join(conds, " || "), messageInvalid)
-				}
-			}
 		}
 		g.needsMath = true
-		g.pf("%stableMessageWriteScalar(&w.TableBitWriter,&w.Clamped,%s,%s,%s)\n", ind, messageShapeLiteral(entry.Kind, entry.Shape), lo, hi)
+		g.pf("%stableMessageWriteScalar(&w.TableBitWriter,&w.Over,%s,%s,%s)\n", ind, messageShapeLiteral(entry.Kind, entry.Shape), lo, hi)
 	}
 }

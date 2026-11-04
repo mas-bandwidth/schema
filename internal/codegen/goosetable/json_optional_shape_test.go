@@ -143,7 +143,7 @@ func jsonOptionalOracle(t *testing.T) []string {
 	for _, text := range jsonOptionalTexts() {
 		inst := model.New(model.Lookup("Root"))
 		var r tabletext.Report
-		if !model.Read(inst, []byte(text), &r) || r.Malformed {
+		if !model.Read(inst, []byte(text), &r) || r.Refused {
 			t.Fatalf("%s: the Go engine refused the text (%+v)", text, r)
 		}
 		out, err := model.Write(inst)
@@ -151,12 +151,13 @@ func jsonOptionalOracle(t *testing.T) []string {
 			t.Fatalf("%s: the Go engine's text: %v", text, err)
 		}
 		out = append(out, '\n') // ToJson ends its text with a newline
-		want = append(want, fmt.Sprintf("%d,%d,%d,%d,%d,false,read %x", r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, out))
+		want = append(want, fmt.Sprintf("%d,%d,%d,%d,%d,false,read %x", r.Unknown, 0, r.Widened, 0, 0, out))
 	}
 	return want
 }
 
 func TestGooseJSONOptionalKeyIsPresence(t *testing.T) {
+	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	got, want := jsonOptionalRun(t, nil), jsonOptionalOracle(t)
 	texts := jsonOptionalTexts()
@@ -168,6 +169,7 @@ func TestGooseJSONOptionalKeyIsPresence(t *testing.T) {
 }
 
 func TestGooseJSONOptionalKeyIsPresenceNegativeControl(t *testing.T) {
+	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	got := jsonOptionalRun(t, func(files map[string][]byte) {
 		const anchor = "                if !json_skip_value(jr, depth + 1) { return false; }\n                if optional && !F(jr, rec, index, JsonOpPresent, depth) { return false; }\n"

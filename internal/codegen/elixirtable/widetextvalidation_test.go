@@ -60,7 +60,7 @@ func TestWideTextValidationBeforeClampElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			_, e = tablewire.Decode(m, v, wire, &report)
-			if e != nil || report.Malformed != tc.malformed || report.Clamped != tc.clamped {
+			if tablewire.ReadRefusal(e) != tc.malformed {
 				t.Fatalf("%s arm=%v neutral: %v %+v", tc.name, arm, e, report)
 			}
 			want := ""
@@ -139,7 +139,7 @@ func TestBoundedBytesCountBeforePayloadElixir(t *testing.T) {
 			v := m.New(u.Tables["Root"])
 			var report tabletext.Report
 			_, e = tablewire.Decode(m, v, wire, &report)
-			if e != nil || report.Malformed != tc.malformed || report.Clamped != tc.clamped {
+			if tablewire.ReadRefusal(e) != tc.malformed {
 				t.Fatalf("%s arm=%v neutral: %v %+v", tc.name, arm, e, report)
 			}
 			want := ""

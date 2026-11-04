@@ -1051,15 +1051,18 @@ func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 					if low >= 0xdc00 && low <= 0xdfff {
 						code = 0x10000 + (uint32(high)-0xd800)<<10 + (uint32(low) - 0xdc00)
 					} else {
-						in.pos = mark // a lone lead surrogate rides as itself
+						in.pos = mark // a lone lead surrogate, refused below
 					}
 				}
 				// a surrogate half that never found its partner has no UTF-8
-				// encoding: encoding it anyway would manufacture CESU-8 —
-				// invalid UTF-8 — out of input that was valid JSON, so it reads
-				// as the replacement character
+				// encoding, so a lone or out-of-order surrogate escape refuses
+				// the read (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2)
 				if code >= 0xd800 && code <= 0xdfff {
-					code = 0xfffd
+					if in.report != nil {
+						in.report.Refuse(TableRefuseMalformed, "")
+					}
+					in.bad = true
+					return 0, false
 				}
 				// mas-bandwidth/schema docs/SPEC-TABLES.md 16.3: a U+0000 bound for text storage
 				// refuses the read (narrow and wide alike)
@@ -1125,7 +1128,7 @@ func (in *tableJSONIn) scanText(out []byte, wide []uint16, name bool) (int32, bo
 		}
 	}
 	if clamped {
-		in.report.Clamped++
+		in.report.Refuse(TableRefuseOutOfRange, "")
 	}
 	return placed, true
 }
@@ -1404,7 +1407,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				want = tableJSONShape(&arm.Field)
 			}
 			if in.valueShape() != want && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape() == 'z') {
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				if !in.skipValue(depth + 1) {
 					return false
 				}
@@ -1482,7 +1485,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				return false
 			}
 			if c != '"' {
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				if !in.skipValue(depth + 1) {
 					return false
 				}
@@ -1495,6 +1498,10 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				found := false
 				for bit := int64(0); bit <= f.EnumMax; bit++ {
 					if tableJSONNameIs(f.EnumName(uint64(bit)), name[:nameLength]) {
+						// A FLAGS NAME TWICE IS A REPEATED KEY (§16.2)
+						if bits&(uint64(1)<<bit) != 0 {
+							in.report.Refuse(TableRefuseMalformed, "")
+						}
 						bits |= uint64(1) << bit
 						found = true
 						break
@@ -1554,7 +1561,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		// refuses forever (a non-finite float has no JSON spelling), and
 		// §16.1's one invariant is that a text which reads clean writes back.
 		if !tableJSONFinite(value) {
-			in.report.KindMismatch++
+			in.report.Refuse(TableRefuseKindMismatch, "")
 			return true
 		}
 		if f.HasRange {
@@ -1565,10 +1572,10 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			// and the walk above refused it as kind_mismatch.
 			if value < f.RangeMin {
 				value = f.RangeMin
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value > f.RangeMax {
 				value = f.RangeMax
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value == 0 {
 				value = 0
 			}
@@ -1576,7 +1583,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		if single {
 			narrow := float32(value)
 			if !tableJSONFinite(float64(narrow)) {
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				return true
 			}
 			*(*float32)(storage) = narrow
@@ -1598,7 +1605,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 	} else {
 		d := tableJSONTokenDouble(token, false)
 		if !tableJSONFinite(d) {
-			in.report.KindMismatch++
+			in.report.Refuse(TableRefuseKindMismatch, "")
 			return true
 		}
 		if isSigned {
@@ -1608,7 +1615,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			case d < -9223372036854775808.0:
 				value, saturated = math.MinInt64, true
 			case d != float64(int64(d)):
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				return true
 			default:
 				value = int64(d)
@@ -1619,14 +1626,14 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				// a negative for an unsigned field clamps to zero, as the exact
 				// digit path already does
 				if d != float64(int64(d)) {
-					in.report.KindMismatch++
+					in.report.Refuse(TableRefuseKindMismatch, "")
 					return true
 				}
 				value, saturated = 0, true
 			case d >= 18446744073709551616.0:
 				value, saturated = ^int64(0), true
 			case d != float64(uint64(d)):
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				return true
 			default:
 				value = int64(uint64(d))
@@ -1634,7 +1641,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		}
 	}
 	if saturated {
-		in.report.Clamped++
+		in.report.Refuse(TableRefuseOutOfRange, "")
 	}
 	if f.HasRange {
 		// an integer field clamps against its EXACT range (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -1643,19 +1650,19 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 		if isSigned {
 			if value < f.RangeIntMin {
 				value = f.RangeIntMin
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value > f.RangeIntMax {
 				value = f.RangeIntMax
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			}
 		} else {
 			uv := uint64(value)
 			if uv < f.RangeUintMin {
 				value = int64(f.RangeUintMin)
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if uv > f.RangeUintMax {
 				value = int64(f.RangeUintMax)
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			}
 		}
 	}
@@ -1667,10 +1674,10 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			low := -high - 1
 			if value > high {
 				value = high
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if value < low {
 				value = low
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			}
 		} else {
 			high := uint64(1)<<(f.ElemSize*8) - 1
@@ -1680,10 +1687,10 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				// established before any cast, so the saturation is one clamp
 				// and the domain bound is the other
 				value = int64(high)
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			} else if uint64(value) > high {
 				value = int64(high)
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 			}
 		}
 	}
@@ -1784,7 +1791,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		if malformed {
 			// a body that is not base64 is the wrong shape for the kind: the
 			// field keeps its default and the event is counted
-			in.report.KindMismatch++
+			in.report.Refuse(TableRefuseKindMismatch, "")
 			return true
 		}
 		buffer := tableJSONBytes(storage, f.ArrayBound)
@@ -1812,7 +1819,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			}
 		}
 		if clamped {
-			in.report.Clamped++
+			in.report.Refuse(TableRefuseOutOfRange, "")
 		}
 		tableJSONSetCount(base, f, placed)
 		return true
@@ -1876,7 +1883,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			if slot >= 0 && slot < 512 {
 				bit := uint64(1) << (slot & 63)
 				if seen[slot>>6]&bit != 0 {
-					in.report.Duplicate++
+					in.report.Refuse(TableRefuseMalformed, "")
 				}
 				seen[slot>>6] |= bit
 			}
@@ -1887,7 +1894,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 					return false
 				}
 			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				if !in.skipValue(depth + 1) {
 					return false
 				}
@@ -1948,12 +1955,12 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 			case placed >= f.ArrayBound:
 				// more elements than the reader's bound: the bounded prefix is
 				// kept and the excess counts, the wire's rule (§4)
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 				if !in.skipValue(depth + 1) {
 					return false
 				}
 			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				if !in.skipValue(depth + 1) {
 					return false
 				}
@@ -2036,7 +2043,7 @@ func tableJSONReadTableFields(in *tableJSONIn, base unsafe.Pointer, info *TableT
 			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (mas-bandwidth/schema docs/SPEC-TABLES.md
 			// 16.7): never a field this build lacks, always a construct it
 			// cannot honor. MALFORMED and refused, never counted as unknown.
-			in.report.Malformed = true
+			in.report.Refuse(TableRefuseMalformed, "")
 			in.bad = true
 			return false
 		}
@@ -2050,7 +2057,7 @@ func tableJSONReadTableFields(in *tableJSONIn, base unsafe.Pointer, info *TableT
 			if index < 512 {
 				bit := uint64(1) << (index & 63)
 				if seen[index>>6]&bit != 0 {
-					in.report.Duplicate++
+					in.report.Refuse(TableRefuseMalformed, "")
 				}
 				seen[index>>6] |= bit
 			}
@@ -2078,7 +2085,7 @@ func tableJSONReadTableFields(in *tableJSONIn, base unsafe.Pointer, info *TableT
 					}
 				} else if got != tableJSONShape(f) && !(f.Pointer && !f.IsArray && got == 'z') {
 					// the wrong JSON type for the kind: skipped, never coerced
-					in.report.KindMismatch++
+					in.report.Refuse(TableRefuseKindMismatch, "")
 					if !in.skipValue(depth + 1) {
 						return false
 					}
@@ -2144,8 +2151,6 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 		report = &ignored
 	}
 	in := tableJSONIn{text: text, report: report, nullEmpty: options.NullAsEmpty}
-	pre := report.Malformed
-	report.Malformed = false
 	info.Reset(value)
 	in.byteOrderMark()
 	ok := tableJSONReadTable(&in, value, info, 0)
@@ -2158,14 +2163,14 @@ func tableJSONRead(value unsafe.Pointer, info *TableTypeInfo, text []byte, repor
 			in.bad = true
 		}
 	}
-	// DAMAGE DISCARDS THE WHOLE LOAD (mas-bandwidth/schema docs/SPEC-TABLES.md §4): malformed text
-	// hands back no value, the value goes back to its defaults
-	if in.bad || !ok || report.Malformed {
+	// THE READ RETURNS THE WHOLE VALUE OR REFUSES (mas-bandwidth/schema docs/SPEC-TABLES.md §4,
+	// §16.2): a refusal hands back no value, the value at its defaults
+	if in.bad || !ok || report.Refused() {
 		info.Reset(value)
-		report.Malformed = true
+		report.Refuse(TableRefuseMalformed, "")
+		tableRefused(report)
 		return false
 	}
-	report.Malformed = pre
 	return true
 }
 
@@ -2407,7 +2412,7 @@ func tableJSONReadWide(in *tableJSONIn, token []byte, storage unsafe.Pointer, f 
 			raw = signedMin
 		}
 	case point < -40:
-		in.report.KindMismatch++
+		in.report.Refuse(TableRefuseKindMismatch, "")
 		return true
 	default:
 		// §16.2: Q I.F has I+F=128 bits, so a nonzero digit past the 128th
@@ -2423,7 +2428,7 @@ func tableJSONReadWide(in *tableJSONIn, token []byte, storage unsafe.Pointer, f 
 		for k := max(point, 0) + start; k < end; k++ {
 			if fn >= 128 {
 				if digit(k) != '0' {
-					in.report.KindMismatch++
+					in.report.Refuse(TableRefuseKindMismatch, "")
 					return true
 				}
 			} else {
@@ -2444,7 +2449,7 @@ func tableJSONReadWide(in *tableJSONIn, token []byte, storage unsafe.Pointer, f 
 		}
 		for k := range fn {
 			if fd[k] != 0 {
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				return true
 			}
 		}
@@ -2493,16 +2498,16 @@ func tableJSONReadWide(in *tableJSONIn, token []byte, storage unsafe.Pointer, f 
 		}
 	}
 	if saturated {
-		in.report.Clamped++
+		in.report.Refuse(TableRefuseOutOfRange, "")
 	}
 	if f.WideRange {
 		lo, hi := tableJSONWide(f.WideMin), tableJSONWide(f.WideMax)
 		if raw.cmp(lo, signed) < 0 {
 			raw = lo
-			in.report.Clamped++
+			in.report.Refuse(TableRefuseOutOfRange, "")
 		} else if raw.cmp(hi, signed) > 0 {
 			raw = hi
-			in.report.Clamped++
+			in.report.Refuse(TableRefuseOutOfRange, "")
 		}
 	}
 	tableJSONWideStore(storage, f.ElemSize, raw)
@@ -2756,7 +2761,7 @@ func tableJSONReadPointer(in *tableJSONIn, slot *int64, f *TableFieldInfo, depth
 			in.pos = probe.pos
 			if entry.ref != 0 {
 				if entry.target != f.TargetID {
-					in.report.KindMismatch++
+					in.report.Refuse(TableRefuseKindMismatch, "")
 				} else {
 					*slot = entry.ref
 				}
@@ -2820,12 +2825,8 @@ func tableJSONReadBlob(in *tableJSONIn, slot *int64, f *TableFieldInfo) bool {
 			return false
 		}
 		shape := TableFieldInfo{TypeName: "bytes", Kind: 6, IsArray: true, Counted: true, ArrayBound: int32(capacity), Offset: 8, CountOffset: 0, ElemSize: 1}
-		before := in.report.KindMismatch
-		if !tableJSONReadField(in, p, &shape, 0) {
+		if !tableJSONReadField(in, p, &shape, 0) || in.report.Refused() {
 			return false
-		}
-		if in.report.KindMismatch != before {
-			return true
 		}
 		*(*uint32)(unsafe.Add(p, 4)) = 0
 		*slot = ref
@@ -2927,7 +2928,7 @@ func tableJSONReadList(in *tableJSONIn, holder unsafe.Pointer, f *TableFieldInfo
 			f.Table().Reset(p)
 		}
 		if in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z') {
-			in.report.KindMismatch++
+			in.report.Refuse(TableRefuseKindMismatch, "")
 			if !in.skipValue(depth + 1) {
 				return false
 			}
@@ -3030,7 +3031,7 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		var k tableMapKey
 		if key.Kind == 12 {
 			if n > key.ArrayBound {
-				in.report.Clamped++
+				in.report.Refuse(TableRefuseOutOfRange, "")
 				in.pos = probe.pos
 				good = false
 			} else {
@@ -3055,7 +3056,7 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				k.raw, good = tableJSONMapInteger(text[:n], key)
 			}
 			if !good {
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 			}
 		}
 		if !ok || in.peek() != ':' {
@@ -3075,7 +3076,7 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				return false
 			}
 			if duplicate {
-				in.report.Duplicate++
+				in.report.Refuse(TableRefuseMalformed, "")
 			}
 			entry.Reset(slot)
 			tableMapStoreKey(slot, key, k)
@@ -3085,7 +3086,7 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 					return false
 				}
 			} else if shape != tableJSONShape(value) && !(value.Pointer && shape == 'z') {
-				in.report.KindMismatch++
+				in.report.Refuse(TableRefuseKindMismatch, "")
 				tableJSONDropLabel(in)
 				if !in.skipValue(depth + 1) {
 					return false
@@ -3519,18 +3520,10 @@ func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
 
 // ---- json walk: end ----
 
-// TableEntityFromJSONTolerant fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): counters are counted onto the report
-// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
-// tolerance event still decides the same way.
-func TableEntityFromJSONTolerant(value *TableEntity, text []byte, report *TableReport) bool {
-	return TableEntityFromJSONTolerantWith(value, text, report, TableJSONOptions{})
-}
-
-// TableEntityFromJSON fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
-// STRICT (§6.5): it refuses whatever TableEntityReadStrict refuses, resets value to its
-// defaults and answers false. A supplied report receives THIS read's report,
-// and on a refusal report.Err() is the typed reason.
+// TableEntityFromJSON fills one TableEntity from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
 func TableEntityFromJSON(value *TableEntity, text []byte, report *TableReport) bool {
 	return TableEntityFromJSONWith(value, text, report, TableJSONOptions{})
 }
@@ -3546,8 +3539,7 @@ func TableEntityToJSON(value *TableEntity, buffer []byte) int64 {
 	return tableJSONWrite(unsafe.Pointer(value), TableEntityTableType(), buffer, TableJSONOptions{})
 }
 
-// TableEntityFromJSONWith is TableEntityFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
-// so it is STRICT too (§6.5).
+// TableEntityFromJSONWith is TableEntityFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
 func TableEntityFromJSONWith(value *TableEntity, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
@@ -3555,18 +3547,7 @@ func TableEntityFromJSONWith(value *TableEntity, text []byte, report *TableRepor
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableEntityFromJSONTolerantWith(value, text, read, options)
-	if !ok || read.Err() != nil {
-		TableEntityReset(value)
-		return false
-	}
-	return true
-}
-
-// TableEntityFromJSONTolerantWith is TableEntityFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
-func TableEntityFromJSONTolerantWith(value *TableEntity, text []byte, report *TableReport, options TableJSONOptions) bool {
-	return tableJSONRead(unsafe.Pointer(value), TableEntityTableType(), text, report, options)
+	return tableJSONRead(unsafe.Pointer(value), TableEntityTableType(), text, read, options)
 }
 
 // TableEntityToJSONMeasureWith is TableEntityToJSONMeasure under TableJSONOptions (§16.2).
@@ -3595,16 +3576,12 @@ func TableEntitySaveText(value *TableEntity) (string, error) {
 }
 
 // TableEntityLoadText fills one TableEntity from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever
-// LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded CR or
-// LF), unknown_form when the decoded wire's form byte is not one this build
-// carries, wire_damaged for framing damage, and the report's own reason
-// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
-// allowed; a supplied one receives THIS read's report, so earlier counts in
-// it never decide.
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
 func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error) {
 	if report != nil {
 		*report = TableReport{}
@@ -3624,31 +3601,20 @@ func TableEntityLoadText(text string, report *TableReport) (*TableEntity, error)
 	}
 	var v TableEntity
 	var read TableReport
-	ok := TableEntityLoadTolerant(&v, wire, &read)
+	ok := TableEntityLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
-	if err := read.Err(); err != nil {
-		return nil, err
-	}
 	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
+		return nil, read.Err()
 	}
 	return &v, nil
 }
 
-// TableStatFromJSONTolerant fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): counters are counted onto the report
-// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
-// tolerance event still decides the same way.
-func TableStatFromJSONTolerant(value *TableStat, text []byte, report *TableReport) bool {
-	return TableStatFromJSONTolerantWith(value, text, report, TableJSONOptions{})
-}
-
-// TableStatFromJSON fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
-// STRICT (§6.5): it refuses whatever TableStatReadStrict refuses, resets value to its
-// defaults and answers false. A supplied report receives THIS read's report,
-// and on a refusal report.Err() is the typed reason.
+// TableStatFromJSON fills one TableStat from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
 func TableStatFromJSON(value *TableStat, text []byte, report *TableReport) bool {
 	return TableStatFromJSONWith(value, text, report, TableJSONOptions{})
 }
@@ -3664,8 +3630,7 @@ func TableStatToJSON(value *TableStat, buffer []byte) int64 {
 	return tableJSONWrite(unsafe.Pointer(value), TableStatTableType(), buffer, TableJSONOptions{})
 }
 
-// TableStatFromJSONWith is TableStatFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
-// so it is STRICT too (§6.5).
+// TableStatFromJSONWith is TableStatFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
 func TableStatFromJSONWith(value *TableStat, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
@@ -3673,18 +3638,7 @@ func TableStatFromJSONWith(value *TableStat, text []byte, report *TableReport, o
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableStatFromJSONTolerantWith(value, text, read, options)
-	if !ok || read.Err() != nil {
-		TableStatReset(value)
-		return false
-	}
-	return true
-}
-
-// TableStatFromJSONTolerantWith is TableStatFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
-func TableStatFromJSONTolerantWith(value *TableStat, text []byte, report *TableReport, options TableJSONOptions) bool {
-	return tableJSONRead(unsafe.Pointer(value), TableStatTableType(), text, report, options)
+	return tableJSONRead(unsafe.Pointer(value), TableStatTableType(), text, read, options)
 }
 
 // TableStatToJSONMeasureWith is TableStatToJSONMeasure under TableJSONOptions (§16.2).
@@ -3713,16 +3667,12 @@ func TableStatSaveText(value *TableStat) (string, error) {
 }
 
 // TableStatLoadText fills one TableStat from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever
-// LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded CR or
-// LF), unknown_form when the decoded wire's form byte is not one this build
-// carries, wire_damaged for framing damage, and the report's own reason
-// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
-// allowed; a supplied one receives THIS read's report, so earlier counts in
-// it never decide.
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
 func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 	if report != nil {
 		*report = TableReport{}
@@ -3742,31 +3692,20 @@ func TableStatLoadText(text string, report *TableReport) (*TableStat, error) {
 	}
 	var v TableStat
 	var read TableReport
-	ok := TableStatLoadTolerant(&v, wire, &read)
+	ok := TableStatLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
-	if err := read.Err(); err != nil {
-		return nil, err
-	}
 	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
+		return nil, read.Err()
 	}
 	return &v, nil
 }
 
-// TableMixedFromJSONTolerant fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): counters are counted onto the report
-// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
-// tolerance event still decides the same way.
-func TableMixedFromJSONTolerant(value *TableMixed, text []byte, report *TableReport) bool {
-	return TableMixedFromJSONTolerantWith(value, text, report, TableJSONOptions{})
-}
-
-// TableMixedFromJSON fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
-// STRICT (§6.5): it refuses whatever TableMixedReadStrict refuses, resets value to its
-// defaults and answers false. A supplied report receives THIS read's report,
-// and on a refusal report.Err() is the typed reason.
+// TableMixedFromJSON fills one TableMixed from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
 func TableMixedFromJSON(value *TableMixed, text []byte, report *TableReport) bool {
 	return TableMixedFromJSONWith(value, text, report, TableJSONOptions{})
 }
@@ -3782,8 +3721,7 @@ func TableMixedToJSON(value *TableMixed, buffer []byte) int64 {
 	return tableJSONWrite(unsafe.Pointer(value), TableMixedTableType(), buffer, TableJSONOptions{})
 }
 
-// TableMixedFromJSONWith is TableMixedFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
-// so it is STRICT too (§6.5).
+// TableMixedFromJSONWith is TableMixedFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
 func TableMixedFromJSONWith(value *TableMixed, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
@@ -3791,18 +3729,7 @@ func TableMixedFromJSONWith(value *TableMixed, text []byte, report *TableReport,
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableMixedFromJSONTolerantWith(value, text, read, options)
-	if !ok || read.Err() != nil {
-		TableMixedReset(value)
-		return false
-	}
-	return true
-}
-
-// TableMixedFromJSONTolerantWith is TableMixedFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
-func TableMixedFromJSONTolerantWith(value *TableMixed, text []byte, report *TableReport, options TableJSONOptions) bool {
-	return tableJSONRead(unsafe.Pointer(value), TableMixedTableType(), text, report, options)
+	return tableJSONRead(unsafe.Pointer(value), TableMixedTableType(), text, read, options)
 }
 
 // TableMixedToJSONMeasureWith is TableMixedToJSONMeasure under TableJSONOptions (§16.2).
@@ -3831,16 +3758,12 @@ func TableMixedSaveText(value *TableMixed) (string, error) {
 }
 
 // TableMixedLoadText fills one TableMixed from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever
-// LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded CR or
-// LF), unknown_form when the decoded wire's form byte is not one this build
-// carries, wire_damaged for framing damage, and the report's own reason
-// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
-// allowed; a supplied one receives THIS read's report, so earlier counts in
-// it never decide.
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
 func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 	if report != nil {
 		*report = TableReport{}
@@ -3860,31 +3783,20 @@ func TableMixedLoadText(text string, report *TableReport) (*TableMixed, error) {
 	}
 	var v TableMixed
 	var read TableReport
-	ok := TableMixedLoadTolerant(&v, wire, &read)
+	ok := TableMixedLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
-	if err := read.Err(); err != nil {
-		return nil, err
-	}
 	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
+		return nil, read.Err()
 	}
 	return &v, nil
 }
 
-// TableHitEventFromJSONTolerant fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): counters are counted onto the report
-// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
-// tolerance event still decides the same way.
-func TableHitEventFromJSONTolerant(value *TableHitEvent, text []byte, report *TableReport) bool {
-	return TableHitEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
-}
-
-// TableHitEventFromJSON fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
-// STRICT (§6.5): it refuses whatever TableHitEventReadStrict refuses, resets value to its
-// defaults and answers false. A supplied report receives THIS read's report,
-// and on a refusal report.Err() is the typed reason.
+// TableHitEventFromJSON fills one TableHitEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
 func TableHitEventFromJSON(value *TableHitEvent, text []byte, report *TableReport) bool {
 	return TableHitEventFromJSONWith(value, text, report, TableJSONOptions{})
 }
@@ -3900,8 +3812,7 @@ func TableHitEventToJSON(value *TableHitEvent, buffer []byte) int64 {
 	return tableJSONWrite(unsafe.Pointer(value), TableHitEventTableType(), buffer, TableJSONOptions{})
 }
 
-// TableHitEventFromJSONWith is TableHitEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
-// so it is STRICT too (§6.5).
+// TableHitEventFromJSONWith is TableHitEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
 func TableHitEventFromJSONWith(value *TableHitEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
@@ -3909,18 +3820,7 @@ func TableHitEventFromJSONWith(value *TableHitEvent, text []byte, report *TableR
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableHitEventFromJSONTolerantWith(value, text, read, options)
-	if !ok || read.Err() != nil {
-		TableHitEventReset(value)
-		return false
-	}
-	return true
-}
-
-// TableHitEventFromJSONTolerantWith is TableHitEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
-func TableHitEventFromJSONTolerantWith(value *TableHitEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
-	return tableJSONRead(unsafe.Pointer(value), TableHitEventTableType(), text, report, options)
+	return tableJSONRead(unsafe.Pointer(value), TableHitEventTableType(), text, read, options)
 }
 
 // TableHitEventToJSONMeasureWith is TableHitEventToJSONMeasure under TableJSONOptions (§16.2).
@@ -3949,16 +3849,12 @@ func TableHitEventSaveText(value *TableHitEvent) (string, error) {
 }
 
 // TableHitEventLoadText fills one TableHitEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever
-// LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded CR or
-// LF), unknown_form when the decoded wire's form byte is not one this build
-// carries, wire_damaged for framing damage, and the report's own reason
-// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
-// allowed; a supplied one receives THIS read's report, so earlier counts in
-// it never decide.
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
 func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, error) {
 	if report != nil {
 		*report = TableReport{}
@@ -3978,31 +3874,20 @@ func TableHitEventLoadText(text string, report *TableReport) (*TableHitEvent, er
 	}
 	var v TableHitEvent
 	var read TableReport
-	ok := TableHitEventLoadTolerant(&v, wire, &read)
+	ok := TableHitEventLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
-	if err := read.Err(); err != nil {
-		return nil, err
-	}
 	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
+		return nil, read.Err()
 	}
 	return &v, nil
 }
 
-// TableChatEventFromJSONTolerant fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): counters are counted onto the report
-// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
-// tolerance event still decides the same way.
-func TableChatEventFromJSONTolerant(value *TableChatEvent, text []byte, report *TableReport) bool {
-	return TableChatEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
-}
-
-// TableChatEventFromJSON fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
-// STRICT (§6.5): it refuses whatever TableChatEventReadStrict refuses, resets value to its
-// defaults and answers false. A supplied report receives THIS read's report,
-// and on a refusal report.Err() is the typed reason.
+// TableChatEventFromJSON fills one TableChatEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
 func TableChatEventFromJSON(value *TableChatEvent, text []byte, report *TableReport) bool {
 	return TableChatEventFromJSONWith(value, text, report, TableJSONOptions{})
 }
@@ -4018,8 +3903,7 @@ func TableChatEventToJSON(value *TableChatEvent, buffer []byte) int64 {
 	return tableJSONWrite(unsafe.Pointer(value), TableChatEventTableType(), buffer, TableJSONOptions{})
 }
 
-// TableChatEventFromJSONWith is TableChatEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
-// so it is STRICT too (§6.5).
+// TableChatEventFromJSONWith is TableChatEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
 func TableChatEventFromJSONWith(value *TableChatEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
@@ -4027,18 +3911,7 @@ func TableChatEventFromJSONWith(value *TableChatEvent, text []byte, report *Tabl
 	} else {
 		*read = TableReport{}
 	}
-	ok := TableChatEventFromJSONTolerantWith(value, text, read, options)
-	if !ok || read.Err() != nil {
-		TableChatEventReset(value)
-		return false
-	}
-	return true
-}
-
-// TableChatEventFromJSONTolerantWith is TableChatEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
-func TableChatEventFromJSONTolerantWith(value *TableChatEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
-	return tableJSONRead(unsafe.Pointer(value), TableChatEventTableType(), text, report, options)
+	return tableJSONRead(unsafe.Pointer(value), TableChatEventTableType(), text, read, options)
 }
 
 // TableChatEventToJSONMeasureWith is TableChatEventToJSONMeasure under TableJSONOptions (§16.2).
@@ -4067,16 +3940,12 @@ func TableChatEventSaveText(value *TableChatEvent) (string, error) {
 }
 
 // TableChatEventLoadText fills one TableChatEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever
-// LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded CR or
-// LF), unknown_form when the decoded wire's form byte is not one this build
-// carries, wire_damaged for framing damage, and the report's own reason
-// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
-// allowed; a supplied one receives THIS read's report, so earlier counts in
-// it never decide.
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
 func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, error) {
 	if report != nil {
 		*report = TableReport{}
@@ -4096,31 +3965,20 @@ func TableChatEventLoadText(text string, report *TableReport) (*TableChatEvent, 
 	}
 	var v TableChatEvent
 	var read TableReport
-	ok := TableChatEventLoadTolerant(&v, wire, &read)
+	ok := TableChatEventLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
-	if err := read.Err(); err != nil {
-		return nil, err
-	}
 	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
+		return nil, read.Err()
 	}
 	return &v, nil
 }
 
-// TablePickupEventFromJSONTolerant fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and
-// is the TOLERANT text read (§6.5): counters are counted onto the report
-// passed, and malformed text leaves the value at its defaults (§4). A nil report is allowed; every
-// tolerance event still decides the same way.
-func TablePickupEventFromJSONTolerant(value *TablePickupEvent, text []byte, report *TableReport) bool {
-	return TablePickupEventFromJSONTolerantWith(value, text, report, TableJSONOptions{})
-}
-
-// TablePickupEventFromJSON fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16) and is
-// STRICT (§6.5): it refuses whatever TablePickupEventReadStrict refuses, resets value to its
-// defaults and answers false. A supplied report receives THIS read's report,
-// and on a refusal report.Err() is the typed reason.
+// TablePickupEventFromJSON fills one TablePickupEvent from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
 func TablePickupEventFromJSON(value *TablePickupEvent, text []byte, report *TableReport) bool {
 	return TablePickupEventFromJSONWith(value, text, report, TableJSONOptions{})
 }
@@ -4136,8 +3994,7 @@ func TablePickupEventToJSON(value *TablePickupEvent, buffer []byte) int64 {
 	return tableJSONWrite(unsafe.Pointer(value), TablePickupEventTableType(), buffer, TableJSONOptions{})
 }
 
-// TablePickupEventFromJSONWith is TablePickupEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2),
-// so it is STRICT too (§6.5).
+// TablePickupEventFromJSONWith is TablePickupEventFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
 func TablePickupEventFromJSONWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
 	read := report
 	if read == nil {
@@ -4145,18 +4002,7 @@ func TablePickupEventFromJSONWith(value *TablePickupEvent, text []byte, report *
 	} else {
 		*read = TableReport{}
 	}
-	ok := TablePickupEventFromJSONTolerantWith(value, text, read, options)
-	if !ok || read.Err() != nil {
-		TablePickupEventReset(value)
-		return false
-	}
-	return true
-}
-
-// TablePickupEventFromJSONTolerantWith is TablePickupEventFromJSONTolerant under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.2, §6.5): the TOLERANT text read; malformed text leaves the value at its defaults (§4).
-func TablePickupEventFromJSONTolerantWith(value *TablePickupEvent, text []byte, report *TableReport, options TableJSONOptions) bool {
-	return tableJSONRead(unsafe.Pointer(value), TablePickupEventTableType(), text, report, options)
+	return tableJSONRead(unsafe.Pointer(value), TablePickupEventTableType(), text, read, options)
 }
 
 // TablePickupEventToJSONMeasureWith is TablePickupEventToJSONMeasure under TableJSONOptions (§16.2).
@@ -4185,16 +4031,12 @@ func TablePickupEventSaveText(value *TablePickupEvent) (string, error) {
 }
 
 // TablePickupEventLoadText fills one TablePickupEvent from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
-// whenever the read's report holds an error (TableReport.Err), whatever
-// LoadTolerant answered, so a recovered value never comes back. It refuses
-// by name: base64_damaged when the body does not decode, base64_not_canonical
-// when it decodes but is not canonical (a pad bit set, or an embedded CR or
-// LF), unknown_form when the decoded wire's form byte is not one this build
-// carries, wire_damaged for framing damage, and the report's own reason
-// (malformed, clamped, kind_mismatch, ...) otherwise. A nil report is
-// allowed; a supplied one receives THIS read's report, so earlier counts in
-// it never decide.
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
 func TablePickupEventLoadText(text string, report *TableReport) (*TablePickupEvent, error) {
 	if report != nil {
 		*report = TableReport{}
@@ -4214,15 +4056,12 @@ func TablePickupEventLoadText(text string, report *TableReport) (*TablePickupEve
 	}
 	var v TablePickupEvent
 	var read TableReport
-	ok := TablePickupEventLoadTolerant(&v, wire, &read)
+	ok := TablePickupEventLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}
-	if err := read.Err(); err != nil {
-		return nil, err
-	}
 	if !ok {
-		return nil, tableRefuseError(TableRefuseWireDamaged)
+		return nil, read.Err()
 	}
 	return &v, nil
 }

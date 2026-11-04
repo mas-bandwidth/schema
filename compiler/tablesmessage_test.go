@@ -78,9 +78,9 @@ fixed table Second { rate float32 | min = 0, max = 1, resolution = 0.1001 }
 	}
 	var again tablewire.Vocabulary
 	var refused tabletext.Report
-	// damage is an answer, not an error: the report says malformed and the
-	// vocabulary stays unset
-	if err := again.AnnounceRead(repeated, &refused); err != nil || again.Announced() || !refused.Malformed || refused.Refused {
+	// damage refuses the read: the report says refused and the vocabulary
+	// stays unset
+	if err := again.AnnounceRead(repeated, &refused); tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged || again.Announced() || !refused.Refused {
 		t.Fatalf("go: a repeated entry must be malformed: %v %+v", err, refused)
 	}
 

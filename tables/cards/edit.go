@@ -58,11 +58,11 @@ func TaskHash(r *Record) ([32]byte, error) {
 
 // refuseLossy names the read events that make a record unsafe to hash or
 // rewrite: a silent loss means the "task" the hash would cover is incomplete
-// (docs/SPEC-TABLES.md §4: wire tolerance; §6.6: retain-unknown).
+// (docs/SPEC-TABLES.md §4: the strict read; §6.6: retain-unknown).
 func refuseLossy(rep TableReport) error {
-	if rep.Unknown > 0 || rep.KindMismatch > 0 || rep.Clamped > 0 || rep.RetainLost > 0 || rep.Malformed {
-		return fmt.Errorf("cards: record has loss events (unknown=%d kindMismatch=%d clamped=%d retainLost=%d malformed=%v): refused, never hashed or rewritten",
-			rep.Unknown, rep.KindMismatch, rep.Clamped, rep.RetainLost, rep.Malformed)
+	if rep.Unknown > 0 || rep.RetainLost > 0 || rep.Refused() {
+		return fmt.Errorf("cards: record has loss events (unknown=%d retainLost=%d refused=%v): refused, never hashed or rewritten",
+			rep.Unknown, rep.RetainLost, rep.Err())
 	}
 	return nil
 }
@@ -274,7 +274,7 @@ func edit(r *Record, mutate func(root *Card, w *TableWorker) error) error {
 	}
 	defer b.Shutdown()
 	var rep TableReport
-	if !CardLoadBuilderTolerant(&b, r.wire, &rep) {
+	if !CardLoadBuilder(&b, r.wire, &rep) {
 		return errors.New("cards: reload into builder failed")
 	}
 	if err := refuseLossy(rep); err != nil {
