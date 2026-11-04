@@ -19,7 +19,7 @@ func runShape() {
 		benchtable.BenchMixedSave,
 		func(v *benchtable.BenchMixed, b []byte) bool {
 			var report benchtable.TableReport
-			return benchtable.BenchMixedLoad(v, b, &report) && !report.Malformed
+			return benchtable.BenchMixedLoad(v, b, &report)
 		})
 	gateOnly = measured
 

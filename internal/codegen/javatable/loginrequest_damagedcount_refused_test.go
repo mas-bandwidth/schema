@@ -34,7 +34,7 @@ func TestJavaFixLoginRequestDamagedCountRefused(t *testing.T) {
 	}
 
 	var oracle tabletext.Report
-	if _, err := tablewire.Decode(model, inst, mutant, &oracle); err != nil || !oracle.Malformed {
+	if _, err := tablewire.Decode(model, inst, mutant, &oracle); !tablewire.ReadRefusal(err) {
 		t.Fatalf("oracle does not read the mutant as damaged: %v %+v", err, oracle)
 	}
 

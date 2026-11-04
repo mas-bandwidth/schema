@@ -40,8 +40,8 @@ in `docs/roadmap.sexp`, one task per layer below.
 4. **An unknown enum variant, union arm or keyed slot stays evolution**: the
    value reads `None` (the slot is dropped) and counts `unknown`, as an unknown
    field does. The alternative is to refuse it.
-5. **A repeated field id, map key, keyed slot, node-table field and JSON key
-   are damage** (Glenn's 2026-10-31 list of input no writer produces, held in
+5. **A repeated field id, map key, keyed slot, node-table field, JSON key and
+   flags name in a JSON flags array are damage** (Glenn's 2026-10-31 list of input no writer produces, held in
    #2557). The `duplicate` counter is retired.
 6. **Bytes after a nested union inside its arm's `L` are damage** (the same
    list, item 5).

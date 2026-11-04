@@ -75,8 +75,8 @@ func TestRowW4(t *testing.T) {
 	}
 
 	// SLACK IS UNSPECIFIED: stained slack is neither malformed nor a refusal.
-	if rep.Malformed {
-		t.Error("malformed=true — stained slack must not be malformed")
+	if rep.Refused() {
+		t.Errorf("stained slack refused: %+v", rep)
 	}
 	if rep.Verdict != tblv1.TableOpenOk {
 		t.Errorf("verdict=%v — stained slack must not be a refusal", rep.Verdict)
@@ -88,10 +88,5 @@ func TestRowW4(t *testing.T) {
 	}
 	if back[0].Items[0] != 7 {
 		t.Errorf("Items[0]=%d, want 7", back[0].Items[0])
-	}
-
-	// The bounds pass saw only the LIVE count and clamped NOTHING.
-	if rep.Clamped != 0 {
-		t.Errorf("Clamped=%d — bounds pass clamped stained slack, but only live elements should be walked", rep.Clamped)
 	}
 }

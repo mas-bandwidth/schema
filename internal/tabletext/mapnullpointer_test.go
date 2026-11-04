@@ -12,8 +12,8 @@ import (
 
 // TestMapNullPointerValuesRoundTrip holds the map and pointer rows of
 // docs/SPEC-TABLES.md §16.2 together: a null map value of pointer kind is a
-// null reference, while a plain value counts a kind mismatch and an optional
-// value still reads null as absent.
+// null reference, while a plain value refuses as a kind mismatch and an
+// optional value still reads null as absent.
 func TestMapNullPointerValuesRoundTrip(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -124,29 +124,25 @@ table Holder
 	}
 
 	for _, tc := range []struct {
-		name, field, text string
+		name, field, text, control string
 	}{
-		{"plain-int", "plain_int", `{"plain_int":{"a":null}}`},
-		{"plain-string", "plain_string", `{"plain_string":{"1":null}}`},
+		{"plain-int", "plain_int", `{"plain_int":{"a":null}}`, `{"plain_int":{"a":0}}`},
+		{"plain-string", "plain_string", `{"plain_string":{"1":null}}`, `{"plain_string":{"1":""}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			m := tabletext.NewModel(u)
 			inst := m.New(m.Lookup("Holder"))
 			var report tabletext.Report
-			if !m.Read(inst, []byte(tc.text), &report) {
-				t.Fatalf("well-formed wrong-shape map value refused: %s", tc.text)
+			if m.Read(inst, []byte(tc.text), &report) || !report.Refused || !strings.HasPrefix(report.Reason, "kind_mismatch") {
+				t.Fatalf("null on a plain map value must refuse as a kind mismatch: %+v", report)
 			}
-			if report != (tabletext.Report{KindMismatch: 1}) {
-				t.Fatalf("null must count one kind mismatch: %+v", report)
+			if len(field(t, inst, tc.field).Entries) != 0 {
+				t.Fatal("a refused read left entries placed")
 			}
-			entries := field(t, inst, tc.field).Entries
-			if len(entries) != 1 {
-				t.Fatal("valid key with a default value was not retained")
-			}
-			value := entries[0].Tab.Fields[1].Cell
-			if value.I != 0 || len(value.Str) != 0 {
-				t.Fatalf("wrong-shape value was not defaulted: %+v", value)
+			report = tabletext.Report{}
+			if !m.Read(inst, []byte(tc.control), &report) || !report.Silent() || len(field(t, inst, tc.field).Entries) != 1 {
+				t.Fatalf("the accepted twin %s did not read: %+v", tc.control, report)
 			}
 		})
 	}
@@ -172,7 +168,9 @@ table Holder
 
 }
 
-func TestOptionalReadValueKindMismatchSetsPresentDefault(t *testing.T) {
+// A `?T` field's file holding the wrong shape refuses, and leaves the field
+// absent at its default; the right shape reads present.
+func TestOptionalReadValueKindMismatchRefuses(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	const source = `package optmismatch
@@ -190,10 +188,14 @@ table Root {
 	inst := m.New(root)
 	fv := field(t, inst, "maybe")
 	var r tabletext.Report
-	if !m.ReadValue(fv, []byte(`"bad"`), &r) {
-		t.Fatalf("ReadValue failed: %+v", r)
+	if m.ReadValue(fv, []byte(`"bad"`), &r) || !r.Refused || !strings.HasPrefix(r.Reason, "kind_mismatch") {
+		t.Fatalf("ReadValue = %+v, want a kind_mismatch refusal", r)
 	}
-	if r.Malformed || r.KindMismatch != 1 || !fv.Present || fv.Cell.I != 0 {
-		t.Fatalf("ReadValue = (%+v, %+v), want KindMismatch=1 Present=true I=0", r, fv)
+	if fv.Present || fv.Cell.I != 0 {
+		t.Fatalf("a refused ReadValue left %+v", fv)
+	}
+	r = tabletext.Report{}
+	if !m.ReadValue(fv, []byte(`7`), &r) || !r.Silent() || !fv.Present || fv.Cell.I != 7 {
+		t.Fatalf("ReadValue = (%+v, %+v), want Present=true I=7", r, fv)
 	}
 }

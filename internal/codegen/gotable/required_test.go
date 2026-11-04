@@ -41,7 +41,7 @@ table T
 				t.Errorf("a required field still elides at its default: the source carries %q", m)
 			}
 		}
-		for _, m := range []string{"MissingRequired++", `"missing_required: "`, `missingReq += "b"`, `missingReq += "c"`} {
+		for _, m := range []string{"TableRefuseMissingRequired", `"missing_required: "`, `missingReq += "b"`, `missingReq += "c"`} {
 			if !strings.Contains(s, m) {
 				t.Errorf("the reader does not refuse a missing required field: the source lacks %q", m)
 			}
@@ -77,7 +77,7 @@ func TestReq(t *testing.T){
 	old = append(old, 2, 0, 0, 0, 0, 0, 0, 0)
 	r = TableReport{}
 	_, _ = regFor(old, &r)
-	if r.MissingRequired != 1 { t.Fatalf("want MissingRequired=1, got %+v", r) }
+	if !r.Refused() { t.Fatalf("want MissingRequired=1, got %+v", r) }
 	if r.Reason != "missing_required: b" { t.Fatalf("want reason %q, got %q", "missing_required: b", r.Reason) }
 }
 `
@@ -139,7 +139,7 @@ func load(wire []byte) (*Root, TableReport) {
 func wantMissing(t *testing.T, what string, wire []byte, field string) {
 	t.Helper()
 	_, r := load(wire)
-	if r.MissingRequired != 1 || r.Reason != "missing_required: "+field { t.Fatalf("%s: Load report %+v, want MissingRequired=1 reason missing_required: %s", what, r, field) }
+	if !r.Refused() || r.Reason != "missing_required: "+field { t.Fatalf("%s: Load report %+v, want MissingRequired=1 reason missing_required: %s", what, r, field) }
 	var m TableMissingRequired
 	if err := r.Err(); !errors.As(err, &m) || m.Fields != field { t.Fatalf("%s: report.Err() = %v, want TableMissingRequired{%q}", what, err, field) }
 	// The body walk itself refuses: a child refused for a missing required
@@ -150,7 +150,7 @@ func wantMissing(t *testing.T, what string, wire []byte, field string) {
 	var br TableReport
 	ok := RootLoadBuilder(&b, wire, &br)
 	b.Shutdown()
-	if ok || br.MissingRequired != 1 { t.Fatalf("%s: LoadBuilder accepted the record (ok=%v report %+v)", what, ok, br) }
+	if ok || !br.Refused() { t.Fatalf("%s: LoadBuilder accepted the record (ok=%v report %+v)", what, ok, br) }
 	v, err := RootReadStrict(wire)
 	if v != nil || err == nil { t.Fatalf("%s: ReadStrict accepted the record: %+v", what, v) }
 	if !errors.As(err, &m) || m.Fields != field || err.Error() != "missing_required: "+field { t.Fatalf("%s: ReadStrict error %v (%T), want missing_required: %s", what, err, err, field) }
@@ -164,7 +164,7 @@ func TestStrict(t *testing.T) {
 	if RootSave(&v, buf) != n { t.Fatal("save short") }
 	got, err := RootReadStrict(buf)
 	if err != nil || got == nil || *got != v { t.Fatalf("clean strict read: %+v %v", got, err) }
-	if _, r := load(buf); r.MissingRequired != 0 || r.Err() != nil { t.Fatalf("clean load report: %+v", r) }
+	if _, r := load(buf); r.Refused() || r.Err() != nil { t.Fatalf("clean load report: %+v", r) }
 	// ROOT: a record from before a was required.
 	var old OldRootNoA
 	old.Kid.X = 5

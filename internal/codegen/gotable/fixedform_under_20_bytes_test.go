@@ -11,7 +11,7 @@ import (
 // Reason name together, never silently. The destination is filled with a
 // sentinel Point and proved still the sentinel, so "no byte is written" is
 // observed rather than assumed. The whole report is compared against
-// TableReport{Malformed: true, Reason: "truncated"} in one !=, pinning every
+// TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"} in one !=, pinning every
 // counter, Reason, the verdict and any field added later to its zero value at
 // once.
 func TestFixedFormUnder20Bytes(t *testing.T) {
@@ -39,7 +39,7 @@ func TestUnder20Bytes(t *testing.T) {
 	for k := 0; k < TableFixedHeaderBytes+4; k++ {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
-		if n := PointFixedLoad(got, buf[:k], plan, &r); n != -1 || r != (TableReport{Malformed: true, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, buf[:k], plan, &r); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
 			t.Fatalf("k=%d: n=%d report=%+v dest=%+v", k, n, r, got[0])
 		}
 	}

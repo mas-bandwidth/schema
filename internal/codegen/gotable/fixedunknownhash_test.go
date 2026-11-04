@@ -148,7 +148,7 @@ func refuse(t *testing.T, what string, file []byte, reason string, hash uint64) 
 		PointReset(&got[i])
 	}
 	var r TableReport
-	n := PointFixedLoadTolerant(got, file, plan, &r)
+	n := PointFixedLoad(got, file, plan, &r)
 	if n != -1 || r != (TableReport{Verdict: TableOpenRefused, FixedRaised: true, Reason: reason, LayoutHash: hash}) {		t.Fatalf("%s: want %s carrying 0x%016x and nothing else; got n=%d report=%+v", what, reason, hash, n, r)
 	}
 	for i := range got {
@@ -165,7 +165,7 @@ func readsClean(t *testing.T, what string, file []byte, want int64) {
 	plan := make([]TableFixedEntry, PointFixedPlanMax)
 	got := make([]Point, 4)
 	var r TableReport
-	if n := PointFixedLoadTolerant(got, file, plan, &r); n != want || r != (TableReport{}) {
+	if n := PointFixedLoad(got, file, plan, &r); n != want || r != (TableReport{}) {
 		t.Fatalf("%s: want %d records and a silent report; got n=%d report=%+v", what, want, n, r)
 	}
 }
@@ -227,7 +227,7 @@ func TestLineage(t *testing.T) {
 	plan := make([]TableFixedEntry, PointFixedPlanMax)
 	got := make([]Point, 4)
 	var r TableReport
-	if n := PointFixedLoadTolerant(got, olderImage, plan, &r); n != 2 || r.Reason != "" || r.Malformed {
+	if n := PointFixedLoad(got, olderImage, plan, &r); n != 2 || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("a layout the lineage holds must read: n=%d report=%+v", n, r)
 	}
 	// Strangers stay unknown: the lineage can only prove older or equal.
@@ -267,7 +267,7 @@ func TestRetired(t *testing.T) {
 			all.Write(data)
 			all.WriteByte('\n')
 		}
-		load := funcSource(all.String(), "func PointFixedLoadTolerant(")
+		load := funcSource(all.String(), "func PointFixedLoad(")
 		if load == "" {
 			t.Fatal("the emitted module has no PointFixedLoad")
 		}

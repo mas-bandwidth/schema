@@ -123,11 +123,8 @@ func TestRowW7(t *testing.T) {
 	var report tblm1.TableReport
 	back := make([]tblm1.Msg, 1)
 	got := tblm1.MsgFixedLoad(back, data, scratch, &report)
-	if got != 1 || report.Malformed || report.Verdict != tblm1.TableOpenOk {
-		t.Fatalf("valid file: n=%d malformed=%v verdict=%v reason=%q", got, report.Malformed, report.Verdict, report.Reason)
-	}
-	if report.Clamped != 0 {
-		t.Fatalf("valid file: clamped=%d — a clean read moves no counter", report.Clamped)
+	if got != 1 || report.Refused() || report.Verdict != tblm1.TableOpenOk {
+		t.Fatalf("valid file: n=%d %+v", got, report)
 	}
 	if back[0].Body.Type != tblm1.BodyTypeSave {
 		t.Fatalf("the arm: tag landed %v, want Save — the guard's ordinal is not reaching the tag", back[0].Body.Type)

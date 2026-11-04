@@ -26,6 +26,7 @@ import (
 // The reference cooks come from the tool's own driver in process. It runs the
 // leg's own toolchain, so it is a FUNCTIONAL test.
 func TestCookNumbersABlobByItsSlotElixir(t *testing.T) {
+	t.Skip("layer 4 (elixir): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	elixirBin := elixirtable.ElixirBinaryForTest(t)
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))

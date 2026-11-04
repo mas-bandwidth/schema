@@ -6,9 +6,9 @@ package tablewire_test
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -209,20 +209,17 @@ func TestListTextReadsEveryElement(t *testing.T) {
 	if !m.Read(inst, b.Bytes(), &r) {
 		t.Fatal("the text did not place")
 	}
-	if r.Clamped != 0 {
-		t.Fatalf("clamped cannot fire on a list's count (§2.9): %d", r.Clamped)
+	if !r.Silent() {
+		t.Fatalf("a list's count has no bound to refuse against (§2.9): %+v", r)
 	}
 	if got := fieldByName(t, inst, "scores").Count; got != 100 {
 		t.Fatalf("every element the text carries is read: %d of 100", got)
 	}
-	// and `null` where an element stands is a kind_mismatch, the array row's
-	// own rule, because the element is not a pointer
+	// and `null` where an element stands refuses kind_mismatch, the array
+	// row's own rule, because the element is not a pointer
 	var nulls tabletext.Report
-	if !m.Read(m.New(m.Lookup("Save")), []byte(`{ "scores": [ 1, null, 3 ] }`), &nulls) {
-		t.Fatal("the text did not place")
-	}
-	if nulls.KindMismatch != 1 {
-		t.Fatalf("null is a kind_mismatch at a scalar element (§16.2): %d", nulls.KindMismatch)
+	if m.Read(m.New(m.Lookup("Save")), []byte(`{ "scores": [ 1, null, 3 ] }`), &nulls) || !strings.HasPrefix(nulls.Reason, "kind_mismatch") {
+		t.Fatalf("null at a scalar element is refused kind_mismatch (§16.2): %+v", nulls)
 	}
 }
 
@@ -245,10 +242,10 @@ func TestListCountOverLength(t *testing.T) {
 	damaged[at+1] = 30
 	back := m.New(m.Lookup("Save"))
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, back, damaged, &r); ok || err != nil {
+	if ok, err := tablewire.Decode(m, back, damaged, &r); ok || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged {
 		t.Fatalf("a damaged load is refused: ok=%v err=%v", ok, err)
 	}
-	if !r.Malformed {
+	if !r.Refused {
 		t.Fatal("a count the body cannot cover is framing damage (§2.9, §4)")
 	}
 	// DAMAGE DISCARDS THE WHOLE LOAD (§4): nothing the body covered lands
@@ -257,9 +254,9 @@ func TestListCountOverLength(t *testing.T) {
 	}
 }
 
-// TestListElementKindMismatch is §3's element-kind rule at this construct: the
-// field is skipped whole by its L, the list reads empty, and one
-// `kind_mismatch` counts.
+// TestListElementKindMismatch is §3's element-kind rule at this construct: an
+// element kind that is not the declared one and not a widening refuses the
+// read kind_mismatch (§4).
 func TestListElementKindMismatch(t *testing.T) {
 	m := listModel(t, listUnit)
 	wire, err := tablewire.Encode(m, place(t, m, "Save", `{ "scores": [ 10, 20, 30 ] }`))
@@ -274,14 +271,11 @@ func TestListElementKindMismatch(t *testing.T) {
 	swapped[at] = byte(ir.TableKindF32) // []int32 read as []float32
 	back := m.New(m.Lookup("Save"))
 	var r tabletext.Report
-	if ok, err := tablewire.Decode(m, back, swapped, &r); !ok || err != nil {
+	if ok, err := tablewire.Decode(m, back, swapped, &r); ok || tablewire.RefusalReason(err) != tablewire.ReasonKindMismatch {
 		t.Fatalf("decode: ok=%v err=%v", ok, err)
 	}
-	if r.KindMismatch != 1 || r.Malformed {
-		t.Fatalf("an element kind that disagrees is one kind_mismatch and no damage: %+v", r)
-	}
 	if got := fieldByName(t, back, "scores").Count; got != 0 {
-		t.Fatalf("the list reads empty: %d", got)
+		t.Fatalf("a refused read handed back %d scores", got)
 	}
 }
 
@@ -421,9 +415,11 @@ func TestListFileRegionMeasureUsesFraming(t *testing.T) {
 	}
 }
 
-// The value pass reads a count against its enclosing buffer; the extent pass
-// stops at the field's L. This pinned mutant therefore measures a small region
-// but reaches an oversized count only while decoding into that region.
+// A count header that crosses its own L is damage (docs/SPEC-TABLES.md §4,
+// tla/Framing.tla): the region read and the value read both refuse this
+// pinned mutant, though the extent pass, stopping at the field's L, measures
+// a small region for it. A measure that answers a size never obliges the read
+// to accept.
 func TestListCountCrossesLength(t *testing.T) {
 	m := listModel(t, `package listdemo
  fixed table Photo { width uint32
@@ -442,13 +438,12 @@ func TestListCountCrossesLength(t *testing.T) {
 	}
 	var report tabletext.Report
 	ok, err := tablewire.DecodeRegion(m, m.New(root), wire, &report)
-	if err != nil || ok || report != (tabletext.Report{Malformed: true}) {
+	if ok || !tablewire.ReadRefusal(err) || !report.Refused {
 		t.Fatalf("region: %v %v %+v", ok, err, report)
 	}
 	report = tabletext.Report{Unknown: 3}
 	ok, err = tablewire.Decode(m, m.New(root), wire, &report)
-	var capRefusal *tablewire.CountRefusal
-	if ok || !errors.As(err, &capRefusal) || report != (tabletext.Report{Unknown: 3}) {
+	if ok || !tablewire.ReadRefusal(err) || !report.Refused || report.Unknown != 0 {
 		t.Fatalf("builder: %v %v %+v", ok, err, report)
 	}
 }

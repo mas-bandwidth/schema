@@ -104,13 +104,30 @@ root is `previous_form` — a NAMED REFUSAL, never a slow read down the variable
 wire — exactly as a form-`3` file handed to a variable root is refused by name.
 A variable root is form `1`'s, and that is where it goes.
 
-**GO STATUS: THE FORM-`1` PAIR IS STILL EMITTED.** This is status, not the
-rule above. Go today still emits a form-`1` `<T>Save` for a declared fixed
-table, and its `<T>Load` reads form `1` at a declared fixed root; a declared
-fixed table past one of §3.4's bounds — a union in a regional unit, a record
-over 65536 bytes, depth past the walk bound, or the leaf cap — gets no form
-`3` at all. §3.4's SELECTION owns the declaration's bounds and §15 names the
-reader dispatch still owed; neither is restated here.
+**A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM, BY NAME.**
+*"If we expect a fixed table, but it is not, refuse."* (Glenn, 2026-11-03.)
+One rule, for every read at a declared fixed root that carries form `3`:
+`<T>FixedLoad`, the plain `<T>Load`, `ReadStrict` and the
+retain load alike. Form `1` is `previous_form`, form `2` is
+`message_form_as_file`, and any byte no form defines is `newer_form`, each
+with nothing decoded and no counter moved, which is the fixed reader's naming
+(§3.4) applied to every entry point. No read at a fixed root reads form `1` as
+an old file, and no write at a fixed root writes it: the plain `<T>Save` of a
+fixed table writes form `3`, the bytes `<T>FixedSave` writes, and so does
+`schema pack`.
+
+**STATUS: EVERY LEG STILL CARRIES THE FORM-`1` PAIR AT A FIXED ROOT.** This is
+status, not the rule above. `<T>FixedLoad` refuses form `1` as
+`previous_form` in every leg. Beside it, every leg still emits a form-`1`
+`<T>Save` for a declared fixed table and a `<T>Load` and `ReadStrict` that
+read form `1` there, `schema pack` writes form `1` for a fixed root, and the
+tool's engine (pack, unpack, cook, the text form) carries no form `3`, so the
+conformance corpus pins its fixed-root instances and reports as form `1`. A
+declared fixed table past one of §3.4's bounds (a union in a regional unit, a
+record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
+no form `3` at all, and its form `1` is outside the rule above. §3.4's
+SELECTION owns the declaration's bounds and §15 names the work owed; neither
+is restated here.
 
 **How to choose.**
 
@@ -292,8 +309,9 @@ units. C also reads and writes bitpacked message batches, with caller-owned
 resolved announcement entries and native regions for graphs and collections.
 C retains unknown fields in caller-owned storage for variable file roots and
 message loads, and writes retained file roots (§6.6). Rust, JavaScript,
-Elixir and Java write no table wire: each carries the block and cook read
-halves only. Dart writes FORM 3 and only form 3 (§3.4).
+Elixir, Java and Dart write both table wires, form `1` and form `3` (§3.4),
+beside the block and cook read halves; the status line under "The three wires"
+names where form `1` is still written at a fixed root.
 [ROADMAP.md](../ROADMAP.md) records coverage by construct and form.
 
 The C report carries `unknown`, `widened`, `retained`, `retain_lost`, `refused` and `reason`. Recompile callers with their generated headers and initialize a
@@ -6075,6 +6093,11 @@ with one message passes one and pays a count of eight bits for it.
 - **BYTES AFTER THE PAD ARE DAMAGE**, exactly as they are in the variable form
   (§3): the batch ends at the pad to the byte boundary, and a buffer with bytes
   left over describes no batch this reader can name.
+- **A FIELD ID TWICE IN ONE BODY IS DAMAGE**, exactly as it is in the variable
+  form (§3), whether this reader can name the id or not: a body carries each
+  field once, and a second occurrence describes no value. **A KEYED SLOT TWICE
+  IN ONE ENUM-KEYED ARRAY IS DAMAGE** by the same rule (§3.2), a key this reader
+  cannot name included.
 
 **THE BATCH IS STATED AS THE UNIT SO THAT LATER FORMS HAVE SOMEWHERE TO STAND.**
 Three bandwidth passes are only available to a writer holding every body at once,
@@ -8083,10 +8106,14 @@ that table for the life of the build. **None is a per-value fallback and there
 is no run-time path between the two forms** — which is the surprise the keyword
 exists to prevent.
 
-- **THE READ SIDE STILL ACCEPTS BOTH.** A generated reader for a fixed-table
-  type reads form `1` and form `3`, by the form byte, because form `1` is what
-  an OLD FILE ON A DISK is and nothing about form `1` moves, for fixed tables or
-  for anything else. Selection is a WRITER's question; evolution is a reader's.
+- **THE READ SIDE REFUSES THE OTHER FORM, BY NAME.** *"If we expect a fixed
+  table, but it is not, refuse."* (Glenn, 2026-11-03.) Every reader emitted at
+  a fixed root this form is emitted for (`<T>FixedLoad`, the plain `<T>Load`,
+  `ReadStrict` and the retain load) reads form `3` and
+  refuses form `1` as `previous_form`, with nothing decoded and no counter
+  moved. Form `1` is not read there as an old file: a value of a fixed table
+  is written as form `3` by every writer, so a form-`1` file at a fixed root
+  is one the declaration says cannot exist, and the reader says so.
 - **AN UNDECLARED `table` IS A VARIABLE TABLE, WHATEVER ITS FIELDS.** Nothing
   is inferred: a variable table whose every field is bounded is still the
   variable wire (§2.2), and it never reaches form `3`.
@@ -8131,16 +8158,12 @@ Source: the v1.5 adoption, where adding one variable table to a unit silently
 dropped every fixed table's form-`3` surface and its fixed tables rode the
 ordinary table wire. That is the surprise the keyword exists to prevent.
 
-- **FOLLOW-ON, NAMED: A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that
-  holds a variable table a union is stored as its overlay Row (a tag and one
-  payload extent, arms reached through accessors) and not as one member per
-  arm, so the Go leg's per-arm destinations do not exist there. Until the Go
-  leg lays a union's arms over the overlay, a fixed table whose closure holds a
-  union keeps form `1` in a regional unit, decided at compile time by a named
-  predicate (`fixedRowHoldsUnion`) and never at run time. The same table in a
-  unit with no variable table carries form `3` as before. **Go does not warn
-  today when this drops the form; that warning is a ruling to come, not this
-  card.**
+- **A UNION IN A REGIONAL UNIT'S FIXED TABLE.** In a unit that holds a
+  variable table a union is stored as its overlay Row (a tag and one payload
+  extent, arms reached through accessors) and not as one member per arm. The
+  Go leg lays each arm over the payload extent, at the offset the overlay
+  names, so a fixed table whose closure holds a union carries form `3` in a
+  regional unit as in a plain one, and writes the same bytes.
 
 ---
 
@@ -9980,8 +10003,8 @@ On the variable read, a form-byte refusal (`previous_form`, `newer_form`,
   | `non_finite_float` | a plain float whose bits are a NaN or an infinity: every read refuses it and every writer refuses to emit one (§3.3). The diagnostic text is `non_finite_float: <Table>.<field>`. Same ordinal as the retired spelling `non_finite` |
   | `blob_shared` | one blob record named from two slots (§2.5): every writer refuses to emit it and every read refuses it |
   | `build_version_mismatch` | the strict announcement read's typed refusal: the peer's build version and the reader's own do not match, carried as `TableBuildVersionMismatch` (§3.3) |
-  | `missing_required` | a record lacks a field declared required (§2.3). The diagnostic text is `missing_required: <Table>.<field>`, and the typed `TableMissingRequired` names the fields |
-  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **It is the FIXED READER (`<T>FixedLoad`, §3.4) that answers it**, for a form byte `1` it is handed. **The STRICT read does not**: `ReadStrict` at a declared-fixed root READS a form-1 file as the variable form — the accepting read — so a form-1 file over a fixed root reads rather than refusing `previous_form` |
+  | `missing_required` | a record lacks a field declared required (§2.3). The reason is `missing_required: <fields>` and the typed `TableMissingRequired` names them |
+  | `previous_form` | a form byte THIS FORM IS AHEAD OF (§3, §3.4). The registry is ordered, so a reader that meets a byte it does not carry names WHICH DIRECTION: the VARIABLE form handed to a FIXED reader is OLDER, and calling that `newer_form` would send a caller looking for a build that does not exist. The bytes are the same refusal either way — nothing decoded, no counter moved — and only the name of it differs. **Every read at a declared fixed root answers it** for a form byte `1` it is handed: `<T>FixedLoad`, the plain `<T>Load`, `ReadStrict` and the retain load alike ("The three wires", *"If we expect a fixed table, but it is not, refuse."*, Glenn, 2026-11-03). |
   | `newer_form` | a form byte this reader does not carry and is not older than its own (§3, §3.4, §21.3): the fixed load's answer for a byte it does not carry, and the file `Load`'s answer where the byte is not `2` |
   | `message_form_as_file` | a message batch, form byte `2`, handed to a file or fixed reader whose table lives in the message surface (§3.3). The old prose reason "message form requires an announced vocabulary and a message reader" is this member |
   | `layout_unknown` | a fixed file's header hash that no entry of this build's lineage holds (§3.4, §21.3, algorithm §5.3 step 5). Nothing is decoded and no counter moves; the reader states the hash so the application can ask for that layout |
@@ -13718,6 +13741,7 @@ in build version (§20.5).
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
   SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  LoadRegion  LoadBuilderRead
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
@@ -15068,16 +15092,21 @@ inspects everything in the schema built:
 
 ## 15. Named follow-ons
 
-- **A GENERATED READER DOES NOT DISPATCH ON THE FORM BYTE** (§3.4). §3.4 says a
-  reader for a fixed-table type "accepts BOTH, by the form byte". The C++
-  reference emits TWO entry points instead — `<T>Load` for form `1` and
-  `<T>FixedLoad` for form `3` — and each refuses the other's byte. **THE NAMING
-  HALF IS DONE**: `<T>FixedLoad` now answers `previous_form` for `1`,
+- **THE PLAIN ENTRY POINTS AT A FIXED ROOT ARE STILL FORM `1`** ("The three wires", §3.4).
+  The rule is that every read at a fixed root reads form `3` and refuses form
+  `1` as `previous_form`, and every write there writes form `3`. **THE FIXED
+  READER'S HALF IS DONE**: `<T>FixedLoad` answers `previous_form` for `1`,
   `message_form_as_file` for `2` and `newer_form` only for a byte no form
-  defines, so no caller is sent looking for a build that does not exist. What
-  is left is the DISPATCH: one reader that reads the byte and calls the entry
-  point that carries it, rather than a caller who has to know which to call.
-  It is a surface decision on top of two working readers, not a wire question.
+  defines, in every leg. What is left is in layers, each resting on the one
+  before it: (1) the tool's engine (pack, unpack, cook, the text form and the
+  report generator) reads and writes form `3` at a fixed root, because the
+  conformance corpus is generated through it; (2) the C++ reference's plain
+  `<T>Save`, `<T>Load`, `ReadStrict`, tolerant and retain entry points at a
+  fixed root move to form `3`, and the wire goldens are regenerated from it;
+  (3) the corpus rows that are form-`1` grammar at a fixed root (hand-built
+  kind mismatches, escapes and arm kinds, which form `3` has no spelling for)
+  either move to a variable root or become `previous_form` vectors; (4) every
+  other leg follows the reference.
 - **THE FIXED FORM'S FILE PADS ITS HEADER AND NOT ITS RECORDS** (§3, §3.4). The
   header is sixteen bytes so that a memory-mapped BODY keeps its alignment, and
   the fixed form's body begins with a VARIABLE-LENGTH layout — so the records
@@ -15826,7 +15855,7 @@ Per kind:
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N bytes refuses `length_over_bound`. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) refuses `kind_mismatch`. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false and its one reason is `timestamp_not_rfc3339: <field>`. A NUMBER token is the wrong JSON type and refuses `kind_mismatch`, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted `unknown`. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
-| flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted `unknown`; a flags element that is not a string refuses `kind_mismatch` |
+| flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted `unknown`; **a name twice refuses `malformed`**, as any repeated key does; a flags element that is not a string refuses `kind_mismatch` |
 | `[N]T` fixed array | array | fewer elements pad with defaults (an older writer's shorter bound); more refuse `count_over_bound` |
 | `[..N]T` bounded array | array | count = length; more than N refuse `count_over_bound` |
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key refuses `malformed`**, as any repeated key does; an unknown key is skipped and counted `unknown`, and **`"None"` is such a key** — it names no slot (§2.4) |

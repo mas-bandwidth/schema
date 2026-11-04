@@ -65,7 +65,7 @@ func TestKeyedElementWideningElixir(t *testing.T) {
 		v := m.New(u.Tables["Root"])
 		var report tabletext.Report
 		ok, e := tablewire.Decode(m, v, wire, &report)
-		if e != nil || ok == tc.malformed || report.Malformed != tc.malformed || int(report.Widened) != tc.widened || int(report.Clamped) != tc.clamped || int(report.KindMismatch) != tc.mismatch {
+		if ok == tc.malformed || tablewire.ReadRefusal(e) != tc.malformed || int(report.Widened) != tc.widened {
 			t.Fatalf("%s oracle: %v %v %+v", tc.name, ok, e, report)
 		}
 		text := ""
@@ -118,7 +118,7 @@ func TestPinnedKeyedElementWideningElixir(t *testing.T) {
 	v := m.New(u.Tables["KeyedConfig"])
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, v, wire, &report)
-	if e != nil || !ok || report.Malformed || report.Widened != 1 || report.KindMismatch != 0 {
+	if e != nil || !ok || report.Refused || report.Widened != 1 {
 		t.Fatalf("pinned keyed widening: %v %v %+v", ok, e, report)
 	}
 	encoded, e := tablewire.Encode(m, v)

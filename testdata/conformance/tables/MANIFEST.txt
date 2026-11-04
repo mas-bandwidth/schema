@@ -700,9 +700,9 @@ json-hostile flags-unknown-name           tabledemo RootConfig  testdata/conform
 json-hostile guard-key-after-fields       tabledemo RootConfig  testdata/conformance/tables/json-hostile/guard-key-after-fields       0,0,0,0,0,false,read
 json-hostile json-key-declared-name       tabledemo PackConfig  testdata/conformance/tables/json-hostile/json-key-declared-name       1,0,0,0,0,false,read
 json-hostile keyed-duplicate-mixed        tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-mixed        2,0,0,0,1,false,read
-json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         2,0,0,0,0,false,read
+json-hostile keyed-duplicate-none         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-none         refused
 json-hostile keyed-duplicate-slot         tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-slot         0,0,0,0,1,false,read
-json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      2,0,0,0,0,false,read
+json-hostile keyed-duplicate-unknown      tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-duplicate-unknown      refused
 json-hostile keyed-none-key               tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-none-key               1,0,0,0,0,false,read
 json-hostile keyed-unknown-key            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-unknown-key            1,0,0,0,0,false,read
 json-hostile keyed-wrong-shape            tabledemo PackConfig  testdata/conformance/tables/json-hostile/keyed-wrong-shape            0,1,0,0,0,false,read

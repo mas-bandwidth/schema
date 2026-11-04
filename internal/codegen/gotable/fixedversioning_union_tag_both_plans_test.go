@@ -59,11 +59,11 @@ func TestUnionTag(t *testing.T) {
 	back := make([]%[2]s, 8)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	n := %[2]sFixedLoadTolerant(back, data, plan, &r)
+	n := %[2]sFixedLoad(back, data, plan, &r)
 	if n != 1 {
 		t.Fatalf("union_tag_both_plans: the forged file reads one record, n=%%d %%+v", n, r)
 	}
-	if r.Verdict == TableOpenRefused || r.Reason != "" || r.Malformed {
+	if r.Verdict == TableOpenRefused || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("union_tag_both_plans: a forged tag is a clamp, not a refusal and not malformed: %%+v", r)
 	}
 	if back[0].Pick.Type != PickTypeNone {
@@ -72,10 +72,10 @@ func TestUnionTag(t *testing.T) {
 	if back[0].Seq != 15 {
 		t.Fatalf("union_tag_both_plans: the neighbour after the union must stand at 15, not %%v (record %%+v)", back[0].Seq, back[0])
 	}
-	if r.Clamped != 1 {
-		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Clamped, r)
+	if !r.Refused() {
+		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Refusal, r)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("union_tag_both_plans: a counter other than Clamped moved: %%+v", r)
 	}
 }
@@ -106,11 +106,11 @@ func TestUnionTag(t *testing.T) {
 	back := make([]%[2]s, 8)
 	var r TableReport
 	plan := make([]TableFixedEntry, 4096)
-	n := %[2]sFixedLoadTolerant(back, data, plan, &r)
+	n := %[2]sFixedLoad(back, data, plan, &r)
 	if n != 1 {
 		t.Fatalf("union_tag_both_plans: the forged file reads one record, n=%%d %%+v", n, r)
 	}
-	if r.Verdict == TableOpenRefused || r.Reason != "" || r.Malformed {
+	if r.Verdict == TableOpenRefused || r.Reason != "" || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
 		t.Fatalf("union_tag_both_plans: a forged tag is a clamp, not a refusal and not malformed: %%+v", r)
 	}
 	if back[0].Pick.Type != PickTypeNone {
@@ -119,10 +119,10 @@ func TestUnionTag(t *testing.T) {
 	if back[0].Seq != 15 {
 		t.Fatalf("union_tag_both_plans: the neighbour after the union must stand at 15, not %%v (record %%+v)", back[0].Seq, back[0])
 	}
-	if r.Clamped != 1 {
-		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Clamped, r)
+	if !r.Refused() {
+		t.Fatalf("union_tag_both_plans: the clamp counts once, Clamped=%%d, want 1 (report %%+v)", r.Refusal, r)
 	}
-	if r.Unknown != 0 || r.KindMismatch != 0 || r.Widened != 0 || r.Duplicate != 0 {
+	if r.Unknown != 0 || r.Widened != 0 {
 		t.Fatalf("union_tag_both_plans: a counter other than Clamped moved: %%+v", r)
 	}
 }

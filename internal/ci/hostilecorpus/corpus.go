@@ -290,9 +290,6 @@ func EngineVerdict(m *tabletext.Model, c Case, payload []byte) (verdict, reason,
 			}
 			return fail(rreason)
 		}
-		if r.Malformed {
-			return fail(ReasonDamaged)
-		}
 		return Accept, NoReason, NoReason, nil
 	case "announce_second":
 		v := &tablewire.Vocabulary{}
@@ -376,6 +373,11 @@ func RefusalReason(err error) (string, error) {
 	}
 	if _, ok := errors.AsType[*tablewire.NonFiniteRefusal](err); ok {
 		return ReasonNonFiniteFloat, nil
+	}
+	if tablewire.ReadRefusal(err) {
+		// every other refusal of the one read; the reason is per-language
+		// diagnostic detail (docs/SPEC-TABLES.md §6.5)
+		return ReasonDamaged, nil
 	}
 	return "", fmt.Errorf("engine returned an unnamed refusal: %w", err)
 }

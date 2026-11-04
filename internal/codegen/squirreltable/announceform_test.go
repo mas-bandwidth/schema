@@ -1,7 +1,6 @@
 package squirreltable_test
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -14,15 +13,13 @@ import (
 )
 
 // goAnnounceVerdict is the Go oracle for one announcement, the engine's
-// verdict on the hostile-corpus row's input (docs/SPEC-TABLES.md §3.3).
-func goAnnounceVerdict(data []byte) (malformed, refused bool, reason string) {
+// verdict on the hostile-corpus row's input (docs/SPEC-TABLES.md §3.3,
+// §6.5): the reason is diagnostic, and only the verdict is compared.
+func goAnnounceVerdict(data []byte) (refused bool) {
 	var v tablewire.Vocabulary
 	var report tabletext.Report
 	err := v.AnnounceRead(data, &report)
-	if refusal, ok := errors.AsType[*tablewire.MessageRefusal](err); ok {
-		reason = refusal.Reason.String()
-	}
-	return report.Malformed, report.Refused, reason
+	return tablewire.ReadRefusal(err) || report.Refused
 }
 
 // TestSquirrelAnnounceReadsFormBeforeLength pins the announcement reader to the
@@ -85,9 +82,9 @@ func TestSquirrelAnnounceReadsFormBeforeLength(t *testing.T) {
 		gotMalformed := fields[0] == "malformed"
 		gotRefused := fields[1] == "refused"
 		gotReason := fields[2]
-		wantMalformed, wantRefused, wantReason := goAnnounceVerdict(in.data)
-		if gotMalformed != wantMalformed || gotRefused != wantRefused || gotReason != wantReason {
-			t.Errorf("%s: Squirrel malformed=%v refused=%v reason=%q, Go oracle malformed=%v refused=%v reason=%q", in.name, gotMalformed, gotRefused, gotReason, wantMalformed, wantRefused, wantReason)
+		wantRefused := goAnnounceVerdict(in.data)
+		if (gotMalformed || gotRefused) != wantRefused {
+			t.Errorf("%s: Squirrel malformed=%v refused=%v reason=%q, Go oracle refused=%v", in.name, gotMalformed, gotRefused, gotReason, wantRefused)
 		}
 	}
 }
