@@ -99,9 +99,10 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # measured: 120-296 s green on the old fleet; on a hetzner runner sharing
     # its host with a second job the C++ driver builds alone ran past 15
-    # minutes, so the bound is 30 (the reds ran 18-25 min, inside the shared
-    # regression step, whose go test is bounded as well)
-    timeout-minutes: 30
+    # minutes; the reds ran 18-35 min (main, 2026-11-02..04), inside the
+    # shared regression step, whose go test is bounded as well, so the bound
+    # is 50
+    timeout-minutes: 50
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
@@ -215,10 +216,19 @@ jobs:
             exit 1
           fi
 
+      # the readiness gate's prerequisites build the Dart driver, and its
+      # compiler package runs the Luau and Squirrel testgen tests: the pinned
+      # Luau and Squirrel come from make/<lang>.mk, Dart is the runner's own
+      - name: install the Luau and Squirrel pins the C++ readiness gate runs
+        if: ${{ !cancelled() }}
+        run: make dist-luau dist-squirrel
+
       - name: the C++ original-nine readiness gate
         if: ${{ !cancelled() }}
         run: |
           set -uo pipefail
+          DART="$(command -v dart)" || { echo "::error::the runner has no dart on PATH"; exit 1; }
+          export DART
           mkdir -p build/nightly/reference-report
           record=build/nightly/reference-report/readiness-cpp.txt
           echo fail > "$record"
@@ -253,8 +263,10 @@ jobs:
     if: ${{ !cancelled() && needs.registry.result == 'success' }}
     name: port (${{ matrix.lang }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # measured: 25-229 s per language green; a red elixir row ran 22 min
-    timeout-minutes: 15
+    # measured: 25-229 s per language green; the red elixir row runs its
+    # whole readiness gate in 31-33 min (main, 2026-11-03..04), so the bound
+    # is 50
+    timeout-minutes: 50
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
