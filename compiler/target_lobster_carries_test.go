@@ -63,8 +63,8 @@ func lobsterManifestUnits(t *testing.T) map[string]*ir.Unit {
 }
 
 // TestLobsterGeneratesEveryManifestUnit holds the target to the runtime it
-// emits: every supported unit of the tables conformance manifest generates for lobster,
-// with the original-nine full-feature witness still held to its named refusal. THE REVERSED
+// emits: every unit of the tables conformance manifest generates for Lobster,
+// including the populated full-feature witness. THE REVERSED
 // WITNESS: the shared refusals the target applied before its load and save
 // covered these constructs (refuseUnported, refuseOptionalArrays, refuseLists,
 // refuseMaps) still refuse units of this same manifest by name for a target
@@ -79,16 +79,6 @@ func TestLobsterGeneratesEveryManifestUnit(t *testing.T) {
 	}
 	witnessed := 0
 	for key, u := range units {
-		// The populated full-language witness is mandatory for the original
-		// nine. Preserve this later port's explicit forms debt without extending
-		// its implementation scope or pretending the witness generates.
-		if key == "featurewitnesses" && !carries("lobster", carryForms) {
-			if _, err := c.Generate(u, "lobster", nil); err == nil ||
-				!strings.Contains(err.Error(), "lobster") || !strings.Contains(err.Error(), "construct forms") {
-				t.Errorf("full feature witness must name the uncarried forms construct: %v", err)
-			}
-			continue
-		}
 		if _, err := c.Generate(u, "lobster", nil); err != nil {
 			t.Errorf("lobster refuses manifest unit %s: %v", key, err)
 		}
@@ -102,5 +92,5 @@ func TestLobsterGeneratesEveryManifestUnit(t *testing.T) {
 	if witnessed == 0 {
 		t.Fatal("no manifest unit holds a construct the shared refusals name, so this test witnesses nothing")
 	}
-	t.Logf("%d manifest units checked for generation or the explicit full-feature refusal; %d shared-refusal witnesses", len(units), witnessed)
+	t.Logf("%d manifest units checked for generation; %d shared-refusal witnesses", len(units), witnessed)
 }
