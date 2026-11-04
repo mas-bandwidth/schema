@@ -1,0 +1,13 @@
+// Variable report reader copied from test/tables/K2.schema.
+// The field vocabulary is unchanged; the variable root admits the historical
+// body encoding so each report tests evolution or payload refusal directly.
+// Any invalid known field refuses the complete read.
+package reportkeyed2
+
+enum Grade { Bronze, Silver, Gold }
+
+table Root
+{
+    grade uint16
+    raw   Grade
+}
