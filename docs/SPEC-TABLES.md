@@ -12888,8 +12888,8 @@ its descriptors are immutable static data, with program lifetime; they own no
 decoded region. A caller using a descriptor to inspect a value must still keep
 that value's storage alive. Lobster emits `<package>View.lobster` for every
 unit, including table-free units, with `<package>.UnitView()` and all six sets
-in declaration-name order. Its name/file/kind corpus and vocabulary checks
-run natively; its full §8.7 listing gate remains pending. Other ports'
+in declaration-name order. Its native `TestLobsterUnitViewListing` compares every `VIEW_CORPUS` and
+table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Other ports'
 registries remain follow-ons (§15).
 
 ```cpp

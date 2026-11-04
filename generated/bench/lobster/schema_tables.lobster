@@ -27,6 +27,8 @@ class EnumVariant:
 // alone. Every member has its zero as a default, so a descriptor names only
 // the facts its shape has.
 class FieldDescriptor:
+    // Arm offset in the shared region/cook projection, not a VM address.
+    arm_offset:int = 0
     type_name:string = ""
     type_ref:string = ""
     doc:string = ""
