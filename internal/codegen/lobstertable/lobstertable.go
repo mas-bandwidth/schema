@@ -359,6 +359,7 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 		}
 		f := *v.F
 		f.Name = v.Name
+		f.Doc, f.Tags = v.Doc, v.Tags
 		g.Pf("        %s%s\n", fieldDesc(g, &f, i, i+1), sep)
 	}
 	g.Pf("    ]::%s.FieldDescriptor\n", rt)
