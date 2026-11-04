@@ -565,7 +565,7 @@ def j_float_text(x:float, single:bool) -> string:
             return text
         let back, _ = string_to_float(text)
         if single:
-            if fround(back) == x:
+            if j_parse_f32(text) == x:
                 return text
         elif back == x:
             return text
