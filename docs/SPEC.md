@@ -2504,7 +2504,7 @@ byte, so a refused write leaves the buffer as it was.
 | C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9–10 unchecked |
 | C | 1–2 and 8 debug; 3–7 every build; 9–10 unchecked |
 | C# | 1–2 and a `wstring`'s 8 debug; 3–7 and a `string`'s 8 every build; 9–10 unchecked |
-| Rust | 1–4 and a `wstring`'s 8 debug, and a release build clamps 3; 7 and a `wstring`'s 4 every build; 5–6 and a `string`'s 8 unrepresentable (native enums, a Rust `String`); 9–10 unchecked |
+| Rust | 1–2, 4 and a `wstring`'s 8 debug; 3, 7 and a `wstring`'s 4 every build; 5–6 and a `string`'s 8 unrepresentable (native enums, a Rust `String`); 9–10 unchecked |
 | Java | 1–5 and a `string`'s 8 debug; 6–7 and a `wstring`'s 8 every build; 9–10 unchecked |
 | Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |
 | Go | 1–8 and 10 every build; 9 unchecked |
@@ -2518,13 +2518,22 @@ byte, so a refused write leaves the buffer as it was.
 | Lobster | 7 every build; 1–5 and 8 unchecked; 6 an index fault, not a refusal |
 
 The other writers, over rows 1–8 (rows 9–10 are not audited there; the message
-form masks a `flags` value to its declared width on purpose, SPEC-TABLES §3.3):
+form masks a `flags` value to its declared width on purpose, SPEC-TABLES §3.3).
+**Two rules hold in every leg on top of the table.** A count or a length that
+would index past the storage it describes is refused in EVERY build, before
+the first byte, assert legs included: it guards memory, not a value, and the
+debug-only allowance does not reach it (the `write-refusal-storage-release-<lang>`
+gates hold it in the release builds of C, C++, C#, Rust, Java and Dart). And
+`FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
+reader refuses one as `text_ill_formed`: a writer never produces bytes its own
+reader refuses. A refused fixed or message batch leaves the caller's buffer as
+it was.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7) |
 |---|---|---|---|
 | C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
 | C# | 1–6 and 8 debug; 7 every build | 1–2 and a `wstring`'s 8 debug; 3–7 and a `string`'s 8 every build | 1 and 3–7 debug; 2 unchecked |
-| Rust | 1–6 and 8 debug, and a release build clamps 3–4; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable |
+| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable |
 | Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
 | Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug |
 | Go | 1–8 every build | 1–8 every build | 1–6 every build; 7 every build on the flat path, a panic on the per-field path |

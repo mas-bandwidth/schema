@@ -219,9 +219,11 @@ absent optional** writes flag `0` and **skips the payload store**: a declared de
 meaning too (fix 13).
 
 **Write-side checks follow [SPEC.md](SPEC.md) §5.1, the one statement of the write contract and its per-leg
-table.** A language whose idiom is a debug-only assert checks `count <= Max`, `length <= N` and the rest of the
-contract in debug; a release build removes them exactly as it removes `assert`, pays nothing, and **clamps
-nothing**. A language without that idiom refuses in every build. **The Go fixed writer REFUSES in every build**
+table.** A language whose idiom is a debug-only assert checks the contract's VALUES in debug; a release build
+removes those checks exactly as it removes `assert`, pays nothing, and **clamps nothing**. A count or a length
+that would index past its storage is refused in EVERY build, before the first byte, because it guards memory
+and not a value; and a zero byte or unit in fixed text is refused with the other text checks, because this
+form's reader refuses it. A language without that idiom refuses in every build. **The Go fixed writer REFUSES in every build**
 (Glenn, 2026-10-15): `<T>FixedSave` returns `-1`, and `<T>FixedSaveReason` returns `TableRefuseInvalidValue`, for a count
 outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`, an ordinal or union tag past its
 set, a `string` whose used bytes are not UTF-8 or hold a NUL, and a `wstring` whose used units are not paired
