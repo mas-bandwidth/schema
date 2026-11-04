@@ -75,6 +75,9 @@ func (p *fixedRecordProjection) record(st *ir.Struct, typed, rec, ind string) {
 		sl := p.local()
 		p.g.Pf("%slet %s = %s.fields[%d]\n", ind, sl, rec, i)
 		p.check(fmt.Sprintf("%s.fd.id != %s", sl, idLit(ir.TableWireId(ir.TableFieldWireName(f)))), ind)
+		if p.toTyped && f.Deprecated {
+			continue // the fresh native row already holds the declared default
+		}
 		p.field(f, typed+"."+ir.GoExportName(f.Name), sl, ind)
 	}
 }
