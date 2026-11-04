@@ -18,13 +18,11 @@ import (
 )
 
 // retainRow is one `retain` line of the tables manifest (docs/SPEC-TABLES.md
-// §6.6). capacity is "full" or "short"; ids is "full" or a count; counters are
-// retained,retain_lost,unknown; saves is "-" or the pinned save files.
+// §6.6). capacity is "full" or "short"; ids is "full" or a count;
+// saves is "-" or the pinned canonical save files.
 type retainRow struct {
 	name, unit, root, wire string
 	capacity, ids          string
-	counters               string
-	saveLost               int
 	saves                  string
 }
 
@@ -39,15 +37,14 @@ func retainRows(t *testing.T) []retainRow {
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		x := strings.Fields(sc.Text())
-		if len(x) != 10 || x[0] != "retain" {
+		if len(x) == 0 || x[0] != "retain" {
 			continue
 		}
-		lost, err := strconv.Atoi(x[8])
-		if err != nil {
-			t.Fatalf("row %s: save-lost %q is not a number", x[1], x[8])
+		if len(x) != 8 {
+			t.Fatalf("retain row must have eight fields: %s", sc.Text())
 		}
 		rows = append(rows, retainRow{name: x[1], unit: x[2], root: x[3], wire: x[4],
-			capacity: x[5], ids: x[6], counters: x[7], saveLost: lost, saves: x[9]})
+			capacity: x[5], ids: x[6], saves: x[7]})
 	}
 	if err := sc.Err(); err != nil {
 		t.Fatal(err)
