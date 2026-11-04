@@ -210,11 +210,21 @@ pub fn table_wide_boundary(units: &[u16], bound: usize) -> usize {
     keep
 }
 
+/// Whether every surrogate among the units is half of a pair: the content a
+/// wstring a program built must hold to be written (docs/SPEC.md §5.1). A zero
+/// unit is not this test's.
+pub fn table_wide_paired(units: &[u16]) -> bool {
+    core::char::decode_utf16(units.iter().copied()).all(|u| u.is_ok())
+}
+
 /// THE WRITER'S BOUND (docs/SPEC-TABLES.md §3, SPEC.md §4.12): a value over
 /// the bound's code units is the save's refusal, recorded BY NAME (at is
 /// <owner>.<field>) for <root>_save_checked; the units that ride are the
-/// longest prefix that fits without splitting a pair.
+/// longest prefix that fits without splitting a pair. An unpaired surrogate
+/// is refused by debug_assert!, the write contract's debug-only idiom
+/// (docs/SPEC.md §5.1).
 pub fn table_wide_fit(ids: &mut IdTable, units: &[u16], bound: usize, at: &str) -> usize {
+    debug_assert!(table_wide_paired(units), "{at}: an unpaired surrogate, refused on write (docs/SPEC.md section 5.1)");
     if units.len() <= bound { return units.len(); }
     if ids.refused.is_none() {
         ids.refused = Some(format!("{at}: wstring({bound}) holds {} code units, over its bound (docs/SPEC-TABLES.md §3)", units.len()));

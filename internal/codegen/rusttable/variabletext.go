@@ -1168,7 +1168,11 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		fmt.Fprintf(b, "%sjson_escape(%s, &mut w.out);\n", ind, borrowOf(x))
 	case vWString:
 		// the same text, TRANSCODED at the boundary (docs/SPEC-TABLES.md
-		// §16.2's wstring row): a stored value is paired, so nothing is lost
+		// §16.2's wstring row): a value the writer admits is paired, so
+		// nothing is lost, and an unpaired surrogate is refused by
+		// debug_assert! (docs/SPEC.md §5.1)
+		fmt.Fprintf(b, "%sdebug_assert!(table_wide_paired(%s), %q);\n", ind, borrowOf(x),
+			wideOwner(g.unit, f)+"."+f.Name+": an unpaired surrogate, refused on write (docs/SPEC.md section 5.1)")
 		fmt.Fprintf(b, "%sjson_escape(&String::from_utf16_lossy(%s), &mut w.out);\n", ind, borrowOf(x))
 	case vBytes:
 		fmt.Fprintf(b, "%sjson_b64(%s, &mut w.out);\n", ind, borrowOf(x))
