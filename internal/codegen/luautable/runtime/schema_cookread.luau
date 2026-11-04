@@ -123,12 +123,15 @@ local function elemLayout(fd: any): Layout
 		local u = unionLayout(fd.t)
 		return { size = u.size, align = u.align }
 	end
-	if s == "ptr" or s == "sblob" or s == "bblob" or s == "text" then
+	if s == "ptr" or s == "sblob" or s == "bblob" or s == "text" or (s == "str" and (fd.bound or 0) == 0 and not fd.wide) then
 		return { size = 8, align = 8 }
 	end
 	if s == "str" then
+		-- a text list element is its element record (docs/SPEC-TABLES.md
+		-- §2.13): the buffer and the int32 used length, as ir.FieldPieces lays
+		-- them out
 		local w = if fd.wide then 2 else 1
-		return { size = ((fd.bound or 0) + 1) * w, align = w }
+		return { size = align_up(((fd.bound or 0) + 1) * w, 4) + 4, align = 4 }
 	end
 	if s == "bytes" then
 		return { size = fd.bound or 0, align = 1 }
@@ -270,6 +273,8 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 		if buffer.readu8(ctx.b, at + fl.size - 1) == 0 then return nil end
 	end
 	local s = fd.s
+	-- an unbounded text list element rides as str with no bound (§2.13.1)
+	if s == "str" and (fd.bound or 0) == 0 and not fd.wide then s = "text" end
 	if s == "bool" then return buffer.readu8(ctx.b, at) ~= 0 end
 	if s == "int" then return i_at(ctx.b, at, intWidth(fd), fd.signed == true) end
 	if s == "flags" then return buffer.readinteger(ctx.b, at) end
@@ -328,7 +333,7 @@ function readField(ctx: Ctx, fd: any, at: number, present: boolean): any
 	end
 	if s == "text" then
 		local delta = integer.tonumber(buffer.readinteger(ctx.b, at))
-		if delta == 0 then return nil end
+		if delta == 0 then return buffer.create(0) end -- a null slot is the empty string
 		local target = at + delta
 		local n = buffer.readu32(ctx.b, target)
 		local out = buffer.create(n)
@@ -590,7 +595,7 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			if target < offset then hi = mid - 1
 			elseif target > offset then lo = mid + 1
 			else
-				local want = if fd.s == "bblob" then bytesId elseif fd.s == "sblob" or fd.s == "text" then stringId else S.lookup(fd.t).id
+				local want = if fd.s == "bblob" then bytesId elseif fd.s == "sblob" then stringId else S.lookup(fd.t).id
 				return id == want
 			end
 		end
@@ -614,11 +619,51 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 		arrays[#arrays + 1] = { first = first, last = last }
 		return first, count
 	end
+	-- UNBOUNDED TEXT (docs/SPEC-TABLES.md §2.13.1, §7.4): the slot holds an int64
+	-- self-relative delta to a blob record, `u32 length`, `u32 zero`, the bytes
+	-- and one zero byte, inside the holder's extent at eight-byte alignment, or
+	-- zero for the empty string. textBlob answers the blob's offset and length
+	-- (0, 0 for a null slot), or nil when it leaves the node's extent.
+	local function isText(fd: any): boolean
+		return fd.s == "text" or (fd.s == "str" and (fd.bound or 0) == 0 and not fd.wide)
+	end
+	local function textBlob(at: number): (number?, number)
+		local delta = buffer.readinteger(b, data + at)
+		if delta == 0i then return 0, 0 end
+		if integer.lt(delta, integer.create(nodeBase - at)) or integer.lt(integer.create(nodeEnd - 8 - at), delta) then return nil, 0 end
+		local first = at + integer.tonumber(delta)
+		if first % 8 ~= 0 then return nil, 0 end
+		local n = buffer.readu32(b, data + first)
+		if n <= 0 or n + 9 > nodeEnd - first then return nil, 0 end
+		return first, n
+	end
+	local function textSlot(at: number): boolean
+		local first, n = textBlob(at)
+		if first == nil then return false end
+		if n == 0 then return true end
+		if buffer.readu8(b, data + first + 8 + n) ~= 0 then return false end
+		local last = first + 8 + n + 1
+		for _, other in arrays do
+			if first < other.last and other.first < last then return false end
+		end
+		arrays[#arrays + 1] = { first = first, last = last }
+		return true
+	end
 	local function companion(at: number, bound: number): boolean
 		local count = buffer.readi32(b, data + at)
 		return count >= 0 and count <= bound
 	end
 	local function keyLess(fd: any, a: number, z: number): boolean
+		if isText(fd) then
+			local af, an = textBlob(a)
+			local zf, zn = textBlob(z)
+			if af == nil or zf == nil then return false end
+			for i = 0, math.min(an, zn) - 1 do
+				local x, y = buffer.readu8(b, data + af + 8 + i), buffer.readu8(b, data + zf + 8 + i)
+				if x ~= y then return x < y end
+			end
+			return an < zn
+		end
 		if fd.s == "str" then
 			local an = buffer.readi32(b, data + align_up(a + fd.bound + 1, 4))
 			local zn = buffer.readi32(b, data + align_up(z + fd.bound + 1, 4))
@@ -645,7 +690,8 @@ function C.CheckWhole(root: string, bytes: buffer?, build: integer?, base: numbe
 			return true
 		end
 		local shape = fd.s
-		if shape == "ptr" or shape == "sblob" or shape == "bblob" or shape == "text" then return ref(at, fd) end
+		if isText(fd) then return textSlot(at) end
+		if shape == "ptr" or shape == "sblob" or shape == "bblob" then return ref(at, fd) end
 		if shape == "str" then
 			local width = if fd.wide then 2 else 1
 			return companion(align_up(at + (fd.bound + 1) * width, 4), fd.bound)
