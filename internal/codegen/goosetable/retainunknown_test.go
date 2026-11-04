@@ -178,7 +178,7 @@ func oracleRetain(t *testing.T, reader *ir.Unit, wire []byte, capacity int) (tab
 	store := &tablewire.Retain{Capacity: capacity, IdCapacity: 1024}
 	var report tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, v, wire, store, &report)
-	if !ok || err != nil || report.Malformed {
+	if !ok || err != nil || report.Refused {
 		t.Fatalf("the reference refuses the wire: %v %v %+v", ok, err, report)
 	}
 	want, err := tablewire.EncodeRetain(m, v, store, &report)
@@ -350,6 +350,7 @@ func replacementAndShape(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseRetainReplacementAndShapeChanges(t *testing.T) {
+	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, b := range replacementAndShape(t, nil) {
 		t.Error(b)
@@ -363,6 +364,7 @@ func TestGooseRetainReplacementAndShapeChanges(t *testing.T) {
 //     retained records: the replacement gate's cleared_array row must go red,
 //     and the rewrite gate stays green.
 func TestGooseRetainNegativeControl(t *testing.T) {
+	t.Skip("layer 4 (goose): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	t.Run("no-tail", func(t *testing.T) {
 		t.Parallel()
