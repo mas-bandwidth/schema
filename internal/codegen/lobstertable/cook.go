@@ -241,7 +241,7 @@ func recordHasExtent(u *ir.Unit, st *ir.Struct) bool {
 		return false
 	}
 	for _, f := range st.Fields {
-		if f.IsMap() || f.IsList() {
+		if f.IsMap() || f.IsList() || f.Type.TextUnbounded() {
 			return true
 		}
 		if f.Type.Pointer || f.Type.Blob() || f.Type.Kind != ir.TNamed {
@@ -270,7 +270,7 @@ func unionHasExtent(u *ir.Unit, un *ir.Union, seen map[*ir.Union]bool) bool {
 		if v.F == nil {
 			continue
 		}
-		if v.F.IsMap() || v.F.IsList() {
+		if v.F.IsMap() || v.F.IsList() || v.F.Type.TextUnbounded() {
 			return true
 		}
 		if v.F.Type.Pointer || v.F.Type.Blob() || v.F.Type.Kind != ir.TNamed {

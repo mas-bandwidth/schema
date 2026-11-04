@@ -36,7 +36,7 @@ var lobsterRuntimeNames = map[string][]string{
 	},
 	"cook.lobster": {
 		"CookCarve", "CookDump", "CookField", "CookGraph", "CookNode", "CookOut", "CookRead", "CookTable",
-		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record",
+		"CookUnion", "CookWrite", "cc_elem", "cc_extent", "cc_field", "cc_has_field", "cc_list", "cc_map", "cc_record", "cc_text",
 		"cd_emit", "cd_field", "cd_find", "cd_node", "cd_scalar", "cd_storage", "cd_text", "cg_add_blob",
 		"cg_add_rec", "cg_blob_index", "cg_place", "cg_rec_index", "cg_visit_edges", "cg_visit_union",
 		"cg_visit_value", "co_bytes", "co_u16", "co_u32", "co_u64", "co_u8", "cook_align_up", "cook_bswap16",
@@ -45,7 +45,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"cook_open", "cook_open_named", "cook_open_reason", "cook_plan", "cook_read", "cook_table",
 		"cook_table_of", "cook_tables", "cook_union_named", "cook_union_of", "cook_unions", "cook_wide",
 		"cook_word", "cook_word32", "cook_write", "cr_array", "cr_count", "cr_elem", "cr_entry", "cr_field",
-		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_union", "cr_units", "cr_wide", "cr_wide_at",
+		"cr_container", "cr_int", "cr_list", "cr_map", "cr_record", "cr_ref", "cr_scalar_int", "cr_text", "cr_union", "cr_units", "cr_utext", "cr_wide", "cr_wide_at",
 		"cr_word", "cr_word32", "cw_array", "cw_elem", "cw_field", "cw_int", "cw_record", "cw_ref", "cw_ref_blob",
 		"cw_str", "cw_union", "cw_units", "cw_wide",
 	},
