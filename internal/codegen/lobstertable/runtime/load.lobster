@@ -149,6 +149,27 @@ class Record:
     // walk is the cycle check's mark: 0 unvisited, 1 open, 2 closed
     walk:int = 0
 
+// Fixed roots share their generated native codec with the generic Record
+// surface. The adapter projects storage only; it owns no wire decoder.
+class FixedRecordCodec:
+    name:string
+    def read_fixed(data:string, report:LoadReport) -> Record?:
+        read_refuse(report, "layout_unsupported")
+        return nil
+    def write_fixed(rec:Record) -> string, string:
+        return "", "layout_unsupported"
+
+let fixed_record_codecs:[FixedRecordCodec] = []
+
+def register_fixed_record_codec(codec:FixedRecordCodec):
+    push(fixed_record_codecs, codec)
+
+def fixed_record_codec(name:string) -> FixedRecordCodec:
+    for(fixed_record_codecs) codec:
+        if codec.name == name:
+            return codec
+    return FixedRecordCodec { name: name }
+
 // A Node is one entry of THE FLAT NODE TABLE (docs/SPEC-TABLES.md §3.1):
 // index i + 2 on the wire names nodes[i]. kind 0 is a record this reader
 // cannot name — it keeps its index and every pointer naming it reads null —
@@ -1816,6 +1837,14 @@ def strict_reason(rep:LoadReport) -> string:
 // widening preserve evolution; diagnostics do not enable partial values.
 def load(root:string, data:string, report:LoadReport) -> Record?:
     read_reset(report)
+    if table_of(root).fixed:
+        if length(data) == 0:
+            read_refuse(report, "truncated")
+            return nil
+        if data[0] != 3:
+            read_refuse(report, if data[0] == 1: "previous_form" else: if data[0] == 2: "message_form_as_file" else: "newer_form")
+            return nil
+        return fixed_record_codec(root).read_fixed(data, report)
     let rec = load_walk(root, data, report)
     if report.non_finite_float != "":
         report.reason = "non_finite_float: " + report.non_finite_float
