@@ -1,0 +1,73 @@
+#!/bin/sh
+# THE JAVA LEG's write-contract negative controls for the fixed and message
+# writers (docs/SPEC.md §5.1; testdata/conformance/tables/FORMAT.md, the
+# write-refusal-fixed and write-refusal-message surfaces).
+#
+# fixed: the ranged-integer check on WeaponConfig.penetration is deleted from a
+# COPY of the generated WeaponConfigFixed's checkWrite, which the fixed form's
+# save asserts (-ea) over its whole batch. `java / write-refusal-fixed` must go
+# RED on fref_range_high and fref_range_low alone, and `wire` stays green.
+#
+# message: the ranged-integer check on StorePurchase.quantity is deleted from a
+# COPY of the generated StorePurchaseFixed's checkWrite, which the message
+# form's measureMessages and saveMessages assert over their whole batch.
+# `java / write-refusal-message` must go RED on mref_range_high and
+# mref_range_low alone, and `message` stays green.
+#
+# The copy is compiled ahead of the conformance classpath, and the driver runs
+# the write-refusal surfaces under -ea as the leg's own driver does. Nothing
+# tracked and no normal build output is written to.
+#
+# usage: write-refusal-control <fixed|message> [java] [javac]   (run from the repository root)
+set -eu
+
+mode=${1:-fixed}
+java=${2:-java}
+javac=${3:-javac}
+case "$mode" in
+    fixed)
+        file=examples/WeaponConfigFixed.java
+        check='        if ((long) v.penetration < 0 || (long) v.penetration > 10) {'
+        red=write-refusal-fixed
+        rows='fref_range_(high|low)'
+        green=wire
+        ;;
+    message)
+        file=backend/StorePurchaseFixed.java
+        check='        if ((((long) v.quantity) & 0xffL) < 1L || (((long) v.quantity) & 0xffL) > 99L) {'
+        red=write-refusal-message
+        rows='mref_range_(high|low)'
+        green=message
+        ;;
+    *) echo "unknown control: $mode" >&2; exit 1 ;;
+esac
+root=$(pwd)
+out=build/conformance-java-write-refusal-$mode-control
+src=build/tables-generated-java/$file
+
+rm -rf "$out"
+mkdir -p "$out/src" "$out/classes"
+n=$(grep -cxF "$check" "$src" || true)
+[ "$n" = 1 ] || { echo "negative control: the ranged-integer check matched $n lines in $src, want 1 — the emitter moved" >&2; exit 1; }
+# the check is three lines: the test, its `return false;` and the brace
+awk -v check="$check" '$0 == check { skip = 3 } skip > 0 { skip--; next } { print }' "$src" > "$out/src/$(basename "$file")"
+[ "$(($(wc -l < "$src") - $(wc -l < "$out/src/$(basename "$file")")))" = 3 ] || {
+    echo "negative control: the ranged-integer check was not deleted whole" >&2; exit 1; }
+"$javac" --release 17 -nowarn -cp build/conformance-java -d "$out/classes" "$out/src/$(basename "$file")"
+printf '#!/bin/sh\nea=\ncase "$2" in write-refusal*) ea=-ea ;; esac\nexec %s $ea -cp %s/%s/classes:%s/build/conformance-java Driver "$@"\n' \
+    "$java" "$root" "$out" "$root" > "$out/driver"
+chmod +x "$out/driver"
+printf 'java %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+    cat "$out/log"
+    echo "NEGATIVE CONTROL FAILED: $mode (the ranged-integer check deleted) left the Java leg green" >&2
+    exit 1
+fi
+grep -Eq "^$red *FAIL " "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $red did not go red" >&2; exit 1; }
+grep -Eq "^$green *pass " "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $green did not stay green" >&2; exit 1; }
+if grep '^  java / ' "$out/log" | grep -Ev "^  java / $red: $rows:" >/dev/null; then
+    cat "$out/log"; echo "NEGATIVE CONTROL FAILED: a row other than the two out-of-range ones went red" >&2; exit 1
+fi
+grep -E "^$red *(pass|FAIL) " "$out/log"
+grep '^  java / ' "$out/log"
+echo "negative control: the ranged-integer check deleted turns java / $red RED on the out-of-range rows, $green green"
