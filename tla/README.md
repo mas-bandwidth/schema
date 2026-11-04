@@ -238,24 +238,25 @@ A bounded LAYOUT model of the table wire's record scan
 read (§6.5): one parent body of `N` bytes walked by a cursor, one length-framed
 field at a time, carrying the arithmetic the readers carry — the field's start,
 its end `start + L`, the header read INSIDE THE FIELD'S OWN `L` (§3, THE HEADER
-INSIDE THE BODY; H2, H3), the elements bounded by `L`, and the resume point
-after a field read whole. DAMAGE DISCARDS THE WHOLE LOAD (§4, D1): a body too
-short to carry its header, a header that crosses `L` and an `L` past the
-buffer each end the scan, and nothing resumes, so there is no INERT body and no
-read-on past damage. It is a model, not a codec: the reference, the kind byte
-and the element values are folded away and only offsets remain, which is what a
-layout model is for (Glenn, 2026-10-29: the bugs live in the mapping to
-memory).
+INSIDE THE BODY; H2, H3), the elements filling `L` exactly (H5, L6), and the
+resume point after a field read whole. DAMAGE DISCARDS THE WHOLE LOAD (§4,
+D1): a body too short to carry its header, a header that crosses `L`, elements
+that run past `L`, bytes left inside `L` after the count's elements and an `L`
+past the buffer each end the scan, and nothing resumes, so there is no INERT
+body and no read-on past damage. It is a model, not a codec: the reference, the
+kind byte and the element values are folded away and only offsets remain, which
+is what a layout model is for (Glenn, 2026-10-29: the bugs live in the mapping
+to memory).
 
 ## The finite instance
 
 `N = 8`, `MaxL = 9`, `HeaderBytes = {2, 3, 4}` (the element kind byte plus a
 count of one to three LEB128 bytes). Every field chooses every `L` in
-`0..MaxL` and every header width, so TLC walks every placement of a header
-against every `L` and every buffer end, including `L` of zero and one, `L`
-exactly at the buffer, one past it, and a header that crosses `L`. In the
-positive instance (`ElementsFillL = TRUE`) the elements of a field read whole
-fill the rest of its `L` exactly.
+`0..MaxL`, every header width and every element span `E` in `0..MaxL`, so TLC
+walks every placement of a header and of the elements against every `L` and
+every buffer end, including `L` of zero and one, `L` exactly at the buffer, one
+past it, a header that crosses `L`, elements that run past `L` and elements
+that stop short of it.
 
 ## Actions
 
@@ -263,7 +264,7 @@ fill the rest of its `L` exactly.
 |---|---|
 | `Terminator` | the zero reference ends the body (F3, R1) |
 | `Truncated` | no byte left for a reference: damage, and the load ends |
-| `Field(L, H, E)` | one length-framed array field: `L` past the body is damage and ends the load (L4); fewer than two bytes is damage and ends the load (H2); a header that crosses the field's own `L` is damage and ends the load (H3); otherwise the header is read inside `L`, the elements are bounded by `L`, and the parent resumes at `end` (L1) |
+| `Field(L, H, E)` | one length-framed array field: `L` past the body is damage and ends the load (L4); fewer than two bytes is damage and ends the load (H2); a header that crosses the field's own `L` is damage and ends the load (H3); elements that run past `L` (H5) or stop short of it (L6) are damage and end the load; otherwise the header and the elements fill `L` and the parent resumes at `end` (L1) |
 | `Finished` | stutter once the scan is done |
 
 ## Properties
@@ -280,56 +281,40 @@ fill the rest of its `L` exactly.
   own end (H5).
 - **HeaderDamageIsCrossing** — header damage is exactly a header past the
   field's own `L`.
+- **EveryCaseRuled** — no field the parent stepped past held bytes inside its
+  `L` after the count's last element (L6): such bytes are damage.
 
 ## Reversed witnesses
 
 Each reversed cfg turns exactly one fault switch TRUE and checks TypeOK plus
 the one invariant that names the rule; only that invariant may fail. The first
 two are the RETIRED tolerant rules, kept as witnesses that the strict rule
-excludes them.
+excludes them. The counterexamples are TLC's with `-workers 1`.
 
 | cfg | switch | invariant violated | counterexample |
 |---|---|---|---|
 | `MCFramingHeaderAgainstParent.cfg` | `HeaderAgainstParent` | `HeaderInsideBody` | a field at 1 with `L = 2` and a three-byte header: the header ends at 4, past the field's end at 3 but inside the buffer, and the retired N3 rule read it and resumed at 3 |
-| `MCFramingInertShortBody.cfg` | `InertShortBody` | `HeaderInsideBody` | a field at 1 with `L = 0`: the retired H2 rule stepped over it as INERT and read on, where H2 now makes it damage |
-| `MCFramingOffByOneAtL.cfg` | `OffByOneAtL` | `NoReadPastBuffer` | a second field at 4 with `L = 5`: its payload ends at 9, one past the buffer of 8, and is read |
-| `MCFramingResumeAfterDamage.cfg` | `ResumeAfterDamage` | `DamageEndsLoad` | a field at 1 with `L = 2` and a three-byte header: damage, and the walk resumed at 3 instead of ending |
+| `MCFramingInertShortBody.cfg` | `InertShortBody` | `HeaderInsideBody` | a field at 1 with `L = 0`: the retired H2 rule stepped over it as INERT and read on, where H2 makes it damage |
+| `MCFramingOffByOneAtL.cfg` | `OffByOneAtL` | `NoReadPastBuffer` | a field at 1 with `L = 8`: its payload ends at 9, one past the buffer of 8, and is read whole |
+| `MCFramingResumeAfterDamage.cfg` | `ResumeAfterDamage` | `DamageEndsLoad` | a field at 1 with `L = 3`, a two-byte header and no elements: the byte left in `L` is damage (L6), and the walk resumed at 4 instead of ending |
+| `MCFramingTrailingElements.cfg` | `TrailingAccepted` | `EveryCaseRuled` | a field at 1 with `L = 3`: the array body `element kind, count 0, one more byte`, the header inside `L` and one byte left after the last element, stepped over to 4 and read whole where L6 makes it damage |
 
-The resume-at-cursor witness this model carried before is retired with the
-clamped span: with the header inside `L` and the elements filling it, the
-cursor after a field read whole IS its end, so the fault cannot be told apart
-from the rule. It returns once the open finding below is ruled.
-
-## The open finding: bytes left inside an array's `L` after its elements
-
-`MCFramingTrailingElements.cfg` sets `ElementsFillL = FALSE`, so a field's
-elements may stop short of its end, and checks `EveryCaseRuled`, which is not
-a rule but an ambiguity witness: it fails on the first input whose verdict the
-spec does not state. TLC's counterexample is one field at 1 with `L = 3` and a
-two-byte header whose elements cover nothing: an array body `element kind,
-count 0, one more byte`, the header inside `L` and one byte left after the
-last element. §3 makes a count the body CANNOT cover damage (H5) and makes
-bytes left inside a BODY's `L` after its terminator damage (L3), bytes left in a
-union arm after a nested union damage (L5) and bytes left in the node-table
-field damage (T2); it says nothing of bytes left inside an ARRAY, keyed or map
-`L` after the count's elements. One reader steps to `end` (L1; the Go engine
-today), another refuses it as input no writer produces (§4's definition of
-damage, §13.10), and the verdicts differ. This is for Glenn to rule; until then
-the positive instance keeps the elements filling `L`.
+A resume-at-cursor fault has no witness of its own: with the header inside `L`
+and the elements filling it, the cursor after a field read whole IS its end, so
+the fault cannot be told apart from the rule.
 
 ## Running
 
-From this directory, on a bench (the Mac Studio), with
-`~/rowan-working/sdk/tla/tla2tools.jar`:
+From this directory, on a bench, with `/opt/tla/tla2tools.jar`:
 
 ```
-nice -n 19 java -Xmx6g -cp ~/rowan-working/sdk/tla/tla2tools.jar tlc2.TLC \
-  -workers 4 -config MCFraming.cfg -metadir "$JOB/tlc-MCFraming" Framing
+nice -n 19 java -Xmx6g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 1 -config MCFraming.cfg -metadir "$JOB/tlc-MCFraming" Framing
 ```
 
 Repeat for each of the six cfgs. The positive cfg must exit 0 with exhaustive
-completion; each reversed cfg, and the open finding's cfg, must report its
-named invariant violation. The runs are recorded in `tla/RUNS.tsv`.
+completion; each reversed cfg must report its named invariant violation. The
+runs are recorded in `tla/RUNS.tsv`.
 
 ## What this does not prove
 

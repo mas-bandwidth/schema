@@ -85,7 +85,7 @@ func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	if !ir.TableFixedEmitted(m.Unit, inst.Def) {
 		return nil, fmt.Errorf("table %s: fixed layout is unsupported", inst.Def.Name)
 	}
-	if err := m.CheckValue(inst); err != nil {
+	if err := m.CheckFileValue(inst); err != nil {
 		return nil, err
 	}
 	st := inst.Def

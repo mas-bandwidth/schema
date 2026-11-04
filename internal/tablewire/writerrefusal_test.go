@@ -96,13 +96,17 @@ func TestWritersRefuseValuesOutsideTheirDeclaration(t *testing.T) {
 	writers := []struct {
 		name  string
 		model *tabletext.Model
+		// file: a file writer carries a flags mask whole as a u64, so a bit
+		// past the declared variants is kept and not refused (§4; the
+		// read-then-write case is TestAppendedFlagBitsReadThenWrite)
+		file  bool
 		write func(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error)
 	}{
-		{"Encode (variable)", variable, Encode},
-		{"Encode (fixed)", fixed, Encode},
-		{"EncodeFixed", fixed, EncodeFixed},
-		{"EncodeMessage", fixed, EncodeMessage},
-		{"Write (text)", fixed, func(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) { return m.Write(inst) }},
+		{"Encode (variable)", variable, true, Encode},
+		{"Encode (fixed)", fixed, true, Encode},
+		{"EncodeFixed", fixed, true, EncodeFixed},
+		{"EncodeMessage", fixed, false, EncodeMessage},
+		{"Write (text)", fixed, false, func(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) { return m.Write(inst) }},
 	}
 	for _, w := range writers {
 		clean := w.model.New(w.model.Lookup("Root"))
@@ -120,6 +124,12 @@ func TestWritersRefuseValuesOutsideTheirDeclaration(t *testing.T) {
 				}()
 				return w.write(w.model, inst)
 			}()
+			if w.file && c.name == "cap bit 2" {
+				if err != nil || out == nil {
+					t.Errorf("%s: %s: the file writer answered %x %v, want the mask written whole", w.name, c.name, out, err)
+				}
+				continue
+			}
 			var iv *tabletext.InvalidValue
 			if !errors.As(err, &iv) || out != nil {
 				t.Errorf("%s: %s: the writer answered %x %v, want invalid_value", w.name, c.name, out, err)

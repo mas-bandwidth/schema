@@ -27,8 +27,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0xcad86d24d900e6c0)
-const _ = uint64(0xcad86d24d900e6c0 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x67281dd57e4ffeb8)
+const _ = uint64(0x67281dd57e4ffeb8 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -126,6 +126,8 @@ func tableUTF8Word(a0 []byte) uint64 { return goruntime.TableUTF8Word(a0) }
 func tableUTF8Valid(a0 []byte) bool { return goruntime.TableUTF8Valid(a0) }
 
 func tableUTF8Clamp(a0 []byte, a1 int64) int64 { return goruntime.TableUTF8Clamp(a0, a1) }
+
+const tableBinaryMaxDepth = goruntime.TableBinaryMaxDepth
 
 func tableWireUtf16Valid(a0 []byte) bool { return goruntime.TableWireUtf16Valid(a0) }
 
@@ -1427,6 +1429,7 @@ func (r *TableReader) Signed(kind uint8) int64 {
 }
 
 type tableWireCheck struct {
+	depth   int32
 	ids     int
 	nodes   uint64
 	records TableReader
@@ -1604,12 +1607,17 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 		return true
 	case 32:
 		return len(sub.Buffer) == 0 || c.fail(TableRefuseWireDamaged)
-	case 13:
-		at, ok = c.body(sub, false)
-	case 14:
-		at, ok = c.array(sub, false)
-	case 16:
-		at, ok = c.array(sub, true)
+	case 13, 14, 16:
+		if c.depth >= tableBinaryMaxDepth {
+			return c.fail(TableRefuseWireDamaged)
+		}
+		c.depth++
+		if kind == 13 {
+			at, ok = c.body(sub, false)
+		} else {
+			at, ok = c.array(sub, kind == 16)
+		}
+		c.depth--
 	case 15:
 		at, ok = c.union(sub)
 	case 17, 30:
@@ -4333,7 +4341,7 @@ var tableRetainKnown = [...]uint64{0x0117ad66e0fff227, 0x01986b0b27400fb2, 0x031
 // TableRetain owns no storage. The caller supplies both bounded buffers; a
 // whole unknown record that does not fit is dropped and counted once.
 // Maximum nesting of a retained resolved payload (SPEC-TABLES §6.6).
-const tableRetainWalkDepthMax = 64
+const tableRetainWalkDepthMax = 128
 
 type TableRetainID struct {
 	ID   uint64

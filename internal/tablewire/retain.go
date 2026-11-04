@@ -104,7 +104,7 @@ type retainedField struct {
 // WRITER's and not this build's, so it is the one depth on this path a file
 // can drive. A record past the cap is dropped on the same rule as any other
 // shape the walk cannot take. It bounds the recursion and nothing else.
-const retainDepthCap = 64
+const retainDepthCap = ir.TableBinaryMaxDepth
 
 // armKey names one union cell by the FIELD OCCURRENCE it belongs to rather than
 // by its address (docs/SPEC-TABLES.md §6.6, THE PATH): the field plus, for an

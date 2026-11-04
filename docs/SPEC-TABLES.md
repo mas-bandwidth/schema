@@ -6583,7 +6583,7 @@ plain float's NaN or infinity.
 field, a variant, an arm or a key names it, and never at resolve time. The
 difference from the variable form is that the reader now SKIPS it by the announced
 shape rather than by a length on the wire, and the result is the same: the field
-is stepped over exactly and one event counts. **The skip walk is bounded at depth 128** (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, union arm or element skip past 128 levels is refused as `wire_damaged`. <!-- limit name=message_skip_depth value=128 -->
+is stepped over exactly and one event counts. **The skip walk is bounded at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, union arm or element skip past 128 levels refuses (recommended name `wire_damaged`). <!-- limit name=message_skip_depth value=128 -->
 
 **A FIELD WHOSE ANNOUNCED KIND IS NOT THE ONE THIS READER DECLARES IS §4's
 ORDINARY kind mismatch, AND IT REFUSES AT `AnnounceRead`**, for every entry this
@@ -7466,7 +7466,8 @@ entries announces about 5 KB once.
   bodies, each refusing by name and writing nothing. A `LoadMessages` of a
   256-body batch into storage for eight, refusing with nothing decoded, its returned count reading 0 (§6.5). A
   three-body batch damaged inside the second, which must refuse and return a
-  count of 0 with no body delivered.
+  count of 0 with no body delivered. These rows run in the leg's own tests;
+  the shared suites assert verdicts only, never a caller's capacity.
   Red if a leg writes consecutive batches, decodes a body before
   refusing on capacity, leaves the returned count at the caller's capacity,
   or delivers any body of the damaged batch.
@@ -8571,12 +8572,20 @@ mistake to try to do it." and "It's best to consistently refuse. Too much
 undefined behavior per-language by trying to be tolerant."). Every read of
 every form returns the whole value or REFUSES the whole load (§6.5); why it
 refused is per-language diagnostic detail. There is no partial value, no repair, no clamp, and no
-reading past damage. What a read accepts is EVOLUTION, and evolution only:
+reading past damage. What a read accepts is EVOLUTION, and evolution only (the
+hand-editable text form alone refuses an unknown name, §6.5):
 
 - **Unknown field** (newer writer): skipped by its length, counted `unknown`,
   or kept under the retain rules (§6.6). Skipped is not unread: the conditions
   decidable from the wire alone apply to its bytes as to every other byte
-  (§6.5), so damage inside an unknown field refuses the load.
+  (§6.5), so damage inside an unknown field refuses the load. That walk, and
+  every other walk of the binary forms, holds ONE NESTING BOUND, normative for
+  every reader and every path: the root body is at depth 0, each framed
+  payload inside a payload (a table body, an array, keyed or map body, a union
+  arm) is one level deeper, depth 128 passes and 129 refuses. The compiler
+  refuses a declaration whose by-value nesting passes it, so no conforming
+  writer produces an input the bound refuses. A pointer does not nest: a node
+  record is walked from depth 0. <!-- limit name=binary_max_depth value=128 -->
 - **Absent field** (older writer): the reader's value takes the field's
   default: the specified default, else zero. A `string(N)`, `bytes(N)`
   or `flags` field's declared default is that default (SPEC §4.2): the writer elides such a field holding it exactly as it elides a
@@ -9775,7 +9784,11 @@ hand-editable text read (§16.9) each return the whole value or refuse the
 whole load; the reason is diagnostic (below).
 There is no tolerant read, under any name, in any target: no partial value,
 no repair, no clamp, no count of a condition the read then accepts, and no
-reading past damage. What a read accepts is evolution, and §4 lists it whole.
+reading past damage. What a read accepts is evolution, and §4 lists it whole,
+with one stated exception: the hand-editable text read (§16.9) refuses an
+unknown key, keyed slot, union arm, enum variant or flags name, because that
+form is an authoring file and an unknown name in it is a typo, never a newer
+writer. Every other path accepts the same unknown as evolution.
 
 **THE CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES** (Glenn, 2026-11-03: "I
 am actually OK if there is only a generic failure to read. I do not care about
@@ -9804,7 +9817,8 @@ evolution a read accepts (§4).
   inside an arm after a nested union; bytes left inside an array's, keyed
   array's or map's `L` after its count's elements; the node table's framing; the pointer
   graph's cycles and unreachable records; one blob record named from two
-  slots; a count past the storage cap and a blob past its size cap.
+  slots; a count past the storage cap and a blob past its size cap; a nesting
+  depth past §4's binary bound of 128, inside unknown bytes as anywhere.
 - **DEPENDENT ON THE DECLARATION**, and applied only where this reader declares
   the field (or the record type): a kind mismatch that is not a widening; a
   value outside the reader's range, or outside the writer's where the read
@@ -10203,7 +10217,7 @@ caller-owned ID entry, since C has no nested types. Fixed-root calls,
 C99 macros that fail at the call site with a named diagnostic. Ordinary bodies carry no retention parameter or branch;
 the opt-in family reuses the field emitters with an explicit context passed
 by value. Its private resolved records carry directory/path anchors and full
-IDs. The resolving walk permits 64 framed levels and commits only complete <!-- limit name=retain_walk_depth value=64 -->
+IDs. The resolving walk permits 128 framed levels, §4's binary bound, and commits only complete <!-- limit name=retain_walk_depth value=128 -->
 records that fit the caller's remaining capacity. Saving measures each retained frame once
 before emitting its bytes. `TableReport.retained` and `retain_lost` carry the
 load and save outcomes; `SaveRetain` requires a report.
@@ -13719,6 +13733,7 @@ in build version (§20.5).
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
   SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  LoadRegion  LoadBuilderRead
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
@@ -14182,7 +14197,7 @@ either side.
 
 **The gate is a per-language obligation, not a one-language one.** A game
 whose engine runtime is not the language its tools are written in has to
-read the same bytes from the same declarations, with the same report, on
+read the same bytes from the same declarations, to the same value, on
 both sides — so a backend clears the gate only in its own language, and
 the per-language backends are named follow-ons (§15).
 
@@ -16673,7 +16688,7 @@ accepts data which saving would silently discard.
 
 All declared bounds and storage widths are checked BEFORE publishing a value.
 There is no clamping, truncation, unknown-key skipping or last-wins recovery.
-The rules below replace §16.2's tolerant behavior for this form only.
+The rules below replace §16.2's evolution skipping for this form only (§6.5).
 
 | Field kind | Hand-editable value and rule |
 | --- | --- |
@@ -16771,7 +16786,7 @@ renumbering or changes graph structure, it is a structural operation.
 #### 16.9.4 Named refusals and conformance
 
 Reads are transactional: any refusal yields no usable table/document pair,
-never a partial value. Every refusal reports the stable name below, a zero-based
+never a partial value. A refusal SHOULD report the recommended name below, a zero-based
 byte offset (EOF may equal input length), and a field/element path where known.
 Each refusal is one name, and the read stops at it (§6.5). Implementations may append human-readable context.
 
