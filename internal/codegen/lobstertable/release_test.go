@@ -112,7 +112,7 @@ func runRelease(t *testing.T, wire []byte, release bool, patch func(string) stri
 	b.WriteString(`let data = read_file("w0")
 assert data
 let rep = schema_rt.LoadReport {}
-let rec = schema_rt.load_tolerant("ListNode", data, rep)
+let rec = schema_rt.load("ListNode", data, rep)
 print("malformed={rep.malformed} answered=" + (if rec: "record" else: "nil"))
 if rec:
     let out, why = schema_rt.save_reasoned(rec)

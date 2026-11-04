@@ -77,7 +77,7 @@ let le = read_file("le")
 let be = read_file("be")
 let want = read_file("want")
 assert wire and le and be and want
-let rec = schema_rt.load_tolerant(%q, wire, schema_rt.LoadReport {})
+let rec = schema_rt.load(%q, wire, schema_rt.LoadReport {})
 assert rec
 let backle = %s.%sReadCook(le)
 let backbe = %s.%sReadCook(be)

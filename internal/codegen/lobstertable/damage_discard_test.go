@@ -46,7 +46,7 @@ import .message
 let bad = read_file("bad")
 assert bad
 let frep = schema_rt.LoadReport {}
-let rec = schema_rt.load_tolerant("LoginRequest", bad, frep)
+let rec = schema_rt.load("LoginRequest", bad, frep)
 print(if frep.malformed and not rec: "file discarded" else: "file kept")
 schema_rt.release(rec)
 let ann = read_file("ann")

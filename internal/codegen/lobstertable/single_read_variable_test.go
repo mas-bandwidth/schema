@@ -261,5 +261,12 @@ let value_only = schema_rt.load_retain("ValueOnly", evolving, retaining, retaini
 assert value_only and length(value_only.retained) == 0
 assert retaining.used == 0
 schema_rt.release(value_only)
+let reused_report = schema_rt.LoadReport {}
+let damaged = read_file("unknown_bool")
+assert damaged
+assert not schema_rt.load("Probe", damaged, reused_report)
+let retry = schema_rt.load("Probe", empty, reused_report)
+assert retry
+schema_rt.release(retry)
 print("one-read native passed")
 `
