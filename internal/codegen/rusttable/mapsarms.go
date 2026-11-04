@@ -520,9 +520,12 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
 	}
-	if f.Array == ir.ArrayCounted {
-		b.WriteString(countWriteAssert(f, x, g.floatOwner(f), ind))
-	} else if f.Array == ir.ArrayNone {
+	switch {
+	case f.Array == ir.ArrayCounted:
+		b.WriteString(countWriteRefuse(f, x, g.floatOwner(f), ind))
+	case f.Array == ir.ArrayNone && f.Type.Kind == ir.TBytes && !f.Type.Pointer:
+		b.WriteString(bytesWriteRefuse(f, x, g.floatOwner(f), ind))
+	case f.Array == ir.ArrayNone:
 		b.WriteString(lenWriteAssert(f, x, g.floatOwner(f), ind))
 	}
 	fmt.Fprintf(b, "%s%s.push(%d);\n", ind, dst, ek)

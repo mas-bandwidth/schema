@@ -736,7 +736,7 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
 		}
-		b.WriteString(countWriteAssert(f, x, g.floatOwner(f), inner))
+		b.WriteString(countWriteRefuse(f, x, g.floatOwner(f), inner))
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)

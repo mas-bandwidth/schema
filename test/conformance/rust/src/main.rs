@@ -1526,9 +1526,10 @@ fn surface_message(manifest: &Manifest, out: &str) {
 // Each row loads its wire as its root with the `wire` surface's Load, sets the
 // ONE field its path names, and saves through the same variable-form Save. The
 // Rust writer refuses in two ways: a named Err from <root>_save_checked (a
-// NaN or an infinity, every build) or a debug_assert! panic (a range, a
-// bits(N) width, a count, a length, an unpaired surrogate), which fires
-// because this driver and the generated crates build in the dev profile. An
+// NaN or an infinity, a count past its bound, every build) or a
+// debug_assert! panic (a range, a bits(N) width, a length, an unpaired
+// surrogate), which fires because this driver and the generated crates build
+// in the dev profile. An
 // enum ordinal or a union tag outside its set, and a narrow text's ill-formed
 // bytes, are `unrepresentable`: the first two are native Rust enums and the
 // third a String.
@@ -1840,8 +1841,9 @@ fn wref_match_result_row(v: &mut backenddemo::MatchResultRow, path: &str, kind: 
 
 // write-refusal-fixed: the one value saved through the fixed form's FixedSave
 // as a batch of one, into a buffer of exactly the measure. The Rust FixedSave
-// refuses with None (a NaN or an infinity, every build) or a debug_assert!
-// panic (the write contract over the whole batch, debug builds).
+// refuses with None (a NaN or an infinity, a count or a length past its
+// storage, every build) or a debug_assert! panic (the write contract over the
+// whole batch, a zero byte or unit in text among it, debug builds).
 fn surface_write_refusal_fixed(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("write-refusal-fixed") {
         if f.len() < 8 {

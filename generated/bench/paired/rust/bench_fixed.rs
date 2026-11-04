@@ -149,8 +149,8 @@ pub fn mixed_event_fixed_clamp_body(value: &mut MixedEventRow, clamped: &mut i32
 
 /// MixedEvent's write contract (docs/SPEC.md §5.1): a tag naming one of its arms,
 /// then the arm THE TAG NAMES.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn mixed_event_check_row(value: &MixedEventRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn mixed_event_check_row(value: &MixedEventRow, fixed: bool) -> &'static str {
     if value.tag > 3 {
         return "MixedEvent";
     }
@@ -158,7 +158,7 @@ pub fn mixed_event_check_row(value: &MixedEventRow) -> &'static str {
         1 => {
             // SAFETY: the tag was just matched against `hit`.
             let arm = unsafe { value.arms.hit };
-            let why = mixed_hit_event_check_row(&arm);
+            let why = mixed_hit_event_check_row(&arm, fixed);
             if !why.is_empty() {
                 return why;
             }
@@ -166,7 +166,7 @@ pub fn mixed_event_check_row(value: &MixedEventRow) -> &'static str {
         2 => {
             // SAFETY: the tag was just matched against `chat`.
             let arm = unsafe { value.arms.chat };
-            let why = mixed_chat_event_check_row(&arm);
+            let why = mixed_chat_event_check_row(&arm, fixed);
             if !why.is_empty() {
                 return why;
             }
@@ -174,7 +174,7 @@ pub fn mixed_event_check_row(value: &MixedEventRow) -> &'static str {
         3 => {
             // SAFETY: the tag was just matched against `pickup`.
             let arm = unsafe { value.arms.pickup };
-            let why = mixed_pickup_event_check_row(&arm);
+            let why = mixed_pickup_event_check_row(&arm, fixed);
             if !why.is_empty() {
                 return why;
             }
@@ -329,8 +329,8 @@ pub fn mixed_entity_fixed_clamp_body(value: &mut MixedEntityRow, clamped: &mut i
 
 /// MixedEntity's write contract (docs/SPEC.md §5.1): the first value its declaration
 /// does not admit, named <Owner>.<field>, or "" when every value is admitted.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn mixed_entity_check_row(value: &MixedEntityRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn mixed_entity_check_row(value: &MixedEntityRow, fixed: bool) -> &'static str {
     if value.entity_id > 4095 {
         return "MixedEntity.entity_id"; // bits(12)'s own width
     }
@@ -409,8 +409,8 @@ pub fn mixed_stat_fixed_clamp_body(value: &mut MixedStatRow, clamped: &mut i32, 
 
 /// MixedStat's write contract (docs/SPEC.md §5.1): the first value its declaration
 /// does not admit, named <Owner>.<field>, or "" when every value is admitted.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn mixed_stat_check_row(value: &MixedStatRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn mixed_stat_check_row(value: &MixedStatRow, fixed: bool) -> &'static str {
     if value.stat_id > 255 {
         return "MixedStat.stat_id"; // bits(8)'s own width
     }
@@ -477,8 +477,8 @@ pub fn mixed_hit_event_fixed_clamp_body(value: &mut MixedHitEventRow, clamped: &
 
 /// MixedHitEvent's write contract (docs/SPEC.md §5.1): the first value its declaration
 /// does not admit, named <Owner>.<field>, or "" when every value is admitted.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn mixed_hit_event_check_row(value: &MixedHitEventRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn mixed_hit_event_check_row(value: &MixedHitEventRow, fixed: bool) -> &'static str {
     if value.target_id > 4095 {
         return "MixedHitEvent.target_id"; // bits(12)'s own width
     }
@@ -533,8 +533,8 @@ pub fn mixed_chat_event_fixed_clamp_body(value: &mut MixedChatEventRow, clamped:
 
 /// MixedChatEvent's write contract (docs/SPEC.md §5.1): the first value its declaration
 /// does not admit, named <Owner>.<field>, or "" when every value is admitted.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn mixed_chat_event_check_row(value: &MixedChatEventRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn mixed_chat_event_check_row(value: &MixedChatEventRow, fixed: bool) -> &'static str {
     if value.channel < 0_i32 || value.channel > 3_i32 {
         return "MixedChatEvent.channel";
     }
@@ -586,8 +586,8 @@ pub fn mixed_pickup_event_fixed_clamp_body(value: &mut MixedPickupEventRow, clam
 
 /// MixedPickupEvent's write contract (docs/SPEC.md §5.1): the first value its declaration
 /// does not admit, named <Owner>.<field>, or "" when every value is admitted.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn mixed_pickup_event_check_row(value: &MixedPickupEventRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn mixed_pickup_event_check_row(value: &MixedPickupEventRow, fixed: bool) -> &'static str {
     if value.item_id > 1023 {
         return "MixedPickupEvent.item_id"; // bits(10)'s own width
     }
@@ -922,8 +922,8 @@ pub fn bench_mixed_fixed_finite_body(value: &BenchMixedRow) -> &'static str {
 
 /// BenchMixed's write contract (docs/SPEC.md §5.1): the first value its declaration
 /// does not admit, named <Owner>.<field>, or "" when every value is admitted.
-#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
-pub fn bench_mixed_check_row(value: &BenchMixedRow) -> &'static str {
+#[allow(unused_variables, clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn bench_mixed_check_row(value: &BenchMixedRow, fixed: bool) -> &'static str {
     if value.sequence > 65535 {
         return "BenchMixed.sequence"; // bits(16)'s own width
     }
@@ -943,7 +943,7 @@ pub fn bench_mixed_check_row(value: &BenchMixedRow) -> &'static str {
         return "BenchMixed.entities";
     }
     for i in 0..value.entities_count as usize {
-        let why = mixed_entity_check_row(&value.entities[i]);
+        let why = mixed_entity_check_row(&value.entities[i], fixed);
         if !why.is_empty() {
             return why;
         }
@@ -952,12 +952,12 @@ pub fn bench_mixed_check_row(value: &BenchMixedRow) -> &'static str {
         return "BenchMixed.stats";
     }
     for i in 0..value.stats_count as usize {
-        let why = mixed_stat_check_row(&value.stats[i]);
+        let why = mixed_stat_check_row(&value.stats[i], fixed);
         if !why.is_empty() {
             return why;
         }
     }
-    let why = mixed_event_check_row(&value.game_event);
+    let why = mixed_event_check_row(&value.game_event, fixed);
     if !why.is_empty() {
         return why;
     }
@@ -966,6 +966,9 @@ pub fn bench_mixed_check_row(value: &BenchMixedRow) -> &'static str {
     }
     if core::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_err() {
         return "BenchMixed.player_name";
+    }
+    if fixed && value.player_name[..value.player_name_length as usize].contains(&0) {
+        return "BenchMixed.player_name"; // the fixed reader refuses a zero as text_ill_formed
     }
     if value.payload_length < 0 || value.payload_length > 16 {
         return "BenchMixed.payload";
@@ -984,6 +987,26 @@ pub fn bench_mixed_check_row(value: &BenchMixedRow) -> &'static str {
     }
     if value.idle_ticks < 0_i32 || value.idle_ticks > 15_i32 {
         return "BenchMixed.idle_ticks";
+    }
+    ""
+}
+
+/// BenchMixed's storage bound (docs/SPEC.md §5.1), every build: the first counted
+/// array or text whose count or length is outside 0..=its storage, named
+/// <Owner>.<field>, or "" when every one is inside.
+#[allow(clippy::manual_range_contains, clippy::collapsible_if)]
+pub fn bench_mixed_check_storage(value: &BenchMixedRow) -> &'static str {
+    if value.entities_count < 0 || value.entities_count > 8 {
+        return "BenchMixed.entities";
+    }
+    if value.stats_count < 0 || value.stats_count > 80 {
+        return "BenchMixed.stats";
+    }
+    if value.player_name_length < 0 || value.player_name_length > 15 {
+        return "BenchMixed.player_name";
+    }
+    if value.payload_length < 0 || value.payload_length > 16 {
+        return "BenchMixed.payload";
     }
     ""
 }

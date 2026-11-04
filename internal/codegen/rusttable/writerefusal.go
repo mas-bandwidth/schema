@@ -14,7 +14,8 @@ import (
 // debug_assert!, the idiom serialize.rs and the packet writer use: it panics
 // with the field's name when debug assertions are on and compiles out when
 // they are off. A required field's range (the numbering walk), a wstring(N)
-// over N and a NaN or an infinity in a float refuse in every build instead;
+// over N, a counted array over its Max, an arm's bytes(N) over N and a NaN or
+// an infinity in a float refuse in every build instead;
 // an enum ordinal or a union tag outside its set cannot be built, because both
 // are native Rust enums.
 
@@ -100,12 +101,20 @@ func lenWriteAssert(f *ir.Field, x, owner, ind string) string {
 		fmt.Sprintf("%s: longer than its bound of %d, refused on write (docs/SPEC-TABLES.md section 3)", owner, bound))
 }
 
-// countWriteAssert is the debug_assert! that refuses a bounded array holding
-// more than its Max elements.
-func countWriteAssert(f *ir.Field, x, owner, ind string) string {
+// countWriteRefuse refuses a bounded array holding more than its Max
+// elements, in every build: the writer bounds the count it writes with that
+// compare anyway, so the refusal costs nothing the clamp did not (docs/SPEC.md
+// §5.1). The refusal is the save's named one (table_bound_refuse).
+func countWriteRefuse(f *ir.Field, x, owner, ind string) string {
 	if f.Array != ir.ArrayCounted {
 		return ""
 	}
-	return fmt.Sprintf("%sdebug_assert!(%s.len() <= %d, %q);\n", ind, x, f.ArrayBound,
-		fmt.Sprintf("%s: more than its bound of %d elements, refused on write (docs/SPEC-TABLES.md section 3)", owner, f.ArrayBound))
+	return fmt.Sprintf("%sif %s.len() > %d { table_bound_refuse(ids, %q); }\n", ind, x, f.ArrayBound, owner)
+}
+
+// bytesWriteRefuse refuses a bytes(N) arm payload longer than N bytes, in
+// every build, for the same reason as countWriteRefuse: the arm's writer
+// bounds the length it writes with that compare anyway.
+func bytesWriteRefuse(f *ir.Field, x, owner, ind string) string {
+	return fmt.Sprintf("%sif %s.len() > %d { table_bound_refuse(ids, %q); }\n", ind, x, f.Type.Size, owner)
 }
