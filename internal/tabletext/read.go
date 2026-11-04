@@ -731,6 +731,7 @@ func (in *reader) readTable(inst *Instance, depth int) bool {
 // this places it before scanning the rest.
 func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool {
 	seen := make(map[int]bool, len(inst.Fields))
+	seenKeys := map[string]bool{}
 	for {
 		var key []byte
 		var c byte
@@ -746,10 +747,13 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 				in.bad = true
 				return false
 			}
-			var ok bool
-			key, _, ok = in.scanString(maxJsonKey)
+			var ok, tooLong bool
+			key, tooLong, ok = in.scanString(maxJsonKey)
 			if !ok {
 				return false
+			}
+			if tooLong {
+				return in.fail("length_over_bound: JSON key")
 			}
 			if in.peek() != ':' {
 				in.bad = true
@@ -757,6 +761,10 @@ func (in *reader) readTableKeys(inst *Instance, depth int, firstKey []byte) bool
 			}
 			in.pos++
 		}
+		if seenKeys[string(key)] {
+			return in.fail("malformed: a repeated key")
+		}
+		seenKeys[string(key)] = true
 		if len(key) > 0 && key[0] == '&' {
 			// THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
 			// §16.7). No declaration may take a key beginning with it, so this
@@ -994,9 +1002,12 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 		in.bad = true
 		return false
 	}
-	key, _, ok := in.scanString(maxJsonKey)
+	key, tooLong, ok := in.scanString(maxJsonKey)
 	if !ok {
 		return false
+	}
+	if tooLong {
+		return in.fail("length_over_bound: JSON key")
 	}
 	if in.peek() != ':' {
 		in.bad = true
@@ -1382,6 +1393,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 	}
 	shape := ElementShape(f)
 	seen := map[int]bool{}
+	seenKeys := map[string]bool{}
 	for {
 		c := in.peek()
 		if c == '}' {
@@ -1392,15 +1404,22 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 			in.bad = true
 			return false
 		}
-		key, _, ok := in.scanString(maxJsonKey)
+		key, tooLong, ok := in.scanString(maxJsonKey)
 		if !ok {
 			return false
+		}
+		if tooLong {
+			return in.fail("length_over_bound: JSON key")
 		}
 		if in.peek() != ':' {
 			in.bad = true
 			return false
 		}
 		in.pos++
+		if seenKeys[string(key)] {
+			return in.fail("malformed: a repeated key")
+		}
+		seenKeys[string(key)] = true
 		slot := KeyedValueSlot(f, EnumValue(f.KeyEnumRef, string(key)))
 		if slot >= 0 {
 			if seen[slot] {
