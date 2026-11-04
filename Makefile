@@ -6408,7 +6408,7 @@ conformance-negative-control-cpp-write-refusal: build/conformance-harness build/
 # surface that must go RED and $(4) the surface that must stay green. The fixed
 # control deletes FixedSave's <T>FixedWriteCheck assert, so the range, bits,
 # enum, tag and text rows answer `wrote` while the count and length rows, which
-# the store's own asserts hold, do not move; the message control deletes
+# FixedSave's every-build <T>FixedFits line holds, do not move; the message control deletes
 # SaveMessages' range asserts, so the two quantity rows and the element row
 # answer `wrote`. Nothing tracked is written to.
 define conformance-negative-control-cpp-wref
