@@ -264,6 +264,13 @@ func emitResetField(g *lobster.Gen, f *ir.Field, expr, ind string) {
 }
 
 func emitResetPayload(g *lobster.Gen, f *ir.Field, expr, ind string) {
+	if fixedByteArray(f) {
+		g.Pf("%s%s = schema_rt.zeros(%d)\n", ind, expr, fixedArrayBound(f))
+		if f.Array == ir.ArrayCounted {
+			g.Pf("%s%s = %d\n", ind, slotExpr(expr, f, "Count"), f.BornCount())
+		}
+		return
+	}
 	switch {
 	case f.KeyEnumRef != nil:
 		iv := fmt.Sprintf("i_rst_%s", ir.GoExportName(f.Name))
@@ -529,6 +536,10 @@ func scatterField(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base stri
 }
 
 func scatterPayload(g *lobster.Gen, owner *ir.Struct, f *ir.Field, expr, base string, off int64, ind string) {
+	if fixedByteArray(f) {
+		getFixedByteArray(g, f, expr, base, off, ind)
+		return
+	}
 	switch {
 	case f.KeyEnumRef != nil:
 		elem := ir.TableFixedElementBytes(f)
@@ -784,13 +795,27 @@ func emitFixedBoundPayload(g *lobster.Gen, f *ir.Field, val, ind string, pass fi
 	elem := *f
 	elem.Array, elem.KeyEnum, elem.KeyEnumRef = ir.ArrayNone, "", nil
 	loop := func(countExpr string) bool {
+		emitted := false
+		if chk && fixedByteArray(f) {
+			g.Pf("%sif length(%s.%s) < %s:\n%s    return false\n", ind, val, ir.GoExportName(f.Name), countExpr, ind)
+			emitted = true
+		}
 		if !fixedBoundNeeded(&elem, chk) {
-			return false
+			return emitted
 		}
 		iv := fmt.Sprintf("i_bd_%s", ir.GoExportName(f.Name))
 		g.Pf("%sfor(%s) %s:\n", ind, countExpr, iv)
-		if !emitFixedBoundElement(g, f, fmt.Sprintf("%s.%s[%s]", val, ir.GoExportName(f.Name), iv), ind+"    ", pass) {
+		expr := fmt.Sprintf("%s.%s[%s]", val, ir.GoExportName(f.Name), iv)
+		if !chk && fixedByteArray(f) {
+			g.Pf("%s    var byte_value = %s\n", ind, expr)
+			expr = "byte_value"
+		}
+		if !emitFixedBoundElement(g, f, expr, ind+"    ", pass) {
 			g.Pf("%s    pass()\n", ind)
+		}
+		if !chk && fixedByteArray(f) {
+			field := val + "." + ir.GoExportName(f.Name)
+			g.Pf("%s    %s = write_int8_le(%s, %s, byte_value)\n", ind, field, field, iv)
 		}
 		return true
 	}
@@ -803,7 +828,7 @@ func emitFixedBoundPayload(g *lobster.Gen, f *ir.Field, val, ind string, pass fi
 		emitted := false
 		cnt := fmt.Sprintf("%s.%sCount", val, ir.GoExportName(f.Name))
 		if chk {
-			g.Pf("%sif %s < 0 or %s > %d:\n%s    return false\n", ind, cnt, cnt, f.ArrayBound, ind)
+			g.Pf("%sif %s < %d or %s > %d:\n%s    return false\n", ind, cnt, f.ArrayMin, cnt, f.ArrayBound, ind)
 			emitted = true
 		}
 		if loop(cnt) {

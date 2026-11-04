@@ -100,8 +100,17 @@ func (p *fixedRecordProjection) field(f *ir.Field, typed, sl, ind string) {
 			p.check(fmt.Sprintf("%s < %d or %s > %d", n, f.ArrayMin, n, f.ArrayBound), ind)
 		}
 		p.check(fmt.Sprintf("length(%s.elems) < %s", sl, n), ind)
+		if p.toTyped && fixedByteArray(f) {
+			p.g.Pf("%s%s = schema_rt.zeros(%d)\n", ind, typed, fixedArrayBound(f))
+		}
 		i := p.local()
 		p.g.Pf("%sfor(%s) %s:\n", ind, n, i)
+		if p.toTyped && fixedByteArray(f) {
+			value := sl + ".elems[" + i + "].i"
+			p.check(value+" < 0 or "+value+" > 255", ind+"    ")
+			p.g.Pf("%s    %s = write_int8_le(%s, %s, %s)\n", ind, typed, typed, i, value)
+			return
+		}
 		p.element(f, typed+"["+i+"]", sl+".elems["+i+"]", ind+"    ")
 		return
 	}
