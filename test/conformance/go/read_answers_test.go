@@ -1,6 +1,7 @@
 package main
 
 import (
+	"blobdemo"
 	"bytes"
 	"os"
 	"path/filepath"
@@ -84,6 +85,36 @@ func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
 		}
 		if accepted && tc.writes && !bytes.Equal(got, []byte{11, 22}) || (!accepted || !tc.writes) && len(got) != 0 {
 			t.Fatalf("accepted=%v writes=%v: batch %v", accepted, tc.writes, got)
+		}
+	}
+}
+
+func TestCookAliasRecipeConstructsTheRequestedBlobIdentity(t *testing.T) {
+	input := filepath.Join(t.TempDir(), "input.json")
+	if err := os.WriteFile(input, []byte(`{"name":"recipe","thumb":"AQID","alias":"BAUG"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := findCodec("blobdemo", "Catalog")
+	for _, tc := range []struct {
+		source, alias string
+		want          []byte
+	}{{"thumb", "alias", []byte{1, 2, 3}}, {"alias", "thumb", []byte{4, 5, 6}}} {
+		value, err := cookInput(c, line{"instance", "probe", "blobdemo", "Catalog", "unused"}, line{"cook-write", "probe", input, tc.source, tc.alias})
+		if err != nil {
+			t.Fatal(err)
+		}
+		root := value.(*regionValue[blobdemo.Catalog]).root
+		thumb := blobdemo.TableBytesAt(&root.Thumb).Data
+		alias := blobdemo.TableBytesAt(&root.Alias).Data
+		if !bytes.Equal(thumb, tc.want) || !bytes.Equal(alias, tc.want) || &thumb[0] != &alias[0] {
+			t.Fatalf("recipe %s -> %s did not preserve one requested blob", tc.source, tc.alias)
+		}
+		if c.measure(value) >= 0 || c.toJsonMeasure(value) >= 0 {
+			t.Fatal("shared blob unexpectedly has a wire or JSON spelling")
+		}
+		size := c.cookMeasure(value)
+		if size <= 0 || !c.cook(value, make([]byte, size), false) {
+			t.Fatal("Cook refused the in-memory shared blob")
 		}
 	}
 }
