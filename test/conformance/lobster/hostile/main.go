@@ -236,8 +236,7 @@ func main() {
 	for _, schema := range schemas {
 		if !*noGenerate {
 			if err := generate(*units, schema); err != nil {
-				var r refusal
-				if errors.As(err, &r) {
+				if r, ok := errors.AsType[refusal](err); ok {
 					absent[schema] = firstLine(r.Error())
 					continue
 				}
