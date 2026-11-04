@@ -31,6 +31,14 @@ func TestCorpusEmptyRoundTrip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			inst := m.New(m.Lookup(name))
 			wire, err := tablewire.Encode(m, inst)
+			if name == "WideBlob" {
+				// This declared fixed table exceeds the form-3 record bound.
+				// Its storage remains legal, but a wire save must refuse it.
+				if err == nil || len(wire) != 0 {
+					t.Fatalf("oversized fixed table wrote a file: %d bytes, %v", len(wire), err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
