@@ -765,8 +765,8 @@ json-hostile str-clamp-boundary           tabledemo RootConfig  testdata/conform
 # HELD FIRST IN GO (§16.3): Go, C, C++, Rust, C#, JavaScript, Dart, Java, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry the rule,
 # every other port keeps the counters it answered before the ruling until its port.
 json-hostile str-illformed-at-bound       tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-illformed-at-bound       refused carried-by=go,c,cpp,rust,cs,js,dart,java,moo,lobster,squirrel,lua,luau,elixir,goose uncarried=0,0,0,1,0,false,read
-json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      0,0,0,0,0,false,read
-json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     0,0,0,0,0,false,read
+json-hostile str-lone-lead-surrogate      tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-lead-surrogate      refused
+json-hostile str-lone-trail-surrogate     tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-lone-trail-surrogate     refused
 json-hostile str-surrogate-pair           tabledemo RootConfig  testdata/conformance/tables/json-hostile/str-surrogate-pair           0,0,0,0,0,false,read
 # THE NUL ESCAPE INTO BOUNDED TEXT (§16.3): a \u0000 escape that would land
 # U+0000 in a bounded string(N) field is refused as text_holds_zero, naming the
