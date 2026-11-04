@@ -197,7 +197,10 @@ func surfaceWire(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.load(value, wire, &rep) {
-			return fmt.Errorf("%s: load refused %s", f[1], f[4])
+			if err := spill(out, f[1], []byte("refused\n")); err != nil {
+				return err
+			}
+			continue
 		}
 		size := c.measure(value)
 		if size < 0 {

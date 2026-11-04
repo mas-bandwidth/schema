@@ -59,6 +59,40 @@ func TestReadAnswersCarryOnlyAcceptedValues(t *testing.T) {
 	}
 }
 
+func TestWireAnswersDoNotWriteRefusedStorage(t *testing.T) {
+	old := codecTable
+	t.Cleanup(func() { codecTable = old })
+	for _, accepted := range []bool{false, true} {
+		dir := t.TempDir()
+		input := filepath.Join(dir, "input")
+		if err := os.WriteFile(input, []byte{1}, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		codecTable = []codec{{unit: "probe", root: "Root", fresh: func() any { return new(int) },
+			load: func(any, []byte, *report) bool { return accepted },
+			measure: func(any) int64 {
+				if !accepted {
+					t.Fatal("refused wire read reached the writer")
+				}
+				return 2
+			}, save: func(_ any, dst []byte) int64 { return int64(copy(dst, []byte{7, 41})) }}}
+		if err := surfaceWire([]line{{"instance", "answer", "probe", "Root", input}}, dir); err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(dir, "answer"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []byte("refused\n")
+		if accepted {
+			want = []byte{7, 41}
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("accepted=%v: answer %v, want %v", accepted, got, want)
+		}
+	}
+}
+
 func TestMessageFuzzWritesTheCompleteAcceptedBatch(t *testing.T) {
 	for _, tc := range []struct{ accepted, writes bool }{{true, true}, {false, true}, {true, false}} {
 		accepted := tc.accepted
