@@ -2,6 +2,9 @@ name: Lobster single-read qualification
 on:
   push:
     branches: [codex/schema-lobster-read-linux-check]
+concurrency:
+  group: lobster-single-read-qualification
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -13,14 +16,17 @@ jobs:
       matrix:
         include:
           - lane: strict-fixed
-            revision: 3ba6898cf185e7f7e3c81479c2a09f1ba835b201
+            revision: 1c4874ca5bd0c1b9366b03de7c61f35d73bc20d8
             pattern: '^TestLobsterFixedOneRead$'
           - lane: evolution
             revision: a8669c7bc492ae6cacf3a673e1f9d2ee6ed3712f
             pattern: '^TestLobster(FixedProofEvolution|FixedProofSuite|FixedNestedUnionGuardNames)$'
           - lane: binary
             revision: 9c7ccaecc6165891ac4745e82fcf965c1d6596b3
-            pattern: '^TestLobster(SingleRead.*|TableLoad.*|StrictRead.*|RetainUnknown.*|TextLists.*|TableSave.*|TableRelease.*|TableCyclic.*|VariableClass.*|Collections.*|WideKinds.*|Descriptors.*|Optionals.*|TablesAreFiniteOnly.*)$'
+            pattern: '^TestLobster(UnionArm.*|DefaultsAndRenames.*|SingleRead.*|TableLoad.*|StrictRead.*|RetainUnknown.*|TextLists.*|TableSave.*|TableRelease.*|TableCyclic.*|VariableClass.*|Collections.*|WideKinds.*|Descriptors.*|Optionals.*|TablesAreFiniteOnly.*)$'
+          - lane: cook-identity
+            revision: 29753a4be0ec61c9c435f9ca106b5d7506ae9ec3
+            pattern: '^TestLobsterCookPreservesSharedBlobIdentity$'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
