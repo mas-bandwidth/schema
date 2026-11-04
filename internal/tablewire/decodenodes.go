@@ -80,7 +80,7 @@ func (r *wireReader) resolveCell(cell *tabletext.Cell, f *ir.Field, index uint64
 // the numbering first, then every record, then the root. EVERY RECORD OF A
 // TYPE THIS READER NAMES IS DECODED and held to the declaration, whether or
 // not a slot the reader knows reaches it (§6.5).
-func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState) error {
+func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids []uint64, report *tabletext.Report, rt *retainState, order readOrder) error {
 	fail := &readFail{}
 	if !ir.VariableTables(m.Unit)[inst.Def.Name] {
 		// a value-only table places no node, and the node table (if a writer
@@ -145,7 +145,15 @@ func decodeValue(m *tabletext.Model, inst *tabletext.Instance, data []byte, ids 
 	}
 
 	// PASS TWO: decode each body into its own storage.
-	for i, rec := range records {
+	visit := make([]int, len(records))
+	for i := range visit {
+		visit[i] = i
+	}
+	if order.records != nil {
+		visit = order.records(len(records))
+	}
+	for _, i := range visit {
+		rec := records[i]
 		if st.nodes[i].Inst == nil {
 			continue
 		}

@@ -57,7 +57,7 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	if report == nil {
 		report = &tabletext.Report{}
 	}
-	err := decodeWalk(m, inst, data, report, rt)
+	err := decodeWalk(m, inst, data, report, rt, readOrder{})
 	if err != nil {
 		// NOTHING THE READ PRODUCED IS DEFINED (§6.5): the instance returns to
 		// its declared defaults, the retention store to empty, and the report
@@ -74,7 +74,18 @@ func decodeWith(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	return true, nil
 }
 
-func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState) error {
+// readOrder is the order this read detects conditions in. DETECTION ORDER IS
+// FREE (docs/SPEC-TABLES.md §6.5): every order gives the same verdict, which is
+// tla/ReadOrder.tla's OneVerdict, and oneverdict_test.go holds this engine to
+// it by reading the same inputs in other orders. The zero value is the order
+// every read takes: the wire-alone conditions first, then the records in index
+// order, then the root.
+type readOrder struct {
+	wireLast bool              // the declaration's conditions before the wire-alone ones
+	records  func(n int) []int // the order pass two decodes the node records in
+}
+
+func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, report *tabletext.Report, rt *retainState, order readOrder) error {
 	if FixedRoot(m, inst.Def) {
 		// A READER THAT EXPECTS A FIXED TABLE REFUSES EVERY OTHER FORM, BY
 		// NAME (docs/SPEC-TABLES.md §3.4): form 3 is read, and a form-1 file
@@ -107,6 +118,16 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	if end, terminated := bodyExtent(body, ids); !terminated || end != len(body) {
 		return &Refusal{Reason: ReasonWireDamaged, Detail: "the root body does not end at the id table"}
 	}
+	if order.wireLast {
+		if err := decodeValue(m, inst, body, ids, report, rt, order); err != nil {
+			return err
+		}
+		fail, nonFinite := checkFile(body, ids)
+		if fail != nil {
+			return fail
+		}
+		return nonFinite
+	}
 	// PHASE ONE: every condition decidable from the wire alone, over every
 	// byte of the file (§6.5).
 	fail, nonFinite := checkFile(body, ids)
@@ -116,7 +137,7 @@ func decodeWalk(m *tabletext.Model, inst *tabletext.Instance, data []byte, repor
 	// PHASE TWO: the declaration-dependent conditions, as the value decodes.
 	// A non-finite float the decode reaches is refused there by its field's
 	// name; one in bytes this reader cannot name refuses after.
-	if err := decodeValue(m, inst, body, ids, report, rt); err != nil {
+	if err := decodeValue(m, inst, body, ids, report, rt, order); err != nil {
 		return err
 	}
 	return nonFinite

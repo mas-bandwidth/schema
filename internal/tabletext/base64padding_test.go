@@ -106,8 +106,7 @@ func TestTextBase64PaddingIsTheWalks(t *testing.T) {
 		var v Blob
 		BlobReset(&v)
 		var r TableReport
-		ok := BlobFromJSONTolerant(&v, []byte(c.text), &r)
-		ok = ok && !r.Malformed && r.KindMismatch == 0 && r.Clamped == 0 && r.Duplicate == 0
+		ok := BlobFromJSON(&v, []byte(c.text), &r)
 		if ok != c.ok {
 			t.Fatalf("%q: walk ok=%t report=%+v; text ok=%t", c.body, ok, r, c.ok)
 		}
