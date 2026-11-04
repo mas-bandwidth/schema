@@ -220,9 +220,11 @@ func (g *tableGen) emitArmSave(v ir.UnionVariant, base, ind, onBad, sfx string) 
 		g.pf("%s    w.putleb( %s ); // a node index, null as 0 (§3.1)\n%s}\n", ind, index, ind)
 	case f.Type.Kind == ir.TString:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.emitTextAssert(f, value, count, ind, "a write")
 		g.pf("%sw.raw( %s, %s );\n", ind, value, count)
 	case f.Type.Kind == ir.TWString:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
+		g.emitTextAssert(f, value, count, ind, "a write")
 		g.pf("%sfor ( int32_t i%s = 0; i%s < %s; i%s++ ) { w.put16( (uint16_t) %s[i%s] ); } // two bytes each, little-endian\n", ind, sfx, sfx, count, sfx, value, sfx)
 	case f.Type.Kind == ir.TBytes:
 		g.pf("%sif ( %s < 0 || %s > %d ) { %s } // storage invariant\n", ind, count, count, f.Type.Size, onBad)
