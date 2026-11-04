@@ -576,16 +576,20 @@ jobs:
         run: |
           set -euo pipefail
           echo "packages: $PACKAGES"
+          # go test stops any one package at 10 minutes by default; on the
+          # four-core hosted runner goosetable, gotable and javatable each run
+          # past that when a broad diff runs them side by side, so the package
+          # limit is 25 minutes, inside the job's 30
           if [ "$BROAD" = yes ]; then
             # a broad diff's own gate is the full suite in ci-full.yml; here it
             # is bounded so the lane keeps its budget, and the short run still
             # catches the ordinary mistake in minutes rather than at merge
             echo "::notice::broad diff — the whole suite runs in ci-full.yml; this lane runs it with -short"
             # shellcheck disable=SC2086
-            go test -short $PACKAGES
+            go test -short -timeout 25m $PACKAGES
           else
             # shellcheck disable=SC2086
-            go test $PACKAGES
+            go test -timeout 25m $PACKAGES
           fi
           # schema#1376: TestFixedForm* skip without SCHEMA_SLOW, and the go
           # leg-gate is skipped on PRs below main. tables-go-fixedform is the
