@@ -195,7 +195,7 @@ func deriveManifest(m *Manifest, path string) error {
 		}
 		fmt.Fprintf(&b, "instance %s %s %s %s%s\n", i.Name, i.Unit, i.Root, i.Wire, marker)
 	}
-	for _, wr := range m.WriteRefusals {
+	for _, wr := range m.JSONWriteRefusals {
 		// the line is the whole question: which value, and what damage the
 		// driver puts into it in code before it writes (§16.14, W0)
 		fmt.Fprintf(&b, "json-write-refusal %s %s %s %s %s\n", wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Damage)
@@ -386,7 +386,7 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		}
 		// A VALUE THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
 		// answer is the refusal, never a text
-		for _, wr := range m.WriteRefusals {
+		for _, wr := range m.JSONWriteRefusals {
 			out = append(out, expectation{name: wr.Name + ".json", want: []byte("refused\n")})
 		}
 	case "report":

@@ -169,7 +169,7 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 			return nil, err
 		}
 	}
-	for _, wr := range m.WriteRefusals {
+	for _, wr := range m.JSONWriteRefusals {
 		if err := add("json-write", wr.Name+".json", wr.Unit, wr.Root); err != nil {
 			return nil, err
 		}

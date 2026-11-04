@@ -269,12 +269,12 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	// THE WRITE REFUSALS (docs/SPEC-TABLES.md §16.14, W0): the oracle must
 	// refuse every one, or the row asks every leg for an answer the reference
 	// does not give.
-	for _, wr := range m.WriteRefusals {
+	for _, wr := range m.JSONWriteRefusals {
 		unit, err := u.get(wr.Unit)
 		if err != nil {
 			return err
 		}
-		if err := oracleRefusesWrite(unit, wr); err != nil {
+		if err := oracleRefusesJSONWrite(unit, wr); err != nil {
 			return fmt.Errorf("%s: %w", wr.Name, err)
 		}
 	}
@@ -418,9 +418,9 @@ func readReports(path string) (map[string]Counts, error) {
 	return out, nil
 }
 
-// oracleRefusesWrite loads a json-write-refusal row's wire with the oracle, applies
+// oracleRefusesJSONWrite loads a json-write-refusal row's wire with the oracle, applies
 // its damage in code, and requires the oracle's writer to refuse the value.
-func oracleRefusesWrite(unit *ir.Unit, wr WriteRefusal) error {
+func oracleRefusesJSONWrite(unit *ir.Unit, wr JSONWriteRefusal) error {
 	root := unit.Tables[wr.Root]
 	if root == nil {
 		return fmt.Errorf("root %q names no table", wr.Root)
@@ -435,7 +435,7 @@ func oracleRefusesWrite(unit *ir.Unit, wr WriteRefusal) error {
 	if ok, err := tablewire.Decode(model, value, wire, &report); !ok || err != nil {
 		return fmt.Errorf("the wire does not load: %v", err)
 	}
-	if err := applyWriteDamage(value, wr.Damage); err != nil {
+	if err := applyJSONWriteDamage(value, wr.Damage); err != nil {
 		return err
 	}
 	if _, err := model.Write(value); err == nil {
@@ -444,9 +444,9 @@ func oracleRefusesWrite(unit *ir.Unit, wr WriteRefusal) error {
 	return nil
 }
 
-// applyWriteDamage puts into a top-level text field what no read delivers:
+// applyJSONWriteDamage puts into a top-level text field what no read delivers:
 // ill-formed UTF-8 in a narrow field, an unpaired surrogate in a wide one.
-func applyWriteDamage(value *tabletext.Instance, damage string) error {
+func applyJSONWriteDamage(value *tabletext.Instance, damage string) error {
 	if damage == "none" {
 		return nil
 	}

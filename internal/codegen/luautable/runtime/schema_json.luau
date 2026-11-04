@@ -1835,12 +1835,11 @@ local function line(w: any, depth: number)
   w.parts[#w.parts + 1] = "\n" .. string.rep("  ", depth)
 end
 
--- §16.3's write-side rule for a narrow text: the strict reader refuses a
--- U+0000 (which no wire carries) and a value past its bound, so the writer
--- refuses the value rather than emitting a text that reads back differently
--- (§2.13, §4.2), named by Go's name for the same value. Ill-formed UTF-8 is
--- not text at all, and the writer refuses it as invalid_value (§16.3,
--- §16.14 W0), replacing nothing.
+-- §16.3's write-side rule for a narrow text: the strict reader refuses
+-- ill-formed UTF-8, a U+0000 (which no wire carries) and a value past its
+-- bound, so the writer refuses the value rather than emitting a text that
+-- reads back differently (§2.13, §4.2). The refusal is named by Go's name
+-- for the same value (§16.3, the write refuses what the strict read refuses).
 local refuse_reason: string = ""
 local function narrow_text_ok(s: string, bound: number): boolean
   if bound >= 0 and #s > bound then refuse_reason = "clamped"; return false end
@@ -1859,9 +1858,8 @@ local function narrow_text_ok(s: string, bound: number): boolean
   return true
 end
 
--- §16.3's write-side rule for a wide text: no zero unit (the unit the wire's
--- kind 33 and the strict reader refuse) and no lone surrogate, which is not
--- text and refuses as invalid_value (§16.14 W0).
+-- §16.3's write-side rule for a wide text: no zero unit and no lone surrogate
+-- (the units the wire's kind 33 and the strict reader refuse).
 local function wide_text_ok(units: { number }, bound: number): boolean
   if bound >= 0 and #units > bound then refuse_reason = "clamped"; return false end
   local i = 1
