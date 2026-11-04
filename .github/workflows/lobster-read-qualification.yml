@@ -1,0 +1,64 @@
+name: Lobster single-read qualification
+on:
+  push:
+    branches: [codex/schema-lobster-read-linux-check]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: strict-fixed
+            revision: 3ba6898cf185e7f7e3c81479c2a09f1ba835b201
+            pattern: '^TestLobsterFixedOneRead$'
+          - lane: evolution
+            revision: a8669c7bc492ae6cacf3a673e1f9d2ee6ed3712f
+            pattern: '^TestLobster(FixedProofEvolution|FixedProofSuite|FixedNestedUnionGuardNames)$'
+          - lane: binary
+            revision: 9c7ccaecc6165891ac4745e82fcf965c1d6596b3
+            pattern: '^TestLobster(SingleRead.*|TableLoad.*|StrictRead.*|RetainUnknown.*|TextLists.*|TableSave.*|TableRelease.*|TableCyclic.*|VariableClass.*|Collections.*|WideKinds.*|Descriptors.*|Optionals.*|TablesAreFiniteOnly.*)$'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.revision }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: Build exact product compiler for generated refresh
+        run: |
+          mkdir -p build/review-compiler
+          git rev-parse HEAD > build/review-compiler/product-head.txt
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -o build/review-compiler/schema ./cmd/schema
+          shasum -a 256 build/review-compiler/schema > build/review-compiler/sha256.txt
+      - name: Preserve exact compiler
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lobster-${{ matrix.lane }}-compiler
+          path: build/review-compiler/
+          retention-days: 7
+      - name: Install pinned Lobster runtime
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          make dist-lobster
+      - name: Build fixed lineage corpus
+        if: matrix.lane == 'evolution' || matrix.lane == 'strict-fixed'
+        run: make build/fixedform-corpus/.stamp
+      - name: Native review regressions
+        env:
+          SCHEMA_SLOW: '1'
+          SCHEMA_REQUIRE_CORPUS: '1'
+          TEST_PATTERN: ${{ matrix.pattern }}
+        run: |
+          export LOBSTER="$PWD/dist/lobster-v2026.8/bin/lobster"
+          go test ./internal/codegen/lobstertable -list "$TEST_PATTERN" > /tmp/lobster-selected-tests
+          grep -q "^Test" /tmp/lobster-selected-tests
+          go test ./internal/codegen/lobstertable -run "$TEST_PATTERN" -count=1 -timeout 600s -v
+      - name: Compiler registry guards
+        if: matrix.lane == 'registry'
+        run: go test ./compiler -run 'Lobster(Runtime|UnitView|TableRuntime)' -count=1 -v
