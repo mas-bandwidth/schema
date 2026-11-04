@@ -138,6 +138,19 @@ conformance-negative-control-goose-write-refusal: build/conformance-harness buil
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control write-refusal
 
+# The fixed and message writers' controls: FixedSave's check and SaveMessages
+# each lose one ranged integer's max in a copy of the generated units, so
+# write-refusal-fixed (wire green) and write-refusal-message (message green)
+# go red.
+.PHONY: conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message
+conformance-negative-control-goose-write-refusal-fixed: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal-fixed
+
+conformance-negative-control-goose-write-refusal-message: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal-message
+
 # Whole-load discard (§4), including retaining reads, and the cyclic wire as
 # damage (§3.1). The controls remove the emitted runtime's discard and its
 # cycle check, and require the damaged and the cyclic roots to escape.
