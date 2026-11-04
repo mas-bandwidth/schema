@@ -557,6 +557,27 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("   layout_newer (ship the reader). A retired entry stays forever (§5.2). */\n")
 	g.pf("static SCHEMA_UNUSED const int32_t %s_fixed_floor = %d;\n\n", n, floor)
 
+	// THE WRITER'S RANGES, per lineage entry (docs/FIXED-FORM-ALGORITHM.md
+	// §4.5): a record read under an older entry is held to what THAT writer
+	// declared, then to this reader's own ranges. One straight-line pass per
+	// entry that bounds anything, spelled by the reader's own clamp emitter
+	// over the reader's storage with the writer's numbers.
+	writerFields := fixedWriterFields(st, lineage, hash)
+	var writerClamps []int
+	for i, fields := range writerFields {
+		if len(fields) == 0 {
+			continue
+		}
+		writerClamps = append(writerClamps, i)
+		g.pf("/* lineage entry %d's WRITER ranges (§4.5): every clamp counts. */\n", i)
+		g.pf("static SCHEMA_UNUSED %s void %s( %s * value, int32_t * clamped )\n{\n",
+			tableInlineMacro(g.unit.Package), g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)), st.Name)
+		for _, f := range fields {
+			g.emitFixedClampField(f, "value->", 4)
+		}
+		g.pf("}\n\n")
+	}
+
 	older := 0
 	for _, e := range lineage {
 		if e.Wire != hash {
@@ -847,6 +868,17 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            report->clamped = read_clamped;\n            report->widened = read_widened;\n")
 		g.pf("            table_non_finite_float( report );\n")
 		g.pf("            return -1;\n        }\n")
+	}
+	if len(writerClamps) > 0 {
+		g.pf("        /* THE WRITER'S RANGES FIRST, for the entry this file selected (§4.5),\n")
+		g.pf("           then this reader's own below. */\n")
+		g.pf("        {\n            int32_t known_clamped = 0;\n")
+		g.pf("            switch ( pick )\n            {\n")
+		for _, i := range writerClamps {
+			g.pf("            case %d: %s( values + k, &known_clamped ); break;\n", i, g.sym(st.Name, fmt.Sprintf("fixed_clamp_known_%d", i)))
+		}
+		g.pf("            default: break;\n            }\n")
+		g.pf("            report->clamped += known_clamped;\n        }\n")
 	}
 	if ir.TableFixedClampNeeded(st) {
 		g.pf("        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the\n")
