@@ -11,22 +11,16 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
-// read verdict; reader obligations ride in every mode.
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the writer
+// refuses an out-of-contract value, in every build (docs/SPEC.md §5.1:
+// NODE_ENV selects nothing). Read<Name>Flat(view, numBits, value) -> bool,
+// the family read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
 // FlatReadSlack = 8 bytes past the payload — 64-bit windows load
 // unconditionally; copy exactly-sized receive buffers into a persistent
 // MaxBytes + 8 scratch first.
-
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
 
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
@@ -82,28 +76,10 @@ function validText(bytes, length) {
 
 // ---- type WideSeven: the flat codec ----
 
-function writeWideSevenFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.textLength) & 0x7));
-  sb = 3;
-  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
-    v = value.text[wideIndex];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeWideSevenFlatChecked(view, value) {
+// WriteWideSevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold WideSevenMaxBytes.
+export function WriteWideSevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 7) { // the length guards the loop; out-of-contract writes are refused
     return -1;
@@ -129,11 +105,6 @@ function writeWideSevenFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteWideSevenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold WideSevenMaxBytes.
-export const WriteWideSevenFlat = PRODUCTION ? writeWideSevenFlatProduction : writeWideSevenFlatChecked;
 
 // ReadWideSevenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -175,28 +146,10 @@ export function ReadWideSevenFlat(view, numBits, value) {
 
 // ---- type WideFour: the flat codec ----
 
-function writeWideFourFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.textLength) & 0x7));
-  sb = 3;
-  for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++) {
-    v = value.text[wideIndex];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeWideFourFlatChecked(view, value) {
+// WriteWideFourFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold WideFourMaxBytes.
+export function WriteWideFourFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 4) { // the length guards the loop; out-of-contract writes are refused
     return -1;
@@ -222,11 +175,6 @@ function writeWideFourFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteWideFourFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold WideFourMaxBytes.
-export const WriteWideFourFlat = PRODUCTION ? writeWideFourFlatProduction : writeWideFourFlatChecked;
 
 // ReadWideFourFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -268,42 +216,10 @@ export function ReadWideFourFlat(view, numBits, value) {
 
 // ---- type NarrowFifteen: the flat codec ----
 
-function writeNarrowFifteenFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.textLength) & 0xf));
-  sb = 8;
-  {
-    let i0 = 0;
-    for (; i0 + 4 <= value.textLength; i0 += 4) {
-      v = (value.text[i0] | (value.text[i0 + 1] << 8) | (value.text[i0 + 2] << 16) | (value.text[i0 + 3] << 24)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-    }
-    for (; i0 < value.textLength; i0++) {
-      v = value.text[i0];
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 8;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (8 - sb);
-      }
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeNarrowFifteenFlatChecked(view, value) {
+// WriteNarrowFifteenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold NarrowFifteenMaxBytes.
+export function WriteNarrowFifteenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.textLength) || value.textLength < 0 || value.textLength > 15) { // the length guards the slice; out-of-contract writes are refused
     return -1;
@@ -340,11 +256,6 @@ function writeNarrowFifteenFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteNarrowFifteenFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold NarrowFifteenMaxBytes.
-export const WriteNarrowFifteenFlat = PRODUCTION ? writeNarrowFifteenFlatProduction : writeNarrowFifteenFlatChecked;
 
 // ReadNarrowFifteenFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -387,28 +298,10 @@ export function ReadNarrowFifteenFlat(view, numBits, value) {
 
 // ---- type WideInterop: the flat codec ----
 
-function writeWideInteropFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.captionLength) & 0x7));
-  sb = 3;
-  for (let wideIndex = 0; wideIndex < value.captionLength; wideIndex++) {
-    v = value.caption[wideIndex];
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeWideInteropFlatChecked(view, value) {
+// WriteWideInteropFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold WideInteropMaxBytes.
+export function WriteWideInteropFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.captionLength) || value.captionLength < 0 || value.captionLength > 7) { // the length guards the loop; out-of-contract writes are refused
     return -1;
@@ -434,11 +327,6 @@ function writeWideInteropFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteWideInteropFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold WideInteropMaxBytes.
-export const WriteWideInteropFlat = PRODUCTION ? writeWideInteropFlatProduction : writeWideInteropFlatChecked;
 
 // ReadWideInteropFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

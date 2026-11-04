@@ -11,11 +11,10 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
-// read verdict; reader obligations ride in every mode.
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the writer
+// refuses an out-of-contract value, in every build (docs/SPEC.md §5.1:
+// NODE_ENV selects nothing). Read<Name>Flat(view, numBits, value) -> bool,
+// the family read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -28,52 +27,15 @@
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
 
 // ---- type FixedProbe: the flat codec ----
 
-function writeFixedProbeFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((((value.angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff));
-  SC.setBigUint64(0, value.position - -1966080000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  SC.setBigUint64(0, value.reach - -65536000000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(4, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = SC.getUint32(4, true) & 0x1f;
-  lo = (lo | (v << 25)) >>> 0;
-  v = (((value.ticks) & 0xfffff)) >>> 0;
-  view.setUint32(8, (lo | (v << 30)) >>> 0, true);
-  lo = v >>> 2;
-  wi = 12;
-  sb = 18;
-  for (let i0 = 0; i0 < 2; i0++) {
-    v = (((((value.samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 21;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (21 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeFixedProbeFlatChecked(view, value) {
+// WriteFixedProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold FixedProbeMaxBytes.
+export function WriteFixedProbeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.angle) || value.angle < -11796480 || value.angle > 11796480) {
     return -1;
@@ -122,11 +84,6 @@ function writeFixedProbeFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteFixedProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold FixedProbeMaxBytes.
-export const WriteFixedProbeFlat = PRODUCTION ? writeFixedProbeFlatProduction : writeFixedProbeFlatChecked;
 
 // ReadFixedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -184,54 +141,10 @@ export function ReadFixedProbeFlat(view, numBits, value) {
 
 // ---- type UnsignedProbe: the flat codec ----
 
-function writeUnsignedProbeFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  lo = (((value.angle) & 0x1ffffff));
-  SC.setBigUint64(0, value.span, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = SC.getUint32(4, true);
-  view.setUint32(4, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  SC.setBigUint64(0, value.reach, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  v = SC.getUint32(4, true) & 0x1f;
-  lo = (lo | (v << 25)) >>> 0;
-  v = (((value.ticks) & 0xfffff)) >>> 0;
-  view.setUint32(12, (lo | (v << 30)) >>> 0, true);
-  lo = v >>> 2;
-  wi = 16;
-  sb = 18;
-  for (let i0 = 0; i0 < 2; i0++) {
-    v = (((value.samples[i0]) & 0x1fffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 21;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (21 - sb);
-    }
-  }
-  v = (((value.tail) & 0xff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeUnsignedProbeFlatChecked(view, value) {
+// WriteUnsignedProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold UnsignedProbeMaxBytes.
+export function WriteUnsignedProbeFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.angle) || value.angle < 0 || value.angle > 23592960) {
     return -1;
@@ -295,11 +208,6 @@ function writeUnsignedProbeFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteUnsignedProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold UnsignedProbeMaxBytes.
-export const WriteUnsignedProbeFlat = PRODUCTION ? writeUnsignedProbeFlatProduction : writeUnsignedProbeFlatChecked;
 
 // ReadUnsignedProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -369,62 +277,10 @@ export function ReadUnsignedProbeFlat(view, numBits, value) {
 
 // ---- type WideProbe: the flat codec ----
 
-function writeWideProbeFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  let bg = 0n;
-  bg = value.entityId;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(4, v, true);
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, v, true);
-  v = SC.getUint32(4, true);
-  view.setUint32(12, v, true);
-  SC.setBigUint64(0, value.energy - -5000000000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(16, v, true);
-  v = SC.getUint32(4, true) & 0x3;
-  lo = v;
-  bg = value.flux - -1267650600228229401496703205376n;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(20, (lo | (v << 2)) >>> 0, true);
-  lo = v >>> 30;
-  v = SC.getUint32(4, true);
-  view.setUint32(24, (lo | (v << 2)) >>> 0, true);
-  lo = v >>> 30;
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(28, (lo | (v << 2)) >>> 0, true);
-  lo = v >>> 30;
-  v = SC.getUint32(4, true) & 0x3f;
-  lo = (lo | (v << 2)) >>> 0;
-  SC.setBigUint64(0, value.bias - -1000n, true);
-  v = SC.getUint32(0, true) & 0x7ff;
-  lo = (lo | (v << 8)) >>> 0;
-  bg = value.seed;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(32, (lo | (v << 19)) >>> 0, true);
-  lo = v >>> 13;
-  v = SC.getUint32(4, true);
-  view.setUint32(36, (lo | (v << 19)) >>> 0, true);
-  lo = v >>> 13;
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(40, (lo | (v << 19)) >>> 0, true);
-  lo = v >>> 13;
-  v = SC.getUint32(4, true);
-  view.setUint32(44, (lo | (v << 19)) >>> 0, true);
-  lo = v >>> 13;
-  view.setUint32(48, lo, true);
-  return 51;
-}
-
-function writeWideProbeFlatChecked(view, value) {
+// WriteWideProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold WideProbeMaxBytes.
+export function WriteWideProbeFlat(view, value) {
   let v = 0, lo = 0;
   let bg = 0n;
   bg = value.entityId;
@@ -487,11 +343,6 @@ function writeWideProbeFlatChecked(view, value) {
   view.setUint32(48, lo, true);
   return 51;
 }
-
-// WriteWideProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold WideProbeMaxBytes.
-export const WriteWideProbeFlat = PRODUCTION ? writeWideProbeFlatProduction : writeWideProbeFlatChecked;
 
 // ReadWideProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -574,288 +425,10 @@ export function ReadWideProbeFlat(view, numBits, value) {
 
 // ---- type LudicrousState: the flat codec ----
 
-function writeLudicrousStateFlatProduction(view, value) {
-  let v = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
-  lo = ((value.mode & 0x3) | (((((value.probe.angle >>> 0) - 4283170816) >>> 0) & 0x1ffffff) << 2));
-  SC.setBigUint64(0, value.probe.position - -1966080000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 27)) >>> 0, true);
-  lo = v >>> 5;
-  SC.setBigUint64(0, value.probe.reach - -65536000000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(4, (lo | (v << 27)) >>> 0, true);
-  lo = v >>> 5;
-  v = SC.getUint32(4, true) & 0x1f;
-  view.setUint32(8, (lo | (v << 27)) >>> 0, true);
-  lo = 0;
-  lo = (((value.probe.ticks) & 0xfffff));
-  wi = 12;
-  sb = 20;
-  for (let i0 = 0; i0 < 2; i0++) {
-    v = (((((value.probe.samples[i0] >>> 0) - 4294443008) >>> 0) & 0x1fffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 21;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (21 - sb);
-    }
-  }
-  bg = value.wide.entityId;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, value.wide.energy - -5000000000n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true) & 0x3;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 2;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (2 - sb);
-  }
-  bg = value.wide.flux - -1267650600228229401496703205376n;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true) & 0x3f;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 6;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (6 - sb);
-  }
-  SC.setBigUint64(0, value.wide.bias - -1000n, true);
-  v = SC.getUint32(0, true) & 0x7ff;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  bg = value.wide.seed;
-  SC.setBigUint64(0, bg, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setBigUint64(0, bg >> 64n, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.keysCount) & 0x7)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 3;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (3 - sb);
-  }
-  for (let i0 = 0; i0 < value.keysCount; i0++) {
-    bg = value.keys[i0];
-    SC.setBigUint64(0, bg, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setBigUint64(0, bg >> 64n, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  v = ((value.hasTarget ? 1 : 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  if (value.hasTarget) {
-    bg = value.targetId;
-    SC.setBigUint64(0, bg, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    SC.setBigUint64(0, bg >> 64n, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeLudicrousStateFlatChecked(view, value) {
+// WriteLudicrousStateFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold LudicrousStateMaxBytes.
+export function WriteLudicrousStateFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
   if (!Number.isInteger(value.mode) || value.mode < 0 || value.mode > 3) { // headroom above the wire range cannot ride
@@ -1166,11 +739,6 @@ function writeLudicrousStateFlatChecked(view, value) {
   return ((wi * 8 + sb) + 7) >> 3;
 }
 
-// WriteLudicrousStateFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold LudicrousStateMaxBytes.
-export const WriteLudicrousStateFlat = PRODUCTION ? writeLudicrousStateFlatProduction : writeLudicrousStateFlatChecked;
-
 // ReadLudicrousStateFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
 export function ReadLudicrousStateFlat(view, numBits, value) {
@@ -1474,14 +1042,10 @@ export function ReadLudicrousStateFlat(view, numBits, value) {
 
 // ---- type DegenerateProbe: the flat codec ----
 
-function writeDegenerateProbeFlatProduction(view, value) {
-  let lo = 0;
-  lo = (((value.tail) & 0xff));
-  view.setUint32(0, lo, true);
-  return 1;
-}
-
-function writeDegenerateProbeFlatChecked(view, value) {
+// WriteDegenerateProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold DegenerateProbeMaxBytes.
+export function WriteDegenerateProbeFlat(view, value) {
   let lo = 0;
   if (value.lockedFixed !== -196608) {
     return -1;
@@ -1496,11 +1060,6 @@ function writeDegenerateProbeFlatChecked(view, value) {
   view.setUint32(0, lo, true);
   return 1;
 }
-
-// WriteDegenerateProbeFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold DegenerateProbeMaxBytes.
-export const WriteDegenerateProbeFlat = PRODUCTION ? writeDegenerateProbeFlatProduction : writeDegenerateProbeFlatChecked;
 
 // ReadDegenerateProbeFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1520,30 +1079,10 @@ export function ReadDegenerateProbeFlat(view, numBits, value) {
 
 // ---- type FixedVec: the flat codec ----
 
-function writeFixedVecFlatProduction(view, value) {
-  let v = 0, lo = 0;
-  SC.setBigUint64(0, value.x - -6553600000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, v, true);
-  v = SC.getUint32(4, true) & 0x3;
-  lo = v;
-  SC.setBigUint64(0, value.y - -6553600000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(4, (lo | (v << 2)) >>> 0, true);
-  lo = v >>> 30;
-  v = SC.getUint32(4, true) & 0x3;
-  lo = (lo | (v << 2)) >>> 0;
-  SC.setBigUint64(0, value.z - -6553600000n, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(8, (lo | (v << 4)) >>> 0, true);
-  lo = v >>> 28;
-  v = SC.getUint32(4, true) & 0x3;
-  lo = (lo | (v << 4)) >>> 0;
-  view.setUint32(12, lo, true);
-  return 13;
-}
-
-function writeFixedVecFlatChecked(view, value) {
+// WriteFixedVecFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold FixedVecMaxBytes.
+export function WriteFixedVecFlat(view, value) {
   let v = 0, lo = 0;
   if (value.x < -6553600000n || value.x > 6553600000n) {
     return -1;
@@ -1574,11 +1113,6 @@ function writeFixedVecFlatChecked(view, value) {
   view.setUint32(12, lo, true);
   return 13;
 }
-
-// WriteFixedVecFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold FixedVecMaxBytes.
-export const WriteFixedVecFlat = PRODUCTION ? writeFixedVecFlatProduction : writeFixedVecFlatChecked;
 
 // ReadFixedVecFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.
@@ -1626,15 +1160,10 @@ export function ReadFixedVecFlat(view, numBits, value) {
 
 // ---- type FixedQuat: the flat codec ----
 
-function writeFixedQuatFlatProduction(view, value) {
-  view.setUint32(0, (((((value.x >>> 0) - 3221225472) >>> 0) >>> 0)), true);
-  view.setUint32(4, (((((value.y >>> 0) - 3221225472) >>> 0) >>> 0)), true);
-  view.setUint32(8, (((((value.z >>> 0) - 3221225472) >>> 0) >>> 0)), true);
-  view.setUint32(12, (((((value.w >>> 0) - 3221225472) >>> 0) >>> 0)), true);
-  return 16;
-}
-
-function writeFixedQuatFlatChecked(view, value) {
+// WriteFixedQuatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold FixedQuatMaxBytes.
+export function WriteFixedQuatFlat(view, value) {
   if (!Number.isInteger(value.x) || value.x < -1073741824 || value.x > 1073741824) {
     return -1;
   }
@@ -1653,11 +1182,6 @@ function writeFixedQuatFlatChecked(view, value) {
   view.setUint32(12, (((((value.w >>> 0) - 3221225472) >>> 0) >>> 0)), true);
   return 16;
 }
-
-// WriteFixedQuatFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold FixedQuatMaxBytes.
-export const WriteFixedQuatFlat = PRODUCTION ? writeFixedQuatFlatProduction : writeFixedQuatFlatChecked;
 
 // ReadFixedQuatFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

@@ -365,8 +365,9 @@ export function FixedTableFixedMeasure(count) {
 export function FixedTableFixedSave(values, count, bytes) {
   const need = FixedTableFixedMeasure(count);
   if (count < 0 || bytes === null || bytes.length < need) { return -1; }
-  // A NaN OR AN INFINITY IS REFUSED BEFORE A BYTE IS WRITTEN (docs/SPEC-TABLES.md
-  // §3.3): no form carries one, so the save answers -1 and the buffer is untouched.
+  // A VALUE ITS DECLARATION DOES NOT ADMIT IS REFUSED BEFORE A BYTE IS WRITTEN
+  // (docs/SPEC.md §5.1): the whole batch is checked first, so a refusal answers
+  // -1 and the buffer is untouched.
   for (let k = 0; k < count; k++) { if (!FixedTableFixedCheckBody(values[k])) { return -1; } }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   bytes.fill(0, 0, TableFixedHeaderBytes); // the seven reserved bytes, and the rest of the header
@@ -520,7 +521,10 @@ export function FixedTableMeasureMessages(values, report) {
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
   const w = new TableBitWriter(null, true);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
+    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) {
+      if (w.Reason !== null) { TableMessageRefuse(report, w.Reason); }
+      return -1;
+    }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -536,7 +540,10 @@ export function FixedTableSaveMessages(values, buffer, report) {
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { return -1; }
+    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) {
+      if (w.Reason !== null) { TableMessageRefuse(report, w.Reason); }
+      return -1;
+    }
   }
   w.Align();
   if (w.Overflow) { return -1; }

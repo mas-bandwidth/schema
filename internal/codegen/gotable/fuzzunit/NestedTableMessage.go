@@ -21,6 +21,7 @@ func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) b
 		probe.Measuring = true
 		probe.Bits = 0
 		if !RootConfigSaveMessageBody(&probe, &value.Root) {
+			w.Reason = probe.Reason
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
@@ -33,6 +34,9 @@ func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) b
 	{
 		if value.Count != 1 {
 			w.Put(2, TableMessageRefBitsHere)
+			if value.Count < 0 || value.Count > 100 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
 		}
 	}
@@ -49,6 +53,9 @@ func ArchiveConfigMeasureMessages(values []*ArchiveConfig, report *TableReport) 
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 	for _, value := range values {
 		if value == nil || !ArchiveConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}
@@ -73,6 +80,9 @@ func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *T
 	w := TableMessageWriter{TableBitWriter: TableBitWriter{Buffer: buffer[2:]}}
 	for _, value := range values {
 		if value == nil || !ArchiveConfigSaveMessageBody(&w, value) {
+			if report != nil && w.Reason != "" {
+				tableMessageRefuse(report, w.Reason)
+			}
 			return -1
 		}
 	}

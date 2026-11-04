@@ -196,9 +196,10 @@ function TableVariableWriteCount(fd, val) {
   return TableVariableCount(fd, val);
 }
 
-// a string(N)'s UTF-8 bytes past N refuse the write; an unbounded string's
-// bound is -1
-function TableVariableTextHolds(fd, b) { return fd.bound < 0 || b.length <= fd.bound; }
+// a string(N)'s UTF-8 bytes past N refuse the write, and so does a string s
+// holding an unpaired surrogate, which has no UTF-8 spelling; an unbounded
+// string's bound is -1
+function TableVariableTextHolds(fd, b, s) { return (fd.bound < 0 || b.length <= fd.bound) && TableVariableTextPaired(s); }
 
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
@@ -419,7 +420,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       if (val !== fd.def) {
         const b = TableVariableUtf8Encode(val);
-        if (!TableVariableTextHolds(fd, b)) { return false; }
+        if (!TableVariableTextHolds(fd, b, val)) { return false; }
         TableVariableHeader(w, ids, fd, 12);
         w.leb(b.length);
         w.raw(b);
@@ -430,7 +431,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       // declared default, so the EMPTY text is what elides; L is a BYTE length,
       // twice the units, and a value past N units refuses the save
       if (val.length !== 0) {
-        if (val.length > fd.bound) { return false; }
+        if (val.length > fd.bound || !TableVariableTextPaired(val)) { return false; }
         TableVariableHeader(w, ids, fd, 33);
         w.leb(val.length * 2);
         TableVariableWideWrite(w, val, fd.bound);
