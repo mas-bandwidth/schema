@@ -1804,9 +1804,10 @@ func tableFixedWriteCheckNeededElement(f *Field, seen map[string]bool) bool {
 
 // TableFixedHasWriteBound answers whether any fixed table of the unit has a
 // number the WRITE side bounds: a text field's used length, or a counted
-// array's live count. Those are the only two write-side checks this form has,
-// and they are DEBUG-ONLY (schema_assert), so a unit of plain scalars declares
-// no bound and pays for no assert hook at all — the zero-cost gate (§2.2).
+// array's live count. The store asserts both (schema_assert, debug-only; the
+// save's every-build refusal of the same numbers is a plain compare and needs
+// no hook), so a unit of plain scalars declares no bound and pays for no
+// assert hook at all — the zero-cost gate (§2.2).
 func TableFixedHasWriteBound(u *Unit) bool {
 	seen := map[string]bool{}
 	var has func(st *Struct) bool

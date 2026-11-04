@@ -249,6 +249,11 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedFiniteBodyFn(st)
 	}
+	// THE STORAGE BOUND, in the same order (docs/SPEC.md §5.1): FixedSave asks
+	// it of every record before anything else, in every build
+	for _, st := range own {
+		g.emitFixedFitsFn(st)
+	}
 	// THE WRITER'S CONTRACT, in the same order (docs/SPEC.md §5.1): FixedSave
 	// asks it of every record before the first byte, debug-only
 	for _, st := range own {
@@ -376,11 +381,11 @@ func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind str
 	g.pf("%smemcpy( %s + %d, %s.%s, (size_t) ( %s%s.%s_length ) );\n", ind, buf, base+4, val, f.Name, scale, val, f.Name)
 }
 
-// fixedWriteBound is the WRITE-SIDE CHECK, and it is DEBUG-ONLY BY RULE: NDEBUG
-// removes schema_assert exactly as it removes assert, so a release build pays
-// nothing for it. The read side checks the same number unconditionally and
-// counts the clamp — a write-side check catches the caller's own bug at the
-// call site, and it is never the thing that keeps the wire safe.
+// fixedWriteBound is the STORE'S OWN ASSERT on a count or a length, for a caller
+// that reaches <T>FixedWriteBody directly: NDEBUG removes it. FixedSave never
+// relies on it — <T>FixedFits refuses the same number in every build before
+// the first byte (emitFixedFitsFn) — and the read side checks the same number
+// unconditionally and counts the clamp.
 func (g *tableGen) fixedWriteBound(expr string, bound int64, what, ind string) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // the declared %s is the bound (§3.4)\n", ind, expr, expr, bound, what)
 }
@@ -626,6 +631,12 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("inline int64_t %sFixedSave( const %s * values, int64_t count, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
 	g.pf("    const int64_t need = %sFixedMeasure( count );\n", st.Name)
 	g.pf("    if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }\n")
+	if ir.TableFixedStorageBoundNeeded(st) {
+		// A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED IN EVERY BUILD
+		// (docs/SPEC.md §5.1), FIRST: every later question and the store walk
+		// the counts and lengths this one bounds
+		g.pf("    for ( int64_t k = 0; k < count; ++k ) { if ( !%sFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)\n", st.Name)
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): every record is asked before the first byte of the file, so
@@ -1314,15 +1325,18 @@ func (g *tableGen) fixedClampEnd(expr, op, bound, ind string) {
 EVERY WRITER REFUSES A VALUE ITS DECLARATION DOES NOT ADMIT (docs/SPEC.md §5.1).
 <T>FixedWriteCheck is false when a record holds one: a ranged integer off its
 min or max, a bits(N) value past N, an enum ordinal or a union tag outside its
-set, a string that is not well-formed UTF-8 or a wstring with an unpaired
-surrogate, or a count or a used length past its declared bound. It walks what the store walks — a counted array's live
+set, a string that is not well-formed UTF-8 or holds a zero byte, a wstring
+with an unpaired surrogate or a zero unit (the fixed reader refuses both as
+text_ill_formed, and a writer never writes bytes its own reader refuses), or a
+count or a used length past its declared bound. It walks what the store walks — a counted array's live
 elements, an optional's payload when present, a union's set arm — and asks
 each count and length BEFORE the loop or the text it bounds, so it never reads
 past the storage it checks. The scalar bounds are the read side's own
 (emitFixedClampElement under fixedCheck), so the writer refuses exactly what
 the reader would clamp. FixedSave asks it of every record before the first
 byte under schema_assert: NDEBUG removes the question, and a release save pays
-nothing. The Go oracle is internal/codegen/gotable's emitFixedCheckBodyFn. */
+nothing for it. The count and length bounds it repeats are <T>FixedFits's,
+which FixedSave asks first and in every build. The Go oracle is internal/codegen/gotable's emitFixedCheckBodyFn. */
 
 func (g *tableGen) emitFixedWriteCheckFn(st *ir.Struct) {
 	if !ir.TableFixedWriteCheckNeeded(st) {
@@ -1374,9 +1388,11 @@ func (g *tableGen) emitFixedWriteCheckPayload(f *ir.Field, val string, depth, in
 		g.pf("%sif ( %s < 0 || %s > %d ) { return false; } // the declared length is the bound (§3.4)\n", ind, length, length, f.Type.Size)
 		switch f.Type.Kind {
 		case ir.TString:
-			g.pf("%sbad |= (int) !TableUtf8WellFormed( (const uint8_t *) %s.%s, (uint64_t) %s );\n", ind, val, f.Name, length)
+			// well-formed and no zero byte: the fixed reader's own rule (§3.4)
+			g.pf("%sbad |= (int) !TableUtf8Valid( (const uint8_t *) %s.%s, (uint64_t) %s );\n", ind, val, f.Name, length)
 		case ir.TWString:
-			g.pf("%sbad |= (int) !TableUtf16Paired( %s.%s, (int64_t) %s );\n", ind, val, f.Name, length)
+			// paired and no zero unit: the fixed reader's own rule (§3.4)
+			g.pf("%sbad |= (int) !TableUtf16FixedText( %s.%s, (int64_t) %s );\n", ind, val, f.Name, length)
 		}
 	default:
 		g.emitFixedWriteCheckElement(f, val+"."+f.Name, depth, indent)
