@@ -185,6 +185,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"so_u32", "so_u64", "so_u8",
 	},
 	"schema_tables.lobster": {
+		"wire_crc32c", "wire_crc32c_table", "wire_integrity_body",
 		"EnumVariant", "FieldDescriptor", "TableDescriptor", "UnionDescriptor", "lookup_table", "lookup_union",
 		"registered_tables", "registered_unions", "table", "table_registry", "union_of", "union_registry",
 	},

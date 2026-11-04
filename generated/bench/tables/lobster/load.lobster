@@ -2065,6 +2065,8 @@ def strict_reason(rep:LoadReport) -> string:
         return "count_over_extent_cap"
     if rep.refused or rep.reason == "newer_form" or rep.reason == "message_form_as_file":
         return "unknown_form"
+    if rep.reason == "integrity_mismatch":
+        return "integrity_mismatch"
     if rep.damaged:
         return "wire_damaged"
     if rep.missing_required > 0:
@@ -2186,14 +2188,22 @@ def load_walk(root:string, data:string, report:LoadReport) -> Record?:
         report.stopped = true
         report.reason = if form == 2: "message_form_as_file" else: "newer_form"
         return nil
-    let rec = new_record(table_of(root))
-    let ids, first, ok = trailer(data)
+    let d = table_of(root)
+    let wire, intact = wire_integrity_body(d, data)
+    if not intact:
+        report.malformed = true
+        report.damaged = true
+        report.stopped = true
+        report.reason = "integrity_mismatch"
+        return nil
+    let rec = new_record(d)
+    let ids, first, ok = trailer(wire)
     if not ok:
         report.malformed = true
         report.damaged = true
         report.stopped = true
         return rec
-    let st = LoadState { data: data, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
+    let st = LoadState { data: wire, ids: ids, report: report, variable: false, good: false, root: rec, nodes: [], named: [], count_refused: false }
     let end, terminated = body_extent(st, first)
     if terminated and end != first:
         report.malformed = true
