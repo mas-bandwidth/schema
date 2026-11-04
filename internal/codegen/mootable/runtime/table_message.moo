@@ -808,13 +808,18 @@ local function fieldsById(d: any): { [string]: any }
 	return m
 end
 
+-- the count beside a counted array, as the caller holds it: a count past the
+-- bound, negative or not an integer is refused by encodeArray, never clamped
 local function liveCount(fd: any, holder: any, val: any): number
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
-		if type(c) ~= "number" then
-			c = 0
+		if c == nil then
+			return 0
 		end
-		return math.min(c, fd.bound)
+		if type(c) ~= "number" then
+			return -1
+		end
+		return c
 	end
 	return fd.bound
 end
@@ -886,9 +891,17 @@ end
 
 -- one value at its MINE shape: bool, a float's bits or its quantized index,
 -- an integer raw or as value - base (encodeBitValue)
+-- A VALUE OUTSIDE ITS DECLARED SET IS REFUSED, NEVER MASKED, WRAPPED OR
+-- CLAMPED (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §22.6): a bool that is no
+-- boolean, an integer its kind cannot hold, a ranged integer off its min or
+-- max, a bits(N) value past 2^N - 1. A flags value rides masked to its
+-- declared width on purpose (§3.3).
 local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, named: any): boolean
 	local w = c.w
 	if kind == 1 then
+		if type(val) ~= "boolean" then
+			return fail(c, "invalid_value", named)
+		end
 		put(w, if val == true then 1 else 0, 1)
 		return true
 	elseif kind == 11 then
@@ -935,6 +948,15 @@ local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, n
 	if raw == nil then
 		return fail(c, "invalid_value", named)
 	end
+	if e.s == "int" then
+		local signed = e.signed == true
+		if e.lo ~= nil and e.hi ~= nil and (V.rawCmp(raw, e.lo, e.kw, signed) < 0 or V.rawCmp(raw, e.hi, e.kw, signed) > 0) then
+			return fail(c, "invalid_value", named)
+		end
+		if e.bits ~= nil and e.bits < e.kw * 8 and V.rawCmp(raw, V.bitsCap(e.bits, e.kw), e.kw, signed) > 0 then
+			return fail(c, "invalid_value", named)
+		end
+	end
 	local x = limbs(raw, e.signed == true)
 	if shape.packing == 1 and shape.base ~= nil then
 		x = sub4(x, shape.base)
@@ -958,9 +980,12 @@ end
 
 local function encodeText(c: any, fd: any, shape: any, kind: number, holder: any, val: any, named: any): boolean
 	local w = c.w
+	-- a text past its bound, a length its buffer does not hold, and
+	-- ill-formed text (UTF-8, or paired surrogates) are refused
 	if kind == 33 then
 		local units = holder[fd.slot .. "Length"] or 0
-		if type(val) ~= "buffer" or units * 2 > buffer.len(val) then
+		if type(val) ~= "buffer" or type(units) ~= "number" or units < 0 or units ~= math.floor(units)
+			or units > shape.max or units * 2 > buffer.len(val) or not V.wide(val, 0, units * 2) then
 			return fail(c, "invalid_value", named)
 		end
 		put(w, units, bitsReq(0, shape.max))
@@ -970,7 +995,7 @@ local function encodeText(c: any, fd: any, shape: any, kind: number, holder: any
 		return true
 	end
 	local s = if val == nil then "" else val
-	if type(s) ~= "string" or not V.utf8String(s) then
+	if type(s) ~= "string" or #s > shape.max or not V.utf8String(s) then
 		return fail(c, "invalid_value", named)
 	end
 	put(w, #s, bitsReq(0, shape.max))
@@ -984,7 +1009,7 @@ end
 local function encodeBytes(c: any, fd: any, shape: any, holder: any, val: any): boolean
 	local w = c.w
 	local n = holder[fd.slot .. "Length"] or 0
-	if type(val) ~= "buffer" or n > buffer.len(val) then
+	if type(val) ~= "buffer" or type(n) ~= "number" or n < 0 or n ~= math.floor(n) or n > shape.max or n > buffer.len(val) then
 		return fail(c, "invalid_value", fd)
 	end
 	put(w, n, countBits(shape))
@@ -1013,6 +1038,9 @@ end
 
 local function encodeArray(c: any, fd: any, entry: any, holder: any, val: any, count: number): boolean
 	local shape = entry.shape
+	if count ~= math.floor(count) or count < 0 or count < shape.min or count > fd.bound then
+		return fail(c, "invalid_value", fd)
+	end
 	local bits = countBits(shape)
 	if bits > 0 then
 		put(c.w, count - shape.min, bits)
