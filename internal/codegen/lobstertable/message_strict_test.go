@@ -60,7 +60,8 @@ unknown-nan:refused
 unknown-utf8:refused
 text-bound:refused
 array-bound:refused
-fixed-growth:accepted`
+fixed-growth:accepted
+report-reuse:accepted`
 
 const strictMessageProbe = `import .ProbeTable
 
@@ -160,4 +161,12 @@ assert grown_ok and grown_count == 1
 assert grown[0].fields[3].elems[0].i == 23 and grown[0].fields[3].elems[1].i == 47
 assert grown[0].fields[3].elems[2].i == 0
 print("fixed-growth:accepted")
+let reused = schema_rt.LoadReport {}
+let batch:[schema_rt.Record] = []
+let _, first_ok = schema_rt.load_messages_into("Root", vocab, "", reused, 2, batch)
+assert not first_ok and length(batch) == 0
+let again_count, again_ok = schema_rt.load_messages_into("Root", vocab, wire, reused, 2, batch)
+assert again_ok and again_count == 1 and batch[0].fields[0].cell.i == 7
+assert not reused.refused and not reused.malformed and reused.reason == ""
+print("report-reuse:accepted")
 `

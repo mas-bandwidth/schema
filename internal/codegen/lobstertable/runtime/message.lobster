@@ -1109,6 +1109,7 @@ def message_reset_report(rep:LoadReport):
 
 // The caller receives no usable bodies from a damaged read (§4).
 def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
+    message_reset_report(rep)
     for(batch) rec: release(rec)
     truncate(batch, 0)
     if length(data) == 0:
