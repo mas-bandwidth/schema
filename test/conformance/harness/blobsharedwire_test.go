@@ -12,7 +12,7 @@ import (
 func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 	t.Parallel()
 	for _, lang := range []string{"go", "cpp", "js", "unported"} {
-		for _, diagnostic := range []string{"", "blob_shared", "different local diagnostic"} {
+		for _, diagnostic := range []string{"blob_shared", "different local diagnostic"} {
 			t.Run(lang+"/"+diagnostic, func(t *testing.T) {
 				out := t.TempDir()
 				if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte(diagnostic), 0600); err != nil {
@@ -49,7 +49,7 @@ func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 		}
 		scoreAnswer("go", "wire", out, expectation{name: name, want: want}, Instance{}, r)
 	}
-	if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "blob_shared"), []byte("refused\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	scoreAnswer("go", "wire", out, expectation{name: "blob_shared"}, Instance{GoWireRefusal: "blob_shared"}, r)
@@ -61,6 +61,34 @@ func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 	var table bytes.Buffer
 	if !report(&table, []string{"go"}, results) || !strings.Contains(table.String(), "pass 96/96") {
 		t.Fatalf("semantic refusal missing from completed cases: %s", table.String())
+	}
+}
+
+func TestMissingCodecIsNotASemanticRefusal(t *testing.T) {
+	t.Parallel()
+	for _, surface := range []string{"wire", "message"} {
+		for _, absent := range []string{"", " \t\n"} {
+			t.Run(surface+"/"+fmt.Sprintf("%q", absent), func(t *testing.T) {
+				out := t.TempDir()
+				if err := os.WriteFile(filepath.Join(out, "case.absent"), []byte(absent), 0600); err != nil {
+					t.Fatal(err)
+				}
+				r := &result{total: 1}
+				scoreAnswer("probe", surface, out, expectation{name: "case"}, Instance{GoWireRefusal: "shared blob"}, r)
+				if r.pass != 0 || r.missing != 1 || len(r.failures) != 0 || r.outcome["case"] != outcomeAbsent {
+					t.Fatalf("missing codec must remain a missing feature: %+v", r)
+				}
+				// A real refusal is an answer, even beside a stale absence marker.
+				if err := os.WriteFile(filepath.Join(out, "case"), []byte("refused\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				r = &result{total: 1}
+				scoreAnswer("probe", surface, out, expectation{name: "case"}, Instance{GoWireRefusal: "shared blob"}, r)
+				if r.pass != 1 || r.missing != 0 || len(r.failures) != 0 || r.outcome["case"] != outcomePass {
+					t.Fatalf("explicit refusal must answer the case: %+v", r)
+				}
+			})
+		}
 	}
 }
 

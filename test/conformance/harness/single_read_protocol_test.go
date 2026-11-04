@@ -112,3 +112,36 @@ func TestManifestRejectsDuplicateCookRecipes(t *testing.T) {
 		t.Fatalf("duplicate recipes can append or overwrite one answer: %v", err)
 	}
 }
+
+func TestFramingManifestRequiresCompleteAcceptedValue(t *testing.T) {
+	for _, tc := range []struct {
+		name, verdict, value string
+		valid                bool
+	}{
+		{"read without value", "read", "-", false},
+		{"legacy read without value", "4,0,2,0,0,false,read", "-", false},
+		{"read with value", "read", "complete.json", true},
+		{"legacy read with value", "4,0,2,0,0,false,read", "complete.json", true},
+		{"refusal", "refused", "-", true},
+		{"legacy refusal", "0,0,0,0,0,false,refused", "-", true},
+		{"damage", "malformed", "-", true},
+		{"refusal with value", "refused", "complete.json", false},
+		{"legacy refusal with value", "0,0,0,0,0,false,refused", "complete.json", false},
+		{"damage with value", "malformed", "complete.json", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "manifest")
+			body := "unit u unit.schema\nframing case u Root value.bin " + tc.verdict + " " + tc.value + "\n"
+			if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := ReadManifest(path, defaultJSONDir)
+			if (err == nil) != tc.valid {
+				t.Fatalf("valid=%t, error=%v", tc.valid, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "value") {
+				t.Fatalf("refused for an unrelated reason: %v", err)
+			}
+		})
+	}
+}

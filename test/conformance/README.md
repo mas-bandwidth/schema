@@ -94,9 +94,10 @@ language" below, where both shapes are stated.
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
 
-An expected semantic refusal scores PASS. A historical `.absent` file may
-transport that refusal; the feature-absence rules below apply only when the
-case requires an accepted value.
+An expected semantic refusal scores PASS. A historical `.absent` file with a
+nonempty diagnostic may transport that refusal; its diagnostic is not compared.
+An empty or whitespace-only `.absent` always means a missing feature, including
+when the expected outcome is refusal.
 
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
@@ -658,7 +659,8 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason. Drivers may emit `refused` or the historical `<case>.absent` file; the
-file's diagnostic text is ignored. This expected semantic refusal scores PASS.
+compatibility metadata; they do not select a language or a shared reason. Drivers
+may emit `refused` or a historical `<case>.absent` file with a nonempty diagnostic;
+the diagnostic text is not compared. This expected semantic refusal scores PASS.
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.
