@@ -4972,8 +4972,8 @@ one document rather than two.
 
   **So ill-formed text never reaches storage from a wire**, which is what
   keeps the write side unrescoped: an instance a tolerant load produced is
-  always one the reference can re-save (§5). §16.3's `U+FFFD` rule is the TEXT
-  FORM's answer for storage a PROGRAM built, not the wire's, and it says so.
+  always one the reference can re-save (§5). Storage a PROGRAM built with
+  ill-formed text in it is the writer's to refuse (§16.3, `invalid_value`).
   A group above `0xFFFF` has no case here at all, because two bytes cannot
   spell one.
 
@@ -15933,7 +15933,7 @@ Per kind:
 | `int128`, `uint128` | number | a decimal integer, exact past 2^53 in both directions: `340282366920938463463374607431768211455` reads back as itself. Integral forms read as for every integer; a fractional value is `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N is CLAMPED to N bytes at a code point boundary, counted |
-| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and §16.3's maximal-subpart rule writes it as `U+FFFD` |
+| `wstring(N)` | string | the same text, TRANSCODED at the boundary: the reader converts the text's UTF-8 to UTF-16 code units and the writer converts back. Longer than N code units is CLAMPED to N, counted, and a high surrogate left without its low half is dropped with it, so a clamp never writes an unpaired surrogate. No wire can deliver an unpaired surrogate into the storage (§3), and no text can either: ill-formed UTF-8 is REFUSED BY NAME on read (`string_not_utf8`, §16.3), never transcoded to `U+FFFD`, while a lone or out-of-order `\uD800`..`\uDFFF` surrogate escape currently decodes to `U+FFFD` across all nine original ports (pending the stricter named refusal `string_lone_surrogate` under deferred card `sprint-out/schema-go-json-refuses-lone-surrogates`, §16.3, §16.12). So an unpaired surrogate in storage was built in code, and the writer refuses it `invalid_value` (§16.3) |
 | `bytes(N)` | string, base64 | standard alphabet, PADDED on write; padded and unpadded both read. Longer than N is clamped, counted. A string that is valid JSON but not base64 (a byte outside the alphabet, misplaced padding) is `kind_mismatch`, the field at its default. The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string makes the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`) |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain — is REFUSED BY NAME**: the read returns false, the report is `Malformed` and its `Reason` is `timestamp_not_rfc3339: <field>`. A NUMBER token is not a refusal but the dialect's own wrong-JSON-type rule (§16.1): skipped, counted as a kind mismatch, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
 | enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`; an unknown name → None, counted. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
@@ -16148,6 +16148,8 @@ written as something else.
   cap, so it never produces a text its own reader would refuse.
 - **A blob named from two slots** — `blob_shared` (§2.5): a blob is owned by
   one slot, and there is no spelling that writes it once for two owners.
+- **Storage that is not text** — `invalid_value`: a narrow string holding
+  ill-formed UTF-8, a wide string holding an unpaired surrogate (below).
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
@@ -16209,39 +16211,16 @@ field's bound spells no code point, so there is nothing to clamp, and the read
 refuses by name rather than cutting the byte away and counting `clamped`
 (conformance row `json-hostile str-illformed-at-bound`, verdict `refused`).
 
-**The two text types answer DIFFERENTLY, because the two failures are
-different things.** A NARROW field's interior ZERO BYTE is `U+0000`, a
-perfectly good code point that JSON has an escape for, so it is written
-`\u0000` — and only ever for storage a program built, because no read, the
-text's included, puts one there (below). A WIDE field's UNPAIRED
-SURROGATE is not a code point at all, encodes to nothing, and is written as
-one `U+FFFD`, because one unpaired surrogate is one ill-formed unit. Each
-type then takes the other half of the same distinction: a narrow field's
-ill-formed UTF-8 sequence is not a code point either and writes `U+FFFD`,
-one per maximal subpart, and a wide field's zero unit is `U+0000` and writes
-`\u0000`. **The rule underneath both is one rule** — a code point is
-escaped and preserved, and what is not a code point is replaced — and the
-two types are named separately only because each meets it through a
-different defect. RFC 8259 requires a JSON text to be valid UTF-8, and a
-text this form emits must be readable by any conforming parser, not only by
-schema's own reader.
-
-**A MAXIMAL SUBPART is the unit of that replacement**, so "one `U+FFFD` per
-ill-formed sequence" means one per maximal subpart: the longest prefix of
-the remaining ill-formed bytes, beginning at the first unconvertible byte,
-that is itself a prefix of some well-formed UTF-8 sequence,
-or, when no such prefix exists, that one byte
-(The Unicode Standard, chapter 3, "U+FFFD substitution of maximal
-subparts", Definition D93b). A byte that cannot extend the current
-subpart begins the next, so one ill-formed run can produce several
-`U+FFFD`. The unit holds for every reader and every writer of the text
-form: a reader that replaced rather than refusing would use it, and the
-read in fact REFUSES ill-formed text by name (above), so it is the two
-writers, narrow and wide, that emit the replacement. Worked from the bytes
-a writer's storage holds:
-`E2 82 41` writes `U+FFFD` then `A`; `F0 80 80 80` writes four `U+FFFD`;
-`ED A0 80` (a surrogate) writes three; `C0 AF` writes two;
-`F4 90 80 80` writes four; and a lone `FF` writes one.
+**THE WRITER REFUSES WHAT IS NOT TEXT, AND ESCAPES WHAT IS** (2026-11-03, the
+one read: consistently refuse). A NARROW field's interior ZERO BYTE is `U+0000`,
+a perfectly good code point that JSON has an escape for, so it is written
+`\u0000`, and a WIDE field's zero unit the same — only ever for storage a
+program built, because no read puts one there (below). A narrow field's
+ill-formed UTF-8 sequence and a wide field's UNPAIRED SURROGATE are not code
+points at all, and the writer REFUSES them: `ToJsonMeasure` and `ToJson` return
+`-1` with the reason `invalid_value`, naming the field, and nothing is replaced.
+So no writer turns storage that is not text into text that reads back as
+something else.
 
 **The writer's escapes are the seven short escapes and nothing else.** `\"`,
 `\\`, `\b`, `\f`, `\n`, `\r` and `\t` are written as those escapes; every
@@ -16339,7 +16318,7 @@ without touching a stored file.
   character, at an astral pair, at exactly `N` code units and at one past it,
   which clamps, a clamp whose cut falls between a surrogate pair, which drops
   the high half with it, storage BUILT IN CODE holding an unpaired surrogate,
-  which writes `U+FFFD`, and storage built in code holding a zero unit, which
+  which the writer refuses `invalid_value`, and storage built in code holding a zero unit, which
   writes `\u0000` (§16.3), and the same
   values through a `*wstring` blob, where nothing clamps. The two storage rows
   are built in code deliberately: no wire can deliver either (§3), and a row
@@ -17534,6 +17513,278 @@ hand-built wire one past it is refused by its name at the binary step. Depth
 is pinned at 129 nested containers, which passes, and 130, which is refused, for the value as the root and again for a value one level down (128 passes, 129 is refused),
 at both steps.
 
+### 16.14 The canonical writer, step by step
+
+**Every implementation writes the SAME BYTES for the same value** (ruled
+2026-11-03: "i think this is both achievable and a good idea, we should
+enforce this, with some deterministic sorting order for outputting json the
+same way across all languages, and you should spec the walking order and how
+this is done so it is deterministic when you follow the spec"). The rows of
+§16.2 say what each kind MEANS; this section is the algorithm that turns one
+value into one byte sequence, with every choice an implementation could make
+already made. An implementation that follows it step by step produces the
+reference's bytes, and §16.5's conformance matrix holds every registered
+backend to them, byte for byte. The reference is the compiler's own writer,
+`internal/tabletext/write.go`, which `make conformance-generate` runs to write
+`testdata/conformance/tables/json/<instance>.json`; the steps below are what
+that writer does, so where this text and the reference disagree, the
+disagreement is a defect in one of them and is fixed, not tolerated.
+
+**W0. The result is the whole text or nothing.** Every refusal is decided
+before a byte is handed back — §16.3's list, a deprecated enum variant
+(§2.15), a `required` value outside its declared range (§2.3), a text list
+past its declared total (§2.13), a table value past the depth cap (W2), and
+STORAGE THAT IS NOT TEXT, `invalid_value`: a narrow string holding ill-formed
+UTF-8 or a wide string holding an unpaired surrogate (W8), which is refused
+and never replaced: the write returns `-1`, measure returns
+`-1`, and no prefix of a text is ever a result. Measure returns exactly the
+length write produces.
+
+**W1. The graph pass** (the variable class only, §16.7). Walk the value in
+W3's order and count, for every node, the slots that name it, visiting each
+node's own fields once, at its first naming. A reference to a node whose
+walk is still open is a cycle and refuses (§3.1); a blob named from two slots
+refuses (`blob_shared`, §2.5). A fixed table has no pointer, so this pass
+finds nothing and an implementation of the fixed class alone may omit it.
+
+**W2. The document.** The text is `VALUE(root, 0)` followed by one line feed
+(`0x0A`). Nothing precedes it: no byte-order mark, no whitespace. `VALUE(x,
+d)` is the value `x` written at DEPTH `d`, and the depth is the only state the
+layout needs: the root is at depth 0, and every member or element of a
+container written at depth `d` is written at depth `d + 1`. `INDENT(d)` is `2d`
+spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`. THE DEPTH
+CAP IS 128 AND COUNTS TABLE VALUES: a table or type value (W3) written at a
+depth past 128 refuses the write, and so does the read of an object that
+deep, so a pointer chain of 128 nodes under the root writes and reads and one
+of 129 does neither. A scalar, a string or a `null` written at depth 129 nests
+nothing and is written: the last node's null `next` does not count. No other
+whitespace is ever written outside a string: no tab, no carriage return, no
+space before a `,` or a `:`, no space after a `,`.
+
+**W3. A table or type value** (a nested `type`, a by-value `table`, a pointee,
+a union's table arm, a map's value, an array element):
+
+1. Take the FIELDS IN DECLARATION ORDER — the order of the field lines in the
+   table's declaration. Never wire id order, never name order, never key
+   order. A field renamed with `was` keeps its line's place; a deprecated
+   field (§2.10) is written at its line like any other field.
+2. Drop a field whose guard is false (§16.2, **Guarded fields**) and an
+   OPTIONAL field that is absent (§16.2's `?T` row). Drop nothing else: a
+   field at its default is written, a `required` field is written, an empty
+   array, map, string or blob is written. Retained unknown records (§6.6) are
+   wire data and are never written: the text holds declared fields only.
+3. If no field remains, write `{}`.
+4. Otherwise write `{`, then for each remaining field in order: a `,` if it is
+   not the first, `NL(d + 1)`, its KEY as a string (W8) — the `json`
+   attribute's value where one is declared (§16.4), else the field's name —
+   then `: ` (colon, one space), then `VALUE(field, d + 1)`. Close with
+   `NL(d)` and `}`.
+
+A SHARED node (W1 counted more than one naming) is written at its FIRST
+occurrence in W3's walk as a definition: `{`, `NL(d + 1)`, `"&node": ` and its
+LABEL, then its fields exactly as step 4 continues them (each preceded by
+`,`), then `NL(d)` and `}`. Every later occurrence is a reference: `{`,
+`NL(d + 1)`, `"&node": ` and the label, `NL(d)`, `}`. Labels are the decimal
+integers `1, 2, 3, …` in the order definitions are written, and nothing else.
+A shared node with no field left to write after step 2 has no definition
+this form can spell — its definition would read as a reference — so the write
+refuses (§16.3). A null pointer is `null`. A node named once is its object in
+place, with no label.
+
+**W4. An array** — `[N]T` (all `N` elements), `[..N]T` and `[]T` (the used
+count), a text list, a `[]*T`: if it has no element, write `[]`. Otherwise
+write `[`, then for each element in INDEX ORDER a `,` if it is not the first,
+`NL(d + 1)` and `VALUE(element, d + 1)`; close with `NL(d)` and `]`. A text
+list's absent `?string` element is `null`. A `bytes(N)` is NOT an array here:
+it is one string (W9).
+
+**W5. An enum-keyed array `[E]T`** is an object: if `E` keys no slot, `{}`;
+otherwise W3's layout over one member per slot, every slot written, in
+ascending VARIANT VALUE order (the variants' declaration order), each keyed by
+its variant's name. `None` keys no slot and is never written.
+
+**W6. A map `map[K]V`** is an object. If it holds no entry, write `{}`.
+Otherwise sort the entries by KEY ORDER, then use W3's layout with one member
+per entry: the entry's key as the member's key, and the entry's value as
+`VALUE(value, d + 1)` — or `null` where `V` is `?T` and the value is absent
+(§16.2). KEY ORDER is fixed by the key kind, and `K` has only these kinds
+(§2.8):
+
+- **a signed integer key** (`int8` … `int64`): ascending by the SIGNED value,
+  so `"-32768"` precedes `"-3"` precedes `"2"`;
+- **an unsigned integer key** (`uint8` … `uint64`): ascending by the value, so
+  `"7"` precedes `"10"` precedes `"4294967295"`;
+- **a string key**, bounded `string(N)` or unbounded `string`: ascending by the
+  key's UTF-8 BYTES, compared as unsigned bytes over the common prefix, and a
+  key that is a proper prefix of another precedes it (`memcmp`, then length).
+  `""` precedes every other key. This is code point order. It is NOT UTF-16
+  code unit order, and an implementation whose native string compare is
+  UTF-16 (JavaScript, Java, C#, Dart) compares the encoded bytes instead:
+  `"｡"` (`U+FF61`, `EF BD A1`) precedes `"😀"` (`U+1F600`, `F0 9F 98 80`),
+  though UTF-16 orders them the other way (`FF61` against `D83D`).
+
+An integer key is written as its decimal spelling (W10) inside quotes; a
+string key is written by W8. Enum, `bool`, `wstring`, float and compound keys
+are refused at declaration (§2.8), so no other order exists to choose. **No
+map holds a key twice**: the text read is last-wins and the wire read refuses
+an entry out of ascending order (§2.8), so no read produces two equal keys,
+and a backend whose map storage is kept in key order may write the entries in
+storage order. KEY ORDER is the order the wire writes the same entries in.
+
+**W7. A union.** `None` is `{}`. A set arm is `{`, `NL(d + 1)`, the arm's
+name (W8), `: `, the arm's value at depth `d + 1` by the arm's own row (§16.2)
+— `null` for a payload-free arm — then `NL(d)`, `}`.
+
+**W8. A string** is `"`, then the text, then `"`. The text is walked byte by
+byte for a narrow string (`string(N)`, `*string`, a key) and code point by
+code point for a wide one (`wstring(N)`, after joining each surrogate pair). Each unit is written as:
+
+| unit | written |
+|---|---|
+| `"` `0x22` | `\"` |
+| `\` `0x5C` | `\\` |
+| `0x08`, `0x0C`, `0x0A`, `0x0D`, `0x09` | `\b`, `\f`, `\n`, `\r`, `\t` |
+| any other byte or code point below `0x20`, `U+0000` included | `\u00` and two LOWERCASE hex digits: `\u0001`, `\u001f` |
+| `/`, `DEL` (`0x7F`), every other ASCII byte | itself, raw |
+| a well-formed UTF-8 sequence, or a code point at or above `U+0080` | its UTF-8 bytes, raw — `U+2028`, `U+2029`, `U+FEFF` and `U+FFFD` included |
+| an ill-formed narrow sequence | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
+| an unpaired surrogate in a wide string | nothing: the write REFUSES, `invalid_value` (W0, §16.3) |
+
+No `\u` escape names anything at or above `0x20`, so none names a surrogate,
+no escape other than these seven short forms and `\u00XX` is ever written, and
+`U+FFFD` is written only where the storage holds `U+FFFD`.
+
+**W9. A byte string** — `bytes(N)`, `*bytes` — is `"`, the bytes in base64,
+`"`: the standard alphabet of RFC 4648 §4 (`A`–`Z`, `a`–`z`, `0`–`9`, `+`,
+`/`), three bytes to four symbols in order, the final group of one or two
+bytes completed with zero bits and PADDED with `=` to four symbols, and no
+line break at any length. The empty string of bytes is `""`. A null `*bytes`
+is `null`.
+
+**W10. An integer** — `int8` … `int64`, `uint8` … `uint64`, `bits(N)`,
+`int128`, `uint128` — is its exact decimal value: a `-` for a negative value
+and nothing for any other, then the digits with no leading zero, `0` for zero.
+No `+`, no exponent, no fraction, and no binary floating-point step anywhere
+on the path, so `18446744073709551615`, `-9223372036854775808` and the 128-bit
+extremes are written exactly. `bool` is `true` or `false`; an enum is its
+variant's name as a string (W8); `flags` is W4's array over the set bits'
+variant names in ascending bit order, `[]` for none. A value no variant names
+refuses (§16.3).
+
+**W11. A fixed-point value** `fixed(I, F)`, `ufixed(I, F)` is the raw integer
+`r` read as `r / 2^F`, written EXACTLY: a `-` when `r < 0`, the whole part
+`|r| >> F` in decimal, a `.`, then the fraction's decimal digits generated
+one at a time (multiply the remaining fraction by ten, take the integer part
+as the digit, keep the rest) until the fraction is zero — at most `F` digits,
+because a dyadic fraction terminates — or `0` when the fraction is zero to
+begin with. So `1.0`, `-0.25`, `3.0000152587890625`; never an exponent.
+
+**W12. A float** — `float32`, `float64`, and a compressed float by the
+width its declaration names — is written by this loop, and by nothing that
+merely resembles it:
+
+1. A NaN or an infinity refuses (§16.3).
+2. Let `v` be the stored value and `(L, H)` be `(6, 9)` for a 32-bit field
+   and `(15, 17)` for a 64-bit field.
+3. For `p = L, L + 1, …, H`: let `T = G(v, p)`. If `p = H`, or `R(T) = v`,
+   write `T` and stop.
+
+`R(T)` is the value of the decimal `T` CORRECTLY ROUNDED to the field's own
+format, ties to even — `strtof` for a 32-bit field and `strtod` for a 64-bit
+one. **A 32-bit field's `R` never passes through binary64**: rounding `T` to
+the nearest double and then narrowing rounds twice, and the two answers part
+for real values — the float32 `0x15AE43FE` is `7.0385313e-26` here, while the
+twice-rounded check stops one digit early at `7.038531e-26`, a text a correct
+reader reads as `0x15AE43FD`.
+
+`G(v, p)` is C's `printf("%.*g", p, v)` in the C locale, spelled out:
+
+- Round `v`'s EXACT binary value to `p` significant decimal digits, ties to
+  even (a tie is exact, because `v` is a dyadic rational), giving digits
+  `d₁ d₂ … dₚ` and an exponent `X` with `v ≈ d₁.d₂…dₚ × 10^X` and `d₁ ≠ 0`
+  (for zero, every digit is `0` and `X = 0`). `X` is taken AFTER rounding, so
+  `9.9999996e-05` at `p = 6` has `X = -4`.
+- Drop the trailing zeros of `d₁ … dₚ`.
+- If `X < -4` or `X ≥ p`, the SCIENTIFIC form: `d₁`, then `.` and the
+  remaining digits if any remain, then `e`, then `+` or `-`, then `|X|` with
+  at least two digits (`1e+21`, `1.4013e-45`, `4.94065645841247e-324`,
+  `1e+100`).
+- Otherwise the PLAIN form: the digits, padded with zeros on the right to
+  `X + 1` digits when fewer remain, with the decimal point placed after `X +
+  1` of them — `0.` and `-X - 1` zeros before them when `X < 0` — and no point
+  at all when no digit falls after it (`100` at `p = 6`, `0.30000000000000004`,
+  `9007199254740992`; `2.5e-05` is scientific because `X = -5`).
+- A `-` precedes either form exactly when `v`'s sign bit is set, so `-0.0`
+  is written `-0`.
+
+The loop's starting precision is why the text is not always the shortest
+decimal that reads back: a 64-bit subnormal starts at fifteen digits
+(`4.94065645841247e-324`, not `5e-324`), and a 32-bit one at six
+(`1.4013e-45`, not `1e-45`). The loop is the rule; "shortest" is not, and
+an implementation that reaches for its language's shortest round-trip
+formatter writes different bytes.
+`testdata/conformance/tables/json/text_float*.json` pin the forms.
+
+**W13. A timestamp** is a string (W8) holding the stored signed count of
+nanoseconds since `1970-01-01T00:00:00Z` as RFC 3339 in UTC: `YYYY-MM-DD`,
+`T`, `hh:mm:ss` — each field zero-padded to its width, the year to four
+digits, the date and time those of the proleptic Gregorian calendar with no
+leap second — then, when the count's nanoseconds within the second (taken by
+FLOORED division, so `-1` is `1969-12-31T23:59:59.999999999Z`) are not zero,
+`.` and those nine digits with their trailing zeros removed, then `Z`. The
+zero count is `"1970-01-01T00:00:00Z"`. Go's `time.RFC3339Nano` layout in UTC
+spells exactly this.
+
+**W14. The two declared roots.** A table declared `json = "array"` (§16.10)
+is `VALUE` of its one field, by W4, wherever it appears. A table declared
+`json = "value"` writes its tape as §16.13 states it: objects and arrays by W3's and W4's
+layout with members and elements in TAPE ORDER (the order the read placed
+them), every number's token verbatim, every string and key by W8, and `null`
+for an empty tape.
+
+**W15. The options** (§16.2) are applied to this text and to nothing else.
+**Compact** removes every whitespace byte written outside a string by W2 —
+every `NL(d)`, the space after each `:` — and the final line feed. **Omit
+defaults** drops, in W3 step 2, the further fields its row names — except
+inside a `&node` definition that would then hold no field, which writes all
+of its fields (§16.2) — and moves no other byte. With both off, the text is
+the canonical text, and the canonical text is the only text the goldens hold.
+
+**Which code is the reference for which step.** `internal/tabletext/write.go`
+is the reference for W0 through W14's array root, and it is what writes the
+goldens. The options of W15 are carried by the generated Go walk
+(`<T>ToJsonWith`, §16.2), and the `json = "value"` text of W14 is §16.13's,
+which states its own status.
+
+**The hand-editable form of §16.9 needs no such algorithm, and that is
+deliberate.** Its writer returns the RETAINED document: a write with no edit
+is the input's bytes, and a leaf edit replaces exactly one token span with the
+token the caller supplied (§16.9.3), so no implementation chooses a byte and
+two implementations given the same document and the same edits produce the
+same bytes. Its reader lands the value through this section's canonical JSON,
+so a value read from either form writes one canonical text.
+
+**Held by test.** `json-write` (§16.5) compares every leg's text against the
+golden as BYTES, with no normalization of any kind — no trailing-newline
+strip, no whitespace collapse, no key reordering. The corpus carries rows
+built to separate the choices this section makes: map keys of every key kind
+written out of order (`map_key_order`, `map_text_order`, `feature_key_order`),
+string keys whose UTF-8 and UTF-16 orders disagree, every escape class in a
+key and in a value, float32 values whose twice-rounded check stops early
+(`text_float32_double_round`), pre-epoch and fractional timestamps, the
+integer and base64 boundaries, and a pointer chain exactly at the depth cap
+(`graph_chain_text`, 128 nodes) that every reader takes and every writer
+writes. The `json-write-refusal` rows (testdata/conformance/tables/FORMAT.md) hold
+W0 on the same surface, where the answer is `refused`: the same chain one
+node past the cap (`graph_chain_past_cap`), and storage built in code holding
+ill-formed UTF-8 (`text_refuse_illformed`) or an unpaired surrogate
+(`text_refuse_unpaired`). `conformance-negative-control-go-text-refusal`
+replaces the Go writer's refusal with a raw byte, and those two rows go red on
+`go / json-write`. `conformance-negative-control-key-order`
+is the gate's own reversed witness: it reverses the Go leg's map key order in
+the generated writer, and the matrix must go red on `go / json-write` at
+`map_key_order` and `map_text_order` while `wire` and `json-read` stay green.
+
 ## 17. Packing: a directory tree that mirrors a root table
 
 `schema pack` assembles ONE table instance from a directory tree and writes
@@ -17626,19 +17877,12 @@ caller that wants an envelope writes its own few lines around these bytes,
 which is §1's promise that schema imposes no envelope. `unpack` is the
 inverse — it writes the tree back out of a `.bin` — which is the tool round
 trip §1 promises, and `unpack` → `pack` is byte-stable, with the
-ill-formed UTF-8 case handled under §16.3: its text can be longer than the
-bytes were and the field's own bound then clamps it. That lap is not byte-identical, it is
-COUNTED (`clamped`, which §17.4 makes a nonzero exit), and the FIXED POINT IS
-REACHED IN ONE LAP — after the first write every string is well-formed, so the
-second text and the third agree. **The carve-out is narrower than it was**:
-since ill-formed text is `malformed` on the table wire and terminal on the
-packet wire (§3, SPEC.md §4.7), a `.bin` this project wrote can no longer
-carry it into storage, so the lap is byte-identical for every file that came
-through a wire and the carve-out covers only an instance a PROGRAM built with
-ill-formed text in it. Wide text takes it on the same terms, an unpaired
-surrogate writing `U+FFFD` and a zero unit `\u0000` (§16.3). The alternative
-is emitting a text no
-conforming parser can read, which §16.3 already refuses.
+ill-formed UTF-8 case handled under §16.3: ill-formed text is `malformed` on
+the table wire and terminal on the packet wire (§3, SPEC.md §4.7), so a
+`.bin` cannot carry it into storage, and an instance a PROGRAM built with
+ill-formed text or an unpaired surrogate in it is refused `invalid_value` by
+the writer, never replaced. So the lap is byte-identical for every file that
+came through a wire, and there is no carve-out.
 
 **`pack` THEN `unpack` is the other lap, and it is not byte-stable over a
 HAND-AUTHORED tree**, by the form's own rules and not by any defect: a text

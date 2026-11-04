@@ -23,6 +23,10 @@ import (
 
 type writer struct {
 	b strings.Builder
+	// bad is the first text the writer met that is not text — ill-formed
+	// UTF-8 in a narrow string, an unpaired surrogate in a wide one — which
+	// refuses the whole write (docs/SPEC-TABLES.md §16.14, W0, W8)
+	bad error
 	// graph is the pointered write's identity (docs/SPEC-TABLES.md §16.7): how
 	// many slots name each node, learned in a first pass over the same walk,
 	// and the `&node` label each shared node took at its first write.
@@ -68,6 +72,9 @@ func (m *Model) Write(inst *Instance) ([]byte, error) {
 	w.graph = graph
 	if err := m.writeValue(w, inst, 0); err != nil {
 		return nil, err
+	}
+	if w.bad != nil {
+		return nil, w.bad
 	}
 	return []byte(w.b.String()), nil
 }
@@ -654,12 +661,10 @@ func utf8Sequence(s []byte) int {
 }
 
 // writeString emits one JSON string. A JSON text MUST be valid UTF-8 (RFC 8259
-// §8.1). The read path is byte-transparent — the wire imposes no encoding (§3)
-// and a string may hold anything — so the WRITER is where that obligation is
-// met: a byte that is not part of a well-formed sequence is written as U+FFFD,
-// one per maximal subpart (docs/SPEC-TABLES.md §16.3), and never raw. The cost
-// is stated plainly: for a string holding invalid UTF-8 the round trip is NOT
-// byte-identical, because the alternative is emitting a text that is not JSON.
+// §8.1), and no read puts anything else into storage, so a byte that is not
+// part of a well-formed sequence was put there by a program: the writer
+// REFUSES the whole text (`invalid_value`, docs/SPEC-TABLES.md §16.3, §16.14
+// W0) rather than replacing it.
 func writeString(w *writer, s []byte) {
 	const hex = "0123456789abcdef"
 	w.put('"')
@@ -690,7 +695,9 @@ func writeString(w *writer, s []byte) {
 				w.put(c)
 			default:
 				if width := utf8Sequence(s[i:]); width < 0 {
-					w.raw("\ufffd") // U+FFFD, one per maximal subpart (docs/SPEC-TABLES.md §16.3)
+					if w.bad == nil {
+						w.bad = fmt.Errorf("invalid_value: a string holds ill-formed UTF-8 at byte %d — the writer refuses text that is not text (docs/SPEC-TABLES.md §16.3, §16.14)", i)
+					}
 					i += -width - 1
 				} else {
 					w.raw(string(s[i : i+width]))
@@ -704,10 +711,10 @@ func writeString(w *writer, s []byte) {
 
 // writeWString is a WIDE field's text (docs/SPEC-TABLES.md §16.2): the code
 // units transcoded back to UTF-8. A SURROGATE PAIR is one code point; an
-// UNPAIRED SURROGATE is not a code point at all, encodes to nothing, and
-// writes one U+FFFD per ill-formed unit; a ZERO UNIT is U+0000, which JSON has
-// an escape for, and writes \u0000 (§16.3). No wire can put either into
-// storage (§3), so both answer for storage a PROGRAM built.
+// UNPAIRED SURROGATE is not a code point at all and REFUSES the whole text
+// (`invalid_value`, §16.14 W0); a ZERO UNIT is U+0000, which JSON has an escape
+// for, and writes \u0000 (§16.3). No wire can put either into storage (§3), so
+// both answer for storage a PROGRAM built.
 func writeWString(w *writer, units []uint16) {
 	const hex = "0123456789abcdef"
 	w.put('"')
@@ -720,7 +727,10 @@ func writeWString(w *writer, units []uint16) {
 			}
 		}
 		if code >= 0xd800 && code <= 0xdfff {
-			code = 0xfffd // an unpaired surrogate
+			if w.bad == nil {
+				w.bad = fmt.Errorf("invalid_value: a wide string holds an unpaired surrogate at unit %d — the writer refuses text that is not text (docs/SPEC-TABLES.md §16.3, §16.14)", i)
+			}
+			continue
 		}
 		switch code {
 		case '"':
@@ -780,9 +790,9 @@ func writeBase64(w *writer, data []byte) {
 	w.put('"')
 }
 
-// writeFloat spells a float at the SHORTEST precision that reads back as the
-// same value at the field's own width, so a round trip is exact and a text
-// stays readable. Non-finite values have no JSON spelling at all and the
+// writeFloat spells a float by §16.14's W12: C's `%.*g` at the first precision
+// from 6 (float32) or 15 (float64) whose text reads back as the same value at
+// the field's own width, and at 9 or 17 when no earlier one does. Non-finite values have no JSON spelling at all and the
 // writer REFUSES rather than losing one silently — the rule measure and save
 // already apply to an enum value no variant names (§5).
 func writeFloat(w *writer, value float64, single bool) error {
@@ -799,17 +809,17 @@ func writeFloat(w *writer, value float64, single bool) error {
 			w.raw(text)
 			return nil
 		}
-		back, err := strconv.ParseFloat(text, 64)
-		if err == nil {
-			if single {
-				if float64(float32(back)) == value {
-					w.raw(text)
-					return nil
-				}
-			} else if back == value {
-				w.raw(text)
-				return nil
-			}
+		// the read-back is ONE correctly rounded conversion at the field's own
+		// width: parsing a float32 field's text as a float64 and then narrowing
+		// rounds twice, and for two float32 magnitudes the answers part
+		// (docs/SPEC-TABLES.md §16.14, W12)
+		bits := 64
+		if single {
+			bits = 32
+		}
+		if back, err := strconv.ParseFloat(text, bits); err == nil && back == value {
+			w.raw(text)
+			return nil
 		}
 	}
 }
@@ -868,6 +878,9 @@ func (m *Model) WriteValue(fv *Field) ([]byte, error) {
 	if err := m.writeField(w, fv, 0); err != nil {
 		return nil, err
 	}
+	if w.bad != nil {
+		return nil, w.bad
+	}
 	return []byte(w.b.String()), nil
 }
 
@@ -880,6 +893,9 @@ func (m *Model) WriteElement(fv *Field, slot int) ([]byte, error) {
 	}
 	if err := m.writeScalar(w, &fv.Elems[slot], fv.Def, 0); err != nil {
 		return nil, err
+	}
+	if w.bad != nil {
+		return nil, w.bad
 	}
 	return []byte(w.b.String()), nil
 }

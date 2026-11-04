@@ -1287,6 +1287,9 @@ struct TableJsonOut
     int64_t capacity;
     int64_t offset;
     bool overflow;
+    // storage that is not text (ill-formed UTF-8, an unpaired surrogate)
+    // refuses the whole write (docs/SPEC-TABLES.md §16.14 W0)
+    bool invalid;
     void * graph; // the pointered write's identity map (§16.7); NULL for a fixed table
 
     void raw( const char * data, int64_t count )
@@ -1682,15 +1685,10 @@ inline int32_t TableJsonEncodeUtf8( uint32_t code, char * unit )
     return 4;
 }
 
-// A JSON text MUST be valid UTF-8 (RFC 8259 §8.1). The read path is
-// byte-transparent — the wire imposes no encoding (§3) and a string may hold
-// anything — so the WRITER is where that obligation is met: a byte that is
-// not part of a well-formed sequence is written as U+FFFD, one per bad byte,
-// and never raw. A text this walk writes is therefore readable by any
-// conforming parser, which a raw byte would not be. The cost is stated
-// plainly: for a string holding invalid UTF-8, the round trip is NOT
-// byte-identical, because the alternative is emitting a text that is not
-// JSON.
+// A JSON text MUST be valid UTF-8 (RFC 8259 §8.1), and no read puts anything
+// else into storage, so a byte that is not part of a well-formed sequence was
+// put there by a program: the write REFUSES (invalid_value,
+// docs/SPEC-TABLES.md §16.3, §16.14 W0) and nothing is replaced.
 inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t length )
 {
     static const char hex[] = "0123456789abcdef";
@@ -1722,7 +1720,7 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
                     int32_t width = 0;
                     if ( TableJsonUtf8( s + i, length - i, &width ) < 0 )
                     {
-                        out.raw( "\xef\xbf\xbd", 3 ); // U+FFFD, one per bad byte
+                        out.invalid = true; // not text: the write refuses (§16.14 W0)
                     }
                     else
                     {
@@ -1738,7 +1736,7 @@ inline void TableJsonWriteString( TableJsonOut & out, const char * s, int32_t le
 
 // A WIDE field's text: the code units transcoded back to UTF-8 (§16.2). A
 // SURROGATE PAIR is one code point; an UNPAIRED SURROGATE is not a code point
-// at all, encodes to nothing, and writes one U+FFFD per ill-formed unit; a
+// at all, so the write REFUSES (§16.14 W0) and nothing is replaced; a
 // ZERO UNIT is U+0000, which JSON has an escape for, and writes \u0000
 // (§16.3). No wire can put either into storage (§3), so both answer for
 // storage a PROGRAM built.
@@ -1758,7 +1756,11 @@ inline void TableJsonWriteWString( TableJsonOut & out, const char16_t * s, int32
                 i++;
             }
         }
-        if ( code >= 0xd800 && code <= 0xdfff ) { code = 0xfffd; } // an unpaired surrogate
+        if ( code >= 0xd800 && code <= 0xdfff )
+        {
+            out.invalid = true; // an unpaired surrogate is not text: the write refuses (§16.14 W0)
+            continue;
+        }
         switch ( code )
         {
             case '"': out.raw( "\\\"", 2 ); continue;
@@ -4723,6 +4725,7 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = false;
+    out.invalid = false;
     out.graph = NULL;
     if ( !TableJsonWriteValue( out, value, info, 0 ) ) { return -1; }
     // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (docs/SPEC-TABLES.md
@@ -4734,7 +4737,7 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // handed back through a pipe has to be one text in all three places, and a
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
-    if ( out.overflow ) { return -1; }
+    if ( out.overflow || out.invalid ) { return -1; }
     if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
@@ -5361,6 +5364,7 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     count.capacity = 0;
     count.offset = 0;
     count.overflow = false;
+    count.invalid = false;
     count.graph = &graph;
     bool ok = TableJsonWriteValue( count, root, info, 0 );
     graph.counting = false;
@@ -5369,12 +5373,13 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     out.capacity = capacity;
     out.offset = 0;
     out.overflow = false;
+    out.invalid = false;
     out.graph = &graph;
     if ( ok ) { ok = TableJsonWriteValue( out, root, info, 0 ); }
     TableJsonGraphMapShutdown( graph.nodes );
     if ( !ok ) { return -1; }
     out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
-    if ( out.overflow ) { return -1; }
+    if ( out.overflow || out.invalid ) { return -1; }
     if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }

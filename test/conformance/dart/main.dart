@@ -1764,7 +1764,62 @@ int surfaceJsonWrite(String outDir) {
     }
     File('$outDir/${f[1]}.json').writeAsStringSync(text);
   }
+  // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the wire,
+  // then the line's damage put into storage in code, then ToJson, which must
+  // refuse. ToJson is this leg's measure and write in one call, and it refuses
+  // by throwing, so one refusal answers both.
+  for (final f in kind('json-write-refusal')) {
+    final write = jsonWriteRefusalWriter(f[2], f[3], File(f[4]).readAsBytesSync(), f[5]);
+    if (write == null) {
+      spillAbsent(outDir, '${f[1]}.json');
+      continue;
+    }
+    String text;
+    try {
+      text = write();
+    } on StateError {
+      text = 'refused\n';
+    }
+    File('$outDir/${f[1]}.json').writeAsStringSync(text);
+  }
   return 0;
+}
+
+// _notText is what `json-write-refusal`'s damage puts into a text field
+// (testdata/conformance/tables/FORMAT.md). A narrow and a wide string are both
+// a Dart String here, which holds UTF-16 units, not bytes: the row's bytes
+// 61 FF 62 have no String spelling, so `narrow:` holds the nearest value that
+// is not text, the units 0061 D800 0062, an unpaired surrogate, the same value
+// `wide:` names.
+const String _notText = 'a\uD800b';
+
+// jsonWriteRefusalWriter loads the wire at the root and applies the damage,
+// and answers the root's text writer over the damaged value, or null for a
+// root this leg writes no text for.
+String Function()? jsonWriteRefusalWriter(String unit, String root, Uint8List wire, String damage) {
+  void damaged(String field, void Function() put) {
+    if (damage == 'none') return;
+    if (damage.substring(damage.indexOf(':') + 1) != field) {
+      throw ArgumentError('$unit $root: damage $damage names no text field');
+    }
+    put();
+  }
+
+  switch ('$unit $root') {
+    case 'graphdemo Scene':
+      final v = graphdemo.sceneWireLoad(wire);
+      if (damage != 'none') throw ArgumentError('$unit $root: damage $damage names no text field');
+      return () => graphdemo.sceneToJson(v);
+    case 'tabledemo ProfileConfig':
+      final v = tabledemo.profileConfigWireLoad(wire);
+      damaged('name', () => v.name = _notText);
+      return () => tabledemo.profileConfigToJson(v);
+    case 'widedemo Stamp':
+      final v = widedemo.stampWireLoad(wire);
+      damaged('label', () => v.label = _notText);
+      return () => widedemo.stampToJson(v);
+  }
+  return null;
 }
 
 // §16.3 and §17.5: a hostile tree reports the actual tolerant text-read
