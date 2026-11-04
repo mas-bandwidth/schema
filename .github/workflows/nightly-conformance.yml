@@ -97,9 +97,11 @@ jobs:
   cpp-writes:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
-    # measured: 120-296 s green; the reds ran 18-25 min, inside the shared
-    # regression step, whose go test is now bounded as well
-    timeout-minutes: 15
+    # measured: 120-296 s green on the old fleet; on a hetzner runner sharing
+    # its host with a second job the C++ driver builds alone ran past 15
+    # minutes, so the bound is 30 (the reds ran 18-25 min, inside the shared
+    # regression step, whose go test is bounded as well)
+    timeout-minutes: 30
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e {0}
