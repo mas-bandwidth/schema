@@ -36,7 +36,7 @@ const READ = (f, wantBits, clamped, tag) => {
   const n = TLoad(back, back.length, data, data.length, plan, report);
   if (n !== 1) { fail(tag + ": n is not 1: " + n + " " + reason(r)); }
   if (back[0].lead !== 1 || back[0].trail !== 2) {
-    fail(tag + ": the row moved a neighbour: " + show(back[0]));
+    fail(tag + ": the row moved a neighbor: " + show(back[0]));
   }
   if (f32bits(back[0].aim) !== wantBits) {
     fail(tag + ": aim landed bits " + f32bits(back[0].aim).toString(16) + ", want " + wantBits.toString(16) + " (" + back[0].aim + ")");

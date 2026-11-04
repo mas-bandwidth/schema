@@ -11,6 +11,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | [codegen/](codegen/AGENTS.md) | nine language emitters | `go test ./internal/codegen/...` | `go test ./internal/codegen/...` |
 | `docgate/` | link-and-citation gate over the pages | `go test ./internal/docgate` | `make docs-check` |
 | `fixedlimit/` | fixed form's hard-limit vectors | `go test ./internal/fixedlimit` | `go test ./internal/fixedlimit` |
+| `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |

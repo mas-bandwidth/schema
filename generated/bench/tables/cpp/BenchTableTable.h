@@ -5269,32 +5269,41 @@ inline void TableFixedClampKnownRanges( const TableFixedKnownRange * ranges, int
         if ( b.width == 0 || b.width > 8 ) { continue; }
         uint64_t raw = 0;
         memcpy( &raw, dst + b.dst, b.width );
-        int64_t v = 0;
+        // THE COMPARISON IS IN THE FIELD'S OWN TYPE: signed for a signed kind,
+        // UNSIGNED for an unsigned one, so a uint64 at or above 2^63 is past the
+        // max and never below the min. An unsigned kind's bounds are never
+        // negative, so they read as uint64 unchanged.
+        bool below = false;
+        bool above = false;
         if ( b.sgn != 0 )
         {
             const unsigned bits = (unsigned) b.width * 8u;
             const uint64_t top = 1ull << ( bits - 1 );
             if ( raw & top ) { raw |= ~( ( top << 1 ) - 1ull ); }
-            v = (int64_t) raw;
+            below = (int64_t) raw < b.lo;
+            above = (int64_t) raw > b.hi;
         }
         else
         {
-            v = (int64_t) raw;
+            below = raw < (uint64_t) b.lo;
+            above = raw > (uint64_t) b.hi;
         }
-        int64_t landed = v;
-        if ( landed < b.lo )
+        uint64_t landed = 0;
+        if ( below )
         {
-            landed = b.lo;
+            landed = (uint64_t) b.lo;
             clamped++;
         }
-        else if ( landed > b.hi )
+        else if ( above )
         {
-            landed = b.hi;
+            landed = (uint64_t) b.hi;
             clamped++;
         }
-        if ( landed == v ) { continue; }
-        uint64_t out = (uint64_t) landed;
-        memcpy( dst + b.dst, &out, b.width );
+        else
+        {
+            continue;
+        }
+        memcpy( dst + b.dst, &landed, b.width );
     }
     if ( report != NULL ) { report->clamped += clamped; }
 }
