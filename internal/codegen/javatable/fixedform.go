@@ -1798,13 +1798,22 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("        if (need < 0 || buffer.length < need) { return -1; }\n")
 	// THE WRITE CONTRACT OVER THE WHOLE BATCH, before the first byte is
 	// stored (docs/SPEC.md §5.1): debug only, through `assert`.
-	g.pf("        assert checkWriteBatch(values, count) : \"write contract: %s\";\n", st.Name)
+	g.pf("        assert checkWriteBatch(values, count, true) : \"write contract: %s\";\n", st.Name)
+	// A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED IN EVERY BUILD
+	// (docs/SPEC.md §5.1: memory is not a value), and A NaN OR AN INFINITY
+	// IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md §3.3): every value is
+	// tested before the first byte is stored, so a refused save leaves the
+	// caller's buffer as it was.
+	var tests []string
+	if fixedHoldsStorage(st.Fields, map[string]bool{}) {
+		tests = append(tests, "!checkStorage(values[k])")
+	}
 	if fixedCarriesFloat(st.Fields, map[string]bool{}) {
-		// A NaN OR AN INFINITY IS REFUSED BY THE WRITER (docs/SPEC-TABLES.md
-		// §3.3): every value is tested before the first byte is stored, so a
-		// refused save leaves the caller's buffer as it was.
+		tests = append(tests, "!finite(values[k])")
+	}
+	if len(tests) > 0 {
 		g.pf("        for (int k = 0; k < count; k++) {\n")
-		g.pf("            if (!finite(values[k])) { return -1; }\n")
+		g.pf("            if (%s) { return -1; }\n", strings.Join(tests, " || "))
 		g.pf("        }\n")
 	}
 	g.pf("        int at = writeHeader(buffer);\n")

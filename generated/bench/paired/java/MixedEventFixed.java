@@ -81,21 +81,26 @@ public final class MixedEventFixed {
      * its declaration admits. Asserted (-ea).
      */
     static boolean checkWrite(Value v) {
+        return checkWrite(v, false);
+    }
+
+    /** checkWrite for one form; fixed as a type's. */
+    static boolean checkWrite(Value v, boolean fixed) {
         switch (v.type) {
             case 0:
                 return true;
             case 1:
-                if (!MixedHitEventFixed.checkWrite(v.hit)) {
+                if (!MixedHitEventFixed.checkWrite(v.hit, fixed)) {
                     return false;
                 }
                 return true;
             case 2:
-                if (!MixedChatEventFixed.checkWrite(v.chat)) {
+                if (!MixedChatEventFixed.checkWrite(v.chat, fixed)) {
                     return false;
                 }
                 return true;
             case 3:
-                if (!MixedPickupEventFixed.checkWrite(v.pickup)) {
+                if (!MixedPickupEventFixed.checkWrite(v.pickup, fixed)) {
                     return false;
                 }
                 return true;
