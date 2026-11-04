@@ -1527,9 +1527,11 @@ fn surface_message(manifest: &Manifest, out: &str) {
 // ONE field its path names, and saves through the same variable-form Save. The
 // Rust writer refuses in two ways: a named Err from <root>_save_checked (a
 // NaN or an infinity, every build) or a debug_assert! panic (a range, a
-// bits(N) width, a count, a length), which fires because this driver and the
-// generated crates build in the dev profile. An enum ordinal or a union tag
-// outside its set is `unrepresentable`: both are native Rust enums.
+// bits(N) width, a count, a length, an unpaired surrogate), which fires
+// because this driver and the generated crates build in the dev profile. An
+// enum ordinal or a union tag outside its set, and a narrow text's ill-formed
+// bytes, are `unrepresentable`: the first two are native Rust enums and the
+// third a String.
 
 enum Mutation {
     Done,
@@ -1605,6 +1607,15 @@ fn wref_root_config(v: &mut tabledemo::RootConfig, path: &str, kind: &str, value
             v.version_note = "a".repeat(wref_usize(value));
             Mutation::Done
         }
+        // a Rust String holds UTF-8 and nothing else, so ill-formed bytes
+        // cannot be built into one
+        ("version_note", "bytes") => match String::from_utf8(wref_bytes(value)) {
+            Ok(text) => {
+                v.version_note = text;
+                Mutation::Done
+            }
+            Err(_) => Mutation::Unrepresentable,
+        },
         _ => fail(&format!("write-refusal: RootConfig names no {kind} path {path}")),
     }
 }
@@ -1626,16 +1637,31 @@ fn wref_loadout_config(v: &mut tabledemo::LoadoutConfig, path: &str, kind: &str,
     }
 }
 
-// The save under a silent panic hook: a debug_assert! is the refusal, and its
-// message is not output.
-fn wref_save<T>(save: impl FnOnce() -> Result<T, String>) -> &'static str {
+// wstring(N) is the code units (a Vec<u16>), which hold any unit at all.
+fn wref_caption(v: &mut widedemo::Caption, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("title", "units") => {
+            v.title = wref_units(value);
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: Caption names no {kind} path {path}")),
+    }
+}
+
+// A writer run under a silent panic hook: a debug_assert! is the refusal, it
+// comes back as Err, and its message is not output.
+fn wref_run<T>(write: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
-    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(save));
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(write));
     std::panic::set_hook(previous);
-    match outcome {
-        Ok(Ok(_)) => "wrote\n",
-        Ok(Err(_)) | Err(_) => "refused\n",
+    outcome.unwrap_or_else(|_| Err(String::from("debug_assert!")))
+}
+
+fn wref_save<T>(save: impl FnOnce() -> Result<T, String>) -> &'static str {
+    match wref_run(save) {
+        Ok(_) => "wrote\n",
+        Err(_) => "refused\n",
     }
 }
 
@@ -1662,7 +1688,298 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
+            ("widedemo", "Caption") => {
+                let mut report = widedemo::TableReport::default();
+                let Some(mut v) = widedemo::caption_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_caption(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| widedemo::caption_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
             _ => fail(&format!("write-refusal: no root {unit} {root}")),
+        };
+        spill(out, case, answer.as_bytes());
+    }
+}
+
+// The `bytes` and `units` kinds: a narrow text's exact bytes, two hex digits
+// each, and a wide text's exact UTF-16 units, four hex digits each.
+fn wref_hex(value: &str, digits: usize) -> Vec<u32> {
+    if value.len() % digits != 0 {
+        fail(&format!("write-refusal: hex value {value}"));
+    }
+    (0..value.len())
+        .step_by(digits)
+        .map(|i| u32::from_str_radix(&value[i..i + digits], 16).unwrap_or_else(|_| fail(&format!("write-refusal: hex value {value}"))))
+        .collect()
+}
+
+fn wref_bytes(value: &str) -> Vec<u8> {
+    wref_hex(value, 2).into_iter().map(|b| b as u8).collect()
+}
+
+fn wref_units(value: &str) -> Vec<u16> {
+    wref_hex(value, 4).into_iter().map(|u| u as u16).collect()
+}
+
+// A Row's text: the used length beside a buffer of the declared bound plus
+// one. `length` fills with `a` as far as the storage reaches and sets the used
+// length to the value even past it, which the writer must refuse before it
+// reads past the storage; `bytes` and `units` set the exact content.
+fn wref_row_text<T: Copy + From<u8>>(buf: &mut [T], used: &mut i32, kind: &str, value: &str, exact: impl FnOnce(&str) -> Vec<T>) {
+    let content: Vec<T> = match kind {
+        "length" => vec![T::from(b'a'); wref_usize(value)],
+        "bytes" | "units" => exact(value),
+        _ => fail(&format!("write-refusal: {kind} is not a text kind")),
+    };
+    for (slot, unit) in buf.iter_mut().zip(content.iter().chain(std::iter::repeat(&T::from(0)))) {
+        *slot = *unit;
+    }
+    *used = content.len() as i32;
+}
+
+// A ROW FROM THE VALUE'S COOK. A fixed table's Row IS its cooked record
+// (docs/SPEC-TABLES.md §7.2, §20.3), so the value the `wire` surface's Load
+// produced is cooked by the crate's own writer and the root read back from the
+// region its own Open points at. `open` is the crate's table_cook_open, which
+// holds the crate's build version.
+type CookOpen = unsafe fn(*const u8, u64, u64, u64) -> Option<(*const u8, u64)>;
+
+fn wref_row<R: Copy>(case: &str, cooked: Result<Vec<u8>, String>, open: CookOpen) -> R {
+    let bytes = cooked.unwrap_or_else(|why| fail(&format!("{case}: the cook refused: {why}")));
+    let region = Aligned::new(&bytes, -1);
+    let opened = unsafe { open(region.at(0), bytes.len() as u64, std::mem::size_of::<R>() as u64, std::mem::align_of::<R>() as u64) };
+    let Some((base, _)) = opened else { fail(&format!("{case}: the cook did not open")) };
+    unsafe { std::ptr::read(base as *const R) }
+}
+
+fn wref_root_config_row(v: &mut tabledemo::RootConfigRow, path: &str, kind: &str, value: &str) -> Mutation {
+    if v.weapons_count < 1 {
+        fail("write-refusal: RootConfig fixture holds no weapons[0]");
+    }
+    match (path, kind) {
+        ("weapons[0].penetration", "int") => wref_int(value, &mut v.weapons[0].penetration),
+        ("weapons[0].channel", "int") => wref_int(value, &mut v.weapons[0].channel),
+        ("weapons[0].damage", "float") => {
+            v.weapons[0].damage = wref_float(value);
+            Mutation::Done
+        }
+        ("weapons[0].effect", "tag") => {
+            let effect = &mut v.weapons[0].effect;
+            match value {
+                "0" => effect.set_none(),
+                "1" => effect.set_buff(tabledemo::buff_message_default()),
+                "2" => effect.set_debuff(tabledemo::debuff_message_default()),
+                _ => {
+                    // A tag no arm names. The Row's tag is the crate's, behind
+                    // checked setters, but the Row is the cooked record and a
+                    // cook region's bytes reach it through Open, which checks
+                    // nothing per node: so the storage holds it, and it is
+                    // written where the layout contract puts it, the first
+                    // byte of the union twin.
+                    let mut tag = 0u8;
+                    if let Mutation::Unrepresentable = wref_int(value, &mut tag) {
+                        return Mutation::Unrepresentable;
+                    }
+                    unsafe { *(effect as *mut tabledemo::EffectRow as *mut u8) = tag };
+                }
+            }
+            Mutation::Done
+        }
+        ("weapons", "count") => {
+            let n = wref_usize(value);
+            for i in v.weapons_count as usize..n.min(v.weapons.len()) {
+                v.weapons[i] = v.weapons[0];
+            }
+            v.weapons_count = n as i32;
+            Mutation::Done
+        }
+        ("version_note", "length" | "bytes") => {
+            wref_row_text(&mut v.version_note, &mut v.version_note_length, kind, value, wref_bytes);
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: RootConfig names no {kind} path {path}")),
+    }
+}
+
+fn wref_loadout_config_row(v: &mut tabledemo::LoadoutConfigRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("grade", "ordinal") => wref_int(value, &mut v.grade),
+        _ => fail(&format!("write-refusal: LoadoutConfig names no {kind} path {path}")),
+    }
+}
+
+fn wref_caption_row(v: &mut widedemo::CaptionRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("title", "units" | "length") => {
+            wref_row_text(&mut v.title, &mut v.title_length, kind, value, wref_units);
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: Caption names no {kind} path {path}")),
+    }
+}
+
+fn wref_store_purchase_row(v: &mut backenddemo::StorePurchaseRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("quantity", "int") => wref_int(value, &mut v.quantity),
+        ("currency", "ordinal") => wref_int(value, &mut v.currency),
+        ("sku", "length" | "bytes") => {
+            wref_row_text(&mut v.sku, &mut v.sku_length, kind, value, wref_bytes);
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: StorePurchase names no {kind} path {path}")),
+    }
+}
+
+fn wref_match_result_row(v: &mut backenddemo::MatchResultRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("players[0].score", "int") => wref_int(value, &mut v.players[0].score),
+        _ => fail(&format!("write-refusal: MatchResult names no {kind} path {path}")),
+    }
+}
+
+// write-refusal-fixed: the one value saved through the fixed form's FixedSave
+// as a batch of one, into a buffer of exactly the measure. The Rust FixedSave
+// refuses with None (a NaN or an infinity, every build) or a debug_assert!
+// panic (the write contract over the whole batch, debug builds).
+fn surface_write_refusal_fixed(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("write-refusal-fixed") {
+        if f.len() < 8 {
+            fail(&format!("write-refusal-fixed line has {} fields", f.len()));
+        }
+        let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        let data = slurp(wire);
+        macro_rules! fixed_case {
+            ($krate:ident, $load:ident, $cook:ident, $mutate:ident, $save:ident, $measure:ident) => {{
+                let mut report = $krate::TableReport::default();
+                let Some(v) = $krate::$load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                let mut row = wref_row(case, $krate::$cook(&v, 1), $krate::table_cook_open);
+                match $mutate(&mut row, path, kind, value) {
+                    Mutation::Done => wref_save(|| {
+                        let mut buffer = vec![0u8; $krate::$measure(1)];
+                        $krate::$save(&[row], &mut buffer).ok_or_else(String::new)
+                    }),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }};
+        }
+        let answer = match (unit, root) {
+            ("tabledemo", "RootConfig") => fixed_case!(tabledemo, root_config_load, root_config_cook_write, wref_root_config_row, root_config_fixed_save, root_config_fixed_measure),
+            ("tabledemo", "LoadoutConfig") => fixed_case!(tabledemo, loadout_config_load, loadout_config_cook_write, wref_loadout_config_row, loadout_config_fixed_save, loadout_config_fixed_measure),
+            ("widedemo", "Caption") => fixed_case!(widedemo, caption_load, caption_cook_write, wref_caption_row, caption_fixed_save, caption_fixed_measure),
+            _ => fail(&format!("write-refusal-fixed: no root {unit} {root}")),
+        };
+        spill(out, case, answer.as_bytes());
+    }
+}
+
+// write-refusal-message: the <unit> column is a CONNECTION, whose announcement
+// is read into the vocabulary the `message` surface reads against; the one
+// value is measured and saved through MeasureMessages and SaveMessages as a
+// batch of one. The Rust message writer refuses with -1 (an enum ordinal or a
+// union tag outside its set, a NaN or an infinity, a count or length past its
+// storage, every build) or a debug_assert! panic (the write contract over the
+// whole batch, debug builds).
+fn surface_write_refusal_message(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("write-refusal-message") {
+        if f.len() < 8 {
+            fail(&format!("write-refusal-message line has {} fields", f.len()));
+        }
+        let (case, conn, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        let Some(c) = manifest.of_kind("connection").find(|c| c[1] == conn) else {
+            fail(&format!("write-refusal-message {case} names no connection {conn}"));
+        };
+        let ann = slurp(&c[4]);
+        let data = slurp(wire);
+        macro_rules! message_case {
+            ($krate:ident, $load:ident, $cook:ident, $mutate:ident, $measure:ident, $save:ident) => {{
+                use $krate as k;
+                let mut storage = vec![k::TableMessageEntry::default(); 4096];
+                let mut vocabulary = k::TableVocabulary::new(&mut storage);
+                let mut report = k::TableReport::default();
+                if !k::announce_read(&mut vocabulary, &ann, &mut report) {
+                    fail(&format!("{case}: the announcement {} did not read", c[4]));
+                }
+                let Some(v) = k::$load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                let mut row = wref_row(case, k::$cook(&v, 1), k::table_cook_open);
+                match $mutate(&mut row, path, kind, value) {
+                    Mutation::Done => wref_save(|| {
+                        let mut ignored = k::TableReport::default();
+                        let n = k::$measure(&[row], &mut ignored);
+                        if n < 0 {
+                            return Err(String::new());
+                        }
+                        let mut buffer = vec![0u8; n as usize];
+                        if k::$save(&[row], &mut buffer, &mut ignored) != n {
+                            return Err(String::new());
+                        }
+                        Ok(buffer)
+                    }),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }};
+        }
+        let answer = match (c[2].as_str(), root) {
+            ("backenddemo", "StorePurchase") => message_case!(backenddemo, store_purchase_load, store_purchase_cook_write, wref_store_purchase_row, store_purchase_measure_messages, store_purchase_save_messages),
+            ("backenddemo", "MatchResult") => message_case!(backenddemo, match_result_load, match_result_cook_write, wref_match_result_row, match_result_measure_messages, match_result_save_messages),
+            _ => fail(&format!("write-refusal-message: no root {} {root}", c[2])),
+        };
+        spill(out, case, answer.as_bytes());
+    }
+}
+
+// write-refusal-json: the one value written through the text writer
+// (<root>_to_json_checked). `wrote` is owed only when the text was written and
+// the field's JSON string spells the value's zero as the escape \u0000
+// (docs/SPEC-TABLES.md §16.3); a None or a debug_assert! panic is refused.
+fn wref_json_spells_zero(text: &str, path: &str) -> bool {
+    let key = format!("\"{path}\": \"");
+    let Some(at) = text.find(&key) else { return false };
+    let rest = &text[at + key.len()..];
+    let mut escaped = false;
+    for (i, c) in rest.char_indices() {
+        match c {
+            '\\' if !escaped => escaped = true,
+            '"' if !escaped => return rest[..i].contains("\\u0000"),
+            _ => escaped = false,
+        }
+    }
+    false
+}
+
+fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
+    for f in manifest.of_kind("write-refusal-json") {
+        if f.len() < 8 {
+            fail(&format!("write-refusal-json line has {} fields", f.len()));
+        }
+        let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        let data = slurp(wire);
+        let mut report = Default::default();
+        let written = |text: Option<String>| -> Result<String, String> { text.ok_or_else(String::new) };
+        let outcome: Result<Result<String, String>, &'static str> = match (unit, root) {
+            ("tabledemo", "RootConfig") => {
+                let Some(mut v) = tabledemo::root_config_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_root_config(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| written(tabledemo::root_config_to_json_checked(&v)))),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
+            ("widedemo", "Caption") => {
+                let mut report = widedemo::TableReport::default();
+                let Some(mut v) = widedemo::caption_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_caption(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| written(widedemo::caption_to_json_checked(&v)))),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
+            _ => fail(&format!("write-refusal-json: no root {unit} {root}")),
+        };
+        let answer = match outcome {
+            Ok(Ok(text)) if wref_json_spells_zero(&text, path) => "wrote\n",
+            // written, but the zero not spelled as the escape: neither answer
+            Ok(Ok(_)) => "unspelled\n",
+            Ok(Err(_)) => "refused\n",
+            Err(unrepresentable) => unrepresentable,
         };
         spill(out, case, answer.as_bytes());
     }
@@ -1689,7 +2006,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nwrite-refusal"
+            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json"
         );
         return;
     }
@@ -1719,6 +2036,9 @@ fn main() {
         "cook-reason" => surface_reason(&manifest, out, "cook"),
         "message" => surface_message(&manifest, out),
         "write-refusal" => surface_write_refusal(&manifest, out),
+        "write-refusal-fixed" => surface_write_refusal_fixed(&manifest, out),
+        "write-refusal-message" => surface_write_refusal_message(&manifest, out),
+        "write-refusal-json" => surface_write_refusal_json(&manifest, out),
         _ => exit(2),
     }
 }
