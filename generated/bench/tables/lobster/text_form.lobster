@@ -843,7 +843,7 @@ def t_fill(p:TextParser, n:TNode, d:TableDescriptor, path:string) -> Record?:
 // AND its typed Record, or nil with no usable pair (§16.9.4).
 def text_load(root:string, text:string) -> TextDoc?:
     let d = lookup_table(root)
-    if not d:
+    if not d or not d.json_form:
         return nil
     var at = 0
     while at < length(text):
