@@ -1035,6 +1035,25 @@ func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string
 	}
 }
 
+// emitTextAssert is the WRITE CONTRACT's debug-only refusal of ill-formed text
+// (docs/SPEC.md §5.1): a string's used bytes that are not well-formed UTF-8, or
+// a wstring's used units holding an unpaired surrogate. A zero byte or unit is
+// a whole code point and not this check's to refuse. It follows the storage
+// invariant, so it reads only the used storage; schema_assert, so NDEBUG
+// removes it and a release write pays nothing.
+// `writer` names the writer in the line's comment ("a write", "a message
+// write"), which is what lets a negative control remove one writer's checks.
+func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string) {
+	switch f.Type.Kind {
+	case ir.TString:
+		g.wroteAssert = true
+		g.pf("%sschema_assert( TableUtf8WellFormed( (const uint8_t *) %s, (uint64_t) %s ) ); // %s keeps well-formed text (SPEC.md §5.1)\n", ind, value, length, writer)
+	case ir.TWString:
+		g.wroteAssert = true
+		g.pf("%sschema_assert( TableUtf16Paired( %s, (int64_t) %s ) ); // %s keeps well-formed text (SPEC.md §5.1)\n", ind, value, length, writer)
+	}
+}
+
 // emitFloatElementCheckAt is that rule over a float ARRAY's elements, the twin
 // of emitEnumElementCheckAt: `expr` may carry one %s, which takes the loop
 // variable, and the locals carry `sfx`.

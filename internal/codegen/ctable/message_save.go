@@ -72,6 +72,11 @@ func (g *tableGen) messageScalar(f *ir.Field, kind uint8, shape ir.TableMessageS
 			}
 			g.pf("%s}\n", ind)
 		} else {
+			// A RANGED INTEGER OR A bits(N) VALUE OFF ITS DECLARATION IS
+			// REFUSED (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §22.6), never
+			// masked into the width, wrapped or clamped; debug-only. A flags
+			// mask is no ranged integer and rides masked on purpose (§3.3).
+			g.emitRangeAssertAs(f, expr, ind, tableKindWidth(int(kind)), "a message write")
 			g.pf("%stable_bit_put(w,(uint64_t)(%s)-UINT64_C(%d),%d);\n", ind, expr, lo, bits)
 		}
 	}
@@ -81,6 +86,7 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TWString:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.Type.Size)
+		g.emitTextAssert(f, expr, count, ind, "a message write")
 		bits := ir.TableMessageBitsRequired(0, e.Shape.Max)
 		if f.Type.Kind == ir.TBytes {
 			bits = ir.TableMessageCountBits(e.Shape)
@@ -103,6 +109,11 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
 		g.pf("%sif(%s<0 || %s>%d) return 0;\n", ind, count, count, f.ArrayBound)
+		if e.Shape.Min > 0 && ir.TableMessageCountBits(e.Shape) > 0 {
+			// THE COUNT IS A RANGED INTEGER over [min, max] (§3.3): the line
+			// above holds the top, and this the bottom
+			g.writerAssert(ind, fmt.Sprintf("%s >= %d", count, e.Shape.Min), "a message write keeps the declared bounds (SPEC.md §5.1)")
+		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
 		if ir.TableMessageAligns(e.Kind, e.Shape) {
 			g.pf("%stable_bit_align_write(w);\n", ind)

@@ -1089,6 +1089,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -8169,6 +8186,7 @@ inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
@@ -8185,6 +8203,7 @@ inline int64_t StampMeasure( const Stamp & value )
 GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, const Stamp & value )
 {
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag
@@ -8468,6 +8487,7 @@ inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
     if ( value.tag_length > 0 )
     {
         w.put( 19, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.tag_length, 4 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.tag, value.tag_length );
@@ -8475,6 +8495,7 @@ inline bool StampSaveMessageBody( TableBitWriter & w, const Stamp & value )
     if ( value.seq != 0 )
     {
         w.put( 30, kTableMessageRefBitsHere );
+        schema_assert( ( value.seq ) >= 0 && ( value.seq ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.seq ), 10 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -9199,6 +9220,18 @@ inline void StampFixedClampBody( Stamp & value, int32_t & TABLE_CLAMP_RESTRICT c
     value.seq = ( value.seq < 0 ) ? 0 : ( ( value.seq > 1000 ) ? 1000 : value.seq );
 }
 
+// Stamp's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool StampFixedWriteCheck( const Stamp & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length );
+    bad |= (int) ( value.seq < 0 ) | (int) ( value.seq > 1000 );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9326,6 +9359,7 @@ inline int64_t StampFixedSave( const Stamp * values, int64_t count, uint8_t * bu
 {
     const int64_t need = StampFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( StampFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, StampFixedHash );
@@ -9557,6 +9591,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -9566,6 +9601,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
 GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const Stamp & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.tag_length < 0 || value.tag_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.tag_length > 0 )
     {
         w.header( ids.ref_at( 13, 0x56d7ab194448a4f3ull ), 12 ); // tag

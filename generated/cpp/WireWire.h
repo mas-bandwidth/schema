@@ -620,11 +620,13 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
         serialize_assert( int32_t( value.items[i] ) >= int32_t( 0 ) && int32_t( value.items[i] ) <= int32_t( 255 ) );
         write_bits( stream, uint32_t( value.items[i] ), 8 );
     }
+    serialize_assert( value.float_value - value.float_value == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_float( stream, value.float_value );
     {
         float compressed_value = value.compressed_float_value;
         serialize_compressed_float_precomputed( stream, compressed_value, 1000u, 10, 10.0f, 0.0f );
     }
+    serialize_assert( value.double_value - value.double_value == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)
     write_double( stream, value.double_value );
     write_bits( stream, uint8_t( value.int8_value ), 8 );
     write_bits( stream, uint16_t( value.int16_value ), 16 );

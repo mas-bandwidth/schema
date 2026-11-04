@@ -1080,6 +1080,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -18691,6 +18708,93 @@ TABLE_FIXED_INLINE bool RenderExplosionFixedFiniteBody( const RenderExplosion & 
     return true;
 }
 
+// RenderShip's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderShipFixedWriteCheck( const RenderShip & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.ship_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderTurret's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderTurretFixedWriteCheck( const RenderTurret & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderMissile's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderMissileFixedWriteCheck( const RenderMissile & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.missile_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderDynamicProp's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderDynamicPropFixedWriteCheck( const RenderDynamicProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderStaticProp's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderStaticPropFixedWriteCheck( const RenderStaticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderCosmeticProp's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderCosmeticPropFixedWriteCheck( const RenderCosmeticProp & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.prop_type > 3u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderLaser's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderLaserFixedWriteCheck( const RenderLaser & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.laser_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
+// RenderExplosion's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RenderExplosionFixedWriteCheck( const RenderExplosion & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( (uint64_t) value.explosion_type > 2u );
+    bad |= (int) ( (uint64_t) value.team > 4u );
+    return bad == 0;
+}
+
 // ---- RenderCamera, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -18854,12 +18958,12 @@ inline int64_t RenderCameraFixedSave( const RenderCamera * values, int64_t count
 {
     const int64_t need = RenderCameraFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderCameraFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCameraFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderCameraFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderCameraFixedLayout, (size_t) RenderCameraFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderCameraFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderCameraFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -19322,12 +19426,13 @@ inline int64_t RenderShipFixedSave( const RenderShip * values, int64_t count, ui
 {
     const int64_t need = RenderShipFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderShipFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderShipFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderShipFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderShipFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderShipFixedLayout, (size_t) RenderShipFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderShipFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderShipFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -19760,12 +19865,13 @@ inline int64_t RenderTurretFixedSave( const RenderTurret * values, int64_t count
 {
     const int64_t need = RenderTurretFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderTurretFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderTurretFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderTurretFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderTurretFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderTurretFixedLayout, (size_t) RenderTurretFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderTurretFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderTurretFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -20212,12 +20318,13 @@ inline int64_t RenderMissileFixedSave( const RenderMissile * values, int64_t cou
 {
     const int64_t need = RenderMissileFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderMissileFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderMissileFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderMissileFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderMissileFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderMissileFixedLayout, (size_t) RenderMissileFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderMissileFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderMissileFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -20669,12 +20776,13 @@ inline int64_t RenderDynamicPropFixedSave( const RenderDynamicProp * values, int
 {
     const int64_t need = RenderDynamicPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderDynamicPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderDynamicPropFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderDynamicPropFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderDynamicPropFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderDynamicPropFixedLayout, (size_t) RenderDynamicPropFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderDynamicPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderDynamicPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -21126,12 +21234,13 @@ inline int64_t RenderStaticPropFixedSave( const RenderStaticProp * values, int64
 {
     const int64_t need = RenderStaticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderStaticPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderStaticPropFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderStaticPropFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderStaticPropFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderStaticPropFixedLayout, (size_t) RenderStaticPropFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderStaticPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderStaticPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -21588,12 +21697,13 @@ inline int64_t RenderCosmeticPropFixedSave( const RenderCosmeticProp * values, i
 {
     const int64_t need = RenderCosmeticPropFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderCosmeticPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderCosmeticPropFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderCosmeticPropFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderCosmeticPropFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderCosmeticPropFixedLayout, (size_t) RenderCosmeticPropFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderCosmeticPropFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderCosmeticPropFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -22030,12 +22140,13 @@ inline int64_t RenderLaserFixedSave( const RenderLaser * values, int64_t count, 
 {
     const int64_t need = RenderLaserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderLaserFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderLaserFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderLaserFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderLaserFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderLaserFixedLayout, (size_t) RenderLaserFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderLaserFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderLaserFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -22482,12 +22593,13 @@ inline int64_t RenderExplosionFixedSave( const RenderExplosion * values, int64_t
 {
     const int64_t need = RenderExplosionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderExplosionFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RenderExplosionFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RenderExplosionFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) RenderExplosionFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, RenderExplosionFixedLayout, (size_t) RenderExplosionFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !RenderExplosionFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + RenderExplosionFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {

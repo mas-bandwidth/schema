@@ -614,6 +614,21 @@ static SCHEMA_UNUSED int graphdemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int graphdemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !graphdemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t graphdemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -5371,6 +5386,7 @@ static SCHEMA_UNUSED int graphdemo_settings_load_message_body(graphdemo_table_me
 static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_meta_t * value )
 {
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -5576,6 +5592,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_message_body(graphdemo_table_bit_wr
   return 1;
   }
   graphdemo_table_bit_put(w,18,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->build >= 0 && value->build <= 1000 );
   graphdemo_table_bit_put(w,(uint64_t)(value->build)-UINT64_C(0),10);
  }
  }
@@ -5587,6 +5604,7 @@ static SCHEMA_UNUSED int graphdemo_meta_save_message_body(graphdemo_table_bit_wr
   }
   graphdemo_table_bit_put(w,19,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->tag_length<0 || value->tag_length>8) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) );
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -5744,6 +5762,7 @@ static SCHEMA_UNUSED int graphdemo_meta_load_messages( graphdemo_meta_t * values
 static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label_( graphdemo_table_writer_t * w, const graphdemo_settings_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 16 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -5944,6 +5963,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_message_body(graphdemo_table_bi
  { /* quality */
  if(!(value->quality == 2)) {
   graphdemo_table_bit_put(w,28,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->quality >= 0 && value->quality <= 4 );
   graphdemo_table_bit_put(w,(uint64_t)(value->quality)-UINT64_C(0),3);
  }
  }
@@ -5952,6 +5972,7 @@ static SCHEMA_UNUSED int graphdemo_settings_save_message_body(graphdemo_table_bi
  if(value->label_length != 0) {
   graphdemo_table_bit_put(w,29,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>16) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
   graphdemo_table_bit_put(w,(uint64_t)value->label_length,5);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -6109,6 +6130,7 @@ static SCHEMA_UNUSED int graphdemo_settings_load_messages( graphdemo_settings_t 
 static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name_( graphdemo_table_writer_t * w, const graphdemo_list_node_t * value )
 {
     if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -6261,6 +6283,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_load_body( graphdemo_table_reader_t
 static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label_( graphdemo_table_writer_t * w, const graphdemo_tree_node_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 12 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -6495,6 +6518,7 @@ static SCHEMA_UNUSED int graphdemo_layer_load_body( graphdemo_table_reader_t * r
 static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name_( graphdemo_table_writer_t * w, const graphdemo_scene_t * value )
 {
     if ( value->name_length < 0 || value->name_length > 24 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -6872,6 +6896,7 @@ static SCHEMA_UNUSED int graphdemo_scene_load_body( graphdemo_table_reader_t * r
 static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name_( graphdemo_table_writer_t * w, const graphdemo_depot_t * value )
 {
     if ( value->name_length < 0 || value->name_length > 12 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7107,6 +7132,7 @@ static SCHEMA_UNUSED int graphdemo_depot_load_body( graphdemo_table_reader_t * r
 static SCHEMA_UNUSED int schema_graphdemo_album_wire_name_( graphdemo_table_writer_t * w, const graphdemo_album_t * value )
 {
     if ( value->name_length < 0 || value->name_length > 16 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -7400,6 +7426,28 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_setting
     }
 }
 
+/* Meta's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_graphdemo_meta_fixed_write_check_( const graphdemo_meta_t * value )
+{
+    (void) value;
+    if ( ( value->build < 0 ) || ( value->build > 1000 ) ) { return 0; }
+    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0; }
+    return 1;
+}
+
+/* Settings's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_graphdemo_settings_fixed_write_check_( const graphdemo_settings_t * value )
+{
+    (void) value;
+    if ( ( value->quality < 0 ) || ( value->quality > 4 ) ) { return 0; }
+    if ( value->label_length < 0 || value->label_length > 16 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) ) { return 0; }
+    return 1;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -7510,6 +7558,7 @@ static SCHEMA_UNUSED int64_t graphdemo_meta_fixed_save( const graphdemo_meta_t *
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_graphdemo_meta_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_meta_fixed_hash );
@@ -7784,6 +7833,7 @@ static SCHEMA_UNUSED int64_t graphdemo_settings_fixed_save( const graphdemo_sett
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_graphdemo_settings_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_settings_fixed_hash );
@@ -7970,6 +8020,8 @@ static SCHEMA_UNUSED int schema_graphdemo_meta_wire_tag__retain( graphdemo_table
 
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -8192,6 +8244,8 @@ static SCHEMA_UNUSED int schema_graphdemo_settings_wire_label__retain( graphdemo
 
     if ( value->label_length < 0 || value->label_length > 16 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -8408,6 +8462,8 @@ static SCHEMA_UNUSED int schema_graphdemo_list_node_wire_name__retain( graphdemo
 
     if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -8632,6 +8688,8 @@ static SCHEMA_UNUSED int schema_graphdemo_tree_node_wire_label__retain( graphdem
 
     if ( value->label_length < 0 || value->label_length > 12 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -9005,6 +9063,8 @@ static SCHEMA_UNUSED int schema_graphdemo_scene_wire_name__retain( graphdemo_tab
 
     if ( value->name_length < 0 || value->name_length > 24 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9575,6 +9635,8 @@ static SCHEMA_UNUSED int schema_graphdemo_depot_wire_name__retain( graphdemo_tab
 
     if ( value->name_length < 0 || value->name_length > 12 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }
@@ -9939,6 +10001,8 @@ static SCHEMA_UNUSED int schema_graphdemo_album_wire_name__retain( graphdemo_tab
 
     if ( value->name_length < 0 || value->name_length > 16 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->name, (uint64_t) value->name_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->name, value->name_length );
     return !w->overflow;
 }

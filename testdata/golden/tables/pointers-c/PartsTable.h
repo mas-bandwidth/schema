@@ -612,6 +612,21 @@ static SCHEMA_UNUSED int graphdemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int graphdemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !graphdemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t graphdemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -5005,6 +5020,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_load_message_body(graphdemo_table_messa
 static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag_( graphdemo_table_writer_t * w, const graphdemo_stamp_t * value )
 {
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }
@@ -5212,6 +5228,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_w
   }
   graphdemo_table_bit_put(w,19,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->tag_length<0 || value->tag_length>8) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) );
   graphdemo_table_bit_put(w,(uint64_t)value->tag_length,4);
   graphdemo_table_bit_align_write(w);
   graphdemo_table_bit_putbytes(w,value->tag,value->tag_length);
@@ -5223,6 +5240,7 @@ static SCHEMA_UNUSED int graphdemo_stamp_save_message_body(graphdemo_table_bit_w
   return 1;
   }
   graphdemo_table_bit_put(w,30,GRAPHDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->seq >= 0 && value->seq <= 1000 );
   graphdemo_table_bit_put(w,(uint64_t)(value->seq)-UINT64_C(0),10);
  }
  }
@@ -5597,6 +5615,17 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_TABLE_INLINE void schema_graphdemo_stamp_f
     value->seq = ( value->seq < 0 ) ? 0 : ( ( value->seq > 1000 ) ? 1000 : value->seq );
 }
 
+/* Stamp's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_graphdemo_stamp_fixed_write_check_( const graphdemo_stamp_t * value )
+{
+    (void) value;
+    if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0; } /* the declared length is the bound (§3.4) */
+    if ( !graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) ) { return 0; }
+    if ( ( value->seq < 0 ) || ( value->seq > 1000 ) ) { return 0; }
+    return 1;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -5707,6 +5736,7 @@ static SCHEMA_UNUSED int64_t graphdemo_stamp_fixed_save( const graphdemo_stamp_t
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_graphdemo_stamp_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) GRAPHDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = GRAPHDEMO_K_TABLE_FIXED_FORM;
     graphdemo_table_fixed_put64( buffer + GRAPHDEMO_K_TABLE_FIXED_HASH_AT, graphdemo_stamp_fixed_hash );
@@ -5881,6 +5911,8 @@ static SCHEMA_UNUSED int schema_graphdemo_stamp_wire_tag__retain( graphdemo_tabl
 
     if ( value->tag_length < 0 || value->tag_length > 8 ) { return 0;
     }
+    schema_assert( graphdemo_table_wire_utf8_well_formed( (const uint8_t *) value->tag, (uint64_t) value->tag_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     graphdemo_table_writer_raw( w, value->tag, value->tag_length );
     return !w->overflow;
 }

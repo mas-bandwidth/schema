@@ -1089,6 +1089,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -8519,6 +8536,7 @@ inline bool TallySaveMessageBody( TableBitWriter & w, const Tally & value )
     if ( value.hits != 0 )
     {
         w.put( 31, kTableMessageRefBitsHere );
+        schema_assert( ( value.hits ) >= 0 && ( value.hits ) <= 10000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.hits ), 14 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -8685,6 +8703,7 @@ inline int64_t MarkerMeasureBody( const Ctx & ctx, const TableNumbering & number
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
@@ -8709,6 +8728,7 @@ inline bool MarkerSaveBodyFields( const Ctx & ctx, const TableNumbering & number
     (void) ctx;
     (void) numbering;
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label
@@ -8902,6 +8922,16 @@ inline void TallyFixedClampBody( Tally & value, int32_t & TABLE_CLAMP_RESTRICT c
     value.hits = ( value.hits < 0 ) ? 0 : ( ( value.hits > 10000 ) ? 10000 : value.hits );
 }
 
+// Tally's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool TallyFixedWriteCheck( const Tally & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.hits < 0 ) | (int) ( value.hits > 10000 );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -9022,6 +9052,7 @@ inline int64_t TallyFixedSave( const Tally * values, int64_t count, uint8_t * bu
 {
     const int64_t need = TallyFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( TallyFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TallyFixedHash );
@@ -10377,6 +10408,7 @@ inline int64_t MarkerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & 
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.label_length < 0 || value.label_length > 8 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 6, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     {
         const Tally * pointee_note = TallyAt( ctx, value.note ); // *Tally
@@ -10402,6 +10434,7 @@ inline bool MarkerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & 
     (void) ctx;
     (void) numbering;
     if ( value.label_length < 0 || value.label_length > 8 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.label, (uint64_t) value.label_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.label_length > 0 )
     {
         w.header( ids.ref_at( 6, 0x39f7fcec8fcb623dull ), 12 ); // label

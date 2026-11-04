@@ -179,7 +179,7 @@ C_CONFORMANCE_SOURCES = test/c-tables/collections_fuzz_maps.c test/c-tables/coll
 	$(patsubst tables/%.schema,build/tables-generated-c/%Table.c,$(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_ARMS)) \
 	test/conformance/c/unit_tblw1.c build/tables-generated-c/w1/W1Table.c \
 	test/conformance/c/unit_tblw2.c build/tables-generated-c/w2/W2Table.c \
-	test/conformance/c/main.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
+	test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/retain.c build/tables-generated-c/rt1/RT1Table.c \
 	test/conformance/c/unit_tblg1.c build/tables-generated-c/g1/G1Table.c \
 	test/conformance/c/unit_tblp2.c build/tables-generated-c/p2/P2Table.c \
 	test/conformance/c/unit_streamdemo.c build/tables-generated-c/stream/StreamTable.c \
@@ -448,6 +448,85 @@ conformance-negative-control-c: build/conformance-harness
 		  cat $(CONFORMANCE_NEGATIVE_C)/log; exit 1; }
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
+
+# THE WRITE CONTRACT'S NEGATIVE CONTROL, C side (docs/SPEC.md §5.1): the C twin
+# of conformance-negative-control-cpp-write-refusal. Every range assert of the
+# plain save (one line, ending in the comment the sed anchors on) is deleted
+# from a COPY of the generated tree, the driver is built against the copy, and
+# `c / write-refusal` must go RED while `wire` stays green. Nothing tracked is
+# written to.
+CONFORMANCE_NEGATIVE_C_WREF := build/conformance-negative-c-write-refusal
+CONFORMANCE_C_WREF_ANCHOR := schema_assert(.*a write keeps the declared bounds
+.PHONY: conformance-negative-control-c-write-refusal
+conformance-negative-control-c-write-refusal: build/conformance-harness build/tables-generated-c/.stamp
+	@rm -rf $(CONFORMANCE_NEGATIVE_C_WREF) && mkdir -p $(CONFORMANCE_NEGATIVE_C_WREF)
+	@cp -R build/tables-generated-c $(CONFORMANCE_NEGATIVE_C_WREF)/generated
+	@n=$$(grep -l '$(CONFORMANCE_C_WREF_ANCHOR)' $(CONFORMANCE_NEGATIVE_C_WREF)/generated/examples/*Table.h | wc -l); \
+		[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no range assert to remove in the generated tree"; exit 1; }
+	@for f in $(CONFORMANCE_NEGATIVE_C_WREF)/generated/*/*.h; do \
+		sed '/$(CONFORMANCE_C_WREF_ANCHOR)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(CONFORMANCE_C_WREF_ANCHOR)' $(CONFORMANCE_NEGATIVE_C_WREF)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: a range assert survived the sabotage"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_WREF)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,$(CONFORMANCE_NEGATIVE_C_WREF)/generated,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_WREF)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_WREF)" > $(CONFORMANCE_NEGATIVE_C_WREF)/driver
+	@chmod +x $(CONFORMANCE_NEGATIVE_C_WREF)/driver
+	@printf 'c %s/driver\n' "$(CONFORMANCE_NEGATIVE_C_WREF)" > $(CONFORMANCE_NEGATIVE_C_WREF)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_C_WREF)/drivers.txt \
+			--work $(CONFORMANCE_NEGATIVE_C_WREF)/work > $(CONFORMANCE_NEGATIVE_C_WREF)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a C writer without its range asserts left the harness green"; \
+		cat $(CONFORMANCE_NEGATIVE_C_WREF)/log; exit 1; \
+	fi
+	@grep -Eq '^write-refusal +FAIL ' $(CONFORMANCE_NEGATIVE_C_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on write-refusal"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_WREF)/log; exit 1; }
+	@grep -Eq '^wire +pass ' $(CONFORMANCE_NEGATIVE_C_WREF)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: wire went red too, so the control localizes nothing"; \
+		  cat $(CONFORMANCE_NEGATIVE_C_WREF)/log; exit 1; }
+	@grep -m1 "c / write-refusal" $(CONFORMANCE_NEGATIVE_C_WREF)/log
+	@echo "negative control: the C writer without its range asserts turns the harness RED on write-refusal alone"
+
+# THE SAME CONTRACT THROUGH THE FIXED AND MESSAGE WRITERS, C side (docs/SPEC.md
+# §5.1): the C twins of conformance-negative-control-cpp-write-refusal-fixed and
+# -message, one shape. $(1) names the control, $(2) is the comment the sed
+# anchors on (each such assert is one line ending in it), $(3) the surface that
+# must go RED and $(4) the surface that must stay green. Nothing tracked is
+# written to.
+define conformance-negative-control-c-wref
+	@rm -rf build/conformance-negative-c-$(1) && mkdir -p build/conformance-negative-c-$(1)
+	@cp -R build/tables-generated-c build/conformance-negative-c-$(1)/generated
+	@n=$$(grep -rl '$(2)' build/conformance-negative-c-$(1)/generated | wc -l); \
+		[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no assert anchored on '$(2)' in the generated tree"; exit 1; }
+	@for f in build/conformance-negative-c-$(1)/generated/*/*.h; do \
+		sed '/$(2)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(2)' build/conformance-negative-c-$(1)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: an assert anchored on '$(2)' survived the sabotage"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_SOURCES)) -o build/conformance-negative-c-$(1)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/build/conformance-negative-c-$(1)" > build/conformance-negative-c-$(1)/driver
+	@chmod +x build/conformance-negative-c-$(1)/driver
+	@printf 'c %s/driver\n' "build/conformance-negative-c-$(1)" > build/conformance-negative-c-$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative-c-$(1)/drivers.txt \
+			--work build/conformance-negative-c-$(1)/work > build/conformance-negative-c-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C $(3) writer without its asserts left the harness green"; \
+		cat build/conformance-negative-c-$(1)/log; exit 1; \
+	fi
+	@grep -Eq '^$(3) *FAIL ' build/conformance-negative-c-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(3)"; \
+		  cat build/conformance-negative-c-$(1)/log; exit 1; }
+	@grep -Eq '^$(4) +pass ' build/conformance-negative-c-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(4) went red too, so the control localizes nothing"; \
+		  cat build/conformance-negative-c-$(1)/log; exit 1; }
+	@grep -m1 "c / $(3)" build/conformance-negative-c-$(1)/log
+	@echo "negative control: the C writer without its $(1) asserts turns the harness RED on $(3)"
+endef
+
+.PHONY: conformance-negative-control-c-write-refusal-fixed conformance-negative-control-c-write-refusal-message
+conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal-fixed,a fixed write keeps the declared contract,write-refusal-fixed,wire)
+
+conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal-message,a message write keeps the declared bounds,write-refusal-message,message)
 
 # I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
 # answers a case it cannot write as `<case>.absent` (spill_absent_reason): the
@@ -2117,3 +2196,47 @@ test-c: tables-c-cycle
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-c/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE PACKET WRITER'S FINITE RULE, C side (SPEC §4.3, §5.1): a NaN or an
+# infinity in a plain float32 or float64 is refused by serialize.c's own
+# serialize_write_float and serialize_write_double, whose serialize_assert holds
+# the writer's contract debug-only, so the generated writer carries no second
+# copy. test/packet-finite/native's checker, compiled as C, writes each
+# non-finite pattern in a forked child and requires the abort, and writes the
+# finite edges bit exact.
+build/packet-finite/c/.stamp: bin/schema test/packet-finite/Finite.schema
+	@rm -rf build/packet-finite/c && mkdir -p build/packet-finite/c
+	./bin/schema generate --lang c --out build/packet-finite/c/generated test/packet-finite/Finite.schema
+	@touch $@
+
+build/packet-finite/c/checker: build/packet-finite/c/.stamp test/packet-finite/native/main.c
+	$(CC) -std=c99 -Wall -Wextra -Werror -ffp-contract=off -I$(SERIALIZE_C) -Ibuild/packet-finite/c/generated \
+		test/packet-finite/native/main.c $(SERIALIZE_C)/serialize.c -lm -o $@
+
+.PHONY: packet-finite-c packet-finite-write-negative-control-c
+packet-finite-c: build/packet-finite/c/checker
+	./build/packet-finite/c/checker
+
+# The check lives in the runtime, so the control deletes the runtime's two
+# write asserts from a COPY of serialize.c's header and requires the checker
+# to fail exactly the non-finite write vectors write.expected names, the finite
+# edges staying green. Nothing tracked, and nothing of the sibling, is written to.
+packet-finite-write-negative-control-c: packet-finite-c
+	@rm -rf build/packet-finite/c-negative && mkdir -p build/packet-finite/c-negative/runtime
+	@cp $(SERIALIZE_C)/serialize.c build/packet-finite/c-negative/runtime/serialize.c
+	@n=$$(grep -c -e 'serialize_assert( serialize_float_bits_are_finite( bits ) );' \
+		-e 'serialize_assert( serialize_double_bits_are_finite( bits ) );' $(SERIALIZE_C)/serialize.h); \
+		[ "$$n" = 2 ] || { echo "NEGATIVE CONTROL FAILED: expected the runtime's two finite write asserts, found $$n"; exit 1; }
+	@sed -e '/serialize_assert( serialize_float_bits_are_finite( bits ) );/d' \
+		-e '/serialize_assert( serialize_double_bits_are_finite( bits ) );/d' \
+		$(SERIALIZE_C)/serialize.h > build/packet-finite/c-negative/runtime/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -ffp-contract=off -Ibuild/packet-finite/c-negative/runtime -Ibuild/packet-finite/c/generated \
+		test/packet-finite/native/main.c build/packet-finite/c-negative/runtime/serialize.c -lm -o build/packet-finite/c-negative/checker
+	@if ./build/packet-finite/c-negative/checker > build/packet-finite/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the C runtime finite assert was removed and the checker stayed green'; exit 1; fi
+	@sed -n 's|^FAILED: \([^:]*\):.*|\1|p' build/packet-finite/c-negative/log | LC_ALL=C sort > build/packet-finite/c-negative/failed
+	@diff -u test/packet-finite/native/write.expected build/packet-finite/c-negative/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the removed C finite assert did not fail exactly the write vectors'; cat build/packet-finite/c-negative/log; exit 1; }
+	@echo "packet finite C negative control: the removed write assert fails exactly $$(wc -l < build/packet-finite/c-negative/failed | tr -d ' ') vectors"
+
+test-c: packet-finite-c packet-finite-write-negative-control-c

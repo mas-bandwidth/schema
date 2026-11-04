@@ -1061,6 +1061,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -6369,6 +6386,30 @@ TABLE_FIXED_INLINE bool PartFrameFixedFiniteBody( const PartFrame & value )
     return true;
 }
 
+// PartRow's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool PartRowFixedWriteCheck( const PartRow & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( !GunnerSettingsFixedWriteCheck( value.gunner ) ) { return false; }
+    return bad == 0;
+}
+
+// PartFrame's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool PartFrameFixedWriteCheck( const PartFrame & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.parts_count; ++i )
+    {
+        if ( !PartRowFixedWriteCheck( value.parts[i] ) ) { return false; }
+    }
+    return bad == 0;
+}
+
 // ---- PartRow, the fixed form ----
 
 // MeasureBody IS A CONSTEXPR on this form: the body is the same size for
@@ -6597,12 +6638,13 @@ inline int64_t PartRowFixedSave( const PartRow * values, int64_t count, uint8_t 
 {
     const int64_t need = PartRowFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PartRowFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( PartRowFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PartRowFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PartRowFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, PartRowFixedLayout, (size_t) PartRowFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !PartRowFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PartRowFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -7440,12 +7482,13 @@ inline int64_t PartFrameFixedSave( const PartFrame * values, int64_t count, uint
 {
     const int64_t need = PartFrameFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PartFrameFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( PartFrameFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PartFrameFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PartFrameFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, PartFrameFixedLayout, (size_t) PartFrameFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !PartFrameFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PartFrameFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {

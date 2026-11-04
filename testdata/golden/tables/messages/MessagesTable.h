@@ -1108,6 +1108,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -6029,6 +6046,7 @@ inline int64_t UserMeasureBody( TableIds & ids, const User & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 43, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     return bytes;
 }
@@ -6044,6 +6062,7 @@ inline int64_t UserMeasure( const User & value )
 MESSAGEDEMO_TABLE_INLINE bool UserSaveBody( TableWriter & w, TableIds & ids, const User & value )
 {
     if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 43, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -6275,6 +6294,7 @@ inline bool UserSaveMessageBody( TableBitWriter & w, const User & value )
     if ( value.name_length > 0 )
     {
         w.put( 27, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.name_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -6415,6 +6435,7 @@ inline int64_t ScriptMeasureBody( TableIds & ids, const Script & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.line != 0 ) { bytes += TableLebBytes( ids.ref_at( 40, 0xbf4ba5ad694f5907ull ) ) + 1 + 4; } // line
     return bytes;
@@ -6431,6 +6452,7 @@ inline int64_t ScriptMeasure( const Script & value )
 MESSAGEDEMO_TABLE_INLINE bool ScriptSaveBody( TableWriter & w, TableIds & ids, const Script & value )
 {
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -6710,6 +6732,7 @@ inline bool ScriptSaveMessageBody( TableBitWriter & w, const Script & value )
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.path_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.path, value.path_length );
@@ -7374,6 +7397,7 @@ inline int64_t InsertTextMeasureBody( TableIds & ids, const InsertText & value )
         else { ids.truncate( mark_at ); } // an all-default nested table elides, and costs no entry
     }
     if ( value.text_length < 0 || value.text_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.text, (uint64_t) value.text_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.text_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 56, 0xfa04f4ef1995407eull ) ) + 1 + TableLebBytes( (uint64_t) ( value.text_length ) ) + ( value.text_length ); } // text
     if ( value.origin.type != OriginType::None ) // None elides — the absence of the field is the None
     {
@@ -7527,6 +7551,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
         else { ids.truncate( mark_at ); }
     }
     if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.text, (uint64_t) value.text_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.text_length > 0 )
     {
         w.header( ids.ref_at( 56, 0xfa04f4ef1995407eull ), 12 ); // text
@@ -7581,6 +7606,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                 arm_payload += value.origin.note.value_length; // the string's bytes under the arm's L
                 w.header( arm_ref, 12 ); w.putleb( (uint64_t) arm_payload ); // note
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                schema_assert( TableUtf8WellFormed( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
                 w.raw( value.origin.note.value, value.origin.note.value_length );
                 break;
             }
@@ -7700,6 +7726,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextSaveBody( TableWriter & w, TableIds & id
                         arm_payloadu += value.origins[elem_i].note.value_length; // the string's bytes under the arm's L
                         w.header( arm_refu, 12 ); w.putleb( (uint64_t) arm_payloadu ); // note
                         if ( value.origins[elem_i].note.value_length < 0 || value.origins[elem_i].note.value_length > 24 ) { return false; } // storage invariant
+                        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.origins[elem_i].note.value, (uint64_t) value.origins[elem_i].note.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
                         w.raw( value.origins[elem_i].note.value, value.origins[elem_i].note.value_length );
                         break;
                     }
@@ -8496,6 +8523,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
     if ( value.text_length > 0 )
     {
         w.put( 6, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.text, (uint64_t) value.text_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.text_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.text, value.text_length );
@@ -8520,6 +8548,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             case OriginType::Pid:
             {
                 w.put( 37, kTableMessageRefBitsHere );
+                schema_assert( ( value.origin.pid ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                 w.put( (uint64_t) ( value.origin.pid ), 10 );
                 break;
             }
@@ -8527,6 +8556,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
             {
                 w.put( 38, kTableMessageRefBitsHere );
                 if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // storage invariant
+                schema_assert( TableUtf8WellFormed( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
                 w.put( (uint64_t) value.origin.note.value_length, 5 );
                 w.align(); // a string or a bytes ALIGNS before its bytes
                 w.putbytes( (const uint8_t *) value.origin.note.value, value.origin.note.value_length );
@@ -8565,6 +8595,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
                     case OriginType::Pid:
                     {
                         w.put( 37, kTableMessageRefBitsHere );
+                        schema_assert( ( value.origins[i].pid ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                         w.put( (uint64_t) ( value.origins[i].pid ), 10 );
                         break;
                     }
@@ -8572,6 +8603,7 @@ inline bool InsertTextSaveMessageBody( TableBitWriter & w, const InsertText & va
                     {
                         w.put( 38, kTableMessageRefBitsHere );
                         if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // storage invariant
+                        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
                         w.put( (uint64_t) value.origins[i].note.value_length, 5 );
                         w.align(); // a string or a bytes ALIGNS before its bytes
                         w.putbytes( (const uint8_t *) value.origins[i].note.value, value.origins[i].note.value_length );
@@ -10145,6 +10177,7 @@ inline bool EditSaveMessageBody( TableBitWriter & w, const Edit & value )
             case EditBodyType::Tally:
             {
                 w.put( 32, kTableMessageRefBitsHere );
+                schema_assert( ( value.body.tally ) >= 0 && ( value.body.tally ) <= 100 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                 w.put( (uint64_t) ( value.body.tally ), 7 );
                 break;
             }
@@ -10523,6 +10556,7 @@ inline int64_t OpenDocumentMeasureBody( TableIds & ids, const OpenDocument & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.mode != Mode::Read )
     {
@@ -10554,6 +10588,7 @@ inline int64_t OpenDocumentMeasure( const OpenDocument & value )
 MESSAGEDEMO_TABLE_INLINE bool OpenDocumentSaveBody( TableWriter & w, TableIds & ids, const OpenDocument & value )
 {
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -10880,6 +10915,7 @@ inline bool OpenDocumentSaveMessageBody( TableBitWriter & w, const OpenDocument 
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.path_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.path, value.path_length );
@@ -11074,6 +11110,7 @@ inline int64_t SaveDocumentMeasureBody( TableIds & ids, const SaveDocument & val
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.path_length < 0 || value.path_length > 64 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.path_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 2, 0x03c52d0debd70676ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.path_length ) ) + ( value.path_length ); } // path
     if ( value.force != false ) { bytes += TableLebBytes( ids.ref_at( 50, 0xe75ad8afb3eeebe4ull ) ) + 1 + 1; } // force
     return bytes;
@@ -11090,6 +11127,7 @@ inline int64_t SaveDocumentMeasure( const SaveDocument & value )
 MESSAGEDEMO_TABLE_INLINE bool SaveDocumentSaveBody( TableWriter & w, TableIds & ids, const SaveDocument & value )
 {
     if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.path_length > 0 )
     {
         w.header( ids.ref_at( 2, 0x03c52d0debd70676ull ), 12 ); // path
@@ -11353,6 +11391,7 @@ inline bool SaveDocumentSaveMessageBody( TableBitWriter & w, const SaveDocument 
     if ( value.path_length > 0 )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.path_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.path, value.path_length );
@@ -11512,6 +11551,7 @@ inline int64_t TransactionMeasureBody( TableIds & ids, const Transaction & value
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.reason_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 18, 0x65e8d7f3474f2639ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.reason_length ) ) + ( value.reason_length ); } // reason
     if ( value.edits_count < 0 || value.edits_count > 3 ) { return -1; } // storage invariant
     if ( value.edits_count > 0 )
@@ -11648,6 +11688,7 @@ inline int64_t TransactionMeasure( const Transaction & value )
 MESSAGEDEMO_TABLE_INLINE bool TransactionSaveBody( TableWriter & w, TableIds & ids, const Transaction & value )
 {
     if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.reason_length > 0 )
     {
         w.header( ids.ref_at( 18, 0x65e8d7f3474f2639ull ), 12 ); // reason
@@ -12680,6 +12721,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
     if ( value.reason_length > 0 )
     {
         w.put( 22, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.reason, (uint64_t) value.reason_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.reason_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.reason, value.reason_length );
@@ -12725,6 +12767,7 @@ inline bool TransactionSaveMessageBody( TableBitWriter & w, const Transaction & 
                         case EditBodyType::Tally:
                         {
                             w.put( 32, kTableMessageRefBitsHere );
+                            schema_assert( ( value.pending[i].tally ) >= 0 && ( value.pending[i].tally ) <= 100 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                             w.put( (uint64_t) ( value.pending[i].tally ), 7 );
                             break;
                         }
@@ -13804,6 +13847,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                             arm_payloada += value.body.origin.note.value_length; // the string's bytes under the arm's L
                             w.header( arm_refa, 12 ); w.putleb( (uint64_t) arm_payloada ); // note
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            schema_assert( TableUtf8WellFormed( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
                             w.raw( value.body.origin.note.value, value.body.origin.note.value_length );
                             break;
                         }
@@ -14162,6 +14206,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                                     arm_payloadua += value.history[elem_i].origin.note.value_length; // the string's bytes under the arm's L
                                     w.header( arm_refua, 12 ); w.putleb( (uint64_t) arm_payloadua ); // note
                                     if ( value.history[elem_i].origin.note.value_length < 0 || value.history[elem_i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.history[elem_i].origin.note.value, (uint64_t) value.history[elem_i].origin.note.value_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
                                     w.raw( value.history[elem_i].origin.note.value, value.history[elem_i].origin.note.value_length );
                                     break;
                                 }
@@ -15612,6 +15657,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                         case OriginType::Pid:
                         {
                             w.put( 37, kTableMessageRefBitsHere );
+                            schema_assert( ( value.body.origin.pid ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                             w.put( (uint64_t) ( value.body.origin.pid ), 10 );
                             break;
                         }
@@ -15619,6 +15665,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                         {
                             w.put( 38, kTableMessageRefBitsHere );
                             if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // storage invariant
+                            schema_assert( TableUtf8WellFormed( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
                             w.put( (uint64_t) value.body.origin.note.value_length, 5 );
                             w.align(); // a string or a bytes ALIGNS before its bytes
                             w.putbytes( (const uint8_t *) value.body.origin.note.value, value.body.origin.note.value_length );
@@ -15717,6 +15764,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                                 case OriginType::Pid:
                                 {
                                     w.put( 37, kTableMessageRefBitsHere );
+                                    schema_assert( ( value.history[i].origin.pid ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                                     w.put( (uint64_t) ( value.history[i].origin.pid ), 10 );
                                     break;
                                 }
@@ -15724,6 +15772,7 @@ inline bool ToolMessageSaveMessageBody( TableBitWriter & w, const ToolMessage & 
                                 {
                                     w.put( 38, kTableMessageRefBitsHere );
                                     if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // storage invariant
+                                    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
                                     w.put( (uint64_t) value.history[i].origin.note.value_length, 5 );
                                     w.align(); // a string or a bytes ALIGNS before its bytes
                                     w.putbytes( (const uint8_t *) value.history[i].origin.note.value, value.history[i].origin.note.value_length );
@@ -18620,6 +18669,342 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
     }
 }
 
+// User's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool UserFixedWriteCheck( const User & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.name_length < 0 || value.name_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    return bad == 0;
+}
+
+// Script's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool ScriptFixedWriteCheck( const Script & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
+// InsertText's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool InsertTextFixedWriteCheck( const InsertText & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.text_length < 0 || value.text_length > 32 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.text, (uint64_t) value.text_length );
+    if ( (uint64_t) value.origin.type > 4u ) { return false; } // a union tag outside its arms
+    switch ( value.origin.type )
+    {
+        case OriginType::User:
+        {
+            if ( !UserFixedWriteCheck( value.origin.user ) ) { return false; }
+            break;
+        }
+        case OriginType::Script:
+        {
+            if ( !ScriptFixedWriteCheck( value.origin.script ) ) { return false; }
+            break;
+        }
+        case OriginType::Pid:
+        {
+            bad |= (int) ( value.origin.pid > 1000 );
+            break;
+        }
+        case OriginType::Note:
+        {
+            if ( value.origin.note.value_length < 0 || value.origin.note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
+            bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.origin.note.value, (uint64_t) value.origin.note.value_length );
+            break;
+        }
+        default: break;
+    }
+    if ( value.origins_count < 0 || value.origins_count > 2 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.origins_count; ++i )
+    {
+        if ( (uint64_t) value.origins[i].type > 4u ) { return false; } // a union tag outside its arms
+        switch ( value.origins[i].type )
+        {
+            case OriginType::User:
+            {
+                if ( !UserFixedWriteCheck( value.origins[i].user ) ) { return false; }
+                break;
+            }
+            case OriginType::Script:
+            {
+                if ( !ScriptFixedWriteCheck( value.origins[i].script ) ) { return false; }
+                break;
+            }
+            case OriginType::Pid:
+            {
+                bad |= (int) ( value.origins[i].pid > 1000 );
+                break;
+            }
+            case OriginType::Note:
+            {
+                if ( value.origins[i].note.value_length < 0 || value.origins[i].note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
+                bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.origins[i].note.value, (uint64_t) value.origins[i].note.value_length );
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.modes_present )
+    {
+        if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; } // the declared count is the bound (§3.4)
+        for ( int64_t i = 0; i < (int64_t) value.modes_count; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.modes[i] > 2u );
+        }
+    }
+    return bad == 0;
+}
+
+// Edit's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool EditFixedWriteCheck( const Edit & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( (uint64_t) value.body.type > 6u ) { return false; } // a union tag outside its arms
+    switch ( value.body.type )
+    {
+        case EditBodyType::Insert:
+        {
+            if ( !InsertTextFixedWriteCheck( value.body.insert ) ) { return false; }
+            break;
+        }
+        case EditBodyType::Tally:
+        {
+            bad |= (int) ( value.body.tally < 0 ) | (int) ( value.body.tally > 100 );
+            break;
+        }
+        case EditBodyType::Marks:
+        {
+            if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; } // the declared count is the bound (§3.4)
+            break;
+        }
+        case EditBodyType::Blob:
+        {
+            if ( value.body.blob.value_length < 0 || value.body.blob.value_length > 4 ) { return false; } // the declared length is the bound (§3.4)
+            break;
+        }
+        case EditBodyType::Mode:
+        {
+            bad |= (int) ( (uint64_t) value.body.mode > 2u );
+            break;
+        }
+        default: break;
+    }
+    return bad == 0;
+}
+
+// OpenDocument's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool OpenDocumentFixedWriteCheck( const OpenDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    bad |= (int) ( (uint64_t) value.mode > 2u );
+    return bad == 0;
+}
+
+// SaveDocument's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool SaveDocumentFixedWriteCheck( const SaveDocument & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.path_length < 0 || value.path_length > 64 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.path, (uint64_t) value.path_length );
+    return bad == 0;
+}
+
+// Transaction's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool TransactionFixedWriteCheck( const Transaction & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.reason_length < 0 || value.reason_length > 16 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.reason, (uint64_t) value.reason_length );
+    if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.edits_count; ++i )
+    {
+        if ( !EditFixedWriteCheck( value.edits[i] ) ) { return false; }
+    }
+    for ( int64_t i = 0; i < (int64_t) 2; ++i )
+    {
+        if ( (uint64_t) value.pending[i].type > 6u ) { return false; } // a union tag outside its arms
+        switch ( value.pending[i].type )
+        {
+            case EditBodyType::Insert:
+            {
+                if ( !InsertTextFixedWriteCheck( value.pending[i].insert ) ) { return false; }
+                break;
+            }
+            case EditBodyType::Tally:
+            {
+                bad |= (int) ( value.pending[i].tally < 0 ) | (int) ( value.pending[i].tally > 100 );
+                break;
+            }
+            case EditBodyType::Marks:
+            {
+                if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return false; } // the declared count is the bound (§3.4)
+                break;
+            }
+            case EditBodyType::Blob:
+            {
+                if ( value.pending[i].blob.value_length < 0 || value.pending[i].blob.value_length > 4 ) { return false; } // the declared length is the bound (§3.4)
+                break;
+            }
+            case EditBodyType::Mode:
+            {
+                bad |= (int) ( (uint64_t) value.pending[i].mode > 2u );
+                break;
+            }
+            default: break;
+        }
+    }
+    return bad == 0;
+}
+
+// ToolMessage's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool ToolMessageFixedWriteCheck( const ToolMessage & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( (uint64_t) value.body.type > 8u ) { return false; } // a union tag outside its arms
+    switch ( value.body.type )
+    {
+        case ToolBodyType::Open:
+        {
+            if ( !OpenDocumentFixedWriteCheck( value.body.open ) ) { return false; }
+            break;
+        }
+        case ToolBodyType::Save:
+        {
+            if ( !SaveDocumentFixedWriteCheck( value.body.save ) ) { return false; }
+            break;
+        }
+        case ToolBodyType::Transact:
+        {
+            if ( !TransactionFixedWriteCheck( value.body.transact ) ) { return false; }
+            break;
+        }
+        case ToolBodyType::Origin:
+        {
+            if ( (uint64_t) value.body.origin.type > 4u ) { return false; } // a union tag outside its arms
+            switch ( value.body.origin.type )
+            {
+                case OriginType::User:
+                {
+                    if ( !UserFixedWriteCheck( value.body.origin.user ) ) { return false; }
+                    break;
+                }
+                case OriginType::Script:
+                {
+                    if ( !ScriptFixedWriteCheck( value.body.origin.script ) ) { return false; }
+                    break;
+                }
+                case OriginType::Pid:
+                {
+                    bad |= (int) ( value.body.origin.pid > 1000 );
+                    break;
+                }
+                case OriginType::Note:
+                {
+                    if ( value.body.origin.note.value_length < 0 || value.body.origin.note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
+                    bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.body.origin.note.value, (uint64_t) value.body.origin.note.value_length );
+                    break;
+                }
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    if ( value.history_count < 0 || value.history_count > 2 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.history_count; ++i )
+    {
+        if ( (uint64_t) value.history[i].type > 8u ) { return false; } // a union tag outside its arms
+        switch ( value.history[i].type )
+        {
+            case ToolBodyType::Open:
+            {
+                if ( !OpenDocumentFixedWriteCheck( value.history[i].open ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Save:
+            {
+                if ( !SaveDocumentFixedWriteCheck( value.history[i].save ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Transact:
+            {
+                if ( !TransactionFixedWriteCheck( value.history[i].transact ) ) { return false; }
+                break;
+            }
+            case ToolBodyType::Origin:
+            {
+                if ( (uint64_t) value.history[i].origin.type > 4u ) { return false; } // a union tag outside its arms
+                switch ( value.history[i].origin.type )
+                {
+                    case OriginType::User:
+                    {
+                        if ( !UserFixedWriteCheck( value.history[i].origin.user ) ) { return false; }
+                        break;
+                    }
+                    case OriginType::Script:
+                    {
+                        if ( !ScriptFixedWriteCheck( value.history[i].origin.script ) ) { return false; }
+                        break;
+                    }
+                    case OriginType::Pid:
+                    {
+                        bad |= (int) ( value.history[i].origin.pid > 1000 );
+                        break;
+                    }
+                    case OriginType::Note:
+                    {
+                        if ( value.history[i].origin.note.value_length < 0 || value.history[i].origin.note.value_length > 24 ) { return false; } // the declared length is the bound (§3.4)
+                        bad |= (int) !TableUtf8WellFormed( (const uint8_t *) value.history[i].origin.note.value, (uint64_t) value.history[i].origin.note.value_length );
+                        break;
+                    }
+                    default: break;
+                }
+                break;
+            }
+            default: break;
+        }
+    }
+    if ( value.trace_present )
+    {
+        if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; } // the declared count is the bound (§3.4)
+        for ( int64_t i = 0; i < (int64_t) value.trace_count; ++i )
+        {
+            if ( !ScriptFixedWriteCheck( value.trace[i] ) ) { return false; }
+        }
+    }
+    if ( value.marks_present )
+    {
+        for ( int64_t i = 0; i < (int64_t) 2; ++i )
+        {
+            bad |= (int) ( (uint64_t) value.marks[i] > 2u );
+        }
+    }
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -18741,6 +19126,7 @@ inline int64_t UserFixedSave( const User * values, int64_t count, uint8_t * buff
 {
     const int64_t need = UserFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( UserFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, UserFixedHash );
@@ -19095,6 +19481,7 @@ inline int64_t ScriptFixedSave( const Script * values, int64_t count, uint8_t * 
 {
     const int64_t need = ScriptFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( ScriptFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ScriptFixedHash );
@@ -19954,6 +20341,7 @@ inline int64_t InsertTextFixedSave( const InsertText * values, int64_t count, ui
 {
     const int64_t need = InsertTextFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( InsertTextFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, InsertTextFixedHash );
@@ -20943,6 +21331,7 @@ inline int64_t EditFixedSave( const Edit * values, int64_t count, uint8_t * buff
 {
     const int64_t need = EditFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( EditFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, EditFixedHash );
@@ -21324,6 +21713,7 @@ inline int64_t OpenDocumentFixedSave( const OpenDocument * values, int64_t count
 {
     const int64_t need = OpenDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( OpenDocumentFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, OpenDocumentFixedHash );
@@ -21678,6 +22068,7 @@ inline int64_t SaveDocumentFixedSave( const SaveDocument * values, int64_t count
 {
     const int64_t need = SaveDocumentFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( SaveDocumentFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, SaveDocumentFixedHash );
@@ -22918,6 +23309,7 @@ inline int64_t TransactionFixedSave( const Transaction * values, int64_t count, 
 {
     const int64_t need = TransactionFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( TransactionFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, TransactionFixedHash );
@@ -26131,6 +26523,7 @@ inline int64_t ToolMessageFixedSave( const ToolMessage * values, int64_t count, 
 {
     const int64_t need = ToolMessageFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( ToolMessageFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ToolMessageFixedHash );

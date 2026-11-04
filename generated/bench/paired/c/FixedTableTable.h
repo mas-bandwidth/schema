@@ -611,6 +611,21 @@ static SCHEMA_UNUSED int bench_table_wire_utf8( const uint8_t * p, uint64_t n )
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int bench_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !bench_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t bench_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -2438,6 +2453,10 @@ static SCHEMA_UNUSED int64_t schema_bench_table_integrity_seal_( uint8_t * buffe
 
 #endif /* SCHEMA_BENCH_TABLE_PRIMITIVES */
 
+#ifndef schema_assert
+#define schema_assert assert
+#endif
+
 #ifndef SCHEMA_BENCH_TABLE_REFUSE_RUNTIME
 #define SCHEMA_BENCH_TABLE_REFUSE_RUNTIME
 typedef int bench_table_refuse_reason_t;
@@ -3585,6 +3604,15 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_fixed_table_fix
     schema_bench_bench_mixed_fixed_clamp_body_( &value->value, clamped, damaged );
 }
 
+/* FixedTable's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_bench_fixed_table_fixed_write_check_( const bench_fixed_table_t * value )
+{
+    (void) value;
+    if ( !schema_bench_bench_mixed_fixed_write_check_( &value->value ) ) { return 0; }
+    return 1;
+}
+
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
    declared min and max, and an ORDINAL's set — a union tag past the arm
    count, an enum ordinal past the enum's top value. Straight-line, after
@@ -3911,6 +3939,7 @@ static SCHEMA_UNUSED int64_t bench_fixed_table_fixed_save( const bench_fixed_tab
     {
         if ( !schema_bench_fixed_table_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_bench_fixed_table_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) BENCH_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = BENCH_K_TABLE_FIXED_FORM;
     bench_table_fixed_put64( buffer + BENCH_K_TABLE_FIXED_HASH_AT, bench_fixed_table_fixed_hash );

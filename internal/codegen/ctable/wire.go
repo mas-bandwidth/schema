@@ -473,6 +473,21 @@ static SCHEMA_UNUSED int table_wire_utf8( const uint8_t * p, uint64_t n )
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -594,10 +609,14 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 		g.pf("    if ( len < 0 || !table_wire_utf8( (const uint8_t *) text, (uint64_t) len ) ) { return 0; }\n")
 		g.pf("    table_writer_raw( w, text, len );\n")
 	case f.Type.Kind == ir.TWString:
-		g.pf("    int32_t i; for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
+		g.pf("    int32_t i;\n")
+		g.emitTextAssert(f, expr, expr+"_length", "    ", "a write")
+		g.pf("    for ( i = 0; i < %s_length; i++ ) { table_writer_put16( w, %s[i] ); }\n", expr, expr)
 	case (f.Type.Kind == ir.TString && !f.Type.Blob()):
 		if st.IsTextListElem() {
 			g.pf("    if ( !table_wire_utf8( (const uint8_t *) %s, (uint64_t) %s_length ) ) { return 0; }\n", expr, expr)
+		} else {
+			g.emitTextAssert(f, expr, expr+"_length", "    ", "a write")
 		}
 		g.pf("    table_writer_raw( w, %s, %s_length );\n", expr, expr)
 	case (f.Type.Kind == ir.TBytes && !f.Type.Blob()):
