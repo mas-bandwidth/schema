@@ -508,6 +508,55 @@ conformance-negative-control-cs-write-refusal: build-conformance-cs build/confor
 	@echo 'C# write-refusal negative control: no write range check is detected by cs / write-refusal; wire stays green'
 test-cs: conformance-negative-control-cs-write-refusal
 
+# THE FIXED AND MESSAGE WRITE-REFUSAL CONTROLS (testdata/conformance/tables/
+# FORMAT.md, write-refusal-fixed and write-refusal-message), through
+# test/conformance/cs/write-refusal-control: the Debug driver against a copy of
+# the generated tree with ONE write check removed, its surface red and the
+# surface that writes the same form clean green. The fixed control removes the
+# two-ended ranged-integer test (never a count or length bound) from every
+# <T>FixedCheckBody; the message control removes the ranged-integer
+# Debug.Assert from the Collect walk, the check SaveMessages asks before its
+# first byte.
+.PHONY: conformance-negative-control-cs-write-refusal-fixed
+conformance-negative-control-cs-write-refusal-fixed: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-fixed-control \
+		's/^(\s*)if \(value\.(?!\w*(?:Length|Count)\b)\w+ < -?\d+ \|\| value\.\w+ > -?\d+\) return false;$$/$$1\/* SABOTAGED: no fixed write range check *\//' \
+		'^\s*if \(value\.\w+ < -?[0-9]+ \|\| value\.\w+ > -?[0-9]+\) return false;$$' write-refusal-fixed wire
+	@echo 'C# write-refusal-fixed negative control: no FixedSave range check is detected by cs / write-refusal-fixed; wire stays green'
+test-cs: conformance-negative-control-cs-write-refusal-fixed
+
+.PHONY: conformance-negative-control-cs-write-refusal-message
+conformance-negative-control-cs-write-refusal-message: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-control "$(DOTNET)" build/conformance-cs-write-refusal-message-control \
+		's/^\s*\QSystem.Diagnostics.Debug.Assert(f.WriteValidRaw == null || f.WriteValidRaw(f.GetRaw(value, i))\E.*$$/        \/* SABOTAGED: no message write range check *\//' \
+		'Debug\.Assert\(f\.WriteValidRaw == null \|\| f\.WriteValidRaw\(f\.GetRaw\(value, i\)\)' write-refusal-message message
+	@echo 'C# write-refusal-message negative control: no SaveMessages range check is detected by cs / write-refusal-message; message stays green'
+test-cs: conformance-negative-control-cs-write-refusal-message
+
+# THE STORAGE RELEASE GATE (docs/SPEC.md §5.1): a count or a length that indexes
+# a fixed array's storage is refused in EVERY build, so
+# test/conformance/cs/write-refusal-storage-release builds the conformance
+# driver -c Release, where every Debug.Assert is gone, and requires the storage
+# rows to answer refused (wref_count, wref_length, fref_count, fref_length,
+# mref_length) and their in-bound twins wrote. Its control removes the
+# every-build <T>FixedStorageBody call from every FixedSave in a copy of the
+# generated tree; the gate must go red on the fixed rows.
+.PHONY: write-refusal-storage-release-cs write-refusal-storage-release-cs-negative-control
+write-refusal-storage-release-cs: build-conformance-cs build/conformance-harness
+	@sh test/conformance/cs/write-refusal-storage-release "$(DOTNET)" build/write-refusal-storage-release-cs
+test-cs: write-refusal-storage-release-cs
+
+write-refusal-storage-release-cs-negative-control: build-conformance-cs build/conformance-harness
+	@status=0; sh test/conformance/cs/write-refusal-storage-release "$(DOTNET)" build/write-refusal-storage-release-cs-control \
+		's/^(\s*)for \(int k = 0; k < values\.Length; \+\+k\) \{ if \(!\w+FixedStorageBody\(values\[k\]\)\) \{ return -1; \} \}$$/$$1\/* SABOTAGED: no fixed storage bound *\//' \
+		'FixedStorageBody\(values\[k\]\)' > build/write-refusal-storage-release-cs-control.log 2>&1 || status=$$?; \
+	if [ $$status -ne 1 ]; then cat build/write-refusal-storage-release-cs-control.log; \
+		echo "NEGATIVE CONTROL FAILED: the release gate did not go red on a FixedSave with no storage bound (exit $$status)"; exit 1; fi; \
+	grep -E '^release write-refusal-fixed fref_count: ' build/write-refusal-storage-release-cs-control.log | grep -v ': refused$$' || \
+		{ cat build/write-refusal-storage-release-cs-control.log; echo "NEGATIVE CONTROL: fref_count did not go red"; exit 1; }
+	@echo 'C# storage release negative control: a FixedSave with no every-build storage bound is detected by write-refusal-storage-release-cs'
+test-cs: write-refusal-storage-release-cs-negative-control
+
 generated/bench/tables/cs/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@mkdir -p generated/bench/tables/cs
 	./bin/schema generate --lang cs --out generated/bench/tables/cs bench/corpus/BenchTable.schema
@@ -1212,6 +1261,31 @@ packet-finite-cs-negative-control: toolchain-cs generated/cs/.stamp generated/be
 	@echo 'packet finite-float C# negative control: each deleted rule fails exactly its read vectors'
 
 test-cs: packet-finite-cs-negative-control
+
+# THE GENERATED WRITER'S FINITE ASSERT (SPEC §4.3): the packet Write asks
+# Debug.Assert(float.IsFinite(..)) / (double.IsFinite(..)) before the runtime's
+# own call. This removes those asserts from a COPY of generated/cs and requires
+# test/cs, built Debug against the copy, to go red on exactly the generated-
+# assert write checks, test/cs/finite-controls/generated-write.expected.
+.PHONY: packet-finite-cs-write-negative-control
+packet-finite-cs-write-negative-control: toolchain-cs generated/cs/.stamp generated/bench/cs/.stamp
+	@rm -rf build/packet-finite/cs-write-negative && mkdir -p build/packet-finite/cs-write-negative
+	@cp -R generated/cs build/packet-finite/cs-write-negative/generated
+	@files=$$(grep -rlE 'Debug\.Assert\((float|double)\.IsFinite\(' build/packet-finite/cs-write-negative/generated); \
+		[ -n "$$files" ] || { echo "NEGATIVE CONTROL: the finite-assert sabotage matches no generated line"; exit 1; }; \
+		perl -pi -e 's/^(\s*)Debug\.Assert\((float|double)\.IsFinite\(.*$$/$$1\/\/ SABOTAGED: no finite write assert/' $$files
+	$(DOTNET) build test/cs/schematest.csproj -c Debug -p:PacketGeneratedDir=$(CURDIR)/build/packet-finite/cs-write-negative/generated \
+		--artifacts-path build/packet-finite/cs-write-negative/out --nologo -v quiet
+	@if ( cd test/cs && $(DOTNET) ../../build/packet-finite/cs-write-negative/out/bin/schematest/debug/schematest.dll ) \
+		> build/packet-finite/cs-write-negative/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: C# packet writes passed with the generated finite assert removed"; exit 1; fi
+	@grep '^FAILED: ' build/packet-finite/cs-write-negative/log > build/packet-finite/cs-write-negative/got || true
+	@if ! diff -u test/cs/finite-controls/generated-write.expected build/packet-finite/cs-write-negative/got; then \
+		echo "NEGATIVE CONTROL FAILED: removing the generated finite assert did not fail exactly its write checks"; \
+		cat build/packet-finite/cs-write-negative/log; exit 1; fi
+	@echo 'packet finite-float C# write negative control: the removed generated assert fails exactly its write checks'
+
+test-cs: packet-finite-cs-write-negative-control
 
 # THE CARDS UNIT'S C# LEG (docs/SPEC-TABLES.md §2): the card record as a
 # generated variable table with an owning facade (tables/cards/cs) and the

@@ -421,10 +421,26 @@ function TableVariableUtf8Decode(bytes) {
 // each, LITTLE-ENDIAN, under a byte length L that is twice the unit count
 // (internal/tablewire text.go wideUnits, wideBytes).
 
-// the units onto the wire, or false for a value past its N units: wide text is
-// never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+// whether a string's code units pair every surrogate: a JavaScript string can
+// hold a lone half, which is ill-formed text in both text kinds (docs/SPEC.md
+// §5.1 row 8), and the writer refuses it rather than spell it
+function TableVariableTextPaired(s) {
+  for (let i = 0; i < s.length; i++) {
+    const u = s.charCodeAt(i);
+    if (u >= 0xdc00 && u <= 0xdfff) { return false; }
+    if (u >= 0xd800 && u <= 0xdbff) {
+      const low = s.charCodeAt(++i);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) { return false; }
+    }
+  }
+  return true;
+}
+
+// the units onto the wire, or false for a value past its N units or one holding
+// an unpaired surrogate: wide text is never truncated or repaired on the way
+// out (SPEC.md §4.12) — the save is refused (null)
 function TableVariableWideWrite(w, s, bound) {
-  if (s.length > bound) { return false; }
+  if (s.length > bound || !TableVariableTextPaired(s)) { return false; }
   for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
   return true;
 }

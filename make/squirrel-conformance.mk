@@ -81,6 +81,28 @@ conformance-negative-control-squirrel-write-refusal: build/conformance-harness b
 
 test-squirrel: conformance-negative-control-squirrel-write-refusal
 
+# THE FIXED WRITER'S CONTRACT: FixedSave's integer check forgets a signed
+# range, so the ranged rows write where they owe the refusal and
+# write-refusal-fixed goes red, while wire stays green.
+.PHONY: conformance-negative-control-squirrel-write-refusal-fixed
+conformance-negative-control-squirrel-write-refusal-fixed: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/negative-control write-refusal-fixed fixed.nut \
+		's/if (val < lo || val > hi) return false;//' \
+		write-refusal-fixed wire
+
+test-squirrel: conformance-negative-control-squirrel-write-refusal-fixed
+
+# THE MESSAGE WRITER'S CONTRACT: SaveMessages forgets an integer's declared
+# set, so the ranged rows are written off their bounds and
+# write-refusal-message goes red, while message stays green.
+.PHONY: conformance-negative-control-squirrel-write-refusal-message
+conformance-negative-control-squirrel-write-refusal-message: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/negative-control write-refusal-message message.nut \
+		's/!intFits(fd, value))/false)/' \
+		write-refusal-message message
+
+test-squirrel: conformance-negative-control-squirrel-write-refusal-message
+
 # THE EMBEDDED RUNTIME IS A BUILD INPUT. squirreltable.go carries
 # `//go:embed runtime/*.nut`, but the Makefile's GO_SOURCES names only *.go, so
 # without this prerequisite a runtime change leaves build/schema-squirrel — and
@@ -152,6 +174,8 @@ tables-squirrel-release:
 	$(MAKE) conformance-negative-control-squirrel-absent
 	$(MAKE) conformance-negative-control-squirrel-framing
 	$(MAKE) conformance-negative-control-squirrel-write-refusal
+	$(MAKE) conformance-negative-control-squirrel-write-refusal-fixed
+	$(MAKE) conformance-negative-control-squirrel-write-refusal-message
 	$(MAKE) tables-squirrel-usage-negative-control
 	$(MAKE) tables-squirrel-runtime-home-negative-control
 	$(MAKE) tables-squirrel-release-negative-control

@@ -208,6 +208,24 @@ namespace Bench
             return null;
         }
 
+        // FixedTable's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool FixedTableFixedCheckBody(FixedTable value)
+        {
+            if (value == null) return true;
+            if (!BenchMixedFixedCheckBody(value.Value)) return false;
+            return true;
+        }
+
+        // FixedTable's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool FixedTableFixedStorageBody(FixedTable value)
+        {
+            if (value == null) return true;
+            if (!BenchMixedFixedStorageBody(value.Value)) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -2000,6 +2018,10 @@ namespace Bench
             long need = FixedTableFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (FixedTableFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!FixedTableFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(FixedTableFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), FixedTableFixedHash);

@@ -591,7 +591,10 @@ namespace Example
                     return false;
                 }
             }
-            Debug.Assert(value.SamplesCount >= 1 && value.SamplesCount <= 8, "value.SamplesCount out of range [1, 8]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.SamplesCount < 1 || value.SamplesCount > 8) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.SamplesCount) - (uint)(1);
                 if (!batch.SerializeBits(ref offsetValue, 3))
@@ -984,7 +987,10 @@ namespace Example
             {
                 return false;
             }
-            Debug.Assert(value.ExtrasCount >= 0 && value.ExtrasCount <= 2, "value.ExtrasCount out of range [0, 2]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.ExtrasCount < 0 || value.ExtrasCount > 2) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.ExtrasCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -1328,7 +1334,10 @@ namespace Example
 
         public static bool WriteBlock(WriteStream stream, ref Block value)
         {
-            Debug.Assert(value.DataLength >= 0 && value.DataLength <= (int)MaxBlockSize, "value.DataLength out of range [0, (int)MaxBlockSize]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.DataLength < 0 || value.DataLength > (int)MaxBlockSize) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.DataLength);
                 if (!stream.SerializeBits(ref offsetValue, 11))
@@ -1370,7 +1379,10 @@ namespace Example
 
         public static bool WriteChat(WriteStream stream, ref Chat value)
         {
-            Debug.Assert(value.TextLength >= 0 && value.TextLength <= (int)MaxChatLength, "value.TextLength out of range [0, (int)MaxChatLength]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.TextLength < 0 || value.TextLength > (int)MaxChatLength) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 9))
@@ -1555,7 +1567,10 @@ namespace Example
                     return false;
                 }
             }
-            Debug.Assert(value.ItemsCount >= 0 && value.ItemsCount <= 16, "value.ItemsCount out of range [0, 16]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.ItemsCount < 0 || value.ItemsCount > 16) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.ItemsCount);
                 if (!stream.SerializeBits(ref offsetValue, 5))
@@ -1574,6 +1589,7 @@ namespace Example
                     }
                 }
             }
+            Debug.Assert(float.IsFinite(value.FloatValue), "write refused: a NaN or an infinity in a float");
             if (!stream.SerializeFloat(ref value.FloatValue))
             {
                 return false;
@@ -1585,6 +1601,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(double.IsFinite(value.DoubleValue), "write refused: a NaN or an infinity in a double");
             if (!stream.SerializeDouble(ref value.DoubleValue))
             {
                 return false;
@@ -1629,7 +1646,10 @@ namespace Example
             {
                 return false;
             }
-            Debug.Assert(value.TextLength >= 0 && value.TextLength <= 255, "value.TextLength out of range [0, 255]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.TextLength < 0 || value.TextLength > 255) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.TextLength);
                 if (!stream.SerializeBits(ref offsetValue, 8))

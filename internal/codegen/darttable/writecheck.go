@@ -15,9 +15,10 @@ import (
 // --enable-asserts (and in the JIT's debug runs) and gone from a release AOT
 // build: a ranged integer inside its min/max (scalars and every element of an
 // array of them), a bits(N) value inside N bits, a bounded or fixed array's
-// count inside its bounds, a string(N), bytes(N) or wstring(N) inside N, and
-// an enum ordinal inside its set (0, None, through the last variant). Each
-// field's asserts run before a byte of it is written.
+// count inside its bounds, a string(N), bytes(N) or wstring(N) inside N, an
+// enum ordinal inside its set (0, None, through the last variant), and narrow
+// or wide text with no unpaired surrogate. Each field's asserts run before a
+// byte of it is written.
 
 // writeCheckHolds is the Dart condition ONE value of field f (an element's
 // field for an array) must meet to be written, over expr; "" when no debug
@@ -44,11 +45,20 @@ func writeCheckHolds(f *ir.Field, expr string) string {
 			return fmt.Sprintf("%s >= 0 && %s <= %d", expr, expr, (uint64(1)<<uint(f.Type.Width))-1)
 		}
 	case ir.TString:
+		// a Dart String is UTF-16: an unpaired surrogate in it has no UTF-8
+		// spelling, which is how ill-formed narrow text reaches this writer
+		// (an unbounded text is refused in every build by tableTextValueValid)
 		if f.Type.Size > 0 && !f.Type.TextUnbounded() {
-			return fmt.Sprintf("utf8.encode(%s).length <= %d", expr, f.Type.Size)
+			return fmt.Sprintf("tableTextWellFormed(%s) && utf8.encode(%s).length <= %d", expr, expr, f.Type.Size)
 		}
-	case ir.TWString, ir.TBytes:
-		// wide text counts UTF-16 code units, and bytes ride one a code unit
+	case ir.TWString:
+		// wide text counts UTF-16 code units, and every surrogate is paired
+		if f.Type.Size > 0 {
+			return fmt.Sprintf("tableTextWellFormed(%s) && %s.length <= %d", expr, expr, f.Type.Size)
+		}
+		return fmt.Sprintf("tableTextWellFormed(%s)", expr)
+	case ir.TBytes:
+		// bytes ride one a code unit
 		if f.Type.Size > 0 {
 			return fmt.Sprintf("%s.length <= %d", expr, f.Type.Size)
 		}

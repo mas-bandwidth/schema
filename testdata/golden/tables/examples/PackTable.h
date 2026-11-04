@@ -1113,6 +1113,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -9725,6 +9742,7 @@ inline int64_t GunnerSettingsMeasureBody( TableIds & ids, const GunnerSettings &
     if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
     if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.callsign_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x5bc44627b9848818ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.callsign_length ) ) + ( value.callsign_length ); } // callsign
     return bytes;
 }
@@ -9751,6 +9769,7 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
         w.put8( value.tracking ? 1 : 0 );
     }
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.callsign_length > 0 )
     {
         w.header( ids.ref_at( 53, 0x5bc44627b9848818ull ), 12 ); // callsign
@@ -9761,8 +9780,13 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerSettingsSave( const GunnerSettings & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = GunnerSettingsMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10055,6 +10079,7 @@ inline bool GunnerSettingsSaveMessageBody( TableBitWriter & w, const GunnerSetti
     if ( value.callsign_length > 0 )
     {
         w.put( 13, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.callsign_length, 5 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.callsign, value.callsign_length );
@@ -10188,10 +10213,14 @@ inline int64_t GunnerSettingsMeasureMessages( const GunnerSettings * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GunnerSettingsSaveMessages( const GunnerSettings * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = GunnerSettingsMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -10240,6 +10269,7 @@ inline int64_t ShipEntryMeasureBody( TableIds & ids, const ShipEntry & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.display_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.display_name_length ) ) + ( value.display_name_length ); } // display_name
     if ( !TableFloatFinite( value.health ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
@@ -10275,6 +10305,7 @@ inline int64_t ShipEntryMeasure( const ShipEntry & value )
 TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, const ShipEntry & value )
 {
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.display_name_length > 0 )
     {
         w.header( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ), 12 ); // display_name
@@ -10323,8 +10354,13 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipEntrySave( const ShipEntry & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ShipEntryMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10761,6 +10797,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
     if ( value.display_name_length > 0 )
     {
         w.put( 95, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.display_name_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.display_name, value.display_name_length );
@@ -10784,6 +10821,7 @@ inline bool ShipEntrySaveMessageBody( TableBitWriter & w, const ShipEntry & valu
         w.put( (uint64_t) ( value.hardpoints_count ) - 0, 3 );
         for ( int32_t i = 0; i < value.hardpoints_count; i++ )
         {
+            schema_assert( ( value.hardpoints[i] ) >= 0 && ( value.hardpoints[i] ) <= 8 ); // a message write keeps the declared bounds (SPEC.md §5.1)
             w.put( (uint64_t) ( value.hardpoints[i] ), 4 );
         }
     }
@@ -11051,10 +11089,14 @@ inline int64_t ShipEntryMeasureMessages( const ShipEntry * values, int64_t count
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipEntrySaveMessages( const ShipEntry * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ShipEntryMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11112,6 +11154,7 @@ inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings &
         bytes += TableLebBytes( ref_difficulty ) + 1 + TableLebBytes( variant_difficulty ); // difficulty: the variant's reference
     }
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.build_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x14ec921cc2549d60ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.build_note_length ) ) + ( value.build_note_length ); } // build_note
     {
         bool all_default_spawn_delays = true;
@@ -11157,6 +11200,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
         w.header( ref_difficulty, 30 ); w.putleb( variant_difficulty ); // difficulty
     }
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.build_note_length > 0 )
     {
         w.header( ids.ref_at( 11, 0x14ec921cc2549d60ull ), 12 ); // build_note
@@ -11191,8 +11235,13 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GlobalSettingsSave( const GlobalSettings & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = GlobalSettingsMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11568,6 +11617,7 @@ inline bool GlobalSettingsSaveMessageBody( TableBitWriter & w, const GlobalSetti
     if ( value.tick_rate != 60 )
     {
         w.put( 7, kTableMessageRefBitsHere );
+        schema_assert( ( value.tick_rate ) >= 1 && ( value.tick_rate ) <= 240 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.tick_rate ) - 1ull, 8 );
     }
     if ( value.difficulty != Difficulty::Normal )
@@ -11584,6 +11634,7 @@ inline bool GlobalSettingsSaveMessageBody( TableBitWriter & w, const GlobalSetti
     if ( value.build_note_length > 0 )
     {
         w.put( 9, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.build_note_length, 6 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.build_note, value.build_note_length );
@@ -11800,10 +11851,14 @@ inline int64_t GlobalSettingsMeasureMessages( const GlobalSettings * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t GlobalSettingsSaveMessages( const GlobalSettings * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = GlobalSettingsMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -12054,8 +12109,13 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PackConfigSave( const PackConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = PackConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12694,6 +12754,7 @@ inline bool PackConfigSaveMessageBody( TableBitWriter & w, const PackConfig & va
                 uint64_t key_slot = 0;
                 if ( !TableEnumSlot( (Difficulty) ( i + 1 ), key_slot ) ) { return false; }
                 w.put( key_slot, kTableMessageRefBitsHere ); // the slot's VARIANT reference, not its position
+                schema_assert( ( value.thresholds.slots[i] ) >= 0 && ( value.thresholds.slots[i] ) <= 1000 ); // a message write keeps the declared bounds (SPEC.md §5.1)
                 w.put( (uint64_t) ( value.thresholds.slots[i] ), 10 );
             }
         }
@@ -12933,10 +12994,14 @@ inline int64_t PackConfigMeasureMessages( const PackConfig * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t PackConfigSaveMessages( const PackConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = PackConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13267,6 +13332,123 @@ TABLE_FIXED_INLINE bool PackConfigFixedFiniteBody( const PackConfig & value )
     return true;
 }
 
+// GunnerSettings's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedFits( const GunnerSettings & value )
+{
+    (void) value;
+    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// ShipEntry's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool ShipEntryFixedFits( const ShipEntry & value )
+{
+    (void) value;
+    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // the length indexes the storage (§3.4)
+    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // the count indexes the storage (§3.4)
+    if ( value.gunner_present )
+    {
+        if ( !GunnerSettingsFixedFits( value.gunner ) ) { return false; }
+    }
+    return true;
+}
+
+// GlobalSettings's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool GlobalSettingsFixedFits( const GlobalSettings & value )
+{
+    (void) value;
+    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// PackConfig's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool PackConfigFixedFits( const PackConfig & value )
+{
+    (void) value;
+    if ( !GlobalSettingsFixedFits( value.global ) ) { return false; }
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        if ( !ShipEntryFixedFits( value.ships.slots[i] ) ) { return false; }
+    }
+    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // the count indexes the storage (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        if ( !ShipEntryFixedFits( value.reserves[i] ) ) { return false; }
+    }
+    return true;
+}
+
+// GunnerSettings's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool GunnerSettingsFixedWriteCheck( const GunnerSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length );
+    return bad == 0;
+}
+
+// ShipEntry's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool ShipEntryFixedWriteCheck( const ShipEntry & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length );
+    if ( value.hardpoints_count < 0 || value.hardpoints_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.hardpoints_count; ++i )
+    {
+        bad |= (int) ( value.hardpoints[i] < 0 ) | (int) ( value.hardpoints[i] > 8 );
+    }
+    if ( value.gunner_present )
+    {
+        if ( !GunnerSettingsFixedWriteCheck( value.gunner ) ) { return false; }
+    }
+    return bad == 0;
+}
+
+// GlobalSettings's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool GlobalSettingsFixedWriteCheck( const GlobalSettings & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.tick_rate < 1 ) | (int) ( value.tick_rate > 240 );
+    bad |= (int) ( (uint64_t) value.difficulty > 3u );
+    if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length );
+    return bad == 0;
+}
+
+// PackConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool PackConfigFixedWriteCheck( const PackConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( !GlobalSettingsFixedWriteCheck( value.global ) ) { return false; }
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        if ( !ShipEntryFixedWriteCheck( value.ships.slots[i] ) ) { return false; }
+    }
+    for ( int64_t i = 0; i < (int64_t) 3; ++i )
+    {
+        bad |= (int) ( value.thresholds.slots[i] < 0 ) | (int) ( value.thresholds.slots[i] > 1000 );
+    }
+    if ( value.reserves_count < 0 || value.reserves_count > 3 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.reserves_count; ++i )
+    {
+        if ( !ShipEntryFixedWriteCheck( value.reserves[i] ) ) { return false; }
+    }
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -13400,12 +13582,14 @@ inline int64_t GunnerSettingsFixedSave( const GunnerSettings * values, int64_t c
 {
     const int64_t need = GunnerSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerSettingsFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerSettingsFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( GunnerSettingsFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GunnerSettingsFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) GunnerSettingsFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, GunnerSettingsFixedLayout, (size_t) GunnerSettingsFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !GunnerSettingsFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + GunnerSettingsFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -13809,12 +13993,14 @@ inline int64_t ShipEntryFixedSave( const ShipEntry * values, int64_t count, uint
 {
     const int64_t need = ShipEntryFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ShipEntryFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ShipEntryFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( ShipEntryFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ShipEntryFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) ShipEntryFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, ShipEntryFixedLayout, (size_t) ShipEntryFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !ShipEntryFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + ShipEntryFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -14202,12 +14388,14 @@ inline int64_t GlobalSettingsFixedSave( const GlobalSettings * values, int64_t c
 {
     const int64_t need = GlobalSettingsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GlobalSettingsFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { if ( !GlobalSettingsFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( GlobalSettingsFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, GlobalSettingsFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) GlobalSettingsFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, GlobalSettingsFixedLayout, (size_t) GlobalSettingsFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !GlobalSettingsFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + GlobalSettingsFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -14849,12 +15037,14 @@ inline int64_t PackConfigFixedSave( const PackConfig * values, int64_t count, ui
 {
     const int64_t need = PackConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PackConfigFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { if ( !PackConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( PackConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, PackConfigFixedHash );
     TableFixedPut32( buffer + kTableFixedHeaderBytes, (uint32_t) PackConfigFixedLayoutBytes );
     memcpy( buffer + kTableFixedHeaderBytes + 4, PackConfigFixedLayout, (size_t) PackConfigFixedLayoutBytes );
-    for ( int64_t k = 0; k < count; ++k ) { if ( !PackConfigFixedFiniteBody( values[k] ) ) { return -1; } } // a NaN or an infinity is refused (§3.3)
     uint8_t * at = buffer + kTableFixedHeaderBytes + 4 + PackConfigFixedLayoutBytes;
     for ( int64_t k = 0; k < count; ++k )
     {
@@ -15091,6 +15281,7 @@ inline int64_t GunnerSettingsMeasureBodyRetain( TableRetainIds & ids, const Gunn
     if ( table_float_to_bits( value.reaction ) != table_float_to_bits( 0.2f ) ) { bytes += TableLebBytes( ids.ref_at( 101, 0xb75aa3662201646aull ) ) + 1 + 4; } // reaction
     if ( value.tracking != false ) { bytes += TableLebBytes( ids.ref_at( 90, 0xa6bf719a4602b0bcull ) ) + 1 + 1; } // tracking
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.callsign_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 53, 0x5bc44627b9848818ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.callsign_length ) ) + ( value.callsign_length ); } // callsign
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -15110,6 +15301,7 @@ TABLEDEMO_TABLE_INLINE bool GunnerSettingsSaveBodyRetain( TableWriter & w, Table
         w.put8( value.tracking ? 1 : 0 );
     }
     if ( value.callsign_length < 0 || value.callsign_length > 24 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.callsign, (uint64_t) value.callsign_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.callsign_length > 0 )
     {
         w.header( ids.ref_at( 53, 0x5bc44627b9848818ull ), 12 ); // callsign
@@ -15268,6 +15460,7 @@ inline int64_t ShipEntryMeasureBodyRetain( TableRetainIds & ids, const ShipEntry
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.display_name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.display_name_length ) ) + ( value.display_name_length ); } // display_name
     if ( !TableFloatFinite( value.health ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.health ) != table_float_to_bits( 100.0f ) ) { bytes += TableLebBytes( ids.ref_at( 67, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
@@ -15296,6 +15489,7 @@ inline int64_t ShipEntryMeasureBodyRetain( TableRetainIds & ids, const ShipEntry
 TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ShipEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.display_name_length < 0 || value.display_name_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.display_name, (uint64_t) value.display_name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.display_name_length > 0 )
     {
         w.header( ids.ref_at( 27, 0x2d21d7cd66bd5a5dull ), 12 ); // display_name
@@ -15640,6 +15834,7 @@ inline int64_t GlobalSettingsMeasureBodyRetain( TableRetainIds & ids, const Glob
         bytes += TableLebBytes( ref_difficulty ) + 1 + TableLebBytes( variant_difficulty ); // difficulty: the variant's reference
     }
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.build_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 11, 0x14ec921cc2549d60ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.build_note_length ) ) + ( value.build_note_length ); } // build_note
     {
         bool all_default_spawn_delays = true;
@@ -15678,6 +15873,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBodyRetain( TableWriter & w, Table
         w.header( ref_difficulty, 30 ); w.putleb( variant_difficulty ); // difficulty
     }
     if ( value.build_note_length < 0 || value.build_note_length > 48 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.build_note, (uint64_t) value.build_note_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.build_note_length > 0 )
     {
         w.header( ids.ref_at( 11, 0x14ec921cc2549d60ull ), 12 ); // build_note

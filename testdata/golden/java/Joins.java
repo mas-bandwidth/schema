@@ -726,12 +726,28 @@ public final class Joins {
         return true;
     }
 
+    // fitsArmAlign answers whether every count and length writeArmAlignBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsArmAlign(ArmAlign value) {
+        if (value.flag) {
+            if (value.sLength < 0 || value.sLength > 4) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // writeArmAlignBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteArmAlign
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + ARM_ALIGN_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsArmAlign).
     public static int writeArmAlignBits(ArmAlign value, byte[] data, int bitOffset) {
         assert checkWriteArmAlign(value, data, bitOffset);
+        if (!fitsArmAlign(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -762,8 +778,10 @@ public final class Joins {
 
     // writeArmAlign packs value into data from its start and returns the bytes written;
     // data must hold ARM_ALIGN_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeArmAlign(ArmAlign value, byte[] data) {
-        return (writeArmAlignBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeArmAlignBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readArmAlignBits decodes value from data starting at bit bitOffset, the payload
@@ -928,12 +946,28 @@ public final class Joins {
         return true;
     }
 
+    // fitsArmArray answers whether every count and length writeArmArrayBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsArmArray(ArmArray value) {
+        if (value.flag) {
+            if (value.itemsCount < 0 || value.itemsCount > 3) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // writeArmArrayBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteArmArray
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + ARM_ARRAY_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsArmArray).
     public static int writeArmArrayBits(ArmArray value, byte[] data, int bitOffset) {
         assert checkWriteArmArray(value, data, bitOffset);
+        if (!fitsArmArray(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -960,8 +994,10 @@ public final class Joins {
 
     // writeArmArray packs value into data from its start and returns the bytes written;
     // data must hold ARM_ARRAY_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeArmArray(ArmArray value, byte[] data) {
-        return (writeArmArrayBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeArmArrayBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readArmArrayBits decodes value from data starting at bit bitOffset, the payload
@@ -1490,12 +1526,26 @@ public final class Joins {
         return true;
     }
 
+    // fitsArrUneven answers whether every count and length writeArrUnevenBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsArrUneven(ArrUneven value) {
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return false;
+        }
+        return true;
+    }
+
     // writeArrUnevenBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteArrUneven
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + ARR_UNEVEN_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsArrUneven).
     public static int writeArrUnevenBits(ArrUneven value, byte[] data, int bitOffset) {
         assert checkWriteArrUneven(value, data, bitOffset);
+        if (!fitsArrUneven(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1516,8 +1566,10 @@ public final class Joins {
 
     // writeArrUneven packs value into data from its start and returns the bytes written;
     // data must hold ARR_UNEVEN_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeArrUneven(ArrUneven value, byte[] data) {
-        return (writeArrUnevenBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeArrUnevenBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readArrUnevenBits decodes value from data starting at bit bitOffset, the payload
@@ -1634,13 +1686,30 @@ public final class Joins {
         return true;
     }
 
+    // fitsRegainAfterAlign answers whether every count and length writeRegainAfterAlignBits indexes
+    // storage with lies inside that storage: checked in every build.
+    static boolean fitsRegainAfterAlign(RegainAfterAlign value) {
+        if (value.itemsCount < 0 || value.itemsCount > 3) {
+            return false;
+        }
+        if (value.sLength < 0 || value.sLength > 4) {
+            return false;
+        }
+        return true;
+    }
+
     // writeRegainAfterAlignBits packs value into data from bit bitOffset on and returns the bit
     // position after it — the trusted writer (contracts in the checkWriteRegainAfterAlign
     // predicate, one dormant assert call without -ea). Bits below bitOffset are kept;
     // data must be a multiple of 8 bytes long and hold bitOffset + REGAIN_AFTER_ALIGN_MAX_BITS.
+    // A count or a length past its storage answers -1 in every build, before
+    // the first bit is stored (fitsRegainAfterAlign).
     public static int writeRegainAfterAlignBits(
             RegainAfterAlign value, byte[] data, int bitOffset) {
         assert checkWriteRegainAfterAlign(value, data, bitOffset);
+        if (!fitsRegainAfterAlign(value)) {
+            return -1;
+        }
         int pos = bitOffset;
         long scratch;
         scratch = loadBits(data, pos);
@@ -1676,8 +1745,10 @@ public final class Joins {
 
     // writeRegainAfterAlign packs value into data from its start and returns the bytes written;
     // data must hold REGAIN_AFTER_ALIGN_MAX_BYTES.
+    // -1 when a count or a length lies past its storage.
     public static int writeRegainAfterAlign(RegainAfterAlign value, byte[] data) {
-        return (writeRegainAfterAlignBits(value, data, 0) + 7) >>> 3;
+        final int pos = writeRegainAfterAlignBits(value, data, 0);
+        return pos < 0 ? -1 : (pos + 7) >>> 3;
     }
 
     // readRegainAfterAlignBits decodes value from data starting at bit bitOffset, the payload

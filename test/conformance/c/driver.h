@@ -83,17 +83,39 @@ SCHEMA_CONFORMANCE_UNUSED static void conformance_text_add( ConformanceText * ou
     conformance_text_raw( out, s, strlen( s ) );
 }
 
-/* THE WRITE CONTRACT's battery (docs/SPEC.md §5.1). The setter lives in the
- * unit that owns the types and answers 0 for a (root, path, kind) it does not
- * know; the case runner forks, so an assert's abort is an answer and not the
- * end of the surface. */
+/* THE WRITE CONTRACT's batteries (docs/SPEC.md §5.1): `write-refusal` and the
+ * three surfaces beside it, one writer each. Each unit a row names carries a
+ * SETTER, which sets the one field and answers 0 for a (root, path, kind) it
+ * does not know, and a WRITER, which writes the value through the fixed form's
+ * FixedSave or the message form's SaveMessages as a batch of one and answers 0
+ * for a root it does not know; the case runner forks, so an assert's abort is
+ * an answer and not the end of the surface. */
+#define CONFORMANCE_WRITE_VARIABLE 0
+#define CONFORMANCE_WRITE_FIXED 1
+#define CONFORMANCE_WRITE_MESSAGE 2
+#define CONFORMANCE_WRITE_JSON 3
 int conformance_write_refusal_set_tabledemo( const char * root, void * value, const char * path,
                                              const char * kind, const char * text );
+int conformance_write_refusal_write_tabledemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                               int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_widedemo( const char * root, void * value, const char * path,
+                                            const char * kind, const char * text );
+int conformance_write_refusal_write_widedemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                              int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+int conformance_write_refusal_set_backenddemo( const char * root, void * value, const char * path,
+                                               const char * kind, const char * text );
+int conformance_write_refusal_write_backenddemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                                 int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
+/* a narrow text's storage by `length` (filled with `a`) or `bytes` (exact), and
+   a wide text's by `units`: 0 for a kind or a value the storage cannot take */
+int conformance_write_refusal_text( char * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
+int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32_t * length, const char * kind, const char * text );
 #define CONFORMANCE_WROTE 1
 #define CONFORMANCE_REFUSED 2
 #define CONFORMANCE_NO_SETTER 3
 #define CONFORMANCE_BROKEN 4
-int conformance_write_refusal_case( const ConformanceCodec * codec, const uint8_t * wire, int64_t bytes,
+int conformance_write_refusal_case( int surface, const ConformanceCodec * codec, const char * unit, const uint8_t * wire, int64_t bytes,
+                                    const uint8_t * announcement, int64_t announcement_bytes,
                                     const char * root, const char * path, const char * kind, const char * text );
 
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes);

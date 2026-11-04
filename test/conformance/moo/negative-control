@@ -24,8 +24,14 @@
 #   write-refusal  table_save.moo's write_int forgets an integer's declared
 #           range: `moo / write-refusal` red on the ranged rows and nothing
 #           else; `wire`, whose values all sit inside their ranges, green.
+#   write-refusal-fixed  table_fixed.moo's writer forgets an integer's
+#           declared range: `moo / write-refusal-fixed` red on the ranged rows
+#           and nothing else; `wire` green.
+#   write-refusal-message  table_message.moo's encodeValue forgets an
+#           integer's declared range: `moo / write-refusal-message` red on the
+#           ranged rows and nothing else; `message` green.
 #
-# usage: test/conformance/moo/negative-control <report|walk|framing|write-refusal>
+# usage: test/conformance/moo/negative-control <report|walk|framing|write-refusal|write-refusal-fixed|write-refusal-message>
 set -eu
 
 mode=$1
@@ -48,6 +54,14 @@ walk)
     ;;
 write-refusal)
     source=internal/codegen/mootable/runtime/table_save.moo
+    sed 's/^\([[:space:]]*\)if e\.lo ~= nil and e\.hi ~= nil and (/\1if false and (/' "$source" > "$out/runtime.moo"
+    ;;
+write-refusal-fixed)
+    source=internal/codegen/mootable/runtime/table_fixed.moo
+    sed 's/^\([[:space:]]*\)if f\.lo ~= nil and f\.hi ~= nil and (/\1if false and (/' "$source" > "$out/runtime.moo"
+    ;;
+write-refusal-message)
+    source=internal/codegen/mootable/runtime/table_message.moo
     sed 's/^\([[:space:]]*\)if e\.lo ~= nil and e\.hi ~= nil and (/\1if false and (/' "$source" > "$out/runtime.moo"
     ;;
 *) echo "unknown control: $mode" >&2; exit 1 ;;
@@ -93,6 +107,8 @@ report) want="framing report retain " ; green="wire json-read retain-save" ;;
 framing) want="framing " ; green="wire report" ;;
 walk)   want="json-hostile json-read " ; green="wire json-write cook-write" ;;
 write-refusal) want="write-refusal " ; green="wire" ;;
+write-refusal-fixed) want="write-refusal-fixed " ; green="wire" ;;
+write-refusal-message) want="write-refusal-message " ; green="message" ;;
 esac
 if [ "$red" != "$want" ]; then
     echo "NEGATIVE CONTROL FAILED: the moo $mode sabotage turned [${red}] red; it must turn exactly [${want}] red" >&2

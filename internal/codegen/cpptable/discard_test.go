@@ -240,10 +240,14 @@ fixed table Rec
     static TableFixedEntry plan[4096];
     Rec want[2];
     RecReset( want[0] ); RecReset( want[1] );
-    want[0].lead = 7; want[0].rng = 101; memcpy( want[0].label, "ABCD", 4 ); want[0].label_length = 4;
+    want[0].lead = 7; want[0].rng = 100; memcpy( want[0].label, "ABCD", 4 ); want[0].label_length = 4;
     want[1].lead = 9; want[1].rng = 50;  memcpy( want[1].label, "QWER", 4 ); want[1].label_length = 4;
     const int64_t n = RecFixedSave( want, 2, data, (int64_t) sizeof( data ) );
     if ( n != RecFixedMeasure( 2 ) ) { printf( "fixed: the save wrote %lld\n", (long long) n ); return 1; }
+    // record 0's rng past its max, for the read to clamp: the writer refuses
+    // it (docs/SPEC.md §5.1), so the record's own store puts it on the wire
+    want[0].rng = 101;
+    RecFixedWriteBody( data + RecFixedMeasure( 0 ) + 8, want[0] );
     const int64_t record_bytes = RecFixedMeasure( 2 ) - RecFixedMeasure( 1 );
     Rec fresh; RecReset( fresh );
 

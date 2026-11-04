@@ -45,6 +45,7 @@ pub fn write_wide_seven(stream: &mut WriteStream<'_>, value: &WideSeven) -> Resu
     {
         let mut length = value.text_length;
         debug_assert!((0..=7).contains(&length), "text_length out of range [0, 7]");
+        debug_assert!(core::char::decode_utf16(value.text[..length as usize].iter().copied()).all(|u| u.is_ok()), "text holds an unpaired surrogate within its used length");
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -94,6 +95,7 @@ pub fn write_wide_four(stream: &mut WriteStream<'_>, value: &WideFour) -> Result
     {
         let mut length = value.text_length;
         debug_assert!((0..=4).contains(&length), "text_length out of range [0, 4]");
+        debug_assert!(core::char::decode_utf16(value.text[..length as usize].iter().copied()).all(|u| u.is_ok()), "text holds an unpaired surrogate within its used length");
         stream.serialize_int(&mut length, 0, 4)?;
         for &unit in &value.text[..length as usize] {
             debug_assert!(unit != 0, "text carries an interior null within its used length");
@@ -183,6 +185,7 @@ pub fn write_wide_interop(stream: &mut WriteStream<'_>, value: &WideInterop) -> 
     {
         let mut length = value.caption_length;
         debug_assert!((0..=7).contains(&length), "caption_length out of range [0, 7]");
+        debug_assert!(core::char::decode_utf16(value.caption[..length as usize].iter().copied()).all(|u| u.is_ok()), "caption holds an unpaired surrogate within its used length");
         stream.serialize_int(&mut length, 0, 7)?;
         for &unit in &value.caption[..length as usize] {
             debug_assert!(unit != 0, "caption carries an interior null within its used length");

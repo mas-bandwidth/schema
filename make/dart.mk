@@ -1730,6 +1730,35 @@ conformance-negative-control-dart-absent: build/conformance-harness build/confor
 conformance-negative-control-dart-write-refusal: build/conformance-harness build/conformance-dart
 	sh test/conformance/dart/negative-control write-refusal "$(DART)"
 
+# THE FIXED AND MESSAGE WRITERS' WRITE-CONTRACT CONTROLS (docs/SPEC.md §5.1):
+# one ranged-integer check deleted from a copy of a generated <T>FixedCheckBody,
+# the driver AOT-compiled against it with --enable-asserts, and
+# `write-refusal-fixed` or `write-refusal-message` red on its two out-of-range
+# rows alone with wire and message green (test/conformance/dart/negative-control).
+.PHONY: conformance-negative-control-dart-write-refusal-fixed
+conformance-negative-control-dart-write-refusal-fixed: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal-fixed "$(DART)"
+
+.PHONY: conformance-negative-control-dart-write-refusal-message
+conformance-negative-control-dart-write-refusal-message: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/negative-control write-refusal-message "$(DART)"
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a value): the
+# release AOT binary, no asserts, must refuse the rows whose count or length
+# overruns a fixed array's storage (fref_count, fref_length, mref_length), in
+# every build and before the first byte (test/conformance/dart/write-refusal-release).
+# Its control drops the bound from a copy of RootConfig's fixed save and
+# requires the gate red on fref_count and fref_length.
+.PHONY: write-refusal-storage-release-dart
+write-refusal-storage-release-dart: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/write-refusal-release gate "$(DART)"
+
+test-dart: write-refusal-storage-release-dart
+
+.PHONY: write-refusal-storage-release-dart-negative-control
+write-refusal-storage-release-dart-negative-control: build/conformance-harness build/conformance-dart
+	sh test/conformance/dart/write-refusal-release control "$(DART)"
+
 # THE BLOCK FORM'S OWN (I11): the pitch check out of the block Open, the forged
 # image block_pitch open, `forgery` red on that row alone.
 .PHONY: conformance-negative-control-dart-block

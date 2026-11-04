@@ -14,6 +14,7 @@ import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/serialize.go/v2"
 	"math"
+	"unicode/utf8"
 	"unsafe"
 )
 
@@ -737,60 +738,90 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 	{
 		if value.EntityID != 0 {
 			w.Put(31, TableMessageRefBitsHere)
+			if value.EntityID > 4095 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.EntityID), uint64(0))
 		}
 	}
 	{
 		if value.PosX != 0 {
 			w.Put(32, TableMessageRefBitsHere)
+			if value.PosX < -16383 || value.PosX > 16383 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PosX), uint64(0))
 		}
 	}
 	{
 		if value.PosY != 0 {
 			w.Put(33, TableMessageRefBitsHere)
+			if value.PosY < -16383 || value.PosY > 16383 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PosY), uint64(0))
 		}
 	}
 	{
 		if value.PosZ != 0 {
 			w.Put(34, TableMessageRefBitsHere)
+			if value.PosZ < -16383 || value.PosZ > 16383 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 15, Base: [2]uint64{0xffffffffffffc001, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PosZ), uint64(0))
 		}
 	}
 	{
 		if value.Yaw != 0 {
 			w.Put(35, TableMessageRefBitsHere)
+			if value.Yaw > 511 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 9, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Yaw), uint64(0))
 		}
 	}
 	{
 		if value.Pitch != 0 {
 			w.Put(36, TableMessageRefBitsHere)
+			if value.Pitch > 511 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 9, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Pitch), uint64(0))
 		}
 	}
 	{
 		if value.VelX != 0 {
 			w.Put(37, TableMessageRefBitsHere)
+			if value.VelX < -2048 || value.VelX > 2047 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.VelX), uint64(0))
 		}
 	}
 	{
 		if value.VelY != 0 {
 			w.Put(38, TableMessageRefBitsHere)
+			if value.VelY < -2048 || value.VelY > 2047 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.VelY), uint64(0))
 		}
 	}
 	{
 		if value.VelZ != 0 {
 			w.Put(39, TableMessageRefBitsHere)
+			if value.VelZ < -2048 || value.VelZ > 2047 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0xfffffffffffff800, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.VelZ), uint64(0))
 		}
 	}
 	{
 		if value.Health != 0 {
 			w.Put(40, TableMessageRefBitsHere)
+			if value.Health < 0 || value.Health > 1000 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Health), uint64(0))
 		}
 	}
@@ -802,7 +833,7 @@ func MixedEntitySaveMessageBody(w *TableMessageWriter, value *MixedEntity) bool 
 			} else {
 				id, named := value.Weapon.TableEnumID()
 				if !named {
-					return false
+					return w.Refuse()
 				}
 				slot := tableMessageNameSlot(id)
 				if slot == 0 {
@@ -1454,12 +1485,18 @@ func MixedStatSaveMessageBody(w *TableMessageWriter, value *MixedStat) bool {
 	{
 		if value.StatID != 0 {
 			w.Put(51, TableMessageRefBitsHere)
+			if value.StatID > 255 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 6, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.StatID), uint64(0))
 		}
 	}
 	{
 		if value.Delta != 0 {
 			w.Put(52, TableMessageRefBitsHere)
+			if value.Delta < -512 || value.Delta > 511 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0xfffffffffffffe00, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Delta), uint64(0))
 		}
 	}
@@ -1580,18 +1617,27 @@ func MixedHitEventSaveMessageBody(w *TableMessageWriter, value *MixedHitEvent) b
 	{
 		if value.TargetID != 0 {
 			w.Put(45, TableMessageRefBitsHere)
+			if value.TargetID > 4095 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TargetID), uint64(0))
 		}
 	}
 	{
 		if value.Damage != 0 {
 			w.Put(46, TableMessageRefBitsHere)
+			if value.Damage < 0 || value.Damage > 4095 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Damage), uint64(0))
 		}
 	}
 	{
 		if value.HitKind != 0 {
 			w.Put(47, TableMessageRefBitsHere)
+			if value.HitKind < 0 || value.HitKind > 7 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 3, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.HitKind), uint64(0))
 		}
 	}
@@ -1807,12 +1853,18 @@ func MixedChatEventSaveMessageBody(w *TableMessageWriter, value *MixedChatEvent)
 	{
 		if value.Channel != 0 {
 			w.Put(29, TableMessageRefBitsHere)
+			if value.Channel < 0 || value.Channel > 3 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 2, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Channel), uint64(0))
 		}
 	}
 	{
 		if value.Speaker != 0 {
 			w.Put(30, TableMessageRefBitsHere)
+			if value.Speaker > 4095 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 12, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Speaker), uint64(0))
 		}
 	}
@@ -1933,12 +1985,18 @@ func MixedPickupEventSaveMessageBody(w *TableMessageWriter, value *MixedPickupEv
 	{
 		if value.ItemID != 0 {
 			w.Put(49, TableMessageRefBitsHere)
+			if value.ItemID > 1023 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ItemID), uint64(0))
 		}
 	}
 	{
 		if value.Amount != 0 {
 			w.Put(50, TableMessageRefBitsHere)
+			if value.Amount < 0 || value.Amount > 255 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Amount), uint64(0))
 		}
 	}
@@ -2059,12 +2117,18 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	{
 		if value.Sequence != 0 {
 			w.Put(1, TableMessageRefBitsHere)
+			if value.Sequence > 65535 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 7, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Sequence), uint64(0))
 		}
 	}
 	{
 		if value.AckSequence != 0 {
 			w.Put(2, TableMessageRefBitsHere)
+			if value.AckSequence < 0 || value.AckSequence > 65535 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 16, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.AckSequence), uint64(0))
 		}
 	}
@@ -2095,12 +2159,18 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	{
 		if value.WorldTime != 0 {
 			w.Put(7, TableMessageRefBitsHere)
+			if value.WorldTime < -1000000000000 || value.WorldTime > 1000000000000 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 1, Bits: 41, Base: [2]uint64{0xffffff172b5af000, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.WorldTime), uint64(0))
 		}
 	}
 	{
 		if value.FrameTick != 0 {
 			w.Put(8, TableMessageRefBitsHere)
+			if value.FrameTick > 281474976710655 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 1, Bits: 48, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.FrameTick), uint64(0))
 		}
 	}
@@ -2112,12 +2182,15 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
-			return false
+			return w.Refuse()
 		}
 		if value.EntitiesCount > 0 {
 			w.Put(10, TableMessageRefBitsHere)
 			if value.EntitiesCount < 0 || value.EntitiesCount > 8 {
-				return false
+				return w.Refuse()
+			}
+			if value.EntitiesCount < 1 {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.EntitiesCount)-1, 3)
 			for i := range int(value.EntitiesCount) {
@@ -2129,12 +2202,12 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.StatsCount < 0 || value.StatsCount > 80 {
-			return false
+			return w.Refuse()
 		}
 		if value.StatsCount > 0 {
 			w.Put(11, TableMessageRefBitsHere)
 			if value.StatsCount < 0 || value.StatsCount > 80 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.StatsCount)-0, 7)
 			for i := range int(value.StatsCount) {
@@ -2172,7 +2245,7 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 					}
 				}
 			default:
-				return false
+				return w.Refuse()
 			}
 		}
 	}
@@ -2195,12 +2268,15 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
-			return false
+			return w.Refuse()
 		}
 		if value.PlayerNameLength > 0 {
 			w.Put(14, TableMessageRefBitsHere)
 			if value.PlayerNameLength < 0 || value.PlayerNameLength > 15 {
-				return false
+				return w.Refuse()
+			}
+			if !utf8.Valid(value.PlayerName[:value.PlayerNameLength]) {
+				return w.Refuse()
 			}
 			w.Put(uint64(value.PlayerNameLength), 4)
 			w.Raw(value.PlayerName[:value.PlayerNameLength])
@@ -2208,12 +2284,12 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	}
 	{
 		if value.PayloadLength < 0 || value.PayloadLength > 16 {
-			return false
+			return w.Refuse()
 		}
 		if value.PayloadLength > 0 {
 			w.Put(15, TableMessageRefBitsHere)
 			if value.PayloadLength < 0 || value.PayloadLength > 16 {
-				return false
+				return w.Refuse()
 			}
 			w.Put(uint64(value.PayloadLength)-0, 5)
 			w.Align()
@@ -2276,6 +2352,9 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	{
 		if value.Flux != (serialize.Int128{Lo: 0, Hi: 0}) {
 			w.Put(22, TableMessageRefBitsHere)
+			if value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 18446744004990074880})) < 0 || value.Flux.Cmp((serialize.Int128{Lo: 0, Hi: 68719476736})) > 0 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 18, Packing: 1, Bits: 102, Base: [2]uint64{0x0, 0xfffffff000000000}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, value.Flux.Lo, value.Flux.Hi)
 		}
 	}
@@ -2288,6 +2367,9 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	{
 		if value.CrcHint != 0 {
 			w.Put(24, TableMessageRefBitsHere)
+			if value.CrcHint > 16777215 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 8, Packing: 1, Bits: 24, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.CrcHint), uint64(0))
 		}
 	}
@@ -2304,12 +2386,18 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 	{
 		if value.Extra != 0 {
 			w.Put(26, TableMessageRefBitsHere)
+			if value.Extra < 0 || value.Extra > 255 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 8, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Extra), uint64(0))
 		}
 	}
 	{
 		if value.IdleTicks != 0 {
 			w.Put(27, TableMessageRefBitsHere)
+			if value.IdleTicks < 0 || value.IdleTicks > 15 {
+				return w.Refuse()
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.IdleTicks), uint64(0))
 		}
 	}

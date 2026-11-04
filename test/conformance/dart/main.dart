@@ -29,7 +29,12 @@ import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as m
 import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
 import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
 import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
-import '../../../build/tables-generated-dart/examples/Tables.dart' as tabletypes show Grade;
+import '../../../build/tables-generated-dart/examples/Tables.dart' as tabletypes show Buff, Debuff, EffectType, Grade;
+import '../../../build/tables-generated-dart/examples/TabledemoFixed.dart' as tdfixed;
+import '../../../build/tables-generated-dart/examples/TablesFixed.dart' as tablesfixed;
+import '../../../build/tables-generated-dart/wide/WideFixed.dart' as widefixed;
+import '../../../build/tables-generated-dart/wide/CaptionFixed.dart' as captionfixed;
+import '../../../build/tables-generated-dart/backend/Backend.dart' as backendtypes show Currency;
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalardemoWire.dart' as scalardemo;
@@ -2247,43 +2252,130 @@ int surfaceMessage(String outDir) {
   return 0;
 }
 
-// THE WRITE-REFUSAL SURFACE (testdata/conformance/tables/FORMAT.md):
-// write-refusal <case> <unit> <root> <wire> <path> <kind> <value>. Load the
-// wire as the root, set the ONE field the path names, and save through the
-// variable form. The write contract's debug checks are asserts, so the driver
-// script runs this surface from build/conformance-dart-asserts (compiled with
-// --enable-asserts): an AssertionError is the refusal, as is the StateError of
-// an every-build refusal. The setters are per root; a path or kind no setter
-// knows fails the surface loudly.
-int surfaceWriteRefusal(String outDir) {
-  for (final f in kind('write-refusal')) {
-    if (f[2] != 'tabledemo') {
-      stderr.writeln('write-refusal ${f[1]}: no setter for unit ${f[2]}');
-      return 1;
-    }
+// THE WRITE-REFUSAL SURFACES (testdata/conformance/tables/FORMAT.md):
+// <kind> <case> <unit> <root> <wire> <path> <kind> <value>. Load the wire as
+// the root with the variable form's load, set the ONE field the path names,
+// and write the value through one writer: the variable form's save
+// (write-refusal), the fixed form's save as a batch of one
+// (write-refusal-fixed), the message form's MeasureMessages and SaveMessages
+// as a batch of one after the connection the unit column names is announced
+// (write-refusal-message), or the text writer (write-refusal-json). The write
+// contract's debug checks are asserts, so the driver script runs these
+// surfaces from build/conformance-dart-asserts (compiled with
+// --enable-asserts): an AssertionError is the refusal, as is the StateError
+// or the -1 of an every-build refusal. The setters are per root; a path or
+// kind no setter knows fails the surface loudly.
+//
+// The fixed and message writers take the fixed form's storage classes, which
+// are not the variable form's in this port: the loaded value is copied field
+// by field into fresh fixed storage before the field is set.
+//
+// A Dart String is UTF-16, so the bytes of ill-formed narrow text (a `bytes`
+// row) reach a String field as their closest representable form: each byte
+// that is not part of a well-formed UTF-8 sequence becomes the lone surrogate
+// U+DC00 + byte (61 FF 62 is 'a\u{DCFF}b' spelled by code unit), which has no
+// UTF-8 spelling. Fixed storage holds the bytes themselves.
+int surfaceWriteRefusal(String surface, String outDir) {
+  for (final f in kind(surface)) {
     final wire = File(f[4]).readAsBytesSync();
-    void Function() save;
+    final root = f[3];
+    final path = f[5], how = f[6], value = f[7];
+    int Function() write;
     String? unknown;
-    switch (f[3]) {
-      case 'RootConfig':
-        final v = tabledemo.rootConfigWireLoad(wire);
-        unknown = setRootConfig(v, f[5], f[6], f[7]);
-        save = () => tabledemo.rootConfigWireSave(v);
-      case 'LoadoutConfig':
-        final v = tabledemo.loadoutConfigWireLoad(wire);
-        unknown = setLoadoutConfig(v, f[5], f[6], f[7]);
-        save = () => tabledemo.loadoutConfigWireSave(v);
+    switch (surface) {
+      case 'write-refusal':
+      case 'write-refusal-json':
+        final toText = surface == 'write-refusal-json';
+        switch ('${f[2]} $root') {
+          case 'tabledemo RootConfig':
+            final v = tabledemo.rootConfigWireLoad(wire);
+            unknown = setRootConfig(v, path, how, value);
+            write = toText ? () => _jsonZero(tabledemo.rootConfigToJson(v)) : () => _wrote(tabledemo.rootConfigWireSave(v));
+          case 'tabledemo LoadoutConfig':
+            final v = tabledemo.loadoutConfigWireLoad(wire);
+            unknown = setLoadoutConfig(v, path, how, value);
+            write = toText ? () => _jsonZero(tabledemo.loadoutConfigToJson(v)) : () => _wrote(tabledemo.loadoutConfigWireSave(v));
+          case 'widedemo Caption':
+            final v = widedemo.captionWireLoad(wire);
+            unknown = '$path $how' == 'title units' ? null : 'no Caption setter for $path $how';
+            if (unknown == null) v.title = String.fromCharCodes(_units(value));
+            write = toText ? () => _jsonZero(widedemo.captionToJson(v)) : () => _wrote(widedemo.captionWireSave(v));
+          default:
+            unknown = 'no setter for ${f[2]} $root';
+            write = () => 0;
+        }
+      case 'write-refusal-fixed':
+        switch ('${f[2]} $root') {
+          case 'tabledemo RootConfig':
+            final v = tdfixed.RootConfig();
+            _rootFixed(tabledemo.rootConfigWireLoad(wire), v);
+            unknown = _setRootFixed(v, path, how, value);
+            write = () => tablesfixed.rootConfigFixedSave([v], 1, Uint8List(tablesfixed.rootConfigFixedMeasure(1)));
+          case 'tabledemo LoadoutConfig':
+            final v = tdfixed.LoadoutConfig();
+            _loadoutFixed(tabledemo.loadoutConfigWireLoad(wire), v);
+            if ('$path $how' == 'grade ordinal') {
+              v.grade = tabletypes.Grade(int.parse(value));
+            } else {
+              unknown = 'no LoadoutConfig setter for $path $how';
+            }
+            write = () => tablesfixed.loadoutConfigFixedSave([v], 1, Uint8List(tablesfixed.loadoutConfigFixedMeasure(1)));
+          case 'widedemo Caption':
+            final v = widefixed.Caption();
+            _captionFixed(widedemo.captionWireLoad(wire), v);
+            if ('$path $how' == 'title units') {
+              v.titleLength = _unitsInto(_units(value), v.title);
+            } else {
+              unknown = 'no Caption setter for $path $how';
+            }
+            write = () => captionfixed.captionFixedSave([v], 1, Uint8List(captionfixed.captionFixedMeasure(1)));
+          default:
+            unknown = 'no setter for ${f[2]} $root';
+            write = () => 0;
+        }
+      case 'write-refusal-message':
+        final conn = kind('connection').where((c) => c[1] == f[2]).firstOrNull;
+        if (conn == null || conn[2] != 'backenddemo') {
+          stderr.writeln('$surface ${f[1]}: no message setter for connection ${f[2]}');
+          return 1;
+        }
+        final vocab = backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0)));
+        if (!backenddemo_fixed.announceRead(vocab, File(conn[4]).readAsBytesSync(), backenddemo_fixed.TableReport())) {
+          stderr.writeln('$surface ${f[1]}: announceRead refused ${conn[4]}');
+          return 1;
+        }
+        switch (root) {
+          case 'StorePurchase':
+            final v = backenddemo_fixed.StorePurchase();
+            _storeFixed(backenddemo.storePurchaseWireLoad(wire), v);
+            unknown = _setStoreFixed(v, path, how, value);
+            write = () => _messageWrite([v], backend.storePurchaseMeasureMessages, backend.storePurchaseSaveMessages);
+          case 'MatchResult':
+            final v = backenddemo_fixed.MatchResult();
+            _matchFixed(backenddemo.matchResultWireLoad(wire), v);
+            if ('$path $how' == 'players[0].score int') {
+              v.players[0].score = int.parse(value);
+            } else {
+              unknown = 'no MatchResult setter for $path $how';
+            }
+            write = () => _messageWrite([v], backend.matchResultMeasureMessages, backend.matchResultSaveMessages);
+          default:
+            unknown = 'no message setter for root $root';
+            write = () => 0;
+        }
       default:
-        unknown = 'no setter for root ${f[3]}';
-        save = () {};
+        unknown = 'no write-refusal surface $surface';
+        write = () => 0;
     }
     if (unknown != null) {
-      stderr.writeln('write-refusal ${f[1]}: $unknown');
+      stderr.writeln('$surface ${f[1]}: $unknown');
       return 1;
     }
     var verdict = 'wrote';
     try {
-      save();
+      final n = write();
+      if (n < 0) verdict = 'refused';
+      if (n == _unescaped) verdict = 'wrote-without-escape';
     } on AssertionError {
       verdict = 'refused';
     } on StateError {
@@ -2294,12 +2386,80 @@ int surfaceWriteRefusal(String outDir) {
   return 0;
 }
 
+const int _unescaped = -2;
+
+int _wrote(Uint8List saved) => saved.length;
+
+// _jsonZero answers the text writer's verdict: written, and spelling the zero
+// byte or unit as the escape \u0000.
+int _jsonZero(String text) => text.contains(r'\u0000') ? text.length : _unescaped;
+
+int _messageWrite<T>(List<T> values, int Function(List<T>, backenddemo_fixed.TableReport) measure,
+    int Function(List<T>, Uint8List, backenddemo_fixed.TableReport) save) {
+  final n = measure(values, backenddemo_fixed.TableReport());
+  if (n < 0) return -1;
+  return save(values, Uint8List(n), backenddemo_fixed.TableReport()) == n ? n : -1;
+}
+
 double writeRefusalFloat(String value) => switch (value) {
       'nan' => double.nan,
       'inf' => double.infinity,
       '-inf' => double.negativeInfinity,
       _ => double.parse(value),
     };
+
+Uint8List _hex(String s) =>
+    Uint8List.fromList([for (var i = 0; i + 1 < s.length; i += 2) int.parse(s.substring(i, i + 2), radix: 16)]);
+
+List<int> _units(String s) => [for (var i = 0; i + 3 < s.length; i += 4) int.parse(s.substring(i, i + 4), radix: 16)];
+
+// _escapedString decodes UTF-8, landing each byte outside a well-formed
+// sequence as the lone surrogate U+DC00 + byte.
+String _escapedString(Uint8List b) {
+  final units = <int>[];
+  var i = 0;
+  while (i < b.length) {
+    final b0 = b[i];
+    final need = b0 < 0x80 ? 0 : (b0 & 0xe0) == 0xc0 ? 1 : (b0 & 0xf0) == 0xe0 ? 2 : (b0 & 0xf8) == 0xf0 ? 3 : -1;
+    var cp = need == 0 ? b0 : need == 1 ? b0 & 0x1f : need == 2 ? b0 & 0x0f : b0 & 0x07;
+    var ok = need >= 0 && i + need < b.length;
+    for (var k = 1; ok && k <= need; k++) {
+      final c = b[i + k];
+      if ((c & 0xc0) != 0x80) ok = false;
+      cp = (cp << 6) | (c & 0x3f);
+    }
+    final min = need == 1 ? 0x80 : need == 2 ? 0x800 : need == 3 ? 0x10000 : 0;
+    if (ok && (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff))) ok = false;
+    if (!ok) {
+      units.add(0xdc00 | b0);
+      i++;
+      continue;
+    }
+    units.addAll(String.fromCharCode(cp).codeUnits);
+    i += need + 1;
+  }
+  return String.fromCharCodes(units);
+}
+
+int _narrowInto(List<int> bytes, Uint8List dst) {
+  dst.fillRange(0, dst.length, 0);
+  dst.setRange(0, bytes.length < dst.length ? bytes.length : dst.length, bytes);
+  return bytes.length;
+}
+
+int _unitsInto(List<int> units, Uint16List dst) {
+  dst.fillRange(0, dst.length, 0);
+  dst.setRange(0, units.length < dst.length ? units.length : dst.length, units);
+  return units.length;
+}
+
+// _fill sets a fixed text's used length to n, its storage filled with `a` as
+// far as it reaches: a length past storage is set as it is, and the writer
+// must refuse it before it reads past the buffer.
+int _fill(List<int> dst, int n, int a) {
+  dst.fillRange(0, n < dst.length ? n : dst.length, a);
+  return n;
+}
 
 // setRootConfig sets the one field at path by kind, and answers null, or the
 // reason it cannot.
@@ -2317,6 +2477,9 @@ String? setRootConfig(tabledemo.RootConfig v, String path, String kind, String v
       return null;
     case 'version_note length':
       v.versionNote = 'a' * int.parse(value);
+      return null;
+    case 'version_note bytes':
+      v.versionNote = _escapedString(_hex(value));
       return null;
   }
   const weapon = 'weapons[0].';
@@ -2347,6 +2510,167 @@ String? setLoadoutConfig(tabledemo.LoadoutConfig v, String path, String kind, St
   return 'no LoadoutConfig setter for $path $kind';
 }
 
+String? _setRootFixed(tdfixed.RootConfig v, String path, String kind, String value) {
+  final key = '$path $kind';
+  switch (key) {
+    case 'weapons count':
+      final n = int.parse(value);
+      if (v.weaponsCount < 1) return 'weapons has no element 0 to copy';
+      for (var i = v.weaponsCount; i < n && i < v.weapons.length; i++) {
+        _weaponCopy(v.weapons[0], v.weapons[i]);
+      }
+      v.weaponsCount = n;
+      return null;
+    case 'version_note length':
+      v.versionNoteLength = _fill(v.versionNote, int.parse(value), 0x61);
+      return null;
+    case 'version_note bytes':
+      v.versionNoteLength = _narrowInto(_hex(value), v.versionNote);
+      return null;
+  }
+  const weapon = 'weapons[0].';
+  if (!path.startsWith(weapon)) return 'no RootConfig setter for $key';
+  if (v.weaponsCount < 1) return 'weapons has no element 0';
+  final w = v.weapons[0];
+  switch (key.substring(weapon.length)) {
+    case 'penetration int':
+      w.penetration = int.parse(value);
+    case 'channel int':
+      w.channel = int.parse(value);
+    case 'damage float':
+      w.damage = writeRefusalFloat(value);
+    case 'effect tag':
+      // a lawful tag takes its arm at the arm's declared defaults
+      w.effect.type = tabletypes.EffectType(int.parse(value));
+      w.effect.buff.multiplier = tabletypes.Buff().multiplier;
+      w.effect.debuff.amount = tabletypes.Debuff().amount;
+    default:
+      return 'no RootConfig setter for $key';
+  }
+  return null;
+}
+
+String? _setStoreFixed(backenddemo_fixed.StorePurchase v, String path, String kind, String value) {
+  switch ('$path $kind') {
+    case 'quantity int':
+      v.quantity = int.parse(value);
+    case 'sku length':
+      v.skuLength = _fill(v.sku, int.parse(value), 0x61);
+    case 'sku bytes':
+      v.skuLength = _narrowInto(_hex(value), v.sku);
+    case 'currency ordinal':
+      v.currency = backendtypes.Currency(int.parse(value));
+    default:
+      return 'no StorePurchase setter for $path $kind';
+  }
+  return null;
+}
+
+// ---- the variable form's value, copied into fixed storage ----
+
+void _weaponFixed(tabledemo.WeaponConfig s, tdfixed.WeaponConfig d) {
+  d.damage = s.damage;
+  d.speed = s.speed;
+  d.penetration = s.penetration;
+  d.channel = s.channel;
+  d.homing = s.homing;
+  d.effect.type = tabletypes.EffectType(s.effect.armTag);
+  d.effect.buff.multiplier = s.effect.buff.multiplier;
+  d.effect.debuff.amount = s.effect.debuff.amount;
+}
+
+void _weaponCopy(tdfixed.WeaponConfig s, tdfixed.WeaponConfig d) {
+  d.damage = s.damage;
+  d.speed = s.speed;
+  d.penetration = s.penetration;
+  d.channel = s.channel;
+  d.homing = s.homing;
+  d.effect.type = s.effect.type;
+  d.effect.buff.multiplier = s.effect.buff.multiplier;
+  d.effect.debuff.amount = s.effect.debuff.amount;
+}
+
+void _loadoutFixed(tabledemo.LoadoutConfig s, tdfixed.LoadoutConfig d) {
+  d.grade = s.grade;
+  for (var i = 0; i < s.grades.length; i++) {
+    d.grades[i] = s.grades[i];
+  }
+  d.gradesCount = s.grades.length;
+  for (var i = 0; i < s.podium.length; i++) {
+    d.podium[i] = s.podium[i];
+  }
+  d.perks = s.perks;
+  _weaponFixed(s.primary, d.primary);
+  for (var i = 0; i < s.backups.length; i++) {
+    _weaponFixed(s.backups[i], d.backups[i]);
+  }
+  for (var i = 0; i < s.attachments.length; i++) {
+    d.attachments[i].slot = s.attachments[i].slot;
+    d.attachments[i].power = s.attachments[i].power;
+  }
+  d.attachmentsCount = s.attachments.length;
+}
+
+void _profileFixed(tabledemo.ProfileConfig s, tdfixed.ProfileConfig d) {
+  d.nameLength = _narrowInto(utf8.encode(s.name), d.name);
+  d.iconLength = _narrowInto(utf8.encode(s.icon), d.icon);
+  d.experience = s.experience;
+  d.tilt = s.tilt;
+  d.heading = s.heading;
+  d.timestamp = s.timestamp;
+  d.badge = s.badge;
+  d.port = s.port;
+  d.epoch = s.epoch;
+  d.precision = s.precision;
+  for (var i = 0; i < s.ratings.length; i++) {
+    d.ratings[i] = s.ratings[i];
+  }
+  d.hasLoadout = s.hasLoadout;
+  _loadoutFixed(s.loadout, d.loadout);
+}
+
+void _rootFixed(tabledemo.RootConfig s, tdfixed.RootConfig d) {
+  d.versionNoteLength = _narrowInto(utf8.encode(s.versionNote), d.versionNote);
+  for (var i = 0; i < s.weapons.length; i++) {
+    _weaponFixed(s.weapons[i], d.weapons[i]);
+  }
+  d.weaponsCount = s.weapons.length;
+  for (var i = 0; i < s.profiles.length; i++) {
+    _profileFixed(s.profiles[i], d.profiles[i]);
+  }
+  d.profilesCount = s.profiles.length;
+}
+
+void _captionFixed(widedemo.Caption s, widefixed.Caption d) {
+  d.titleLength = _unitsInto(s.title.codeUnits, d.title);
+  d.line.textLength = _unitsInto(s.line.text.codeUnits, d.line.text);
+  for (var i = 0; i < s.lines.length; i++) {
+    d.lines[i].textLength = _unitsInto(s.lines[i].text.codeUnits, d.lines[i].text);
+  }
+  d.linesCount = s.lines.length;
+  d.body.type = s.body.armTag;
+  d.body.wideLength = _unitsInto(s.body.wide.codeUnits, d.body.wide);
+  d.body.narrowLength = _narrowInto(utf8.encode(s.body.narrow), d.body.narrow);
+  d.body.tally = s.body.tally;
+}
+
+void _storeFixed(backenddemo.StorePurchase s, backenddemo_fixed.StorePurchase d) {
+  d.playerId = s.playerId;
+  d.skuLength = _narrowInto(utf8.encode(s.sku), d.sku);
+  d.quantity = s.quantity;
+  d.priceMinor = s.priceMinor;
+  d.currency = s.currency;
+}
+
+void _matchFixed(backenddemo.MatchResult s, backenddemo_fixed.MatchResult d) {
+  d.matchId = s.matchId;
+  for (var i = 0; i < s.players.length; i++) {
+    d.players[i].playerId = s.players[i].playerId;
+    d.players[i].score = s.players[i].score;
+    d.players[i].placement = s.players[i].placement;
+  }
+}
+
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
@@ -2358,7 +2682,8 @@ const String surfaces =
     ''
     'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
-    'forgery\ncook-forgery\ncook-reason\nblock-reason\nwrite-refusal\n';
+    'forgery\ncook-forgery\ncook-reason\nblock-reason\nwrite-refusal\n'
+    'write-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -2861,7 +3186,10 @@ int run(List<String> args) {
     case 'block-reason':
       return surfaceReason(out, 'block');
     case 'write-refusal':
-      return surfaceWriteRefusal(out);
+    case 'write-refusal-fixed':
+    case 'write-refusal-message':
+    case 'write-refusal-json':
+      return surfaceWriteRefusal(surface, out);
   }
   return 2;
 }

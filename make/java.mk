@@ -2418,8 +2418,8 @@ test-java: conformance-java-framing
 # its contract in checkWrite, asserted under -ea; this control deletes ONE
 # check, the ranged-integer one on WeaponConfig.penetration, from a COPY of the
 # generated tabledemo class, compiles that copy ahead of the conformance
-# classpath and reruns the Java leg through a driver that runs write-refusal
-# under -ea as the real one does. `write-refusal` must go RED on the two
+# classpath and reruns the Java leg through a driver that runs the
+# write-refusal surfaces under -ea as the real one does. `write-refusal` must go RED on the two
 # out-of-range rows and on nothing else, and `wire` must stay green.
 JAVA_WREF_CONTROL := build/conformance-java-write-refusal-control
 .PHONY: conformance-negative-control-java-write-refusal
@@ -2430,7 +2430,7 @@ conformance-negative-control-java-write-refusal: build/conformance-harness build
 	@test "$$(($$(wc -l < build/tables-generated-java/examples/WeaponConfigVariable.java) - $$(wc -l < $(JAVA_WREF_CONTROL)/src/WeaponConfigVariable.java)))" = 1 || \
 		{ echo "NEGATIVE CONTROL: the ranged-integer check was not deleted exactly once"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_WREF_CONTROL)/classes $(JAVA_WREF_CONTROL)/src/WeaponConfigVariable.java
-	@printf '#!/bin/sh\nea=\nif [ "$$2" = write-refusal ]; then ea=-ea; fi\nexec %s $$ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+	@printf '#!/bin/sh\nea=\ncase "$$2" in write-refusal*) ea=-ea ;; esac\nexec %s $$ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
 		"$(JAVA)" "$(CURDIR)/$(JAVA_WREF_CONTROL)" "$(CURDIR)" > $(JAVA_WREF_CONTROL)/driver
 	@chmod +x $(JAVA_WREF_CONTROL)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WREF_CONTROL)" > $(JAVA_WREF_CONTROL)/drivers.txt
@@ -2449,6 +2449,37 @@ conformance-negative-control-java-write-refusal: build/conformance-harness build
 	@grep -E '^write-refusal ' $(JAVA_WREF_CONTROL)/log
 	@grep '^  java / ' $(JAVA_WREF_CONTROL)/log
 	@echo "negative control: the ranged-integer check deleted turns java / write-refusal RED on the out-of-range rows, wire green"
+
+# THE FIXED AND MESSAGE WRITERS' NEGATIVE CONTROLS (docs/SPEC.md §5.1; the
+# write-refusal-fixed and write-refusal-message surfaces): one ranged-integer
+# check deleted from a COPY of a generated fixed class's checkWrite, which the
+# fixed form's save and the message form's measureMessages and saveMessages
+# assert over their batch. The named surface must go RED on its two
+# out-of-range rows alone, with wire (fixed) or message (message) green
+# (test/conformance/java/write-refusal-control).
+.PHONY: conformance-negative-control-java-write-refusal-fixed
+conformance-negative-control-java-write-refusal-fixed: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-control fixed "$(JAVA)" "$(JAVAC)"
+
+.PHONY: conformance-negative-control-java-write-refusal-message
+conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-control message "$(JAVA)" "$(JAVAC)"
+
+# THE RELEASE STORAGE GATE (docs/SPEC.md §5.1: memory is not a value): without
+# -ea the leg must refuse the rows whose count or length overruns a fixed
+# array's storage (fref_count, fref_length, mref_length), in every build and
+# before the first byte (test/conformance/java/write-refusal-release). Its
+# control drops the bound from a copy of RootConfigFixed's save and requires
+# the gate red on fref_count and fref_length.
+.PHONY: write-refusal-storage-release-java
+write-refusal-storage-release-java: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-release gate "$(JAVA)" "$(JAVAC)"
+
+test-java: write-refusal-storage-release-java
+
+.PHONY: write-refusal-storage-release-java-negative-control
+write-refusal-storage-release-java-negative-control: build/conformance-harness build-conformance-java
+	sh test/conformance/java/write-refusal-release control "$(JAVA)" "$(JAVAC)"
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above

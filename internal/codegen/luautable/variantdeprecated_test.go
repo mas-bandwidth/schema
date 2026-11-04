@@ -82,15 +82,15 @@ local bad = d.new(); bad.Ship = 2
 local _, sr = Save.save(d,bad); local _, mr = Save.measure(d,bad); local _, tr = Text.SaveText(d,bad)
 print("write " .. tostring(sr and sr.name) .. " " .. tostring(sr and sr.field) .. " " .. tostring(mr and mr.name) .. " " .. tostring(tr and tr.name) .. " " .. tostring(tr and tr.field))
 local fixed = { hash=T.RootFixedHash, recordBytes=T.RootFixedRecordBytes, layout=T.RootFixedLayout }
-local ok, err = pcall(function() Fixed.save(d, fixed, { bad }) end)
-print("fixed " .. tostring(not ok) .. " " .. tostring(type(err) == "table" and err.name or err) .. " " .. tostring(type(err) == "table" and err.field or "-"))
+local fout, err = Fixed.save(d, fixed, { bad })
+print("fixed " .. tostring(fout == nil) .. " " .. tostring(type(err) == "table" and err.name or err) .. " " .. tostring(type(err) == "table" and err.field or "-"))
 local fw = Fixed.load(d, fixed, inputs.fixed)
 print("fixedread " .. tostring(fw[1].Ship) .. " " .. tostring(fw[1].Fleet[1]))
 bad.Ship = 3; bad.Fleet = { 2 }; bad.FleetCount = 1
 local _, ar = Save.save(d, bad)
 print("arraywrite " .. tostring(ar and ar.name) .. " " .. tostring(ar and ar.field))
-local ok2, err2 = pcall(function() Fixed.save(d, fixed, { bad }) end)
-print("fixedarray " .. tostring(not ok2) .. " " .. tostring(type(err2) == "table" and err2.name or err2) .. " " .. tostring(type(err2) == "table" and err2.field or "-"))
+local fout2, err2 = Fixed.save(d, fixed, { bad })
+print("fixedarray " .. tostring(fout2 == nil) .. " " .. tostring(type(err2) == "table" and err2.name or err2) .. " " .. tostring(type(err2) == "table" and err2.field or "-"))
 `
 	read = strings.ReplaceAll(read, "MOD", oldModule)
 	if err := os.WriteFile(filepath.Join(oldDir, "main.luau"), []byte(read), 0o644); err != nil {

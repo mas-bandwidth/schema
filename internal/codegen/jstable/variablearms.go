@@ -275,7 +275,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "str": {
       if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       const b = TableVariableUtf8Encode(val);
-      if (!TableVariableTextHolds(fd, b)) { return false; }
+      if (!TableVariableTextHolds(fd, b, val)) { return false; }
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
       w.raw(b);
@@ -432,7 +432,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
       return TableVariableWriteFloat(w, f.f32, x);
     case "str": {
       const b = TableVariableUtf8Encode(x);
-      if (!TableVariableTextHolds(f, b)) { return false; }
+      if (!TableVariableTextHolds(f, b, x)) { return false; }
       w.raw(b);
       return true;
     }

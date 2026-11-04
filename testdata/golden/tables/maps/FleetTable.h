@@ -1155,6 +1155,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -1206,6 +1223,40 @@ inline bool TableUtf16Valid( const uint8_t * bytes, int64_t units )
         i++;
     }
     return true;
+}
+
+// A WRITE KEEPS PAIRED WIDE TEXT (docs/SPEC.md §5.1): a wide string a program
+// built holds no unpaired surrogate when a writer puts it on a wire. It reads
+// the storage's own units, and a zero unit is a whole code point the rule
+// admits.
+inline bool TableUtf16Paired( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        const uint16_t unit = (uint16_t) units[i];
+        if ( unit >= 0xD800 && unit <= 0xDBFF )
+        {
+            if ( i + 1 >= count ) { return false; } // a high surrogate with no low half
+            const uint16_t low = (uint16_t) units[i + 1];
+            if ( low < 0xDC00 || low > 0xDFFF ) { return false; }
+            i++;
+            continue;
+        }
+        if ( unit >= 0xDC00 && unit <= 0xDFFF ) { return false; } // a low surrogate first
+    }
+    return true;
+}
+
+// A FIXED WRITE KEEPS THE FIXED READER'S WIDE TEXT (docs/SPEC.md §5.1): the
+// fixed reader refuses a zero unit as text_ill_formed, so the fixed writer's
+// contract holds the storage to the pairing rule above AND to no zero unit.
+inline bool TableUtf16FixedText( const char16_t * units, int64_t count )
+{
+    for ( int64_t i = 0; i < count; i++ )
+    {
+        if ( units[i] == 0 ) { return false; }
+    }
+    return TableUtf16Paired( units, count );
 }
 
 // A CLAMP CUTS AT A CODE UNIT BOUNDARY AND NEVER SPLITS A PAIR (§3, §16.2):
@@ -11067,6 +11118,7 @@ inline int64_t ShipConfigMeasureBody( TableIds & ids, const ShipConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     return bytes;
@@ -11083,6 +11135,7 @@ inline int64_t ShipConfigMeasure( const ShipConfig & value )
 MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, const ShipConfig & value )
 {
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 57, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -11098,8 +11151,13 @@ MAPDEMO_TABLE_INLINE bool ShipConfigSaveBody( TableWriter & w, TableIds & ids, c
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipConfigSave( const ShipConfig & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ShipConfigMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11362,6 +11420,7 @@ inline bool ShipConfigSaveMessageBody( TableBitWriter & w, const ShipConfig & va
     if ( value.name_length > 0 )
     {
         w.put( 41, kTableMessageRefBitsHere );
+        schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a message write keeps well-formed text (SPEC.md §5.1)
         w.put( (uint64_t) value.name_length, 7 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.name, value.name_length );
@@ -11505,10 +11564,14 @@ inline int64_t ShipConfigMeasureMessages( const ShipConfig * values, int64_t cou
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ShipConfigSaveMessages( const ShipConfig * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ShipConfigMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11579,8 +11642,13 @@ MAPDEMO_TABLE_INLINE bool ItemSaveBody( TableWriter & w, TableIds & ids, const I
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ItemSave( const Item & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = ItemMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -11912,10 +11980,14 @@ inline int64_t ItemMeasureMessages( const Item * values, int64_t count, TableRep
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t ItemSaveMessages( const Item * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = ItemMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11964,6 +12036,7 @@ inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -11979,6 +12052,7 @@ inline int64_t FleetShipsEntryMeasureBody( TableIds & ids, const FleetShipsEntry
 MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBody( TableWriter & w, TableIds & ids, const FleetShipsEntry & value )
 {
     if ( value.key_length < 0 || value.key_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -12461,6 +12535,7 @@ inline int64_t FleetLoadoutsEntryMeasureBody( const Ctx & ctx, const TableNumber
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         // value: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -12489,6 +12564,7 @@ inline bool FleetLoadoutsEntrySaveBodyFields( const Ctx & ctx, const TableNumber
     (void) ctx;
     (void) numbering;
     if ( value.key_length < 0 || value.key_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -13685,6 +13761,26 @@ inline void ShipConfigFixedClampBody( ShipConfig & value, int32_t & TABLE_CLAMP_
     }
 }
 
+// ShipConfig's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool ShipConfigFixedFits( const ShipConfig & value )
+{
+    (void) value;
+    if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // the length indexes the storage (§3.4)
+    return true;
+}
+
+// ShipConfig's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool ShipConfigFixedWriteCheck( const ShipConfig & value )
+{
+    (void) value;
+    int bad = 0;
+    if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // the declared length is the bound (§3.4)
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -13812,6 +13908,8 @@ inline int64_t ShipConfigFixedSave( const ShipConfig * values, int64_t count, ui
 {
     const int64_t need = ShipConfigFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !ShipConfigFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( ShipConfigFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, ShipConfigFixedHash );
@@ -16744,6 +16842,7 @@ inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConf
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.name_length < 0 || value.name_length > 64 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 57, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
     if ( value.health != 0 ) { bytes += TableLebBytes( ids.ref_at( 39, 0x7f69d4b5288ba9cfull ) ) + 1 + 4; } // health
     bytes += TableRetainTailMeasure( retain, ids, path );
@@ -16753,6 +16852,7 @@ inline int64_t ShipConfigMeasureBodyRetain( TableRetainIds & ids, const ShipConf
 MAPDEMO_TABLE_INLINE bool ShipConfigSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const ShipConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.name_length < 0 || value.name_length > 64 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.name, (uint64_t) value.name_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.name_length > 0 )
     {
         w.header( ids.ref_at( 57, 0xc4bcadba8e631b86ull ), 12 ); // name
@@ -17020,6 +17120,7 @@ inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 32 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         const int32_t mark_value = ids.count;
@@ -17036,6 +17137,7 @@ inline int64_t FleetShipsEntryMeasureBodyRetain( TableRetainIds & ids, const Fle
 MAPDEMO_TABLE_INLINE bool FleetShipsEntrySaveBodyRetain( TableWriter & w, TableRetainIds & ids, const FleetShipsEntry & value, TableRetain * retain, const TableRetainPath & path )
 {
     if ( value.key_length < 0 || value.key_length > 32 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key
@@ -17540,6 +17642,7 @@ inline int64_t FleetLoadoutsEntryMeasureBodyRetain( const Ctx & ctx, const Table
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.key_length < 0 || value.key_length > 16 ) { return -1; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 21, 0x3dc94a19365b10ecull ) ) + 1 + TableLebBytes( (uint64_t) ( value.key_length ) ) + ( value.key_length ); } // key
     {
         // value: a kind 14 array of kind 13 elements, ASCENDING (§2.8)
@@ -17569,6 +17672,7 @@ inline bool FleetLoadoutsEntrySaveBodyFieldsRetain( const Ctx & ctx, const Table
     (void) ctx;
     (void) numbering;
     if ( value.key_length < 0 || value.key_length > 16 ) { return false; } // storage invariant
+    schema_assert( TableUtf8WellFormed( (const uint8_t *) value.key, (uint64_t) value.key_length ) ); // a write keeps well-formed text (SPEC.md §5.1)
     if ( value.key_length > 0 )
     {
         w.header( ids.ref_at( 21, 0x3dc94a19365b10ecull ), 12 ); // key

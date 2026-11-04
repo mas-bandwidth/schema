@@ -612,6 +612,21 @@ static SCHEMA_UNUSED int tabledemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int tabledemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !tabledemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t tabledemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -2414,6 +2429,10 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_table_integrity_seal_( uint8_t * b
 }
 
 #endif /* SCHEMA_TABLEDEMO_TABLE_PRIMITIVES */
+
+#ifndef schema_assert
+#define schema_assert assert
+#endif
 
 #ifndef SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_REFUSE_RUNTIME
@@ -4996,6 +5015,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body(tabledemo_table_m
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label_( tabledemo_table_writer_t * w, const tabledemo_wide_blob_t * value )
 {
     if ( value->label_length < 0 || value->label_length > 70000 ) { return 0; }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) ); /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }
@@ -5099,6 +5119,7 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_measure( const tabledemo_wide_b
 static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save( const tabledemo_wide_blob_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_wide_blob_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_wide_blob_save_body( &w, value ) ) { return -1; }
@@ -5297,6 +5318,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body(tabledemo_table_b
  if(value->label_length != 0) {
   tabledemo_table_bit_put(w,107,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   if(value->label_length<0 || value->label_length>70000) return 0;
+  /* a message write keeps well-formed text (SPEC.md §5.1) */ schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
   tabledemo_table_bit_put(w,(uint64_t)value->label_length,17);
   tabledemo_table_bit_align_write(w);
   tabledemo_table_bit_putbytes(w,value->label,value->label_length);
@@ -5353,6 +5375,9 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save_messages(const tabledemo_w
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_wide_blob_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5508,6 +5533,8 @@ static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label__retain( tabledem
 
     if ( value->label_length < 0 || value->label_length > 70000 ) { return 0;
     }
+    schema_assert( tabledemo_table_wire_utf8_well_formed( (const uint8_t *) value->label, (uint64_t) value->label_length ) );
+    /* a write keeps well-formed text (SPEC.md §5.1) */
     tabledemo_table_writer_raw( w, value->label, value->label_length );
     return !w->overflow;
 }

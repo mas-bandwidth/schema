@@ -1113,6 +1113,23 @@ inline bool TableUtf8Valid( const uint8_t * bytes, uint64_t length )
     return true;
 }
 
+// A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+// is held to UTF-8's own rule before a writer puts it on a wire, the check
+// above's rule less its zero byte. A zero byte is a whole code point and splits
+// no sequence, so each run between zeros is asked of TableUtf8Valid, and a
+// sequence cut short by a zero is cut short at its run's end.
+inline bool TableUtf8WellFormed( const uint8_t * bytes, uint64_t length )
+{
+    uint64_t start = 0;
+    for ( uint64_t i = 0; i <= length; i++ )
+    {
+        if ( i < length && bytes[i] != 0 ) { continue; }
+        if ( !TableUtf8Valid( bytes + start, i - start ) ) { return false; }
+        start = i + 1;
+    }
+    return true;
+}
+
 // A CLAMP CUTS AT A CODE POINT BOUNDARY (§3, §16.2): the last whole code point
 // that fits within the bound, over a payload the check above already accepted,
 // so a clamp can never invent ill-formed storage.
@@ -9734,8 +9751,13 @@ TABLEDEMO_TABLE_INLINE bool RangedSignedSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RangedSignedSave( const RangedSigned & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = RangedSignedMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -10675,16 +10697,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i8_low != 0 )
     {
         w.put( 52, kTableMessageRefBitsHere );
+        schema_assert( ( value.i8_low ) <= 126 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i8_low ) - 18446744073709551488ull, 8 );
     }
     if ( value.i8_high != 0 )
     {
         w.put( 53, kTableMessageRefBitsHere );
+        schema_assert( ( value.i8_high ) >= -127 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i8_high ) - 18446744073709551489ull, 8 );
     }
     if ( value.i8_inside != 0 )
     {
         w.put( 54, kTableMessageRefBitsHere );
+        schema_assert( ( value.i8_inside ) >= -127 && ( value.i8_inside ) <= 126 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i8_inside ) - 18446744073709551489ull, 8 );
     }
     if ( value.i16_span != 0 )
@@ -10695,16 +10720,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i16_low != 0 )
     {
         w.put( 56, kTableMessageRefBitsHere );
+        schema_assert( ( value.i16_low ) <= 32766 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i16_low ) - 18446744073709518848ull, 16 );
     }
     if ( value.i16_high != 0 )
     {
         w.put( 57, kTableMessageRefBitsHere );
+        schema_assert( ( value.i16_high ) >= -32767 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i16_high ) - 18446744073709518849ull, 16 );
     }
     if ( value.i16_inside != 0 )
     {
         w.put( 58, kTableMessageRefBitsHere );
+        schema_assert( ( value.i16_inside ) >= -32767 && ( value.i16_inside ) <= 32766 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i16_inside ) - 18446744073709518849ull, 16 );
     }
     if ( value.i32_span != 0 )
@@ -10715,16 +10743,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i32_low != 0 )
     {
         w.put( 60, kTableMessageRefBitsHere );
+        schema_assert( ( value.i32_low ) <= 2147483646 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i32_low ) - 18446744071562067968ull, 32 );
     }
     if ( value.i32_high != 0 )
     {
         w.put( 61, kTableMessageRefBitsHere );
+        schema_assert( ( value.i32_high ) >= -2147483647 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i32_high ) - 18446744071562067969ull, 32 );
     }
     if ( value.i32_inside != 0 )
     {
         w.put( 62, kTableMessageRefBitsHere );
+        schema_assert( ( value.i32_inside ) >= -2147483647 && ( value.i32_inside ) <= 2147483646 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i32_inside ) - 18446744071562067969ull, 32 );
     }
     if ( value.i64_span != 0 )
@@ -10735,16 +10766,19 @@ inline bool RangedSignedSaveMessageBody( TableBitWriter & w, const RangedSigned 
     if ( value.i64_low != 0 )
     {
         w.put( 64, kTableMessageRefBitsHere );
+        schema_assert( ( value.i64_low ) <= 9223372036854775806ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i64_low ) - 9223372036854775808ull, 64 );
     }
     if ( value.i64_high != 0 )
     {
         w.put( 65, kTableMessageRefBitsHere );
+        schema_assert( ( value.i64_high ) >= -9223372036854775807ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i64_high ) - 9223372036854775809ull, 64 );
     }
     if ( value.i64_inside != 0 )
     {
         w.put( 66, kTableMessageRefBitsHere );
+        schema_assert( ( value.i64_inside ) >= -9223372036854775807ll && ( value.i64_inside ) <= 9223372036854775806ll ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.i64_inside ) - 9223372036854775809ull, 64 );
     }
     if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // storage invariant
@@ -11622,10 +11656,14 @@ inline int64_t RangedSignedMeasureMessages( const RangedSigned * values, int64_t
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RangedSignedSaveMessages( const RangedSigned * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = RangedSignedMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -11823,8 +11861,13 @@ TABLEDEMO_TABLE_INLINE bool RangedUnsignedSaveBody( TableWriter & w, TableIds & 
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RangedUnsignedSave( const RangedUnsigned & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = RangedUnsignedMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -12764,16 +12807,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u8_low != 0 )
     {
         w.put( 69, kTableMessageRefBitsHere );
+        schema_assert( ( value.u8_low ) <= 254 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u8_low ), 8 );
     }
     if ( value.u8_high != 1 )
     {
         w.put( 70, kTableMessageRefBitsHere );
+        schema_assert( ( value.u8_high ) >= 1 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u8_high ) - 1ull, 8 );
     }
     if ( value.u8_inside != 1 )
     {
         w.put( 71, kTableMessageRefBitsHere );
+        schema_assert( ( value.u8_inside ) >= 1 && ( value.u8_inside ) <= 254 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u8_inside ) - 1ull, 8 );
     }
     if ( value.u16_span != 0 )
@@ -12784,16 +12830,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u16_low != 0 )
     {
         w.put( 73, kTableMessageRefBitsHere );
+        schema_assert( ( value.u16_low ) <= 65534 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u16_low ), 16 );
     }
     if ( value.u16_high != 1 )
     {
         w.put( 74, kTableMessageRefBitsHere );
+        schema_assert( ( value.u16_high ) >= 1 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u16_high ) - 1ull, 16 );
     }
     if ( value.u16_inside != 1 )
     {
         w.put( 75, kTableMessageRefBitsHere );
+        schema_assert( ( value.u16_inside ) >= 1 && ( value.u16_inside ) <= 65534 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u16_inside ) - 1ull, 16 );
     }
     if ( value.u32_span != 0 )
@@ -12804,16 +12853,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u32_low != 0 )
     {
         w.put( 77, kTableMessageRefBitsHere );
+        schema_assert( ( value.u32_low ) <= 4294967294 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u32_low ), 32 );
     }
     if ( value.u32_high != 1 )
     {
         w.put( 78, kTableMessageRefBitsHere );
+        schema_assert( ( value.u32_high ) >= 1 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u32_high ) - 1ull, 32 );
     }
     if ( value.u32_inside != 1 )
     {
         w.put( 79, kTableMessageRefBitsHere );
+        schema_assert( ( value.u32_inside ) >= 1 && ( value.u32_inside ) <= 4294967294 ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u32_inside ) - 1ull, 32 );
     }
     if ( value.u64_span != 0 )
@@ -12824,16 +12876,19 @@ inline bool RangedUnsignedSaveMessageBody( TableBitWriter & w, const RangedUnsig
     if ( value.u64_low != 0 )
     {
         w.put( 81, kTableMessageRefBitsHere );
+        schema_assert( ( value.u64_low ) <= 18446744073709551614ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u64_low ), 64 );
     }
     if ( value.u64_high != 1ull )
     {
         w.put( 82, kTableMessageRefBitsHere );
+        schema_assert( ( value.u64_high ) >= 1ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u64_high ) - 1ull, 64 );
     }
     if ( value.u64_inside != 1ull )
     {
         w.put( 83, kTableMessageRefBitsHere );
+        schema_assert( ( value.u64_inside ) >= 1ull && ( value.u64_inside ) <= 18446744073709551614ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.u64_inside ) - 1ull, 64 );
     }
     if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // storage invariant
@@ -13547,10 +13602,14 @@ inline int64_t RangedUnsignedMeasureMessages( const RangedUnsigned * values, int
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RangedUnsignedSaveMessages( const RangedUnsigned * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = RangedUnsignedMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -13653,8 +13712,13 @@ TABLEDEMO_TABLE_INLINE bool RangedWidthsSaveBody( TableWriter & w, TableIds & id
     return !w.overflow;
 }
 
+// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build the measure makes first, and a value that does not fit
+// is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RangedWidthsSave( const RangedWidths & value, uint8_t * buffer, int64_t capacity )
 {
+    const int64_t need = RangedWidthsMeasure( value ); // the value is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableWriter w( buffer, capacity );
     TableIds ids;
     w.put8( kTableWireForm ); // the FORM BYTE is the whole header (§3)
@@ -14099,11 +14163,13 @@ inline bool RangedWidthsSaveMessageBody( TableBitWriter & w, const RangedWidths 
     if ( value.b12 != 0 )
     {
         w.put( 89, kTableMessageRefBitsHere );
+        schema_assert( ( value.b12 ) <= 4095ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.b12 ), 12 );
     }
     if ( value.b48 != 0 )
     {
         w.put( 90, kTableMessageRefBitsHere );
+        schema_assert( ( value.b48 ) <= 281474976710655ull ); // a message write keeps the declared bounds (SPEC.md §5.1)
         w.put( (uint64_t) ( value.b48 ), 48 );
     }
     w.put( 0, kTableMessageRefBitsHere ); // the ZERO REFERENCE that ends the body
@@ -14378,10 +14444,14 @@ inline int64_t RangedWidthsMeasureMessages( const RangedWidths * values, int64_t
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
 }
 
+// A REFUSED BATCH WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save
+// makes in every build — a count or a length past its storage, a NaN, a tag or
+// an enum outside its set — the measure makes first, and a batch that does
+// not fit is refused there too, so the caller's buffer is untouched on -1.
 inline int64_t RangedWidthsSaveMessages( const RangedWidths * values, int64_t count, uint8_t * buffer, int64_t capacity, TableReport * report )
 {
-    if ( values == NULL || count < 1 ) { return -1; }
-    if ( count > kTableMessageBatchMax ) { TableMessageRefuseBatch( report ); return -1; }
+    const int64_t need = RangedWidthsMeasureMessages( values, count, report ); // the batch is asked whole before the first byte
+    if ( need < 0 || capacity < need ) { return -1; }
     TableMessageBatch batch;
     if ( !TableMessageBatchBegin( batch, buffer, capacity, count ) ) { return -1; }
     for ( int64_t i = 0; i < count; i++ )
@@ -14704,6 +14774,91 @@ inline void RangedWidthsFixedClampBody( RangedWidths & value, int32_t & TABLE_CL
     value.b48 = ( value.b48 > 281474976710655ull ) ? 281474976710655ull : value.b48;
 }
 
+// RangedSigned's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool RangedSignedFixedFits( const RangedSigned & value )
+{
+    (void) value;
+    if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // the count indexes the storage (§3.4)
+    return true;
+}
+
+// RangedUnsigned's storage bound (docs/SPEC.md §5.1): false when a count or a used
+// length is past the storage that holds it, which FixedSave refuses in every build.
+TABLE_FIXED_INLINE bool RangedUnsignedFixedFits( const RangedUnsigned & value )
+{
+    (void) value;
+    if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // the count indexes the storage (§3.4)
+    return true;
+}
+
+// RangedSigned's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RangedSignedFixedWriteCheck( const RangedSigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.i8_low > 126 );
+    bad |= (int) ( value.i8_high < -127 );
+    bad |= (int) ( value.i8_inside < -127 ) | (int) ( value.i8_inside > 126 );
+    bad |= (int) ( value.i16_low > 32766 );
+    bad |= (int) ( value.i16_high < -32767 );
+    bad |= (int) ( value.i16_inside < -32767 ) | (int) ( value.i16_inside > 32766 );
+    bad |= (int) ( value.i32_low > 2147483646 );
+    bad |= (int) ( value.i32_high < -2147483647 );
+    bad |= (int) ( value.i32_inside < -2147483647 ) | (int) ( value.i32_inside > 2147483646 );
+    bad |= (int) ( value.i64_low > 9223372036854775806ll );
+    bad |= (int) ( value.i64_high < -9223372036854775807ll );
+    bad |= (int) ( value.i64_inside < -9223372036854775807ll ) | (int) ( value.i64_inside > 9223372036854775806ll );
+    if ( value.edges_count < 0 || value.edges_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.edges_count; ++i )
+    {
+    }
+    return bad == 0;
+}
+
+// RangedUnsigned's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RangedUnsignedFixedWriteCheck( const RangedUnsigned & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.u8_low > 254 );
+    bad |= (int) ( value.u8_high < 1 );
+    bad |= (int) ( value.u8_inside < 1 ) | (int) ( value.u8_inside > 254 );
+    bad |= (int) ( value.u16_low > 65534 );
+    bad |= (int) ( value.u16_high < 1 );
+    bad |= (int) ( value.u16_inside < 1 ) | (int) ( value.u16_inside > 65534 );
+    bad |= (int) ( value.u32_low > 4294967294 );
+    bad |= (int) ( value.u32_high < 1 );
+    bad |= (int) ( value.u32_inside < 1 ) | (int) ( value.u32_inside > 4294967294 );
+    bad |= (int) ( value.u64_low > 18446744073709551614ull );
+    bad |= (int) ( value.u64_high < 1ull );
+    bad |= (int) ( value.u64_inside < 1ull ) | (int) ( value.u64_inside > 18446744073709551614ull );
+    if ( value.counts_count < 0 || value.counts_count > 4 ) { return false; } // the declared count is the bound (§3.4)
+    for ( int64_t i = 0; i < (int64_t) value.counts_count; ++i )
+    {
+    }
+    return bad == 0;
+}
+
+// RangedWidths's write contract (docs/SPEC.md §5.1): false when the record holds a
+// value its declaration does not admit, which FixedSave refuses debug-only.
+TABLE_FIXED_INLINE bool RangedWidthsFixedWriteCheck( const RangedWidths & value )
+{
+    (void) value;
+    int bad = 0;
+    // bits(8) width clamp
+    bad |= (int) ( value.b8 > 255ull );
+    // bits(16) width clamp
+    bad |= (int) ( value.b16 > 65535ull );
+    // bits(12) width clamp
+    bad |= (int) ( value.b12 > 4095ull );
+    // bits(48) width clamp
+    bad |= (int) ( value.b48 > 281474976710655ull );
+    return bad == 0;
+}
+
 // THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
 // declared min and max, and an ORDINAL's set — a union tag past the arm
 // count, an enum ordinal past the enum's top value. Straight-line, after
@@ -14915,6 +15070,8 @@ inline int64_t RangedSignedFixedSave( const RangedSigned * values, int64_t count
 {
     const int64_t need = RangedSignedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RangedSignedFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RangedSignedFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedSignedFixedHash );
@@ -15353,6 +15510,8 @@ inline int64_t RangedUnsignedFixedSave( const RangedUnsigned * values, int64_t c
 {
     const int64_t need = RangedUnsignedFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { if ( !RangedUnsignedFixedFits( values[k] ) ) { return -1; } } // a count or a length past its storage is refused in every build (SPEC.md §5.1)
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RangedUnsignedFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedUnsignedFixedHash );
@@ -15729,6 +15888,7 @@ inline int64_t RangedWidthsFixedSave( const RangedWidths * values, int64_t count
 {
     const int64_t need = RangedWidthsFixedMeasure( count );
     if ( count < 0 || buffer == NULL || capacity < need ) { return -1; }
+    for ( int64_t k = 0; k < count; ++k ) { schema_assert( RangedWidthsFixedWriteCheck( values[k] ) ); } // a fixed write keeps the declared contract (SPEC.md §5.1)
     memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); // the seven reserved bytes, and the rest of the header
     buffer[0] = kTableFixedForm;
     TableFixedPut64( buffer + kTableFixedHashAt, RangedWidthsFixedHash );

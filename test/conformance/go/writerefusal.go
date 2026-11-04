@@ -7,7 +7,9 @@ import (
 	"os"
 	"strconv"
 
+	"backenddemo"
 	"tabledemo"
+	widedemo "widedemo"
 )
 
 // ---------------------------------------------------------------------------
@@ -16,6 +18,9 @@ import (
 //
 // Each case loads a wire as its root, sets ONE field to a value off its
 // declaration, and saves through the variable-form Save the wire surface uses.
+// `bytes` sets a narrow text's exact bytes and `units` a wide text's exact
+// UTF-16 units, so storage a program built holding ill-formed text reaches the
+// writer as it would from a caller.
 // The Go writer refuses in every build: Save returns -1 and MeasureReason
 // names invalid_value. The answer is `refused` or `wrote`, and
 // `unrepresentable` only when the Go storage cannot hold the value at all.
@@ -106,6 +111,63 @@ func wrefMutate(value any, path, kind, text string) (bool, error) {
 				v.VersionNote[i] = 'a'
 			}
 			v.VersionNoteLength = int32(n)
+		case "version_note bytes":
+			return wrefSetText(v.VersionNote[:16], &v.VersionNoteLength, text)
+		default:
+			return false, unknown
+		}
+	case *widedemo.Caption:
+		switch path + " " + kind {
+		case "title units":
+			units, err := wrefUnits(text)
+			if err != nil {
+				return false, err
+			}
+			if len(units) > len(v.Title) {
+				return false, nil
+			}
+			clear(v.Title[:])
+			copy(v.Title[:], units)
+			v.TitleLength = int32(len(units))
+		default:
+			return false, unknown
+		}
+	case *backenddemo.StorePurchase:
+		switch path + " " + kind {
+		case "quantity int":
+			n, ok, err := wrefInt(text, 0, math.MaxUint8)
+			if err != nil || !ok {
+				return false, err
+			}
+			v.Quantity = uint8(n)
+		case "sku length":
+			n, ok, err := wrefInt(text, math.MinInt32, math.MaxInt32)
+			if err != nil || !ok {
+				return false, err
+			}
+			for i := range int(max(0, min(n, int64(len(v.Sku))))) {
+				v.Sku[i] = 'a'
+			}
+			v.SkuLength = int32(n)
+		case "sku bytes":
+			return wrefSetText(v.Sku[:], &v.SkuLength, text)
+		case "currency ordinal":
+			n, ok, err := wrefInt(text, 0, math.MaxUint8)
+			if err != nil || !ok {
+				return false, err
+			}
+			v.Currency = backenddemo.Currency(n)
+		default:
+			return false, unknown
+		}
+	case *backenddemo.MatchResult:
+		switch path + " " + kind {
+		case "players[0].score int":
+			n, ok, err := wrefInt(text, math.MinInt32, math.MaxInt32)
+			if err != nil || !ok {
+				return false, err
+			}
+			v.Players[0].Score = int32(n)
 		default:
 			return false, unknown
 		}
@@ -134,6 +196,8 @@ func wrefMeasureReason(value any) (int64, error) {
 		return tabledemo.RootConfigMeasureReason(v)
 	case *tabledemo.LoadoutConfig:
 		return tabledemo.LoadoutConfigMeasureReason(v)
+	case *widedemo.Caption:
+		return widedemo.CaptionMeasureReason(v)
 	}
 	return 0, fmt.Errorf("no MeasureReason for %T", value)
 }
@@ -174,7 +238,7 @@ func surfaceWriteRefusal(lines []line, out string) error {
 		if size >= 0 && reason != nil {
 			return fmt.Errorf("%s: %v", name, reason)
 		}
-		if size < 0 && !errors.Is(reason, tabledemo.TableRefuseInvalidValue) {
+		if size < 0 && !errors.Is(reason, tabledemo.TableRefuseInvalidValue) && !errors.Is(reason, widedemo.TableRefuseInvalidValue) {
 			return fmt.Errorf("%s: measure refused with %v, wants invalid_value", name, reason)
 		}
 		// an ample buffer: the wire it came from plus room for every byte the

@@ -321,6 +321,8 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
 			g.gen.emitFiniteBody(st)
+			g.gen.emitCheckBody(st)
+			g.gen.emitStorageBody(st)
 		}
 		for _, st := range closure {
 			g.emitMessageBody(st)
@@ -362,10 +364,15 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"tableFixedSelect", "tableFixedLineagePlans", "TableFixedKnownLayout",
 		"TableFixedLineagePlan", "TableFixedLimits", "TableFixedPlan",
 		"TableFixedRefusal", "TableFixedReport", "TableFixedView")
-	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode", "init"+capitalize(st.Name))
+	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode", "init"+capitalize(st.Name),
+		lower+"FixedCheckBody")
 	finite := fixedHoldsFloat(st, map[string]bool{})
 	if finite {
 		g.needHome(lower + "FixedFiniteBody")
+	}
+	storage := fixedHoldsStorage(st, map[string]bool{})
+	if storage {
+		g.needHome(lower + "FixedStorageBody")
 	}
 
 	g.pf("// ---- %s, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----\n//\n", st.Name)
@@ -579,7 +586,19 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.emitFn("int", lower+"FixedSave",
 		[]string{"List<" + st.Name + "> values", "int count", "Uint8List bytes"})
 	g.pf("  final need = %sFixedMeasure(count);\n", lower)
-	g.pf("  if (count < 0 || bytes.length < need) {\n    return -1;\n  }\n")
+	g.pf("  if (count < 0 || count > values.length || bytes.length < need) {\n    return -1;\n  }\n")
+	// THE WRITE CONTRACT OVER THE WHOLE BATCH, before the first byte is
+	// stored (docs/SPEC.md §5.1): debug only, a Dart assert.
+	g.pf("%s", fixedBatchCheck(st, "values.take(count)", true))
+	if storage {
+		// MEMORY IS NOT A VALUE (docs/SPEC.md §5.1): a count or a length
+		// past its storage is refused in every build, before the first byte.
+		g.pf("  // A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED in every build:\n")
+		g.pf("  // every record is asked before the first byte is written.\n")
+		g.pf("  for (var k = 0; k < count; k++) {\n")
+		g.pf("    if (!%sFixedStorageBody(values[k])) return -1;\n", lower)
+		g.pf("  }\n")
+	}
 	if finite {
 		g.pf("  // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every\n")
 		g.pf("  // record is asked before the first byte is written, so a refusal\n")

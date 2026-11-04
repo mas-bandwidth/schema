@@ -602,6 +602,7 @@ public final class MixedPickupEventVariable {
 
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
+        graph.text = true;
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;

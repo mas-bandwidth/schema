@@ -464,6 +464,12 @@ type Manifest struct {
 // `ordinal` an enum by its raw ordinal, `tag` a union by its raw tag, and
 // `float` one of nan, inf or -inf.
 type WriteRefusal struct {
+	// Form is the writer the row drives, and the line kind and surface it
+	// travels under: "" the variable-form Save (`write-refusal`), "fixed" the
+	// fixed form's FixedSave (`write-refusal-fixed`), "message" SaveMessages
+	// against the connection named in Unit (`write-refusal-message`), and
+	// "json" the text writer (`write-refusal-json`).
+	Form    string
 	Name    string
 	Unit    string
 	Root    string
@@ -475,7 +481,19 @@ type WriteRefusal struct {
 }
 
 // writeRefusalKinds is the closed set a row's Kind is drawn from.
-var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true}
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "bytes": true, "units": true}
+
+// writeRefusalForms maps each write-refusal line kind, which is also its
+// surface, to the writer it drives.
+var writeRefusalForms = map[string]string{"write-refusal": "", "write-refusal-fixed": "fixed", "write-refusal-message": "message", "write-refusal-json": "json"}
+
+// Surface is the surface, and the manifest line kind, a row travels under.
+func (wr WriteRefusal) Surface() string {
+	if wr.Form == "" {
+		return "write-refusal"
+	}
+	return "write-refusal-" + wr.Form
+}
 
 // LookupConnection returns the connection a key names.
 func (m *Manifest) LookupConnection(key string) (Connection, error) {
@@ -716,8 +734,9 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: refusal takes a forgery name and a reason", where)
 			}
 			m.Refusals = append(m.Refusals, Refusal{Forgery: f[1], Reason: f[2]})
-		case "write-refusal":
-			// write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+		case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
+			// write-refusal[-form] <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+			// (a message row's <unit> is a connection key)
 			// The DERIVED manifest carries the line without its verdict.
 			if len(f) != 9 && len(f) != 8 {
 				return nil, fmt.Errorf("%s: write-refusal takes case, unit, root, wire, path, kind, value, verdict", where)
@@ -725,7 +744,7 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			if !writeRefusalKinds[f[6]] {
 				return nil, fmt.Errorf("%s: %q is not a write-refusal kind", where, f[6])
 			}
-			wr := WriteRefusal{Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Path: f[5], Kind: f[6], Value: f[7]}
+			wr := WriteRefusal{Form: writeRefusalForms[f[0]], Name: f[1], Unit: f[2], Root: f[3], Wire: f[4], Path: f[5], Kind: f[6], Value: f[7]}
 			if len(f) == 9 {
 				if f[8] != "refused" && f[8] != "wrote" {
 					return nil, fmt.Errorf("%s: %q is not a write verdict: a save is `refused` or `wrote`", where, f[8])

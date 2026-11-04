@@ -667,9 +667,64 @@ public final class TableFixed {
             }
             return true;
         }
+        return utf8Ok(src, at, len, false);
+    }
+
+    /**
+     * THE WRITER'S TEXT RULE (docs/SPEC.md §5.1): the used bytes of a narrow text are well-formed
+     * UTF-8. A zero byte is not this rule's business.
+     */
+    public static boolean utf8WellFormed(byte[] src, int len) {
+        return utf8Ok(src, 0, len, true);
+    }
+
+    /**
+     * THE WRITER'S WIDE TEXT RULE (docs/SPEC.md §5.1): every surrogate among the used units is
+     * paired. A zero unit is not this rule's business.
+     */
+    public static boolean wideWellFormed(char[] units, int len) {
+        for (int i = 0; i < len; i++) {
+            final char u = units[i];
+            if (Character.isHighSurrogate(u)) {
+                if (i + 1 >= len || !Character.isLowSurrogate(units[i + 1])) {
+                    return false;
+                }
+                i++;
+            } else if (Character.isLowSurrogate(u)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * THE FIXED WRITER'S ZERO RULE (docs/SPEC.md §5.1): the fixed reader refuses a zero byte among
+     * a text's used bytes as text_ill_formed, so the fixed writer never stores one.
+     */
+    public static boolean holdsZero(byte[] src, int len) {
+        for (int i = 0; i < len; i++) {
+            if (src[i] == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** the zero rule over a wide text's used units: a zero unit. */
+    public static boolean holdsZero(char[] units, int len) {
+        for (int i = 0; i < len; i++) {
+            if (units[i] == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** well-formed UTF-8 over src[at, at + len); a zero byte passes only when zeroOk. */
+    private static boolean utf8Ok(byte[] src, int at, int len, boolean zeroOk) {
         for (int i = 0; i < len; ) {
             final int b0 = src[at + i] & 0xFF;
-            if (b0 == 0) {
+            if (b0 == 0 && !zeroOk) {
                 return false;
             } // a zero byte is damage
             if (b0 < 0x80) {

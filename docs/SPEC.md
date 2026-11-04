@@ -2494,62 +2494,85 @@ a value.
 | Goose | none | every build | `SaveRefuseInvalidValue`, named by `save_refusal_name` |
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
-**What each writer holds today.** The numbers are the contract's rows. The
-VARIABLE-FORM `Save` is the writer the conformance surface holds (below); it
-holds rows 1–7 in every leg but Lobster:
+**What each writer holds today.** The numbers are the contract's rows; "debug"
+is the leg's assert, "every build" its refusal.
+
+**After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
+success, never after failure: a writer that refuses returns its refusal
+(`false`, `-1`, `null`, an error) and promises nothing about what the buffer
+then holds. It never reads or writes past the buffer it was handed. Some
+writers do leave the buffer untouched, because they check or measure before the
+first byte (Go's `FixedSave`, most legs' `SaveMessages`); that is a property of
+that leg's writer, held by that leg's own tests, and no caller may depend on it
+across languages.
 
 | leg | variable `Save` and its `Measure` |
 |---|---|
-| C++ | 1–2 debug; 3–7 every build; 8 every build for optional text and text-list elements only; 9–10 unchecked |
-| C | 1–2 debug; 3–7 every build; 8 in the unbounded and blob text setters only; 9–10 unchecked |
-| C# | 1–2 debug; 3–7 every build; 8 every build for `string`, `wstring` unchecked; 9–10 unchecked |
-| Rust | 1–4 debug, and a release build clamps 3; 7 and a `wstring` 4 every build; 5–6 unrepresentable; 8 by type for `string` (a Rust `String`), its zero byte unchecked; 9–10 unchecked |
-| Java | 1–5 debug; 6–7 every build; 8–10 unchecked |
-| Dart | 1–5 debug; 6–7 every build; 10 every build for `required` fields only; 8–9 unchecked |
+| C++ | 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9–10 unchecked |
+| C | 1–2 and 8 debug; 3–7 every build; 9–10 unchecked |
+| C# | 1–2 and a `wstring`'s 8 debug; 3–7 and a `string`'s 8 every build; 9–10 unchecked |
+| Rust | 1–2, 4 and a `wstring`'s 8 debug; 3, 7 and a `wstring`'s 4 every build; 5–6 and a `string`'s 8 unrepresentable (native enums, a Rust `String`); 9–10 unchecked |
+| Java | 1–5 and a `string`'s 8 debug; 6–7 and a `wstring`'s 8 every build; 9–10 unchecked |
+| Dart | 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked |
 | Go | 1–8 and 10 every build; 9 unchecked |
-| JavaScript | 1–7 and 10 every build; 8 for unbounded text and text lists only; 9 not audited |
-| Elixir | 1–6 every build; 7 unrepresentable (a BEAM float holds no NaN or infinity); 8 for unbounded text only; 9–10 unchecked |
-| Lua | 1–7 every build; 8 for text-list elements only; 9–10 not audited |
-| Luau | 1–7 every build; 8–10 not audited |
-| Squirrel | 1–7 every build; 8–10 unchecked |
+| JavaScript | 1–8 and 10 every build; 9 not audited |
+| Elixir | 1–6 and 8 every build; 7 unrepresentable (a BEAM float holds no NaN or infinity); 9–10 unchecked |
+| Lua | 1–8 every build, `SaveRetain` included; 9–10 not audited |
+| Luau | 1–8 every build; 9–10 not audited |
+| Squirrel | 1–8 every build; 9–10 unchecked |
 | MOO | 1–8 every build; 9–10 unchecked |
-| Goose | 1–7 every build; 8 and 10 unchecked; 9 not audited |
+| Goose | 1–8 every build; 10 unchecked; 9 not audited |
 | Lobster | 7 every build; 1–5 and 8 unchecked; 6 an index fault, not a refusal |
 
-The other writers, over rows 1–7 (rows 8–10 are not audited there):
+The other writers, over rows 1–8 (rows 9–10 are not audited there; the message
+form masks a `flags` value to its declared width on purpose, SPEC-TABLES §3.3).
+**Two rules hold in every leg on top of the table.** A count or a length that
+would index past the storage it describes is refused in EVERY build, before
+the first byte, assert legs included: it guards memory, not a value, and the
+debug-only allowance does not reach it (the `write-refusal-storage-release-<lang>`
+gates hold it in the release builds of C, C++, C#, Rust, Java and Dart). And
+`FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
+reader refuses one as `text_ill_formed`: a writer never produces bytes its own
+reader refuses.
 
-| leg | `FixedSave` | `SaveMessages` | packet `Write` |
+| leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7) |
 |---|---|---|---|
-| C++, C | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 3–7 every build; 1–2 masked to the field's width | 1–6 debug; 7 unchecked |
-| C# | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 3–7 every build; 1–2 debug, and they wrap in release | 1, 3–6 debug; 2 and 7 unchecked |
-| Rust | 3–4 debug, then clamped; 7 every build; 1, 2, 5 unchecked | 5–7 every build; 1–3 wrap; 4 unchecked | 1–5 debug; 6 unrepresentable; 7 debug for `float32` |
-| Java | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 3–7 every build; 1–2 masked | 1–7 debug |
-| Dart | 3–4 debug; 7 every build; 1, 2, 5, 6 unchecked | 6–7 every build; 1–5 masked or unchecked | 1–7 debug |
-| Go | 1–7 every build | 3–7 every build; 1 clamped and counted | 1–6 every build; 7 every build on the flat path, a panic on the per-field path |
-| JavaScript | 7 every build; 1 for `required` fields only; 2–6 unchecked | 5–7 every build; 1–4 masked | the flat tier 1–6 while `NODE_ENV` is not `production`; 7 unchecked |
-| Elixir | 1–7 every build (`ArgumentError`) | 7 every build; 6 refused as malformed; 1, 3, 4 unchecked; 5 written raw | 1–7 every build (`ArgumentError`) |
-| Lua | 3, 4, 7 raise rather than return; 1, 2, 5, 6 unchecked | 7 every build; 1, 3–5 masked; 6 an incidental error | 1–6 every build; 7 raises |
-| Luau | 7 raises; 1–6 unchecked | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises |
-| Squirrel | 7 every build; 1–6 unchecked | 3, 4, 7 every build; 1 wraps; 5–6 written as `None` | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises |
-| MOO | 3–7 every build; 1 checks the storage width only; 2 unchecked | 5–7 every build; 1, 3, 4 unchecked | 1–7 every build |
-| Goose | 1–6 every build; 7 for ranged floats only | 3–7 every build; 1 masked | 1–7 every build |
+| C++, C | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
+| C# | 1–6 and 8 debug; 7 every build | 1–2 and a `wstring`'s 8 debug; 3–7 and a `string`'s 8 every build | 1 and 3–7 debug; 2 unchecked |
+| Rust | 1–6 and 8 debug; 7 every build | 1–3 and 8 debug; 4–7 every build | 1–5 and 7 debug; 6 unrepresentable |
+| Java | 1–6 and 8 debug; 7 every build | 1–2 and 8 debug; 3–7 every build | 1–7 debug |
+| Dart | 1–6 and 8 debug; 7 every build | 1–5 and 8 debug; 6–7 every build | 1–7 debug |
+| Go | 1–8 every build | 1–8 every build | 1–6 every build; 7 every build on the flat path, a panic on the per-field path |
+| JavaScript | 1–8 every build | 1–8 every build | the flat tier 1–7 every build, whatever `NODE_ENV` says |
+| Elixir | 1–6 and 8 every build (`ArgumentError`); 7 unrepresentable | 1–6 and 8 every build; 7 unrepresentable | 1–7 every build (`ArgumentError`) |
+| Lua | 1–8 every build | 1–8 every build | 1–6 every build; 7 raises |
+| Luau | 1–8 every build | no value encoder: it carries encoded bodies | 1–6 every build; 7 raises |
+| Squirrel | 1–8 every build | 1–8 every build | 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises |
+| MOO | 1–8 every build | 1–8 every build | 1–7 every build |
+| Goose | 1–8 every build | 1–8 every build | 1–7 every build |
 | Lobster | 1–7 every build (`SaveChecked`) | 2–6 every build; 1 and 7 unchecked | 1–6 debug; 7 traps |
 
-**Held by test**: the conformance surface `write-refusal`
-(test/conformance/README.md) loads one instance, sets one field to a value off
-its declaration and saves through the variable-form `Save`, for a ranged
-integer above and below its range, a `bits(6)` past its width, a count past
-`Max`, a text past `N`, an enum ordinal and a union tag past their sets, and a
-NaN and an infinity (rows 1–7). Every refused row has a lawful twin at the same
-boundary that must be written, so a leg that refused everything would fail.
+**The text writer** (§16) writes a zero byte or a zero unit as `\u0000` in every
+leg, and refuses ill-formed text (SPEC-TABLES §16.3).
+
+**Held by test**: four conformance surfaces (test/conformance/README.md), one
+per writer, each loading one instance, setting one field and saving it.
+`write-refusal` saves through the variable-form `Save`, `write-refusal-fixed`
+through `FixedSave`, `write-refusal-message` through `SaveMessages` against a
+connection's vocabulary, and `write-refusal-json` through the text writer. The
+battery covers a ranged integer above and below its range, a `bits(6)` past its
+width, a count past `Max`, a text past `N`, an enum ordinal and a union tag past
+their sets, a NaN and an infinity, ill-formed UTF-8 (`61 FF 62`) and a lone
+surrogate (`0061 D800 0062`), and every refused row has a lawful twin at the
+same boundary that must be written, so a leg that refused everything would fail.
 An assert leg answers from its DEBUG build — C and C++ fork one child per case
 and read an abort as the refusal, C# installs a throwing `TraceListener`, Rust
-catches the panic, the Java driver runs that surface under `-ea` and the Dart
+catches the panic, the Java driver runs those surfaces under `-ea` and the Dart
 leg builds a second binary with `--enable-asserts` — and every other leg
-answers from its ordinary build. Each leg carries a negative control,
-`conformance-negative-control-<lang>-write-refusal`, that removes one check
-from a copy of the generated code and requires `<lang> / write-refusal` to go
-red while `wire` stays green.
+answers from its ordinary build. Each leg carries negative controls,
+`conformance-negative-control-<lang>-write-refusal`, `-write-refusal-fixed` and
+`-write-refusal-message`, that remove one check from a copy of the generated
+code and require that surface to go red while `wire` (or `message`) stays green.
 
 ## 6. Generated code
 

@@ -3,8 +3,10 @@
 # a missing text event, a noncanonical integer accepted by the generated
 # wire reader, an absent case that writes no `.absent` answer, and the 4096
 # id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
-# reader (frame-cap), and the generated variable writer's ranged-int refusal
-# (write-refusal).
+# reader (frame-cap), the generated variable writer's ranged-int refusal
+# (write-refusal), the generated FixedSave's wide-text rule
+# (write-refusal-fixed) and the generated SaveMessages's ranged-int refusal
+# (write-refusal-message).
 set -eu
 
 mode=$1
@@ -46,6 +48,20 @@ write-refusal)
     # min/max) taken out of the generated tabledemo WeaponConfig save body
     source=$(grep -l '^func WeaponConfigSaveBodyFields(' build/tables-generated-go/examples/*Table.go)
     sed '/^func WeaponConfigSaveBodyFields(/,/^}/ s/if value.Penetration < 0 || value.Penetration > 10 {/if false { \/\/ SABOTAGED: a ranged int writes unchecked/' "$source" > "$out/source.gotext"
+    ;;
+write-refusal-fixed)
+    # the fixed writer's wide-text rule (an unpaired surrogate) taken out of
+    # the generated widedemo Caption check bodies; the Go leg's fixed rows
+    # over RootConfig and LoadoutConfig answer absent, so this is the rule the
+    # surface's answered rows hold
+    source=$(grep -l '^func CaptionFixedCheckBody(' build/tables-generated-go/wide/*.go)
+    sed 's/ || tableFixedUnitsIllFormed(value.Title\[:value.TitleLength\]) {/ { \/\/ SABOTAGED: wide text writes unchecked/' "$source" > "$out/source.gotext"
+    ;;
+write-refusal-message)
+    # the message writer's ranged-int refusal taken out of the generated
+    # backenddemo StorePurchase message body
+    source=$(grep -l '^func StorePurchaseSaveMessageBody(' build/tables-generated-go/backend/*.go)
+    sed '/^func StorePurchaseSaveMessageBody(/,/^}/ s/if value.Quantity < 1 || value.Quantity > 99 {/if false { \/\/ SABOTAGED: a ranged int writes unchecked/' "$source" > "$out/source.gotext"
     ;;
 absent)
     # Model two explicit missing cases before suppressing their markers.
@@ -129,6 +145,14 @@ else
     elif [ "$mode" = write-refusal ]; then
         grep -q 'go / write-refusal: wref_range_high' "$out/log"
         grep -q 'go / write-refusal: wref_range_low' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = write-refusal-fixed ]; then
+        grep -q 'go / write-refusal-fixed: fref_wide_unpaired' "$out/log"
+        grep -q 'wire          pass' "$out/log"
+    elif [ "$mode" = write-refusal-message ]; then
+        grep -q 'go / write-refusal-message: mref_range_high' "$out/log"
+        grep -q 'go / write-refusal-message: mref_range_low' "$out/log"
+        grep -q '^message       pass' "$out/log"
         grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = absent ]; then
         grep -q 'go / wire: root_full: .*driver wrote nothing' "$out/log"

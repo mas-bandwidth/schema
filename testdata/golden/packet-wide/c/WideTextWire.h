@@ -25,7 +25,7 @@ extern "C" {
 /* Writes WideSeven. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int wide_write_wide_seven( serialize_write_stream_t * stream, const wide_wide_seven_t * value )
 {
-    serialize_assert( value->text_length >= 0 && value->text_length <= 7 );
+    if ( value->text_length < 0 || value->text_length > 7 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->text_length, 0, 7 ) )
     {
         return 0;
@@ -78,7 +78,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_wide_seven( serialize_re
 /* Writes WideFour. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int wide_write_wide_four( serialize_write_stream_t * stream, const wide_wide_four_t * value )
 {
-    serialize_assert( value->text_length >= 0 && value->text_length <= 4 );
+    if ( value->text_length < 0 || value->text_length > 4 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->text_length, 0, 4 ) )
     {
         return 0;
@@ -131,6 +131,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_wide_four( serialize_rea
 /* Writes NarrowFifteen. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int wide_write_narrow_fifteen( serialize_write_stream_t * stream, const wide_narrow_fifteen_t * value )
 {
+    if ( value->text_length < 0 || value->text_length > 15 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     {
         int32_t i;
         for ( i = 0; i < value->text_length; i++ )
@@ -175,7 +176,7 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int wide_read_narrow_fifteen( serializ
 /* Writes WideInterop. */
 static SCHEMA_UNUSED SCHEMA_C_WRITE_INLINE int wide_write_wide_interop( serialize_write_stream_t * stream, const wide_wide_interop_t * value )
 {
-    serialize_assert( value->caption_length >= 0 && value->caption_length <= 7 );
+    if ( value->caption_length < 0 || value->caption_length > 7 ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */
     if ( !serialize_write_int( stream, value->caption_length, 0, 7 ) )
     {
         return 0;

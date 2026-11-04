@@ -28,17 +28,15 @@ function decode(v, name, bytes, bits = bytes.length * 8, mod = d, flat = f) {
   const padded = new Uint8Array(bytes.length + 8); padded.set(bytes);
   return flat[`Read${name}Flat`](new DataView(padded.buffer), bits, v);
 }
-// WRITE CONTRACTS ARE THE CHECKED BUILD'S (docs/CONTRIBUTING.md rule 4,
-// SPEC.md's checked/production fork): the flat writer's wstring length check
-// is emitted through the debug guard, so only NODE_ENV=development holds it to
-// -1; production compiles the check out and is not asked.
-const checked = process.env.NODE_ENV !== "production";
+// WRITE CONTRACTS (docs/SPEC.md §5.1): the flat writer's wstring length check
+// refuses with -1 in every build, NODE_ENV=production included; the runtime
+// tier's verdict below is serialize.js's.
 if (contracts) {
   const v = new d.WideSeven();
   for (const n of [-1, 8, 1, 0.5, NaN]) {
     v.textLength = n;
     assert.equal(d.WriteWideSeven(new WriteStream(new Uint8Array(256)), v), false);
-    if (checked) { assert.equal(f.WriteWideSevenFlat(new DataView(new ArrayBuffer(256)), v), -1); }
+    assert.equal(f.WriteWideSevenFlat(new DataView(new ArrayBuffer(256)), v), -1);
   }
   v.textLength = 1; v.text[0] = 0xd800;
   let { bytes, bits } = encode(v, "WideSeven");

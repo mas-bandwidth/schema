@@ -79,6 +79,23 @@ func (g *wireGen) jsonTextListRead(f *ir.Field, val string, d int, fallback stri
 
 const textListWireRuntime = `
 int tableTextByteLength(String value) => utf8.encode(value).length;
+// tableTextWellFormed reports whether a String has a UTF-8 spelling: every
+// surrogate in it is paired (docs/SPEC.md §5.1). A zero unit is not its
+// business.
+bool tableTextWellFormed(String value) {
+  for (var i = 0; i < value.length; i++) {
+    final c = value.codeUnitAt(i);
+    if (c >= 0xD800 && c <= 0xDBFF) {
+      if (i + 1 >= value.length) return false;
+      final d = value.codeUnitAt(i + 1);
+      if (d < 0xDC00 || d > 0xDFFF) return false;
+      i++;
+    } else if (c >= 0xDC00 && c <= 0xDFFF) {
+      return false;
+    }
+  }
+  return true;
+}
 bool tableTextValueValid(String value,int bound) =>
     _wideValid(value.codeUnits) && (utf8.encode(value).length <= (bound < 0 ? 0xffffffff : bound));
 `

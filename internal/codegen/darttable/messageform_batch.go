@@ -122,13 +122,21 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	}
 	g.needHome("TableBitWriter", "TableMessageReader", "TableVocabulary", "TableReport",
 		"tableMessageBatchOpen", "tableMessageBatchClose", "tableMessageBatchMax",
-		lower+"SaveMessageBody", lower+"LoadMessageBody", "init"+capitalize(st.Name), st.Name)
+		lower+"SaveMessageBody", lower+"LoadMessageBody", "init"+capitalize(st.Name), st.Name,
+		lower+"FixedCheckBody")
 	g.pf("// ---- %s, THE MESSAGE FORM's BATCH (docs/SPEC-TABLES.md §3.3) ----\n", st.Name)
 	g.pf("/// MeasureMessages sizes the buffer for a batch of %s bodies, or -1 with\n", st.Name)
 	g.pf("/// the reason on the report (docs/SPEC-TABLES.md §3.3).\n")
 	g.emitFn("int", lower+"MeasureMessages", []string{"List<" + st.Name + "> values", "TableReport report"})
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
+	// THE WRITE CONTRACT OVER THE WHOLE BATCH, before anything is measured
+	// or stored (docs/SPEC.md §5.1): a ranged integer, a bits(N) value, a
+	// count, a length and an enum ordinal off their declarations are refused
+	// rather than masked to the width, and so is ill-formed text. Debug only,
+	// a Dart assert. A flags value is not in it: this form masks a flags value
+	// to its declared width on purpose (docs/SPEC-TABLES.md §3.3).
+	g.pf("%s", fixedBatchCheck(st, "values", false))
 	g.pf("  final w = TableBitWriter(Uint8List(0))..measuring = true;\n")
 	g.pf("  for (final value in values) {\n")
 	g.pf("    if (!%sSaveMessageBody(w, value)) return -1;\n", lower)
@@ -142,11 +150,12 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "Uint8List buffer", "TableReport report"})
 	g.pf("  if (values.length < 1 || values.length > tableMessageBatchMax) {\n")
 	g.pf("    report.Refuse('batch_too_large');\n    return -1;\n  }\n")
-	if st.Integrity != "" {
-		g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
-	} else {
-		g.pf("  if (buffer.length < 2) return -1;\n")
-	}
+	// NOTHING IS WRITTEN ON A REFUSAL (docs/SPEC.md §5.1): the measuring pass
+	// runs every refusal the body writer makes (the contract's assert, a
+	// union tag, a NaN, a count or a length past its storage) before the
+	// first byte reaches the caller's buffer, and sizes it, so the writing
+	// pass below cannot refuse.
+	g.pf("  final need = %sMeasureMessages(values, report);\n  if (need < 0 || buffer.length < need) return -1;\n", lower)
 	g.pf("  buffer[0] = 2;\n  buffer[1] = values.length - 1;\n")
 	if st.Integrity != "" {
 		g.pf("  final w = TableBitWriter(Uint8List.sublistView(buffer, 2, need - 4));\n")
@@ -339,16 +348,23 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 	kind, shape := entry.Kind, entry.Shape
 	switch {
 	case f.Type.Kind == ir.TString || (f.Type.Kind == ir.TBytes && !f.Type.Pointer):
+		// a length past the buffer would read past the writer's own storage:
+		// refused in every build
+		g.pf("%sif (%sLength < 0 || %sLength > %s.length) return false;\n", ind, expr, expr, expr)
 		g.pf("%sw.put(%sLength, %d);\n", ind, expr, ir.TableMessageCountBits(shape))
 		g.pf("%sw.align();\n", ind)
 		g.pf("%sw.raw(Uint8List.sublistView(%s, 0, %sLength));\n", ind, expr, expr)
 	case f.Type.Kind == ir.TWString:
+		g.pf("%sif (%sLength < 0 || %sLength > %s.length) return false;\n", ind, expr, expr, expr)
 		g.pf("%sw.put(%sLength, %d);\n", ind, expr, ir.TableMessageCountBits(shape))
 		g.pf("%sfor (var i = 0; i < %sLength; i++) { w.put(%s[i], 16); }\n", ind, expr, expr)
 	case f.Array == ir.ArrayFixed || f.Array == ir.ArrayCounted:
 		count := fmt.Sprintf("%d", f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
 			count = expr + "Count"
+			// a count past the array would read past the writer's own
+			// storage: refused in every build
+			g.pf("%sif (%s < 0 || %s > %s.length) return false;\n", ind, count, count, expr)
 		}
 		if ir.TableMessageCountBits(shape) > 0 {
 			g.pf("%sw.put(%s - %d, %d);\n", ind, count, shape.Min, ir.TableMessageCountBits(shape))

@@ -42,7 +42,7 @@ local writing = { owner = null, field = null };
 // A VALUE OUTSIDE ITS DECLARED SET IS REFUSED BY EVERY BUILD: a ranged integer
 // off its min or max, a bits(N) value wider than N, an integer its kind cannot
 // hold, a count or a length past its bound, an enum value naming no variant, a
-// union tag naming no arm. The first refusal names its field on SaveReason as
+// union tag naming no arm, ill-formed text. The first refusal names its field on SaveReason as
 // invalid_value: <Owner>.<field>, and the save answers null.
 local refuseInvalid = function() {
   if (_M.SaveReason == null) {
@@ -268,6 +268,44 @@ local wireKind = function(d) {
 local wideFits = function(val, bound) {
   if (typeof val != "array" || val.len() > bound) return false;
   foreach (u in val) if (typeof u != "integer" || u < 0 || u > 0xFFFF) return false;
+  return true;
+};
+// TEXT A PROGRAM BUILT IS WELL-FORMED OR REFUSED (docs/SPEC.md §5.1): a
+// string's bytes are UTF-8 (no overlong or surrogate sequence, nothing past
+// U+10FFFF, no truncated tail), and wide text pairs every surrogate. A zero
+// byte or unit is text, not ill-formed, here.
+local utf8Ok = function(s) {
+  if (typeof s != "string") return false;
+  local n = s.len(), i = 0;
+  while (i < n) {
+    local c = s[i] & 0xff;
+    if (c < 0x80) { i++; continue; }
+    local k = 0, c1 = 0;
+    if (c < 0xC2) return false;
+    if (c < 0xE0) k = 2;
+    else if (c < 0xF0) k = 3;
+    else if (c < 0xF5) k = 4;
+    else return false;
+    if (i + k > n) return false;
+    c1 = s[i + 1] & 0xff;
+    if (c == 0xE0 && c1 < 0xA0) return false;
+    if (c == 0xED && c1 > 0x9F) return false;
+    if (c == 0xF0 && c1 < 0x90) return false;
+    if (c == 0xF4 && c1 > 0x8F) return false;
+    for (local j = 1; j < k; j++) if ((s[i + j] & 0xc0) != 0x80) return false;
+    i += k;
+  }
+  return true;
+};
+local widePaired = function(val) {
+  local n = val.len();
+  for (local i = 0; i < n; i++) {
+    local u = val[i];
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= n || val[i + 1] < 0xDC00 || val[i + 1] > 0xDFFF) return false;
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) return false;
+  }
   return true;
 };
 local wideUnits = function(w, val) {
@@ -615,6 +653,7 @@ local writeArrayBody = function(T, d, val, w, ids, nodes, root) {
       wleb(w, idx);
     } else if (e.shape == "sblob" || e.shape == "bblob") {
       local kind = e.shape == "sblob" ? "s" : "b";
+      if (kind == "s" && v != null && !utf8Ok(v)) { refuseInvalid(); return -1; }
       local idx = indexOfBlob(nodes, kind, v);
       if (idx < 0) return -1;
       wleb(w, idx);
@@ -680,6 +719,7 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
   }
   if (shape == "sblob" || shape == "bblob") {
     local kind = shape == "sblob" ? "s" : "b";
+    if (kind == "s" && val != null && !utf8Ok(val)) return refuseInvalid();
     local idx = indexOfBlob(nodes, kind, val);
     if (idx < 0) return false;
     wleb(w, idx);
@@ -692,12 +732,12 @@ writeBare = function(T, d, val, w, ids, nodes, root) {
   }
   if (shape == "union") return writeUnionValue(T, unionDesc(T, d.table), val, w, ids, nodes, root);
   if (shape == "str") {
-    if (val.len() > d.bound) return refuseInvalid();
+    if (val.len() > d.bound || !utf8Ok(val)) return refuseInvalid();
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
     return true;
   }
   if (shape == "wstr") {
-    if (!wideFits(val, d.bound)) return refuseInvalid();
+    if (!wideFits(val, d.bound) || !widePaired(val)) return refuseInvalid();
     wideUnits(w, val);
     return true;
   }
@@ -761,6 +801,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
   if (shape == "sblob" || shape == "bblob") {
     if (!always && val == null) return true;
     local kind = shape == "sblob" ? "s" : "b";
+    if (kind == "s" && !utf8Ok(val)) return refuseInvalid();
     local idx = indexOfBlob(nodes, kind, val);
     if (idx < 0) return false;
     wleb(w, idsRef(ids, d.id)); wu8(w, 17); wleb(w, idx);
@@ -788,7 +829,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
   }
   if (shape == "str") {
     if (!always && scalarDefault(val, d.def)) return true;
-    if (val.len() > d.bound) return refuseInvalid();
+    if (val.len() > d.bound || !utf8Ok(val)) return refuseInvalid();
     wleb(w, idsRef(ids, d.id)); wu8(w, 12);
     wleb(w, val.len());
     for (local i = 0; i < val.len(); i++) wu8(w, val[i]);
@@ -797,7 +838,7 @@ writeValue = function(T, d, val, w, ids, nodes, root, framed) {
   if (shape == "wstr") {
     // the empty value is the default wide text takes (SPEC §4.12), so it elides
     if (!always && typeof val == "array" && val.len() == 0) return true;
-    if (!wideFits(val, d.bound)) return refuseInvalid();
+    if (!wideFits(val, d.bound) || !widePaired(val)) return refuseInvalid();
     wleb(w, idsRef(ids, d.id)); wu8(w, 33);
     wleb(w, val.len() * 2);
     wideUnits(w, val);

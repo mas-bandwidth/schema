@@ -1328,3 +1328,67 @@ write-refusal wref_union_tag       tabledemo RootConfig    testdata/wire/tables/
 write-refusal wref_union_tag_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     2   wrote
 write-refusal wref_non_finite      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   nan refused
 write-refusal wref_infinite        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   inf refused
+
+# ILL-FORMED TEXT HELD IN STORAGE (docs/SPEC.md §5.1 row 8): what no wire can
+# deliver and a program can build. A narrow string holding 61 FF 62 and a wide
+# string holding 0061 D800 0062 (a lone high surrogate) are refused, writing
+# nothing; the well-formed twins beside them are written. A leg whose string
+# type cannot hold the value answers `unrepresentable`; a leg with no wide text
+# answers the wide rows absent.
+write-refusal wref_text_illformed  tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 61FF62           refused
+write-refusal wref_text_wellformed tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 61C3A962         wrote
+write-refusal wref_wide_unpaired   widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 0061D8000062     refused
+write-refusal wref_wide_paired     widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 0061D83DDE000062 wrote
+
+# THE SAME CONTRACT THROUGH THE FIXED FORM'S FixedSave (docs/SPEC.md §5.1): the
+# row loads the wire as the variable form does, sets the one field, and saves
+# the one value as a fixed batch of one. An assert leg answers from its debug
+# build.
+write-refusal-fixed fref_range_high      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     11               refused
+write-refusal-fixed fref_range_high_ok   tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     10               wrote
+write-refusal-fixed fref_range_low       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     -1               refused
+write-refusal-fixed fref_range_low_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].penetration int     0                wrote
+write-refusal-fixed fref_bits_wide       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     64               refused
+write-refusal-fixed fref_bits_wide_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].channel     int     63               wrote
+write-refusal-fixed fref_count           tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   9                refused
+write-refusal-fixed fref_count_ok        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons                count   8                wrote
+write-refusal-fixed fref_length          tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  17               refused
+write-refusal-fixed fref_length_ok       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           length  16               wrote
+write-refusal-fixed fref_enum            tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 4                refused
+write-refusal-fixed fref_enum_ok         tabledemo LoadoutConfig testdata/wire/tables/loadout_full.bin grade                  ordinal 3                wrote
+write-refusal-fixed fref_union_tag       tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     3                refused
+write-refusal-fixed fref_union_tag_ok    tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].effect      tag     2                wrote
+write-refusal-fixed fref_non_finite      tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   nan              refused
+write-refusal-fixed fref_infinite        tabledemo RootConfig    testdata/wire/tables/root_full.bin    weapons[0].damage      float   inf              refused
+write-refusal-fixed fref_text_illformed  tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   61FF62           refused
+write-refusal-fixed fref_text_wellformed tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   61C3A962         wrote
+write-refusal-fixed fref_wide_unpaired   widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   0061D8000062     refused
+write-refusal-fixed fref_wide_paired     widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   0061D83DDE000062 wrote
+# A zero byte or unit in fixed text: the fixed reader refuses it as
+# text_ill_formed, so the fixed writer refuses it too and never writes a record
+# its own reader would refuse.
+write-refusal-fixed fref_text_zero       tabledemo RootConfig    testdata/wire/tables/root_full.bin    version_note           bytes   610062           refused
+write-refusal-fixed fref_wide_zero       widedemo  Caption       testdata/wire/tables/wide_title.bin   title                  units   006100000062     refused
+
+# AND THROUGH THE MESSAGE FORM'S SaveMessages (docs/SPEC-TABLES.md §3.3, §22.6):
+# <unit> is the CONNECTION whose announced vocabulary the batch of one is
+# written against. A ranged value off its bounds is refused, never masked,
+# wrapped or clamped into the field's width.
+write-refusal-message mref_range_high      backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     100      refused
+write-refusal-message mref_range_high_ok   backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     99       wrote
+write-refusal-message mref_range_low       backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     0        refused
+write-refusal-message mref_range_low_ok    backend_conn StorePurchase testdata/wire/tables/store_full.bin quantity          int     1        wrote
+write-refusal-message mref_element         backend_conn MatchResult   testdata/wire/tables/match_full.bin players[0].score  int     100001   refused
+write-refusal-message mref_element_ok      backend_conn MatchResult   testdata/wire/tables/match_full.bin players[0].score  int     100000   wrote
+write-refusal-message mref_length          backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               length  33       refused
+write-refusal-message mref_length_ok       backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               length  32       wrote
+write-refusal-message mref_enum            backend_conn StorePurchase testdata/wire/tables/store_full.bin currency          ordinal 5        refused
+write-refusal-message mref_enum_ok         backend_conn StorePurchase testdata/wire/tables/store_full.bin currency          ordinal 4        wrote
+write-refusal-message mref_text_illformed  backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   61FF62   refused
+write-refusal-message mref_text_wellformed backend_conn StorePurchase testdata/wire/tables/store_full.bin sku               bytes   61C3A962 wrote
+
+# THE TEXT WRITER WRITES A ZERO BYTE OR UNIT (docs/SPEC-TABLES.md §16.3): it
+# spells it `\u0000`, it does not refuse it. The driver answers `wrote` when
+# the text holds `\u0000` at that field, and `refused` when the writer refused.
+write-refusal-json jref_zero_byte tabledemo RootConfig testdata/wire/tables/root_full.bin  version_note bytes 610062       wrote
+write-refusal-json jref_zero_unit widedemo  Caption    testdata/wire/tables/wide_title.bin title        units 006100000062 wrote

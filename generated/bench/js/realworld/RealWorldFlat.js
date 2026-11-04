@@ -11,11 +11,10 @@
 // remains the diagnostic and reference surface — re-read a failing buffer
 // through it to learn WHICH operation failed and why.
 //
-// Write<Name>Flat(view, value) -> bytes written, or -1 when the checked
-// writer refuses an out-of-contract value (the production writer trusts
-// the caller — serialize.js src/mode.js's own NODE_ENV fork, frozen at
-// module load). Read<Name>Flat(view, numBits, value) -> bool, the family
-// read verdict; reader obligations ride in every mode.
+// Write<Name>Flat(view, value) -> bytes written, or -1 when the writer
+// refuses an out-of-contract value, in every build (docs/SPEC.md §5.1:
+// NODE_ENV selects nothing). Read<Name>Flat(view, numBits, value) -> bool,
+// the family read verdict; reader obligations ride in every mode.
 //
 // Buffers are caller-owned DataViews. Write buffers: at least <Name>MaxBytes
 // (the constants live in the runtime-tier module). Read buffers: at least
@@ -28,857 +27,23 @@
 // fills it.
 const SC = new DataView(new ArrayBuffer(8));
 
-// The JavaScript #ifdef, frozen at module load (serialize.js src/mode.js):
-// bundlers statically replace NODE_ENV, so production bundles tree-shake
-// the checked writers out. Existence-guarded for browsers without process.
-const PRODUCTION = typeof process !== "undefined" && !!process.env && process.env.NODE_ENV === "production";
-
 // Read buffers must extend at least this many bytes past the payload.
 export const FlatReadSlack = 8;
 
 // ---- type RealPacket: the flat codec ----
 
-function writeRealPacketFlatProduction(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
-  lo = (((((value.f001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff));
-  SC.setFloat64(0, value.f002F64, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(0, (lo | (v << 21)) >>> 0, true);
-  lo = v >>> 11;
-  v = SC.getUint32(4, true);
-  view.setUint32(4, (lo | (v << 21)) >>> 0, true);
-  lo = v >>> 11;
-  v = (((((value.f003Int >>> 0) - 4294131399) >>> 0) & 0x1fffff)) >>> 0;
-  view.setUint32(8, (lo | (v << 21)) >>> 0, true);
-  lo = v >>> 11;
-  x = Math.fround(value.f004Cf32);
-  n = Math.fround(Math.fround(x - 0.0) / 2000.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 20000.0) + 0.5));
-  if (v > 20000) { v = 20000; }
-  lo = (lo | (v << 10)) >>> 0;
-  v = (((value.f005Uint) & 0x1fff) | (((((value.f006Int >>> 0) - 4294965783) >>> 0) & 0xfff) << 13)) >>> 0;
-  view.setUint32(12, (lo | (v << 25)) >>> 0, true);
-  lo = v >>> 7;
-  x = value.f007F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  view.setUint32(16, (lo | (v << 18)) >>> 0, true);
-  lo = v >>> 14;
-  SC.setBigUint64(0, value.f008U64, true);
-  v = SC.getUint32(0, true);
-  view.setUint32(20, (lo | (v << 18)) >>> 0, true);
-  lo = v >>> 14;
-  v = SC.getUint32(4, true);
-  view.setUint32(24, (lo | (v << 18)) >>> 0, true);
-  lo = v >>> 14;
-  lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
-  x = value.f010F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  view.setUint32(28, (lo | (v << 24)) >>> 0, true);
-  lo = v >>> 8;
-  v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
-  view.setUint32(32, (lo | (v << 24)) >>> 0, true);
-  lo = v >>> 8;
-  wi = 36;
-  sb = 3;
-  if (value.f012Bool) {
-    x = value.f013F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = (((value.f014Uint) & 0x3ff) | (((((value.f015Int >>> 0) - 4294967275) >>> 0) & 0x3f) << 10)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 16;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (16 - sb);
-    }
-    v = (((((value.f016Fixed >>> 0) - 4257218560) >>> 0) & 0x7ffffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 27;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (27 - sb);
-    }
-    v = (((value.f017Uint) & 0x1fff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 13;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (13 - sb);
-    }
-  }
-  v = (((((value.f018Int >>> 0) - 4294966462) >>> 0) & 0x7ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  SC.setFloat64(0, value.f019F64, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.f020F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.f021Ufixed) & 0x7ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 27;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (27 - sb);
-  }
-  x = value.f022F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.f023Bits & 0x1ffffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  x = value.f024F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((((value.f025Fixed >>> 0) - 4294936832) >>> 0) & 0xffff) | ((value.f026Bits & 0x1ff) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 25;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (25 - sb);
-  }
-  x = Math.fround(value.f027Cf32);
-  n = Math.fround(Math.fround(x - -2.0) / 4.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 16.0) + 0.5));
-  if (v > 16) { v = 16; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  v = ((value.f028Bits & 0xf)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 4;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (4 - sb);
-  }
-  SC.setBigUint64(0, value.f029I64, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  x = value.f030F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.f031Bits & 0x1) | (((((value.f032Int >>> 0) - 4294967293) >>> 0) & 0x7) << 1) | (((value.f033Uint) & 0x3ffff) << 4)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 22;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (22 - sb);
-  }
-  v = (((value.f034Uint) & 0x3fff) | ((value.f035Bits & 0x1ff) << 14) | ((value.f036Enum & 0x7) << 23) | ((value.f037Bool ? 1 : 0) << 26) | ((value.f038Bool ? 1 : 0) << 27)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 28;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (28 - sb);
-  }
-  v = ((value.f039Bits & 0x7ffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 19;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (19 - sb);
-  }
-  v = (((((value.f040Fixed >>> 0) - 4294946816) >>> 0) & 0xffff) | (((((value.f041Int >>> 0) - 4294967241) >>> 0) & 0x7f) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 23;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (23 - sb);
-  }
-  v = ((value.f042Bits & 0x3fffffff) | ((value.f043Bool ? 1 : 0) << 30)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 31;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (31 - sb);
-  }
-  if (value.f043Bool) {
-    x = value.f044F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((value.f045Bits & 0xfff) | (((value.f046Uint) & 0x1ffff) << 12)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 29;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (29 - sb);
-    }
-    v = (((((value.f047Int >>> 0) - 4294536320) >>> 0) & 0xfffff)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 20;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (20 - sb);
-    }
-  }
-  SC.setFloat64(0, value.f048F64, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.f049Ufixed) & 0xffff) | ((value.f050Bool ? 1 : 0) << 16)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 17;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (17 - sb);
-  }
-  if (value.f050Bool) {
-    v = ((value.f051Bool ? 1 : 0) | (((((value.f052Int >>> 0) - 4294967239) >>> 0) & 0x7f) << 1)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 8;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (8 - sb);
-    }
-    x = value.f053F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
-    }
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = (((((value.f054Int >>> 0) - 4294967261) >>> 0) & 0x7f)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 7;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (7 - sb);
-    }
-  }
-  v = ((value.f055Bool ? 1 : 0) | (((((value.f056Int >>> 0) - 4294967283) >>> 0) & 0x1f) << 1) | (((((value.f057Int >>> 0) - 4294967281) >>> 0) & 0x1f) << 6)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  x = value.f058F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
-  }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  SC.setFloat64(0, value.f059F64, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.f060Bits & 0xff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  x = Math.fround(value.f061Cf32);
-  n = Math.fround(Math.fround(x - -90.0) / 180.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 360.0) + 0.5));
-  if (v > 360) { v = 360; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  v = (((value.f062Uint) & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  SC.setBigUint64(0, value.f063I64, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((value.f064Uint) & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  x = Math.fround(value.f065Cf32);
-  n = Math.fround(Math.fround(x - 0.0) / 30.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 60.0) + 0.5));
-  if (v > 60) { v = 60; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 6;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (6 - sb);
-  }
-  v = (((value.f066Ufixed) & 0xffff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  x = Math.fround(value.f067Cf32);
-  n = Math.fround(Math.fround(x - -100.0) / 200.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 800.0) + 0.5));
-  if (v > 800) { v = 800; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 10;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (10 - sb);
-  }
-  x = Math.fround(value.f068Cf32);
-  n = Math.fround(Math.fround(x - 0.0) / 2000.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 2000.0) + 0.5));
-  if (v > 2000) { v = 2000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  v = ((value.f069Bits & 0x7ff) | (((value.f070Uint) & 0x3) << 11)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 13;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (13 - sb);
-  }
-  x = Math.fround(value.f071Cf32);
-  n = Math.fround(Math.fround(x - 0.0) / 10.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 500.0) + 0.5));
-  if (v > 500) { v = 500; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  x = Math.fround(value.f072Cf32);
-  n = Math.fround(Math.fround(x - 0.0) / 100.0);
-  if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-  v = Math.floor(Math.fround(Math.fround(n * 10000.0) + 0.5));
-  if (v > 10000) { v = 10000; }
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 14;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (14 - sb);
-  }
-  v = (((((value.f073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.f074Bool ? 1 : 0) << 4)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  if (value.f074Bool) {
-    SC.setBigUint64(0, value.f075U64, true);
-    v = SC.getUint32(0, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = SC.getUint32(4, true);
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = (((((value.f076Int >>> 0) - 4294941078) >>> 0) & 0xffff) | (((((value.f077Int >>> 0) - 4294967279) >>> 0) & 0x3f) << 16) | ((value.f078Bits & 0x1ff) << 22)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 31;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (31 - sb);
-    }
-    v = (((value.f079Uint) & 0x1f)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 5;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (5 - sb);
-    }
-  }
-  v = ((value.f080Bool ? 1 : 0) | ((value.f081Bits & 0x1fffffff) << 1)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 30;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (30 - sb);
-  }
-  v = ((value.f082Bits & 0x1ffffff) | ((value.f083Enum & 0x7) << 25)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 28;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (28 - sb);
-  }
-  v = (((value.f084Ufixed) & 0xff) | ((value.f085Bits & 0x1fffff) << 8)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 29;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (29 - sb);
-  }
-  v = (((value.f086Uint) & 0x1ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 9;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (9 - sb);
-  }
-  SC.setFloat64(0, value.f087F64, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = (((((value.f088Int >>> 0) - 4294966602) >>> 0) & 0x7ff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 11;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (11 - sb);
-  }
-  SC.setBigUint64(0, value.f089Bits, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true) & 0xffff;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 16;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (16 - sb);
-  }
-  v = (((value.f090Uint) & 0xff)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 8;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (8 - sb);
-  }
-  SC.setBigUint64(0, value.f091Flags, true);
-  v = SC.getUint32(0, true) & 0x1f;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 5;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (5 - sb);
-  }
-  v = ((value.f092Bool ? 1 : 0)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 1;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (1 - sb);
-  }
-  SC.setBigUint64(0, value.f093Bits, true);
-  v = SC.getUint32(0, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = SC.getUint32(4, true);
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 32;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (32 - sb);
-  }
-  v = ((value.f094Bool ? 1 : 0) | (((((value.f095Fixed >>> 0) - 4191617024) >>> 0) & 0xfffffff) << 1)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 29;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (29 - sb);
-  }
-  v = ((value.f096Bits & 0x3ffff) | ((value.f097Bits & 0xfff) << 18)) >>> 0;
-  lo = (lo | (v << sb)) >>> 0;
-  sb += 30;
-  if (sb >= 32) {
-    view.setUint32(wi, lo, true);
-    wi += 4;
-    sb -= 32;
-    lo = sb === 0 ? 0 : v >>> (30 - sb);
-  }
-  if (sb !== 0) {
-    view.setUint32(wi, lo, true);
-  }
-  return ((wi * 8 + sb) + 7) >> 3;
-}
-
-function writeRealPacketFlatChecked(view, value) {
-  let v = 0, x = 0, n = 0, t0 = 0, t1 = 0, lo = 0, sb = 0, wi = 0;
-  let bg = 0n;
+// WriteRealPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (docs/SPEC.md §5.1). The buffer behind
+// view must hold RealPacketMaxBytes.
+export function WriteRealPacketFlat(view, value) {
+  let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   if (!Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return -1;
   }
   lo = (((((value.f001Int >>> 0) - 4294161801) >>> 0) & 0x1fffff));
+  if (!Number.isFinite(value.f002F64)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   SC.setFloat64(0, value.f002F64, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, (lo | (v << 21)) >>> 0, true);
@@ -910,18 +75,12 @@ function writeRealPacketFlatChecked(view, value) {
   v = (((value.f005Uint) & 0x1fff) | (((((value.f006Int >>> 0) - 4294965783) >>> 0) & 0xfff) << 13)) >>> 0;
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
-  x = value.f007F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f007F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(16, (lo | (v << 18)) >>> 0, true);
   lo = v >>> 14;
   SC.setBigUint64(0, value.f008U64, true);
@@ -935,18 +94,12 @@ function writeRealPacketFlatChecked(view, value) {
     return -1;
   }
   lo = (lo | ((((((value.f009Int >>> 0) - 4294967274) >>> 0) & 0x3f)) << 18)) >>> 0;
-  x = value.f010F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f010F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   view.setUint32(28, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
   v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
@@ -955,18 +108,12 @@ function writeRealPacketFlatChecked(view, value) {
   wi = 36;
   sb = 3;
   if (value.f012Bool) {
-    x = value.f013F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(value.f013F32);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1027,6 +174,9 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
+  if (!Number.isFinite(value.f019F64)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   SC.setFloat64(0, value.f019F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
@@ -1046,18 +196,12 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = value.f020F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f020F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1078,18 +222,12 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (27 - sb);
   }
-  x = value.f022F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f022F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1107,18 +245,12 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (25 - sb);
   }
-  x = value.f024F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f024F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1183,18 +315,12 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
   }
-  x = value.f030F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f030F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1267,18 +393,12 @@ function writeRealPacketFlatChecked(view, value) {
     lo = sb === 0 ? 0 : v >>> (31 - sb);
   }
   if (value.f043Bool) {
-    x = value.f044F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(value.f044F32);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1311,6 +431,9 @@ function writeRealPacketFlatChecked(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (20 - sb);
     }
+  }
+  if (!Number.isFinite(value.f048F64)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
   SC.setFloat64(0, value.f048F64, true);
   v = SC.getUint32(0, true);
@@ -1356,18 +479,12 @@ function writeRealPacketFlatChecked(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
-    x = value.f053F32;
-    if (x === x) {
-      SC.setFloat32(0, x, true);
-      v = SC.getUint32(0, true);
-    } else {
-      SC.setFloat64(0, x, true);
-      bg = SC.getBigUint64(0, true);
-      t0 = Number(bg >> 63n) << 31;
-      t1 = Number((bg >> 29n) & 0x7fffffn);
-      if (t1 === 0) { t1 = 0x400000; }
-      v = (t0 | 0x7f800000 | t1) >>> 0;
+    x = Math.fround(value.f053F32);
+    if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+      return -1;
     }
+    SC.setFloat32(0, x, true);
+    v = SC.getUint32(0, true);
     lo = (lo | (v << sb)) >>> 0;
     sb += 32;
     if (sb >= 32) {
@@ -1404,18 +521,12 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (11 - sb);
   }
-  x = value.f058F32;
-  if (x === x) {
-    SC.setFloat32(0, x, true);
-    v = SC.getUint32(0, true);
-  } else {
-    SC.setFloat64(0, x, true);
-    bg = SC.getBigUint64(0, true);
-    t0 = Number(bg >> 63n) << 31;
-    t1 = Number((bg >> 29n) & 0x7fffffn);
-    if (t1 === 0) { t1 = 0x400000; }
-    v = (t0 | 0x7f800000 | t1) >>> 0;
+  x = Math.fround(value.f058F32);
+  if (!Number.isFinite(x)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
+  SC.setFloat32(0, x, true);
+  v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
   sb += 32;
   if (sb >= 32) {
@@ -1423,6 +534,9 @@ function writeRealPacketFlatChecked(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (!Number.isFinite(value.f059F64)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
   }
   SC.setFloat64(0, value.f059F64, true);
   v = SC.getUint32(0, true);
@@ -1720,6 +834,9 @@ function writeRealPacketFlatChecked(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (9 - sb);
   }
+  if (!Number.isFinite(value.f087F64)) { // a NaN or an infinity is refused (SPEC §4.3)
+    return -1;
+  }
   SC.setFloat64(0, value.f087F64, true);
   v = SC.getUint32(0, true);
   lo = (lo | (v << sb)) >>> 0;
@@ -1849,11 +966,6 @@ function writeRealPacketFlatChecked(view, value) {
   }
   return ((wi * 8 + sb) + 7) >> 3;
 }
-
-// WriteRealPacketFlat(view, value) -> bytes written (>= 0), or -1 on a refused
-// writer contract in the checked build — the production writer holds none
-// of them (SPEC §5). The buffer behind view must hold RealPacketMaxBytes.
-export const WriteRealPacketFlat = PRODUCTION ? writeRealPacketFlatProduction : writeRealPacketFlatChecked;
 
 // ReadRealPacketFlat(view, numBits, value) -> bool. The buffer behind view must
 // extend FlatReadSlack bytes past the payload.

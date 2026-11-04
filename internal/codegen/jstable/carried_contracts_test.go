@@ -213,10 +213,18 @@ fixed table T {
 }
 `
 	const script = `
+// THE WRITER REFUSES THE VALUES THE READER CLAMPS (docs/SPEC.md §5.1): the
+// save answers -1 and stores nothing, so the off-range record is forged from
+// a lawful one, its four fields overwritten at their declared offsets in the
+// body that ends the file (a int64, b uint16, c int8, d uint64).
 const value = new T(); InitT(value);
 value.a = -1n; value.b = 65535; value.c = -128; value.d = 18446744073709551615n;
 const raw = new Uint8Array(TMeasure(1));
+if (TSave([value],1,raw) !== -1 || raw.some((x) => x !== 0)) { fail("the fixed writer wrote an off-range value"); }
+value.a = 0n; value.b = 9; value.c = -3; value.d = 18446744073709551610n;
 if (TSave([value],1,raw) !== raw.length) { fail("raw fixed write failed"); }
+const body = new DataView(raw.buffer, raw.length - 19, 19);
+body.setBigInt64(0, -1n, true); body.setUint16(8, 65535, true); body.setInt8(10, -128); body.setBigUint64(11, 18446744073709551615n, true);
 const back = [new T()]; InitT(back[0]);
 const plan = TNewPlan(4096,4096); const report = new TableFixedReport();
 const count = TLoad(back,1,raw,raw.length,plan,report);

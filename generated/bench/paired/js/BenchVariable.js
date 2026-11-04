@@ -231,10 +231,26 @@ function TableVariableUtf8Decode(bytes) {
 // each, LITTLE-ENDIAN, under a byte length L that is twice the unit count
 // (internal/tablewire text.go wideUnits, wideBytes).
 
-// the units onto the wire, or false for a value past its N units: wide text is
-// never truncated on the way out (SPEC.md §4.12) — the save is refused (null)
+// whether a string's code units pair every surrogate: a JavaScript string can
+// hold a lone half, which is ill-formed text in both text kinds (docs/SPEC.md
+// §5.1 row 8), and the writer refuses it rather than spell it
+function TableVariableTextPaired(s) {
+  for (let i = 0; i < s.length; i++) {
+    const u = s.charCodeAt(i);
+    if (u >= 0xdc00 && u <= 0xdfff) { return false; }
+    if (u >= 0xd800 && u <= 0xdbff) {
+      const low = s.charCodeAt(++i);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) { return false; }
+    }
+  }
+  return true;
+}
+
+// the units onto the wire, or false for a value past its N units or one holding
+// an unpaired surrogate: wide text is never truncated or repaired on the way
+// out (SPEC.md §4.12) — the save is refused (null)
 function TableVariableWideWrite(w, s, bound) {
-  if (s.length > bound) { return false; }
+  if (s.length > bound || !TableVariableTextPaired(s)) { return false; }
   for (let i = 0; i < s.length; i++) { const u = s.charCodeAt(i); w.u8(u & 0xff); w.u8(u >>> 8); }
   return true;
 }
@@ -939,9 +955,10 @@ function TableVariableWriteCount(fd, val) {
   return TableVariableCount(fd, val);
 }
 
-// a string(N)'s UTF-8 bytes past N refuse the write; an unbounded string's
-// bound is -1
-function TableVariableTextHolds(fd, b) { return fd.bound < 0 || b.length <= fd.bound; }
+// a string(N)'s UTF-8 bytes past N refuse the write, and so does a string s
+// holding an unpaired surrogate, which has no UTF-8 spelling; an unbounded
+// string's bound is -1
+function TableVariableTextHolds(fd, b, s) { return (fd.bound < 0 || b.length <= fd.bound) && TableVariableTextPaired(s); }
 
 // a field guarded by bool fields rides only when every guard holds (§2.4)
 function TableVariableGuardHolds(fd, v) {
@@ -1162,7 +1179,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       if (val !== fd.def) {
         const b = TableVariableUtf8Encode(val);
-        if (!TableVariableTextHolds(fd, b)) { return false; }
+        if (!TableVariableTextHolds(fd, b, val)) { return false; }
         TableVariableHeader(w, ids, fd, 12);
         w.leb(b.length);
         w.raw(b);
@@ -1173,7 +1190,7 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       // declared default, so the EMPTY text is what elides; L is a BYTE length,
       // twice the units, and a value past N units refuses the save
       if (val.length !== 0) {
-        if (val.length > fd.bound) { return false; }
+        if (val.length > fd.bound || !TableVariableTextPaired(val)) { return false; }
         TableVariableHeader(w, ids, fd, 33);
         w.leb(val.length * 2);
         TableVariableWideWrite(w, val, fd.bound);
@@ -2471,7 +2488,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
     case "str": {
       if (fd.ub && !TableVariableUnboundedTextValid(val)) { return false; }
       const b = TableVariableUtf8Encode(val);
-      if (!TableVariableTextHolds(fd, b)) { return false; }
+      if (!TableVariableTextHolds(fd, b, val)) { return false; }
       TableVariableHeader(w, ids, fd, 12);
       w.leb(b.length);
       w.raw(b);
@@ -2628,7 +2645,7 @@ function TableVariableArmPayload(arm, w, ids, nodes, val, retain, path, o) {
       return TableVariableWriteFloat(w, f.f32, x);
     case "str": {
       const b = TableVariableUtf8Encode(x);
-      if (!TableVariableTextHolds(f, b)) { return false; }
+      if (!TableVariableTextHolds(f, b, x)) { return false; }
       w.raw(b);
       return true;
     }

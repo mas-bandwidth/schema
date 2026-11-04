@@ -934,6 +934,38 @@ async function surfaceWriteRefusal(lines, outDir) {
   }
 }
 
+// A `bytes` value is a narrow text's exact bytes. This leg holds a narrow
+// text as a JavaScript string, a sequence of UTF-16 code units, so a byte
+// sequence that is not UTF-8 has no exact spelling here; its closest form is
+// the string with each ill-formed byte held as a lone surrogate (61 FF 62 is
+// "a\uD800b"), which is the ill-formed text a JavaScript program can build:
+// a string with no UTF-8 spelling at all. Well-formed bytes are their text.
+function writeRefusalText(hex) {
+  const b = (hex.match(/../g) ?? []).map((h) => parseInt(h, 16));
+  let s = "";
+  for (let i = 0; i < b.length;) {
+    const b0 = b[i];
+    const need = b0 < 0x80 ? 0 : (b0 & 0xe0) === 0xc0 ? 1 : (b0 & 0xf0) === 0xe0 ? 2 : (b0 & 0xf8) === 0xf0 ? 3 : -1;
+    let cp = need === 0 ? b0 : need === 1 ? b0 & 0x1f : need === 2 ? b0 & 0x0f : b0 & 0x07;
+    let ok = need >= 0 && i + need < b.length;
+    for (let k = 1; ok && k <= need; k++) {
+      ok = (b[i + k] & 0xc0) === 0x80;
+      cp = (cp << 6) | (b[i + k] & 0x3f);
+    }
+    const min = need <= 0 ? 0 : need === 1 ? 0x80 : need === 2 ? 0x800 : 0x10000;
+    if (!ok || cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) { s += "\ud800"; i++; continue; }
+    s += String.fromCodePoint(cp);
+    i += need + 1;
+  }
+  return s;
+}
+
+// A `units` value is a wide text's exact UTF-16 code units, which a
+// JavaScript string holds as they are.
+function writeRefusalUnits(hex) {
+  return String.fromCharCode(...(hex.match(/.{4}/g) ?? []).map((h) => parseInt(h, 16)));
+}
+
 function writeRefusalNumber(text) {
   switch (text) {
     case "nan": return NaN;
@@ -948,8 +980,12 @@ function writeRefusalNumber(text) {
 // the one mutation a case names, per root; a path or kind it does not know is
 // a red, never a silent pass
 function writeRefusalSet(m, unit, root, v, path, what, text, name) {
-  const n = writeRefusalNumber(text);
   const at = unit + "." + root + " " + path + " " + what;
+  switch (at) {
+    case "tabledemo.RootConfig version_note bytes": v.version_note = writeRefusalText(text); return;
+    case "widedemo.Caption title units": v.title = writeRefusalUnits(text); return;
+  }
+  const n = writeRefusalNumber(text);
   switch (at) {
     case "tabledemo.RootConfig weapons[0].penetration int": v.weapons[0].penetration = n; return;
     case "tabledemo.RootConfig weapons[0].channel int": v.weapons[0].channel = n; return;
@@ -981,6 +1017,246 @@ function writeRefusalSet(m, unit, root, v, path, what, text, name) {
     }
   }
   fail(name + ": no write-refusal mutation for " + at);
+}
+
+// ---- THE WRITE CONTRACT THROUGH THE OTHER WRITERS (testdata/conformance/
+// tables/FORMAT.md: write-refusal-fixed, write-refusal-message,
+// write-refusal-json)
+//
+// The fixed form and the message form keep their values in the fixed STORAGE
+// classes (<Unit>Table.js), which hold text as bytes or code units beside a
+// used length and an array beside a used count; the variable form's Load hands
+// back plain objects with JavaScript strings. A row loads its wire through the
+// variable Load the wire surface uses, carries the value into the root's fixed
+// storage (fixedFromVariable: by field name, an enum by its variant name, a
+// union by its arm), sets the one field there, and writes the one value as a
+// batch of one. The fixed writer answers -1 with the buffer untouched; the
+// message writer answers -1 from MeasureMessages and SaveMessages alike, with
+// the report's Reason invalid_value.
+
+// where each row's fixed storage, fixed writer and enum constants live
+const fixedRows = {
+  "tabledemo.RootConfig": { variable: "examples/TabledemoVariable.js", home: "examples/TabledemoTable.js", writer: "examples/TablesTable.js", enums: ["examples/Tables.js"] },
+  "tabledemo.LoadoutConfig": { variable: "examples/TabledemoVariable.js", home: "examples/TabledemoTable.js", writer: "examples/TablesTable.js", enums: ["examples/Tables.js"] },
+  "widedemo.Caption": { variable: "wide/WideVariable.js", home: "wide/WideTable.js", writer: "wide/CaptionTable.js", enums: ["wide/Caption.js", "wide/WideText.js"] },
+  "backenddemo.StorePurchase": { variable: "backend/BackenddemoVariable.js", home: "backend/BackenddemoTable.js", writer: "backend/BackendTable.js", enums: ["backend/Backend.js"] },
+  "backenddemo.MatchResult": { variable: "backend/BackenddemoVariable.js", home: "backend/BackenddemoTable.js", writer: "backend/BackendTable.js", enums: ["backend/Backend.js"] },
+};
+
+const camelName = (s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+const snakeName = (s) => s.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
+const isTyped = (x) => ArrayBuffer.isView(x);
+const besideKeys = ["Length", "Count", "Present"];
+// a storage object's own members, less the used length, count and presence
+// that ride beside one
+function storageKeys(dst) {
+  return Object.keys(dst).filter((k) => !besideKeys.some((s) => k.endsWith(s) && k.slice(0, -s.length) in dst));
+}
+
+// an enum's variant name to its ordinal, over every frozen enum the unit's
+// modules export; a name two enums spell with two ordinals is a red
+async function enumOrdinals(paths) {
+  const names = new Map();
+  for (const path of paths) {
+    const m = await load(path);
+    for (const value of Object.values(m)) {
+      if (value === null || typeof value !== "object" || !Object.isFrozen(value) || value.None !== 0) { continue; }
+      for (const [name, ordinal] of Object.entries(value)) {
+        if (typeof ordinal !== "number") { continue; }
+        if (!names.has(name)) { names.set(name, new Set()); }
+        names.get(name).add(ordinal);
+      }
+    }
+  }
+  return (name) => {
+    const set = names.get(name);
+    if (set === undefined || set.size !== 1) { fail("no one enum ordinal for the variant name " + name); }
+    return [...set][0];
+  };
+}
+
+function fixedFromVariable(src, dst, ordinal) {
+  for (const key of storageKeys(dst)) {
+    const name = snakeName(key);
+    if (!(name in src)) { fail("the variable value has no " + name + " for the fixed member " + key); }
+    const sv = src[name];
+    if ((key + "Present") in dst) {
+      dst[key + "Present"] = sv !== null;
+      if (sv === null) { continue; }
+    }
+    fixedAssign(dst, key, sv, ordinal);
+  }
+}
+
+function fixedAssign(dst, key, sv, ordinal) {
+  const dv = dst[key];
+  if (isTyped(dv) && (key + "Length") in dst) {
+    // text as its bytes (narrow) or its code units (wide), bytes as they are
+    const all = typeof sv !== "string" ? Array.from(sv)
+      : dv instanceof Uint16Array ? Array.from({ length: sv.length }, (_, i) => sv.charCodeAt(i))
+      : Array.from(new TextEncoder().encode(sv));
+    dv.fill(0);
+    dv.set(all.slice(0, dv.length));
+    dst[key + "Length"] = all.length;
+    return;
+  }
+  if (Array.isArray(dv)) {
+    if ((key + "Count") in dst) { dst[key + "Count"] = sv.length; }
+    for (let i = 0; i < sv.length && i < dv.length; i++) { dv[i] = fixedValue(dv[i], sv[i], ordinal); }
+    return;
+  }
+  dst[key] = fixedValue(dv, sv, ordinal);
+}
+
+function fixedValue(dv, sv, ordinal) {
+  if (dv !== null && typeof dv === "object" && !isTyped(dv)) {
+    if (!("type" in dv)) { fixedFromVariable(sv, dv, ordinal); return dv; }
+    // a union: the variable value is null (None) or { arm, value }
+    if (sv === null) { dv.type = 0; return dv; }
+    const arms = storageKeys(dv).filter((k) => k !== "type");
+    const at = arms.indexOf(camelName(sv.arm));
+    if (at < 0) { fail("the union has no arm " + sv.arm); }
+    dv.type = at + 1;
+    fixedAssign(dv, arms[at], sv.value, ordinal);
+    return dv;
+  }
+  return typeof sv === "string" ? ordinal(sv) : sv;
+}
+
+// the one mutation a row names, on fixed storage: <path> is dotted field names
+// with [i] element indexes, each name the fixed member's
+function fixedMutate(value, path, what, text, name) {
+  const steps = path.split(".");
+  let holder = value;
+  for (let s = 0; s < steps.length; s++) {
+    const m = /^([a-z0-9_]+)(?:\[(\d+)\])?$/.exec(steps[s]);
+    if (m === null) { fail(name + ": no path step " + steps[s]); }
+    const key = camelName(m[1]);
+    if (!(key in holder)) { fail(name + ": the fixed storage has no " + key); }
+    if (s < steps.length - 1) {
+      holder = m[2] === undefined ? holder[key] : holder[key][Number(m[2])];
+      continue;
+    }
+    const n = what === "bytes" || what === "units" ? 0 : writeRefusalNumber(text);
+    switch (what) {
+      case "int": case "ordinal":
+        holder[key] = typeof holder[key] === "bigint" ? BigInt(n) : n;
+        return true;
+      case "float":
+        holder[key] = n;
+        return true;
+      case "count": {
+        // new elements are copies of element 0, as far as the storage reaches
+        const arr = holder[key];
+        for (let i = holder[key + "Count"]; i < Math.min(n, arr.length); i++) { arr[i] = structuredClone(arr[0]); }
+        holder[key + "Count"] = n;
+        return true;
+      }
+      case "length":
+        holder[key].fill(0);
+        holder[key].fill(0x61, 0, Math.max(0, Math.min(n, holder[key].length)));
+        holder[key + "Length"] = n;
+        return true;
+      case "tag": {
+        // a lawful tag takes its arm at the arm's declared defaults
+        const u = holder[key];
+        const arms = storageKeys(u).filter((k) => k !== "type");
+        u.type = n;
+        if (n >= 1 && n <= arms.length) {
+          const arm = u[arms[n - 1]];
+          if (arm !== null && typeof arm === "object" && !isTyped(arm)) { u[arms[n - 1]] = new arm.constructor(); }
+        }
+        return true;
+      }
+      case "bytes": case "units": {
+        const hex = what === "bytes" ? 2 : 4;
+        const units = (text.match(new RegExp(".{" + hex + "}", "g")) ?? []).map((h) => parseInt(h, 16));
+        if (units.length > holder[key].length) { return false; }
+        holder[key].fill(0);
+        holder[key].set(units);
+        holder[key + "Length"] = units.length;
+        return true;
+      }
+    }
+    fail(name + ": no fixed mutation of kind " + what);
+  }
+  return true;
+}
+
+// the row's value in fixed storage: the wire through the variable Load, then
+// carried across
+async function fixedValueOf(unit, root, wire, name) {
+  const row = fixedRows[unit + "." + root];
+  if (row === undefined) { fail(name + ": no fixed storage bound for " + unit + "." + root); }
+  const codec = await codecOf(unit, root, row.variable);
+  const v = codec.load(new Uint8Array(readFileSync(wire)), codec.report());
+  if (v === null) { fail(name + ": load refused " + wire); }
+  const home = await load(row.home);
+  const dst = new home[root]();
+  fixedFromVariable(v, dst, await enumOrdinals(row.enums));
+  return [dst, await load(row.writer)];
+}
+
+async function surfaceWriteRefusalFixed(lines, outDir) {
+  for (const f of kind(lines, "write-refusal-fixed")) {
+    const [, name, unit, root, wire, path, what, text] = f;
+    const [value, writer] = await fixedValueOf(unit, root, wire, name);
+    if (!fixedMutate(value, path, what, text, name)) { writeFileSync(join(outDir, name), "unrepresentable\n"); continue; }
+    const bytes = new Uint8Array(writer[root + "FixedMeasure"](1));
+    const n = writer[root + "FixedSave"]([value], 1, bytes);
+    if (n < 0 && bytes.some((b) => b !== 0)) { fail(name + ": the refused batch wrote into the buffer"); }
+    if (n >= 0 && n !== bytes.length) { fail(name + ": FixedSave wrote " + n + " of " + bytes.length + " bytes"); }
+    writeFileSync(join(outDir, name), n < 0 ? "refused\n" : "wrote\n");
+  }
+}
+
+async function surfaceWriteRefusalMessage(lines, outDir) {
+  const connections = kind(lines, "connection");
+  for (const f of kind(lines, "write-refusal-message")) {
+    const [, name, connName, root, wire, path, what, text] = f;
+    const conn = connections.find((c) => c[1] === connName);
+    if (conn === undefined) { fail(name + ": no connection " + connName); }
+    const row = messageRow(conn[2], root);
+    if (row === null) { fail(name + ": no message row for " + conn[2] + "." + root); }
+    // the connection's announcement, read into the vocabulary the message
+    // surface reads it into
+    const runtime = await load(row[2]);
+    const vocabulary = new runtime.TableVocabulary();
+    vocabulary.Init(new Array(runtime.TableMessageEntriesHere));
+    if (!runtime.AnnounceRead(vocabulary, new Uint8Array(readFileSync(conn[4])), {})) {
+      fail(name + ": the announcement was refused: " + conn[4]);
+    }
+    const [value, writer] = await fixedValueOf(conn[2], root, wire, name);
+    if (!fixedMutate(value, path, what, text, name)) { writeFileSync(join(outDir, name), "unrepresentable\n"); continue; }
+    const measureReport = {}, saveReport = {};
+    const size = writer[root + "MeasureMessages"]([value], measureReport);
+    const buffer = new Uint8Array(64 * 1024);
+    const saved = writer[root + "SaveMessages"]([value], buffer, saveReport);
+    if ((size < 0) !== (saved < 0) || (saved >= 0 && saved !== size)) {
+      fail(name + ": MeasureMessages answered " + size + " and SaveMessages " + saved);
+    }
+    if (saved < 0 && (measureReport.Reason !== "invalid_value" || saveReport.Reason !== "invalid_value")) {
+      fail(name + ": refused with " + measureReport.Reason + " and " + saveReport.Reason + ", wants invalid_value");
+    }
+    writeFileSync(join(outDir, name), saved < 0 ? "refused\n" : "wrote\n");
+  }
+}
+
+// THE TEXT WRITER WRITES A ZERO BYTE OR UNIT (docs/SPEC-TABLES.md §16.3): ToJson
+// answers the text, and the text spells it \u0000; a refusal answers refused.
+async function surfaceWriteRefusalJson(lines, outDir) {
+  for (const f of kind(lines, "write-refusal-json")) {
+    const [, name, unit, root, wire, path, what, text] = f;
+    const row = wireRows.find((r) => r[0] === unit && r[1] === root);
+    if (row === undefined) { fail(name + ": no variable codec for " + unit + "." + root); }
+    const codec = await codecOf(unit, root, row[2]);
+    const v = codec.load(new Uint8Array(readFileSync(wire)), codec.report());
+    if (v === null) { fail(name + ": load refused " + wire); }
+    writeRefusalSet(await load(row[2]), unit, root, v, path, what, text, name);
+    const json = codec.toJson(v);
+    if (json !== null && !json.includes("\\u0000")) { fail(name + ": the text holds no \\u0000: " + json); }
+    writeFileSync(join(outDir, name), json === null ? "refused\n" : "wrote\n");
+  }
 }
 
 // The report line, then the §16 text of the value the read left when the read
@@ -1453,7 +1729,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1468,6 +1744,9 @@ const outDir = args[2];
 switch (surface) {
   case "wire": await surfaceWire(lines, outDir); break;
   case "write-refusal": await surfaceWriteRefusal(lines, outDir); break;
+  case "write-refusal-fixed": await surfaceWriteRefusalFixed(lines, outDir); break;
+  case "write-refusal-message": await surfaceWriteRefusalMessage(lines, outDir); break;
+  case "write-refusal-json": await surfaceWriteRefusalJson(lines, outDir); break;
   case "report": await surfaceReport(lines, outDir); break;
   case "framing": await surfaceFraming(lines, outDir); break;
   case "retain": await surfaceRetain(lines, outDir, false); break;

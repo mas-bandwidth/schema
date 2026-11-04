@@ -1062,6 +1062,25 @@ func (g *tableGen) emitRangeAssert(f *ir.Field, expr, ind string) {
 	g.pf("%sschema_assert( %s ); // a write keeps the declared bounds (SPEC.md §5.1)\n", ind, strings.Join(conds, " && "))
 }
 
+// emitTextAssert is the WRITE CONTRACT's debug-only refusal of ill-formed text
+// (docs/SPEC.md §5.1): a string's used bytes that are not well-formed UTF-8, or
+// a wstring's used units holding an unpaired surrogate. A zero byte or unit is
+// a whole code point and not this check's to refuse. It follows the storage
+// invariant, so it reads only the used storage; schema_assert, so NDEBUG
+// removes it and a release write pays nothing.
+// `writer` names the writer in the line's comment ("a write", "a message
+// write"), which is what lets a negative control remove one writer's checks.
+func (g *tableGen) emitTextAssert(f *ir.Field, value, length, ind, writer string) {
+	switch f.Type.Kind {
+	case ir.TString:
+		g.wroteAssert = true
+		g.pf("%sschema_assert( TableUtf8WellFormed( (const uint8_t *) %s, (uint64_t) %s ) ); // %s keeps well-formed text (SPEC.md §5.1)\n", ind, value, length, writer)
+	case ir.TWString:
+		g.wroteAssert = true
+		g.pf("%sschema_assert( TableUtf16Paired( %s, (int64_t) %s ) ); // %s keeps well-formed text (SPEC.md §5.1)\n", ind, value, length, writer)
+	}
+}
+
 // emitFloatElementCheckAt is that rule over a float ARRAY's elements, the twin
 // of emitEnumElementCheckAt: `expr` may carry one %s, which takes the loop
 // variable, and the locals carry `sfx`.
@@ -1267,6 +1286,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("    }\n")
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.emitTextAssert(f, "value."+f.Name, "value."+f.Name+"_length", "    ", "a write")
 		if f.Required {
 			g.pf("    if ( true ) { bytes += %s + %s; } // %s (| required: always rides, empty included, §2.3)\n", g.hdrBytes(id), framed(fmt.Sprintf("value.%s_length", f.Name)), f.Name)
 		} else {
@@ -1276,6 +1296,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// KIND 33's `L` IS A BYTE LENGTH like every `L` on this wire
 		// (docs/SPEC-TABLES.md §3), so it is TWICE the used code unit count.
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return -1; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.emitTextAssert(f, "value."+f.Name, "value."+f.Name+"_length", "    ", "a write")
 		if f.Required {
 			g.pf("    if ( true ) { bytes += %s + %s; } // %s (| required: always rides, empty included, §2.3)\n", g.hdrBytes(id), framed(fmt.Sprintf("(int64_t) value.%s_length * 2", f.Name)), f.Name)
 		} else {
@@ -1575,7 +1596,12 @@ func (g *tableGen) emitTableSave(st *ir.Struct) {
 		// it carries and there is no buffer-level entry point to it
 		return
 	}
+	g.pf("// A REFUSED SAVE WRITES NOTHING (docs/SPEC.md §5.1): every refusal the save\n")
+	g.pf("// makes in every build the measure makes first, and a value that does not fit\n")
+	g.pf("// is refused there too, so the caller's buffer is untouched on -1.\n")
 	g.pf("inline int64_t %sSave( const %s & value, uint8_t * buffer, int64_t capacity )\n{\n", st.Name, st.Name)
+	g.pf("    const int64_t need = %sMeasure( value ); // the value is asked whole before the first byte\n", st.Name)
+	g.pf("    if ( need < 0 || capacity < need ) { return -1; }\n")
 	// THE SEALED WRITE (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING): the
 	// writer's capacity is the caller's minus the four trailer bytes, so the
 	// body can never consume the room the trailer needs; the seal then covers
@@ -1855,6 +1881,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("            w.raw( text_%s, len_%s );\n        }\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.emitTextAssert(f, "value."+f.Name, "value."+f.Name+"_length", "    ", "a write")
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
 		} else {
@@ -1865,6 +1892,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Type.Kind == ir.TWString:
 		g.pf("    if ( value.%s_length < 0 || value.%s_length > %d ) { return false; } // storage invariant\n", f.Name, f.Name, f.Type.Size)
+		g.emitTextAssert(f, "value."+f.Name, "value."+f.Name+"_length", "    ", "a write")
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides, empty included (§2.3)\n    {\n")
 		} else {

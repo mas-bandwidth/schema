@@ -8,10 +8,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 )
 
-// TestJsFlatWStringWriteChecksAreDebugOnly verifies that the flat wstring
-// writer's contract checks (length range and interior null) are emitted only
-// in the checked/debug variant and are absent from the production variant.
-func TestJsFlatWStringWriteChecksAreDebugOnly(t *testing.T) {
+// TestJsFlatWStringWriteChecksRefuseInEveryBuild verifies that the flat
+// wstring writer's contract checks (length range and interior null) are in the
+// one writer the module exports, which every build runs (docs/SPEC.md §5.1:
+// JavaScript has no assert idiom, so its writer refuses in every build), and
+// that no NODE_ENV fork selects a writer without them.
+func TestJsFlatWStringWriteChecksRefuseInEveryBuild(t *testing.T) {
 	t.Parallel()
 
 	src := `package wstringprobe
@@ -41,24 +43,16 @@ type Wide
 	}
 	flatSrc := string(flat)
 
-	// Extract the two writer variants
-	writeProd := emittedFlatFunction(t, flatSrc, "writeWideFlatProduction")
-	writeChecked := emittedFlatFunction(t, flatSrc, "writeWideFlatChecked")
-
-	// The production writer must NOT contain the unconditional length check
-	// or the interior-null check. Note: the field name is capitalized to TextLength.
-	prodForbidden := []string{
-		"!Number.isInteger(value.textLength)",
-		"v === 0",
-	}
-	for _, forbidden := range prodForbidden {
-		if strings.Contains(writeProd, forbidden) {
-			t.Errorf("production writer must not contain %q but it does:\n%s", forbidden, writeProd)
+	// One writer, exported directly: no production variant and no build switch.
+	for _, forbidden := range []string{"writeWideFlatProduction", "writeWideFlatChecked", "PRODUCTION", "process.env"} {
+		if strings.Contains(flatSrc, forbidden) {
+			t.Errorf("the flat module must not carry %q: one writer serves every build", forbidden)
 		}
 	}
+	writeChecked := emittedFlatFunction(t, flatSrc, "WriteWideFlat")
 
-	// The checked writer MUST contain both checks (via guard, so they appear
-	// as if statements with return -1).
+	// The writer MUST contain both checks (via guard, so they appear as if
+	// statements with return -1).
 	checkedRequired := []string{
 		"!Number.isInteger(value.textLength)",
 		"v === 0",
@@ -75,12 +69,9 @@ type Wide
 		t.Errorf("interior-null guard indent %q, want loop-body indent %q:\n%s", got, want, writeChecked)
 	}
 
-	// Sanity: both writers should still have the loop structure
-	if !strings.Contains(writeProd, "for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++)") {
-		t.Error("production writer missing the wstring loop")
-	}
+	// Sanity: the writer still has the loop structure
 	if !strings.Contains(writeChecked, "for (let wideIndex = 0; wideIndex < value.textLength; wideIndex++)") {
-		t.Error("checked writer missing the wstring loop")
+		t.Error("the writer is missing the wstring loop")
 	}
 }
 

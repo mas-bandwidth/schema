@@ -31,6 +31,9 @@
 //   retain-save  the bytes that retaining save writes back
 //   write-refusal  load the wire, set the ONE field a row names, save: the
 //                word `refused` (the save's named refusal) or `wrote`
+//   write-refusal-fixed, write-refusal-message, write-refusal-json  the same
+//                rows through FixedSave and SaveMessages as a batch of one
+//                (the glue's conformance_wref) and the text writer
 // The message form, form 2 (docs/SPEC-TABLES.md §3.3):
 //   message      AnnounceRead the connection's announcement, LoadMessages the
 //                batch against it, SaveMessages what landed: the bytes
@@ -342,10 +345,15 @@ fn surface_message(lines: const u8[:][:], unit: const u8[:]) {
 // ---- THE WRITE CONTRACT (testdata/conformance/tables/FORMAT.md,
 // `write-refusal`; docs/SPEC.md §5.1) ----
 //
-// A derived line is `write-refusal <case> <unit> <root> <wire> <path> <kind>
+// A derived line is `<line kind> <case> <unit> <root> <wire> <path> <kind>
 // <value>`: load the wire as surface_wire does, set the ONE field at <path> in
-// the flat value table, save through the same save_table, and answer
-// `refused\n` or `wrote\n`.
+// the flat value table, write it, and answer `refused\n` or `wrote\n`. The
+// line kind names the writer: `write-refusal` the same save_table,
+// `write-refusal-fixed` and `write-refusal-message` FixedSave and SaveMessages
+// over the typed record the glue's conformance_wref builds from the value
+// (its <unit> column, for a message row, a connection whose announcement is
+// read first), and `write-refusal-json` the text writer, whose `wrote` holds
+// only when the text spells the value's zero as \u0000.
 
 fn wr_fail(name: const u8[:], why: const u8[:]) {
     write_stderr(str("driver: ", name, ": ", why, "\n"));
@@ -399,11 +407,46 @@ fn wr_field_index(unit: schema_rt::LoadUnit, tab: i64, name: const u8[:]) -> i64
     return -1;
 }
 
-fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
+// one hex digit's value
+fn wr_hex(name: const u8[:], c: u8) -> u64 {
+    if c >= '0' && c <= '9' { return (c - '0') as u64; }
+    if c >= 'a' && c <= 'f' { return (c - 'a' + 10) as u64; }
+    if c >= 'A' && c <= 'F' { return (c - 'A' + 10) as u64; }
+    wr_fail(name, "not a hex digit");
+    return 0;
+}
+
+// the line of the connection named key, or -1
+fn wr_connection(lines: const u8[:][:], key: const u8[:]) -> i64 {
+    for i in lines.len {
+        let c = words(lines[i]);
+        if c.len >= 5 && c[0] == "connection" && c[1] == key { return i; }
+    }
+    return -1;
+}
+
+fn wr_holds(text: const u8[:], word: const u8[:]) -> bool {
+    var i: i64 = 0;
+    while i + word.len <= text.len {
+        if text[i .. i + word.len] == word { return true; }
+        i += 1;
+    }
+    return false;
+}
+
+fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:], mode: const u8[:]) {
     let u = conformance_unit();
     for line in lines {
         let f = words(line);
-        if f.len < 8 || f[0] != "write-refusal" || f[2] != unit { continue; }
+        if f.len < 8 || f[0] != mode { continue; }
+        var conn: i64 = -1;
+        if mode == "write-refusal-message" {
+            conn = wr_connection(lines, f[2]);
+            if conn < 0 { wr_fail(f[1], str("no connection ", f[2])); }
+            if words(lines[conn])[2] != unit { continue; }
+        } else if f[2] != unit {
+            continue;
+        }
         let name = f[1];
         var data: u8[>..] = [];
         load_file(f[4], data);
@@ -487,16 +530,59 @@ fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
             vals[slot].count = keep;
             vals[slot].len = n;
             vals[slot].state = schema_rt::ValPresent;
+        } else if kind == "bytes" || kind == "units" {
+            // a narrow text's exact bytes, or a wide text's exact UTF-16
+            // units, little-endian as the flat value holds them
+            let digits = if kind == "units" { 4 } else { 2 };
+            if kind == "units" && !desc.wide { wr_fail(name, "units set no wide text"); }
+            if kind == "bytes" && desc.wide { wr_fail(name, "bytes set no narrow text"); }
+            vals[slot].off = data.len;
+            var i: i64 = 0;
+            while i + digits <= value.len {
+                var x: u64 = 0;
+                for k in digits { x = x * 16 + wr_hex(name, value[i + k]); }
+                data.push((x & 0xFF) as! u8);
+                if kind == "units" { data.push((x >> 8) as! u8); }
+                i += digits;
+            }
+            vals[slot].len = data.len - vals[slot].off;
+            vals[slot].state = schema_rt::ValPresent;
         } else {
             wr_fail(name, str("no write-refusal kind ", kind));
         }
-        var out: u8[>..<] = [];
-        let refusal = schema_rt::save_table(u, f[3], data, vals, nodes, root, out);
-        if refusal != 0 {
-            if schema_rt::save_refusal_name(refusal).len == 0 { wr_fail(name, "the save refused and named no reason"); }
+        if mode == "write-refusal" {
+            var out: u8[>..<] = [];
+            let refusal = schema_rt::save_table(u, f[3], data, vals, nodes, root, out);
+            if refusal != 0 {
+                if schema_rt::save_refusal_name(refusal).len == 0 { wr_fail(name, "the save refused and named no reason"); }
+                answer(name, "refused\n");
+                continue;
+            }
+            answer(name, "wrote\n");
+            continue;
+        }
+        if mode == "write-refusal-json" {
+            var out: u8[>..] = [];
+            if conformance_json_write(f[3], data, vals, nodes, root, out) < 0 {
+                answer(name, "refused\n");
+                continue;
+            }
+            if !wr_holds(out, "\\u0000") { wr_fail(name, "the text writer did not spell the zero as \\u0000"); }
+            answer(name, "wrote\n");
+            continue;
+        }
+        var ann: u8[>..] = [];
+        if conn >= 0 { load_file(words(lines[conn])[4], ann); }
+        let r = conformance_wref(mode, name, f[3], data, vals, root, ann);
+        if r == -9 {
+            absent(name, "no typed record for the root's fixed or message writer");
+            continue;
+        }
+        if r == -1 {
             answer(name, "refused\n");
             continue;
         }
+        if r != 0 { wr_fail(name, str("the writer glue answered ", r)); }
         answer(name, "wrote\n");
     }
 }
@@ -509,6 +595,7 @@ fn main() {
     }
     if argv[1] == "list" {
         write_stdout("wire\nmessage\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\n");
+        write_stdout("write-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
         return;
     }
     if argv.len != 4 {
@@ -528,7 +615,10 @@ fn main() {
     if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
     if argv[1] == "json-write" { surface_json(lines, unit, true); return; }
     if argv[1] == "json-hostile" { surface_json_hostile(lines, unit); return; }
-    if argv[1] == "write-refusal" { surface_write_refusal(lines, unit); return; }
+    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" {
+        surface_write_refusal(lines, unit, argv[1]);
+        return;
+    }
     // a surface this leg does not answer: ABSENT, never a guessed answer
     exit(2);
 }

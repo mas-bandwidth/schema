@@ -176,6 +176,16 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	for _, st := range own {
 		g.emitFixedClampBodyFn(st)
 	}
+	/* THE STORAGE BOUND, in the same order (docs/SPEC.md §5.1): the save asks
+	   it of every record before anything else, in every build. */
+	for _, st := range own {
+		g.emitFixedFitsFn(st)
+	}
+	/* THE WRITER'S CONTRACT, in the same order (docs/SPEC.md §5.1): the save
+	   asks it of every record before the first byte, debug-only. */
+	for _, st := range own {
+		g.emitFixedWriteCheckFn(st)
+	}
 	for _, st := range roots {
 		g.emitFixedClamp(st)
 		g.emitFixedRoot(st)
@@ -347,10 +357,12 @@ func (g *tableGen) emitFixedWriteText(f *ir.Field, base int64, buf, val, ind str
 }
 
 /*
-fixedWriteBound is the WRITE-SIDE CHECK, DEBUG-ONLY BY RULE: NDEBUG removes
+fixedWriteBound is the STORE'S OWN ASSERT on a count or a length, for a
 
-	schema_assert exactly as it removes assert. The read side checks the same
-	number in every build and counts the clamp.
+	caller that reaches the write body directly: NDEBUG removes it. The fixed
+	save never relies on it — <t>_fixed_fits refuses the same number in every
+	build before the first byte — and the read side checks the same number in
+	every build and counts the clamp.
 */
 func (g *tableGen) fixedWriteBound(expr string, bound int64, what, ind string) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); /* the declared %s is the bound (§3.4) */\n", ind, expr, expr, bound, what)
@@ -657,11 +669,26 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    const int64_t need = %s( count );\n", g.api(st.Name, "fixed_measure"))
 	g.pf("    uint8_t * at;\n    int64_t k;\n")
 	g.pf("    if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }\n")
+	if ir.TableFixedStorageBoundNeeded(st) {
+		// A COUNT OR A LENGTH PAST ITS STORAGE IS REFUSED IN EVERY BUILD
+		// (docs/SPEC.md §5.1), FIRST: every later question and the store walk
+		// the counts and lengths this one bounds. ONE LINE, the comment
+		// leading, for formatCompactCFunctions as below.
+		g.pf("    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !%s( values + k ) ) return -1;\n", g.sym(st.Name, "fixed_fits"))
+	}
 	if fixedFiniteNeededStruct(st, map[string]bool{}) {
 		// A NaN OR AN INFINITY IS REFUSED, NEVER WRITTEN (docs/SPEC-TABLES.md
 		// §3.3): the whole batch is checked before one byte is written
 		g.pf("    for ( k = 0; k < count; ++k )\n    {\n")
 		g.pf("        if ( !%s( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */\n    }\n", g.sym(st.Name, "fixed_finite_body"))
+	}
+	if ir.TableFixedWriteCheckNeeded(st) {
+		// THE WRITER'S CONTRACT (docs/SPEC.md §5.1), debug-only: NDEBUG
+		// removes schema_assert, and the loop's work with it. ONE LINE, the
+		// comment leading, because a root whose name holds "message" is
+		// laid out by formatCompactCFunctions, which breaks after every `;`
+		g.wroteAssert = true
+		g.pf("    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( %s( values + k ) );\n", g.sym(st.Name, "fixed_write_check"))
 	}
 	g.pf("    memset( buffer, 0, (size_t) kTableFixedHeaderBytes ); /* the seven reserved bytes, and the rest of the header */\n")
 	g.pf("    buffer[0] = kTableFixedForm;\n")
@@ -1135,6 +1162,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			g.pf("%s    default: break;\n%s}\n", ind, ind)
 			return
 		case *ir.Enum:
+			if g.fixedCheck {
+				g.pf("%sif ( (uint64_t) %s > %du ) { return 0; } /* an enum ordinal outside its set */\n", ind, expr, r.Max)
+				return
+			}
 			g.pf("%sif ( (uint64_t) %s > %du ) { %s = %s; (*clamped)++; }\n",
 				ind, expr, r.Max, expr, enumNoneConst(f.Type.Name))
 			return
@@ -1189,6 +1220,146 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 }
 
 /*
+THE WRITER'S CONTRACT, the C twin of the reference's <T>FixedWriteCheck
+
+	(docs/SPEC.md §5.1): 0 when a record holds a value its declaration does not
+	admit — a ranged integer off its min or max, a bits(N) value past N, an
+	enum ordinal or a union tag outside its set, a string that is not
+	well-formed UTF-8 or holds a zero byte, a wstring with an unpaired
+	surrogate or a zero unit (the fixed reader refuses both as text_ill_formed),
+	or a count or a used length past its declared bound (which
+	<t>_fixed_fits has already refused in every build). It walks what the store walks and
+	asks each count and length BEFORE the loop or the text it bounds, so it
+	never reads past the storage it checks. The scalar bounds are the read
+	side's own conditions (emitFixedClampElement under fixedCheck). A ranged
+	float off its range is the reader's clamp and no writer's refusal on this
+	leg (row 10), so it is not asked.
+*/
+func (g *tableGen) emitFixedWriteCheckFn(st *ir.Struct) {
+	if !ir.TableFixedWriteCheckNeeded(st) {
+		return
+	}
+	g.pf("/* %s's write contract (docs/SPEC.md §5.1): 0 when the record holds a value\n", st.Name)
+	g.pf("   its declaration does not admit, which the fixed save refuses debug-only. */\n")
+	g.pf("static SCHEMA_UNUSED int %s( const %s * value )\n{\n", g.sym(st.Name, "fixed_write_check"), st.Name)
+	g.pf("    (void) value;\n")
+	g.fixedLoop = 0
+	g.fixedCheck = true
+	for _, f := range st.Fields {
+		g.emitFixedWriteCheckField(f, "value->", 4)
+	}
+	g.fixedCheck = false
+	g.pf("    return 1;\n}\n\n")
+}
+
+func (g *tableGen) emitFixedWriteCheckField(f *ir.Field, val string, indent int) {
+	if !ir.TableFixedWriteCheckNeededField(f) {
+		return
+	}
+	if f.Type.Optional {
+		/* AN ABSENT OPTIONAL'S PAYLOAD IS THE TEMPLATE'S ZEROS on the wire, so
+		   what its storage holds is not written and not held to anything. */
+		ind := strings.Repeat(" ", indent)
+		g.pf("%sif ( %s%s_present )\n%s{\n", ind, val, f.Name, ind)
+		g.emitFixedWriteCheckPayload(f, val, indent+4)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.emitFixedWriteCheckPayload(f, val, indent)
+}
+
+func (g *tableGen) emitFixedWriteCheckPayload(f *ir.Field, val string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	switch {
+	case f.KeyEnum != "":
+		g.emitFixedWriteCheckLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), val+f.Name, indent)
+	case f.Array == ir.ArrayFixed:
+		g.emitFixedWriteCheckLoop(f, strconv.FormatInt(f.ArrayBound, 10), val+f.Name, indent)
+	case f.Array == ir.ArrayCounted:
+		count := fmt.Sprintf("%s%s_count", val, f.Name)
+		g.pf("%sif ( %s < 0 || %s > %d ) { return 0; } /* the declared count is the bound (§3.4) */\n", ind, count, count, f.ArrayBound)
+		g.emitFixedWriteCheckLoop(f, "(int64_t) "+count, val+f.Name, indent)
+	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString, f.Type.Kind == ir.TBytes:
+		length := fmt.Sprintf("%s%s_length", val, f.Name)
+		g.pf("%sif ( %s < 0 || %s > %d ) { return 0; } /* the declared length is the bound (§3.4) */\n", ind, length, length, f.Type.Size)
+		switch f.Type.Kind {
+		case ir.TString:
+			/* well-formed and no zero byte: the fixed reader's own rule (§3.4) */
+			g.pf("%sif ( !table_wire_utf8( (const uint8_t *) %s%s, (uint64_t) %s ) ) { return 0; }\n", ind, val, f.Name, length)
+		case ir.TWString:
+			/* paired and no zero unit: the fixed reader's own rule (§3.4) */
+			g.pf("%sif ( !table_wire_utf16_fixed_text( %s%s, (int64_t) %s ) ) { return 0; }\n", ind, val, f.Name, length)
+		}
+	default:
+		g.emitFixedWriteCheckElement(f, val+f.Name, indent)
+	}
+}
+
+// emitFixedWriteCheckLoop asks `count` elements; a loop nests when an array arm
+// rides inside an array, so each level takes its own counter (fixedLoopVar).
+func (g *tableGen) emitFixedWriteCheckLoop(f *ir.Field, count, expr string, indent int) {
+	if !ir.TableFixedWriteCheckNeededElement(f) {
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	i := fixedLoopVar(g.fixedLoop)
+	g.fixedLoop++
+	g.pf("%s{\n%s    int64_t %s;\n%s    for ( %s = 0; %s < %s; ++%s )\n%s    {\n", ind, ind, i, ind, i, i, count, i, ind)
+	g.emitFixedWriteCheckElement(f, expr+"["+i+"]", indent+8)
+	g.pf("%s    }\n%s}\n", ind, ind)
+	g.fixedLoop--
+}
+
+func (g *tableGen) emitFixedWriteCheckElement(f *ir.Field, expr string, indent int) {
+	ind := strings.Repeat(" ", indent)
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			if ir.TableFixedWriteCheckNeeded(r) {
+				g.pf("%sif ( !%s( &%s ) ) { return 0; }\n", ind, g.sym(r.Name, "fixed_write_check"), expr)
+			}
+			return
+		case *ir.Union:
+			/* A TAG OUTSIDE THE ARMS names no arm, so nothing is asked under it. */
+			g.pf("%sif ( (uint32_t) %s.type > %du ) { return 0; } /* a union tag outside its arms */\n", ind, expr, r.Max)
+			arms := false
+			for _, v := range r.Variants {
+				if v.F != nil && ir.TableFixedWriteCheckNeededField(v.F) {
+					arms = true
+				}
+			}
+			if !arms {
+				return
+			}
+			g.pf("%sswitch ( %s.type )\n%s{\n", ind, expr, ind)
+			for _, v := range r.Variants {
+				if v.F == nil || !ir.TableFixedWriteCheckNeededField(v.F) {
+					continue
+				}
+				arm := *v.F
+				val := expr + ".as."
+				if armCompanioned(v) {
+					val = expr + ".as." + v.Name + "."
+					arm.Name = "value"
+				} else {
+					arm.Name = v.Name
+				}
+				g.pf("%s    case %s:\n%s    {\n", ind, enumConst(f.Type.Name+"Type", v.Name), ind)
+				g.emitFixedWriteCheckPayload(&arm, val, indent+8)
+				g.pf("%s        break;\n%s    }\n", ind, ind)
+			}
+			g.pf("%s    default: break;\n%s}\n", ind, ind)
+			return
+		}
+	}
+	if f.HasFloatRange {
+		return
+	}
+	// a scalar's bounds and an enum's set: the read side's own conditions
+	g.emitFixedClampElement(f, expr, indent)
+}
+
+/*
 THE CLAMP IS BRANCHLESS AND THE COUNT IS AN ADD, the C twin of the
 
 	reference's: a bounds pass over a record that is nearly always in range is a
@@ -1196,6 +1367,10 @@ THE CLAMP IS BRANCHLESS AND THE COUNT IS AN ADD, the C twin of the
 	body is what stops the loop vectorizing at all.
 */
 func (g *tableGen) fixedClampBoth(expr, loTest, lo, hiTest, hi, ind string) {
+	if g.fixedCheck {
+		g.pf("%sif ( ( %s ) || ( %s ) ) { return 0; }\n", ind, loTest, hiTest)
+		return
+	}
 	/* THE COUNT IS AN OR OF THE TWO ENDS, and the casts are what say the `|` is
 	   meant: clang reads a bitwise operator between two comparisons as a
 	   mistyped `||` and reds it (-Wbitwise-instead-of-logical), which is a good
@@ -1211,6 +1386,10 @@ fixedClampEnd is the one-ended twin: an end the storage's own width already
 	holds is an end the emitter drops (tableClampEnds).
 */
 func (g *tableGen) fixedClampEnd(expr, test, bound, ind string) {
+	if g.fixedCheck {
+		g.pf("%sif ( %s ) { return 0; }\n", ind, test)
+		return
+	}
 	g.pf("%s(*clamped) += ( %s );\n", ind, test)
 	g.pf("%s%s = ( %s ) ? %s : %s;\n", ind, expr, test, bound, expr)
 }

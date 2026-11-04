@@ -474,7 +474,10 @@ namespace Ludicrous
             {
                 return false;
             }
-            Debug.Assert(value.KeysCount >= 0 && value.KeysCount <= 4, "value.KeysCount out of range [0, 4]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.KeysCount < 0 || value.KeysCount > 4) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.KeysCount);
                 if (!stream.SerializeBits(ref offsetValue, 3))

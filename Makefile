@@ -6402,6 +6402,55 @@ conformance-negative-control-cpp-write-refusal: build/conformance-harness build/
 	@grep -m1 "cpp / write-refusal" $(CONFORMANCE_NEGATIVE_CPP_WREF)/log
 	@echo "negative control: the C++ writer without its range asserts turns the harness RED on write-refusal alone"
 
+# THE SAME CONTRACT THROUGH THE FIXED AND MESSAGE WRITERS (docs/SPEC.md §5.1):
+# one control each, of one shape. $(1) names the control, $(2) is the comment
+# the sed anchors on (each such assert is one line ending in it), $(3) the
+# surface that must go RED and $(4) the surface that must stay green. The fixed
+# control deletes FixedSave's <T>FixedWriteCheck assert, so the range, bits,
+# enum, tag and text rows answer `wrote` while the count and length rows, which
+# FixedSave's every-build <T>FixedFits line holds, do not move; the message control deletes
+# SaveMessages' range asserts, so the two quantity rows and the element row
+# answer `wrote`. Nothing tracked is written to.
+define conformance-negative-control-cpp-wref
+	@rm -rf build/conformance-negative-cpp-$(1) && mkdir -p build/conformance-negative-cpp-$(1)
+	@cp -R build/tables-generated build/conformance-negative-cpp-$(1)/generated
+	@n=$$(grep -rl '$(2)' build/conformance-negative-cpp-$(1)/generated | wc -l); \
+		[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no assert anchored on '$(2)' in the generated tree"; exit 1; }
+	@for f in build/conformance-negative-cpp-$(1)/generated/*/*.h; do \
+		sed '/$(2)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(2)' build/conformance-negative-cpp-$(1)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: an assert anchored on '$(2)' survived the sabotage"; exit 1; }
+	@$(MAKE) $(SERIALIZE_RUNTIME)/serialize.h
+	$(CXX) $(TABLES_CXXFLAGS) \
+		$(subst -I$(SERIALIZE),-I$(SERIALIZE_RUNTIME),$(subst build/tables-generated/,build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_INCLUDES))) \
+		test/conformance/cpp/main.cpp \
+		$(subst build/tables-generated/,build/conformance-negative-cpp-$(1)/generated/,$(CONFORMANCE_SOURCES)) \
+		-o build/conformance-negative-cpp-$(1)/driver-bin
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/build/conformance-negative-cpp-$(1)" > build/conformance-negative-cpp-$(1)/driver
+	@chmod +x build/conformance-negative-cpp-$(1)/driver
+	@printf 'cpp %s/driver\n' "build/conformance-negative-cpp-$(1)" > build/conformance-negative-cpp-$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative-cpp-$(1)/drivers.txt \
+			--work build/conformance-negative-cpp-$(1)/work > build/conformance-negative-cpp-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C++ $(3) writer without its asserts left the harness green"; \
+		cat build/conformance-negative-cpp-$(1)/log; exit 1; \
+	fi
+	@grep -Eq '^$(3) *FAIL ' build/conformance-negative-cpp-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(3)"; \
+		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
+	@grep -Eq '^$(4) +pass ' build/conformance-negative-cpp-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(4) went red too, so the control localizes nothing"; \
+		  cat build/conformance-negative-cpp-$(1)/log; exit 1; }
+	@grep -m1 "cpp / $(3)" build/conformance-negative-cpp-$(1)/log
+	@echo "negative control: the C++ writer without its $(1) asserts turns the harness RED on $(3)"
+endef
+
+.PHONY: conformance-negative-control-cpp-write-refusal-fixed conformance-negative-control-cpp-write-refusal-message
+conformance-negative-control-cpp-write-refusal-fixed: build/conformance-harness build/tables-generated/.stamp
+	$(call conformance-negative-control-cpp-wref,write-refusal-fixed,a fixed write keeps the declared contract,write-refusal-fixed,wire)
+
+conformance-negative-control-cpp-write-refusal-message: build/conformance-harness build/tables-generated/.stamp
+	$(call conformance-negative-control-cpp-wref,write-refusal-message,a message write keeps the declared bounds,write-refusal-message,message)
+
 # THE NEGATIVE CONTROL FOR THE BLOCK ROW DUMP (docs/SPEC-TABLES.md §19.2), and it
 # sabotages neither driver: it flips one byte INSIDE A ROW of the block image
 # itself. That is the whole reason the surface exists. `Open` reads the prologue

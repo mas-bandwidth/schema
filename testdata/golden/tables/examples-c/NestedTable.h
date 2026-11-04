@@ -613,6 +613,21 @@ static SCHEMA_UNUSED int tabledemo_table_wire_utf8( const uint8_t * p, uint64_t 
     }
     return 1;
 }
+/* A WRITE KEEPS WELL-FORMED TEXT (docs/SPEC.md §5.1): storage a program built
+   is held to UTF-8's own rule before a writer puts it on a wire, the rule above
+   less its zero byte. A zero byte is a whole code point and splits no
+   sequence, so each run between zeros is asked of table_wire_utf8. */
+static SCHEMA_UNUSED int tabledemo_table_wire_utf8_well_formed( const uint8_t * p, uint64_t n )
+{
+    uint64_t start = 0, i;
+    for ( i = 0; i <= n; i++ )
+    {
+        if ( i < n && p[i] != 0 ) { continue; }
+        if ( !tabledemo_table_wire_utf8( p + start, i - start ) ) { return 0; }
+        start = i + 1;
+    }
+    return 1;
+}
 static SCHEMA_UNUSED uint64_t tabledemo_table_wire_utf8_clamp( const uint8_t * p, uint64_t n, uint64_t cap )
 {
     if ( n <= cap ) { return n; } while ( cap && (p[cap] & 192) == 128 ) { cap--; } return cap;
@@ -5039,6 +5054,7 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_measure( const tabledemo_a
 static SCHEMA_UNUSED int64_t tabledemo_archive_config_save( const tabledemo_archive_config_t * value, uint8_t * buffer, int64_t capacity )
 {
     if ( buffer == NULL || capacity < 0 ) { return -1; }
+    { int64_t need = tabledemo_archive_config_measure( value ); if ( need < 0 || need > capacity ) { return -1; } }
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( buffer, capacity, &vocabulary );
     tabledemo_table_writer_put8( &w, 1 );
     if ( !tabledemo_archive_config_save_body( &w, value ) ) { return -1; }
@@ -5196,6 +5212,7 @@ static SCHEMA_UNUSED int tabledemo_archive_config_save_message_body(tabledemo_ta
  { /* count */
  if(!(value->count == 1)) {
   tabledemo_table_bit_put(w,2,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
+  /* a message write keeps the declared bounds (SPEC.md §5.1) */ schema_assert( value->count >= 0 && value->count <= 100 );
   tabledemo_table_bit_put(w,(uint64_t)(value->count)-UINT64_C(0),7);
  }
  }
@@ -5228,6 +5245,9 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_save_messages(const tabled
  }return -1;
  }
  if(buffer==NULL || capacity<0) return -1;
+ { int64_t need=tabledemo_archive_config_measure_messages(values,count,report);
+ if(need<0 || need>capacity) return -1;
+ }
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
@@ -5376,6 +5396,25 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_archive
     schema_tabledemo_root_config_fixed_clamp_body_( &value->root, clamped, damaged );
     (*clamped) += (int) ( value->count < 0 ) | (int) ( value->count > 100 );
     value->count = ( value->count < 0 ) ? 0 : ( ( value->count > 100 ) ? 100 : value->count );
+}
+
+/* ArchiveConfig's storage bound (docs/SPEC.md §5.1): 0 when a count or a used length
+   is past the storage that holds it, which the fixed save refuses in every build. */
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_fits_( const tabledemo_archive_config_t * value )
+{
+    (void) value;
+    if ( !schema_tabledemo_root_config_fixed_fits_( &value->root ) ) { return 0; }
+    return 1;
+}
+
+/* ArchiveConfig's write contract (docs/SPEC.md §5.1): 0 when the record holds a value
+   its declaration does not admit, which the fixed save refuses debug-only. */
+static SCHEMA_UNUSED int schema_tabledemo_archive_config_fixed_write_check_( const tabledemo_archive_config_t * value )
+{
+    (void) value;
+    if ( !schema_tabledemo_root_config_fixed_write_check_( &value->root ) ) { return 0; }
+    if ( ( value->count < 0 ) || ( value->count > 100 ) ) { return 0; }
+    return 1;
 }
 
 /* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
@@ -5907,10 +5946,12 @@ static SCHEMA_UNUSED int64_t tabledemo_archive_config_fixed_save( const tabledem
     uint8_t * at;
     int64_t k;
     if ( count < 0 || values == NULL || buffer == NULL || capacity < need ) { return -1; }
+    /* a count or a length past its storage is refused in every build (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) if ( !schema_tabledemo_archive_config_fixed_fits_( values + k ) ) return -1;
     for ( k = 0; k < count; ++k )
     {
         if ( !schema_tabledemo_archive_config_fixed_finite_body_( values + k ) ) { return -1; } /* a NaN or an infinity is refused (§3.3) */
     }
+    /* a fixed write keeps the declared contract (SPEC.md §5.1) */ for ( k = 0; k < count; ++k ) schema_assert( schema_tabledemo_archive_config_fixed_write_check_( values + k ) );
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_archive_config_fixed_hash );

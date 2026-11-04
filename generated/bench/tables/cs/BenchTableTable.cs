@@ -732,8 +732,9 @@ namespace Benchtable
             }
 
             // a counted field's companion: a string's length, a bytes' length, a
-            // counted array's count. Bounded by the declared extent on the way out, so
-            // a storage invariant a caller broke cannot walk off the end of the array.
+            // counted array's count, bounded by the declared extent. The read side's
+            // text budget measures a just-read element with it; the writer reads the
+            // companion as set and refuses one out of bounds (StorageCount).
             static int Count(object value, TableFieldInfo f)
             {
                 if (!f.Counted) { return f.ArrayBound; }
@@ -1446,23 +1447,40 @@ namespace Benchtable
                 }
             }
 
+            // A count or a length indexes the value's own storage, so the writer reads
+            // it as the caller set it, and one past its declared bound, negative, or
+            // past the array that holds it is refused in every build before it indexes
+            // anything (docs/SPEC.md §5.1): never clamped into a different value.
+            static bool StorageCount(object value, TableFieldInfo f, out int count)
+            {
+                count = f.Counted ? f.GetCount(value) : f.ArrayBound;
+                if (count < 0 || f.Counted && !f.Dynamic && count > f.ArrayBound) { return false; }
+                if (f.Kind == 33 && !f.IsArray) { return count <= f.GetChars(value).Length; }
+                if (f.GetBuffer != null) { return count <= f.GetBuffer(value).Length; }
+                return true;
+            }
+
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
                 if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 33)
                 {
-                    WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
+                    if (!StorageCount(value, f, out int units)) { return false; }
+                    WriteChars(ref o, f.GetChars(value).AsSpan(0, units)); return true;
                 }
                 if (f.Kind == 12 && !f.TextList)
                 {
-                    if (!TableWire.TextValid(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
-                    WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
+                    if (!StorageCount(value, f, out int used)) { return false; }
+                    // ill-formed text is refused; a zero byte is spelled \u0000 (docs/SPEC-TABLES.md §16.3)
+                    if (!TableWire.TextWellFormed(f.GetBuffer(value).AsSpan(0, used))) { return false; }
+                    WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, used));
                     return true;
                 }
                 if (IsBytes(f))
                 {
-                    WriteBase64(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
+                    if (!StorageCount(value, f, out int used)) { return false; }
+                    WriteBase64(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, used));
                     return true;
                 }
                 if (IsKeyed(f))
@@ -1493,7 +1511,7 @@ namespace Benchtable
                 }
                 if (f.IsArray)
                 {
-                    int count = Count(value, f);
+                    if (!StorageCount(value, f, out int count)) { return false; }
                     if (count == 0)
                     {
                         o.Text("[]");
@@ -3078,14 +3096,27 @@ namespace Benchtable
             {
                 Out o = new Out();
                 o.Buffer = buffer;
-                o.Measuring = measuring;
+                o.Measuring = true;
                 o.Offset = 0;
                 o.Overflow = false;
                 if (info.Variable) { o.Graph = TableWire.Number(value, info); if (o.Graph == null) { return -1; } }
+                // THE WALK MEASURES FIRST: every refusal (ill-formed text, a count or a
+                // length past its storage, a value the text cannot spell) and the
+                // buffer's own size are answered before the first output byte, so a
+                // refused write leaves the caller's buffer untouched.
                 if (!WriteValue(ref o, value, info, 0)) { return -1; }
                 // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
                 // writer emits it — this one, the C++ walk and schema unpack — and
                 // every reader accepts a text with or without.
+                long size = o.Offset + 1;
+                if (measuring) { return size; }
+                if (size > buffer.Length) { return -1; }
+                o.Measuring = false;
+                o.Offset = 0;
+                // a shared node's label is handed out on its first reference, so the
+                // write walk numbers from the start again, as the measure walk did
+                if (o.Graph != null) { o.Graph.Labels.Clear(); }
+                if (!WriteValue(ref o, value, info, 0)) { return -1; }
                 o.Put((byte)'\n');
                 if (o.Overflow) { return -1; }
                 return o.Offset;
@@ -4697,6 +4728,15 @@ namespace Benchtable
                     int count = Count(value, f);
                     return count >= 0 && count <= f.ArrayBound && TextValid(f.GetBuffer(value).AsSpan(0, count));
                 }
+                if (!f.IsArray && f.Kind == 33)
+                {
+                    // a wide text holding an unpaired surrogate is caller error on the
+                    // write side: checked in a debug build, gone in release
+                    int count = Count(value, f);
+                    if (count < 0 || count > f.ArrayBound) { return false; }
+                    System.Diagnostics.Debug.Assert(UnitsWellFormed(f.GetChars(value).AsSpan(0, count)), "write refused: a wide text holding an unpaired surrogate");
+                    return true;
+                }
                 if (f.RequiredValidRaw != null && !f.RequiredValidRaw(f.GetRaw(value, i))) { return false; }
                 if (f.RequiredValidWide != null && !f.RequiredValidWide(f.GetWide(value, i))) { return false; }
                 // a ranged integer or a bits(N) value outside its field is caller
@@ -5359,6 +5399,42 @@ namespace Benchtable
             }
             internal static void TextClamp(TableReport report, TableFieldInfo field)
             { if (field.TextList && report.ClampedField == null) { report.ClampedField = field.TextField; } }
+            // TextWellFormed is whether text is well-formed UTF-8: TextValid without
+            // the zero-byte rule, the write contract's own text test (docs/SPEC.md §5.1).
+            internal static bool TextWellFormed(ReadOnlySpan<byte> text)
+            {
+                for (int i = 0; i < text.Length;)
+                {
+                    byte c = text[i++];
+                    if (c < 128) { continue; }
+                    int n; uint v, min;
+                    if (c >= 0xc2 && c <= 0xdf) { n = 1; v = (uint)(c & 31); min = 0x80; }
+                    else if (c >= 0xe0 && c <= 0xef) { n = 2; v = (uint)(c & 15); min = 0x800; }
+                    else if (c >= 0xf0 && c <= 0xf4) { n = 3; v = (uint)(c & 7); min = 0x10000; }
+                    else { return false; }
+                    if (n > text.Length - i) { return false; }
+                    for (int j = 0; j < n; j++)
+                    { byte b = text[i++]; if ((b & 0xc0) != 0x80) { return false; } v = (v << 6) | (uint)(b & 63); }
+                    if (v < min || v > 0x10ffff || (v >= 0xd800 && v <= 0xdfff)) { return false; }
+                }
+                return true;
+            }
+            // UnitsWellFormed is whether UTF-16 units hold no unpaired surrogate: every
+            // high surrogate is followed by a low one, and no low one stands alone.
+            internal static bool UnitsWellFormed(ReadOnlySpan<char> units)
+            {
+                for (int i = 0; i < units.Length; i++)
+                {
+                    char c = units[i];
+                    if (char.IsHighSurrogate(c))
+                    {
+                        if (i + 1 >= units.Length || !char.IsLowSurrogate(units[i + 1])) { return false; }
+                        i++;
+                    }
+                    else if (char.IsLowSurrogate(c)) { return false; }
+                }
+                return true;
+            }
             internal static bool TextValid(ReadOnlySpan<byte> text)
             {
                 for (int i = 0; i < text.Length;)
@@ -8768,6 +8844,137 @@ namespace Benchtable
             return null;
         }
 
+        // TableEntity's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TableEntityFixedCheckBody(TableEntity value)
+        {
+            if (value == null) return true;
+            if (value.EntityId > 4095) return false;
+            if (value.PosX < -16383 || value.PosX > 16383) return false;
+            if (value.PosY < -16383 || value.PosY > 16383) return false;
+            if (value.PosZ < -16383 || value.PosZ > 16383) return false;
+            if (value.Yaw > 511) return false;
+            if (value.Pitch > 511) return false;
+            if (value.VelX < -2048 || value.VelX > 2047) return false;
+            if (value.VelY < -2048 || value.VelY > 2047) return false;
+            if (value.VelZ < -2048 || value.VelZ > 2047) return false;
+            if (value.Health < 0 || value.Health > 1000) return false;
+            if ((ulong)value.Weapon > 15) return false;
+            return true;
+        }
+
+        // TableStat's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TableStatFixedCheckBody(TableStat value)
+        {
+            if (value == null) return true;
+            if (value.StatId > 255) return false;
+            if (value.Delta < -512 || value.Delta > 511) return false;
+            return true;
+        }
+
+        // TableHitEvent's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TableHitEventFixedCheckBody(TableHitEvent value)
+        {
+            if (value == null) return true;
+            if (value.TargetId > 4095) return false;
+            if (value.Damage < 0 || value.Damage > 4095) return false;
+            if (value.HitKind < 0 || value.HitKind > 7) return false;
+            return true;
+        }
+
+        // TableChatEvent's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TableChatEventFixedCheckBody(TableChatEvent value)
+        {
+            if (value == null) return true;
+            if (value.Channel < 0 || value.Channel > 3) return false;
+            if (value.Speaker > 4095) return false;
+            return true;
+        }
+
+        // TablePickupEvent's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TablePickupEventFixedCheckBody(TablePickupEvent value)
+        {
+            if (value == null) return true;
+            if (value.ItemId > 1023) return false;
+            if (value.Amount < 0 || value.Amount > 255) return false;
+            return true;
+        }
+
+        // TableMixed's write-side contract (docs/SPEC-TABLES.md §3.3): false is a value
+        // its declaration refuses. FixedSave asks it through Debug.Assert.
+        public static bool TableMixedFixedCheckBody(TableMixed value)
+        {
+            if (value == null) return true;
+            if (value.Sequence > 65535) return false;
+            if (value.AckSequence < 0 || value.AckSequence > 65535) return false;
+            if (value.Nonce < 1ul || value.Nonce > 9223372036854775807ul) return false;
+            if (value.WorldTime < -1000000000000L || value.WorldTime > 1000000000000L) return false;
+            if (value.FrameTick > 281474976710655ul) return false;
+            if (value.EntitiesCount < 0 || value.EntitiesCount > 8) return false;
+            if (value.Entities != null)
+            {
+                for (int i = 0; i < value.EntitiesCount && i < value.Entities.Length; ++i)
+                {
+                    if (!TableEntityFixedCheckBody(value.Entities[i])) return false;
+                }
+            }
+            if (value.StatsCount < 0 || value.StatsCount > 80) return false;
+            if (value.Stats != null)
+            {
+                for (int i = 0; i < value.StatsCount && i < value.Stats.Length; ++i)
+                {
+                    if (!TableStatFixedCheckBody(value.Stats[i])) return false;
+                }
+            }
+            if (value.GameEvent != null)
+            {
+                if ((ulong)value.GameEvent.Type > 3) return false;
+                switch (value.GameEvent.Type)
+                {
+                    case TableEventType.Hit:
+                        {
+                            if (!TableHitEventFixedCheckBody(value.GameEvent.Hit)) return false;
+                            break;
+                        }
+                    case TableEventType.Chat:
+                        {
+                            if (!TableChatEventFixedCheckBody(value.GameEvent.Chat)) return false;
+                            break;
+                        }
+                    case TableEventType.Pickup:
+                        {
+                            if (!TablePickupEventFixedCheckBody(value.GameEvent.Pickup)) return false;
+                            break;
+                        }
+                    default: break;
+                }
+            }
+            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15) return false;
+            if (value.PlayerName != null && (!TableWire.TextWellFormed(value.PlayerName.AsSpan(0, value.PlayerNameLength)) || value.PlayerName.AsSpan(0, value.PlayerNameLength).IndexOf((byte)0) >= 0)) return false;
+            if (value.PayloadLength < 0 || value.PayloadLength > 16) return false;
+            if (value.Flux < -1000000000000000000L || value.Flux > 1000000000000000000L) return false;
+            if (value.CrcHint > 16777215) return false;
+            if (value.Extra < 0 || value.Extra > 255) return false;
+            if (value.IdleTicks < 0 || value.IdleTicks > 15) return false;
+            return true;
+        }
+
+        // TableMixed's storage bounds (docs/SPEC.md §5.1): false is a count or a length
+        // the writer would index storage past. FixedSave refuses it in every build.
+        public static bool TableMixedFixedStorageBody(TableMixed value)
+        {
+            if (value == null) return true;
+            if (value.EntitiesCount < 0 || value.EntitiesCount > 8) return false;
+            if (value.StatsCount < 0 || value.StatsCount > 80) return false;
+            if (value.PlayerNameLength < 0 || value.PlayerNameLength > 15 || (value.PlayerName != null && value.PlayerNameLength > value.PlayerName.Length)) return false;
+            if (value.PayloadLength < 0 || value.PayloadLength > 16 || (value.Payload != null && value.PayloadLength > value.Payload.Length)) return false;
+            return true;
+        }
+
         // THE READ-SIDE BOUNDS (§4.6): a ranged scalar's declared min and max,
         // and an ORDINAL's set — a union tag past the arm count, an enum ordinal
         // past the enum's top value. Straight-line, after the run, over STORAGE,
@@ -9235,6 +9442,9 @@ namespace Benchtable
         {
             long need = TableEntityFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TableEntityFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableEntityFixedHash);
@@ -9769,6 +9979,9 @@ namespace Benchtable
         {
             long need = TableStatFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TableStatFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableStatFixedHash);
@@ -11765,6 +11978,10 @@ namespace Benchtable
             long need = TableMixedFixedMeasure(values.Length);
             if (values.Length < 0 || buffer.Length < need) { return -1; }
             for (int k = 0; k < values.Length; ++k) { if (TableMixedFixedFiniteBody(values[k]) != null) { return -1; } }
+            for (int k = 0; k < values.Length; ++k) { if (!TableMixedFixedStorageBody(values[k])) { return -1; } }
+        #if DEBUG
+            for (int k = 0; k < values.Length; ++k) { System.Diagnostics.Debug.Assert(TableMixedFixedCheckBody(values[k]), "write refused: a value outside its declaration"); }
+        #endif
             buffer.Slice(0, TableFixedWire.HeaderBytes).Clear();
             buffer[0] = TableFixedWire.Form;
             BinaryPrimitives.WriteUInt64LittleEndian(buffer.Slice(TableFixedWire.HashAt), TableMixedFixedHash);

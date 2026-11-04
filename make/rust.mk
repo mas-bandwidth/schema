@@ -1474,6 +1474,151 @@ conformance-negative-control-rust-write-refusal: build/conformance-harness build
 
 test-rust: conformance-negative-control-rust-write-refusal
 
+# THE RUST LEG's ROW-WRITER NEGATIVE CONTROLS (docs/SPEC.md §5.1, the write
+# contract): the fixed form's FixedSave and the message form's SaveMessages
+# hold every value of the batch to <t>_check_row under debug_assert! before the
+# first byte. Each control copies build/tables-generated-rust, deletes ONE
+# ranged-integer clause from one check_row in the copy, rebuilds the
+# conformance driver against the copy in the dev profile (its own target
+# directory, so the normal driver is not touched), and requires the matrix red
+# on the writer's own surface while the surface reading the same form stays
+# green. No tracked file is written to.
+#
+# rust_wref_row_control: $(1) the control's directory, $(2) the generated file
+# under the copy, $(3) the clause's `if` line (the clause is it and the two
+# lines after it), $(4) the surface that must go red, $(5) the surface that
+# must stay green, $(6) what the save does without the clause.
+define rust_wref_row_control
+	@rm -rf $(1) && mkdir -p $(1)/driver
+	@cp -R build/tables-generated-rust $(1)/generated
+	@for toml in $(1)/generated/*/Cargo.toml; do \
+		sed -i.orig 's|path = "\.\./\.\./\.\./|path = "../../../../|' $$toml && rm -f $$toml.orig || exit 1; \
+	done
+	@file=$(1)/generated/$(2); \
+	n=$$(grep -cF '$(3)' $$file); \
+	[ "$$n" = 1 ] || { echo "NEGATIVE CONTROL: the check_row clause matched $$n times in $$file, want exactly 1"; exit 1; }; \
+	awk -v a='$(3)' 'index($$0, a) { skip = 3 } skip > 0 { skip--; next } { print }' \
+		build/tables-generated-rust/$(2) > $$file; \
+	if grep -qF '$(3)' $$file; then echo "NEGATIVE CONTROL: the check_row clause was not removed"; exit 1; fi
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(1)/generated/|' \
+		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(1)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(1)/driver/driver && chmod +x $(1)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(1)" > $(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers $(1)/drivers.txt \
+			--work $(1)/work > $(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: $(6) left the Rust matrix green"; \
+		cat $(1)/log; exit 1; \
+	fi
+	@cat $(1)/log
+	@grep -Eq '^ *$(4) *FAIL' $(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(4) is not marked FAIL"; exit 1; }
+	@grep -Eq '^ *$(5) +pass' $(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(5) did not stay green"; exit 1; }
+	@echo "Rust $(4) negative control: $(6) is detected by rust / $(4), and $(5) stays green"
+endef
+
+.PHONY: conformance-negative-control-rust-write-refusal-fixed
+conformance-negative-control-rust-write-refusal-fixed: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_row_control,build/rust-conformance-wref-fixed-control,tabledemo/src/tables_fixed.rs,if value.penetration < 0_i32 || value.penetration > 10_i32 {,write-refusal-fixed,wire,a FixedSave that writes WeaponConfig.penetration off its range)
+
+.PHONY: conformance-negative-control-rust-write-refusal-message
+conformance-negative-control-rust-write-refusal-message: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_row_control,build/rust-conformance-wref-message-control,backenddemo/src/backend_fixed.rs,if value.quantity < 1_u8 || value.quantity > 99_u8 {,write-refusal-message,message,a SaveMessages that writes StorePurchase.quantity off its range)
+
+test-rust: conformance-negative-control-rust-write-refusal-fixed conformance-negative-control-rust-write-refusal-message
+
+# THE RUST LEG'S RELEASE STORAGE GATE (docs/SPEC.md §5.1): a count or a length
+# that indexes a writer's storage is refused in EVERY build, not under
+# debug_assert! alone. The conformance driver is rebuilt in the dev profile with
+# debug assertions and overflow checks off (Rust's release semantics; its own
+# target directory, so the normal driver is not touched), the matrix runs over
+# it, and test/conformance/rust/release-storage-verdict.sh requires the storage
+# rows refused there (wref_count through the variable Save, fref_count and
+# fref_length through FixedSave, mref_length through SaveMessages), their twins
+# written, and the debug-only range rows written, which proves the build is the
+# release one. The matrix itself is red in that build by design (the debug-only
+# rows write), so its exit is not the gate.
+#
+# rust_wref_release_run: $(1) the directory, $(2) the generated tree the driver
+# builds against.
+define rust_wref_release_run
+	@rm -rf $(1)/driver $(1)/work && mkdir -p $(1)/driver
+	@sed -e 's|^path = "src/main.rs"|path = "../../../test/conformance/rust/src/main.rs"|' \
+		-e 's|build/tables-generated-rust/|$(2)/|' \
+		test/conformance/rust/Cargo.toml > $(1)/driver/Cargo.toml
+	cd $(1)/driver && PATH="$(RUSTUP_BIN):$$PATH" \
+		CARGO_PROFILE_DEV_DEBUG_ASSERTIONS=false CARGO_PROFILE_DEV_OVERFLOW_CHECKS=false \
+		CARGO_TARGET_DIR=$(CURDIR)/$(1)/target cargo build --quiet
+	@printf '#!/bin/sh\nexec "%s/$(1)/target/debug/conformance-rust" "$$@"\n' "$(CURDIR)" \
+		> $(1)/driver/driver && chmod +x $(1)/driver/driver
+	@printf 'rust %s/driver/driver\n' "$(1)" > $(1)/drivers.txt
+	@./build/conformance-harness run --drivers $(1)/drivers.txt --work $(1)/work > $(1)/log 2>&1 || true
+endef
+
+RUST_WREF_RELEASE := build/rust-wref-release
+.PHONY: write-refusal-storage-release-rust
+write-refusal-storage-release-rust: build/conformance-harness build/tables-generated-rust/.stamp
+	$(call rust_wref_release_run,$(RUST_WREF_RELEASE),build/tables-generated-rust)
+	@test/conformance/rust/release-storage-verdict.sh $(RUST_WREF_RELEASE)/work
+
+test-rust: write-refusal-storage-release-rust
+
+# ITS NEGATIVE CONTROL: a COPY of build/tables-generated-rust has RootConfig's
+# every-build storage refusal deleted from its FixedSave (the check_storage
+# clause and the two lines after it), the release driver is rebuilt against the
+# copy, and the verdict must go red on fref_count while the debug-only
+# witnesses stay written. No tracked file is written to.
+RUST_WREF_RELEASE_CONTROL := build/rust-wref-release-control
+RUST_WREF_RELEASE_ANCHOR := if values.iter().any(|value| !root_config_check_storage(value).is_empty()) {
+.PHONY: conformance-negative-control-rust-write-refusal-storage-release
+conformance-negative-control-rust-write-refusal-storage-release: build/conformance-harness build/tables-generated-rust/.stamp
+	@rm -rf $(RUST_WREF_RELEASE_CONTROL) && mkdir -p $(RUST_WREF_RELEASE_CONTROL)
+	@cp -R build/tables-generated-rust $(RUST_WREF_RELEASE_CONTROL)/generated
+	@for toml in $(RUST_WREF_RELEASE_CONTROL)/generated/*/Cargo.toml; do \
+		sed -i.orig 's|path = "\.\./\.\./\.\./|path = "../../../../|' $$toml && rm -f $$toml.orig || exit 1; \
+	done
+	@file=$(RUST_WREF_RELEASE_CONTROL)/generated/tabledemo/src/tables_fixed.rs; \
+	n=$$(grep -cF '$(RUST_WREF_RELEASE_ANCHOR)' $$file); \
+	[ "$$n" = 1 ] || { echo "NEGATIVE CONTROL: the storage refusal anchor matched $$n times in $$file, want exactly 1"; exit 1; }; \
+	awk -v a='$(RUST_WREF_RELEASE_ANCHOR)' 'index($$0, a) { skip = 3 } skip > 0 { skip--; next } { print }' \
+		build/tables-generated-rust/tabledemo/src/tables_fixed.rs > $$file; \
+	if grep -qF '$(RUST_WREF_RELEASE_ANCHOR)' $$file; then echo "NEGATIVE CONTROL: the storage refusal was not removed"; exit 1; fi
+	$(call rust_wref_release_run,$(RUST_WREF_RELEASE_CONTROL),$(RUST_WREF_RELEASE_CONTROL)/generated)
+	@if test/conformance/rust/release-storage-verdict.sh $(RUST_WREF_RELEASE_CONTROL)/work > $(RUST_WREF_RELEASE_CONTROL)/verdict 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: a FixedSave without its storage refusal left the Rust release storage gate green"; \
+		cat $(RUST_WREF_RELEASE_CONTROL)/verdict; exit 1; \
+	fi
+	@cat $(RUST_WREF_RELEASE_CONTROL)/verdict
+	@grep -q ' write-refusal-fixed/fref_count=wrote' $(RUST_WREF_RELEASE_CONTROL)/verdict || \
+		{ echo "NEGATIVE CONTROL FAILED: the gate went red, but not on fref_count written"; exit 1; }
+	@if grep -q 'range_high=' $(RUST_WREF_RELEASE_CONTROL)/verdict; then \
+		echo "NEGATIVE CONTROL FAILED: a debug-only witness moved, so the build is not the release one"; exit 1; \
+	fi
+	@echo "Rust release storage negative control: a FixedSave that clamps a count past its storage instead of refusing it is detected by the release gate on fref_count"
+
+test-rust: conformance-negative-control-rust-write-refusal-storage-release
+
+# A REFUSAL WRITES NOTHING (docs/SPEC.md §5.1) on the Rust leg's Row writers:
+# TestWriteRefusalLeavesBufferRust hands FixedSave and SaveMessages a batch
+# whose second value is refused, into a buffer poisoned with 0xA5, with debug
+# assertions on and off, and requires the poison intact. Its control drops
+# SaveMessages' measure-first through go test -overlay (the save no longer
+# learns every refusal before its first byte), and message_nan must red.
+# SCHEMA_REQUIRE_CORPUS=1 turns the rustc skip into a failure.
+.PHONY: tables-rust-write-untouched tables-rust-write-untouched-negative-control
+tables-rust-write-untouched:
+	PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -run '^TestWriteRefusalLeavesBufferRust$$' -v
+tables-rust-write-untouched-negative-control:
+	PATH="$$PATH:$(RUSTUP_BIN)" sh make/rust-overlay-control.sh rust-write-untouched-control internal/codegen/rusttable/messagebatch.go \
+		's|let need = %\[1\]s_measure_messages(values, report);|let need = 0i64; /* SABOTAGED */|' \
+		'^TestWriteRefusalLeavesBufferRust$$' 'message_nan BAD'
+
+test-rust: tables-rust-write-untouched tables-rust-write-untouched-negative-control
+
 # I4 (docs/PORTING.md): PER-CASE ABSENT. A case this driver cannot answer on a
 # surface it otherwise implements is written `<case>.absent`, and the harness
 # counts it (`pass 98/98 +2a`) instead of failing it. The gate runs the Rust

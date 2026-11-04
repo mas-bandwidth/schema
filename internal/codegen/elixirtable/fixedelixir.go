@@ -401,11 +401,11 @@ func (g *fixedGen) writePayload(f *ir.Field, val string) []wseg {
 		// which this port raises on for the packet port's own reason — the
 		// BEAM has no compile-out assert, so a check here is always on.
 		out = append(out, wseg{inline: fmt.Sprintf("byte_size(%s)::little-signed-32", name)})
-		out = append(out, wseg{inline: fmt.Sprintf("%s::binary", name)})
+		out = append(out, wseg{inline: fixedTextSegment(f, name)})
 		out = append(out, wseg{inline: fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size)})
 	case f.Type.Kind == ir.TWString:
 		out = append(out, wseg{inline: fmt.Sprintf("div(byte_size(%s), 2)::little-signed-32", name)})
-		out = append(out, wseg{inline: fmt.Sprintf("%s::binary", name)})
+		out = append(out, wseg{inline: fixedTextSegment(f, name)})
 		out = append(out, wseg{inline: fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, 2*f.Type.Size)})
 	default:
 		out = append(out, g.writeElement(f, name)...)
@@ -469,6 +469,22 @@ func (g *fixedGen) writeElement(f *ir.Field, name string) []wseg {
 	return []wseg{{inline: g.leafSegment(f, name)}}
 }
 
+// fixedTextSegment is a text's or a byte run's used units as one binary
+// segment. TEXT IS WELL-FORMED ON THE WAY OUT (docs/SPEC.md §5.1): a string's
+// bytes are UTF-8 and a wstring's units are paired UTF-16, neither holding a
+// zero byte or unit (the fixed reader refuses one as text_ill_formed), or the
+// write raises ArgumentError, as every other value its declaration cannot hold
+// does. A bytes(N) is any bytes.
+func fixedTextSegment(f *ir.Field, name string) string {
+	switch f.Type.Kind {
+	case ir.TString:
+		return fmt.Sprintf("R.utf8_text(%s)::binary", name)
+	case ir.TWString:
+		return fmt.Sprintf("R.utf16_text(%s)::binary", name)
+	}
+	return fmt.Sprintf("%s::binary", name)
+}
+
 // intoStmt is `acc = <call>` at whatever column the body lands.
 func (g *fixedGen) intoStmt(call string) func(col int) []string {
 	return func(col int) []string { return g.assign("acc", raw(call), col) }
@@ -511,6 +527,11 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 	// (`int128 | min = ..., max = ...`), and two of them spelled inside a
 	// binary segment make a line no shape of this emitter's could keep inside
 	// the formatter's width.
+	if f.Type.Kind == ir.TBits {
+		// A bits(N) IS HELD TO ITS N, not only to the storage it rides in:
+		// a value wider than N is past the declaration (docs/SPEC.md §5.1).
+		return fmt.Sprintf("R.fits(%s, %d, false)::little-unsigned-%d", name, f.Type.Width, width)
+	}
 	sign := "unsigned"
 	if f.Type.Signed {
 		sign = "signed"
@@ -1571,7 +1592,7 @@ func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, sla
 		segs := []string{
 			"acc::binary",
 			fmt.Sprintf("byte_size(%s)::little-signed-32", name),
-			fmt.Sprintf("%s::binary", name),
+			fixedTextSegment(f, name),
 			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, f.Type.Size),
 		}
 		if slack > 0 {
@@ -1582,7 +1603,7 @@ func (g *fixedGen) armWriter(u *ir.Union, f *ir.Field, name, armName string, sla
 		segs := []string{
 			"acc::binary",
 			fmt.Sprintf("div(byte_size(%s), 2)::little-signed-32", name),
-			fmt.Sprintf("%s::binary", name),
+			fixedTextSegment(f, name),
 			fmt.Sprintf("0::size(R.text_slack(%s, %d))-unit(8)", name, 2*f.Type.Size),
 		}
 		if slack > 0 {

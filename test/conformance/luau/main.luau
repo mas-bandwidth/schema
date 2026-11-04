@@ -34,7 +34,8 @@ local GENERATED = "build/conformance-luau"
 local SURFACES = {
 	"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason", "write-refusal",
+	"cook-forgery", "cook-reason", "block-reason", "write-refusal", "write-refusal-fixed",
+	"write-refusal-message", "write-refusal-json",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -247,6 +248,9 @@ end
 --   tag      { Type = k }, a table arm holding its record's declared
 --            defaults (the descriptor's new)
 --   float    nan is 0/0, inf and -inf are +-math.huge
+--   bytes    a narrow text's exact bytes, from hex: its buffer and Length
+--   units    a wide text's exact UTF-16 units, four hex digits each: its
+--            buffer (two bytes a unit, little-endian) and Length in units
 local function deepCopy(x: any): any
 	if typeof(x) == "buffer" then
 		local b = buffer.create(buffer.len(x))
@@ -325,6 +329,23 @@ local function writeRefusalSet(u: any, root: string, v: any, path: string, what:
 		local x: any = { Type = n }
 		if arm ~= nil and arm.s == "tab" then x[arm.slot] = u.S.lookup(arm.t).new() end
 		holder[key] = x
+	elseif what == "bytes" then
+		local s = string.gsub(value, "%x%x", function(h: string): string
+			return string.char(tonumber(h, 16) :: number)
+		end)
+		holder[key] = buffer.fromstring(s)
+		owner[fd.slot .. "Length"] = #s
+	elseif what == "units" then
+		local units = {}
+		for h in string.gmatch(value, "%x%x%x%x") do
+			units[#units + 1] = tonumber(h, 16) :: number
+		end
+		local b = buffer.create(#units * 2)
+		for i, x in units do
+			buffer.writeu16(b, (i - 1) * 2, x)
+		end
+		holder[key] = b
+		owner[fd.slot .. "Length"] = #units
 	elseif what == "float" then
 		if value == "nan" then
 			holder[key] = 0 / 0
@@ -340,8 +361,14 @@ local function writeRefusalSet(u: any, root: string, v: any, path: string, what:
 	end
 end
 
-local function surfaceWriteRefusal(lines: { { string } })
-	for _, f in kind(lines, "write-refusal") do
+-- each write-refusal line kind saves through its own writer: the row's unit
+-- loaded and the field set as above, then `save(u, root, v)` answers the
+-- written bytes or text, or nil and a NAMED refusal ({ name = ... }), or
+-- false and the reason the leg cannot answer the case (it is absent). `wrote`
+-- is a written result `accept` holds (the JSON rows: the zero spelled
+-- \u0000).
+local function writeRefusalRows(lines: { { string } }, lineKind: string, save: (any, string, any) -> (any, any), accept: ((buffer) -> boolean)?)
+	for _, f in kind(lines, lineKind) do
 		local u = unit(f[3])
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2], nil)
@@ -351,17 +378,69 @@ local function surfaceWriteRefusal(lines: { { string } })
 				error("load refused " .. f[5])
 			end
 			writeRefusalSet(u, f[4], v, f[6], f[7], f[8])
-			local saved, why = u.save.save(u.S.lookup(f[4]), v)
-			if saved == nil then
-				if why == nil or why.name == nil then
-					error(f[2] .. ": save refused without a name")
+			local saved, why = save(u, f[4], v)
+			if saved == false then
+				print(f[2] .. " absent " .. tostring(why))
+			elseif saved == nil then
+				if why == nil or why.name == nil or why.name == "" then
+					error(f[2] .. ": " .. lineKind .. " refused without a name")
 				end
 				sayText(f[2], "refused\n")
-			else
+			elseif accept == nil or accept(saved) then
 				sayText(f[2], "wrote\n")
+			else
+				error(f[2] .. ": the writer wrote a text that does not spell the zero as \\u0000")
 			end
 		end
 	end
+end
+
+local function surfaceWriteRefusal(lines: { { string } })
+	writeRefusalRows(lines, "write-refusal", function(u: any, root: string, v: any): (any, any)
+		return u.save.save(u.S.lookup(root), v)
+	end)
+end
+
+-- write-refusal-fixed: the one value through the fixed form's F.save as a
+-- batch of one, under the root's own layout (docs/SPEC-TABLES.md §3.4)
+local function surfaceWriteRefusalFixed(lines: { { string } })
+	writeRefusalRows(lines, "write-refusal-fixed", function(u: any, root: string, v: any): (any, any)
+		local F = optional(u, "schema_fixed")
+		local fixed = nil
+		for _, m in u.modules do
+			if type(m) == "table" and m[root .. "FixedHash"] ~= nil then
+				fixed = { hash = m[root .. "FixedHash"], recordBytes = m[root .. "FixedRecordBytes"], layout = m[root .. "FixedLayout"] }
+			end
+		end
+		if F == nil or fixed == nil then
+			return false, "variable table: " .. root .. " carries no fixed form (SPEC-TABLES §3.4)"
+		end
+		return F.save(u.S.lookup(root), fixed, { v })
+	end)
+end
+
+-- write-refusal-message: the Luau SaveMessages writes the bodies a load
+-- found, bit for bit, and has no value encoder, so no value set in storage
+-- reaches it: every row is absent, named.
+local function surfaceWriteRefusalMessage(lines: { { string } })
+	for _, f in kind(lines, "write-refusal-message") do
+		print(f[2] .. " absent no value encoder: the Luau SaveMessages carries encoded bodies (SPEC.md §5.1)")
+	end
+end
+
+-- write-refusal-json: the one value through ToJson (§16.3: a zero byte or
+-- unit is written \u0000)
+local function surfaceWriteRefusalJson(lines: { { string } })
+	writeRefusalRows(lines, "write-refusal-json", function(u: any, root: string, v: any): (any, any)
+		local r = report()
+		local text = u.json.ToJson(root, v, r)
+		if text == nil then
+			return nil, { name = if r.reason ~= "" then r.reason else "refused" }
+		end
+		return text
+	end, function(text: buffer): boolean
+		return string.find(buffer.tostring(text), "\\u0000", 1, true) ~= nil
+	end)
 end
 
 -- The value half of a report and json-hostile answer (test/conformance/README.md):
@@ -1204,4 +1283,10 @@ elseif surface == "block-reason" then
 	surfaceForgery(lines, "block", true)
 elseif surface == "write-refusal" then
 	surfaceWriteRefusal(lines)
+elseif surface == "write-refusal-fixed" then
+	surfaceWriteRefusalFixed(lines)
+elseif surface == "write-refusal-message" then
+	surfaceWriteRefusalMessage(lines)
+elseif surface == "write-refusal-json" then
+	surfaceWriteRefusalJson(lines)
 end

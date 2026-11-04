@@ -128,7 +128,10 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteDefaultArmBatch(ref WriteBatch batch, ref DefaultArm value)
         {
-            Debug.Assert(value.EntriesCount >= 0 && value.EntriesCount <= 2, "value.EntriesCount out of range [0, 2]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.EntriesCount < 0 || value.EntriesCount > 2) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.EntriesCount);
                 if (!batch.SerializeBits(ref offsetValue, 2))
@@ -364,7 +367,10 @@ namespace Example
                     return false;
                 }
             }
-            Debug.Assert(value.DataLength >= 0 && value.DataLength <= 2, "value.DataLength out of range [0, 2]"); // the length guards the slice (§6.3); an out-of-contract length is caller error
+            if (value.DataLength < 0 || value.DataLength > 2) // the length guards the slice (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.DataLength);
                 if (!stream.SerializeBits(ref offsetValue, 2))

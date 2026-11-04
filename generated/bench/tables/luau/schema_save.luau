@@ -206,7 +206,9 @@ end
 -- declared range (raw, a fixed field's bounds shifted by F) and its bits(N);
 -- a string(N), wstring(N) or bytes(N) whose used length is 0..N; a counted
 -- array whose count is 0..its bound; an enum ordinal one of its variants
--- names; a union tag one of its arms names. A nil is the field's absence.
+-- names; a union tag one of its arms names; a string's bytes well-formed
+-- UTF-8 and a wstring's units free of an unpaired surrogate (St.text_ok). A
+-- nil is the field's absence.
 local function refuse_invalid(c: any, e: any): boolean
 	if c.why == nil then
 		c.why = { name = "invalid_value", field = (c.owner or "?") .. "." .. (e.name or c.field or "?") }
@@ -214,73 +216,9 @@ local function refuse_invalid(c: any, e: any): boolean
 	return false
 end
 
-local function is128(x: any): boolean
-	return typeof(x) == "table" and x.lo ~= nil and x.hi ~= nil
-end
-
--- the declared range's compare, the load's own (schema_load.luau cmp_lt):
--- a 128-bit value high half first then the low half unsigned, an integer by
--- the integer library, a number by its own order
-local function int_less(signed: boolean, a: any, b: any): boolean
-	if is128(a) and is128(b) then
-		if a.hi ~= b.hi then
-			if signed then return integer.lt(a.hi, b.hi) end
-			return integer.ult(a.hi, b.hi)
-		end
-		return integer.ult(a.lo, b.lo)
-	end
-	if typeof(a) == "integer" and typeof(b) == "integer" then
-		if signed then return integer.lt(a, b) end
-		return integer.ult(a, b)
-	end
-	return as_number(a) < as_number(b)
-end
-
-local function bound_shift(v: any, fbits: number): any
-	if is128(v) then
-		if fbits >= 64 then return { lo = 0i, hi = integer.lshift(v.lo, integer.create(fbits - 64)) } end
-		local hi = integer.lshift(v.hi, integer.create(fbits))
-		hi = integer.bor(hi, integer.rshift(v.lo, integer.create(64 - fbits)))
-		return { lo = integer.lshift(v.lo, integer.create(fbits)), hi = hi }
-	end
-	if typeof(v) == "integer" then return integer.lshift(v, integer.create(fbits)) end
-	return v * (2 ^ fbits)
-end
-
-local function int_ok(e: any, val: any): boolean
-	if val == nil then return true end
-	local kw = e.kw
-	local signed = e.signed == true
-	local x = val
-	if kw == 16 then
-		if not is128(x) then return false end
-	elseif typeof(x) == "integer" then
-		if kw < 8 then
-			x = integer.tonumber(x)
-		end
-	elseif typeof(x) ~= "number" or x ~= math.floor(x) then
-		return false
-	end
-	if typeof(x) == "number" and kw < 8 then
-		local top = 2 ^ (kw * 8)
-		if signed then
-			if x < -top / 2 or x >= top / 2 then return false end
-		elseif x < 0 or x >= top then
-			return false
-		end
-	end
-	local lo, hi = e.lo, e.hi
-	if lo ~= nil and hi ~= nil then
-		if e.fbits ~= nil and e.fbits > 0 then lo, hi = bound_shift(lo, e.fbits), bound_shift(hi, e.fbits) end
-		if int_less(signed, x, lo) or int_less(signed, hi, x) then return false end
-	end
-	if e.bits ~= nil and e.bits > 0 and e.bits < kw * 8 then
-		local bmax: any = 2 ^ e.bits - 1
-		if typeof(x) == "integer" then bmax = integer.create(bmax) end
-		if int_less(false, bmax, x) then return false end
-	end
-	return true
-end
+-- an integer within its width, its declared range and its bits(N): the one
+-- test the variable and fixed writers share (schema_tables.luau S.int_ok)
+local int_ok = St.int_ok
 
 -- the used length of a string(N), wstring(N) or bytes(N) slot in its own
 -- units (bytes, or UTF-16 code units for a wide one): the Length beside it,
@@ -633,6 +571,7 @@ write_value = function(c: any, e: any, w: any, val: any, len: number?): boolean
 		if typeof(val) == "buffer" then n = len or buffer.len(val) end
 		if s == "str" and not len_ok(e, n) then return refuse_invalid(c, e) end
 		if e.wide then n = n * 2 end
+		if typeof(val) == "buffer" and not St.text_ok(val, n, e.wide) then return refuse_invalid(c, e) end
 		w_leb(w, n)
 		if n > 0 then w_raw(w, val, 0, n) end
 	else
@@ -774,8 +713,10 @@ local function arm_payload(c: any, arm: any, w: any, u: any): boolean
 	elseif s == "str" then
 		if not len_ok(arm, used_units(u, arm.slot, arm.wide)) then return refuse_invalid(c, arm) end
 		local b, n = used(u, arm.slot, arm.wide)
+		if not St.text_ok(b, n, arm.wide) then return refuse_invalid(c, arm) end
 		if b ~= nil and n > 0 then w_raw(w, b, 0, n) end
 	elseif s == "text" then
+		if typeof(val) == "buffer" and not St.text_ok(val, buffer.len(val), arm.wide) then return refuse_invalid(c, arm) end
 		if typeof(val) == "buffer" then w_raw(w, val, 0, buffer.len(val)) end
 	elseif s == "bytes" then
 		if not len_ok(arm, used_units(u, arm.slot, false)) then return refuse_invalid(c, arm) end
@@ -861,6 +802,10 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 		if not int_ok(fd, val) then return refuse_invalid(c, fd) end
 	elseif s == "str" then
 		if not len_ok(fd, used_units(v, fd.slot, fd.wide)) then return refuse_invalid(c, fd) end
+		local b, n = used(v, fd.slot, fd.wide)
+		if not St.text_ok(b, n, fd.wide) then return refuse_invalid(c, fd) end
+	elseif s == "text" then
+		if typeof(val) == "buffer" and not St.text_ok(val, buffer.len(val), fd.wide) then return refuse_invalid(c, fd) end
 	elseif s == "bytes" then
 		if not len_ok(fd, used_units(v, fd.slot, false)) then return refuse_invalid(c, fd) end
 	elseif s == "arr" then

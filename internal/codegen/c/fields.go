@@ -18,6 +18,14 @@ func (g *gen) call(ind, expr string) {
 	g.pf("%sif ( !%s )\n%s{\n%s    return 0;\n%s}\n", ind, expr, ind, ind, ind)
 }
 
+// storageBound refuses a count or a used length past the storage it indexes,
+// in EVERY build (SPEC §5.1): the write reads that many elements or units out
+// of the value, so one past the array reads memory the value does not own. One
+// compare, ahead of the field's first bit; the refusal is the write's own 0.
+func (g *gen) storageBound(expr, bound, ind string) {
+	g.pf("%sif ( %s < 0 || %s > %s ) { return 0; } /* a count or a length past its storage is refused in every build (SPEC §5.1) */\n", ind, expr, expr, bound)
+}
+
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	switch {
 	case f.Type.Kind == ir.TWString:
@@ -31,21 +39,24 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 		// a debug assert that compiles out under NDEBUG, the same guard the
 		// C++ backend folds in. The READ side refuses it in every build, as
 		// validation of untrusted bytes (SPEC §4.7, §5).
+		g.storageBound("value->"+f.Name+"_length", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ind)
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_length; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)
 		g.pf("%s        serialize_assert( value->%s[i] != 0 ); /* interior null on write (SPEC §4.7) */\n", ind, f.Name)
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, (const serialize_uint8_t *) value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Type.Kind == ir.TBytes:
+		g.storageBound("value->"+f.Name+"_length", g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size)), ind)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_length, 0, %s )", f.Name, g.renderInt(f.Type.SizeExpr, big.NewInt(f.Type.Size))))
 		g.call(ind, fmt.Sprintf("serialize_write_bytes( stream, value->%s, (int) value->%s_length )", f.Name, f.Name))
 	case f.Array == ir.ArrayCounted:
-		// the count is a writer contract like any other range: a debug assert
-		// that compiles out under NDEBUG, ahead of the runtime call whose own
-		// range check is an assert too. What is written is the caller's
-		// responsibility in release; catching a bad count in debug is ours
-		// (SPEC §4.6, §5)
+		// the count's declared range is a writer contract like any other
+		// range: a debug assert that compiles out under NDEBUG, ahead of the
+		// runtime call whose own range check is an assert too (SPEC §4.6, §5).
+		// The STORAGE bound is not: a count past the array is refused in
+		// every build, before the count's first bit
 		bound := g.renderInt(f.ArrayExpr, big.NewInt(f.ArrayBound))
+		g.storageBound("value->"+f.Name+"_count", bound, ind)
 		g.pf("%sserialize_assert( value->%s_count >= %d && value->%s_count <= %s );\n", ind, f.Name, f.ArrayMin, f.Name, bound)
 		g.call(ind, fmt.Sprintf("serialize_write_int( stream, value->%s_count, %d, %s )", f.Name, f.ArrayMin, bound))
 		g.pf("%s{\n%s    int32_t i;\n%s    for ( i = 0; i < value->%s_count; i++ )\n%s    {\n", ind, ind, ind, f.Name, ind)

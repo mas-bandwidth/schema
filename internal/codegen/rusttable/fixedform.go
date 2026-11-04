@@ -349,13 +349,16 @@ use crate::*;
 		g.emitFixedScatterUnion(un)
 		g.emitFixedClampUnion(un)
 		g.emitFixedFiniteUnion(un)
+		g.emitRowCheckUnion(un)
 	}
 	for _, st := range members {
 		g.emitFixedWriteBody(st)
 		g.emitFixedScatter(st)
 		g.emitFixedClampBody(st)
 		g.emitFixedFiniteBody(st)
+		g.emitRowCheckBody(st)
 	}
+	g.emitRowStorage(unions, members)
 	for _, st := range roots {
 		g.emitFixedRoot(st)
 	}
@@ -494,14 +497,12 @@ func (g *gen) emitFixedWriteText(f *ir.Field, base, unit int64, indent int) {
 	g.pf("%s}\n", ind)
 }
 
-// fixedWriteBound is the WRITE-SIDE CHECK, and it is DEBUG-ONLY BY RULE:
-// `debug_assert!` is gone in release exactly as the reference's schema_assert
-// is under NDEBUG, so a release build pays nothing for it. The READ side checks
-// the same number in every build and counts the clamp — a write-side check
-// catches the caller's own bug at the call site, and it is never the thing that
-// keeps the wire safe. The store beside it CLAMPS rather than trusting the
-// number, because a Rust slice out of range is a panic and not a memcpy past
-// the end.
+// fixedWriteBound is the body's own check of a count or a length, under
+// `debug_assert!`. FixedSave has already refused, in every build, a batch
+// holding a number past its storage (<t>_check_storage, docs/SPEC.md §5.1), so
+// through FixedSave the assert never fires; it is there for a caller of the
+// body itself. The store beside it CLAMPS rather than trusting the number,
+// because a Rust slice out of range is a panic and not a memcpy past the end.
 func (g *gen) fixedWriteBound(member string, bound int64, what, ind string) {
 	g.pf("%sdebug_assert!(\n", ind)
 	g.pf("%s    value.%s >= 0 && value.%s <= %d,\n", ind, member, member, bound)
@@ -1219,18 +1220,28 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("TABLE_FIXED_HEADER_BYTES + 4 + %s_FIXED_BLOCK.len() + count * %s_FIXED_RECORD_BYTES\n}\n\n", up, up)
 
 	finite := fixedFiniteNeededStruct(st, map[string]bool{})
+	storage := storageCheckNeededStruct(st, map[string]bool{})
 	g.pf("/// Writes `values` as a whole fixed-form FILE. Returns the bytes written, or\n")
 	g.pf("/// None when the buffer is smaller than %s_fixed_measure says", name)
 	if finite {
-		g.pf(" or a float\n/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3)")
+		g.pf(", a float\n/// holds a NaN or an infinity, which no form carries (docs/SPEC-TABLES.md §3.3)")
+	}
+	if storage {
+		g.pf(",\n/// or a count or a length is outside the storage it indexes (docs/SPEC.md §5.1)")
 	}
 	g.pf(".\n")
 	g.pf("pub fn %s_fixed_save(values: &[%sRow], buffer: &mut [u8]) -> Option<usize> {\n", name, st.Name)
 	g.pf("    let need = %s_fixed_measure(values.len());\n", name)
 	g.pf("    if buffer.len() < need {\n        return None;\n    }\n")
+	writeRowCheckBatch(g.pf, st, "    ", true)
 	if finite {
 		g.pf("    // THE WRITER'S FINITE RULE (§3.3): a refusal writes no byte.\n")
 		g.pf("    if values.iter().any(|value| !%s(value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "fixed_finite_body"))
+	}
+	if storage {
+		g.pf("    // THE WRITER'S OWN STORAGE (docs/SPEC.md §5.1), every build: a count or\n")
+		g.pf("    // a length past the slots it indexes refuses the batch before any byte.\n")
+		g.pf("    if values.iter().any(|value| !%s(value).is_empty()) {\n        return None;\n    }\n", fn(st.Name, "check_storage"))
 	}
 	g.pf("    buffer[..TABLE_FIXED_HEADER_BYTES].fill(0); // the seven reserved bytes, and the rest of the header\n")
 	g.pf("    buffer[0] = TABLE_FIXED_FORM;\n")
