@@ -2495,9 +2495,16 @@ a value.
 | Lobster | `assert` (packets; `--runtime-no-asserts` removes it) | packets debug; tables every build | `SaveChecked`'s `TableRefuseInvalidValue`; `save_reasoned`'s reason |
 
 **What each writer holds today.** The numbers are the contract's rows; "debug"
-is the leg's assert, "every build" its refusal. Every writer checks a whole
-value, and a fixed or message batch the whole batch, before it stores the first
-byte, so a refused write leaves the buffer as it was.
+is the leg's assert, "every build" its refusal.
+
+**After a refusal, the caller's buffer is UNSPECIFIED.** Consistency is owed on
+success, never after failure: a writer that refuses returns its refusal
+(`false`, `-1`, `null`, an error) and promises nothing about what the buffer
+then holds. It never reads or writes past the buffer it was handed. Some
+writers do leave the buffer untouched, because they check or measure before the
+first byte (Go's `FixedSave`, most legs' `SaveMessages`); that is a property of
+that leg's writer, held by that leg's own tests, and no caller may depend on it
+across languages.
 
 | leg | variable `Save` and its `Measure` |
 |---|---|
@@ -2526,8 +2533,7 @@ debug-only allowance does not reach it (the `write-refusal-storage-release-<lang
 gates hold it in the release builds of C, C++, C#, Rust, Java and Dart). And
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: a writer never produces bytes its own
-reader refuses. A refused fixed or message batch leaves the caller's buffer as
-it was.
+reader refuses.
 
 | leg | `FixedSave` | `SaveMessages` | packet `Write` (rows 1–7) |
 |---|---|---|---|

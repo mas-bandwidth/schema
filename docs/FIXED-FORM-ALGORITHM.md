@@ -229,8 +229,9 @@ outside `0..Max`, a length outside `0..N`, a value off its declared `min`/`max`,
 set, a `string` whose used bytes are not UTF-8 or hold a NUL, and a `wstring` whose used units are not paired
 UTF-16 or hold a zero unit. The check is over the LIVE extent only (a counted array's `count` elements, an
 absent optional's payload not at all, a union's taken arm), the same extent the read-side bounds pass walks
-(§4), and it runs over the whole batch before the first byte is stored, so a refused batch leaves the buffer
-untouched. It clamps nothing: a refused record is never turned into a lawful one. Having checked the live extent,
+(§4), and it runs over the whole batch before the first byte is stored, so a refused batch leaves the Go
+caller's buffer untouched. That is the Go writer's own property: in every leg the buffer's contents after a
+refusal are UNSPECIFIED (SPEC.md §5.1), and no writer reads or writes past it. It clamps nothing: a refused record is never turned into a lawful one. Having checked the live extent,
 the Go writer stores exactly that extent and nothing past it, so the caller's storage past a `length` or past a
 `count` never reaches the wire; a counted array of structs or unions zeroes each element's slot just before
 storing it, and its dead slots in one clear, rather than inside the record-wide template zero (the same bytes,
