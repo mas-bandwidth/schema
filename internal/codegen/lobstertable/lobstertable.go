@@ -339,6 +339,8 @@ func emitDescriptor(g *lobster.Gen, t *ir.Struct) {
 	g.Pf("    id: %s, // FNV-1a 64 of %s (§3.1)\n", idLit(ir.TableWireId(t.WireName())), t.WireName())
 	g.Pf("    table: %v,\n", t.IsTable)
 	g.Pf("    fixed: %v,\n", t.FixedDeclared)
+	g.Pf("    json_form: %v,\n", t.CarriesForm("json"))
+	g.Pf("    cook_form: %v,\n", t.CarriesForm("cook"))
 	g.Pf("    variable: %v,\n", ir.VariableTables(g.Unit)[t.Name])
 	if t.Integrity == "crc32c" {
 		g.Pf("    integrity: true,\n")
