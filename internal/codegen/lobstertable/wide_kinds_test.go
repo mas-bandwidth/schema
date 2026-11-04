@@ -279,7 +279,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	labelUnits := []uint16{'A', 0xD83D, 0xDE00}
 	sample := func(name string, f float64) loadRow {
 		return loadRow{kind: "instance", name: name, unit: "widekinds", root: "Sample",
-			data: wideWire(t, g, opened, -5, 500, 2, labelUnits, f)}
+			data: wideWire(t, g, opened, 5, 50, 2, labelUnits, f)}
 	}
 	finite := []loadRow{
 		sample("negative_zero", math.Copysign(0, -1)),
@@ -290,11 +290,20 @@ func TestLobsterWideKinds(t *testing.T) {
 	// an infinity is refused by every read and the save (finite_test.go).
 	compareWideRows(t, g, finite, []string{"finite-float (-0, subnormal)", "timestamp", "one-sided-range (minimum and maximum)", "enum", "wstring"}, counts, refusals)
 
+	// Invalid reader values are made by damaging lawful writer output; the
+	// writer itself must never be asked to manufacture an out-of-range value.
+	below := sample("below_minimum", 1.0)
+	below.data = patch64(t, below.data, 5, ^uint64(4)) // -5 in two's complement
+	above := sample("above_maximum", 1.0)
+	above.data = patch32(t, above.data, 50, 500)
+	compareWideRows(t, g, []loadRow{below, above}, []string{"one-sided-range (minimum and maximum)"}, counts, refusals)
+
 	escape := sample("escape", 1.0)
+	_, originalDump := goLoad(g.u, "Sample", escape.data)
 	escape.data = withEscape(t, escape.data, []byte{0xde, 0xad, 0xbe, 0xef})
-	line, _ := goLoad(g.u, "Sample", escape.data)
-	if !strings.HasPrefix(line, "1,") {
-		t.Fatalf("the reference does not count the escape as one unknown field (%s): the wire does not exercise kind 31", line)
+	line, dump := goLoad(g.u, "Sample", escape.data)
+	if line != "read" || dump != originalDump {
+		t.Fatalf("valid unknown escape must preserve the complete value: %s", line)
 	}
 	compareWideRows(t, g, []loadRow{escape}, []string{"escape"}, counts, refusals)
 
@@ -309,7 +318,7 @@ func TestLobsterWideKinds(t *testing.T) {
 		refused += n
 	}
 	if refused > 0 {
-		t.Logf("%d manifest rows were refused by the Go writer and not compared", refused)
+		t.Logf("%d rows were checked as whole-load refusals", refused)
 	}
 }
 
