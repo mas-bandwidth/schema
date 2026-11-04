@@ -1119,6 +1119,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"nightly-conformance.yml:cpp-writes",
 		"nightly-conformance.yml:port",
 		"nightly-conformance.yml:registry",
+		"roadmap.yml:roadmap",
 		"schema-c-runs-hostile-corpus.yml:corpus",
 		"schema-c-runs-hostile-corpus.yml:negative-control",
 		"schema-cpp-runs-hostile-corpus.yml:corpus",
