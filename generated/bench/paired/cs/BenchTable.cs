@@ -90,7 +90,7 @@ namespace Bench
     {
         internal bool MapKey = false;
         internal int Ordinal;
-        internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
+        internal long NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
         internal int MessageSlot = 0;
         internal bool MessageBounded = false, MessageSigned = false;
         internal UInt128 MessageMin = 0, MessageMax = 0;
@@ -202,7 +202,8 @@ namespace Bench
         public bool Dynamic, Map, TextList, Unbounded;
         public string TextField;
         public long TextTotal;
-        public int StorageSize, StorageAlign;
+        public long StorageSize;
+        public int StorageAlign;
         public ulong PointerTypeId;
         public byte BlobKind;
         public Func<object, byte[]> GetBuffer;
@@ -252,7 +253,8 @@ namespace Bench
     public sealed class TableTypeInfo
     {
         public Func<object> Create;
-        public int StorageSize, StorageAlign, RegionAlign;
+        public long StorageSize;
+        public int StorageAlign, RegionAlign;
         // the longest wire that cannot command more than the storage cap (docs/SPEC-TABLES.md §11);
         // a managed Load of a longer one measures before it builds
         public long StorageWireFloor = long.MaxValue;
@@ -4464,7 +4466,7 @@ namespace Bench
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
                 }
                 UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
-                w.Put(at, raw, f.NativeElementSize); return true;
+                w.Put(at, raw, (int)f.NativeElementSize); return true; // a scalar's width, at most 16
             }
             static long NativeRecordBytes(TableTypeInfo type)
             { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }

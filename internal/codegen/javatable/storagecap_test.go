@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	javacodegen "github.com/mas-bandwidth/schema/v2/internal/codegen/java"
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -86,6 +87,7 @@ type storageCapCase struct {
 // before the decode starts (the report names no root type yet), with
 // malformed unset. A load of an at vector is never run.
 func TestStorageCapRefusedAtMeasureJava(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	dir, err := filepath.Abs("../../../testdata/wire/tables/storage-cap")
 	if err != nil {
@@ -110,6 +112,7 @@ func TestStorageCapRefusedAtMeasureJava(t *testing.T) {
 // Huge elements or records wrap an unchecked long sum to a total under the
 // cap, so the measure must refuse them as storage_over_cap.
 func TestStorageCapTermsRefusedBeforeTheyWrapJava(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	u := unitFrom(t, storageCapHugeSchema)
 	dir := t.TempDir()

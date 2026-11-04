@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -25,6 +26,7 @@ const csStorageCapDir = "../../../testdata/wire/tables/storage-cap"
 // 4 GiB GC heap, so a Load that builds before it measures fails fast.
 func TestStorageCapRefusedAtMeasureCSharp(t *testing.T) {
 	slowtest.Gate(t, "the .NET SDK")
+	memceiling.Guard(t, memceiling.Default)
 	schema, err := os.ReadFile(filepath.Join(csStorageCapDir, "Cap.schema"))
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +89,7 @@ if (Capcheck.Schema.TableWire.StorageTermOverCap(0, 65536, 16777216) || !Capchec
 // bytes, so the floor is under 8192 bytes and both 16 KiB vectors are
 // measured; a unit of small records has a floor in the gigabytes.
 func TestStorageWireFloorBoundsTheMeasure(t *testing.T) {
-	t.Parallel()
+	defer memceiling.Heap(memceiling.Default)()
 	schema, err := os.ReadFile(filepath.Join(csStorageCapDir, "Cap.schema"))
 	if err != nil {
 		t.Fatal(err)

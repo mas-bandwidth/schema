@@ -1306,7 +1306,7 @@ tables-java-layout-planted:
 	@rm -rf $(JAVA_LAYOUT_DIR) && mkdir -p $(JAVA_LAYOUT_DIR)/planted
 	@cp -R $(JAVA_LAYOUT_GEN)/block $(JAVA_LAYOUT_GEN)/pointers $(JAVA_LAYOUT_DIR)/planted/
 	@for f in block/RenderCameraRow.java pointers/SceneRow.java; do \
-		sed -i.orig 's/static final int\[\] offsets = {0, /static final int[] offsets = {4, /' $(JAVA_LAYOUT_DIR)/planted/$$f; \
+		sed -i.orig 's/static final long\[\] offsets = {0, /static final long[] offsets = {4, /' $(JAVA_LAYOUT_DIR)/planted/$$f; \
 		if cmp -s $(JAVA_LAYOUT_DIR)/planted/$$f $(JAVA_LAYOUT_DIR)/planted/$$f.orig; then \
 			echo "LAYOUT GATE: the planted offset did not apply to $$f"; exit 1; fi; \
 		rm $(JAVA_LAYOUT_DIR)/planted/$$f.orig; done

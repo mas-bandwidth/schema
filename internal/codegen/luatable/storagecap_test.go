@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -55,7 +56,8 @@ for _, c in ipairs({ "list_at", "list_over", "nodes_at", "nodes_over" }) do
   end
 end
 for _, c in ipairs({ "huge_list", "huge_nodes" }) do
-  local n, why = load.LoadMeasure(T, "Holder", inputs[c])
+  local wire = inputs[c .. "_head"] .. string.rep(inputs[c .. "_body"], %d) .. inputs[c .. "_tail"]
+  local n, why = load.LoadMeasure(T, "Holder", wire)
   print(c .. ".measure=" .. tostring(n) .. "," .. tostring(why))
 end
 `
@@ -64,36 +66,35 @@ end
 // bytes, so their sum wraps a Lua integer.
 const hugeCount = 1<<23 + 1<<11
 
-// storageCapHugeWire is a form-1 Holder holding n empty Huge bodies, as its
-// items list or as node records.
-func storageCapHugeWire(u *ir.Unit, nodes bool, n uint64) []byte {
-	var body []byte
+// storageCapHugeParts is a form-1 Holder holding n empty Huge bodies, as its
+// items list or as node records, in three parts: the head, the one body
+// repeated n times, and the tail. The probe joins them in Lua
+// (head .. string.rep(body, n) .. tail), so the test process never holds the
+// 25 MB wire or its escaped source.
+func storageCapHugeParts(u *ir.Unit, nodes bool, n uint64) (head, body, tail []byte) {
+	var header []byte
 	var id uint64
 	kind := byte(ir.TableKindArray)
 	if nodes {
-		body = binary.AppendUvarint(nil, n)
-		for range n {
-			body = append(body, 2, 1, 0)
-		}
+		header = binary.AppendUvarint(nil, n)
+		body = []byte{2, 1, 0}
 		id, kind = math.MaxUint64, byte(ir.TableKindString)
 	} else {
-		body = binary.AppendUvarint([]byte{byte(ir.TableKindTable)}, n)
-		for range n {
-			body = append(body, 1, 0)
-		}
+		header = binary.AppendUvarint([]byte{byte(ir.TableKindTable)}, n)
+		body = []byte{1, 0}
 		id = ir.TableFieldWireId(u.Tables["Holder"].Fields[0])
 	}
-	wire := []byte{1, 1, kind}
-	wire = binary.AppendUvarint(wire, uint64(len(body)))
-	wire = append(wire, body...)
-	wire = append(wire, 0)
+	head = []byte{1, 1, kind}
+	head = binary.AppendUvarint(head, uint64(len(header))+n*uint64(len(body)))
+	head = append(head, header...)
+	wire := []byte{0}
 	wire = binary.LittleEndian.AppendUint64(wire, id)
 	count := uint64(1)
 	if nodes {
 		wire = binary.LittleEndian.AppendUint64(wire, ir.TableWireId(u.Tables["Huge"].WireName()))
 		count = 2
 	}
-	return binary.LittleEndian.AppendUint64(wire, count)
+	return head, body, binary.LittleEndian.AppendUint64(wire, count)
 }
 
 // storageCapRun generates the unit, plants the raising Big constructor, and
@@ -129,9 +130,9 @@ func storageCapRun(t *testing.T, patch func(string) string) map[string]string {
 	if patch != nil {
 		files["load.lua"] = []byte(patch(string(files["load.lua"])))
 	}
-	inputs := map[string][]byte{
-		"huge_list":  storageCapHugeWire(u, false, hugeCount),
-		"huge_nodes": storageCapHugeWire(u, true, hugeCount),
+	inputs := map[string][]byte{}
+	for c, nodes := range map[string]bool{"huge_list": false, "huge_nodes": true} {
+		inputs[c+"_head"], inputs[c+"_body"], inputs[c+"_tail"] = storageCapHugeParts(u, nodes, hugeCount)
 	}
 	for _, c := range []string{"list_at", "list_over", "nodes_at", "nodes_over"} {
 		data, err := os.ReadFile(filepath.Join(repo, c+".bin"))
@@ -140,7 +141,7 @@ func storageCapRun(t *testing.T, patch func(string) string) map[string]string {
 		}
 		inputs[c] = data
 	}
-	stdout, stderr, err := try(t, files, fmt.Sprintf(storageCapProbe, module), inputs)
+	stdout, stderr, err := try(t, files, fmt.Sprintf(storageCapProbe, module, hugeCount), inputs)
 	if err != nil {
 		t.Fatalf("probe: %v\n%s\n%s", err, stdout, stderr)
 	}
@@ -194,6 +195,7 @@ func storageCapFailures(got map[string]string) []string {
 // and ReadStrict, Load and LoadTolerant refuse each over vector by name
 // before building anything.
 func TestLuaStorageCapRefusedAtMeasure(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	if bad := storageCapFailures(storageCapRun(t, nil)); len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
@@ -204,6 +206,7 @@ func TestLuaStorageCapRefusedAtMeasure(t *testing.T) {
 // emitted load.lua and requires the probe to go red: the extent term, the
 // running node total, the final total, and the load's guard.
 func TestLuaStorageCapNegativeControl(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	plants := []struct{ name, from, to string }{
 		{"term", "if count > 0 and size > 0 and count > (STORAGE_CAP - at) // size then", "if false then"},
@@ -213,6 +216,7 @@ func TestLuaStorageCapNegativeControl(t *testing.T) {
 	}
 	for _, p := range plants {
 		t.Run(p.name, func(t *testing.T) {
+			memceiling.Guard(t, memceiling.Default)
 			t.Parallel()
 			got := storageCapRun(t, func(src string) string {
 				if !strings.Contains(src, p.from) {

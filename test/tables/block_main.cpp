@@ -363,7 +363,7 @@ static void reflective_walk( const RenderFrameBlock & block, const RenderFrameCo
         check( (int32_t) count == expected_counts[out_of_line], "the descriptor's count is the count the producer wrote" );
         check( stride == f.stride, "the instance's pitch is this build's own, in a block this build laid out" );
         check( f.element != NULL && f.element() != NULL, "an out-of-line array's descriptor names its element's descriptor" );
-        check( offset_of >= info->size, "an out-of-line array starts past the projection" );
+        check( offset_of >= (uint64_t) info->size, "an out-of-line array starts past the projection" );
 
         // and DESCEND: the element column carries the row's own layout, so a
         // walker reads a row's fields with no generated struct in hand. This is

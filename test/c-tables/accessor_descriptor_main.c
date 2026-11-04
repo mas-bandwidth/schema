@@ -82,7 +82,7 @@ static const ACC_Q( table_block_field_info_t ) * bfield( const ACC_Q( table_bloc
  * member's bytes). */
 #define CHECK_BLOCK( prefix, p, member, f ) do { \
         uintptr_t off_ = (uintptr_t) &( ( p )->member ) - (uintptr_t) ( p ); \
-        if ( (uint32_t) off_ != ( f )->offset ) \
+        if ( (uint64_t) off_ != ( f )->offset ) \
             FAIL( "%s.%s: the accessor's offset is not the descriptor's\n", prefix, ( f )->name ); \
         if ( memcmp( (const void *) ( (uintptr_t) ( p ) + ( f )->offset ), \
                      (const void *) &( ( p )->member ), ( f )->size ) != 0 ) \
@@ -372,7 +372,7 @@ static int check_cook( void )
         {
             /* a pointer's storage IS the reference slot: its position is what a
              * self-relative delta is relative to, so it is held separately. */
-            if ( (uint32_t) offsetof( graphdemo_list_node_t, next ) != f->offset )
+            if ( (uint64_t) offsetof( graphdemo_list_node_t, next ) != f->offset )
                 FAIL( "cook.next: the slot accessor's offset is not the descriptor's\n" );
             if ( f->elem_size != (uint32_t) sizeof( graphdemo_table_ref_t ) )
                 FAIL( "cook.next: the slot accessor's elem_size is not sizeof( TableRef )\n" );

@@ -81,7 +81,7 @@ type TableReport struct {
 // inline "" of its own.
 const TableDocNone = ""
 
-func TableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func TableJSONGetRaw(storage unsafe.Pointer, width int64) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -95,7 +95,7 @@ func TableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func TableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func TableJSONSetRaw(storage unsafe.Pointer, width int64, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -108,7 +108,7 @@ func TableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func TableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+func TableJSONGetSigned(storage unsafe.Pointer, width int64) int64 {
 	raw := TableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)
@@ -2237,4 +2237,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x06b0de47a4334bb0
+const Version uint64 = 0x47dd492b76f04c4d

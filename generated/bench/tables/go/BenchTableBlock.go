@@ -96,29 +96,29 @@ func (r TableBlockRows[T]) At(i int32) *T {
 // describes, and everything a GENERIC ROW WALK needs after that.
 type TableBlockFieldInfo struct {
 	Name           string
-	Offset         uint32 // the field's offset in the record this descriptor describes
-	Size           uint32 // its size there
-	Kind           uint8  // the table-wire kind, as TableFieldInfo carries it
-	OutOfLine      bool   // an out-of-line array: the triple's three members are live
-	OffsetOfOffset uint32 // the triple's OffsetOf member, or 0xffffffff
+	Offset         int64 // the field's offset in the record this descriptor describes
+	Size           int64 // its size there
+	Kind           uint8 // the table-wire kind, as TableFieldInfo carries it
+	OutOfLine      bool  // an out-of-line array: the triple's three members are live
+	OffsetOfOffset int64 // the triple's OffsetOf member, or 0xffffffff
 	// The COUNT COMPANION, and it is one column doing one job in both
 	// spellings: the triple's Count member for an out-of-line array, the int32
 	// used length of a string or a bytes inline, 0xffffffff when the field has
 	// none.
-	CountOffset  uint32
-	StrideOffset uint32 // the triple's Stride member, or 0xffffffff
-	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+	CountOffset  int64
+	StrideOffset int64 // the triple's Stride member, or 0xffffffff
+	Stride       int64 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
 
 	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
 	// already uses (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
 	// node and a block row without learning a second one. Where the field
 	// starts is the pair above; this is everything after it.
-	IsArray       bool   // inline storage of ArrayBound slots at ElemSize (bytes included)
-	Counted       bool   // CountOffset names a used-length companion
-	Optional      bool   // PresentOffset names a bool presence companion
-	ArrayBound    int32  // inline slots, or a string's declared maximum; 0 for a plain scalar
-	ElemSize      uint32 // ONE slot's size; the field's own when it holds one value
-	PresentOffset uint32 // the presence companion, or 0xffffffff
+	IsArray       bool  // inline storage of ArrayBound slots at ElemSize (bytes included)
+	Counted       bool  // CountOffset names a used-length companion
+	Optional      bool  // PresentOffset names a bool presence companion
+	ArrayBound    int32 // inline slots, or a string's declared maximum; 0 for a plain scalar
+	ElemSize      int64 // ONE slot's size; the field's own when it holds one value
+	PresentOffset int64 // the presence companion, or 0xffffffff
 
 	// Element is the ELEMENT's or the nested record's own layout, behind a
 	// function so a descriptor graph needs no initialisation order. nil when
@@ -135,7 +135,7 @@ type TableBlockFieldInfo struct {
 type TableBlockInfo struct {
 	Name         string
 	BuildVersion uint64 // the unit's (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
-	Size         uint32 // the record's own size: a projection's, or a row's
+	Size         int64  // the record's own size: a projection's, or a row's
 	Align        uint32
 	NumFields    int32
 	Fields       []TableBlockFieldInfo

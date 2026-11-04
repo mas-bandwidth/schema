@@ -125,7 +125,7 @@ table Node
 	}
 	for _, want := range []string{
 		"public static NodeCook open(byte[] data, int offset, long length)",
-		"public int at(int slot, int size)",
+		"public int at(int slot, long size)",
 		"public static TableCookInfo type()",
 	} {
 		if !strings.Contains(cook, want) {

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel/sqrun"
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -190,6 +191,7 @@ func storageCapFailures(got map[string]string) []string {
 // over vector, and ReadStrict and the tolerant load refuse each over vector
 // by name before building anything.
 func TestSquirrelStorageCapRefusedAtMeasure(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	if bad := storageCapFailures(storageCapRun(t, nil)); len(bad) > 0 {
 		t.Fatal(strings.Join(bad, "\n"))
@@ -200,6 +202,7 @@ func TestSquirrelStorageCapRefusedAtMeasure(t *testing.T) {
 // the emitted load runtime and requires the probe to go red: the extent term,
 // the running node total, the final total, and the load's guard.
 func TestSquirrelStorageCapNegativeControl(t *testing.T) {
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	plants := []struct{ name, from, to string }{
 		{"term", "if (count > 0 && size > 0 && count > (STORAGE_CAP - start) / size) {", "if (false) {"},
@@ -209,6 +212,7 @@ func TestSquirrelStorageCapNegativeControl(t *testing.T) {
 	}
 	for _, p := range plants {
 		t.Run(p.name, func(t *testing.T) {
+			memceiling.Guard(t, memceiling.Default)
 			t.Parallel()
 			got := storageCapRun(t, func(src string) string {
 				if strings.Count(src, p.from) != 1 {

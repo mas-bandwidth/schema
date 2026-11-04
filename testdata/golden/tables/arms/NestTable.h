@@ -338,7 +338,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -346,15 +346,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -398,10 +398,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -489,7 +489,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -5285,8 +5285,8 @@ struct TableWorker
         static_assert( alignof( T ) <= kTableAlign, "a table node's alignment must fit the arena's" );
         TableSlot<T> slot;
         if ( arena == NULL || arena->locked ) { return slot; }
+        if ( sizeof( T ) > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split, and never truncated to 32 bits
         uint32_t bytes = TableAlignUp( (uint32_t) sizeof( T ) );
-        if ( bytes > kTableSlabBytes ) { return slot; } // a node larger than a slab: refused, never split
         if ( end == 0 || next + bytes > end )
         {
             uint32_t offset = TableArenaGrabSlab( *arena );
@@ -14646,16 +14646,16 @@ extern const TableTypeInfo TwigTableInfo;
 extern const TableTypeInfo NestTableInfo;
 
 inline const TableFieldInfo TwigTableFields[] = {
-    { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Twig, inner ), (uint32_t) sizeof( Twig::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Inner, plain ), (uint32_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Inner, type ), (uint32_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Twig, inner ), (int64_t) sizeof( Twig::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Inner, plain ), (int64_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (int64_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Inner, type ), (int64_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
 };
-inline const TableTypeInfo TwigTableInfo = { "Twig", (uint32_t) sizeof( Twig ), 1, TwigTableFields, +[]( void * p ) { TwigReset( *(Twig *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo TwigTableInfo = { "Twig", (int64_t) sizeof( Twig ), 1, TwigTableFields, +[]( void * p ) { TwigReset( *(Twig *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TwigTableType() { return &TwigTableInfo; }
 
 inline const TableFieldInfo NestTableFields[] = {
-    { "outer", "outer", "Outer", 0x30e6ed678f5e1bd4ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Nest, outer ), (uint32_t) sizeof( Nest::outer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "inner"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x2d4c068f5f889287ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Outer[] = { { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Outer, inner ), (uint32_t) sizeof( Outer::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Inner, plain ), (uint32_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (uint32_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Inner, type ), (uint32_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Outer, plain ), (uint32_t) sizeof( Outer::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Outer, inner ), NULL, &arm_fields_Outer[0], 24 }, { (uint32_t) offsetof( Outer, plain ), NULL, &arm_fields_Outer[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Outer, type ), (uint32_t) sizeof( Outer::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Nest, tail ), (uint32_t) sizeof( int32_t ), (uint32_t) offsetof( Nest, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "outer", "outer", "Outer", 0x30e6ed678f5e1bd4ull, 15, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Nest, outer ), (int64_t) sizeof( Nest::outer ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "inner"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x2d4c068f5f889287ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Outer[] = { { "inner", "inner", "Inner", 0x2d4c068f5f889287ull, 15, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Outer, inner ), (int64_t) sizeof( Outer::inner ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "leaf"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x24ad84ada20208d5ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Inner[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Inner, plain ), (int64_t) sizeof( Inner::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Inner, leaf ), &LeafTableInfo, NULL, 16 }, { (int64_t) offsetof( Inner, plain ), NULL, &arm_fields_Inner[0], 4 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Inner, type ), (int64_t) sizeof( Inner::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (int64_t) offsetof( Outer, plain ), (int64_t) sizeof( Outer::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (int64_t) offsetof( Outer, inner ), NULL, &arm_fields_Outer[0], 24 }, { (int64_t) offsetof( Outer, plain ), NULL, &arm_fields_Outer[1], 4 }, }; static const TableUnionInfo info = { (int64_t) offsetof( Outer, type ), (int64_t) sizeof( Outer::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "tail", "tail", "int32", 0xd94c56ef0798d723ull, 4, true, false, NULL, NULL, true, false, 0, (int64_t) offsetof( Nest, tail ), (int64_t) sizeof( int32_t ), (int64_t) offsetof( Nest, tail.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<int32_t> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<int32_t> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
 };
-inline const TableTypeInfo NestTableInfo = { "Nest", (uint32_t) sizeof( Nest ), 2, NestTableFields, +[]( void * p ) { NestReset( *(Nest *) p ); }, true, TableDocNone, 0, NULL, false };
+inline const TableTypeInfo NestTableInfo = { "Nest", (int64_t) sizeof( Nest ), 2, NestTableFields, +[]( void * p ) { NestReset( *(Nest *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * NestTableType() { return &NestTableInfo; }
 
 // ---- the text form (docs/SPEC-TABLES.md §16) ----

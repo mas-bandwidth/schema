@@ -126,18 +126,18 @@ struct graphdemo_table_field_info_t;
    twice (docs/SPEC-TABLES.md §8). */
 typedef struct graphdemo_table_union_arm_info_t
 {
-    uint32_t offset;                    /* offsetof the arm's payload within the union storage */
+    uint64_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct graphdemo_table_type_info_t * table; /* the arm payload's descriptor */
     const struct graphdemo_table_field_info_t * field; /* non-body arm, relative to union storage */
-    uint32_t size; /* bytes established when this arm is selected */
+    uint64_t size; /* bytes established when this arm is selected */
 } graphdemo_table_union_arm_info_t;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
    [0, enum_max]; index 0 is the EMPTY arm and carries no payload. */
 typedef struct graphdemo_table_union_info_t
 {
-    uint32_t tag_offset; /* offsetof the tag within the union storage */
-    uint32_t tag_size;   /* sizeof the tag */
+    uint64_t tag_offset; /* offsetof the tag within the union storage */
+    uint64_t tag_size;   /* sizeof the tag */
     const graphdemo_table_union_arm_info_t * arms;
 } graphdemo_table_union_info_t;
 
@@ -181,10 +181,10 @@ typedef struct graphdemo_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
-    uint32_t offset;        /* offsetof the storage member */
-    uint32_t elem_size;     /* sizeof the member (element size for arrays) */
-    uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
-    uint32_t present_offset; /* offsetof the _present companion, or 0xffffffff */
+    uint64_t offset;        /* offsetof the storage member */
+    uint64_t elem_size;     /* sizeof the member (element size for arrays) */
+    uint64_t count_offset;  /* offsetof the _count/_length companion, or UINT64_MAX */
+    uint64_t present_offset; /* offsetof the _present companion, or UINT64_MAX */
     const struct graphdemo_table_type_info_t * table; /* nested table's descriptor, or NULL */
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
@@ -227,7 +227,7 @@ typedef struct graphdemo_table_field_info_t
 typedef struct graphdemo_table_type_info_t
 {
     const char * name;   /* schema type name */
-    uint32_t size;       /* sizeof the storage struct */
+    uint64_t size;       /* sizeof the storage struct */
     int32_t num_fields;
     const graphdemo_table_field_info_t * fields;
     /* put one instance back at its declared defaults, in place. A generic
@@ -2828,7 +2828,7 @@ static SCHEMA_UNUSED uint32_t graphdemo_table_worker_alloc( graphdemo_table_work
     }
     at=worker->next; worker->next+=(uint32_t)bytes; return at;
 }
-static SCHEMA_UNUSED uint32_t graphdemo_table_worker_bump( graphdemo_table_worker_t * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t graphdemo_table_worker_bump( graphdemo_table_worker_t * worker, int64_t bytes )
 { return graphdemo_table_worker_alloc(worker,bytes); }
 
 /* ---- the resolution context: which encoding a walk is reading ----
@@ -5196,7 +5196,7 @@ static SCHEMA_UNUSED graphdemo_settings_t * graphdemo_settings_emplace( graphdem
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = graphdemo_table_worker_bump( sink->worker, (uint32_t) sizeof( graphdemo_settings_t ) );
+        uint32_t at = graphdemo_table_worker_bump( sink->worker, (int64_t) sizeof( graphdemo_settings_t ) );
         graphdemo_settings_t * node;
         if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
         node = (graphdemo_settings_t *) (void *) graphdemo_table_arena_at( sink->worker->arena, at );
@@ -5238,7 +5238,7 @@ static SCHEMA_UNUSED graphdemo_list_node_t * graphdemo_list_node_emplace( graphd
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = graphdemo_table_worker_bump( sink->worker, (uint32_t) sizeof( graphdemo_list_node_t ) );
+        uint32_t at = graphdemo_table_worker_bump( sink->worker, (int64_t) sizeof( graphdemo_list_node_t ) );
         graphdemo_list_node_t * node;
         if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
         node = (graphdemo_list_node_t *) (void *) graphdemo_table_arena_at( sink->worker->arena, at );
@@ -5280,7 +5280,7 @@ static SCHEMA_UNUSED graphdemo_tree_node_t * graphdemo_tree_node_emplace( graphd
     }
     if ( sink->worker != NULL )
     {
-        uint32_t at = graphdemo_table_worker_bump( sink->worker, (uint32_t) sizeof( graphdemo_tree_node_t ) );
+        uint32_t at = graphdemo_table_worker_bump( sink->worker, (int64_t) sizeof( graphdemo_tree_node_t ) );
         graphdemo_tree_node_t * node;
         if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
         node = (graphdemo_tree_node_t *) (void *) graphdemo_table_arena_at( sink->worker->arena, at );
@@ -10707,7 +10707,7 @@ static SCHEMA_UNUSED int graphdemo_list_node_builder_init_with_allocator( graphd
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an list_node_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_list_node_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_list_node_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_list_node_reset( (graphdemo_list_node_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -10973,7 +10973,7 @@ static SCHEMA_UNUSED int graphdemo_tree_node_builder_init_with_allocator( graphd
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an tree_node_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_tree_node_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_tree_node_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_tree_node_reset( (graphdemo_tree_node_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11239,7 +11239,7 @@ static SCHEMA_UNUSED int graphdemo_layer_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an layer_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_layer_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_layer_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_layer_reset( (graphdemo_layer_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11508,7 +11508,7 @@ static SCHEMA_UNUSED int graphdemo_scene_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an scene_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_scene_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_scene_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_scene_reset( (graphdemo_scene_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -11787,7 +11787,7 @@ static SCHEMA_UNUSED int graphdemo_depot_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an depot_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_depot_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_depot_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_depot_reset( (graphdemo_depot_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );
@@ -12056,7 +12056,7 @@ static SCHEMA_UNUSED int graphdemo_album_builder_init_with_allocator( graphdemo_
     /* the ROOT is allocated like any node and is not a pointer target, so
        it takes the arena's untyped bump directly rather than an album_emplace
        that only a pointed-at table has */
-    at = graphdemo_table_worker_bump( &builder->main, (uint32_t) sizeof( graphdemo_album_t ) );
+    at = graphdemo_table_worker_bump( &builder->main, (int64_t) sizeof( graphdemo_album_t ) );
     if ( at == GRAPHDEMO_K_TABLE_ALLOC_FAILED ) { return 0; }
     builder->root_ref.value = (int64_t) at;
     graphdemo_album_reset( (graphdemo_album_t *) (void *) graphdemo_table_arena_at( &builder->arena, at ) );

@@ -124,18 +124,18 @@ struct graphdemo_table_field_info_t;
    twice (docs/SPEC-TABLES.md §8). */
 typedef struct graphdemo_table_union_arm_info_t
 {
-    uint32_t offset;                    /* offsetof the arm's payload within the union storage */
+    uint64_t offset;                    /* offsetof the arm's payload within the union storage */
     const struct graphdemo_table_type_info_t * table; /* the arm payload's descriptor */
     const struct graphdemo_table_field_info_t * field; /* non-body arm, relative to union storage */
-    uint32_t size; /* bytes established when this arm is selected */
+    uint64_t size; /* bytes established when this arm is selected */
 } graphdemo_table_union_arm_info_t;
 
 /* A union field's shape: the tag, and the arms indexed by it. Arms run
    [0, enum_max]; index 0 is the EMPTY arm and carries no payload. */
 typedef struct graphdemo_table_union_info_t
 {
-    uint32_t tag_offset; /* offsetof the tag within the union storage */
-    uint32_t tag_size;   /* sizeof the tag */
+    uint64_t tag_offset; /* offsetof the tag within the union storage */
+    uint64_t tag_size;   /* sizeof the tag */
     const graphdemo_table_union_arm_info_t * arms;
 } graphdemo_table_union_info_t;
 
@@ -179,10 +179,10 @@ typedef struct graphdemo_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
-    uint32_t offset;        /* offsetof the storage member */
-    uint32_t elem_size;     /* sizeof the member (element size for arrays) */
-    uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
-    uint32_t present_offset; /* offsetof the _present companion, or 0xffffffff */
+    uint64_t offset;        /* offsetof the storage member */
+    uint64_t elem_size;     /* sizeof the member (element size for arrays) */
+    uint64_t count_offset;  /* offsetof the _count/_length companion, or UINT64_MAX */
+    uint64_t present_offset; /* offsetof the _present companion, or UINT64_MAX */
     const struct graphdemo_table_type_info_t * table; /* nested table's descriptor, or NULL */
     int has_range;          /* a declared [min, max] (int or float) */
     double range_min;       /* NOTE: int64 ranges beyond 2^53 lose precision here */
@@ -225,7 +225,7 @@ typedef struct graphdemo_table_field_info_t
 typedef struct graphdemo_table_type_info_t
 {
     const char * name;   /* schema type name */
-    uint32_t size;       /* sizeof the storage struct */
+    uint64_t size;       /* sizeof the storage struct */
     int32_t num_fields;
     const graphdemo_table_field_info_t * fields;
     /* put one instance back at its declared defaults, in place. A generic
@@ -2826,7 +2826,7 @@ static SCHEMA_UNUSED uint32_t graphdemo_table_worker_alloc( graphdemo_table_work
     }
     at=worker->next; worker->next+=(uint32_t)bytes; return at;
 }
-static SCHEMA_UNUSED uint32_t graphdemo_table_worker_bump( graphdemo_table_worker_t * worker, uint32_t bytes )
+static SCHEMA_UNUSED uint32_t graphdemo_table_worker_bump( graphdemo_table_worker_t * worker, int64_t bytes )
 { return graphdemo_table_worker_alloc(worker,bytes); }
 
 /* ---- the resolution context: which encoding a walk is reading ----

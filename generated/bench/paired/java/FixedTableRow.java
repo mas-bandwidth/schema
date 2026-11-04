@@ -18,7 +18,7 @@ public final class FixedTableRow {
     private FixedTableRow() {}
 
     /** the record's own size and alignment, from the ONE layout model (§19.3). */
-    public static final int size = 1376;
+    public static final long size = 1376;
 
     public static final int align = 16;
 
@@ -26,7 +26,7 @@ public final class FixedTableRow {
      * where each field starts, in declaration order — the accessors' own constants, which
      * TableBlockLayout / TableCookLayout check against the descriptors below (§19.3).
      */
-    static final int[] offsets = {0};
+    static final long[] offsets = {0};
 
     /** BenchMixed by value: its own offset — read it with BenchMixedRow's accessors. */
     public static int valueAt(int at) {

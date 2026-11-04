@@ -6209,7 +6209,7 @@ func PackConfigFixedLoadTolerant(values []PackConfig, data []byte, plan []TableF
 // GunnerSettingsTableFields is GunnerSettings's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GunnerSettingsTableFields = []TableFieldInfo{
 	{Name: "reaction", JSON: "reaction", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb75aa3662201646a, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[GunnerSettings]("Reaction")), ElemSize: uint32(tableMemberSizeof[GunnerSettings]("Reaction")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[GunnerSettings]("Reaction")), ElemSize: int64(tableMemberSizeof[GunnerSettings]("Reaction")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6221,7 +6221,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tracking", JSON: "tracking", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa6bf719a4602b0bc, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[GunnerSettings]("Tracking")), ElemSize: uint32(tableMemberSizeof[GunnerSettings]("Tracking")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[GunnerSettings]("Tracking")), ElemSize: int64(tableMemberSizeof[GunnerSettings]("Tracking")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6233,7 +6233,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "callsign", JSON: "callsign", TypeName: "string", DeclaredTypeName: "string", ID: 0x5bc44627b9848818, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 24, Offset: uint32(tableOffsetof[GunnerSettings]("Callsign")), ElemSize: uint32(tableMemberSizeof[GunnerSettings]("Callsign")), CountOffset: uint32(tableOffsetof[GunnerSettings]("CallsignLength")), PresentOffset: 0xffffffff,
+		ArrayBound: 24, Offset: int64(tableOffsetof[GunnerSettings]("Callsign")), ElemSize: int64(tableMemberSizeof[GunnerSettings]("Callsign")), CountOffset: int64(tableOffsetof[GunnerSettings]("CallsignLength")), PresentOffset: 0xffffffff,
 		CookOffset: 5, CookElemSize: 1, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6250,7 +6250,7 @@ var GunnerSettingsTableFields = []TableFieldInfo{
 var GunnerSettingsTableInfo TableTypeInfo
 
 func init() {
-	GunnerSettingsTableInfo = TableTypeInfo{Name: "GunnerSettings", Size: uint32(tableSizeof[GunnerSettings]()), NumFields: 3, Fields: GunnerSettingsTableFields, Reset: func(storage unsafe.Pointer) { GunnerSettingsReset((*GunnerSettings)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xb76842b2253337af, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerSettingsSaveBody(w, (*GunnerSettings)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerSettingsLoadBody(&r, (*GunnerSettings)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	GunnerSettingsTableInfo = TableTypeInfo{Name: "GunnerSettings", Size: int64(tableSizeof[GunnerSettings]()), NumFields: 3, Fields: GunnerSettingsTableFields, Reset: func(storage unsafe.Pointer) { GunnerSettingsReset((*GunnerSettings)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xb76842b2253337af, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GunnerSettingsSaveBody(w, (*GunnerSettings)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GunnerSettingsLoadBody(&r, (*GunnerSettings)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return GunnerSettingsSaveBodyRetain(w, (*GunnerSettings)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GunnerSettingsLoadBodyRetain(&r, (*GunnerSettings)(p))
@@ -6263,7 +6263,7 @@ func GunnerSettingsTableType() *TableTypeInfo { return &GunnerSettingsTableInfo 
 // ShipEntryTableFields is ShipEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ShipEntryTableFields = []TableFieldInfo{
 	{Name: "display_name", JSON: "name", TypeName: "string", DeclaredTypeName: "string", ID: 0x2d21d7cd66bd5a5d, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 32, Offset: uint32(tableOffsetof[ShipEntry]("DisplayName")), ElemSize: uint32(tableMemberSizeof[ShipEntry]("DisplayName")), CountOffset: uint32(tableOffsetof[ShipEntry]("DisplayNameLength")), PresentOffset: 0xffffffff,
+		ArrayBound: 32, Offset: int64(tableOffsetof[ShipEntry]("DisplayName")), ElemSize: int64(tableMemberSizeof[ShipEntry]("DisplayName")), CountOffset: int64(tableOffsetof[ShipEntry]("DisplayNameLength")), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 36, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6275,7 +6275,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "health", JSON: "health", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f69d4b5288ba9cf, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[ShipEntry]("Health")), ElemSize: uint32(tableMemberSizeof[ShipEntry]("Health")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ShipEntry]("Health")), ElemSize: int64(tableMemberSizeof[ShipEntry]("Health")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6287,7 +6287,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "mass", JSON: "mass", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1f3757a2ce7b0ab1, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[ShipEntry]("Mass")), ElemSize: uint32(tableMemberSizeof[ShipEntry]("Mass")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ShipEntry]("Mass")), ElemSize: int64(tableMemberSizeof[ShipEntry]("Mass")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 44, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6299,7 +6299,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "hardpoints", JSON: "hardpoints", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x95d0cce09ca82b73, Kind: 4, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(tableOffsetof[ShipEntry]("Hardpoints")), ElemSize: uint32(tableElemSizeof[ShipEntry]("Hardpoints")), CountOffset: uint32(tableOffsetof[ShipEntry]("HardpointsCount")), PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: int64(tableOffsetof[ShipEntry]("Hardpoints")), ElemSize: int64(tableElemSizeof[ShipEntry]("Hardpoints")), CountOffset: int64(tableOffsetof[ShipEntry]("HardpointsCount")), PresentOffset: 0xffffffff,
 		CookOffset: 48, CookElemSize: 4, CookCountOffset: 64, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 8.0, RangeIntMin: 0, RangeIntMax: 8, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6311,7 +6311,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "gunner", JSON: "gunner", TypeName: "GunnerSettings", DeclaredTypeName: "GunnerSettings", ID: 0x40dbb648c0cd44aa, Kind: 13, IsArray: false, Counted: false, Optional: true,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[ShipEntry]("Gunner")), ElemSize: uint32(tableMemberSizeof[ShipEntry]("Gunner")), CountOffset: 0xffffffff, PresentOffset: uint32(tableOffsetof[ShipEntry]("GunnerPresent")),
+		ArrayBound: 0, Offset: int64(tableOffsetof[ShipEntry]("Gunner")), ElemSize: int64(tableMemberSizeof[ShipEntry]("Gunner")), CountOffset: 0xffffffff, PresentOffset: int64(tableOffsetof[ShipEntry]("GunnerPresent")),
 		CookOffset: 68, CookElemSize: 36, CookCountOffset: 4294967295, CookPresentOffset: 104,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6328,7 +6328,7 @@ var ShipEntryTableFields = []TableFieldInfo{
 var ShipEntryTableInfo TableTypeInfo
 
 func init() {
-	ShipEntryTableInfo = TableTypeInfo{Name: "ShipEntry", Size: uint32(tableSizeof[ShipEntry]()), NumFields: 5, Fields: ShipEntryTableFields, Reset: func(storage unsafe.Pointer) { ShipEntryReset((*ShipEntry)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1d1a9911da171a29, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ShipEntrySaveBody(w, (*ShipEntry)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ShipEntryLoadBody(&r, (*ShipEntry)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return ShipEntrySaveBodyRetain(w, (*ShipEntry)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return ShipEntryLoadBodyRetain(&r, (*ShipEntry)(p)) }, CycleIndex: 19, CycleType: tableCycleType, CookSize: 108, CookAlign: 4}
+	ShipEntryTableInfo = TableTypeInfo{Name: "ShipEntry", Size: int64(tableSizeof[ShipEntry]()), NumFields: 5, Fields: ShipEntryTableFields, Reset: func(storage unsafe.Pointer) { ShipEntryReset((*ShipEntry)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1d1a9911da171a29, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ShipEntrySaveBody(w, (*ShipEntry)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ShipEntryLoadBody(&r, (*ShipEntry)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return ShipEntrySaveBodyRetain(w, (*ShipEntry)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return ShipEntryLoadBodyRetain(&r, (*ShipEntry)(p)) }, CycleIndex: 19, CycleType: tableCycleType, CookSize: 108, CookAlign: 4}
 }
 
 // ShipEntryTableType returns ShipEntry's reflection descriptor.
@@ -6337,7 +6337,7 @@ func ShipEntryTableType() *TableTypeInfo { return &ShipEntryTableInfo }
 // GlobalSettingsTableFields is GlobalSettings's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var GlobalSettingsTableFields = []TableFieldInfo{
 	{Name: "tick_rate", JSON: "tick_rate", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xa65f859b617deaf3, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[GlobalSettings]("TickRate")), ElemSize: uint32(tableMemberSizeof[GlobalSettings]("TickRate")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[GlobalSettings]("TickRate")), ElemSize: int64(tableMemberSizeof[GlobalSettings]("TickRate")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 1.0, RangeMax: 240.0, RangeUintMin: 1, RangeUintMax: 240, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6349,7 +6349,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "difficulty", JSON: "difficulty", TypeName: "Difficulty", DeclaredTypeName: "Difficulty", ID: 0x467f35a74c6e4a70, Kind: 30, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[GlobalSettings]("Difficulty")), ElemSize: uint32(tableMemberSizeof[GlobalSettings]("Difficulty")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[GlobalSettings]("Difficulty")), ElemSize: int64(tableMemberSizeof[GlobalSettings]("Difficulty")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6361,7 +6361,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "build_note", JSON: "build_note", TypeName: "string", DeclaredTypeName: "string", ID: 0x14ec921cc2549d60, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 48, Offset: uint32(tableOffsetof[GlobalSettings]("BuildNote")), ElemSize: uint32(tableMemberSizeof[GlobalSettings]("BuildNote")), CountOffset: uint32(tableOffsetof[GlobalSettings]("BuildNoteLength")), PresentOffset: 0xffffffff,
+		ArrayBound: 48, Offset: int64(tableOffsetof[GlobalSettings]("BuildNote")), ElemSize: int64(tableMemberSizeof[GlobalSettings]("BuildNote")), CountOffset: int64(tableOffsetof[GlobalSettings]("BuildNoteLength")), PresentOffset: 0xffffffff,
 		CookOffset: 5, CookElemSize: 1, CookCountOffset: 56, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6373,7 +6373,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "spawn_delays", JSON: "spawn_delays", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9ae5613b0051271, Kind: 10, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 3, Offset: uint32(tableOffsetof[GlobalSettings]("SpawnDelays")), ElemSize: uint32(tableElemSizeof[GlobalSettings]("SpawnDelays")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 3, Offset: int64(tableOffsetof[GlobalSettings]("SpawnDelays")), ElemSize: int64(tableElemSizeof[GlobalSettings]("SpawnDelays")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 60, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6390,7 +6390,7 @@ var GlobalSettingsTableFields = []TableFieldInfo{
 var GlobalSettingsTableInfo TableTypeInfo
 
 func init() {
-	GlobalSettingsTableInfo = TableTypeInfo{Name: "GlobalSettings", Size: uint32(tableSizeof[GlobalSettings]()), NumFields: 4, Fields: GlobalSettingsTableFields, Reset: func(storage unsafe.Pointer) { GlobalSettingsReset((*GlobalSettings)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xffb1dfb1f6ce215b, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GlobalSettingsSaveBody(w, (*GlobalSettings)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GlobalSettingsLoadBody(&r, (*GlobalSettings)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	GlobalSettingsTableInfo = TableTypeInfo{Name: "GlobalSettings", Size: int64(tableSizeof[GlobalSettings]()), NumFields: 4, Fields: GlobalSettingsTableFields, Reset: func(storage unsafe.Pointer) { GlobalSettingsReset((*GlobalSettings)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xffb1dfb1f6ce215b, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return GlobalSettingsSaveBody(w, (*GlobalSettings)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return GlobalSettingsLoadBody(&r, (*GlobalSettings)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return GlobalSettingsSaveBodyRetain(w, (*GlobalSettings)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return GlobalSettingsLoadBodyRetain(&r, (*GlobalSettings)(p))
@@ -6403,7 +6403,7 @@ func GlobalSettingsTableType() *TableTypeInfo { return &GlobalSettingsTableInfo 
 // PackConfigTableFields is PackConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PackConfigTableFields = []TableFieldInfo{
 	{Name: "version", JSON: "version", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xbb62c62c9808ea37, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[PackConfig]("Version")), ElemSize: uint32(tableMemberSizeof[PackConfig]("Version")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[PackConfig]("Version")), ElemSize: int64(tableMemberSizeof[PackConfig]("Version")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6415,7 +6415,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "global", JSON: "global", TypeName: "GlobalSettings", DeclaredTypeName: "GlobalSettings", ID: 0x7fb43557b54149ce, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(tableOffsetof[PackConfig]("Global")), ElemSize: uint32(tableMemberSizeof[PackConfig]("Global")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[PackConfig]("Global")), ElemSize: int64(tableMemberSizeof[PackConfig]("Global")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 72, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6427,7 +6427,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: GlobalSettingsTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ships", JSON: "ships", TypeName: "ShipEntry", DeclaredTypeName: "ShipEntry", ID: 0x294a5c4913e1ad44, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(ShipTypeMax), Offset: uint32(tableOffsetof[PackConfig]("Ships")), ElemSize: uint32(tableElemSizeof[PackConfig]("Ships")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(ShipTypeMax), Offset: int64(tableOffsetof[PackConfig]("Ships")), ElemSize: int64(tableElemSizeof[PackConfig]("Ships")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 76, CookElemSize: 108, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6439,7 +6439,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: ShipEntryTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "thresholds", JSON: "thresholds", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x9cda940a344e1571, Kind: 4, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: int32(DifficultyMax), Offset: uint32(tableOffsetof[PackConfig]("Thresholds")), ElemSize: uint32(tableElemSizeof[PackConfig]("Thresholds")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: int32(DifficultyMax), Offset: int64(tableOffsetof[PackConfig]("Thresholds")), ElemSize: int64(tableElemSizeof[PackConfig]("Thresholds")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 400, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 1000.0, RangeIntMin: 0, RangeIntMax: 1000, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6451,7 +6451,7 @@ var PackConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "reserves", JSON: "reserves", TypeName: "ShipEntry", DeclaredTypeName: "ShipEntry", ID: 0x77707fccd201c228, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 3, Offset: uint32(tableOffsetof[PackConfig]("Reserves")), ElemSize: uint32(tableElemSizeof[PackConfig]("Reserves")), CountOffset: uint32(tableOffsetof[PackConfig]("ReservesCount")), PresentOffset: 0xffffffff,
+		ArrayBound: 3, Offset: int64(tableOffsetof[PackConfig]("Reserves")), ElemSize: int64(tableElemSizeof[PackConfig]("Reserves")), CountOffset: int64(tableOffsetof[PackConfig]("ReservesCount")), PresentOffset: 0xffffffff,
 		CookOffset: 412, CookElemSize: 108, CookCountOffset: 736, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6468,7 +6468,7 @@ var PackConfigTableFields = []TableFieldInfo{
 var PackConfigTableInfo TableTypeInfo
 
 func init() {
-	PackConfigTableInfo = TableTypeInfo{Name: "PackConfig", Size: uint32(tableSizeof[PackConfig]()), NumFields: 5, Fields: PackConfigTableFields, Reset: func(storage unsafe.Pointer) { PackConfigReset((*PackConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xd02d825db114336e, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PackConfigSaveBody(w, (*PackConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PackConfigLoadBody(&r, (*PackConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	PackConfigTableInfo = TableTypeInfo{Name: "PackConfig", Size: int64(tableSizeof[PackConfig]()), NumFields: 5, Fields: PackConfigTableFields, Reset: func(storage unsafe.Pointer) { PackConfigReset((*PackConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xd02d825db114336e, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PackConfigSaveBody(w, (*PackConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PackConfigLoadBody(&r, (*PackConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return PackConfigSaveBodyRetain(w, (*PackConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return PackConfigLoadBodyRetain(&r, (*PackConfig)(p))

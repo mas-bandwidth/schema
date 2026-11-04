@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -78,6 +79,7 @@ func storageCapOverflowWire(u *ir.Unit, nodes bool, count uint64) []byte {
 // runs one.
 func TestStorageCapRefusedAtMeasureRust(t *testing.T) {
 	slowtest.Gate(t, "rustc (the generated storage-cap probe)")
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	dir, err := filepath.Abs("../../../testdata/wire/tables/storage-cap")
 	if err != nil {
@@ -108,6 +110,7 @@ func TestStorageCapRefusedAtMeasureRust(t *testing.T) {
 // cap, so the measure must refuse them as storage_over_cap.
 func TestStorageCapTermsRefusedBeforeTheyWrapRust(t *testing.T) {
 	slowtest.Gate(t, "rustc (the generated storage-cap overflow probe)")
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	u := unitFrom(t, storageCapHugeSchema)
 	dir := t.TempDir()

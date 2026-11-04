@@ -39,11 +39,11 @@ public final class BlockLead {
             }
             int slots = f.isArray ? f.arrayBound : 1;
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 if (f.element() != null) {
                     readColumn(data, value, f.element());
                 } else if (f.elemSize > 0) {
-                    switch (f.elemSize) {
+                    switch (Math.toIntExact(f.elemSize)) {
                         case 1: blockdemo.TableBytes.u8(data, value); break;
                         case 2: blockdemo.TableBytes.u16(data, value); break;
                         case 4: blockdemo.TableBytes.u32(data, value); break;
@@ -60,9 +60,9 @@ public final class BlockLead {
             if (!f.outOfLine) {
                 continue;
             }
-            long offsetOf = blockdemo.TableBytes.i64(data, base + f.offsetOfOffset);
-            long count = blockdemo.TableBytes.u32(data, base + f.countOffset);
-            long stride = blockdemo.TableBytes.u32(data, base + f.strideOffset);
+            long offsetOf = blockdemo.TableBytes.i64(data, Math.toIntExact(base + f.offsetOfOffset));
+            long count = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.countOffset));
+            long stride = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.strideOffset));
             for (long r = 0; r < count; r++) {
                 readColumn(data, base + (int) (offsetOf + r * stride), f.element());
             }

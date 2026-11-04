@@ -5,10 +5,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -51,7 +51,7 @@ func storageCapVector(t *testing.T, file string) []byte {
 // or under 2^40 for each at vector and refuses each over vector by name,
 // storage_over_cap, through the list extent term and the node scan.
 func TestStorageCapMeasureOracle(t *testing.T) {
-	t.Parallel()
+	defer memceiling.Heap(memceiling.Default)()
 	m := storageCapModel(t)
 	root := m.Unit.Tables["Root"]
 	for _, v := range []struct {
@@ -100,11 +100,11 @@ func TestStorageCapDecodeBoundedMemory(t *testing.T) {
 		for _, r := range reads {
 			inst := m.New(root)
 			var report tabletext.Report
-			var before, after runtime.MemStats
-			runtime.GC()
-			runtime.ReadMemStats(&before)
+			// a read past the ceiling ends the test binary at once, so a
+			// regression fails fast rather than allocating toward 2^40
+			stop := memceiling.Heap(storageCapAllocCeiling)
 			ok, err := r.read(m, inst, wire, &report)
-			runtime.ReadMemStats(&after)
+			spent := stop()
 			var refusal *tablewire.StorageRefusal
 			if ok || !errors.As(err, &refusal) {
 				t.Fatalf("%s %s: ok %v err %v, want the storage refusal", file, r.name, ok, err)
@@ -112,7 +112,7 @@ func TestStorageCapDecodeBoundedMemory(t *testing.T) {
 			if !report.Refused || report.Reason != tablewire.ReasonStorageOverCap || report.Malformed {
 				t.Fatalf("%s %s: report %+v, want refused storage_over_cap and not malformed", file, r.name, report)
 			}
-			if spent := after.TotalAlloc - before.TotalAlloc; spent > storageCapAllocCeiling {
+			if spent > storageCapAllocCeiling {
 				t.Fatalf("%s %s: allocated %d bytes to refuse a %d-byte wire, ceiling %d", file, r.name, spent, len(wire), storageCapAllocCeiling)
 			}
 		}
@@ -125,7 +125,7 @@ func TestStorageCapDecodeBoundedMemory(t *testing.T) {
 // about 2^64 bytes; summed unchecked, the total wraps to a size under the cap
 // and the wire would be accepted.
 func TestStorageCapTermBeforeSum(t *testing.T) {
-	t.Parallel()
+	defer memceiling.Heap(memceiling.Default)()
 	dir := t.TempDir()
 	src := "package capwrap\nfixed table Part { a [2147483647]int64 }\nfixed table Huge { p [63]Part }\ntable Root { items []Huge }\n"
 	if err := os.WriteFile(filepath.Join(dir, "Wrap.schema"), []byte(src), 0o644); err != nil {

@@ -8034,6 +8034,16 @@ three and not one.
   dropping the form in silence. The two sides agree by construction: the writer
   never produces a record the reader's own bound refuses.
 
+  **NO LAYOUT DATA IS WRITTEN FOR SUCH A TABLE EITHER.** The shared layout
+  encoder refuses an entry past 65536 by the reader's own name,
+  `layout_record_too_large`, rather than write its size in the 32-bit field
+  modulo 2^32, so no leg can emit a layout, a hash or a descriptor of the form
+  for a table the compiler has declined it to. Nor does the LOCK record a layout for
+  one (§2.10): a table with no fixed form has no lineage, so it locks in every
+  language at any size and no size is ever stored truncated. A lineage entry a
+  lock already holds for such a table is history: it stays (the lock is
+  append-only), the check reads it as history, and nothing is appended to it.
+
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
   — because the keyword declares the CLASS and this bound is the FORM's.** The
   MODE and the FORM are two different words (below), and 65536 is the FORM's
@@ -13548,10 +13558,19 @@ in build version (§20.5).
   exact. A port whose read builds values rather than a region measures
   before it builds, so a wire past the cap is refused without materializing
   any of it; the Go oracle (`internal/tablewire`) refuses it the same way.
-  C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua and Squirrel
-  hold it on the shared vectors in `testdata/wire/tables/storage-cap`, each
-  through its measure and its strict read; Goose, MOO, Luau and Lobster are
-  owed it.
+  C++, C, C#, Go, Rust, Java, Dart, JavaScript, Elixir, Lua, Squirrel, Goose,
+  MOO and Luau hold it on the shared vectors in
+  `testdata/wire/tables/storage-cap`, each through its measure and its strict
+  read; Lobster is owed it. Each of those legs stores a type's size, its field offsets and its
+  element, entry and cook element sizes at 64 bits, so a record past 4 GiB
+  (`testdata/wire/tables/storage-cap/wide`) generates and compiles with
+  its sizes exact, except in C#. Two platform limits stand below the cap. C#
+  spells every record as a struct too (its block and cook rows), and CoreCLR
+  loads no struct over 2^31-1 bytes or with a field past offset 2^27-8, so
+  the C# generator refuses such a unit by name, `cs_value_type_too_large`,
+  naming the record, its struct and its size. A Java `byte[]` view reads no
+  position past 2^31-1, so its accessor for one throws
+  `ArithmeticException`.
 - **A `fixed table` whose BY-VALUE CLOSURE cannot hold the class** (§2.2),
   naming the field and the fixed table it breaks: a pointer (§2.1), a byte
   buffer at its used size (§2.5), a map (§2.8), an unbounded array (§2.9), a

@@ -108,7 +108,7 @@ const tableRegionCookSource = `
             w.Put(at, tag, f.Arms.NativeTagSize); TableFieldInfo arm = f.Arms.Arms[(int)tag].Field;
             return arm == null || RegionPackField(ref w, at + f.Arms.NativeArmOffset, union.Arm(f), arm, extentAt, ref extent);
         }
-        w.Put(at, NativeWord(value.Slot(f, index), f.NativeElementSize), f.NativeElementSize); return true;
+        w.Put(at, NativeWord(value.Slot(f, index), (int)f.NativeElementSize), (int)f.NativeElementSize); return true; // a scalar's width
     }
     static long RegionPlace(NativeValue value, TableTypeInfo type, ref RegionGraph graph, out int alignment, bool finite = false)
     {

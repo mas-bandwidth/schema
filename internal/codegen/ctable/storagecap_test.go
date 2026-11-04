@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -38,6 +39,7 @@ var cStorageCapVectors = []struct {
 // measure sums node storage without a list extent term.
 func TestStorageCapRefusedAtMeasureC(t *testing.T) {
 	slowtest.Gate(t, "the C compiler (cc)")
+	memceiling.Guard(t, memceiling.Default)
 	t.Parallel()
 	t.Run("extents", func(t *testing.T) {
 		t.Parallel()

@@ -512,7 +512,7 @@ public final class BlockGoldenDriver {
         throw new AssertionError(info.name + "." + name);
     }
     private static void put(byte[] b, int at, TableBlockInfo info, String name, long value, int width) {
-        TableBytes.put(b, at + field(info, name).offset, value, width, false);
+        TableBytes.put(b, at + Math.toIntExact(field(info, name).offset), value, width, false);
     }
     private static void dbl(byte[] b, int at, TableBlockInfo info, String name, double value) {
         put(b, at, info, name, Double.doubleToRawLongBits(value), 8);
@@ -535,8 +535,8 @@ public final class BlockGoldenDriver {
     }
     private static void common(byte[] b, int at, TableBlockInfo info, int salt, int i,
                                boolean position, boolean rotation) {
-        if (position) vec(b, at + field(info, "position").offset, salt, i);
-        if (rotation) quat(b, at + field(info, "rotation").offset, salt, i);
+        if (position) vec(b, at + Math.toIntExact(field(info, "position").offset), salt, i);
+        if (rotation) quat(b, at + Math.toIntExact(field(info, "rotation").offset), salt, i);
     }
     private static void assertBytes(byte[] b, int used, String golden) throws Exception {
         byte[] want = Files.readAllBytes(Path.of(golden));
@@ -561,8 +561,8 @@ public final class BlockGoldenDriver {
         put(b, 0, frame, "stamp", 0x0123456789abcdefL, 8);
         byte[] blob = "twelve bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         TableBlockFieldInfo bf = field(frame, "blob");
-        System.arraycopy(blob, 0, b, bf.offset, blob.length);
-        TableBytes.put(b, bf.countOffset, blob.length, 4, false);
+        System.arraycopy(blob, 0, b, Math.toIntExact(bf.offset), blob.length);
+        TableBytes.put(b, Math.toIntExact(bf.countOffset), blob.length, 4, false);
         TableBlockInfo row = PaddedRowRow.blockInfo();
         for (int i = 0; i < c.rows; i++) {
             int at = block.rowsAt(i);
@@ -572,14 +572,14 @@ public final class BlockGoldenDriver {
             put(b, at, row, "id", i * 1000 + 3, 4);
             byte[] label = ("row-" + i).getBytes(java.nio.charset.StandardCharsets.UTF_8);
             TableBlockFieldInfo lf = field(row, "label");
-            System.arraycopy(label, 0, b, at + lf.offset, label.length);
-            TableBytes.put(b, at + lf.countOffset, label.length, 4, false);
-            for (int s = 0; s < 4; s++) TableBytes.put(b, at + field(row, "slots").offset + s * 2,
+            System.arraycopy(label, 0, b, at + Math.toIntExact(lf.offset), label.length);
+            TableBytes.put(b, at + Math.toIntExact(lf.countOffset), label.length, 4, false);
+            for (int s = 0; s < 4; s++) TableBytes.put(b, at + Math.toIntExact(field(row, "slots").offset) + s * 2,
                     i * 4 + s, 2, false);
-            for (int team = 1; team <= 4; team++) b[at + field(row, "teams").offset + team - 1] = (byte) (i + team);
+            for (int team = 1; team <= 4; team++) b[at + Math.toIntExact(field(row, "teams").offset) + team - 1] = (byte) (i + team);
             TableBlockFieldInfo cf = field(row, "counter");
-            TableBytes.put(b, at + cf.offset, i * 9, 4, false);
-            b[at + cf.presentOffset] = (byte) (i % 2);
+            TableBytes.put(b, at + Math.toIntExact(cf.offset), i * 9, 4, false);
+            b[at + Math.toIntExact(cf.presentOffset)] = (byte) (i % 2);
         }
         assertBytes(b, (int) block.blockBytes(), golden);
         Arrays.fill(b, (byte) 0x5a);
@@ -650,7 +650,7 @@ public final class BlockGoldenDriver {
         }
         for (int i = 0; i < c.lasers; i++) {
             int at = block.lasersAt(i); TableBlockInfo r = RenderLaserRow.blockInfo();
-            vec(b, at + field(r, "start").offset, 8, i); vec(b, at + field(r, "finish").offset, 9, i);
+            vec(b, at + Math.toIntExact(field(r, "start").offset), 8, i); vec(b, at + Math.toIntExact(field(r, "finish").offset), 9, i);
             dbl(b, at, r, "t", 0.125 * (i % 8)); put(b, at, r, "laser_id", i * 53, 4);
             put(b, at, r, "laser_type", i % 3, 1); put(b, at, r, "team", i % 5, 1);
         }

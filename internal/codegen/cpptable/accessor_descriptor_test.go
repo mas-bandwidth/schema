@@ -74,7 +74,7 @@ int main()
         const TableBlockFieldInfo & f = binfo->fields[i];
         if ( strcmp( f.name, "id" ) == 0 )
         {
-            if ( (uint32_t) offsetof( BlockBlock::Projection, id ) != f.offset )
+            if ( (int64_t) offsetof( BlockBlock::Projection, id ) != f.offset )
                 fail( "block.id: the accessor's offset is not the descriptor's" );
             uint32_t via = 0;
             memcpy( &via, block.base + f.offset, sizeof( via ) );
@@ -83,7 +83,7 @@ int main()
         }
         else if ( strcmp( f.name, "flag" ) == 0 )
         {
-            if ( (uint32_t) offsetof( BlockBlock::Projection, flag ) != f.offset )
+            if ( (int64_t) offsetof( BlockBlock::Projection, flag ) != f.offset )
                 fail( "block.flag: the accessor's offset is not the descriptor's" );
             uint8_t via = 0;
             memcpy( &via, block.base + f.offset, sizeof( via ) );
@@ -114,7 +114,7 @@ int main()
         const TableFieldInfo & f = ninfo->fields[i];
         if ( strcmp( f.name, "value" ) == 0 )
         {
-            if ( (uint32_t) offsetof( Node, value ) != f.offset )
+            if ( (int64_t) offsetof( Node, value ) != f.offset )
                 fail( "cook.value: the accessor's offset is not the descriptor's" );
             int32_t via = 0;
             memcpy( &via, (const char *) row + f.offset, sizeof( via ) );
@@ -123,7 +123,7 @@ int main()
         }
         else if ( strcmp( f.name, "next" ) == 0 )
         {
-            if ( (uint32_t) offsetof( Node, next ) != f.offset )
+            if ( (int64_t) offsetof( Node, next ) != f.offset )
                 fail( "cook.next: the slot accessor's offset is not the descriptor's" );
             TableRef via;
             via.value = 0;
@@ -178,8 +178,8 @@ func TestCppAccessorDescriptorScalarNegativeControl(t *testing.T) {
 func TestCppAccessorDescriptorSlotNegativeControl(t *testing.T) {
 	out, err := runCppGeneratedEdited(t, accessorDescriptorSchema, accessorDescriptorMain, func(files map[string][]byte) {
 		patchCpp(t, files,
-			`(uint32_t) offsetof( Node, next )`,
-			`(uint32_t) offsetof( Node, next ) + 8u /* SABOTAGED */`)
+			`(int64_t) offsetof( Node, next )`,
+			`(int64_t) offsetof( Node, next ) + 8u /* SABOTAGED */`)
 	})
 	if err == nil {
 		t.Fatalf("NEGATIVE CONTROL FAILED: a pointer slot eight bytes off left the gate GREEN\n%s", out)

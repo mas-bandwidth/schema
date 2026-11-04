@@ -171,6 +171,11 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	// half does — a unit whose variable class the wire cannot spell still gets
 	// its cooks opened.
 	blocks := ir.Blocks(u)
+	// a record whose C# struct CoreCLR cannot load refuses the unit by name
+	// before anything is emitted (valuetype.go)
+	if err := csValueTypeLimit(u, blocks); err != nil {
+		return nil, err
+	}
 	out, err := generateBlockFiles(u, blocks)
 	if err != nil {
 		return nil, err
@@ -739,7 +744,7 @@ public sealed class TableFieldInfo
 {
     internal bool MapKey = false;
     internal int Ordinal;
-    internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
+    internal long NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
     internal int MessageSlot = 0;
     internal bool MessageBounded = false, MessageSigned = false;
     internal UInt128 MessageMin = 0, MessageMax = 0;
@@ -851,7 +856,8 @@ public sealed class TableFieldInfo
     public bool Dynamic, Map, TextList, Unbounded;
     public string TextField;
     public long TextTotal;
-    public int StorageSize, StorageAlign;
+    public long StorageSize;
+    public int StorageAlign;
     public ulong PointerTypeId;
     public byte BlobKind;
     public Func<object, byte[]> GetBuffer;
@@ -901,7 +907,8 @@ public enum TableByteOrder { Little = 1, Big = 2 }
 public sealed class TableTypeInfo
 {
     public Func<object> Create;
-    public int StorageSize, StorageAlign, RegionAlign;
+    public long StorageSize;
+    public int StorageAlign, RegionAlign;
     // the longest wire that cannot command more than the storage cap (docs/SPEC-TABLES.md §11);
     // a managed Load of a longer one measures before it builds
     public long StorageWireFloor = long.MaxValue;
