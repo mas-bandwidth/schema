@@ -1224,6 +1224,67 @@ int tableFixedRun(
   return TableFixedRefusal.none;
 }
 
+/// tableFixedUtf8WellFormed is the writer's text rule (docs/SPEC.md §5.1): the
+/// used bytes of a narrow text are well-formed UTF-8. A zero byte is not this
+/// rule's business.
+bool tableFixedUtf8WellFormed(Uint8List bytes, int used) {
+  for (var i = 0; i < used;) {
+    final b0 = bytes[i];
+    if (b0 < 0x80) {
+      i++;
+      continue;
+    }
+    final int need;
+    var cp = 0;
+    if ((b0 & 0xE0) == 0xC0) {
+      need = 1;
+      cp = b0 & 0x1F;
+    } else if ((b0 & 0xF0) == 0xE0) {
+      need = 2;
+      cp = b0 & 0x0F;
+    } else if ((b0 & 0xF8) == 0xF0) {
+      need = 3;
+      cp = b0 & 0x07;
+    } else {
+      return false;
+    }
+    if (i + need >= used) {
+      return false;
+    }
+    for (var k = 1; k <= need; k++) {
+      final b = bytes[i + k];
+      if ((b & 0xC0) != 0x80) {
+        return false;
+      }
+      cp = (cp << 6) | (b & 0x3F);
+    }
+    final min = need == 1 ? 0x80 : (need == 2 ? 0x800 : 0x10000);
+    if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+      return false;
+    }
+    i += need + 1;
+  }
+  return true;
+}
+
+/// tableFixedWideWellFormed is the writer's wide text rule (docs/SPEC.md
+/// §5.1): every surrogate among the used units is paired. A zero unit is not
+/// this rule's business.
+bool tableFixedWideWellFormed(Uint16List units, int used) {
+  for (var i = 0; i < used; i++) {
+    final u = units[i];
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= used || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) {
+        return false;
+      }
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
 /// well-formed UTF-8 with no zero byte for string(N), paired non-zero UTF-16
@@ -3730,6 +3791,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
   }
   if (value.entitiesCount > 0) {
     w.put(31, tableMessageRefBits);
+    if (value.entitiesCount < 0 || value.entitiesCount > value.entities.length) return false;
     w.put(value.entitiesCount - 1, 3);
     for (var i = 0; i < value.entitiesCount; i++) {
       if (!tableEntitySaveMessageBody(w, value.entities[i])) return false;
@@ -3737,6 +3799,7 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
   }
   if (value.statsCount > 0) {
     w.put(32, tableMessageRefBits);
+    if (value.statsCount < 0 || value.statsCount > value.stats.length) return false;
     w.put(value.statsCount - 0, 7);
     for (var i = 0; i < value.statsCount; i++) {
       if (!tableStatSaveMessageBody(w, value.stats[i])) return false;
@@ -3768,12 +3831,14 @@ bool tableMixedSaveMessageBody(TableBitWriter w, TableMixed value) {
   }
   if (value.playerNameLength > 0) {
     w.put(35, tableMessageRefBits);
+    if (value.playerNameLength < 0 || value.playerNameLength > value.playerName.length) return false;
     w.put(value.playerNameLength, 4);
     w.align();
     w.raw(Uint8List.sublistView(value.playerName, 0, value.playerNameLength));
   }
   if (value.payloadLength > 0) {
     w.put(36, tableMessageRefBits);
+    if (value.payloadLength < 0 || value.payloadLength > value.payload.length) return false;
     w.put(value.payloadLength, 5);
     w.align();
     w.raw(Uint8List.sublistView(value.payload, 0, value.payloadLength));
@@ -4542,6 +4607,24 @@ void tableEntityFixedDecode(
   value.firing = view.getUint8(at + 50) != 0;
 }
 
+/// TableEntity's write contract (docs/SPEC.md §5.1): false on the first field
+/// that holds what its declaration does not admit. A save asserts it over
+/// the whole batch before the first byte is stored.
+bool tableEntityFixedCheckBody(TableEntity value) {
+  if (!(value.entityId >= 0 && value.entityId <= 4095)) return false;
+  if (!(value.posX >= -16383 && value.posX <= 16383)) return false;
+  if (!(value.posY >= -16383 && value.posY <= 16383)) return false;
+  if (!(value.posZ >= -16383 && value.posZ <= 16383)) return false;
+  if (!(value.yaw >= 0 && value.yaw <= 511)) return false;
+  if (!(value.pitch >= 0 && value.pitch <= 511)) return false;
+  if (!(value.velX >= -2048 && value.velX <= 2047)) return false;
+  if (!(value.velY >= -2048 && value.velY <= 2047)) return false;
+  if (!(value.velZ >= -2048 && value.velZ <= 2047)) return false;
+  if (!(value.health >= 0 && value.health <= 1000)) return false;
+  if (!(value.weapon >= 0 && value.weapon <= 15)) return false;
+  return true;
+}
+
 /// TableStat's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
 void tableStatFixedWriteBody(
@@ -4584,6 +4667,15 @@ void tableStatFixedDecode(
     value.delta = 511;
     report.clamped++;
   }
+}
+
+/// TableStat's write contract (docs/SPEC.md §5.1): false on the first field
+/// that holds what its declaration does not admit. A save asserts it over
+/// the whole batch before the first byte is stored.
+bool tableStatFixedCheckBody(TableStat value) {
+  if (!(value.statId >= 0 && value.statId <= 255)) return false;
+  if (!(value.delta >= -512 && value.delta <= 511)) return false;
+  return true;
 }
 
 /// TableHitEvent's stores. Every offset is a constant of the type and nothing is
@@ -4641,6 +4733,16 @@ void tableHitEventFixedDecode(
   value.crit = view.getUint8(at + 12) != 0;
 }
 
+/// TableHitEvent's write contract (docs/SPEC.md §5.1): false on the first field
+/// that holds what its declaration does not admit. A save asserts it over
+/// the whole batch before the first byte is stored.
+bool tableHitEventFixedCheckBody(TableHitEvent value) {
+  if (!(value.targetId >= 0 && value.targetId <= 4095)) return false;
+  if (!(value.damage >= 0 && value.damage <= 4095)) return false;
+  if (!(value.hitKind >= 0 && value.hitKind <= 7)) return false;
+  return true;
+}
+
 /// TableChatEvent's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
 void tableChatEventFixedWriteBody(
@@ -4685,6 +4787,15 @@ void tableChatEventFixedDecode(
   }
 }
 
+/// TableChatEvent's write contract (docs/SPEC.md §5.1): false on the first field
+/// that holds what its declaration does not admit. A save asserts it over
+/// the whole batch before the first byte is stored.
+bool tableChatEventFixedCheckBody(TableChatEvent value) {
+  if (!(value.channel >= 0 && value.channel <= 3)) return false;
+  if (!(value.speaker >= 0 && value.speaker <= 4095)) return false;
+  return true;
+}
+
 /// TablePickupEvent's stores. Every offset is a constant of the type and nothing is
 /// measured: on this form MeasureBody is a constant, not a walk.
 void tablePickupEventFixedWriteBody(
@@ -4727,6 +4838,15 @@ void tablePickupEventFixedDecode(
     value.amount = 255;
     report.clamped++;
   }
+}
+
+/// TablePickupEvent's write contract (docs/SPEC.md §5.1): false on the first field
+/// that holds what its declaration does not admit. A save asserts it over
+/// the whole batch before the first byte is stored.
+bool tablePickupEventFixedCheckBody(TablePickupEvent value) {
+  if (!(value.itemId >= 0 && value.itemId <= 1023)) return false;
+  if (!(value.amount >= 0 && value.amount <= 255)) return false;
+  return true;
 }
 
 /// TableMixed's stores. Every offset is a constant of the type and nothing is
@@ -5109,6 +5229,51 @@ String tableMixedFixedFiniteBody(TableMixed value) {
   return '';
 }
 
+/// TableMixed's write contract (docs/SPEC.md §5.1): false on the first field
+/// that holds what its declaration does not admit. A save asserts it over
+/// the whole batch before the first byte is stored.
+bool tableMixedFixedCheckBody(TableMixed value) {
+  if (!(value.sequence >= 0 && value.sequence <= 65535)) return false;
+  if (!(value.ackSequence >= 0 && value.ackSequence <= 65535)) return false;
+  if (!(value.ackBits >= 0 && value.ackBits <= 4294967295)) return false;
+  if (!(BigInt.from(value.nonce).toUnsigned(64) >= BigInt.parse('1') && BigInt.from(value.nonce).toUnsigned(64) <= BigInt.parse('9223372036854775807'))) return false;
+  if (!(value.worldTime >= -1000000000000 && value.worldTime <= 1000000000000)) return false;
+  if (!(value.frameTick >= 0 && value.frameTick <= 281474976710655)) return false;
+  if (value.entitiesCount < 1 || value.entitiesCount > 8) return false;
+  for (var i = 0; i < value.entitiesCount; i++) {
+    if (!tableEntityFixedCheckBody(value.entities[i])) return false;
+  }
+  if (value.statsCount < 0 || value.statsCount > 80) return false;
+  for (var i = 0; i < value.statsCount; i++) {
+    if (!tableStatFixedCheckBody(value.stats[i])) return false;
+  }
+  switch (value.gameEvent.type) {
+    case 0:
+      break;
+    case 1:
+      if (!tableHitEventFixedCheckBody(value.gameEvent.hit)) return false;
+      break;
+    case 2:
+      if (!tableChatEventFixedCheckBody(value.gameEvent.chat)) return false;
+      break;
+    case 3:
+      if (!tablePickupEventFixedCheckBody(value.gameEvent.pickup)) return false;
+      break;
+    default:
+      return false;
+  }
+  for (var i = 0; i < 4; i++) {
+  }
+  if (value.playerNameLength < 0 || value.playerNameLength > 15) return false;
+  if (!tableFixedUtf8WellFormed(value.playerName, value.playerNameLength)) return false;
+  if (value.payloadLength < 0 || value.payloadLength > 16) return false;
+  if (!(value.flux >= -1000000000000000000 && value.flux <= 1000000000000000000)) return false;
+  if (!(value.crcHint >= 0 && value.crcHint <= 16777215)) return false;
+  if (!(value.extra >= 0 && value.extra <= 255)) return false;
+  if (!(value.idleTicks >= 0 && value.idleTicks <= 15)) return false;
+  return true;
+}
+
 // ---- TableEntity, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
 // A record is an eight-byte hash of the writer's LAYOUT and then the values
@@ -5382,6 +5547,7 @@ int tableEntityFixedSave(List<TableEntity> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  assert(values.take(count).every(tableEntityFixedCheckBody), 'write contract: TableEntity');
   final view = tableEntityFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -5610,6 +5776,7 @@ int tableEntityMeasureMessages(List<TableEntity> values, TableReport report) {
     report.Refuse('batch_too_large');
     return -1;
   }
+  assert(values.every(tableEntityFixedCheckBody), 'write contract: TableEntity');
   final w = TableBitWriter(Uint8List(0))..measuring = true;
   for (final value in values) {
     if (!tableEntitySaveMessageBody(w, value)) return -1;
@@ -5631,6 +5798,7 @@ int tableEntitySaveMessages(
     return -1;
   }
   if (buffer.length < 2) return -1;
+  assert(values.every(tableEntityFixedCheckBody), 'write contract: TableEntity');
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));
@@ -5836,6 +6004,7 @@ int tableStatFixedSave(List<TableStat> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  assert(values.take(count).every(tableStatFixedCheckBody), 'write contract: TableStat');
   final view = tableStatFixedSaveView.of(bytes);
   // THE HEADER, ONE RULE FOR ALL FIVE FORMS (§3): the form byte, seven
   // RESERVED ZERO bytes, the LAYOUT HASH at 8, and the body at 16.
@@ -6064,6 +6233,7 @@ int tableStatMeasureMessages(List<TableStat> values, TableReport report) {
     report.Refuse('batch_too_large');
     return -1;
   }
+  assert(values.every(tableStatFixedCheckBody), 'write contract: TableStat');
   final w = TableBitWriter(Uint8List(0))..measuring = true;
   for (final value in values) {
     if (!tableStatSaveMessageBody(w, value)) return -1;
@@ -6085,6 +6255,7 @@ int tableStatSaveMessages(
     return -1;
   }
   if (buffer.length < 2) return -1;
+  assert(values.every(tableStatFixedCheckBody), 'write contract: TableStat');
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));
@@ -6679,6 +6850,7 @@ int tableMixedFixedSave(List<TableMixed> values, int count, Uint8List bytes) {
   if (count < 0 || bytes.length < need) {
     return -1;
   }
+  assert(values.take(count).every(tableMixedFixedCheckBody), 'write contract: TableMixed');
   // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every
   // record is asked before the first byte is written, so a refusal
   // leaves the caller's bytes as they were.
@@ -6927,6 +7099,7 @@ int tableMixedMeasureMessages(List<TableMixed> values, TableReport report) {
     report.Refuse('batch_too_large');
     return -1;
   }
+  assert(values.every(tableMixedFixedCheckBody), 'write contract: TableMixed');
   final w = TableBitWriter(Uint8List(0))..measuring = true;
   for (final value in values) {
     if (!tableMixedSaveMessageBody(w, value)) return -1;
@@ -6948,6 +7121,7 @@ int tableMixedSaveMessages(
     return -1;
   }
   if (buffer.length < 2) return -1;
+  assert(values.every(tableMixedFixedCheckBody), 'write contract: TableMixed');
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));

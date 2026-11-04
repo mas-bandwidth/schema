@@ -321,6 +321,7 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
 			g.gen.emitFiniteBody(st)
+			g.gen.emitCheckBody(st)
 		}
 		for _, st := range closure {
 			g.emitMessageBody(st)
@@ -362,7 +363,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"tableFixedSelect", "tableFixedLineagePlans", "TableFixedKnownLayout",
 		"TableFixedLineagePlan", "TableFixedLimits", "TableFixedPlan",
 		"TableFixedRefusal", "TableFixedReport", "TableFixedView")
-	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode", "init"+capitalize(st.Name))
+	g.needHome(st.Name, lower+"FixedWriteBody", lower+"FixedDecode", "init"+capitalize(st.Name),
+		lower+"FixedCheckBody")
 	finite := fixedHoldsFloat(st, map[string]bool{})
 	if finite {
 		g.needHome(lower + "FixedFiniteBody")
@@ -580,6 +582,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		[]string{"List<" + st.Name + "> values", "int count", "Uint8List bytes"})
 	g.pf("  final need = %sFixedMeasure(count);\n", lower)
 	g.pf("  if (count < 0 || bytes.length < need) {\n    return -1;\n  }\n")
+	// THE WRITE CONTRACT OVER THE WHOLE BATCH, before the first byte is
+	// stored (docs/SPEC.md §5.1): debug only, a Dart assert.
+	g.pf("%s", fixedBatchCheck(st, "values.take(count)"))
 	if finite {
 		g.pf("  // A NaN OR AN INFINITY IS REFUSED (docs/SPEC-TABLES.md §3.3): every\n")
 		g.pf("  // record is asked before the first byte is written, so a refusal\n")

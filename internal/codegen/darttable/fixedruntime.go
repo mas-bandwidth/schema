@@ -1232,6 +1232,67 @@ int tableFixedRun(
   return TableFixedRefusal.none;
 }
 
+/// tableFixedUtf8WellFormed is the writer's text rule (docs/SPEC.md §5.1): the
+/// used bytes of a narrow text are well-formed UTF-8. A zero byte is not this
+/// rule's business.
+bool tableFixedUtf8WellFormed(Uint8List bytes, int used) {
+  for (var i = 0; i < used;) {
+    final b0 = bytes[i];
+    if (b0 < 0x80) {
+      i++;
+      continue;
+    }
+    final int need;
+    var cp = 0;
+    if ((b0 & 0xE0) == 0xC0) {
+      need = 1;
+      cp = b0 & 0x1F;
+    } else if ((b0 & 0xF0) == 0xE0) {
+      need = 2;
+      cp = b0 & 0x0F;
+    } else if ((b0 & 0xF8) == 0xF0) {
+      need = 3;
+      cp = b0 & 0x07;
+    } else {
+      return false;
+    }
+    if (i + need >= used) {
+      return false;
+    }
+    for (var k = 1; k <= need; k++) {
+      final b = bytes[i + k];
+      if ((b & 0xC0) != 0x80) {
+        return false;
+      }
+      cp = (cp << 6) | (b & 0x3F);
+    }
+    final min = need == 1 ? 0x80 : (need == 2 ? 0x800 : 0x10000);
+    if (cp < min || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+      return false;
+    }
+    i += need + 1;
+  }
+  return true;
+}
+
+/// tableFixedWideWellFormed is the writer's wide text rule (docs/SPEC.md
+/// §5.1): every surrogate among the used units is paired. A zero unit is not
+/// this rule's business.
+bool tableFixedWideWellFormed(Uint16List units, int used) {
+  for (var i = 0; i < used; i++) {
+    final u = units[i];
+    if (u >= 0xD800 && u <= 0xDBFF) {
+      if (i + 1 >= used || units[i + 1] < 0xDC00 || units[i + 1] > 0xDFFF) {
+        return false;
+      }
+      i++;
+    } else if (u >= 0xDC00 && u <= 0xDFFF) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// tableFixedTextIllFormed reports whether a text payload's USED units are the
 /// text its kind says (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11, §5.4):
 /// well-formed UTF-8 with no zero byte for string(N), paired non-zero UTF-16
