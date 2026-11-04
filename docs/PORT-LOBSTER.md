@@ -291,15 +291,17 @@ and `?T` over a variable closure.
 `runtime/load.lobster` (schema-lobster-table-wire-load) is the variable
 wire's read half: a port of the Go reference engine (`internal/tablewire`
 decode.go, decodenodes.go, nodetable.go, text.go, leb.go) onto the
-descriptors, under `namespace schema_rt`. `schema_rt.load(root, data, report)` reads a form-1 wire at the table named `root` and returns a
-`Record`, or nil when the form byte is refused (docs/SPEC-TABLES.md §3, §4).
-Every construct card reads and extends this section; none edits
-`load.lobster`.
+descriptors, under `namespace schema_rt`. `schema_rt.load(root, data, report)`
+returns a complete `Record` or nil on whole-read refusal (§3, §4). Variable
+roots read form 1. Declared-fixed roots require form 3 and use the generated
+`FixedRecordCodec`, which projects through the native strict fixed reader;
+an oversized fixed declaration has no file form and never falls back to form 1.
 
-**The storage.** Lobster has no reflection, so a load never writes a
-generated class: it fills the table AS DATA, mirroring Go's
-`tabletext.Instance` cell for cell, and a form card's per-table accessor moves
-a `Record` into the class.
+**The storage.** The public API fills a table AS DATA, mirroring Go's
+`tabletext.Instance` cell for cell. A variable load fills that Record directly.
+A fixed load reads native generated storage first, then projects the complete
+value into a Record; fixed save makes the reverse projection and calls the
+native checked writer.
 
 | class | what it is | Go's |
 |---|---|---|
@@ -322,8 +324,8 @@ index 0 is null, 1 the root (`LoadState.root`), and index `k + 2` names
 which keeps its index while every pointer naming it reads null. Pass one
 fills it from the framing, pass two decodes each record's body, then the root
 body; a pointer slot stores the resolved `Record` or blob, never the index.
-`good` is false when the node table could not be read whole, and then every
-pointer reads null. A second slot naming one blob counts `blob_shared`.
+If the node table cannot be read whole, the public read refuses. A second slot
+naming one blob also refuses (`blob_shared`); partial values are not returned.
 
 **The dispatch table.** A field, an array element and a union arm are read
 by the `Shape` registered under their shape key — `scalar`, `enum`, `ptr`
@@ -343,31 +345,28 @@ let _my = schema_rt.register_shape(MyShape { key: "my" })
 The last registration of a key wins, and a shape reads its report through
 `r.st.report`.
 
-**The report.** `LoadReport` holds the six counters reports.txt names
-(`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate`, `malformed`),
-`blob_shared`, the `reason` a named rule gives and the verdict `refused` (a
-form byte this reader does not carry; a collection count past the int32 cap
-on a variable root, which Go returns as `CountRefusal`).
+**The report.** `LoadReport` retains local diagnostics and a refusal verdict.
+Counters and reasons do not select a recovering read or participate in shared
+conformance comparison. Each public read resets the report; acceptance owes
+the complete value and refusal returns no value.
 
 **Carried by the descriptor card.** The descriptor names an enum-keyed
 array's KEY enum (`schema_rt.keyed_enum`) beside the variants
 (`schema_rt.keyed_keys`), a map field's ENTRY TABLE (`schema_rt.map_entry`),
 and each deprecated enum variant's flag on `ViewVariant`; the load's
 `DeprecatedEnumShape` yields the field's declared default for such a variant
-(§2.15), never the variant itself. A text-list clamp, of an element or of the
-count (§2.13), is counted but does not set `reason` to
-`clamped: <Holder.field>` as Go's does, and the report line the tests compare
-carries no `reason`; the text-lists card (schema-lobster-vt-text-lists)
-carries it. Retention (§6.6) and the region read are later cards'
-(retain-unknown).
+(§2.15), never the variant itself. Text-list element/count/total bounds refuse
+the whole read (§2.13). Retaining loads apply to variable files only (§6.6).
+The ordinary, measuring and retaining paths share the structural depth bound:
+128 levels pass and 129 refuse, including unknown structured union payloads.
 
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
-row's report to reports.txt and to the Go engine's `tablewire.Decode` on the
+row's verdict to reports.txt and to the Go engine's `tablewire.Decode` on the
 same wire, and each loaded value to Go's through THE VALUE DUMP — every slot,
 count, presence bit, element, entry, arm and node, floats by their bits and
-a graph by first-visit labels. `TestLobsterTableLoadNegativeControl` patches
-the unknown-field count out of the emitted runtime and holds the comparison
+a graph by first-visit labels. `TestLobsterTableLoadNegativeControl` changes a
+decoded scalar while preserving acceptance and holds the value comparison
 red. `TestLobsterTableLoadBytesCountPastItsBody` raises a bytes body's count
 past what its L frames (§4) and holds the leg to Go's refusal: damage
 discards the whole load, so the read says malformed and nothing of the value
@@ -449,14 +448,14 @@ as lines (lowercase hex for bytes).**
   generates every manifest unit for lobster and records each refusal by name
   as `<unit>.refused`; the driver answers that unit's cases `absent` without
   running anything. **The leg answers every surface the harness asks:**
-  `wire` (`load_tolerant` then `save_reasoned`; a graph naming one blob from
-  two slots is refused by name, `blob_shared`, as §2.5 requires of every
-  writer, and answered `absent`), `report`, `message`, `retain`,
+  `wire` (`load` then `save_reasoned`), `report`, `framing`, `message`, `retain`,
   `retain-save`, `cook`, `cook-write`, `cook-foreign`, `cook-forgery`,
-  `cook-reason`, `block`, `block-foreign`, `block-dump`, `forgery`,
-  `block-reason`, `json-read`, `json-write` and `json-hostile`. An `absent`
-  case names its reason in the leg's own refusal (`blob_shared`, a message
-  or retain row the reference itself answers absent).
+  `block`, `block-foreign`, `block-dump`, `forgery`, `json-read`, `json-write`
+  and `json-hostile`. A reader's refusal is an explicit verdict; it is not a
+  missing feature. Once a read accepts, a failed writeback fails the case.
+  Accepted report/framing/retaining/hostile rows owe complete canonical JSON.
+  Cook sharing recipes construct an explicit in-memory alias; they do not
+  depend on reading a shared blob from binary data the reader must refuse.
 - **The wire-fuzz differential** (test/conformance/README.md, "The
   wire-fuzz driver"; `make tables-lobster-wire-fuzz`, make/lobster-fuzz.mk) is
   a Go host shim, `test/conformance/lobster/wirefuzzhost`: it speaks the
@@ -465,7 +464,7 @@ as lines (lowercase hex for bytes).**
   has no blocking stdin read. The oracle is the Go engine
   (internal/tablewire). The budget is a count: `test-lobster` runs the
   enumerated pass and a small random count, `tables-lobster-release` the
-  release count. Three arms run: the ordinary one over every form-1 root
+  release count. Three arms run: the ordinary one over file roots
   (variable roots answer `load_measure`, a port of `FileRegionMeasure`) and
   the manifest's fixed message batches, `--builder`, and `--retain` over the
   variable roots. A VARIABLE message root is not carried: the port's
@@ -497,7 +496,7 @@ reason, and `compiler/porting_test.go` holds it to the tree:
   then the order word), M13 and J1 (`TestLobsterDescriptors`: the
   `constant_descriptor` and `accessor_descriptor` planted bugs turn it red),
   M16 and M20 (the variable-wire load and save, every manifest instance byte
-  for byte and report for report against the Go engine), I4 (per-case absent,
+  for byte and verdict/value against the Go engine), I4 (per-case absent,
   in the driver's line grammar), I10 (`TestLobsterTableFreePacketIdentity`)
   and J4 (`tables-lobster-clean`, the strict gate below).
 - **— the platform cannot:** M2 (an `int` is an unboxed 64-bit word), M3 (a
@@ -546,7 +545,7 @@ stands:
 | the type wire's write, byte for byte against the C++ goldens; write misuse traps in the runtime, the schema's own contracts are `assert` | `lobster/write.go` | landed |
 | the type wire's read, every refusal latched by name, `serialize_end` | `lobster/read.go`, `lobster/runtime/schema_wire.lobster` | landed |
 | packet floats finite only; packet defaults; packet wstring | `lobster/` | landed |
-| the variable table wire's load (strict, and `load_tolerant`) and save | `lobstertable/runtime/load.lobster`, `schema_save.lobster` | landed |
+| the variable table wire's single strict load and save | `lobstertable/runtime/load.lobster`, `schema_save.lobster` | implemented |
 | the fixed form and its evolution under the lock's lineage | `lobstertable/fixedform.go`, `fixedevolve.go` | landed |
 | table floats finite only in every form | `lobstertable/` | landed |
 | defaults, renames, deprecation, the build version; optionals and `\| required`; collections; text lists; wide kinds; descriptors | `lobstertable/*.go` and their runtime modules | landed |
@@ -560,7 +559,7 @@ stands:
 | the card facade and its conformance leg (docs/PORTING.md J6): load, save, render, parse, bounds, upgrade, edit, taskhash and view over the Card unit, SHA-256 written in Lobster; the driver stages the facade into the generated unit, where Lobster resolves imports | `tables/cards/lobster/`, `make/lobster.mk` (`cards-lobster-*`) | landed |
 | the wire-fuzz differential and the hostile corpus | `make/lobster-fuzz.mk`, `make/lobster-hostile.mk` | landed, with the retain and message arms; a variable message root is not carried (as Go) |
 | the strict gate, CI, the register column, the roadmap column | `make/schema-lobster-generated-strict-gate.mk`, `.github/workflows/*`, `docs/PORTING.md`, `docs/roadmap.sexp` | landed |
-| the integrity trailer and the `forms` declaration (§2.12, §2.14) | — | owed |
+| the integrity trailer and the `forms` declaration (§2.12, §2.14) | `lobstertable/wire_integrity_test.go`, `declared_forms_test.go` and their runtime modules | implemented and native-tested |
 | the bench legs, JIT (packet and tables, golden-gated, `bench-lobster-gate`) | `bench/lobster/`, `bench/tables/lobster/`, `make/lobster-bench.mk` | landed; the first sitting is a fleet pass |
 | the bench legs' `--cpp` row | — | owed (`port/lobster/bench-cpp`, schema-lobster-bench-cpp) |
 | native snake_case naming (Lobster's own idiom; the port still spells names as Go does) | `lobster/`, `lobstertable/` | owed |
