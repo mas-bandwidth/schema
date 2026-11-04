@@ -165,6 +165,9 @@ func caseIndex(m *Manifest, units unitSource) (map[string]map[string]caseInfo, e
 		if err := add("json-read", inst.Name, inst.Unit, inst.Root); err != nil {
 			return nil, err
 		}
+		if inst.HandText {
+			continue // a hand-authored text no writer owes
+		}
 		if err := add("json-write", inst.Name+".json", inst.Unit, inst.Root); err != nil {
 			return nil, err
 		}

@@ -3,8 +3,9 @@
 # a missing text event, a noncanonical integer accepted by the generated
 # wire reader, an absent case that writes no `.absent` answer, and the 4096
 # id-table entry cap (docs/LAYERS/1-framing.md) taken out of the generated
-# reader (frame-cap), and a writer that orders map entries or numbers nodes
-# against the write algorithm (map-order, node-order; docs/SPEC-TABLES.md §22).
+# reader (frame-cap), and a writer that orders map entries, sorts a builder's
+# map or numbers nodes against the write algorithm (map-order, builder-sort,
+# node-order; docs/SPEC-TABLES.md §22).
 set -eu
 
 mode=$1
@@ -49,6 +50,17 @@ map-order)
     source=$(grep -l '^func tableMapCursor(' build/tables-generated-go/maps/*.go)
     sed -e '/^func tableMapCursor(/,/^}/ s/^\(\t\)if !f.Map || a == nil || h.Count == 0 {/\1if f.Map \&\& a == nil \&\& h.Count > 1 \&\& c.p != nil { c.p = unsafe.Add(c.p, int64(h.Count-1)*c.size); c.size = -c.size } \/\/ SABOTAGED: a region walks descending\
 \1if !f.Map || a == nil || h.Count == 0 {/' \
+        "$source" > "$out/source.gotext"
+    ;;
+builder-sort)
+    # THE BUILDER'S SORT (docs/SPEC-TABLES.md §22.2.1) taken out of the
+    # generated mapdemo writer: a builder's map entries are written in the
+    # order they were inserted, and the cursor's own ascending check with it,
+    # so a value built from a text whose keys arrive out of order saves out of
+    # order
+    source=$(grep -l '^func tableMapCursor(' build/tables-generated-go/maps/*.go)
+    sed -e '/^func tableMapCursor(/,/^}/ s/slices.SortFunc(order, func(x, y int64) int {/_ = slices.SortFunc[[]int64]; func(_ []int64, _ func(x, y int64) int) {}(order, func(x, y int64) int { \/\/ SABOTAGED: no builder sort/' \
+        -e '/^func tableMapCursor(/,/^}/ s/ || i > 0 \&\& tableMapKeyOrder(tableMapStoredKey(a.At(order\[i-1\]), key), k, key) >= 0/ || i < 0/' \
         "$source" > "$out/source.gotext"
     ;;
 node-order)
@@ -142,6 +154,9 @@ else
     elif [ "$mode" = map-order ]; then
         grep -q 'go / wire: edge_map_keys' "$out/log"
         ! grep -q 'go / wire: scalars_full' "$out/log"
+    elif [ "$mode" = builder-sort ]; then
+        grep -q 'go / json-read: edge_map_keys_unsorted' "$out/log"
+        grep -q 'wire          pass' "$out/log"
     elif [ "$mode" = node-order ]; then
         grep -q 'go / wire: edge_graph_diamond' "$out/log"
         grep -q 'go / rewrite: node_diamond_chain' "$out/log"

@@ -107,6 +107,16 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", inst.Name, err)
 		}
+		if inst.HandText {
+			// A HAND-AUTHORED TEXT IS KEPT, and held to the wire: the oracle
+			// packs it and must land the instance's bytes, silently
+			if err := checkHandText(u.c, unit, inst, scratch); err != nil {
+				return err
+			}
+			written[filepath.Base(inst.JSON)] = true
+			fmt.Printf("conformance: %-22s hand-authored text packs to the wire\n", inst.Name)
+			continue
+		}
 
 		// wire -> text
 		one := filepath.Join(scratch, inst.Name)
@@ -485,4 +495,35 @@ func rewriteOnce(unit *ir.Unit, rootName string, data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("the read does not read (malformed %t, refused %t): a rewrite row's input must", report.Malformed, report.Refused)
 	}
 	return tablewire.Encode(model, value)
+}
+
+// checkHandText packs a hand-authored instance text with the oracle and
+// requires the instance's own wire back, read silent.
+func checkHandText(c *compiler.Compiler, unit *ir.Unit, inst Instance, scratch string) error {
+	text, err := os.ReadFile(inst.JSON)
+	if err != nil {
+		return fmt.Errorf("%s: %w", inst.Name, err)
+	}
+	wire, err := os.ReadFile(inst.Wire)
+	if err != nil {
+		return fmt.Errorf("%s: %w", inst.Name, err)
+	}
+	one := filepath.Join(scratch, inst.Name)
+	if err := os.MkdirAll(one, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(one, inst.Root+".json"), text, 0o600); err != nil {
+		return err
+	}
+	back, _, report, err := c.Pack(unit, inst.Root, one)
+	if err != nil {
+		return fmt.Errorf("%s: pack: %w", inst.Name, err)
+	}
+	if !report.Silent() {
+		return fmt.Errorf("%s: the hand-authored text does not read clean: %+v", inst.Name, report)
+	}
+	if !bytes.Equal(back, wire) {
+		return fmt.Errorf("%s: the hand-authored text packs to %d bytes that are not the instance's %d", inst.Name, len(back), len(wire))
+	}
+	return nil
 }

@@ -31,7 +31,7 @@ goes red everywhere localises nothing:
 | `conformance-negative-control-cs` | the C# walker, in the emitter | `cs / json-read` | `json-write` |
 | `conformance-negative-control-go` | the Go leg, in the emitter | its own surface | the rest |
 | `conformance-negative-control-go-walk` | the Go walk's field offset | `go / json-read` | `json-write` |
-| `conformance-negative-control-write-order` | the Go writer's map entry order, then its node numbering walk (docs/SPEC-TABLES.md §22) | `go / wire` on `edge_map_keys`; `go / wire` on `edge_graph_diamond` and `go / rewrite` on `node_diamond_chain` | `scalars_full` |
+| `conformance-negative-control-write-order` | the Go writer's loaded map order, its builder's map sort, then its node numbering walk (docs/SPEC-TABLES.md §22) | `go / wire` on `edge_map_keys`; `go / json-read` on `edge_map_keys_unsorted`; `go / wire` on `edge_graph_diamond` and `go / rewrite` on `node_diamond_chain` | `scalars_full`; `wire` under the builder break |
 | `conformance-negative-control-js-walk` | the bool arm of the generated JavaScript text reader | `js / json-read` | `json-write`, `wire` |
 | `conformance-negative-control-java-block` | the array PITCH CHECK in the Java `open` | `java / forgery` | `block`, `block-dump` |
 | `conformance-negative-control-java-walk` | the field-key match in the Java `fromJson` | `java / json-read` | `json-write`, `wire` |

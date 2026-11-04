@@ -380,8 +380,8 @@ func expectations(m *Manifest, surface string, reports map[string]Counts, jsonDi
 		}
 	case "json-write":
 		for _, i := range m.Instances {
-			if i.NoText {
-				continue // the form has no text for this one; no leg is asked for one
+			if i.NoText || i.HandText {
+				continue // no text for this one, or a hand-authored text no writer owes
 			}
 			want, err := os.ReadFile(i.JSON)
 			if err != nil {

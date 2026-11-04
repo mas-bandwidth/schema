@@ -1425,3 +1425,9 @@ instance edge_by_name       featurewitnesses Root  testdata/wire/tables/edge_by_
 instance edge_graph_diamond graphdemo        Scene testdata/wire/tables/edge_graph_diamond.bin
 instance edge_stream_union  streamdemo       Feed  testdata/wire/tables/edge_stream_union.bin
 instance edge_u64_keys      mapdemo          EdgeRow testdata/wire/tables/edge_u64_keys.bin
+# THE BUILDER'S SORT (docs/SPEC-TABLES.md §22.2.1): the edge_map_keys value as a
+# HAND-AUTHORED text whose map keys arrive in reverse order, the string keys in
+# UTF-16 order and the shared nodes defined at their last keys. A leg's text
+# read builds the value and its save must sort every map back to the canonical
+# wire, so a builder that writes entries as they were inserted is red here.
+instance edge_map_keys_unsorted mapdemo Fleet testdata/wire/tables/edge_map_keys.bin hand-text

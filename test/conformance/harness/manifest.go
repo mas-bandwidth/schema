@@ -37,6 +37,13 @@ type Instance struct {
 	// on the instance's own line, rather than the harness quietly tolerating a
 	// missing file.
 	NoText bool
+	// HandText marks an instance whose committed text is HAND-AUTHORED rather
+	// than written from the wire: its map keys are out of order, so a leg's
+	// text read holds its BUILDER's sort to the canonical bytes
+	// (docs/SPEC-TABLES.md §22.2.1). `harness generate` packs the text and
+	// requires the instance's wire back instead of rewriting the text, and no
+	// leg is asked to write it, because a writer's text is canonical.
+	HandText bool
 	// GoWireRefusal names a Go wire writer refusal the corpus requires this
 	// instance's Go leg to report instead of emitting bytes.
 	GoWireRefusal string
@@ -519,6 +526,11 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 			}
 			for _, marker := range f[5:] {
 				switch {
+				case marker == "hand-text":
+					if inst.HandText {
+						return nil, fmt.Errorf("%s: duplicate hand-text marker", where)
+					}
+					inst.HandText = true
 				case marker == "no-text":
 					if inst.NoText {
 						return nil, fmt.Errorf("%s: duplicate no-text marker", where)

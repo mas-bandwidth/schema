@@ -38,7 +38,7 @@ the end of the line.
 
 ```
 unit         <key> <schema path>...
-instance     <name> <unit> <root> <wire file> [no-text]
+instance     <name> <unit> <root> <wire file> [no-text | hand-text]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
@@ -67,6 +67,12 @@ refusal      <forgery> <reason>
   refuses. `harness generate` writes none and the harness asks no leg for one.
   The marker is the data saying so on the instance's own line, which is louder
   than a missing file quietly tolerated.
+  **`hand-text` says the text at `json/<name>.json` is HAND-AUTHORED** rather
+  than written from the wire: its map keys arrive out of order, so a leg's
+  `json-read` holds the leg's BUILDER sort to the canonical bytes
+  (docs/SPEC-TABLES.md §22.2.1). `harness generate` packs the text and requires
+  the instance's wire back instead of rewriting the text, and the `json-write`
+  surface asks no leg for it, because a writer's text is canonical.
 - **`connection`** is one CONNECTION's announced id table
   (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
   BUILD VERSION that keys it, and the announcement itself, which is an ordinary
