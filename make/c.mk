@@ -486,6 +486,48 @@ conformance-negative-control-c-write-refusal: build/conformance-harness build/ta
 	@grep -m1 "c / write-refusal" $(CONFORMANCE_NEGATIVE_C_WREF)/log
 	@echo "negative control: the C writer without its range asserts turns the harness RED on write-refusal alone"
 
+# THE SAME CONTRACT THROUGH THE FIXED AND MESSAGE WRITERS, C side (docs/SPEC.md
+# §5.1): the C twins of conformance-negative-control-cpp-write-refusal-fixed and
+# -message, one shape. $(1) names the control, $(2) is the comment the sed
+# anchors on (each such assert is one line ending in it), $(3) the surface that
+# must go RED and $(4) the surface that must stay green. Nothing tracked is
+# written to.
+define conformance-negative-control-c-wref
+	@rm -rf build/conformance-negative-c-$(1) && mkdir -p build/conformance-negative-c-$(1)
+	@cp -R build/tables-generated-c build/conformance-negative-c-$(1)/generated
+	@n=$$(grep -rl '$(2)' build/conformance-negative-c-$(1)/generated | wc -l); \
+		[ $$n -gt 0 ] || { echo "NEGATIVE CONTROL FAILED: no assert anchored on '$(2)' in the generated tree"; exit 1; }
+	@for f in build/conformance-negative-c-$(1)/generated/*/*.h; do \
+		sed '/$(2)/d' "$$f" > "$$f.tmp" && mv "$$f.tmp" "$$f"; done
+	@! grep -rq '$(2)' build/conformance-negative-c-$(1)/generated || \
+		{ echo "NEGATIVE CONTROL FAILED: an assert anchored on '$(2)' survived the sabotage"; exit 1; }
+	$(CC) $(TABLES_CFLAGS_CONTROL) $(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_INCLUDES)) \
+		$(subst build/tables-generated-c,build/conformance-negative-c-$(1)/generated,$(C_CONFORMANCE_SOURCES)) -o build/conformance-negative-c-$(1)/driver-bin -lm
+	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/build/conformance-negative-c-$(1)" > build/conformance-negative-c-$(1)/driver
+	@chmod +x build/conformance-negative-c-$(1)/driver
+	@printf 'c %s/driver\n' "build/conformance-negative-c-$(1)" > build/conformance-negative-c-$(1)/drivers.txt
+	@if ./build/conformance-harness run --drivers build/conformance-negative-c-$(1)/drivers.txt \
+			--work build/conformance-negative-c-$(1)/work > build/conformance-negative-c-$(1)/log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the C $(3) writer without its asserts left the harness green"; \
+		cat build/conformance-negative-c-$(1)/log; exit 1; \
+	fi
+	@grep -Eq '^$(3) *FAIL ' build/conformance-negative-c-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on $(3)"; \
+		  cat build/conformance-negative-c-$(1)/log; exit 1; }
+	@grep -Eq '^$(4) +pass ' build/conformance-negative-c-$(1)/log || \
+		{ echo "NEGATIVE CONTROL FAILED: $(4) went red too, so the control localizes nothing"; \
+		  cat build/conformance-negative-c-$(1)/log; exit 1; }
+	@grep -m1 "c / $(3)" build/conformance-negative-c-$(1)/log
+	@echo "negative control: the C writer without its $(1) asserts turns the harness RED on $(3)"
+endef
+
+.PHONY: conformance-negative-control-c-write-refusal-fixed conformance-negative-control-c-write-refusal-message
+conformance-negative-control-c-write-refusal-fixed: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal-fixed,a fixed write keeps the declared contract,write-refusal-fixed,wire)
+
+conformance-negative-control-c-write-refusal-message: build/conformance-harness build/tables-generated-c/.stamp
+	$(call conformance-negative-control-c-wref,write-refusal-message,a message write keeps the declared bounds,write-refusal-message,message)
+
 # I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
 # answers a case it cannot write as `<case>.absent` (spill_absent_reason): the
 # blob_shared instance is a NAMED absence today, as every writer refuses a blob
