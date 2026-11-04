@@ -46,6 +46,10 @@ func usage() {
              evolution case. Both come from the compiler's own engine, which
              is a third implementation of the two forms.
 
+  migrate-verdicts
+             audit unchanged hostile and framing inputs against the strict
+             oracle; accepted framing values must keep their authored goldens.
+
   migrate-fixed
              explicitly migrate legacy fixed positive wire pins from their
              complete JSON, preserving old wires as refusal vectors.

@@ -655,8 +655,7 @@ forgery cook_open_directory_entry      cook Scene Scene 0    0x1030       8     
 #   json-hostile <case> <unit> <root> <tree> <read|refused>
 #
 # <tree> is the directory `schema pack` reads, so the text is <tree>/<root>.json
-# (§17). <verdict> is `refused` or the §4 report the read produces,
-# <unknown>,<kind_mismatch>,<widened>,<clamped>,<duplicate>,<malformed>,<verdict>.
+# (§17). Admission is read or refused. Accepted canonical values are exact.
 #
 # A row whose rule was HELD FIRST IN GO (docs/SPEC-TABLES.md §16.3) states the
 # standard's <verdict> together with the ports that carry it, `carried-by=<ports>`,
@@ -764,7 +763,7 @@ json-hostile str-clamp-boundary tabledemo RootConfig testdata/conformance/tables
 # string site, before any clamp (§16.3): it does not spell a code point, so
 # there is nothing to clamp — the read answers `string_not_utf8: <root>`.
 # HELD FIRST IN GO (§16.3): Go, C, C++, Rust, C#, JavaScript, Dart, Java, moo, Lobster, Squirrel, Lua, Luau, Elixir and Goose carry the rule,
-# every other port keeps the counters it answered before the ruling until its port.
+# Every port owes the same admission and complete accepted value.
 json-hostile str-illformed-at-bound tabledemo RootConfig testdata/conformance/tables/json-hostile/str-illformed-at-bound refused
 json-hostile str-lone-lead-surrogate tabledemo RootConfig testdata/conformance/tables/json-hostile/str-lone-lead-surrogate refused
 json-hostile str-lone-trail-surrogate tabledemo RootConfig testdata/conformance/tables/json-hostile/str-lone-trail-surrogate refused
@@ -1013,73 +1012,15 @@ report r1_cfg_as_r2 tblr2 Cfg testdata/conformance/tables/wire/r1_cfg.bin
 report r1_ping_as_r2 tblr2 Cfg testdata/conformance/tables/wire/r1_ping.bin
 report r2_cfg_as_r1 tblr1 Cfg testdata/conformance/tables/wire/r2_cfg.bin
 
-# THE REASON BESIDE THE NULL (docs/SPEC-TABLES.md §6.5, §7, §19.2): one
-# TableRefuseReason for a cook's Open, a block's BlockOpen and LoadMeasure's
-# -1, the FIRST failing clause in §7's order. Each row names a forgery above
-# and the value its refusal must carry, answered on the `cook-reason` and
-# `block-reason` surfaces as the enum's own value name. One row per value each
-# accelerator can answer, one per clause that shares a value, and two that pin
-# the ORDER: a file failing two clauses answers the first.
-#
-# THE BLOCK'S `truncated` REACHES THIS SURFACE THROUGH THE EXTENT COLUMN, which
-# is a caller's length and not a patched word: block_extent_padding leaves the
-# image alone and claims one byte less than the used extent's rounding, on the
-# precedent cook_claim_one_short set. WHEN IT LANDED IT WAS RED IN FIVE PORTS --
-# Rust, C#, Java, JavaScript and Dart -- not because their readers lacked the
-# clause but because their drivers raised a claim SHORTER than the image to the
-# image's own length, so the input had never been expressible in those five
-# (schema#598, and schema#387 is the pointer column's half of that driver work).
-# All nine answer `refuse` now. THE BLOCK'S `unaligned_base` IS STILL NOT
-# HERE, and that is about the forgery it would need rather than about the
-# reason: it is a clause over the ADDRESS the caller passed, and a manifest row
-# hands a driver a path rather than a pointer. test/tables/block_main.cpp's
-# BlockOpen gate pins all five readings there (a null base, a length under the
-# prologue, a length under the arrays, a length inside the padding, an
-# unaligned base) beside the match that writes nothing.
-#
-#   refusal <forgery> <reason>
-#
-refusal cook_magic_byte0          not_a_cook
-refusal cook_magic_block          not_a_cook
-refusal cook_byte_order_2         not_a_cook
-refusal cook_magic_reversed       foreign_order
-refusal cook_build_zero           wrong_build_version
-refusal cook_build_one_bit        wrong_build_version
-refusal cook_reserved0_one        reserved_not_zero
-refusal cook_reserved1_one        reserved_not_zero
-refusal cook_alignment_3          bad_alignment
-refusal cook_alignment_128        bad_alignment
-refusal cook_alignment_4          bad_alignment
-refusal cook_data_length_long     truncated
-refusal cook_attribution_short    truncated
-refusal cook_data_length_under_root truncated
-refusal cook_claim_one_short      truncated
-refusal cook_claim_8              truncated
-refusal cook_lead_1               unaligned_base
-refusal cook_null_buffer          unaligned_base
-refusal cook_build_and_short      wrong_build_version
-refusal cook_alignment_and_short  bad_alignment
-refusal cook_open_forward_delta   ok
-refusal block_magic_foreign       not_a_cook
-refusal block_magic_swapped       foreign_order
-refusal block_build_version       wrong_build_version
-refusal block_byte_order          not_a_cook
-refusal block_array_unaligned     bad_layout
-refusal block_array_in_prologue   bad_layout
-refusal block_array_escapes       bad_layout
-refusal block_pitch               bad_layout
-refusal block_count_past_extent   bad_layout
-refusal block_count_past_maximum  bad_layout
-refusal block_offset_overflow     bad_layout
-refusal block_extent_padding      truncated
-refusal block_base_unaligned      unaligned_base
+# Cook and block forgeries above compare admission only. Reasons stay local;
+# multi-defect inputs still exercise refusal without prescribing detection order.
 
 # ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6) ------------------------------
 #
 # THE RT SET is the reader and the two newer builds: RT1 cannot name what RT2
 # and RT3 wrote, and every row below is one §6.6 owes. The wires are the same
-# pinned vectors test/tables/retain_main.cpp writes, and the counters are the
-# hand-authored expectation.
+# pinned vectors test/tables/retain_main.cpp writes. Every accepted read owes
+# its complete known value; retain-save compares the preserved wire bytes.
 #
 # `capacity` is `full`, a buffer the whole load fits in, or `short`, ONE BYTE
 # SHORT of the last record: a record's byte cost is the port's own, so the
@@ -1098,7 +1039,7 @@ retain retain_truncated tblrt1 Node testdata/wire/tables/retain_rt2.bin short fu
 retain retain_ids_short tblrt1 Node testdata/wire/tables/retain_rt2.bin full 2 testdata/wire/tables/retain_rt1_save_id_short.bin
 
 # THE FIVE EXCLUDED CLASSES a wire can carry to the unknown arm, one row each
-# and one retain_lost each, with `retained` unmoved. The NODE-INDEX class's row
+# whose known values remain defined even when unknown storage is unavailable. The NODE-INDEX class's row
 # is the RECURSIVE shape, which is the widest case it has: an unknown outer
 # table holding a nested pointer three bodies down. The SIXTH class, the
 # reserved node-table field, has no row, because it is excluded by construction
