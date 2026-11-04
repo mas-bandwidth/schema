@@ -418,7 +418,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
         let n = %s.%sFixedLoad(back, read_in(fname), plan, r)
         assert_true(n == -1 and r.verdict == schema_rt.TableOpenRefused and r.reason == "count_over_bound", fname + " count_over_bound")
         assert_true(not r.malformed and r.clamped == 0, fname + " counters untouched")
-        assert_true(back[0].Lead == 0x5A5A5A5A and back[0].ValsCount == 0x5A5A5A5A and back[0].Trail == 0x5A5A5A5A, fname + " destination untouched")
+        assert_true(back[0].Lead == 1 and back[0].ValsCount == 0 and back[0].Trail == 2 and back[0].Vals[0] == 0, fname + " destination reset to defaults")
     print "PASS"
 `, pkg, pkg, table, pkg, table, pkg, table)
 		if out := runLobsterVersionProbe(t, newer, []string{writer}, 0, body, inputs); strings.TrimSpace(out) != "PASS" {
@@ -510,7 +510,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 		compared.Add(2)
 	})
 
-	t.Run("refuse_writes_nothing", func(t *testing.T) {
+	t.Run("refusal_resets_defaults", func(t *testing.T) {
 		t.Parallel()
 		newer := lobsterReadSchema(t, "VNEW_nested_append")
 		older := lobsterReadSchema(t, "VOLD_nested_append")
@@ -523,7 +523,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 		needle := []byte{1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 24, 0, 0, 0}
 		at := bytes.Index(raw, needle)
 		if at < 0 || bytes.Contains(raw[at+1:], needle) {
-			t.Fatal("refuse_writes_nothing needle locator failed")
+			t.Fatal("refusal_resets_defaults needle locator failed")
 		}
 		forged := append([]byte(nil), raw...)
 		for i := at - 8; i < at; i++ {
@@ -545,11 +545,11 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "no_layout" and not r.malformed, "no_layout verdict")
     assert_eq(r.layout_hash, 0, "no_layout layout_hash == 0")
     assert_true(r.widened == 0 and r.unknown == 0 and r.kind_mismatch == 0 and r.clamped == 0 and r.duplicate == 0, "no counter moves")
-    assert_true(back[0].V.X == 0x5A5A5A5A and back[0].V.W == 0x5A5A5A5A and back[0].Seq == 0x5A5A5A5A, "destination untouched")
+    assert_true(back[0].V.X == 0 and back[0].V.W == 88 and back[0].Seq == 0, "destination reset to defaults")
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table)
 		if out := runLobsterVersionProbe(t, newer, []string{older}, 0, body, map[string][]byte{"in.bin": forged}); strings.TrimSpace(out) != "PASS" {
-			t.Fatalf("refuse_writes_nothing: %q", out)
+			t.Fatalf("refusal_resets_defaults: %q", out)
 		}
 		compared.Add(1)
 	})
