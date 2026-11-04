@@ -252,8 +252,8 @@ def run(root:string, file:string):
     let data = read_file(file)
     assert data
     let rep = schema_rt.LoadReport {}
-    let rec = schema_rt.load_tolerant(root, data, rep)
-    print(report_line(rep))
+    let rec = schema_rt.load(root, data, rep)
+    print(if rec: "read" else: "refused")
     labels = []
     var dump = "nil"
     if rec:
@@ -266,6 +266,7 @@ def run(root:string, file:string):
     while i < n:
         print(substring(dump, i * 40000, min(40000, length(dump) - i * 40000)))
         i++
+    schema_rt.release(rec)
 `
 
 // loadProgram is the main for one unit: it imports every table module and
@@ -285,25 +286,17 @@ func loadProgram(g *loadUnit, roots []string) string {
 	return b.String()
 }
 
-// goLoad is the reference's answer for one wire: its report line, as the
-// harness spells it, and its value dump.
+// goLoad compares only the single read's acceptance and complete value.
 func goLoad(u *ir.Unit, rootName string, wire []byte) (string, string) {
 	m := tabletext.NewModel(u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
 	ok, err := tablewire.Decode(m, inst, wire, &rep)
-	refused := err != nil
-	malformed := !ok && !refused
-	verdict := "read"
-	if refused {
-		verdict = "refused"
-	}
-	line := fmt.Sprintf("%d,%d,%d,%d,%d,%t,%s", rep.Unknown, 0, rep.Widened, 0, 0, malformed, verdict)
-	if refused {
-		return line, "nil"
+	if err != nil || !ok {
+		return "refused", "nil"
 	}
 	d := &goDumper{labels: map[*tabletext.Instance]int{inst: 0}, next: 1}
-	return line, d.rec(inst)
+	return "read", d.rec(inst)
 }
 
 // goDumper is the Go half of THE VALUE DUMP (dumpLobster).
@@ -441,7 +434,7 @@ func (d *goDumper) cell(c *tabletext.Cell, f *ir.Field) string {
 // unitResult is one unit's rows run under Lobster and under the reference.
 type unitResult struct {
 	rows   []loadRow
-	lob    []string // report line, value dump, per row
+	lob    []string // acceptance, complete value dump, per row
 	goLine []string
 	goDump []string
 }
@@ -491,31 +484,23 @@ func runUnit(t *testing.T, g *loadUnit, rows []loadRow) unitResult {
 	return res
 }
 
-// TestLobsterTableLoadMatchesTheReports loads every report and instance row
-// of the tables conformance manifest under the pinned toolchain through
-// runtime/load.lobster (docs/SPEC-TABLES.md §3, §3.1, §4; docs/PORT-LOBSTER.md,
-// THE LOAD). Each report row's u,k,w,c,d,m,verdict must equal reports.txt;
-// every row's report must equal the Go reference engine's
-// (internal/tablewire) on the same wire, and so must THE VALUE DUMP — every
-// slot, count, presence bit, element, map entry, arm and node the reference
-// keeps. A unit the surface refuses is named with its refusal.
+// Every manifest wire either supplies the complete reference value or refuses.
+// Local diagnostic spellings, counters and discovery order are not compared.
 func TestLobsterTableLoadMatchesTheReports(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
-	expect := reportLines(t)
 	byUnit := map[string][]loadRow{}
 	var order []string
 	for _, row := range loadRows(t) {
 		if _, ok := units[row.unit]; !ok {
-			t.Fatalf("row %s names unit %s, which the manifest does not declare", row.name, row.unit)
+			t.Fatalf("row %s names undeclared unit %s", row.name, row.unit)
 		}
 		if _, seen := byUnit[row.unit]; !seen {
 			order = append(order, row.unit)
 		}
 		byUnit[row.unit] = append(byUnit[row.unit], row)
 	}
-	compared, instances, values := 0, 0, 0
-	refusedRows := 0
+	accepted, refused := 0, 0
 	for _, key := range order {
 		paths, err := compiler.GatherPaths(prefix(units[key]))
 		if err != nil {
@@ -523,90 +508,59 @@ func TestLobsterTableLoadMatchesTheReports(t *testing.T) {
 		}
 		g, err := generateLoadUnit(t, paths)
 		if err != nil {
-			refusedRows += len(byUnit[key])
-			t.Logf("refused unit %s (%d rows): %v", key, len(byUnit[key]), err)
-			continue
+			t.Fatalf("unit %s: %v", key, err)
 		}
 		res := runUnit(t, g, byUnit[key])
 		for i, row := range res.rows {
-			line, dump := res.lob[2*i], res.lob[2*i+1]
-			if row.kind == "report" {
-				want, ok := expect[row.name]
-				switch {
-				case !ok:
-					t.Errorf("report %s: reports.txt names no such case", row.name)
-				case line != want:
-					t.Errorf("report %s (%s %s):\nlobster: %s\nwant:    %s", row.name, row.unit, row.root, line, want)
-				default:
-					compared++
-				}
+			verdict, dump := res.lob[2*i], res.lob[2*i+1]
+			if verdict != res.goLine[i] {
+				t.Errorf("%s %s: acceptance %s, reference %s", row.kind, row.name, verdict, res.goLine[i])
+			}
+			if dump != res.goDump[i] {
+				t.Errorf("%s %s: value differs at %s", row.kind, row.name, divergence(dump, res.goDump[i]))
+			}
+			if verdict == "read" {
+				accepted++
 			} else {
-				instances++
+				refused++
+				if dump != "nil" {
+					t.Errorf("%s publishes a partial value", row.name)
+				}
 			}
-			if line != res.goLine[i] {
-				t.Errorf("%s %s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.kind, row.name, line, res.goLine[i])
-				continue
-			}
-			if !damaged(line) && dump != res.goDump[i] {
-				t.Errorf("%s %s: the loaded value is not the reference's at byte %s", row.kind, row.name, divergence(dump, res.goDump[i]))
-				continue
-			}
-			values++
 		}
 	}
-	if compared == 0 || instances == 0 {
-		t.Fatalf("compared %d report rows and %d instance rows: the comparison is vacuous", compared, instances)
+	if accepted == 0 || refused == 0 {
+		t.Fatalf("vacuous contract coverage: accepted=%d refused=%d", accepted, refused)
 	}
-	t.Logf("%d report rows compared with reports.txt; %d instance rows loaded; %d values equal the reference's; %d rows of refused units", compared, instances, values, refusedRows)
+	t.Logf("%d accepted complete values; %d whole-load refusals", accepted, refused)
 }
 
-// TestLobsterTableLoadNegativeControl patches the emitted load runtime in
-// memory — the one line that counts an unknown field id (docs/SPEC-TABLES.md
-// §4), matched exactly once — and requires the comparison with reports.txt
-// to go red on a row that counts one, with the unpatched control green.
+// Changing a lawful scalar value must be detected even when acceptance is unchanged.
 func TestLobsterTableLoadNegativeControl(t *testing.T) {
 	t.Parallel()
-	units, _ := readManifest(t)
-	expect := reportLines(t)
-	var rows []loadRow
-	for _, row := range loadRows(t) {
-		if row.name == "v2_cfg_as_v1" {
-			rows = append(rows, row)
-		}
-	}
-	if len(rows) != 1 {
-		t.Fatalf("the manifest names %d rows v2_cfg_as_v1", len(rows))
-	}
-	paths, err := compiler.GatherPaths(prefix(units[rows[0].unit]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	g, err := generateLoadUnit(t, paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := expect["v2_cfg_as_v1"]
-	if got := runUnit(t, g, rows).lob[0]; got != want {
-		t.Fatalf("the control, unpatched: got %s, want %s", got, want)
+	g := probeUnit(t)
+	row := loadRow{kind: "probe", name: "scalar", unit: "probe", root: "Root", data: probeWire(t, g)}
+	control := runUnit(t, g, []loadRow{row})
+	if control.lob[0] != "read" || control.lob[1] != control.goDump[0] {
+		t.Fatal("unmodified scalar does not match")
 	}
 	path := filepath.Join(g.dir, "load.lobster")
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const anchor = "        if not found:\n            rep.unknown++\n"
-	if n := strings.Count(string(src), anchor); n != 1 {
-		t.Fatalf("the unknown-field anchor is in the emitted runtime %d times, want 1", n)
+	const anchor = "    cell.i = value\n    return true\n"
+	if strings.Count(string(src), anchor) != 1 {
+		t.Fatal("scalar assignment anchor not unique")
 	}
-	patched := strings.Replace(string(src), anchor, "        if not found:\n            rep.unknown += 0\n", 1)
-	if err := os.WriteFile(path, []byte(patched), 0o644); err != nil {
+	patched := strings.Replace(string(src), anchor, "    cell.i = value + 1\n    return true\n", 1)
+	if err := os.WriteFile(path, []byte(patched), 0644); err != nil {
 		t.Fatal(err)
 	}
-	got := runUnit(t, g, rows).lob[0]
-	if got == want {
-		t.Fatalf("the patched runtime still matches reports.txt: %s", got)
+	result := runUnit(t, g, []loadRow{row})
+	if result.lob[0] != "read" || result.lob[1] == result.goDump[0] {
+		t.Fatalf("value mutation was not detected: %v", result.lob)
 	}
-	t.Logf("the reports comparison went red under the patch: v2_cfg_as_v1 got %s, want %s", got, want)
 }
 
 // divergence names the first byte two dumps differ at, with context.
@@ -632,16 +586,9 @@ table Holder
 }
 `
 
-// TestLobsterTableLoadBytesCountPastItsBody holds the bytes branch of the
-// array body to docs/SPEC-TABLES.md §4 ("elements are BOUNDED by the field
-// body"): a bytes(16) body whose count says 16 while its L frames only two
-// payload bytes keeps those two, flags malformed and reads the next field at
-// its own header, as Go's tablewire.arrayBody does. The wire is Go's own
-// encoding of the value with the count byte raised from 2 to 16 (L unchanged);
-// the report and THE VALUE DUMP must equal tablewire.Decode's on both the
-// intact and the raised wire.
+// A bytes count past its own body refuses the whole value, including its
+// valid neighbors. The intact input still returns all three fields.
 func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
-	t.Skip("layer 4 (lobster): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	src := filepath.Join(t.TempDir(), "BytesPast.schema")
 	if err := os.WriteFile(src, []byte(bytesPastItsBody), 0o644); err != nil {
@@ -675,8 +622,8 @@ func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
 	}
 	raised := bytes.Clone(intact)
 	raised[at] = 0x10
-	if line, _ := goLoad(g.u, "Holder", raised); !strings.HasSuffix(line, ",true,read") {
-		t.Fatalf("the reference does not flag the raised count malformed (%s): the wire does not exercise §4", line)
+	if line, _ := goLoad(g.u, "Holder", raised); line != "refused" {
+		t.Fatalf("the reference accepted the raised count (%s)", line)
 	}
 	rows := []loadRow{
 		{kind: "instance", name: "bytes_intact", unit: "bytespast", root: "Holder", data: intact},
@@ -689,7 +636,7 @@ func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
 			t.Errorf("%s: the report is not the reference's:\nlobster: %s\ngo:      %s", row.name, line, res.goLine[i])
 			continue
 		}
-		if !damaged(line) && dump != res.goDump[i] {
+		if dump != res.goDump[i] {
 			t.Errorf("%s: the loaded value is not the reference's at byte %s", row.name, divergence(dump, res.goDump[i]))
 			continue
 		}
@@ -697,11 +644,5 @@ func TestLobsterTableLoadBytesCountPastItsBody(t *testing.T) {
 	}
 }
 
-// damaged reports whether a report line (`u,k,w,c,d,malformed,verdict`) says
-// malformed. DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the value
-// a damaged read leaves is undefined, so no test compares it; the report line
-// saying malformed is the whole answer.
-func damaged(line string) bool {
-	f := strings.Split(strings.TrimSpace(line), ",")
-	return len(f) == 7 && f[5] == "true"
-}
+// damaged recognizes whole refusal for older harness callers.
+func damaged(line string) bool { return line == "refused" }

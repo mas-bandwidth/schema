@@ -37,7 +37,7 @@ def pinrun(root:string, file:string):
     let rep = schema_rt.LoadReport {}
     let rec, reason = schema_rt.load_strict(root, data, rep)
     let tol = schema_rt.LoadReport {}
-    schema_rt.load_tolerant(root, data, tol)
+    schema_rt.load(root, data, tol)
     let size, whole, refused = schema_rt.load_measure(root, data)
     print((if reason == "": "ok" else: reason) + "|" + report_line(tol) + "|" + tol.reason + "|" + "{size},{whole},{refused}")
 `

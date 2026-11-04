@@ -61,6 +61,24 @@ def read_refuse(rep:LoadReport, reason:string) -> bool:
         rep.reason = reason
     return false
 
+// Diagnostics belong to this invocation and cannot veto a later valid read.
+def read_reset(rep:LoadReport):
+    rep.unknown = 0
+    rep.kind_mismatch = 0
+    rep.widened = 0
+    rep.clamped = 0
+    rep.duplicate = 0
+    rep.malformed = false
+    rep.blob_shared = 0
+    rep.missing_required = 0
+    rep.non_finite_float = ""
+    rep.retained = 0
+    rep.retain_lost = 0
+    rep.refused = false
+    rep.reason = ""
+    rep.stopped = false
+    rep.damaged = false
+
 class Record
 class Slot
 class Node
@@ -1786,53 +1804,27 @@ def load_cyclic(st:LoadState, root:Record) -> bool:
         r.walk = 0
     return found
 
-// Compatibility entry point during public-name migration. It has the same
-// whole-value or whole-refusal semantics as load.
-def load_tolerant(root:string, data:string, report:LoadReport) -> Record?:
-    let rec = load_walk(root, data, report)
-    if report.non_finite_float != "":
-        report.reason = "non_finite_float: " + report.non_finite_float
-        release(rec)
-        return nil
-    if report.refused or report.malformed:
-        release(rec)
-        if report.reason == "":
-            read_refuse(report, "wire_damaged")
-        return nil
-    return rec
-
 // The first local refusal diagnostic, or the empty string after success.
 def strict_reason(rep:LoadReport) -> string:
-    if rep.refused and rep.reason != "":
-        return rep.reason
-    if rep.non_finite_float != "":
-        return "non_finite_float"
-    if rep.reason == "count_over_extent_cap":
-        return "count_over_extent_cap"
-    if rep.refused or rep.reason == "newer_form" or rep.reason == "message_form_as_file":
-        return "unknown_form"
-    if rep.reason == "integrity_mismatch":
-        return "integrity_mismatch"
-    if rep.damaged:
+    if rep.refused or rep.stopped or rep.malformed or rep.damaged:
+        if rep.reason != "":
+            return rep.reason
         return "wire_damaged"
-    if rep.missing_required > 0:
-        return "missing_required"
-    if rep.malformed:
-        return "malformed"
-    if rep.blob_shared > 0:
-        return "blob_shared"
-    if rep.clamped > 0:
-        return "clamped"
-    if rep.kind_mismatch > 0:
-        return "kind_mismatch"
     return ""
 
 // The single read returns a complete value or nil. Unknowns and legal
 // widening preserve evolution; diagnostics do not enable partial values.
 def load(root:string, data:string, report:LoadReport) -> Record?:
-    let rec = load_tolerant(root, data, report)
-    if strict_reason(report) != "":
+    read_reset(report)
+    let rec = load_walk(root, data, report)
+    if report.non_finite_float != "":
+        report.reason = "non_finite_float: " + report.non_finite_float
         release(rec)
+        return nil
+    if report.refused or report.malformed or report.stopped:
+        release(rec)
+        if report.reason == "":
+            read_refuse(report, "wire_damaged")
         return nil
     return rec
 

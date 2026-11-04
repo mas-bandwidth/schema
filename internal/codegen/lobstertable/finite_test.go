@@ -185,7 +185,7 @@ def fread(file:string):
     let srec, reason = schema_rt.load_strict("Probe", data, srep)
     assert (srec == nil) == (reason != "")
     let trep = schema_rt.LoadReport {}
-    let trec = schema_rt.load_tolerant("Probe", data, trep)
+    let trec = schema_rt.load("Probe", data, trep)
     let prep = schema_rt.LoadReport {}
     let prec = schema_rt.load("Probe", data, prep)
     print(if reason == "": "ok" else: reason)
