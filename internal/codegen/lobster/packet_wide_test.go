@@ -12,17 +12,18 @@ import (
 // The C++ fixtures exercise both halves of raw/ranged 128-bit values,
 // signed wide fixed point, defaults and zeroing an untaken wide field.
 func TestLobsterPacketWideGoldens(t *testing.T) {
+	t.Parallel()
 	runPacketWideGoldens(t, false)
 }
 
 func TestLobsterPacketWideGoldensNegativeControl(t *testing.T) {
+	t.Parallel()
 	runPacketWideGoldens(t, true)
 }
 
 func runPacketWideGoldens(t *testing.T, sabotage bool) {
 	t.Helper()
 	files := generateUfixed(t)
-	program := packetWideProbe
 	if sabotage {
 		const anchor = "serialize_uint128 { lo: v.EntityId.lo, hi: v.EntityId.hi }"
 		src := string(files["Ludicrous.lobster"])
@@ -30,9 +31,6 @@ func runPacketWideGoldens(t *testing.T, sabotage bool) {
 			t.Fatal("wide writer lane anchor must occur once")
 		}
 		files["Ludicrous.lobster"] = []byte(strings.Replace(src, anchor, "serialize_uint128 { lo: v.EntityId.hi, hi: v.EntityId.lo }", 1))
-		// Only the wire comparison reverses: decoded values, hostile refusals,
-		// untaken-field zeroing and the degenerate writer must still pass.
-		program = strings.Replace(program, "w.bytes_processed()) == golden", "w.bytes_processed()) != golden", 1)
 	}
 	dir := t.TempDir()
 	writeAll(t, dir, files)
@@ -44,9 +42,19 @@ func runPacketWideGoldens(t *testing.T, sabotage bool) {
 		}
 		inputs[name] = b
 	}
-	writeFile(t, dir, "main.lobster", program)
-	if out := strings.TrimSpace(string(lobsterrun.Run(t, dir, "main.lobster", inputs))); out != "wide goldens passed" {
-		t.Fatal(out)
+	writeFile(t, dir, "main.lobster", packetWideProbe)
+	stdout, code := lobsterrun.RunExit(t, dir, "main.lobster", inputs)
+	out := strings.TrimSpace(string(stdout))
+	if sabotage {
+		// The same probe must reject the mutated writer at the wire comparison.
+		// Compilation failures and earlier decoded-value failures do not count.
+		if code != 70 || out != "wide golden mismatch" {
+			t.Fatalf("mutated writer: exit %d, output %q; want wire comparison refusal", code, out)
+		}
+		return
+	}
+	if code != 0 || out != "wide goldens passed" {
+		t.Fatalf("exit %d: %s", code, out)
 	}
 }
 
@@ -80,7 +88,8 @@ def state_case(name:string, targeted:bool):
     let w = serialize_write_stream(schema_rt.zeros(1024))
     assert ludicrous.WriteLudicrousState(w, v)
     w.flush()
-    assert substring(w.buffer, 0, w.bytes_processed()) == golden
+    if substring(w.buffer, 0, w.bytes_processed()) != golden:
+        serialize_abort("wide golden mismatch")
 
 state_case("ludicrous_state", true)
 state_case("ludicrous_state_untargeted", false)
