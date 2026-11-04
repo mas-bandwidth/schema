@@ -373,6 +373,7 @@ let TableEntityCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 64,
     align: 8,
     record: 64,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -430,6 +431,7 @@ let TableStatCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -475,6 +477,7 @@ let TableMixedCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 1352,
     align: 8,
     record: 1352,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -546,6 +549,7 @@ let TableHitEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 16,
     align: 4,
     record: 16,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -593,6 +597,7 @@ let TableChatEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [
@@ -638,6 +643,7 @@ let TablePickupEventCookTable = schema_rt.cook_table(schema_rt.CookTable {
     size: 8,
     align: 4,
     record: 8,
+    region_align: 8,
     extent: false,
     build: 0xd15cf2df295a7569,
     fields: [

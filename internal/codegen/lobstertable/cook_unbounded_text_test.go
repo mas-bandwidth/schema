@@ -2,10 +2,14 @@ package lobstertable_test
 
 import (
 	"bytes"
+	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster/lobsterrun"
 )
 
 // Bare list elements and map keys are reference slots into the holder's
@@ -34,6 +38,41 @@ func TestLobsterCookUnboundedText(t *testing.T) {
 	}
 	if !bytes.Equal(got.saved, wire) {
 		t.Fatalf("unbounded text lost values after cook: saved %d bytes, want %d", len(got.saved), len(wire))
+	}
+	const word = "unbounded text is populated"
+	start := bytes.Index(little, []byte(word)) - 8
+	if start < 64 || binary.LittleEndian.Uint32(little[start:]) != uint32(len(word)) {
+		t.Fatal("reference text blob not found")
+	}
+	var imports strings.Builder
+	for _, mod := range g.mods {
+		fmt.Fprintf(&imports, "import .%s\n", mod)
+	}
+	program := imports.String() + fmt.Sprintf(`let data = read_file("bad.cook")
+assert data
+let value = %s.%sReadCook(data)
+print(if value: "accepted" else: "refused")
+`, g.pkg, row.root)
+	for _, mutation := range []struct {
+		name string
+		edit func([]byte)
+	}{
+		{"empty_nonnull", func(b []byte) { binary.LittleEndian.PutUint32(b[start:], 0) }},
+		{"length_past_holder", func(b []byte) { binary.LittleEndian.PutUint32(b[start:], 0xffffffff) }},
+		{"reserved", func(b []byte) { binary.LittleEndian.PutUint32(b[start+4:], 1) }},
+		{"terminator", func(b []byte) { b[start+8+len(word)] = 1 }},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			bad := bytes.Clone(little)
+			mutation.edit(bad)
+			if err := os.WriteFile(filepath.Join(g.dir, "refusal.lobster"), []byte(program), 0644); err != nil {
+				t.Fatal(err)
+			}
+			out := lobsterrun.Run(t, g.dir, "refusal.lobster", map[string][]byte{"bad.cook": bad})
+			if strings.TrimSpace(string(out)) != "refused" {
+				t.Fatalf("damaged text blob was accepted: %s", out)
+			}
+		})
 	}
 	runtime := filepath.Join(g.dir, "cook.lobster")
 	src, err := os.ReadFile(runtime)
