@@ -27,7 +27,7 @@ fixed table Row {
     flag bool
     optional ?Leaf
     live [..2]Leaf
-    fixed [2]int32
+    values [2]int32
     ranged int32 | min = 0, max = 10
     ratio float32 | min = 0, max = 1
     tier Tier
@@ -69,7 +69,7 @@ good.OptionalPresent = true
 good.Optional.Flag = true
 good.LiveCount = 1
 good.Live[0].Flag = true
-good.Fixed = [11, 22]
+good.Values = [11, 22]
 good.Ranged = 5
 good.Ratio = 0.5
 good.Tier = strictfixed.TierFirst
