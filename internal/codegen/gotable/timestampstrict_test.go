@@ -207,7 +207,7 @@ func TestStrictTimestampSpellings(t *testing.T) {
 				t.Fatalf("%s: accepted=%t want %t report=%+v", c.json, ok, c.ok, report)
 			}
 			if !c.ok {
-				if !report.Malformed || !strings.HasPrefix(report.Reason, "timestamp_not_rfc3339: at") {
+				if !(report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || !strings.HasPrefix(report.Reason, "timestamp_not_rfc3339: at") {
 					t.Fatalf("%s: refusal %+v", c.json, report)
 				}
 				if got.At != 0 {
@@ -215,7 +215,7 @@ func TestStrictTimestampSpellings(t *testing.T) {
 				}
 				return
 			}
-			if report.Malformed || report.Reason != "" {
+			if (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Reason != "" {
 				t.Fatalf("%s: report %+v", c.json, report)
 			}
 			if got.At != c.nanos {

@@ -136,7 +136,7 @@ func t14Read(t *testing.T, schema string, older []string, file string) {
 	if got[0].Lead != 1 || got[0].Trail != 2 {
 		t.Fatalf("a neighbour moved: %+v", got[0])
 	}
-	if report.Clamped != 0 || report.Malformed || report.Reason != "" {
+	if report.Refused() || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || report.Reason != "" {
 		t.Fatalf("a clean widen is not a refusal: %+v", report)
 	}`
 	src := "package probe\n\nimport (\"math\"; \"os\"; \"testing\")\n\nfunc TestRead(t *testing.T) {\n" + body + "\n}\n"

@@ -174,11 +174,11 @@ func TestWideRequiredPast512(t *testing.T) {
 		if !b.Init() { t.Fatal("init") }
 		defer b.Shutdown()
 		var r TableReport
-		if WideFromJSONTolerant(&b, []byte("{}"), &r) {
-			t.Fatal("WideFromJSONTolerant({}) succeeded, want missing_required refusal")
+		if WideFromJSON(&b, []byte("{}"), &r) {
+			t.Fatal("WideFromJSON({}) succeeded, want missing_required refusal")
 		}
-		if r.MissingRequired != 1 || r.Reason != "missing_required: req515, req518" {
-			t.Fatalf("WideFromJSONTolerant({}) report = %+v, want MissingRequired=1 reason \"missing_required: req515, req518\"", r)
+		if !r.Refused() || r.Reason != "missing_required: req515, req518" {
+			t.Fatalf("WideFromJSON({}) report = %+v, want MissingRequired=1 reason \"missing_required: req515, req518\"", r)
 		}
 	}
 	// 2. Missing only req518 (index >= 512) must refuse naming req518.
@@ -190,7 +190,7 @@ func TestWideRequiredPast512(t *testing.T) {
 		if WideFromJSON(&b, []byte("{\"req515\":10}"), &r) {
 			t.Fatal("WideFromJSON({\"req515\":10}) succeeded, want missing_required: req518")
 		}
-		if r.MissingRequired != 1 || r.Reason != "missing_required: req518" {
+		if !r.Refused() || r.Reason != "missing_required: req518" {
 			t.Fatalf("WideFromJSON({\"req515\":10}) report = %+v, want missing_required: req518", r)
 		}
 	}
@@ -217,7 +217,7 @@ func TestWideRequiredPast512(t *testing.T) {
 		if WideFromJSON(&b, []byte("{\"gate\":true,\"req515\":10,\"req518\":20}"), &r) {
 			t.Fatal("WideFromJSON with gate=true and missing guarded516 succeeded")
 		}
-		if r.MissingRequired != 1 || r.Reason != "missing_required: guarded516" {
+		if !r.Refused() || r.Reason != "missing_required: guarded516" {
 			t.Fatalf("WideFromJSON missing guarded516 report = %+v, want missing_required: guarded516", r)
 		}
 	}
@@ -230,20 +230,20 @@ func TestWideRequiredPast512(t *testing.T) {
 		if WideFromJSON(&b, []byte("{\"gate\":true,\"req515\":10,\"guarded516\":30,\"ptr517\":{},\"req518\":20}"), &r) {
 			t.Fatal("WideFromJSON with empty ptr517 succeeded, want missing_required: v")
 		}
-		if r.MissingRequired != 1 || r.Reason != "missing_required: v" {
+		if !r.Refused() || r.Reason != "missing_required: v" {
 			t.Fatalf("WideFromJSON empty ptr517 report = %+v, want missing_required: v", r)
 		}
 	}
-	// 6. Duplicate key at index >= 512 is last-wins and counted on r.Duplicate.
+	// 6. Duplicate key at index >= 512 is last-wins and counted on r.Refusal.
 	{
 		var b WideBuilder
 		if !b.Init() { t.Fatal("init") }
 		defer b.Shutdown()
 		var r TableReport
-		if !WideFromJSON(&b, []byte("{\"req515\":10,\"req515\":11,\"req518\":20}"), &r) {
-			t.Fatalf("WideFromJSON with duplicate req515 failed: %+v", r)
+		if WideFromJSON(&b, []byte("{\"req515\":10,\"req515\":11,\"req518\":20}"), &r) || r.Err() == nil {
+			t.Fatalf("WideFromJSON took a repeated key: %+v", r)
 		}
-		if r.Duplicate != 1 || b.GetRoot().Req515 != 11 {
+		if !r.Refused() || b.GetRoot().Req515 != 11 {
 			t.Fatalf("WideFromJSON duplicate req515 report = %+v val=%d, want Duplicate=1 val=11", r, b.GetRoot().Req515)
 		}
 	}

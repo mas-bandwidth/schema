@@ -21,39 +21,24 @@ import (
 	"unsafe"
 )
 
-// TableReport is the table-wire read report — the permissive contract's
-// ledger. Silence (all zero) means the data matched this reader's schema
-// exactly. Err (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
-// for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
-// build-version-mismatched. Unknown, Widened and Retained alone are not one.
+// TableReport is the table-wire read report (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5).
+// A read RETURNS the whole value or REFUSES the whole load: Err is nil on a read
+// that returned and the typed refusal otherwise. The counters are per-language
+// diagnostics of a read that returned and stay zero on a refusal: Unknown counts
+// the ids this reader cannot name (evolution), Widened the fields that rode
+// under a narrower kind on their own ladder, Retained and RetainLost the
+// retention ledger (§6.6). Why a read refused (Refusal, Field, Reason) is
+// diagnostic detail too, never a cross-language contract.
 type TableReport struct {
 	Retained, RetainLost int32
 	Verdict              TableOpenVerdict // unsupported form is distinct from damage
-	Reason               string           // why the form was refused; empty for a file read
-	Widened              int32            // a compatible wider kind preserved the value
-	Unknown              int32            // unknown field ids skipped (newer data)
-	KindMismatch         int32            // known id, changed type — skipped, never misdecoded
-	Clamped              int32            // out-of-range values clamped to declared bounds
-	// ClampedField names the field or path whose value a read clamped
-	// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5), empty when none: the strict read's clamped
-	// refusal carries it, apart from Reason.
-	ClampedField string
-	// NonFiniteFloat names the first NaN or infinity float a read met,
-	// <Table>.<field>: every read refuses it (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
-	NonFiniteFloat string
-	// Duplicate counts repeated text keys. Fixed-class wire fields do not raise it.
-	// A body carrying an id twice is legal input
-	// whose last occurrence wins, silently. A wire read always leaves it zero.
-	Duplicate int32
-	// MissingRequired counts required fields (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3) the
-	// record did not carry: a record an older writer produced before the field
-	// became required. The refusal names the field in Reason.
-	MissingRequired int32
-	Malformed       bool // framing damage; decode stopped, partial result kept
-	// BlobShared counts the extra slots that named a blob record another slot
-	// already named (mas-bandwidth/schema docs/SPEC-TABLES.md §2.5): the tolerant read keeps the one
-	// node, never a copy per slot, and the strict read refuses blob_shared.
-	BlobShared int32
+	Reason               string           // the refusal's diagnostic text; empty on a read that returned
+	Widened              int32            // a compatible wider kind decoded the value exactly
+	Unknown              int32            // ids this reader cannot name, skipped (newer data)
+	// Refusal is the first condition the read met, TableRefuseOk on a read
+	// that returned; Field names the field it concerns where it has one.
+	Refusal TableRefuseReason
+	Field   string
 	// BuildVersionRemote and BuildVersionOwn are the two build versions a strict
 	// announcement refusal carries (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the endpoint's
 	// announcement and this unit's own. They are zero on every other read.
@@ -65,12 +50,32 @@ type TableReport struct {
 	// refusals keep answering unknown_form. Message-form refusals clear it, so a reused report
 	// still answers unknown_form on the message path.
 	FixedRaised bool
-	// LayoutHash is THE FILE'S hash, and it is set by ONE refusal:
-	// layout_newer reports it "AND NOTHING ELSE" (§5.3). layout_unsupported
-	// reports it too — the operator's other answer, a layout this build served
-	// and has retired.
+	// LayoutHash is THE FILE'S hash, set by the layout refusals
+	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3) so the application can ask for that
+	// layout.
 	LayoutHash uint64
 }
+
+// Refuse records the read's refusal (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): the first
+// condition a read meets is the one it reports, and any later one changes
+// nothing. A read checks in its own order and stops at the first condition it
+// meets; the verdict, not the reason, is the contract (tla/ReadOrder.tla,
+// OneVerdict).
+func (r *TableReport) Refuse(reason TableRefuseReason, field string) {
+	if r == nil || r.Refusal != TableRefuseOk {
+		return
+	}
+	r.Refusal, r.Field = reason, field
+	if r.Reason == "" {
+		r.Reason = reason.Error()
+		if field != "" {
+			r.Reason += ": " + field
+		}
+	}
+}
+
+// Refused reports whether the read refused: Err is not nil.
+func (r *TableReport) Refused() bool { return r.Err() != nil }
 
 // THE SHARED EMPTY DOC (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): a declaration with no ///
 // block carries a doc column naming this one definition, so absence costs a
@@ -142,7 +147,9 @@ const (
 	TableRefuseAllocationFailed
 	TableRefuseWireDamaged
 	TableRefuseMalformed
-	TableRefuseClamped
+	// TableRefuseOutOfRange: a value outside a range the read holds it to
+	// (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5), the ordinal the retired spelling clamped held.
+	TableRefuseOutOfRange
 	TableRefuseKindMismatch
 	TableRefuseBase64Damaged
 	TableRefuseBase64NotCanonical
@@ -184,6 +191,11 @@ const (
 	TableRefuseLengthOverBound
 )
 
+// TableRefuseMissingRequired is a record that lacks a | required field
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §2.3). It is a report-only member: Err answers the typed
+// TableMissingRequired naming the fields, never this value.
+const TableRefuseMissingRequired TableRefuseReason = 255
+
 func (r TableRefuseReason) Error() string {
 	switch r {
 	case TableRefuseOk:
@@ -222,8 +234,8 @@ func (r TableRefuseReason) Error() string {
 		return "wire_damaged"
 	case TableRefuseMalformed:
 		return "malformed"
-	case TableRefuseClamped:
-		return "clamped"
+	case TableRefuseOutOfRange:
+		return "out_of_range"
 	case TableRefuseKindMismatch:
 		return "kind_mismatch"
 	case TableRefuseBase64Damaged:
@@ -276,23 +288,24 @@ func (r TableRefuseReason) Error() string {
 		return "count_over_bound"
 	case TableRefuseLengthOverBound:
 		return "length_over_bound"
+	case TableRefuseMissingRequired:
+		return "missing_required"
 	}
 	return "invalid refusal reason"
 }
 
 // tableTruncatedMalformed is the typed error a truncated fixed load answers
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5 strict error identity, §3.4): a short file is
-// malformed by class and truncated by name, so a caller matching either sees
-// it. It is a value, not the caller's *TableReport, so the error keeps its
-// answer when the report is reused. The rule is on this error, not on the
-// enum: the fixed writer's short output buffer returns TableRefuseTruncated
-// itself and never matches malformed.
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4): truncated by name, and matched by
+// errors.Is(err, TableRefuseWireDamaged) as the damage it is. It is a value, not
+// the caller's *TableReport, so the error keeps its answer when the report is
+// reused; the fixed writer's short output buffer returns TableRefuseTruncated
+// itself.
 type TableTruncatedMalformed struct{}
 
 func (TableTruncatedMalformed) Error() string { return TableRefuseTruncated.Error() }
 
 func (TableTruncatedMalformed) Is(target error) bool {
-	return target == TableRefuseTruncated || target == TableRefuseMalformed
+	return target == TableRefuseTruncated || target == TableRefuseWireDamaged
 }
 
 func TableRefuseError(reason TableRefuseReason) error {
@@ -330,11 +343,29 @@ type TableMissingRequired struct{ Fields string }
 
 func (m TableMissingRequired) Error() string { return "missing_required: " + m.Fields }
 
-// Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, mas-bandwidth/schema docs/VERSIONING.md
-// The read report). A strict read refuses malformed, clamped, kind-mismatched,
-// unknown form, wire-damaged, build-version-mismatched, missing-required
-// (§2.3, naming the field), a non-finite float (§3.3, refused by every read:
-// non_finite_float, named in NonFiniteFloat and Reason) and blob_shared (§2.5), each as one typed reason. Unknown, Widened and Retained alone leave it nil, as does a clean read.
+// TableOutOfRange is a read's out_of_range refusal naming the field whose value
+// lies outside the range the read holds it to (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5):
+// errors.Is(err, TableRefuseOutOfRange) holds.
+type TableOutOfRange struct{ Field string }
+
+func (e TableOutOfRange) Error() string { return "out_of_range: " + e.Field }
+
+func (e TableOutOfRange) Is(target error) bool { return target == TableRefuseOutOfRange }
+
+// TableMalformedField is the JSON read's malformed refusal naming the field it
+// refused (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2): errors.Is(err, TableRefuseMalformed) holds.
+type TableMalformedField struct{ Field string }
+
+func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
+
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+
+// Err is the report's typed error (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): nil on a read that
+// returned, and the refusal otherwise, as an error value whose detail names the
+// reason and, where it has one, the field. errors.Is matches the
+// TableRefuseReason member; errors.As matches the typed errors
+// (TableMissingRequired, TableOutOfRange, TableBuildVersionMismatch).
+// Unknown, Widened and Retained never make it non-nil.
 func (r *TableReport) Err() error {
 	if r == nil {
 		return nil
@@ -342,15 +373,10 @@ func (r *TableReport) Err() error {
 	if r.Reason == "build_version_mismatch" {
 		return TableBuildVersionMismatch{Remote: r.BuildVersionRemote, Own: r.BuildVersionOwn}
 	}
-	// A NON-FINITE FLOAT outranks every later verdict: no read keeps one (§3.3).
-	if r.NonFiniteFloat != "" {
-		return TableRefuseNonFiniteFloat
-	}
 	// The fixed form's named refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3) answer as
 	// their TableRefuseReason member, so errors.Is(err, TableRefuseLayoutUnknown)
 	// holds for a fixed load that refused. The form-byte refusals (previous_form,
-	// newer_form, message_form_as_file) are NOT in this switch: §6.5's strict error
-	// identity keeps them answering TableRefuseUnknownForm below.
+	// newer_form, message_form_as_file) answer TableRefuseUnknownForm below.
 	if r.FixedRaised && r.Verdict == TableOpenRefused {
 		switch r.Reason {
 		case "layout_unknown":
@@ -387,21 +413,25 @@ func (r *TableReport) Err() error {
 			return TableRefuseCountOverBound
 		case "length_over_bound":
 			return TableRefuseLengthOverBound
+		case "out_of_range":
+			return TableOutOfRange{Field: r.Field}
 		case "truncated":
 			return TableRefuseTruncated
 		case "reserved_not_zero":
 			return TableRefuseReservedNotZero
+		case "wire_damaged":
+			return TableRefuseWireDamaged
+		case "non_finite_float":
+			return TableRefuseNonFiniteFloat
+		case "kind_mismatch":
+			return TableRefuseKindMismatch
 		}
 		return TableRefuseUnknownForm
 	}
-	// The fixed form's framing-damage returns (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §3.4) set
-	// Malformed and their Reason without FixedRaised, because they return -1
-	// directly instead of through tableFixedRefuse. A short fixed file keeps the
-	// truncated name and answers the malformed class through a value error; the
-	// enum itself stays one name per clause, so a save's short output buffer is
-	// truncated and not malformed.
+	// A short fixed file keeps the truncated name and answers the damage class
+	// through a value error; a save's short output buffer is truncated alone.
 	if r.Reason == "truncated" {
-		if r.Malformed {
+		if r.Refusal != TableRefuseOk {
 			return TableTruncatedMalformed{}
 		}
 		return TableRefuseTruncated
@@ -415,103 +445,30 @@ func (r *TableReport) Err() error {
 	if r.Reason == "integrity_mismatch" {
 		return TableRefuseIntegrityMismatch
 	}
-	// A builder load that met a count above the int32 storage cap refused it by
-	// name (mas-bandwidth/schema docs/SPEC-TABLES.md §2.9): not damage, so Malformed stays false.
 	if r.Reason == "count_over_extent_cap" {
 		return TableRefuseCountOverExtentCap
 	}
-	if r.Verdict == TableOpenDamaged {
+	if r.Verdict == TableOpenDamaged && r.Refusal == TableRefuseOk {
 		return TableRefuseWireDamaged
 	}
-	if r.MissingRequired > 0 {
-		const p = "missing_required: "
-		f := r.Reason
-		if len(f) >= len(p) && f[:len(p)] == p {
-			f = f[len(p):]
+	switch r.Refusal {
+	case TableRefuseOk:
+		return nil
+	case TableRefuseMissingRequired:
+		return TableMissingRequired{Fields: r.Field}
+	case TableRefuseOutOfRange:
+		return TableOutOfRange{Field: r.Field}
+	case TableRefuseMalformed:
+		if r.Field != "" {
+			return TableMalformedField{Field: r.Field}
 		}
-		return TableMissingRequired{Fields: f}
 	}
-	if r.Malformed {
-		const p = "malformed: "
-		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
-			return TableMalformedField{Field: r.Reason[len(p):]}
-		}
-		return TableRefuseMalformed
-	}
-	// A blob named from two slots (SPEC-TABLES §2.5, §6.5): the tolerant read keeps
-	// the one node and counts it; the strict read refuses it by name.
-	if r.BlobShared > 0 {
-		return TableRefuseBlobShared
-	}
-	if r.Clamped > 0 {
-		if r.ClampedField != "" {
-			return TableClampedField{Field: r.ClampedField}
-		}
-		return TableRefuseClamped
-	}
-	if r.KindMismatch > 0 {
-		return TableRefuseKindMismatch
-	}
-	return nil
+	return r.Refusal
 }
 
-// tableNonFiniteFloat names a float whose raw bits a read found to be a NaN or
-// an infinity (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): the field is not written and the load,
-// tolerant too, refuses as non_finite_float. The first name wins. It takes the
-// report's slot, not a method, so the shared runtime (§8.4) can export it; the
-// file and message readers both pass &r.Report.NonFiniteFloat.
-func TableNonFiniteFloat(slot *string, field string) {
-	if *slot == "" {
-		*slot = field
-	}
-}
+const TableWireBytesID uint64 = 0x2f2ec0474f1c4fe4
 
-// tableNonFiniteRefused names a load's non-finite float in Reason; the caller
-// refuses and lands nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3).
-func TableNonFiniteRefused(report *TableReport) bool {
-	if report.NonFiniteFloat == "" {
-		return false
-	}
-	report.Reason = "non_finite_float: " + report.NonFiniteFloat
-	return true
-}
-
-// tableTextClamped names the field whose value a read clamped (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §6.5), so a strict read can say which field. The first name a read records
-// wins, as for non_finite_float. It lands in the report's own ClampedField slot,
-// apart from Reason, so the clamped refusal keeps its field whatever Reason holds. The slot is named by pointer
-// so the same emitted call compiles in every reader context (the table read's
-// *TableReader, the message read's TableMessageReader).
-func TableTextClamped(clampedField *string, field string) {
-	if clampedField != nil && *clampedField == "" {
-		*clampedField = field
-	}
-}
-
-// TableClampedField is a strict read's clamped refusal naming the field it clamped
-// (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): errors.Is(err, TableRefuseClamped) holds.
-type TableClampedField struct{ Field string }
-
-func (e TableClampedField) Error() string { return "clamped: " + e.Field }
-
-func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
-
-// tableTextMalformed names the text list or map whose element or key a read
-// refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
-func TableTextMalformed(r *TableReport, field string) {
-	if r != nil && r.Reason == "" {
-		r.Reason = "malformed: " + field
-	}
-}
-
-// TableMalformedField is a strict read's malformed refusal naming the text
-// list or map it refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1):
-// errors.Is(err, TableRefuseMalformed) holds.
-type TableMalformedField struct{ Field string }
-
-func (e TableMalformedField) Error() string { return "malformed: " + e.Field }
-
-func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+const TableWireStringID uint64 = 0x704be0d8faaffc58
 
 func TableLebBytes(v uint64) int64 {
 	n := int64(1)
@@ -586,6 +543,62 @@ func TableUTF8Clamp(data []byte, n int64) int64 {
 		n--
 	}
 	return n
+}
+
+func TableWireUtf16Valid(data []byte) bool {
+	if len(data)&1 != 0 {
+		return false
+	}
+	for i := 0; i < len(data); i += 2 {
+		u := binary.LittleEndian.Uint16(data[i:])
+		if u == 0 || u >= 0xdc00 && u <= 0xdfff {
+			return false
+		}
+		if u >= 0xd800 && u <= 0xdbff {
+			i += 2
+			if i >= len(data) {
+				return false
+			}
+			if v := binary.LittleEndian.Uint16(data[i:]); v < 0xdc00 || v > 0xdfff {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// tableOpenAnswer writes an open's verdict into the report: a form this
+// reader does not carry is refused by name, and damage is wire_damaged.
+func TableOpenAnswer(report *TableReport, verdict TableOpenVerdict, data []byte) bool {
+	if report == nil {
+		return verdict == TableOpenOk
+	}
+	report.Verdict = verdict
+	switch verdict {
+	case TableOpenOk:
+		return true
+	case TableOpenRefused:
+		report.Reason = "newer_form"
+		if len(data) > 0 && data[0] == 2 {
+			report.Reason = "message_form_as_file"
+		}
+		report.Refuse(TableRefuseUnknownForm, "")
+	default:
+		report.Refuse(TableRefuseWireDamaged, "")
+	}
+	return false
+}
+
+// tableRefused makes a refusing read's report what mas-bandwidth/schema docs/SPEC-TABLES.md §4 says
+// it is: the refusal and no counter, because nothing it decoded is defined.
+func TableRefused(r *TableReport) {
+	if r == nil {
+		return
+	}
+	if r.Err() == nil {
+		r.Refuse(TableRefuseWireDamaged, "")
+	}
+	r.Unknown, r.Widened, r.Retained, r.RetainLost = 0, 0, 0, 0
 }
 
 // TableBitWriter uses the packet wire's low-bit-first order. Measuring walks
@@ -1065,37 +1078,11 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		switch p.Op {
 		case TableFixedCopy:
 			TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
-		case TableFixedTag:
-			// A UNION TAG NAMING NO ARM LANDS AS None AND COUNTS UNKNOWN,
-			// which is what form 1 does with an arm id it does not know
-			// (mas-bandwidth/schema docs/SPEC-TABLES.md §4). Copied raw it would land as a
-			// discriminant no variant spells, and every arm's guard would
-			// then decline to fill it — a value that is neither None nor an
-			// arm. Aux is the reader's own arm count.
-			var tag uint64
-			for k := range p.Size {
-				tag |= uint64(src[p.Src+k]) << (8 * k)
-			}
-			if tag > uint64(p.Aux) {
-				tag = 0
-				report.Unknown++
-			}
-			for k := range p.Size {
-				dst[p.Dst+k] = byte(tag >> (8 * k))
-			}
-		case TableFixedBool:
-			// A GO bool IS NOT A BYTE. A Go true is the byte 1 (v == true,
-			// array equality). if v is TESTB (nonzero) on amd64 and TBZ bit
-			// 0 on arm64, so a hostile 2 reads true on one and false on the
-			// other. The wire says nonzero is true (mas-bandwidth/schema docs/SPEC-TABLES.md §3);
-			// normalise here (byte != 0 -> 1) and never copy.
-			for k := range p.Size {
-				v := byte(0)
-				if src[p.Src+k] != 0 {
-					v = 1
-				}
-				dst[p.Dst+k] = v
-			}
+		case TableFixedTag, TableFixedBool:
+			// The check loop refused a tag past the reader's arm count and a
+			// bool or present byte other than 0 or 1 before this run, so the
+			// bytes land as they are (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5).
+			TableFixedCopyRun(dst[p.Dst:], src[p.Src:], p.Size)
 		case TableFixedCount:
 			v := int32(TableFixedGet32(src[p.Src:]))
 			binary.LittleEndian.PutUint32(dst[p.Dst:], uint32(v))
@@ -1120,12 +1107,9 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 		case TableFixedOrdinal:
 			// SIXTY-FOUR BITS. An ordinal rides at 1, 2, 4 or 8 bytes (§1.2);
 			// read through a 32-bit temporary an eight-byte ordinal loses its
-			// top four bytes, so a forged 0x1_0000_0001 would land as 1.
-			// THE OP MOVES NOTHING (§5.4): a raw past the writer's set lands
-			// None here, and tableFixedForgedBounds counts it once in the
-			// BOUNDS pass, on the compiled plan as the storage clamp counts the
-			// identity plan's own forged tag (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4,
-			// §5.8 row 12, fix 27).
+			// top four bytes, so a forged 0x1_0000_0001 would land as 1. The
+			// check loop refused a raw past the writer's set before this run
+			// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6).
 			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
 			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
 			table := unsafe.Slice(p16, int(*p16)+1)
@@ -1170,64 +1154,14 @@ func TableFixedRun(plan []TableFixedEntry, count int32, src, dst []byte, report 
 			for i := range p.Size {
 				dst[p.Dst+i] = byte(aux >> (8 * i))
 			}
-			// THE OP MOVES NOTHING (§5.4): the unguarded None const lands None,
-			// and a raw tag past the writer's arm count (this entry's DstSize) is
-			// counted once by tableFixedForgedBounds, the BOUNDS pass, on the
-			// compiled plan as the storage clamp counts the identity plan's own
-			// forged tag (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12, fix 27).
-			// tableFixedSrcEnd gives this one entry a source reach, so the
-			// record bound has already refused a plan that would read past it.
+			// The unguarded None const lands None; the check loop refused a raw
+			// tag past the writer's arm count (this entry's DstSize) before this
+			// run (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §4.6). tableFixedSrcEnd gives
+			// this one entry a source reach, so the record bound has already
+			// refused a plan that would read past it.
 		}
 	}
 	return ""
-}
-
-// tableFixedForgedBounds is the BOUNDS pass's count of a forged ordinal or union
-// tag (§5.4, fix 27): a raw ordinal past the writer's variant count, or a raw
-// union tag past the writer's arm count, is landed None by the ordinal/const
-// op — which moves nothing — and counted HERE, once per field, on the compiled
-// plan exactly as the identity plan's storage clamp counts its own forged tag.
-// The identity plan carries no ordinal or unguarded const entry (its union
-// tag and leaves are copy), so this pass is silent for it, and the writer's
-// count the storage clamp cannot see — the remap table's length word, or the
-// entry's DstSize — is why the count lives in the plan-aware pass here and not
-// in the op (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 12).
-func TableFixedForgedBounds(plan []TableFixedEntry, count int32, src []byte, report *TableReport) {
-	for i := range count {
-		p := plan[i]
-		// THE GUARD AT ITS FULL WIDTH, matching tableFixedRun (§5.2): an entry
-		// whose guard does not match never lands, so it never counts.
-		if p.Guard != TableFixedNoGuard && TableFixedTagAt(src, p.Guard, p.ArgW) != uint64(p.Arg) {
-			continue
-		}
-		// AN ARM INSIDE AN ARM ANSWERS TO THE OUTER TAG TOO (§4.1): an entry
-		// whose second lane does not hold never lands, so it never counts.
-		if p.ArgW2 != 0 && TableFixedTagAt(src, p.Guard2, p.ArgW2) != uint64(p.Arg2) {
-			continue
-		}
-		if p.GuardCount > 2 && !p.chainHolds(plan, src) {
-			continue
-		}
-		switch p.Op {
-		case TableFixedOrdinal:
-			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
-			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
-			table := unsafe.Slice(p16, int(*p16)+1)
-			if raw != 0 && raw > uint64(table[0]) {
-				report.Clamped++
-			}
-		case TableFixedConst:
-			if p.Aux == 0 && p.DstSize != 0 && p.Guard == TableFixedNoGuard {
-				var raw uint64
-				for k := range p.Size {
-					raw |= uint64(src[p.Src+k]) << (8 * k)
-				}
-				if raw > uint64(p.DstSize) {
-					report.Clamped++
-				}
-			}
-		}
-	}
 }
 
 // tableFixedTextIllFormed reports whether a text payload's USED units are the
@@ -1372,6 +1306,41 @@ func TableFixedTextRefusal(plan []TableFixedEntry, count int32, src []byte) stri
 			if TableFixedTextIllFormed(p.Meta, uint32(v), src[p.Src+4:]) {
 				return TableRefuseTextIllFormed.Error()
 			}
+		case TableFixedBool:
+			// a bool or present byte other than 0 or 1 is damage (§4.5)
+			for k := range p.Size {
+				if src[p.Src+k] > 1 {
+					return TableRefuseWireDamaged.Error()
+				}
+			}
+		case TableFixedTag:
+			// a union tag past the reader's arm count names no arm (§4.6)
+			var tag uint64
+			for k := range p.Size {
+				tag |= uint64(src[p.Src+k]) << (8 * k)
+			}
+			if tag > uint64(p.Aux) {
+				return TableRefuseOutOfRange.Error()
+			}
+		case TableFixedOrdinal:
+			// an ordinal past the writer's variant count is forged (§4.6)
+			raw := TableFixedTagAt(src, p.Src, uint8(p.Size))
+			p16 := (*uint16)(unsafe.Add(unsafe.Pointer(&plan[0]), uintptr(p.Aux)))
+			if raw > uint64(*p16) {
+				return TableRefuseOutOfRange.Error()
+			}
+		case TableFixedConst:
+			// an unguarded None const reads the writer's tag: one past the
+			// writer's arm count (DstSize) is forged (§4.6)
+			if p.Aux == 0 && p.DstSize != 0 && p.Guard == TableFixedNoGuard {
+				var raw uint64
+				for k := range p.Size {
+					raw |= uint64(src[p.Src+k]) << (8 * k)
+				}
+				if raw > uint64(p.DstSize) {
+					return TableRefuseOutOfRange.Error()
+				}
+			}
 		}
 	}
 	return ""
@@ -1447,252 +1416,8 @@ func TableFixedUnionArmBytes(b TableFixedLayoutView, i int32) uint32 {
 	return widest
 }
 
-// ---- THE LAYOUT'S OWN VALIDATION, RULE BY NAMED RULE -----------------------
-//
-// A LAYOUT ARRIVES FROM AN UNTRUSTED ENDPOINT and it is the one structure a reader
-// must parse before it knows anything at all, so every rule below runs BEFORE a
-// single record byte is touched and each refuses under ITS OWN NAME rather than
-// under one word for all of them (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1).
-//
-// NOR IS THERE A CYCLE RULE, because a pre-order walk cannot express a cycle: an
-// entry's children ARE THE ENTRIES THAT FOLLOW IT, so a child's index is always
-// higher than its parent's, the layout is finite, and there is no back reference
-// for a cycle to be made of. The tree-closure rule is what bounds the walk, and
-// the depth rule is what bounds the reader's stack.
-type TableFixedCheck struct {
-	layout TableFixedLayoutView
-	why    string
-}
-
-// Keep the FIRST reason and stop: the order of the rules is load-bearing, so the
-// reason a reader reports is the first one the layout broke.
-func (c *TableFixedCheck) fail(why string) {
-	if c.why == "" {
-		c.why = why
-	}
-}
-
-// tableFixedCheckEntry validates the subtree rooted at i and answers how many
-// entries it occupies, which is the same arithmetic tableFixedSubtree does and
-// is why that walk is safe to run afterwards and only afterwards.
-func TableFixedCheckEntry(c *TableFixedCheck, i, depth int32) int32 {
-	if c.why != "" {
-		return 0
-	}
-	if i < 0 || i >= c.layout.Count {
-		c.fail("layout_tree_unclosed")
-		return 0
-	}
-	if depth > TableFixedMaxDepth {
-		c.fail("layout_too_deep")
-		return 0
-	}
-	e := TableFixedEntryAt(c.layout, i)
-	// THE CLOSED KIND SET, FIRST: a kind outside it is a layout of another form
-	// and is refused whole, never walked and never stepped over.
-	if !TableFixedKindKnown(e.Kind) {
-		c.fail("layout_kind_unknown")
-		return 0
-	}
-	if e.Size > TableFixedRecordMaxBytes {
-		c.fail("layout_record_too_large")
-		return 0
-	}
-
-	// THE CHILDREN FIRST, in the pre-order the layout is written in.
-	at := i + 1
-	var sum uint64
-	var widest, firstSize, secondSize, firstChildren uint32
-	var firstKind uint8
-	kidsAreVariants := true
-	for k := range e.Children {
-		child := at
-		used := TableFixedCheckEntry(c, child, depth+1)
-		if c.why != "" {
-			return 0
-		}
-		ce := TableFixedEntryAt(c.layout, child)
-		if k == 0 {
-			firstSize, firstKind, firstChildren = ce.Size, ce.Kind, ce.Children
-		}
-		if k == 1 {
-			secondSize = ce.Size
-		}
-		if ce.Kind != 32 {
-			kidsAreVariants = false
-		}
-		// THE SUM IS 64 BITS precisely so a u32 that overflows is CAUGHT rather
-		// than wrapped into a small number that then agrees with its parent.
-		sum += uint64(ce.Size)
-		if ce.Size > widest {
-			widest = ce.Size
-		}
-		if sum > uint64(TableFixedRecordMaxBytes) {
-			c.fail("layout_record_too_large")
-			return 0
-		}
-		at += used
-	}
-
-	admitted, leaf := TableFixedLeafSize(e.Kind, e.Size)
-	if !admitted {
-		c.fail("layout_size_mismatch")
-		return 0
-	}
-	if leaf {
-		if e.Children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		return at - i
-	}
-	switch e.Kind {
-	case 13: // a TABLE: its size is the SUM of its fields'
-		if uint64(e.Size) != sum {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	case 35: // the OPTIONAL WRAPPER: one child, one present byte in front of it
-		if e.Children != 1 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if uint64(e.Size) != sum+1 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	case 14: // an ARRAY: a whole number of elements, behind a count or not
-		if e.Children != 1 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if firstSize == 0 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-		bare := e.Size%firstSize == 0
-		counted := e.Size >= 4 && (e.Size-4)%firstSize == 0
-		if !bare && !counted {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	case 16: // an ENUM-KEYED array: the KEY ENUM then the ELEMENT, every slot written
-		if e.Children != 2 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if firstKind != 30 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if secondSize == 0 || e.Size%secondSize != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-		// AT LEAST one slot per variant. Not exactly one: an enum widened by an
-		// explicit max has more slots than it has names, and the layout carries
-		// only the names.
-		if e.Size/secondSize < firstChildren {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	case 15: // a UNION: the TAG at its own width, then the WIDEST ARM
-		if e.Children == 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if e.Size <= widest {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-		if !TableFixedOrdinalWidth(e.Size - widest) {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	case 30: // an ENUM: the ordinal's storage width, and its children are VARIANTS
-		if !TableFixedOrdinalWidth(e.Size) {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-		if e.Children != 0 && !kidsAreVariants {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-	case 12: // string(N): the length, then N bytes
-		if e.Children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if e.Size < 4 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	case 33: // wstring(N): the length in CODE UNITS, then 2N bytes
-		if e.Children != 0 {
-			c.fail("layout_kind_invalid")
-			return 0
-		}
-		if e.Size < 4 || (e.Size-4)%2 != 0 {
-			c.fail("layout_size_mismatch")
-			return 0
-		}
-	default:
-		// Every kind of the closed set is either a leaf above or a case here, so
-		// this is unreachable — and it refuses rather than admits, because a
-		// kind that reached it is a kind the two lists disagree about.
-		c.fail("layout_kind_unknown")
-		return 0
-	}
-	return at - i
-}
-
 func TableFixedTagBytes(b TableFixedLayoutView, i int32) uint32 {
 	return TableFixedEntryAt(b, i).Size - TableFixedUnionArmBytes(b, i)
-}
-
-// tableFixedParseLayout is the WHOLE of what a reader trusts a layout on. It
-// answers the view and a REASON BY NAME — empty when the layout passed every
-// rule — and the caller reports that reason. A layout that fails any rule SETS
-// NOTHING: no view, no plan, and no counter moved.
-//
-// THE ORDER IS LOAD-BEARING (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1.1): rule 1; the
-// root's kind and size; then the walk — index in range (5), depth (7), kind
-// known (2), own size (6), the children, then the size and shape rules (3, 4);
-// and last that the walk consumed exactly the entries (5).
-func TableFixedParseLayout(bytes []byte) (TableFixedLayoutView, string) {
-	var out TableFixedLayoutView
-	// THE RESIDUE: bytes that are not a layout at all — fewer than a header's
-	// worth of them — are layout_malformed and not one of the seven.
-	if int32(len(bytes)) < TableFixedLayoutHeaderBytes {
-		return out, "layout_malformed"
-	}
-	// 1. THE ENTRY COUNT FITS THE LAYOUT LENGTH EXACTLY
-	count := TableFixedGet32(bytes)
-	if count == 0 || int64(count)*int64(TableFixedEntryBytes)+int64(TableFixedLayoutHeaderBytes) != int64(len(bytes)) {
-		return out, "layout_count_mismatch"
-	}
-	view := TableFixedLayoutView{Bytes: bytes, Count: int32(count)}
-	// 2. THE ROOT IS A TABLE, and its size is the record's body
-	root := TableFixedEntryAt(view, 0)
-	if root.Kind != 13 {
-		return out, "layout_kind_invalid"
-	}
-	if root.Size == 0 || root.Size > TableFixedRecordMaxBytes {
-		return out, "layout_record_too_large"
-	}
-	// 3. EVERY KIND IN THE CLOSED SET AND USED AS ITS DEFINITION ALLOWS, EVERY
-	//    SIZE THE ONE ITS CHILDREN ACCOUNT FOR, NOTHING PAST THE WALK'S BOUND
-	c := TableFixedCheck{layout: view}
-	used := TableFixedCheckEntry(&c, 0, 0)
-	if c.why != "" {
-		return out, c.why
-	}
-	// 4. THE PRE-ORDER WALK CONSUMES EXACTLY THE ENTRIES: the tree closes and
-	//    the layout has nothing left over
-	if used != view.Count {
-		return out, "layout_tree_unclosed"
-	}
-	return view, ""
 }
 
 // tableFixedSrcEnd is the last source byte, exclusive, an entry reads — the
@@ -1820,14 +1545,14 @@ type TableFixedKnownLayout struct {
 }
 
 // tableFixedLineagePlan is one older entry's plan, laid down once from the
-// LOCK'S bytes. Unknown and KindMismatch are the COMPILE census: a writer field
-// no reader field names is counted ONCE PER ENDPOINT and never per record (§5.4).
+// LOCK'S bytes. Unknown is the COMPILE census: a writer field no reader field
+// names is counted ONCE PER ENDPOINT and never per record (§5.4), and on a
+// lawful lineage it is zero.
 type TableFixedLineagePlan struct {
-	Entries      []TableFixedEntry
-	Count        int32
-	Unknown      int32
-	KindMismatch int32
-	Why          string
+	Entries []TableFixedEntry
+	Count   int32
+	Unknown int32
+	Why     string
 }
 
 func TableFixedSelect(known []TableFixedKnownLayout, hash uint64) int32 {
@@ -2137,7 +1862,7 @@ func TableMessageSkipBody(r *TableBitReader, v *TableVocabulary, indexBits int64
 }
 
 // Numeric values are reconstructed at the announced storage width. Typed
-// readers then apply the existing exact file-domain clamps to these lanes.
+// readers then hold these lanes to the declared ranges, as the file read does.
 func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byte) bool {
 	lo, ok := r.Get(min(s.Bits, 64))
 	if !ok {
@@ -2170,7 +1895,9 @@ func TableMessageReadScalar(r *TableBitReader, s TableMessageShape, out *[16]byt
 	return true
 }
 
-func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageShape, lo, hi uint64) {
+// A quantized float outside its range is a value the writer refuses
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3): over counts it, and the save answers -1.
+func TableMessageWriteScalar(w *TableBitWriter, over *int32, s TableMessageShape, lo, hi uint64) {
 	if s.Packing == 1 {
 		borrow := uint64(0)
 		if lo < s.Base[0] {
@@ -2184,10 +1911,10 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 		ratio := float32((value - s.QMin) / s.QDelta)
 		if !(ratio >= 0) {
 			ratio = 0
-			*clamped++
+			*over++
 		} else if !(ratio <= 1) {
 			ratio = 1
-			*clamped++
+			*over++
 		}
 		scaled := float32(ratio * float32(s.QCount))
 		lo = uint64(min(uint32(math.Floor(float64(float32(scaled+0.5)))), s.QCount))
@@ -2200,10 +1927,9 @@ func TableMessageWriteScalar(w *TableBitWriter, clamped *int32, s TableMessageSh
 
 func TableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport) (TableMessageReader, int64) {
 	r := TableMessageReader{Vocabulary: v, Report: *report}
-	r.Report.NonFiniteFloat = ""
 	defer func() { *report = r.Report }()
 	if len(data) == 0 {
-		r.Report.Malformed = true
+		r.Report.Refuse(TableRefuseWireDamaged, "")
 		return r, -1
 	}
 	if data[0] != 2 {
@@ -2215,7 +1941,7 @@ func TableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport)
 		return r, -1
 	}
 	if len(data) < 2 {
-		r.Report.Malformed = true
+		r.Report.Refuse(TableRefuseWireDamaged, "")
 		return r, -1
 	}
 	r.Bits.Buffer = data[2:]
@@ -2224,11 +1950,11 @@ func TableMessageBatchOpen(v *TableVocabulary, data []byte, report *TableReport)
 
 func TableMessageBatchClose(r *TableMessageReader) bool {
 	if !r.Bits.Align() || r.Bits.Offset != int64(len(r.Bits.Buffer))*8 {
-		r.Report.Malformed = true
+		r.Report.Refuse(TableRefuseWireDamaged, "")
 		return false
 	}
 	return true
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0xa9a32f918d49425e
+const Version uint64 = 0x7355022ee6f00be7

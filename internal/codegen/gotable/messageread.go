@@ -9,7 +9,7 @@ import (
 
 func (g *tableGen) emitMessageRead(st *ir.Struct) {
 	g.pf("func %sLoadMessageBody(r *TableMessageReader,value *%s)bool {\n%sReset(value);\n", st.Name, g.storageName(st.Name), st.Name)
-	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Malformed=true;return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Malformed=true;return false};switch entry.ID {\n")
+	g.pf("for {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};if ref==0{return true};entry,ok:=r.Vocabulary.Entry(ref);if !ok||entry.ID>=0xfffffffffffffffd {r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};switch entry.ID {\n")
 	for _, f := range st.Fields {
 		mine := ir.TableFieldEntry(f)
 		g.pf("case 0x%016x:{\n", mine.Id)
@@ -25,29 +25,26 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Malformed=true;return false}\n}}}\n")
+	g.pf("default:r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
 	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
 	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
 		return
 	}
-	// THE PLAIN NAME IS THE STRICT READ, THE TOLERANT ONE IS NAMED (docs/SPEC-TABLES.md §6.5).
-	g.pf("// %sLoadMessagesTolerant is the TOLERANT message read (docs/SPEC-TABLES.md §6.5, §3.3): the counters are\n// counted onto the report passed, and damage in any body refuses the whole batch: a count of 0 with every\n// value it had written reset (docs/SPEC-TABLES.md §4).\n", st.Name)
-	g.pf("// %sLoadMessages is the plain message read, and it is STRICT (§6.5): ok is false for whatever\n// %sReadStrict refuses, and a batch refused by the strict rule alone answers a count of 0 with every\n// value it had written reset. A supplied report receives THIS read's report; report.Err() is the reason.\n", st.Name, st.Name)
-	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};count,ok:=%sLoadMessagesTolerant(values,vocabulary,data,read);if !ok{return count,false};if read.Err()!=nil{for i := range count {%sReset(&values[i])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), st.Name, st.Name)
-	// THE READER CHECKS THE BATCH TRAILER BEFORE IT DECODES ANY BODY
-	// (docs/SPEC-TABLES.md §2.14, §3.3): a declaring root opens through the
-	// sealed open; in a unit where no table declares the key the original open
-	// is kept, so a keyless unit emits the bytes it emitted before.
+	// THE PLAIN NAME IS THE READ, AND IT IS THE ONLY READ (docs/SPEC-TABLES.md
+	// §6.5): the batch is accepted whole or refused with a count of 0 and every
+	// value it had written reset (§3.3). The batch trailer of a declaring root
+	// is checked before any body is decoded (§2.14).
+	open := "tableMessageBatchOpen(vocabulary,data,read)"
 	if len(ir.TableIntegrityTables(g.unit)) > 0 {
 		sealed := "false"
 		if st.Integrity != "" {
 			sealed = "true"
 		}
-		g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpenSealed(vocabulary,data,report,"+sealed+");pre:=r.Report.Malformed;r.Report.Malformed=false;defer func(){r.Report.Malformed=r.Report.Malformed||pre;*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i := range count {if !%sLoadMessageBody(&r,&values[i])||tableNonFiniteRefused(&r.Report)||r.Report.Malformed{for j := range i+1 {%sReset(&values[j])};return 0,false}};if !tableMessageBatchClose(&r){for j := range count {%sReset(&values[j])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), st.Name, st.Name, st.Name)
-		return
+		open = "tableMessageBatchOpenSealed(vocabulary,data,read," + sealed + ")"
 	}
-	g.pf("func %sLoadMessagesTolerant(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {if report==nil {var ignored TableReport;report=&ignored};r,count:=tableMessageBatchOpen(vocabulary,data,report);pre:=r.Report.Malformed;r.Report.Malformed=false;defer func(){r.Report.Malformed=r.Report.Malformed||pre;*report=r.Report}();if count<0{return 0,false};if count>int64(len(values)){return count,tableMessageRefuse(&r.Report,\"batch_too_large\")};for i := range count {if !%sLoadMessageBody(&r,&values[i])||tableNonFiniteRefused(&r.Report)||r.Report.Malformed{for j := range i+1 {%sReset(&values[j])};return 0,false}};if !tableMessageBatchClose(&r){for j := range count {%sReset(&values[j])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), st.Name, st.Name, st.Name)
+	g.pf("// %sLoadMessages is the message read (docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a\n// count of 0 and every value it had written reset. A supplied report receives this read's report;\n// report.Err() is the reason.\n", st.Name)
+	g.pf("func %sLoadMessages(values []%s,vocabulary *TableVocabulary,data []byte,report *TableReport)(int64,bool) {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};r,count:=%s;defer func(){*read=r.Report;if read.Refused(){tableRefused(read)}}();if count<0{return 0,false};if count>int64(len(values)){tableMessageRefuse(&r.Report,\"batch_too_large\");return 0,false};for i := range count {if !%sLoadMessageBody(&r,&values[i])||r.Report.Refused(){for j := range i+1 {%sReset(&values[j])};return 0,false}};if !tableMessageBatchClose(&r){for j := range count {%sReset(&values[j])};return 0,false};return count,true}\n", st.Name, g.storageName(st.Name), open, st.Name, st.Name, st.Name)
 }
 func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabularyEntry, entry, reset, ind string) {
 	g.pf("%swidened:=false;if %s.Shape.Kind!=%d||%s.Element.Kind!=%d {\n", ind, entry, mine.Kind, entry, mine.Shape.Elem)
@@ -58,17 +55,19 @@ func (g *tableGen) emitMessageCompatibility(f *ir.Field, mine ir.TableVocabulary
 	if f != nil && mine.Kind == 14 && wireWidenable(int(mine.Shape.Elem)) {
 		compat = fmt.Sprintf("%s.Shape.Kind==14&&tableKindWidens(%s.Element.Kind,%d)", entry, entry, mine.Shape.Elem)
 	}
-	g.pf("%sif %s {widened=true}else{%s;r.Report.KindMismatch++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0){r.Report.Malformed=true;return false};break}\n%s}\n", ind, compat, reset, entry, ind)
+	// an announced kind that is not the declared one and not a widening
+	// refuses the batch (docs/SPEC-TABLES.md §3.3, §4)
+	g.pf("%sif %s {widened=true}else{%s;r.Report.Refuse(TableRefuseKindMismatch,\"\");return false}\n%s}\n", ind, compat, reset, ind)
 }
 func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, element bool) {
-	bad := "r.Report.Malformed=true;return false"
+	bad := "r.Report.Refuse(TableRefuseWireDamaged,\"\");return false"
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};kept:=tableUTF8Clamp(text,min(int64(n),int64(%d)));if kept<int64(n){r.Report.Clamped++};clear(%s[:]);copy(%s[:],text[:kept]);%sLength=int32(kept)}\n", ind, entry, bad, bad, bad, f.Type.Size, expr, expr, expr)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],text);%sLength=int32(n)}\n", ind, entry, bad, bad, bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};kept:=min(n,uint64(%d));if kept<n{r.Report.Clamped++};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(kept)]);%sLength=int32(kept)}\n", ind, entry, bad, bad, f.Type.Size, expr, expr, expr)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(n)]);%sLength=int32(n)}\n", ind, entry, bad, bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
 	case f.Type.Kind == ir.TWString:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||int64(n)*16>int64(len(r.Bits.Buffer))*8-r.Bits.Offset{%s};kept:=min(n,uint64(%d));if kept<n{r.Report.Clamped++};clear(%s[:]);var high bool;for i := range n {v,_:=r.Bits.Get(16);if v==0||v>=0xdc00&&v<=0xdfff&&!high||high&&(v<0xdc00||v>0xdfff){%s};high=v>=0xd800&&v<=0xdbff;if i<kept {%s[i]=uint16(v)}};if high{%s};if kept>0&&%s[kept-1]>=0xd800&&%s[kept-1]<=0xdbff {kept--};%sLength=int32(kept)}\n", ind, entry, bad, f.Type.Size, expr, bad, expr, bad, expr, expr, expr)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||int64(n)*16>int64(len(r.Bits.Buffer))*8-r.Bits.Offset{%s};if n>%d{%s};clear(%s[:]);var high bool;for i := range n {v,_:=r.Bits.Get(16);if v==0||v>=0xdc00&&v<=0xdfff&&!high||high&&(v<0xdc00||v>0xdfff){%s};high=v>=0xd800&&v<=0xdbff;%s[i]=uint16(v)};if high{%s};%sLength=int32(n)}\n", ind, entry, bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, bad, expr, bad, expr)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.emitMessageReadArray(f, expr, entry, ind)
 	case isStructRef(f.Type):
@@ -113,7 +112,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 	}
 }
 func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
-	bad := "r.Report.Malformed=true;return false"
+	bad := "r.Report.Refuse(TableRefuseWireDamaged,\"\");return false"
 	bound := f.ArrayBound
 	counted := f.Array == ir.ArrayCounted || f.Type.Kind == ir.TBytes
 	companion := expr + "Count"
@@ -131,11 +130,15 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
 		g.pf("}\n")
 	} else {
-		g.pf("keep:=min(n,uint64(%d));if keep<n{r.Report.Clamped++};walk:=n;if element.Shape.Bits>=0{walk=keep};for i:=uint64(0);i<walk;i++ {var scratch %s;p:=&scratch;if i<keep{p=&base[i]}\n", bound, g.storageElementName(f))
+		over := "TableRefuseCountOverBound"
+		if f.Type.Kind == ir.TBytes {
+			over = "TableRefuseLengthOverBound"
+		}
+		g.pf("if n>%d{%s};for i:=uint64(0);i<n;i++ {p:=&base[i]\n", bound, refuse(over, g.floatOwner(f), "return false"))
 		g.emitMessageReadValue(messageElement(f), "(*p)", "element", ind+"\t", true)
-		g.pf("};if walk<n&&!r.Bits.Skip(int64(n-walk)*element.Shape.Bits){%s}\n", bad)
+		g.pf("}\n")
 		if counted {
-			g.pf("%s=int32(keep)\n", companion)
+			g.pf("%s=int32(n)\n", companion)
 		}
 	}
 	g.pf("%s}\n", ind)

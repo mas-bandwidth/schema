@@ -172,7 +172,7 @@ func TestSharedIdRoundTrip(t *testing.T) {
 		t.Fatal("save")
 	}
 	var report TableReport
-	if !RootLoad(&loaded, wire, &report) || report.Malformed || loaded.Banks[0].Alpha != 7 || loaded.N != 1 {
+	if !RootLoad(&loaded, wire, &report) || (report.Refusal.Error() == "wire_damaged" || report.Refusal.Error() == "malformed") || loaded.Banks[0].Alpha != 7 || loaded.N != 1 {
 		t.Fatalf("alpha field gone: n=%d loaded.alpha=%d report=%+v", n, loaded.Banks[0].Alpha, report)
 	}
 	count := binary.LittleEndian.Uint64(wire[len(wire)-8:])

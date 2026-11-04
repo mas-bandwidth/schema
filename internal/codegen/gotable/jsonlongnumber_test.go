@@ -64,7 +64,7 @@ func TestLongNumber(t *testing.T) {
 	text:=[]byte("{\"f\":1."+zeros+",\"i\":1"+zeros+",\"w\":1."+zeros+"1,\"g\":1."+zeros+"}")
 	var v Root
 	var r TableReport
-	if !RootFromJSONTolerant(&v,text,&r) {
+	if !RootFromJSON(&v,text,&r) {
 		t.Fatalf("a valid long number token was refused: %+v",r)
 	}
 	if v.F != 1.0 { t.Fatalf("float64 landed %v, want 1.0",v.F) }

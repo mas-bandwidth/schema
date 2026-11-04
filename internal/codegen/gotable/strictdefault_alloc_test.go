@@ -100,7 +100,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("variable Load")
 		}
 	}, func() {
-		if VarLoadTolerant(varReg, varClean, &r) == nil {
+		if VarLoad(varReg, varClean, &r) == nil {
 			t.Fatal("variable LoadTolerant")
 		}
 	})
@@ -109,7 +109,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("variable LoadBuilder")
 		}
 	}, func() {
-		if !VarLoadBuilderTolerant(&vb, varClean, &r) {
+		if !VarLoadBuilder(&vb, varClean, &r) {
 			t.Fatal("variable LoadBuilderTolerant")
 		}
 	})
@@ -118,7 +118,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("variable FromJSON")
 		}
 	}, func() {
-		if !VarFromJSONTolerant(&vb, varJSON, &r) {
+		if !VarFromJSON(&vb, varJSON, &r) {
 			t.Fatal("variable FromJSONTolerant")
 		}
 	})
@@ -127,7 +127,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("fixed Load")
 		}
 	}, func() {
-		if !FixLoadTolerant(&fv, fixClean, &r) {
+		if !FixLoad(&fv, fixClean, &r) {
 			t.Fatal("fixed LoadTolerant")
 		}
 	})
@@ -136,7 +136,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("fixed FromJSON")
 		}
 	}, func() {
-		if !FixFromJSONTolerant(&fv, fixJSON, &r) {
+		if !FixFromJSON(&fv, fixJSON, &r) {
 			t.Fatal("fixed FromJSONTolerant")
 		}
 	})
@@ -145,7 +145,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("fixed FixedLoad")
 		}
 	}, func() {
-		if FixFixedLoadTolerant(fixGot, fixForm3, fixPlan, &r) != 1 {
+		if FixFixedLoad(fixGot, fixForm3, fixPlan, &r) != 1 {
 			t.Fatal("fixed FixedLoadTolerant")
 		}
 	})
@@ -154,7 +154,7 @@ func TestPlainReadsAlloc(t *testing.T) {
 			t.Fatal("fixed LoadMessages")
 		}
 	}, func() {
-		if n, ok := FixLoadMessagesTolerant(fixGot, voc, fixMsg, &r); !ok || n != 1 {
+		if n, ok := FixLoadMessages(fixGot, voc, fixMsg, &r); !ok || n != 1 {
 			t.Fatal("fixed LoadMessagesTolerant")
 		}
 	})
