@@ -711,6 +711,11 @@ inline bool TableListWireExtent( const uint8_t * body, int64_t length, int64_t &
         return false;
     } // an N the list's L cannot carry
     at = ( at + elem_align - 1 ) & ~( elem_align - 1 );
+    if ( n > 0 && elem_size > 0 && (int64_t) n > ( kTableStorageCap - at ) / elem_size )
+    {
+        reason = storage_over_cap;
+        return false;
+    } // a term past the storage cap is refused before it is summed (§11)
     at += (int64_t) n * elem_size;
     if ( inner == NULL ) { return true; } // nothing below an element: one depth is the whole term
     for ( uint64_t i = 0; i < n; i++ )

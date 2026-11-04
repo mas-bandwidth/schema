@@ -48,7 +48,10 @@ func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
 		if st.Name != name {
 			continue
 		}
-		layout := ir.TableFixedLayoutBytes(ir.TableFixedWalkRoot(st))
+		layout, err := ir.TableFixedLayoutOf(st)
+		if err != nil {
+			return FixedLineageEntry{}, false // past the record bound: no fixed form, so no lineage
+		}
 		return FixedLineageEntry{
 			Wire:   ir.TableFixedLayoutHash(layout, st),
 			Layout: layout,

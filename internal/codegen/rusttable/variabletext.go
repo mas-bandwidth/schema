@@ -1413,8 +1413,11 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		// an array (§16.2): `[]` is empty and `null` is kind_mismatch; a
 		// bounded [..N]T drops what is past N and counts it; a repeated key
 		// replaces the array outright
-		fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
+		// the array is one level of the depth cap, as every container is (§16.2)
+		fmt.Fprintf(b, "%sif jr.peek() == b'[' && jr.depth > JSON_DEPTH_CAP { jr.malformed = true; }\n", in)
+		fmt.Fprintf(b, "%selse if jr.peek() == b'[' {\n", in)
 		fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
+		fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 		fmt.Fprintf(b, "%s    %s.clear();\n", in, field)
 		if f.IsTextList() && f.TextTotal > 0 {
 			fmt.Fprintf(b, "%s    let mut text_spent = 0u64; let mut text_total_hit = false;\n", in)
@@ -1458,6 +1461,7 @@ func (g *gen) emitTextReadValue(b *strings.Builder, f *ir.Field, field, in strin
 		fmt.Fprintf(b, "%s        if c == b']' { jr.p += 1; break; }\n", in)
 		fmt.Fprintf(b, "%s        jr.malformed = true; break;\n", in)
 		fmt.Fprintf(b, "%s    }\n", in)
+		fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 		if f.Array == ir.ArrayFixed {
 			fmt.Fprintf(b, "%s    while %s.len() < %d { %s.push(%s); }\n", in, field, f.ArrayBound, field, fieldDefault(scalarOnly(f)))
 		}
@@ -1571,8 +1575,11 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			// a FLAGS MASK reads from the array of its bits' names
 			// (docs/SPEC-TABLES.md §16.2): a name no variant spells counts
 			// unknown, an element that is not a string counts kind_mismatch
-			fmt.Fprintf(b, "%sif jr.peek() == b'[' {\n", in)
+			// the flags array is one level of the depth cap, as every container is
+			fmt.Fprintf(b, "%sif jr.peek() == b'[' && jr.depth > JSON_DEPTH_CAP { jr.malformed = true; }\n", in)
+			fmt.Fprintf(b, "%selse if jr.peek() == b'[' {\n", in)
 			fmt.Fprintf(b, "%s    jr.p += 1;\n", in)
+			fmt.Fprintf(b, "%s    jr.depth += 1;\n", in)
 			fmt.Fprintf(b, "%s    let mut bits: u64 = 0;\n", in)
 			fmt.Fprintf(b, "%s    loop {\n", in)
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
@@ -1591,6 +1598,7 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			fmt.Fprintf(b, "%s        if jr.peek() == b']' { jr.p += 1; break; }\n", in)
 			fmt.Fprintf(b, "%s        jr.malformed = true; break;\n", in)
 			fmt.Fprintf(b, "%s    }\n", in)
+			fmt.Fprintf(b, "%s    jr.depth -= 1;\n", in)
 			fmt.Fprintf(b, "%s    %s = bits;\n", in, dst)
 			fmt.Fprintf(b, "%s} else { jr.kind_mismatch += 1; jr.skip_value(); }\n", in)
 			return

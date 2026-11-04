@@ -17,6 +17,12 @@ use std::rc::Rc;
 const ID_TABLE_PROBE_BOUND: usize = 4096;
 #[allow(dead_code)]
 const ID_TABLE_PROBE_SLOTS: usize = 8192;
+/// The storage cap a wire's region measure is refused past, 2^40 bytes, and the
+/// measure's internal answer for it (docs/SPEC-TABLES.md §6.5, §11).
+#[allow(dead_code)]
+const TABLE_STORAGE_CAP: i64 = 1099511627776;
+#[allow(dead_code)]
+const TABLE_MEASURE_OVER_CAP: i64 = -2;
 use super::table_enums::*;
 
 /// MixedChatEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).
@@ -1416,8 +1422,10 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "damage" => {
                 if seen[11] { jr.duplicate += 1; }
                 seen[11] = true;
-                if jr.peek() == b'[' {
+                if jr.peek() == b'[' && jr.depth > JSON_DEPTH_CAP { jr.malformed = true; }
+                else if jr.peek() == b'[' {
                     jr.p += 1;
+                    jr.depth += 1;
                     let mut bits: u64 = 0;
                     loop {
                         if jr.peek() == b']' { jr.p += 1; break; }
@@ -1441,6 +1449,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                         if jr.peek() == b']' { jr.p += 1; break; }
                         jr.malformed = true; break;
                     }
+                    jr.depth -= 1;
                     v.damage = bits;
                 } else { jr.kind_mismatch += 1; jr.skip_value(); }
             }

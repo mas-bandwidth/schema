@@ -96,15 +96,15 @@ public final class Main {
                 continue;
             }
             if (f.counted) {
-                blockdemo.TableBytes.i32(data, at + f.countOffset);
+                blockdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset));
             }
             int slots = f.isArray ? f.arrayBound : 1;
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 if (f.element() != null) {
                     readBlockRecord(data, value, f.element());
                 } else if (f.elemSize > 0) {
-                    switch (f.elemSize) {
+                    switch (Math.toIntExact(f.elemSize)) {
                         case 1: blockdemo.TableBytes.u8(data, value); break;
                         case 2: blockdemo.TableBytes.u16(data, value); break;
                         case 4: blockdemo.TableBytes.u32(data, value); break;
@@ -113,7 +113,7 @@ public final class Main {
                 }
             }
             if (f.optional) {
-                blockdemo.TableBytes.bool(data, at + f.presentOffset);
+                blockdemo.TableBytes.bool(data, Math.toIntExact(at + f.presentOffset));
             }
         }
     }
@@ -124,9 +124,9 @@ public final class Main {
             if (!f.outOfLine) {
                 continue;
             }
-            long offsetOf = blockdemo.TableBytes.i64(data, base + f.offsetOfOffset);
-            long count = blockdemo.TableBytes.u32(data, base + f.countOffset);
-            long stride = blockdemo.TableBytes.u32(data, base + f.strideOffset);
+            long offsetOf = blockdemo.TableBytes.i64(data, Math.toIntExact(base + f.offsetOfOffset));
+            long count = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.countOffset));
+            long stride = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.strideOffset));
             for (long r = 0; r < count; r++) {
                 readBlockRecord(data, base + (int) (offsetOf + r * stride), f.element());
             }
@@ -144,18 +144,18 @@ public final class Main {
         }
         for (graphdemo.TableCookFieldInfo f : info.fields) {
             if (f.countOffset >= 0) {
-                graphdemo.TableBytes.i32(data, at + f.countOffset);
+                graphdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset));
             }
             if (f.isPointer) {
                 continue; // resolved by the caller below, through the reader's own `at`
             }
             int slots = f.isArray ? f.arrayBound : 1;
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 if (f.record() != null) {
                     readCook(data, region, regionLength, value, f.record(), depth + 1, seen);
                 } else {
-                    switch (f.elemSize) {
+                    switch (Math.toIntExact(f.elemSize)) {
                         case 1: graphdemo.TableBytes.u8(data, value); break;
                         case 2: graphdemo.TableBytes.u16(data, value); break;
                         case 4: graphdemo.TableBytes.u32(data, value); break;
@@ -164,7 +164,7 @@ public final class Main {
                 }
             }
             if (f.presentOffset >= 0) {
-                graphdemo.TableBytes.bool(data, at + f.presentOffset);
+                graphdemo.TableBytes.bool(data, Math.toIntExact(at + f.presentOffset));
             }
         }
     }
@@ -189,7 +189,7 @@ public final class Main {
             // the reader's answer and anything else is an offset the reader has
             // vouched for — and if it has not, the read below throws and the
             // oracle says so.
-            int target = cook.at(at + f.offset, f.record().size);
+            int target = cook.at(Math.toIntExact(at + f.offset), f.record().size);
             if (target < 0) {
                 continue; // null, or a delta the reader refused — both are answers
             }
@@ -287,8 +287,8 @@ public final class Main {
             fail("the root names no pointer, so there is nothing to forge");
             return 1;
         }
-        int slot = cook.root() + edge.offset;
-        int size = edge.record().size;
+        int slot = Math.toIntExact(cook.root() + edge.offset);
+        int size = Math.toIntExact(edge.record().size);
         int regionEnd = cook.region() + (int) cook.regionLength();
 
         // the CONTROL first: a delta whose record fits is still resolved, so a

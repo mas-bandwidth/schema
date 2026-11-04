@@ -449,7 +449,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         const char got = TableJsonValueShape( in );
         if ( entry == NULL )
         {
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else if ( value->kind == 17 && !value->is_array )
         {
@@ -466,7 +466,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
             else if ( got != shape )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonReadPointer( in, (uint8_t *) entry + value->offset, value, depth + 1 ) )
             {
@@ -476,7 +476,7 @@ inline bool TableJsonReadMap( TableJsonIn & in, void * slot, const TableFieldInf
         else if ( got != shape )
         {
             in.report->kind_mismatch++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else if ( !TableJsonReadField( in, entry, value, depth + 1 ) )
         {
@@ -611,7 +611,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
         }
         if ( total_clamped )
         {
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             c = TableJsonPeek( in );
             if ( c == ',' ) { in.pos++; continue; }
             if ( c == ']' ) { in.pos++; break; }
@@ -656,7 +656,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             else if ( got != 'o' )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonReadPointer( in, element, f, depth + 1 ) ) { return false; }
         }
@@ -665,7 +665,7 @@ inline bool TableJsonReadList( TableJsonIn & in, void * slot, const TableFieldIn
             // the wrong shape for the element kind: the slot keeps its
             // defaults and the event counts, the array row's rule (§16.2)
             in.report->kind_mismatch++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else if ( !TableJsonReadScalar( in, element, f, depth + 1 ) ) { return false; }
         c = TableJsonPeek( in );
@@ -912,7 +912,7 @@ inline bool TableJsonFinite( double v )
     return v == v && v <= 1.7976931348623157e308 && v >= -1.7976931348623157e308;
 }
 
-inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
+inline uint64_t TableJsonGetRaw( const void * storage, int64_t width )
 {
     switch ( width )
     {
@@ -944,7 +944,7 @@ inline uint64_t TableJsonGetRaw( const void * storage, uint32_t width )
     return 0;
 }
 
-inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
+inline void TableJsonSetRaw( void * storage, int64_t width, uint64_t value )
 {
     switch ( width )
     {
@@ -975,7 +975,7 @@ inline void TableJsonSetRaw( void * storage, uint32_t width, uint64_t value )
     }
 }
 
-inline int64_t TableJsonGetSigned( const void * storage, uint32_t width )
+inline int64_t TableJsonGetSigned( const void * storage, int64_t width )
 {
     uint64_t raw = TableJsonGetRaw( storage, width );
     if ( width < 8 )
@@ -1091,7 +1091,7 @@ inline uint32_t TableJsonWideDiv( TableJsonWide * v, uint32_t d )
 // pair — native __int128 in the host's byte order, or the emulated struct with
 // its low lane first — so the lanes are read in the host's order; a narrower
 // storage is one lane, sign-extended for a signed kind.
-inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bool is_signed )
+inline TableJsonWide TableJsonWideLoad( const void * storage, int64_t width, bool is_signed )
 {
     TableJsonWide v = { 0, 0 };
     if ( width == 16 )
@@ -1109,7 +1109,7 @@ inline TableJsonWide TableJsonWideLoad( const void * storage, uint32_t width, bo
     return v;
 }
 
-inline void TableJsonWideStore( void * storage, uint32_t width, TableJsonWide v )
+inline void TableJsonWideStore( void * storage, int64_t width, TableJsonWide v )
 {
     if ( width == 16 )
     {
@@ -3550,7 +3550,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
 // 00-59 (second 60 is a leap second this kind refuses). The offset is Z, z or
 // sign HH:MM with both fields in range. Nothing may precede or follow the
 // production. An instant outside int64's nanosecond range is refused too,
-// which is Time.UnixNano's domain (1678 through 2262).
+// which is Time.UnixNano's domain (1677-09-21T00:12:43.145224192Z through 2262-04-11T23:47:16.854775807Z).
 inline int TableJsonTimestampDigit( char c )
 {
     return ( c >= '0' && c <= '9' ) ? (int) ( c - '0' ) : -1;
@@ -3772,6 +3772,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             return false;
         }
         in.pos++;
+        // the union's object is one level below its holder, and its arm's
+        // value one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( TableJsonPeek( in ) == '}' )
         {
@@ -3800,7 +3807,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3824,7 +3831,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 else if ( got != TableJsonShape( arm ) )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3848,13 +3855,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( TableJsonValueShape( in ) != 'o' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3864,7 +3871,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 if ( TableJsonValueShape( in ) != 'z' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )
@@ -3924,6 +3931,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             return false;
         }
         in.pos++;
+        // the flags array is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         uint64_t bits = 0;
         for ( ;; )
         {
@@ -3941,7 +3954,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             if ( c != '"' )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else
             {
@@ -4158,7 +4171,7 @@ inline bool schema_table_json_read_text_element_( TableJsonIn & in, uint8_t * el
     if ( got != 's' )
     {
         in.report->kind_mismatch++;
-        return TableJsonSkipValue( in, depth + 1 );
+        return TableJsonSkipValue( in, depth + 2 );
     }
     uint8_t * val_storage = element + value->offset;
     if ( value->unbounded )
@@ -4195,6 +4208,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     {
         if ( TableJsonPeek( in ) != '[' ) { in.bad = true; return false; }
         in.pos++;
+        // the text list is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         for ( int32_t i = 0; i < f->array_bound; i++ )
         {
             f->table->reset( storage + (int64_t) i * f->elem_size );
@@ -4214,7 +4233,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // an element past [..N] counts, the total having dropped it
                 // or not, as the wire counts its count clamp (§2.13)
                 if ( !total_clamped || ++seen > f->array_bound ) { in.report->clamped++; }
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else
             {
@@ -4301,6 +4320,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return false;
         }
         in.pos++;
+        // the keyed object is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         // every slot back to its declared defaults first, so a key the text
         // omits keeps them and a repeated field key cannot leave an earlier
         // occurrence's slots standing
@@ -4364,12 +4389,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( slot < 0 )
             {
                 in.report->unknown++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( TableJsonValueShape( in ) != shape )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonReadScalar( in, storage + slot * f->elem_size, f, depth + 1 ) )
             {
@@ -4399,6 +4424,12 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             return false;
         }
         in.pos++;
+        // the array is one level below its holder, and its elements one below that
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            in.bad = true;
+            return false;
+        }
         // LAST WINS has to be true of a repeated ARRAY key too, and it is
         // wire-visible: a fixed array writes every slot, so a second, shorter
         // occurrence overlaying a prefix would leave the first occurrence's
@@ -4439,7 +4470,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 // more elements than the reader's bound: the bounded prefix
                 // is kept and the excess counts, the wire's rule (§4)
                 in.report->clamped++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( f->kind == 17 )
             {
@@ -4454,7 +4485,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
                 else if ( got != 'o' )
                 {
                     in.report->kind_mismatch++;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                 }
                 else if ( !TableJsonReadPointer( in, storage + (int64_t) placed * f->elem_size, f, depth + 1 ) ) { return false; }
                 placed++;
@@ -4462,7 +4493,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             else if ( TableJsonValueShape( in ) != shape )
             {
                 in.report->kind_mismatch++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                 placed++;
             }
             else

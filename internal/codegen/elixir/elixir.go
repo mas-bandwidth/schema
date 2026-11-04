@@ -295,6 +295,9 @@ type gen struct {
 	// deduplicated by name; bodies are emitted after the public functions
 	helperOrder []string
 	helpers     map[string]string
+
+	// depths memoizes wireDepth per type for the unit being generated
+	depths map[*ir.Struct]int
 }
 
 func (g *gen) bpf(format string, args ...any) {

@@ -783,7 +783,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	fmt.Fprintf(&h, "package %s\n\n", g.unit.Package)
 	var std []string
 	if g.home {
-		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`, `"slices"`)
+		std = append(std, `"encoding/binary"`, `"hash/crc32"`, `"unicode/utf8"`, `"slices"`, `"reflect"`)
 	}
 	if g.home && g.regional {
 		std = append(std, `"sync"`, `"sync/atomic"`)
@@ -794,7 +794,7 @@ func (g *tableGen) assemble() ([]byte, error) {
 	if g.needsTime {
 		std = append(std, `"time"`)
 	}
-	if g.unsafeUsed {
+	if g.unsafeUsed || g.home {
 		std = append(std, `"unsafe"`)
 	}
 	if usesSerialize {
@@ -962,7 +962,7 @@ func unitHasKeyedArray(u *ir.Unit, closure map[string]bool) bool {
 // behind an include guard; a Go package is one namespace across its files, so a
 // second copy would be a redeclaration error instead.
 func tableRuntime() string {
-	return `// TableReport is the table-wire read report — the permissive contract's
+	return tableLayoutRuntime + `// TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
 // exactly. Err (docs/SPEC-TABLES.md §6.5) is the STRICT read's typed reason
 // for malformed, clamped, kind-mismatched, unknown form, wire-damaged and
@@ -1023,10 +1023,9 @@ type TableReport struct {
 //
 // The descriptors carry MEMORY facts — Offset, ElemSize, CountOffset,
 // PresentOffset and TableTypeInfo.Size — exactly as the C++ reference does,
-// because Go can state them: unsafe.Offsetof and unsafe.Sizeof are constant
-// expressions of the compiler's own layout model, so the generated numbers are
-// this build's own rather than a guess about it. They are what lets one
-// generic walk drive the text form for every table.
+// because Go can state them: the compiler's own layout model answers them, so
+// the generated numbers are this build's own rather than a guess about it.
+// They are what lets one generic walk drive the text form for every table.
 
 // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
 // block carries a doc column naming this one definition, so absence costs a
@@ -1039,7 +1038,7 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
- CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
+ CookOffset, CookElemSize, CookCountOffset, CookPresentOffset int64
  List, Map bool // unbounded by-value containers
  // UnboundedContainer is the ONE TELL of a container with no declared bound
  // (docs/SPEC-TABLES.md §8.1): true on a map, a []T and a text list
@@ -1060,10 +1059,10 @@ type TableFieldInfo struct {
 	Optional bool   // a ?T field: a <Name>Present bool decides whether it rides
 
 	ArrayBound    int32  // array capacity / string max length; 0 for plain scalars
-	Offset        uint32 // unsafe.Offsetof the storage member
-	ElemSize      uint32 // unsafe.Sizeof the member (element size for arrays)
-	CountOffset   uint32 // unsafe.Offsetof the count/length companion, or 0xffffffff
-	PresentOffset uint32 // unsafe.Offsetof the Present companion, or 0xffffffff
+	Offset        int64 // unsafe.Offsetof the storage member
+	ElemSize      int64 // unsafe.Sizeof the member (element size for arrays)
+	CountOffset   int64 // unsafe.Offsetof the count/length companion, or 0xffffffff
+	PresentOffset int64 // unsafe.Offsetof the Present companion, or 0xffffffff
 
 	FracBits uint8 // fixed-point binary scale
  WideRange bool
@@ -1141,24 +1140,24 @@ type TableUnionArmInfo struct {
  Field TableFieldInfo // arm shape; offsets are relative to union storage
  Void bool // a selected payload-free arm
  Reset func(storage unsafe.Pointer) // establish selected payload defaults
-	Offset uint32               // unsafe.Offsetof the arm's payload within the union storage
+	Offset int64                // unsafe.Offsetof the arm's payload within the union storage
 	Table  func() *TableTypeInfo // the arm payload's descriptor
 }
 
 // TableUnionInfo is a union field's shape: the tag, and the arms indexed by
 // it. Arms run [0, EnumMax]; index 0 is the EMPTY arm and carries no payload.
 type TableUnionInfo struct {
-	CookTagSize uint32
-	TagOffset uint32 // unsafe.Offsetof the tag within the union storage
-	TagSize   uint32 // unsafe.Sizeof the tag
+	CookTagSize int64
+	TagOffset   int64 // unsafe.Offsetof the tag within the union storage
+	TagSize     int64 // unsafe.Sizeof the tag
 	Arms      []TableUnionArmInfo
 }
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
-	CookSize, CookAlign uint32
+	CookSize, CookAlign int64
 	Name      string // schema type name
-	Size      uint32 // unsafe.Sizeof the storage struct
+	Size      int64  // unsafe.Sizeof the storage struct
  Id uint64
  Variable bool
  CycleIndex uint64
@@ -1194,7 +1193,7 @@ type tableJSONGraphNode struct { refs int; label uint64; written bool }
 // ---- storage is the HOST's, so every load and store goes through a width
 // ---- switch rather than a copy into the low bytes of a wider word
 
-func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
+func tableJSONGetRaw(storage unsafe.Pointer, width int64) uint64 {
 	switch width {
 	case 1:
 		return uint64(*(*uint8)(storage))
@@ -1208,7 +1207,7 @@ func tableJSONGetRaw(storage unsafe.Pointer, width uint32) uint64 {
 	return 0
 }
 
-func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
+func tableJSONSetRaw(storage unsafe.Pointer, width int64, value uint64) {
 	switch width {
 	case 1:
 		*(*uint8)(storage) = uint8(value)
@@ -1221,7 +1220,7 @@ func tableJSONSetRaw(storage unsafe.Pointer, width uint32, value uint64) {
 	}
 }
 
-func tableJSONGetSigned(storage unsafe.Pointer, width uint32) int64 {
+func tableJSONGetSigned(storage unsafe.Pointer, width int64) int64 {
 	raw := tableJSONGetRaw(storage, width)
 	if width < 8 {
 		sign := uint64(1) << (width*8 - 1)
@@ -1362,7 +1361,8 @@ func (g *tableGen) emitTimestampAccessors(st *ir.Struct) {
 		g.pf("// the Unix epoch, and 0 is the zero time, 1970-01-01T00:00:00Z (SPEC.md §4.13).\n")
 		g.pf("func (v *%s) %sTime() time.Time { return tableTimestampTime(v.%s) }\n\n", recv, name, name)
 		g.pf("// Set%sTime stores a time.Time in %s.%s. A time outside Time.UnixNano's\n", name, st.Name, name)
-		g.pf("// domain, the years 1678 through 2262, has no count: it is REFUSED with a\n")
+		g.pf("// domain, 1677-09-21T00:12:43.145224192Z through\n")
+		g.pf("// 2262-04-11T23:47:16.854775807Z, has no count: it is REFUSED with a\n")
 		g.pf("// TableTimestampError naming the field and the field is left as it was. Go's\n")
 		g.pf("// own zero Time{} is the zero time and stores 0.\n")
 		g.pf("func (v *%s) Set%sTime(t time.Time) error {\n", recv, name)

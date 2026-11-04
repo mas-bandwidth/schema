@@ -17,6 +17,7 @@ package cpptable
 // so it proves the write/read round trip without the corpus.
 
 import (
+	"encoding/binary"
 	"maps"
 	"os"
 	"os/exec"
@@ -169,8 +170,19 @@ fixed table Big
 	// emitted is never silent. It is the FORM's refusal and not the unit's: a
 	// declared fixed table past the ceiling still compiles and keeps its CLASS
 	// (compiler/fixedrecordsize_test.go).
-	// THE LOCK REALLY CARRIES ONE: without this the last clause would pass
-	// vacuously, because no lineage entry was ever offered.
+	// A LOCK WRITTEN NOW RECORDS NO LAYOUT for a table past the ceiling
+	// (docs/SPEC-TABLES.md §3.4), so the entry is the one a lock written
+	// before that rule holds: history, stated here. Without it the last clause
+	// would pass vacuously, because no lineage entry was ever offered.
+	if lin := lockfile.Lineage(lock, "Big"); len(lin) != 0 {
+		t.Fatalf("R6: a lock written now records %d layout entries for Big, past the ceiling", len(lin))
+	}
+	big := lock.Table("Big")
+	if big == nil {
+		t.Fatal("R6: the lock does not hold Big")
+	}
+	historic := r6HistoricalLayout(ir.TableFixedWalkRoot(st))
+	big.Lineage = append(big.Lineage, lockfile.LineageEntry{Wire: ir.TableFixedLayoutHash(historic, st), Layout: historic, Record: ir.TableFixedTypeBytes(st)})
 	if lin := lockfile.Lineage(lock, "Big"); len(lin) == 0 {
 		t.Fatal("R6: the lock carries no Big lineage entry, so the clause is not tested")
 	}
@@ -781,4 +793,19 @@ func TestFixedRoadmapCppT03PlansVersions(t *testing.T) {
 			task.check(t)
 		})
 	}
+}
+
+// r6HistoricalLayout writes a layout in the wire format, as a lock written
+// before the record bound held its lineage recorded one for a table past it:
+// the shared encoder refuses such a table, so the entry is stated here (a u32
+// entry count, then seventeen-byte entries).
+func r6HistoricalLayout(entries []ir.TableFixedLayoutEntry) []byte {
+	out := binary.LittleEndian.AppendUint32(nil, uint32(len(entries)))
+	for _, e := range entries {
+		out = binary.LittleEndian.AppendUint64(out, e.ID)
+		out = append(out, byte(e.Kind))
+		out = binary.LittleEndian.AppendUint32(out, uint32(e.Size))
+		out = binary.LittleEndian.AppendUint32(out, uint32(e.Children))
+	}
+	return out
 }

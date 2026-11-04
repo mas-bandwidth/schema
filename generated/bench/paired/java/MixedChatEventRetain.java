@@ -31,6 +31,13 @@ public final class MixedChatEventRetain {
             return null;
         }
         MixedChatEventVariable.Value v = new MixedChatEventVariable.Value();
+        TableVariable.Measure measure = new TableVariable.Measure();
+        long measured = MixedChatEventVariable.loadMeasure(data, measure);
+        if (measured < 0 && "storage_over_cap".equals(measure.report.reason)) {
+            report.refused = true;
+            report.reason = measure.report.reason;
+            return null;
+        }
         report.rootTypeId = MixedChatEventVariable.TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);
         if (nt.recs != null && !nt.bad) {
@@ -71,8 +78,7 @@ public final class MixedChatEventRetain {
             retain.nodeKeys.clear();
             return null;
         }
-        TableVariable.Measure measure = new TableVariable.Measure();
-        if (MixedChatEventVariable.loadMeasure(data, measure) < 0) {
+        if (measured < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;

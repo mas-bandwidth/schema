@@ -6359,7 +6359,7 @@ func DebuffLoadBodyRetain(r *TableRetainReader, value *DebuffRow) bool {
 // RootConfigTableFields is RootConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RootConfigTableFields = []TableFieldInfo{
 	{Name: "version_note", JSON: "version_note", TypeName: "string", DeclaredTypeName: "string", ID: 0x8a67c9728746d394, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(RootConfig{}.VersionNote)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.VersionNote)), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.VersionNoteLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 16, Offset: int64(tableOffsetof[RootConfig]("VersionNote")), ElemSize: int64(tableMemberSizeof[RootConfig]("VersionNote")), CountOffset: int64(tableOffsetof[RootConfig]("VersionNoteLength")), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 20, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6371,7 +6371,7 @@ var RootConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "weapons", JSON: "weapons", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", ID: 0x41cbd901b87fabb6, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(RootConfig{}.Weapons)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Weapons[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.WeaponsCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 8, Offset: int64(tableOffsetof[RootConfig]("Weapons")), ElemSize: int64(tableElemSizeof[RootConfig]("Weapons")), CountOffset: int64(tableOffsetof[RootConfig]("WeaponsCount")), PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 28, CookCountOffset: 248, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6383,7 +6383,7 @@ var RootConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "profiles", JSON: "profiles", TypeName: "ProfileConfig", DeclaredTypeName: "ProfileConfig", ID: 0x8181e61fc0436767, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(RootConfig{}.Profiles)), ElemSize: uint32(unsafe.Sizeof(RootConfig{}.Profiles[0])), CountOffset: uint32(unsafe.Offsetof(RootConfig{}.ProfilesCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: int64(tableOffsetof[RootConfig]("Profiles")), ElemSize: int64(tableElemSizeof[RootConfig]("Profiles")), CountOffset: int64(tableOffsetof[RootConfig]("ProfilesCount")), PresentOffset: 0xffffffff,
 		CookOffset: 256, CookElemSize: 304, CookCountOffset: 1472, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6400,7 +6400,7 @@ var RootConfigTableFields = []TableFieldInfo{
 var RootConfigTableInfo TableTypeInfo
 
 func init() {
-	RootConfigTableInfo = TableTypeInfo{Name: "RootConfig", Size: uint32(unsafe.Sizeof(RootConfig{})), NumFields: 3, Fields: RootConfigTableFields, Reset: func(storage unsafe.Pointer) { RootConfigReset((*RootConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5f4843f6def45e87, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RootConfigSaveBody(w, (*RootConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RootConfigLoadBody(&r, (*RootConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	RootConfigTableInfo = TableTypeInfo{Name: "RootConfig", Size: int64(tableSizeof[RootConfig]()), NumFields: 3, Fields: RootConfigTableFields, Reset: func(storage unsafe.Pointer) { RootConfigReset((*RootConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x5f4843f6def45e87, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RootConfigSaveBody(w, (*RootConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RootConfigLoadBody(&r, (*RootConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return RootConfigSaveBodyRetain(w, (*RootConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return RootConfigLoadBodyRetain(&r, (*RootConfig)(p))
@@ -6416,7 +6416,7 @@ var WeaponConfigTableTags = []string{"designer_facing"}
 // WeaponConfigTableFields is WeaponConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WeaponConfigTableFields = []TableFieldInfo{
 	{Name: "damage", JSON: "damage", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x7f6308be8ab37fc0, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Damage)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Damage)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[WeaponConfig]("Damage")), ElemSize: int64(tableMemberSizeof[WeaponConfig]("Damage")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6428,7 +6428,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: " Damage per hit, before armor.\n\nThe armor curve is written \"hardness \\ hit\" in the design notes,\nand the backslash is part of the name.", NumTags: 3, Tags: WeaponConfigTableDamageTags},
 	{Name: "speed", JSON: "speed", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x1733055702acb1d2, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Speed)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Speed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[WeaponConfig]("Speed")), ElemSize: int64(tableMemberSizeof[WeaponConfig]("Speed")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6440,7 +6440,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "penetration", JSON: "penetration", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x4f31c5309e13e932, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Penetration)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Penetration)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[WeaponConfig]("Penetration")), ElemSize: int64(tableMemberSizeof[WeaponConfig]("Penetration")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 8, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 10.0, RangeIntMin: 0, RangeIntMax: 10, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6452,7 +6452,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "channel", JSON: "channel", TypeName: "bits(6)", DeclaredTypeName: "bits(6)", ID: 0xa5013e9ad5caeda4, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Channel)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Channel)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[WeaponConfig]("Channel")), ElemSize: int64(tableMemberSizeof[WeaponConfig]("Channel")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 63.0, RangeUintMin: 0, RangeUintMax: 63, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6464,7 +6464,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "homing", JSON: "homing", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xad6587bc602e3f59, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Homing)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Homing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[WeaponConfig]("Homing")), ElemSize: int64(tableMemberSizeof[WeaponConfig]("Homing")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6476,7 +6476,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "effect", JSON: "effect", TypeName: "Effect", DeclaredTypeName: "Effect", ID: 0x36c1c83b51f24394, Kind: 15, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WeaponConfig{}.Effect)), ElemSize: uint32(unsafe.Sizeof(WeaponConfig{}.Effect)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[WeaponConfig]("Effect")), ElemSize: int64(tableMemberSizeof[WeaponConfig]("Effect")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 20, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6513,7 +6513,7 @@ var WeaponConfigTableFields = []TableFieldInfo{
 var WeaponConfigTableInfo TableTypeInfo
 
 func init() {
-	WeaponConfigTableInfo = TableTypeInfo{Name: "WeaponConfig", Size: uint32(unsafe.Sizeof(WeaponConfig{})), NumFields: 6, Fields: WeaponConfigTableFields, Reset: func(storage unsafe.Pointer) { WeaponConfigReset((*WeaponConfig)(storage)) }, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: WeaponConfigTableTags, ID: 0x0577780d86c4b0c3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WeaponConfigSaveBody(w, (*WeaponConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WeaponConfigLoadBody(&r, (*WeaponConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	WeaponConfigTableInfo = TableTypeInfo{Name: "WeaponConfig", Size: int64(tableSizeof[WeaponConfig]()), NumFields: 6, Fields: WeaponConfigTableFields, Reset: func(storage unsafe.Pointer) { WeaponConfigReset((*WeaponConfig)(storage)) }, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: WeaponConfigTableTags, ID: 0x0577780d86c4b0c3, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return WeaponConfigSaveBody(w, (*WeaponConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return WeaponConfigLoadBody(&r, (*WeaponConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return WeaponConfigSaveBodyRetain(w, (*WeaponConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WeaponConfigLoadBodyRetain(&r, (*WeaponConfig)(p))
@@ -6526,7 +6526,7 @@ func WeaponConfigTableType() *TableTypeInfo { return &WeaponConfigTableInfo }
 // LoadoutConfigTableFields is LoadoutConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var LoadoutConfigTableFields = []TableFieldInfo{
 	{Name: "grade", JSON: "grade", TypeName: "Grade", DeclaredTypeName: "Grade", ID: 0x32a89b2977c48ad4, Kind: 30, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grade)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grade)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[LoadoutConfig]("Grade")), ElemSize: int64(tableMemberSizeof[LoadoutConfig]("Grade")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6538,7 +6538,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "grades", JSON: "grades", TypeName: "Grade", DeclaredTypeName: "Grade", ID: 0xd90a4e7682f799c5, Kind: 30, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Grades)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Grades[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.GradesCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: int64(tableOffsetof[LoadoutConfig]("Grades")), ElemSize: int64(tableElemSizeof[LoadoutConfig]("Grades")), CountOffset: int64(tableOffsetof[LoadoutConfig]("GradesCount")), PresentOffset: 0xffffffff,
 		CookOffset: 1, CookElemSize: 1, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6550,7 +6550,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "podium", JSON: "podium", TypeName: "Grade", DeclaredTypeName: "Grade", ID: 0xb46ff45a23d72549, Kind: 30, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 3, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Podium)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Podium[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 3, Offset: int64(tableOffsetof[LoadoutConfig]("Podium")), ElemSize: int64(tableElemSizeof[LoadoutConfig]("Podium")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 12, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 3,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6562,7 +6562,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "perks", JSON: "perks", TypeName: "Perks", DeclaredTypeName: "Perks", ID: 0x4b06f5847096e54a, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Perks)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Perks)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[LoadoutConfig]("Perks")), ElemSize: int64(tableMemberSizeof[LoadoutConfig]("Perks")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: 2,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6574,7 +6574,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "primary", JSON: "primary", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", ID: 0xbf31137ff783e939, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Primary)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Primary)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[LoadoutConfig]("Primary")), ElemSize: int64(tableMemberSizeof[LoadoutConfig]("Primary")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 24, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6586,7 +6586,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "backups", JSON: "backups", TypeName: "WeaponConfig", DeclaredTypeName: "WeaponConfig", ID: 0xde28f0f5118acc24, Kind: 13, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 2, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Backups)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Backups[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 2, Offset: int64(tableOffsetof[LoadoutConfig]("Backups")), ElemSize: int64(tableElemSizeof[LoadoutConfig]("Backups")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 52, CookElemSize: 28, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6598,7 +6598,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: WeaponConfigTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "attachments", JSON: "attachments", TypeName: "Attachment", DeclaredTypeName: "Attachment", ID: 0xf901aa0340249a41, Kind: 13, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 8, Offset: uint32(unsafe.Offsetof(LoadoutConfig{}.Attachments)), ElemSize: uint32(unsafe.Sizeof(LoadoutConfig{}.Attachments[0])), CountOffset: uint32(unsafe.Offsetof(LoadoutConfig{}.AttachmentsCount)), PresentOffset: 0xffffffff,
+		ArrayBound: 8, Offset: int64(tableOffsetof[LoadoutConfig]("Attachments")), ElemSize: int64(tableElemSizeof[LoadoutConfig]("Attachments")), CountOffset: int64(tableOffsetof[LoadoutConfig]("AttachmentsCount")), PresentOffset: 0xffffffff,
 		CookOffset: 108, CookElemSize: 8, CookCountOffset: 172, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6615,7 +6615,7 @@ var LoadoutConfigTableFields = []TableFieldInfo{
 var LoadoutConfigTableInfo TableTypeInfo
 
 func init() {
-	LoadoutConfigTableInfo = TableTypeInfo{Name: "LoadoutConfig", Size: uint32(unsafe.Sizeof(LoadoutConfig{})), NumFields: 7, Fields: LoadoutConfigTableFields, Reset: func(storage unsafe.Pointer) { LoadoutConfigReset((*LoadoutConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xa6aa0caea28dcca1, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return LoadoutConfigSaveBody(w, (*LoadoutConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return LoadoutConfigLoadBody(&r, (*LoadoutConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	LoadoutConfigTableInfo = TableTypeInfo{Name: "LoadoutConfig", Size: int64(tableSizeof[LoadoutConfig]()), NumFields: 7, Fields: LoadoutConfigTableFields, Reset: func(storage unsafe.Pointer) { LoadoutConfigReset((*LoadoutConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xa6aa0caea28dcca1, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return LoadoutConfigSaveBody(w, (*LoadoutConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return LoadoutConfigLoadBody(&r, (*LoadoutConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return LoadoutConfigSaveBodyRetain(w, (*LoadoutConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return LoadoutConfigLoadBodyRetain(&r, (*LoadoutConfig)(p))
@@ -6628,7 +6628,7 @@ func LoadoutConfigTableType() *TableTypeInfo { return &LoadoutConfigTableInfo }
 // ProfileConfigTableFields is ProfileConfig's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProfileConfigTableFields = []TableFieldInfo{
 	{Name: "name", JSON: "name", TypeName: "string", DeclaredTypeName: "string", ID: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 32, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Name)), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.NameLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 32, Offset: int64(tableOffsetof[ProfileConfig]("Name")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Name")), CountOffset: int64(tableOffsetof[ProfileConfig]("NameLength")), PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 1, CookCountOffset: 36, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6640,7 +6640,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "icon", JSON: "icon", TypeName: "bytes", DeclaredTypeName: "bytes", ID: 0xdbff4cc56c2092f0, Kind: 6, IsArray: true, Counted: true, Optional: false,
-		ArrayBound: 16, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Icon)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Icon[0])), CountOffset: uint32(unsafe.Offsetof(ProfileConfig{}.IconLength)), PresentOffset: 0xffffffff,
+		ArrayBound: 16, Offset: int64(tableOffsetof[ProfileConfig]("Icon")), ElemSize: int64(tableElemSizeof[ProfileConfig]("Icon")), CountOffset: int64(tableOffsetof[ProfileConfig]("IconLength")), PresentOffset: 0xffffffff,
 		CookOffset: 40, CookElemSize: 1, CookCountOffset: 56, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6652,7 +6652,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "experience", JSON: "experience", TypeName: "uint32", DeclaredTypeName: "uint32", ID: 0xab8b6d521f80b969, Kind: 8, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Experience)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Experience)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Experience")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Experience")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 60, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6664,7 +6664,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tilt", JSON: "tilt", TypeName: "int8", DeclaredTypeName: "int8", ID: 0x1e5088ef2e9bafc6, Kind: 2, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Tilt)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Tilt)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Tilt")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Tilt")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 64, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6676,7 +6676,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "heading", JSON: "heading", TypeName: "int16", DeclaredTypeName: "int16", ID: 0xb128829190ca0f75, Kind: 3, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Heading)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Heading)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Heading")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Heading")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 66, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6688,7 +6688,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "timestamp", JSON: "timestamp", TypeName: "int64", DeclaredTypeName: "int64", ID: 0x5ddc92338ef53403, Kind: 5, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Timestamp)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Timestamp)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Timestamp")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Timestamp")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 72, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6700,7 +6700,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "badge", JSON: "badge", TypeName: "uint8", DeclaredTypeName: "uint8", ID: 0x10bda981fe095518, Kind: 6, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Badge)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Badge)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Badge")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Badge")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 80, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6712,7 +6712,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "port", JSON: "port", TypeName: "uint16", DeclaredTypeName: "uint16", ID: 0x8c2cdb0da8933fa6, Kind: 7, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Port)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Port)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Port")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Port")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 82, CookElemSize: 2, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6724,7 +6724,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "epoch", JSON: "epoch", TypeName: "uint64", DeclaredTypeName: "uint64", ID: 0xfc9697d1196e6ba6, Kind: 9, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Epoch)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Epoch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Epoch")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Epoch")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 88, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6736,7 +6736,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "precision", JSON: "precision", TypeName: "float64", DeclaredTypeName: "float64", ID: 0x288427f5babd05f7, Kind: 11, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Precision)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Precision)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Precision")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Precision")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 96, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6748,7 +6748,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ratings", JSON: "ratings", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xb921eb8a3d0cb0f9, Kind: 10, IsArray: true, Counted: false, Optional: false,
-		ArrayBound: 4, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Ratings)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Ratings[0])), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 4, Offset: int64(tableOffsetof[ProfileConfig]("Ratings")), ElemSize: int64(tableElemSizeof[ProfileConfig]("Ratings")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 104, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6760,7 +6760,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "has_loadout", JSON: "has_loadout", TypeName: "bool", DeclaredTypeName: "bool", ID: 0xa06f5e0a148e253c, Kind: 1, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.HasLoadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.HasLoadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("HasLoadout")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("HasLoadout")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 120, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6772,7 +6772,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "loadout", JSON: "loadout", TypeName: "LoadoutConfig", DeclaredTypeName: "LoadoutConfig", ID: 0x5759ce7586bbb5a3, Kind: 13, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProfileConfig{}.Loadout)), ElemSize: uint32(unsafe.Sizeof(ProfileConfig{}.Loadout)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[ProfileConfig]("Loadout")), ElemSize: int64(tableMemberSizeof[ProfileConfig]("Loadout")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 128, CookElemSize: 176, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6789,7 +6789,7 @@ var ProfileConfigTableFields = []TableFieldInfo{
 var ProfileConfigTableInfo TableTypeInfo
 
 func init() {
-	ProfileConfigTableInfo = TableTypeInfo{Name: "ProfileConfig", Size: uint32(unsafe.Sizeof(ProfileConfig{})), NumFields: 13, Fields: ProfileConfigTableFields, Reset: func(storage unsafe.Pointer) { ProfileConfigReset((*ProfileConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x19fffcb7859da778, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ProfileConfigSaveBody(w, (*ProfileConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ProfileConfigLoadBody(&r, (*ProfileConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	ProfileConfigTableInfo = TableTypeInfo{Name: "ProfileConfig", Size: int64(tableSizeof[ProfileConfig]()), NumFields: 13, Fields: ProfileConfigTableFields, Reset: func(storage unsafe.Pointer) { ProfileConfigReset((*ProfileConfig)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x19fffcb7859da778, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return ProfileConfigSaveBody(w, (*ProfileConfig)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return ProfileConfigLoadBody(&r, (*ProfileConfig)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return ProfileConfigSaveBodyRetain(w, (*ProfileConfig)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProfileConfigLoadBodyRetain(&r, (*ProfileConfig)(p))
@@ -6802,7 +6802,7 @@ func ProfileConfigTableType() *TableTypeInfo { return &ProfileConfigTableInfo }
 // AttachmentTableFields is Attachment's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var AttachmentTableFields = []TableFieldInfo{
 	{Name: "slot", JSON: "slot", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x6a771618f6fe31d1, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Slot)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Slot)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[AttachmentRow]("Slot")), ElemSize: int64(tableMemberSizeof[AttachmentRow]("Slot")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 7.0, RangeIntMin: 0, RangeIntMax: 7, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6814,7 +6814,7 @@ var AttachmentTableFields = []TableFieldInfo{
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "power", JSON: "power", TypeName: "float32", DeclaredTypeName: "float32", ID: 0xeef9d1358ae7b4e6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(AttachmentRow{}.Power)), ElemSize: uint32(unsafe.Sizeof(AttachmentRow{}.Power)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[AttachmentRow]("Power")), ElemSize: int64(tableMemberSizeof[AttachmentRow]("Power")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 4, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6831,7 +6831,7 @@ var AttachmentTableFields = []TableFieldInfo{
 var AttachmentTableInfo TableTypeInfo
 
 func init() {
-	AttachmentTableInfo = TableTypeInfo{Name: "Attachment", Size: uint32(unsafe.Sizeof(AttachmentRow{})), NumFields: 2, Fields: AttachmentTableFields, Reset: func(storage unsafe.Pointer) { AttachmentReset((*AttachmentRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xddfc86d2b1251528, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return AttachmentSaveBody(w, (*AttachmentRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return AttachmentLoadBody(&r, (*AttachmentRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
+	AttachmentTableInfo = TableTypeInfo{Name: "Attachment", Size: int64(tableSizeof[AttachmentRow]()), NumFields: 2, Fields: AttachmentTableFields, Reset: func(storage unsafe.Pointer) { AttachmentReset((*AttachmentRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0xddfc86d2b1251528, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return AttachmentSaveBody(w, (*AttachmentRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return AttachmentLoadBody(&r, (*AttachmentRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool {
 		return AttachmentSaveBodyRetain(w, (*AttachmentRow)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return AttachmentLoadBodyRetain(&r, (*AttachmentRow)(p))
@@ -6844,7 +6844,7 @@ func AttachmentTableType() *TableTypeInfo { return &AttachmentTableInfo }
 // BuffTableFields is Buff's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var BuffTableFields = []TableFieldInfo{
 	{Name: "multiplier", JSON: "multiplier", TypeName: "float32", DeclaredTypeName: "float32", ID: 0x9adc623a805c87c6, Kind: 10, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(BuffRow{}.Multiplier)), ElemSize: uint32(unsafe.Sizeof(BuffRow{}.Multiplier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[BuffRow]("Multiplier")), ElemSize: int64(tableMemberSizeof[BuffRow]("Multiplier")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6861,7 +6861,7 @@ var BuffTableFields = []TableFieldInfo{
 var BuffTableInfo TableTypeInfo
 
 func init() {
-	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: uint32(unsafe.Sizeof(BuffRow{})), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CycleIndex: 3, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
+	BuffTableInfo = TableTypeInfo{Name: "Buff", Size: int64(tableSizeof[BuffRow]()), NumFields: 1, Fields: BuffTableFields, Reset: func(storage unsafe.Pointer) { BuffReset((*BuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x2a43bfa7e454ddac, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return BuffSaveBody(w, (*BuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return BuffLoadBody(&r, (*BuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return BuffSaveBodyRetain(w, (*BuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return BuffLoadBodyRetain(&r, (*BuffRow)(p)) }, CycleIndex: 3, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // BuffTableType returns Buff's reflection descriptor.
@@ -6870,7 +6870,7 @@ func BuffTableType() *TableTypeInfo { return &BuffTableInfo }
 // DebuffTableFields is Debuff's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var DebuffTableFields = []TableFieldInfo{
 	{Name: "amount", JSON: "amount", TypeName: "int32", DeclaredTypeName: "int32", ID: 0x8113fe7ea2b16969, Kind: 4, IsArray: false, Counted: false, Optional: false,
-		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DebuffRow{}.Amount)), ElemSize: uint32(unsafe.Sizeof(DebuffRow{}.Amount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		ArrayBound: 0, Offset: int64(tableOffsetof[DebuffRow]("Amount")), ElemSize: int64(tableMemberSizeof[DebuffRow]("Amount")), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
 		CookOffset: 0, CookElemSize: 4, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: true, RangeMin: 0.0, RangeMax: 100.0, RangeIntMin: 0, RangeIntMax: 100, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetID: 0x0000000000000000,
@@ -6887,7 +6887,7 @@ var DebuffTableFields = []TableFieldInfo{
 var DebuffTableInfo TableTypeInfo
 
 func init() {
-	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: uint32(unsafe.Sizeof(DebuffRow{})), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CycleIndex: 4, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
+	DebuffTableInfo = TableTypeInfo{Name: "Debuff", Size: int64(tableSizeof[DebuffRow]()), NumFields: 1, Fields: DebuffTableFields, Reset: func(storage unsafe.Pointer) { DebuffReset((*DebuffRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x52bb98fcd979eab7, Variable: false, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DebuffSaveBody(w, (*DebuffRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DebuffLoadBody(&r, (*DebuffRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DebuffSaveBodyRetain(w, (*DebuffRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DebuffLoadBodyRetain(&r, (*DebuffRow)(p)) }, CycleIndex: 4, CycleType: tableCycleType, CookSize: 4, CookAlign: 4}
 }
 
 // DebuffTableType returns Debuff's reflection descriptor.

@@ -235,34 +235,34 @@ public final class Driver {
             }
             String name = join(path, f.name);
             if (f.counted) {
-                int used = blockdemo.TableBytes.i32(data, storage + f.countOffset);
+                int used = blockdemo.TableBytes.i32(data, Math.toIntExact(storage + f.countOffset));
                 if (used < 0 || used > f.arrayBound) {
                     System.err.println("driver: " + info.name + "." + f.name +
                             " carries a used length of " + used + ", outside [ 0, " + f.arrayBound + " ]");
                     return false;
                 }
                 into.append("  ").append(name).append(" = ");
-                dumpText(into, data, storage + f.offset, used);
+                dumpText(into, data, Math.toIntExact(storage + f.offset), used);
                 into.append('\n');
             } else {
                 int slots = f.isArray ? f.arrayBound : 1;
                 for (int s = 0; s < slots; s++) {
                     String at = f.isArray ? name + "[" + s + "]" : name;
-                    int value = storage + f.offset + s * f.elemSize;
+                    int value = Math.toIntExact(storage + f.offset + s * f.elemSize);
                     if (f.element() != null) {
                         if (!dumpRecord(into, data, value, f.element(), at)) {
                             return false;
                         }
                     } else {
                         into.append("  ").append(at).append(" = ");
-                        dumpScalar(into, data, value, f.kind, f.elemSize);
+                        dumpScalar(into, data, value, f.kind, Math.toIntExact(f.elemSize));
                         into.append('\n');
                     }
                 }
             }
             if (f.optional) {
                 into.append("  ").append(name).append("#present = ")
-                        .append(data[storage + f.presentOffset] != 0 ? "true" : "false").append('\n');
+                        .append(data[Math.toIntExact(storage + f.presentOffset)] != 0 ? "true" : "false").append('\n');
             }
         }
         return true;
@@ -277,9 +277,9 @@ public final class Driver {
             if (!f.outOfLine) {
                 continue;
             }
-            long offsetOf = blockdemo.TableBytes.i64(data, base + f.offsetOfOffset);
-            long count = blockdemo.TableBytes.u32(data, base + f.countOffset);
-            long stride = blockdemo.TableBytes.u32(data, base + f.strideOffset);
+            long offsetOf = blockdemo.TableBytes.i64(data, Math.toIntExact(base + f.offsetOfOffset));
+            long count = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.countOffset));
+            long stride = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.strideOffset));
             blockdemo.TableBlockInfo rowInfo = f.element();
             if (rowInfo == null) {
                 System.err.println("driver: " + f.name + " names no element");
@@ -339,7 +339,7 @@ public final class Driver {
     private interface CookReason { String open(byte[] data, int offset, long length); }
 
     /** the generated deref: the slot's offset and the pointee's size (§6.3). */
-    private interface Deref { int at(int slot, int size); }
+    private interface Deref { int at(int slot, long size); }
 
     private static final class CookHandle {
         byte[] data;
@@ -466,7 +466,7 @@ public final class Driver {
             // indexes backwards out of the region (§7.4's pass two)
             int used = -1;
             if (f.countOffset >= 0) {
-                used = graphdemo.TableBytes.i32(cook.data, at + f.countOffset);
+                used = graphdemo.TableBytes.i32(cook.data, Math.toIntExact(at + f.countOffset));
                 if (used < 0 || used > f.arrayBound) {
                     fail(type.name + "." + f.name + " carries a count companion of " + used +
                             ", outside [ 0, " + f.arrayBound + " ]");
@@ -474,7 +474,7 @@ public final class Driver {
             }
 
             if (f.isPointer) {
-                int slot = at + f.offset;
+                int slot = Math.toIntExact(at + f.offset);
                 long delta = graphdemo.TableBytes.i64(cook.data, slot);
                 if (delta == 0) {
                     // NULL IN A REGION IS A DELTA OF ZERO (§6.3)
@@ -506,7 +506,7 @@ public final class Driver {
             switch (f.storage) {
                 case STRING:
                 case BYTES:
-                    emit(dump, name, text(cook.data, at + f.offset, used));
+                    emit(dump, name, text(cook.data, Math.toIntExact(at + f.offset), used));
                     break;
                 case RECORD: {
                     // a nested record — by value, or every slot of an array of them.
@@ -516,7 +516,7 @@ public final class Driver {
                     int slots = f.isArray ? f.arrayBound : 1;
                     for (int s = 0; s < slots; s++) {
                         String element = f.isArray ? name + "[" + s + "]" : name;
-                        storage(dump, cook, at + f.offset + s * f.elemSize, f.record(), element, depth);
+                        storage(dump, cook, Math.toIntExact(at + f.offset + s * f.elemSize), f.record(), element, depth);
                     }
                     break;
                 }
@@ -524,7 +524,7 @@ public final class Driver {
                     int slots = f.isArray ? f.arrayBound : 1;
                     for (int s = 0; s < slots; s++) {
                         String element = f.isArray ? name + "[" + s + "]" : name;
-                        emit(dump, element, scalar(cook.data, at + f.offset + s * f.elemSize, f.storage, f.elemSize));
+                        emit(dump, element, scalar(cook.data, Math.toIntExact(at + f.offset + s * f.elemSize), f.storage, Math.toIntExact(f.elemSize)));
                     }
                     break;
                 }
@@ -535,7 +535,7 @@ public final class Driver {
                 emit(dump, name + "#count", Integer.toString(used));
             }
             if (f.presentOffset >= 0) {
-                emit(dump, name + "#present", cook.data[at + f.presentOffset] != 0 ? "true" : "false");
+                emit(dump, name + "#present", cook.data[Math.toIntExact(at + f.presentOffset)] != 0 ? "true" : "false");
             }
         }
     }

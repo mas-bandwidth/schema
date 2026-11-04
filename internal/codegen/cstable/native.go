@@ -161,7 +161,7 @@ const tableNativeSource = `
             return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
         }
         UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
-        w.Put(at, raw, f.NativeElementSize); return true;
+        w.Put(at, raw, (int)f.NativeElementSize); return true; // a scalar's width, at most 16
     }
     static long NativeRecordBytes(TableTypeInfo type)
     { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }

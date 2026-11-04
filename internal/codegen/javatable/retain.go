@@ -98,6 +98,15 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		b.WriteString("        return v;\n")
 		b.WriteString("    }\n\n")
 	} else {
+		// the storage cap is refused before any value is built (§6.5, §11),
+		// and the same measure answers the framing check below
+		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
+		fmt.Fprintf(&b, "        long measured = %sVariable.loadMeasure(data, measure);\n", st.Name)
+		b.WriteString("        if (measured < 0 && \"storage_over_cap\".equals(measure.report.reason)) {\n")
+		b.WriteString("            report.refused = true;\n")
+		b.WriteString("            report.reason = measure.report.reason;\n")
+		b.WriteString("            return null;\n")
+		b.WriteString("        }\n")
 		fmt.Fprintf(&b, "        report.rootTypeId = %sVariable.TYPE_ID;\n", st.Name)
 		fmt.Fprintf(&b, "        TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, true);\n")
 		b.WriteString("        if (nt.recs != null && !nt.bad) {\n")
@@ -123,8 +132,7 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 		// exactly where loadMeasure answers -1 (docs/SPEC-TABLES.md §6.5), so a
 		// container whose count its framing cannot cover is refused whole here
 		// too, never retained around (§6.6).
-		b.WriteString("        TableVariable.Measure measure = new TableVariable.Measure();\n")
-		fmt.Fprintf(&b, "        if (%sVariable.loadMeasure(data, measure) < 0) {\n", st.Name)
+		b.WriteString("        if (measured < 0) {\n")
 		b.WriteString("            report.refused = true;\n")
 		b.WriteString("            if (measure.report.reason != null) { report.reason = measure.report.reason; }\n")
 		b.WriteString("            retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")

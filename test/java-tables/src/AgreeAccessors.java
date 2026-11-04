@@ -314,9 +314,9 @@ public final class AgreeAccessors {
         for (blockdemo.TableBlockFieldInfo f : info.fields) {
             if (!f.outOfLine) { continue; }
             String cap = camel(f.name);
-            long offsetOf = blockdemo.TableBytes.i64(data, base + f.offsetOfOffset);
-            long count = blockdemo.TableBytes.u32(data, base + f.countOffset);
-            long stride = blockdemo.TableBytes.u32(data, base + f.strideOffset);
+            long offsetOf = blockdemo.TableBytes.i64(data, Math.toIntExact(base + f.offsetOfOffset));
+            long count = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.countOffset));
+            long stride = blockdemo.TableBytes.u32(data, Math.toIntExact(base + f.strideOffset));
 
             int accCount = (Integer) callInstance(handle, cap + "Count", new Class<?>[0]);
             if (accCount != count) {
@@ -358,12 +358,12 @@ public final class AgreeAccessors {
                 // a string or a bytes: the buffer offset and the used length
                 int accAt = (Integer) callStatic(rowClass, camel(f.name) + "At",
                         new Class<?>[] { int.class }, at);
-                if (accAt != at + f.offset) {
+                if (accAt != Math.toIntExact(at + f.offset)) {
                     fail(where + ": the buffer accessor's offset is not the descriptor's");
                 }
                 int accLen = (Integer) callStatic(rowClass, camel(f.name) + "Length",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                int descLen = usedLen(blockdemo.TableBytes.i32(data, at + f.countOffset), f.arrayBound);
+                int descLen = usedLen(blockdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset)), f.arrayBound);
                 if (accLen != descLen) {
                     fail(where + ": the used length accessor and the descriptor disagree");
                 }
@@ -373,14 +373,14 @@ public final class AgreeAccessors {
             if (f.optional) {
                 boolean accPresent = (Boolean) callStatic(rowClass, camel(f.name) + "Present",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                if (accPresent != blockdemo.TableBytes.bool(data, at + f.presentOffset)) {
+                if (accPresent != blockdemo.TableBytes.bool(data, Math.toIntExact(at + f.presentOffset))) {
                     fail(where + ": the present accessor and the descriptor disagree");
                 }
             }
 
             int slots = f.isArray ? f.arrayBound : 1;
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 if (f.elementRef != null) {
                     int accPos;
                     if (f.isArray) {
@@ -402,14 +402,14 @@ public final class AgreeAccessors {
                                 new Class<?>[] { byte[].class, int.class, int.class }, data, at, s)
                         : callStatic(rowClass, camel(f.name),
                                 new Class<?>[] { byte[].class, int.class }, data, at);
-                Object descVal = byBlockDescriptor(data, value, f.kind, f.elemSize);
+                Object descVal = byBlockDescriptor(data, value, f.kind, Math.toIntExact(f.elemSize));
                 expectEq(accVal, descVal, where + "[" + s + "]");
             }
 
             if (f.counted && f.isArray) {
                 int accCount = (Integer) callStatic(rowClass, camel(f.name) + "Count",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                int descCount = usedLen(blockdemo.TableBytes.i32(data, at + f.countOffset), f.arrayBound);
+                int descCount = usedLen(blockdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset)), f.arrayBound);
                 if (accCount != descCount) {
                     fail(where + ": the count accessor and the descriptor disagree");
                 }
@@ -434,7 +434,7 @@ public final class AgreeAccessors {
         agreeCookRecord(cook.data(), at, info, Class.forName("graphdemo." + info.name + "Row"));
         for (graphdemo.TableCookFieldInfo f : info.fields) {
             if (!f.isPointer || f.record() == null) { continue; }
-            int target = cook.at(at + f.offset, f.record().size);
+            int target = cook.at(Math.toIntExact(at + f.offset), f.record().size);
             if (target < 0) { continue; } // null, or a refused delta
             walkCookNode(cook, target, f.record(), depth + 1, seen);
         }
@@ -453,12 +453,12 @@ public final class AgreeAccessors {
             if (f.isPointer) {
                 int accSlot = (Integer) callStatic(rowClass, camel(f.name) + "Slot",
                         new Class<?>[] { int.class }, at);
-                if (accSlot != at + f.offset) {
+                if (accSlot != Math.toIntExact(at + f.offset)) {
                     fail(where + ": the slot accessor's offset is not the descriptor's");
                 }
                 long accDelta = (Long) callStatic(rowClass, camel(f.name) + "Delta",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                if (accDelta != graphdemo.TableBytes.i64(data, at + f.offset)) {
+                if (accDelta != graphdemo.TableBytes.i64(data, Math.toIntExact(at + f.offset))) {
                     fail(where + ": the accessor and the descriptor disagree about the delta");
                 }
                 continue;
@@ -467,12 +467,12 @@ public final class AgreeAccessors {
             if (f.storage == graphdemo.TableCookStorage.STRING || f.storage == graphdemo.TableCookStorage.BYTES) {
                 int accAt = (Integer) callStatic(rowClass, camel(f.name) + "At",
                         new Class<?>[] { int.class }, at);
-                if (accAt != at + f.offset) {
+                if (accAt != Math.toIntExact(at + f.offset)) {
                     fail(where + ": the buffer accessor's offset is not the descriptor's");
                 }
                 int accLen = (Integer) callStatic(rowClass, camel(f.name) + "Length",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                int descLen = usedLen(graphdemo.TableBytes.i32(data, at + f.countOffset), f.arrayBound);
+                int descLen = usedLen(graphdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset)), f.arrayBound);
                 if (accLen != descLen) {
                     fail(where + ": the used length accessor and the descriptor disagree");
                 }
@@ -482,14 +482,14 @@ public final class AgreeAccessors {
             if (f.presentOffset >= 0) {
                 boolean accPresent = (Boolean) callStatic(rowClass, camel(f.name) + "Present",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                if (accPresent != graphdemo.TableBytes.bool(data, at + f.presentOffset)) {
+                if (accPresent != graphdemo.TableBytes.bool(data, Math.toIntExact(at + f.presentOffset))) {
                     fail(where + ": the present accessor and the descriptor disagree");
                 }
             }
 
             int slots = f.isArray ? f.arrayBound : 1;
             for (int s = 0; s < slots; s++) {
-                int value = at + f.offset + s * f.elemSize;
+                int value = Math.toIntExact(at + f.offset + s * f.elemSize);
                 if (f.storage == graphdemo.TableCookStorage.RECORD) {
                     int accPos;
                     if (f.isArray) {
@@ -511,14 +511,14 @@ public final class AgreeAccessors {
                                 new Class<?>[] { byte[].class, int.class, int.class }, data, at, s)
                         : callStatic(rowClass, camel(f.name),
                                 new Class<?>[] { byte[].class, int.class }, data, at);
-                Object descVal = byCookDescriptor(data, value, f.storage, f.elemSize);
+                Object descVal = byCookDescriptor(data, value, f.storage, Math.toIntExact(f.elemSize));
                 expectEq(accVal, descVal, where + "[" + s + "]");
             }
 
             if (f.isArray && f.countOffset >= 0) {
                 int accCount = (Integer) callStatic(rowClass, camel(f.name) + "Count",
                         new Class<?>[] { byte[].class, int.class }, data, at);
-                int descCount = usedLen(graphdemo.TableBytes.i32(data, at + f.countOffset), f.arrayBound);
+                int descCount = usedLen(graphdemo.TableBytes.i32(data, Math.toIntExact(at + f.countOffset)), f.arrayBound);
                 if (accCount != descCount) {
                     fail(where + ": the count accessor and the descriptor disagree");
                 }

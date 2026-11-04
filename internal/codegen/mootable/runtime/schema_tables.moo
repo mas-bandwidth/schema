@@ -33,6 +33,11 @@ export type FieldDescriptor = {
 	array: string?,
 	bound: number?,
 	unbounded: boolean?,
+	-- es, ea: a list's element or a map's entry storage and alignment
+	-- (ir.ListElementLayout, ir.RecordLayout), the extent term the storage
+	-- measure sums (docs/SPEC-TABLES.md §6.5, §11)
+	es: number?,
+	ea: number?,
 	min: number?,
 	keyvs: { { any } }?,
 	wide: boolean?,
@@ -78,6 +83,12 @@ export type TableDescriptor = {
 	forms: { [string]: boolean }?,
 	fixed: boolean,
 	variable: boolean,
+	-- the record's storage and alignment (ir.RecordLayout) and the unit's
+	-- region alignment (ir.TableRegionAlign), the storage measure's facts
+	-- (docs/SPEC-TABLES.md §6.5, §11)
+	size: number?,
+	align: number?,
+	ralign: number?,
 	jsonArray: boolean?,
 	integrity: string?,
 	place: { tables: { string }, str: boolean, bytes: boolean },

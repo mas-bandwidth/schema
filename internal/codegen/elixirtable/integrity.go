@@ -78,6 +78,9 @@ func variableIntegrity(u *ir.Unit, runtime, retain string) (string, string) {
 	retain = strings.ReplaceAll(retain, "{:ok, "+wire+",\n       retain, report}", "data = "+wire+"\n      {:ok, seal_file(desc, data), retain, report}")
 	runtime = strings.ReplaceAll(runtime, "case open(data) do", "case open_file(desc, data) do")
 	retain = strings.ReplaceAll(retain, "case open(data) do", "case open_file(desc, data) do")
+	// the storage cap guard opens the file behind the cap (docs/SPEC-TABLES.md §11)
+	runtime = strings.Replace(runtime, "      open(data)\n    end\n  end\n\n  defp storage_over_cap?(",
+		"      open_file(Map.fetch!(@tables, table), data)\n    end\n  end\n\n  defp storage_over_cap?(", 1)
 	retain = strings.ReplaceAll(retain, "{:error, :malformed, reasoned(report, refusal), retain}", "{:error, refusal, reasoned(report, refusal), retain}")
 	runtime = strings.Replace(runtime, "  defp reasoned(report, :newer_form)", `  defp reasoned(report, :integrity_mismatch),
     do: Map.put(%{report | malformed: true}, :reason, "integrity_mismatch")

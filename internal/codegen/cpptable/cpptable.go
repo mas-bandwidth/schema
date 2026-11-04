@@ -602,7 +602,8 @@ const tableRefuseReasonLaterValues = `
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 `
 
 // tableRefuseReason is the ONE refusal vocabulary (docs/SPEC-TABLES.md §6.5,
@@ -926,7 +927,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -934,15 +935,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -972,10 +973,10 @@ inline const char TableDocNone[1] = "";
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -1056,7 +1057,7 @@ inline const char TableDocNone[1] = "";
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -2124,7 +2125,14 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 				g.pf("// TableTextFormEdit replaces one existing scalar value (§16.9.3): path\n")
 				g.pf("// names it as \"field\", \"field[2]\" or \"field.child\", and text is its\n")
 				g.pf("// replacement spelling, one token of this form.\n")
-				g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n")
+				g.pf("struct TableTextFormEdit\n{\n    const char * path;\n    const char * text;\n};\n\n")
+				g.pf("// TableTextFormLimits are the caller's finite resource limits (§16.9.4):\n")
+				g.pf("// the document's bytes, its tokens (atoms and parentheses), its nodes\n")
+				g.pf("// (lists), the bytes its strings decode to, and its list depth. A zero or\n")
+				g.pf("// negative field takes the contract default (65536 bytes, 8192 tokens,\n")
+				g.pf("// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit\n")
+				g.pf("// exceeded refuses as text_limit.\n")
+				g.pf("struct TableTextFormLimits\n{\n    int64_t bytes;\n    int64_t tokens;\n    int64_t nodes;\n    int64_t allocation;\n    int64_t depth;\n};\n")
 				g.pf("#endif // %s\n\n", editGuard)
 				for _, st := range members {
 					if !st.IsTable || st.CarriesForm("json") {

@@ -331,6 +331,12 @@ func fixedRoots(u *ir.Unit) []*ir.Struct {
 		if !ir.TableFixedSupported(st, 0) || !fixedFinite(st) {
 			continue
 		}
+		// the RECORD BOUND (docs/SPEC-TABLES.md §3.4): past it no conforming
+		// reader decodes the record, so the form is not emitted and the
+		// table keeps form 1, as ir.TableFixedRecordBounds names it
+		if ir.TableFixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
+			continue
+		}
 		out = append(out, st)
 	}
 	// u.Tables is a map: the roots are emitted in name order, so one unit

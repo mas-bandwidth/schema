@@ -362,14 +362,17 @@ func TestSpecLimitsMatchGo(t *testing.T) {
 	}
 	minBound := time.Unix(0, -1<<63).UTC()
 	maxBound := time.Unix(0, 1<<63-1).UTC()
+	// The year limits are the first and last calendar years the int64
+	// nanosecond domain reaches: it begins 1677-09-21T00:12:43.145224192Z and
+	// ends 2262-04-11T23:47:16.854775807Z, so both end years are partial.
+	if got := minBound.Format(time.RFC3339Nano); got != "1677-09-21T00:12:43.145224192Z" {
+		t.Fatalf("int64 nanosecond minimum is %s", got)
+	}
+	if got := maxBound.Format(time.RFC3339Nano); got != "2262-04-11T23:47:16.854775807Z" {
+		t.Fatalf("int64 nanosecond maximum is %s", got)
+	}
 	tsMinYearVal := minBound.Year()
-	if time.Date(tsMinYearVal, time.January, 1, 0, 0, 0, 0, time.UTC).Before(minBound) {
-		tsMinYearVal++
-	}
 	tsMaxYearVal := maxBound.Year()
-	if time.Date(tsMaxYearVal, time.January, 1, 0, 0, 0, 0, time.UTC).After(maxBound) {
-		tsMaxYearVal--
-	}
 	tsMinYear := uint64(tsMinYearVal)
 	tsMaxYear := uint64(tsMaxYearVal)
 

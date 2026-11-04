@@ -485,7 +485,7 @@ func (g *blockGen) emitLayoutCheck() {
 		}
 	}
 	g.rf("    }\n\n")
-	g.rf("    private static void Size(string what, int got, int want)\n    {\n")
+	g.rf("    private static void Size(string what, long got, long want)\n    {\n")
 	g.rf("        if (got != want)\n        {\n")
 	g.rf("            throw new InvalidOperationException(\n")
 	g.rf("                \"schema block layout: \" + what + \" is \" + got + \" bytes in this runtime and \" + want +\n")
@@ -869,17 +869,17 @@ public unsafe readonly struct TableBlockRows<T> where T : unmanaged
 public sealed class TableBlockFieldInfo
 {
     public string Name;
-    public int Offset;      // the field's offset in the record this descriptor describes
-    public int Size;        // its size there
+    public long Offset;      // the field's offset in the record this descriptor describes
+    public long Size;        // its size there
     public byte Kind;       // the table-wire kind, as TableFieldInfo carries it
     public bool OutOfLine;  // an out-of-line array: the triple's three members are live
-    public int OffsetOfOffset; // the triple's OffsetOf member, or -1
+    public long OffsetOfOffset; // the triple's OffsetOf member, or -1
     // The COUNT COMPANION, and it is one column doing one job in both
     // spellings: the triple's Count member for an out-of-line array, the int32
     // used length of a string or a bytes inline, -1 when the field has none.
-    public int CountOffset;
-    public int StrideOffset;   // the triple's Stride member, or -1
-    public int Stride;         // THIS BUILD's pitch, to assert against — never to index with (§19.2)
+    public long CountOffset;
+    public long StrideOffset;   // the triple's Stride member, or -1
+    public long Stride;         // THIS BUILD's pitch, to assert against — never to index with (§19.2)
     // ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
     // already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked node
     // and a block row without learning a second one. Where the field starts is
@@ -888,8 +888,8 @@ public sealed class TableBlockFieldInfo
     public bool Counted;      // CountOffset names a used-length companion
     public bool Optional;     // PresentOffset names a bool presence companion
     public int ArrayBound;    // inline slots, or a string's declared maximum; 0 for a plain scalar
-    public int ElemSize;      // ONE slot's size; the field's own when it holds one value
-    public int PresentOffset; // the presence companion, or -1
+    public long ElemSize;      // ONE slot's size; the field's own when it holds one value
+    public long PresentOffset; // the presence companion, or -1
     // the ELEMENT's or the nested record's own layout, behind a delegate so
     // the table stays constructible in any order. null when the field is a
     // scalar. Following it is how a walker DESCENDS: an out-of-line array's
@@ -910,7 +910,7 @@ public sealed class TableBlockInfo
 {
     public string Name;
     public ulong BuildVersion; // the unit's (docs/SPEC-TABLES.md §20)
-    public int Size;           // the record's own size: a projection's, or a row's
+    public long Size;           // the record's own size: a projection's, or a row's
     public int Align;
     public int NumFields;
     public TableBlockFieldInfo[] Fields;

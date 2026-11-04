@@ -60,11 +60,11 @@ struct Rd {
     fields: Vec<Fd>,
 }
 
-fn opt32(v: u32) -> Option<i64> {
-    if v == u32::MAX { None } else { Some(v as i64) }
+fn opt64(v: u64) -> Option<i64> {
+    if v == u64::MAX { None } else { Some(v as i64) }
 }
 
-fn opt_neg(v: i32) -> Option<i64> {
+fn opt_neg(v: i64) -> Option<i64> {
     if v < 0 { None } else { Some(v as i64) }
 }
 
@@ -84,9 +84,9 @@ macro_rules! rd_block {
                     count_offset: if f.out_of_line {
                         None
                     } else {
-                        opt32(f.count_offset)
+                        opt64(f.count_offset)
                     },
-                    present_offset: opt32(f.present_offset),
+                    present_offset: opt64(f.present_offset),
                     is_pointer: false,
                     is_array: f.is_array,
                     array_bound: f.array_bound as i64,

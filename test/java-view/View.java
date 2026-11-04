@@ -59,7 +59,7 @@ public final class View {
             if (r.field == null) {
                 out.print(" kind=- bound=- overlay=-");
             } else {
-                out.print(" kind=" + r.field.kind + " bound=" + r.field.bound + " overlay=" + (holder ? Integer.toString(r.field.offset) : "-"));
+                out.print(" kind=" + r.field.kind + " bound=" + r.field.bound + " overlay=" + (holder ? Long.toString(r.field.offset) : "-"));
             }
             annotation(r.tags, r.doc);
         }

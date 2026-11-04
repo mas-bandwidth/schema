@@ -39,12 +39,12 @@ func (v *tableJSONWide) div(d uint32) uint32 {
  for i:=3;i>=0;i-- {cur:=rem<<32|limbs[i];limbs[i]=cur/uint64(d);rem=cur%uint64(d)}
  v[0]=limbs[0]|limbs[1]<<32;v[1]=limbs[2]|limbs[3]<<32;return uint32(rem)
 }
-func tableJSONWideLoad(storage unsafe.Pointer,width uint32,signed bool) tableJSONWide {
+func tableJSONWideLoad(storage unsafe.Pointer,width int64,signed bool) tableJSONWide {
  if width==16 { return *(*tableJSONWide)(storage) }
  if signed { n:=tableJSONGetSigned(storage,width);v:=tableJSONWide{uint64(n),0};if n<0 {v[1]=^uint64(0)};return v }
  return tableJSONWide{tableJSONGetRaw(storage,width),0}
 }
-func tableJSONWideStore(storage unsafe.Pointer,width uint32,v tableJSONWide) {
+func tableJSONWideStore(storage unsafe.Pointer,width int64,v tableJSONWide) {
  if width==16 { *(*tableJSONWide)(storage)=v } else { tableJSONSetRaw(storage,width,v[0]) }
 }
 func (v tableJSONWide) fraction(n int) tableJSONWide {

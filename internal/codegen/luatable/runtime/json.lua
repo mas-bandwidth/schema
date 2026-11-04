@@ -1465,10 +1465,10 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
       -- the total dropped this element; one past [..N] is counted as well, as
       -- the wire counts its count clamp beside the total (§2.13)
       if seen > bound then report.clamped = report.clamped + 1 end
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     elseif placed >= bound then
       report.clamped = report.clamped + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     else
       local vs = value_shape(inp)
       if vs == "z" and vf.optional then
@@ -1477,7 +1477,7 @@ local function read_text_list(T, fd, _d, vf, inp, holder, key, depth, graph, rep
         out[placed] = zero_elem(T, fd.elem)
       elseif vs ~= "s" then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
         placed = placed + 1
         out[placed] = zero_elem(T, fd.elem)
       else
@@ -1529,6 +1529,11 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
     inp.bad = true
     return false
   end
+  -- the array is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then
+    inp.bad = true
+    return false
+  end
   inp.p = inp.p + 1
   local out = {}
   if fd.fixed then
@@ -1557,7 +1562,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
     end
     if placed >= bound then
       report.clamped = report.clamped + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     elseif fd.elem.shape == "pointer" and vs == "z" then
       literal(inp, "null")
       placed = placed + 1
@@ -1569,7 +1574,7 @@ local function read_array(T, fd, inp, holder, key, depth, graph, report, table_n
       out[placed] = zero_elem(T, fd.elem)
     elseif vs ~= eshape then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
       placed = placed + 1
       out[placed] = zero_elem(T, fd.elem)
     else
@@ -1601,6 +1606,11 @@ end
 
 local function read_map(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
   if peek(inp) ~= "{" then
+    inp.bad = true
+    return false
+  end
+  -- the map's object is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then
     inp.bad = true
     return false
   end
@@ -1672,6 +1682,7 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     -- reference map reader keeps it.
     local vf = fd.value_field
     local null_ref = false
+    local keep_default = false
     if
       not skip
       and value_shape(inp) == "z"
@@ -1679,8 +1690,11 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
     then
       null_ref = true
     elseif not skip and value_shape(inp) ~= expect_shape(T, vf) then
+      -- a value of the wrong shape is skipped and counted, and its entry stays
+      -- at the value's default (§16.2), as the Go reference keeps it
       report.kindMismatch = report.kindMismatch + 1
       skip = true
+      keep_default = true
     end
     if null_ref then
       literal(inp, "null")
@@ -1688,7 +1702,12 @@ local function read_map(T, fd, inp, holder, key, depth, graph, report, table_nam
       seen[kval] = true
       out[kval] = false
     elseif skip then
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
+      if keep_default then
+        if seen[kval] then report.duplicate = report.duplicate + 1 end
+        seen[kval] = true
+        out[kval] = zero_elem(T, vf)
+      end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
@@ -1715,6 +1734,11 @@ end
 
 local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_name, field_name)
   if peek(inp) ~= "{" then
+    inp.bad = true
+    return false
+  end
+  -- the keyed object is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then
     inp.bad = true
     return false
   end
@@ -1753,13 +1777,13 @@ local function read_keyed(T, fd, inp, holder, key, depth, graph, report, table_n
     end
     if slot == nil then
       report.unknown = report.unknown + 1
-      if not skip_value(inp, depth + 1, graph) then return false end
+      if not skip_value(inp, depth + 2, graph) then return false end
     else
       if seen[slot] then report.duplicate = report.duplicate + 1 end
       seen[slot] = true
       if value_shape(inp) ~= eshape then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
       else
         if not read_value(T, fd.elem, inp, out, slot, depth + 1, graph, report, true, table_name, field_name) then
           return false
@@ -1783,6 +1807,11 @@ end
 
 local function read_union(T, u, inp, depth, graph, report, table_name, field_name)
   if peek(inp) ~= "{" then
+    inp.bad = true
+    return nil
+  end
+  -- the union's object is one level below its holder, and its elements one below that
+  if depth + 1 > MAX_DEPTH then
     inp.bad = true
     return nil
   end
@@ -1810,11 +1839,11 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
   local out = { tag = 0 }
   if tag == 0 then
     report.unknown = report.unknown + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   elseif arm.field == nil then
     if value_shape(inp) ~= "z" then
       report.kindMismatch = report.kindMismatch + 1
-      if not skip_value(inp, depth + 1, graph) then return nil end
+      if not skip_value(inp, depth + 2, graph) then return nil end
     else
       literal(inp, "null")
       out.tag = tag
@@ -1829,7 +1858,7 @@ local function read_union(T, u, inp, depth, graph, report, table_name, field_nam
     out.tag = tag
   elseif value_shape(inp) ~= expect_shape(T, arm.field) then
     report.kindMismatch = report.kindMismatch + 1
-    if not skip_value(inp, depth + 1, graph) then return nil end
+    if not skip_value(inp, depth + 2, graph) then return nil end
   else
     out.tag = tag
     if not read_value(T, arm.field, inp, out, arm.slot, depth + 1, graph, report, false, table_name, field_name) then
@@ -1984,6 +2013,11 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       inp.bad = true
       return false
     end
+    -- the flags array is one level below its holder, and its elements one below that
+    if depth + 1 > MAX_DEPTH then
+      inp.bad = true
+      return false
+    end
     inp.p = inp.p + 1
     local bits = 0
     while true do
@@ -1998,7 +2032,7 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       end
       if c ~= '"' then
         report.kindMismatch = report.kindMismatch + 1
-        if not skip_value(inp, depth + 1, graph) then return false end
+        if not skip_value(inp, depth + 2, graph) then return false end
       else
         local st = inp.p
         local _, _, ok = scan_string(inp, MAX_KEY)

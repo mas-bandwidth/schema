@@ -53,6 +53,7 @@ final class TableWireReport {
   bool integrityMismatch = false;
   bool refused = false;
   bool _countRefused = false;
+  bool _storageRefused = false;
   int missingRequired = 0;
   String missingFields = '';
   int retained = 0;
@@ -77,14 +78,16 @@ final class TableWireReport {
   // does not carry is unknown_form, framing the reader cannot follow is
   // wire_damaged, and a read that kept its verdict is ok — the mapping the Go
   // leg's measure gives its two verdicts. It is DERIVED from the flags and the
-  // stored field; _countRefused records a builder storage refusal without
-  // adding a malformed event. Earlier report events remain available.
+  // stored field; _countRefused records a builder storage refusal and
+  // _storageRefused a wire whose region measure passes the storage cap (§11),
+  // each without adding a malformed event. Earlier report events remain available.
   // A widened, clamped or unknown field is not a refusal: the read answers ok.
   String get reason {
     if (integrityMismatch) return 'integrity_mismatch';
     if (nonFiniteFloat.isNotEmpty) return 'non_finite_float: $nonFiniteFloat';
     if (missingFields.isNotEmpty) return 'missing_required: $missingFields';
     if (_countRefused) return 'count_over_extent_cap';
+    if (_storageRefused) return 'storage_over_cap';
     if (refused) return 'unknown_form';
     if (malformed) return 'wire_damaged';
     return 'ok';
@@ -301,6 +304,11 @@ final class TableWireWriter {
   int refFor(int id) => state.refFor(id);
 }
 
+// _kTableStorageCap is the storage cap (docs/SPEC-TABLES.md §11): a wire whose
+// region measure passes it is refused as storage_over_cap, and no count times
+// an element size is summed past it.
+const int _kTableStorageCap = 1099511627776;
+
 // _round is the region's alignment (§6.2, ir.TableRegionAlign).
 int _round(int n) => (n + 7) & -8;
 
@@ -402,11 +410,15 @@ final class _MF {
 // out-of-line storage the walked bodies carry (docs/SPEC-TABLES.md §6.2): every
 // map's and list's aligned count-times-size, reached by value through nested
 // tables, element tables, map entries and union arms. A false answer is a
-// count the framing cannot hold; a caller refuses.
+// count the framing cannot hold, or, with overCap set, a list or map term that
+// would take base + at past the storage cap (docs/SPEC-TABLES.md §11); a
+// caller refuses. base is the storage the measure counted before this scan.
 final class _ExtentScan {
   final List<Map<int, _MF>> structs;
   final List<Map<int, _MF>> unions;
   int at = 0;
+  int base = 0;
+  bool overCap = false;
   _ExtentScan(this.structs, this.unions);
 
   // _body reads one length-prefixed payload (extentBody): null, with the
@@ -469,6 +481,11 @@ final class _ExtentScan {
       if (count < 0 || count > 0x7FFFFFFF) return false;
       if (count > (r.limit - r.pos) ~/ _kindFloor(kind)) return false;
       at = (at + f.align - 1) & -f.align;
+      // a term past the storage cap is refused before it is summed (§11)
+      if (count > 0 && f.size > 0 && count > (_kTableStorageCap - base - at) ~/ f.size) {
+        overCap = true;
+        return false;
+      }
       at += count * f.size;
     }
     if (kind != 13 && kind != 15 && !(kind == 12 && f.mode == 4)) return true;
@@ -4340,11 +4357,18 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report._storageRefused) r.report.refused = false;
+  r.report._storageRefused = false;
   if (r.report.missingFields.isNotEmpty) r.report.refused = false;
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
+  if (data.length > 772128952 && _tableEntityWireMeasureFramed(data).$2 == 'storage_over_cap') {
+    r.report.refused = true;
+    r.report._storageRefused = true;
+    return TableEntity();
+  }
   try {
     r.pos = 1;
     tableEntityWireLoadBody(r, v, false);
@@ -4388,17 +4412,23 @@ const _measureStructsTableEntity = <Map<int, _MF>>[
 const _measureUnionsTableEntity = <Map<int, _MF>>[
 ];
 
-int tableEntityWireMeasure(Uint8List data) {
+int tableEntityWireMeasure(Uint8List data) => tableEntityWireMeasureReason(data).$1;
+
+(int, String) tableEntityWireMeasureReason(Uint8List data) {
+  return _tableEntityWireMeasureFramed(data);
+}
+
+(int, String) _tableEntityWireMeasureFramed(Uint8List data) {
   final r = TableWireReader(data, data.length);
-  if (data.length < 9 || data[0] != 1) return 0;
+  if (data.length < 9 || data[0] != 1) return (0, 'ok');
   final idCount = readU64(data, data.length - 8);
-  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return 0;
+  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return (0, 'ok');
   final idStart = data.length - 8 - idCount * 8;
-  if (idStart < 1) return 0;
+  if (idStart < 1) return (0, 'ok');
   final idSeen = <int>{};
   for (var k = 0; k < idCount; k++) {
     final id = readU64(data, idStart + k * 8);
-    if (!idSeen.add(id)) return 0;
+    if (!idSeen.add(id)) return (0, 'ok');
     r.refToId[k + 1] = id;
   }
   r.entryCount = idCount;
@@ -4407,7 +4437,7 @@ int tableEntityWireMeasure(Uint8List data) {
   // the root body and every node record walk Go's extentScan rule (§6.2):
   // map entries, list and array elements, nested tables and union arms
   final rootScan = _ExtentScan(_measureStructsTableEntity, _measureUnionsTableEntity);
-  if (!rootScan.record(r, 0)) return -1;
+  if (!rootScan.record(r, 0)) return (-1, rootScan.overCap ? 'storage_over_cap' : 'ok');
   var total = _round(_round(64) + rootScan.at);
   final nodeSpec = <int, List<int>>{
   };
@@ -4434,37 +4464,41 @@ int tableEntityWireMeasure(Uint8List data) {
       if (!r.skipKind(kind)) break;
     }
   }
-  if (unframed) return 0;
+  if (unframed) return (0, 'ok');
   var records = 0;
   var nodeTotal = 0;
   if (seen) {
     r.pos = pstart;
     final cnt = r.readLeb();
-    if (cnt == null) return 0;
+    if (cnt == null) return (0, 'ok');
     var read = 0;
     while (r.pos < pend) {
       final typeRef = r.readLeb();
-      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return 0;
+      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return (0, 'ok');
       final blen = r.readLeb();
-      if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
+      if (blen == null || blen < 0 || blen > pend - r.pos) return (0, 'ok');
       final tid = r.refToId[typeRef] ?? 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
         final over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);
         final nodeScan = _ExtentScan(_measureStructsTableEntity, _measureUnionsTableEntity);
-        if (!nodeScan.record(over, sn[1])) return -1;
+        nodeScan.base = total + nodeTotal;
+        if (!nodeScan.record(over, sn[1])) return (-1, nodeScan.overCap ? 'storage_over_cap' : 'ok');
         nodeTotal += _round(_round(sn[0]) + nodeScan.at);
       } else if (tid == _kBytesBlobId) {
       } else if (tid == _kStringBlobId) {
       }
+      if (total + nodeTotal > _kTableStorageCap) return (-1, 'storage_over_cap');
       r.pos += blen;
       records++;
       read++;
     }
-    if (read != cnt) return 0;
+    if (read != cnt) return (0, 'ok');
   }
-  return total + nodeTotal + (records + 1) * 16;
+  final size = total + nodeTotal + (records + 1) * 16;
+  if (size > _kTableStorageCap) return (-1, 'storage_over_cap');
+  return (size, 'ok');
 }
 
 const String tableEntityWireLoadRetain = "TableEntity: retention requires a variable root and its region directory";
@@ -4500,11 +4534,18 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report._storageRefused) r.report.refused = false;
+  r.report._storageRefused = false;
   if (r.report.missingFields.isNotEmpty) r.report.refused = false;
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
+  if (data.length > 772128952 && _tableStatWireMeasureFramed(data).$2 == 'storage_over_cap') {
+    r.report.refused = true;
+    r.report._storageRefused = true;
+    return TableStat();
+  }
   try {
     r.pos = 1;
     tableStatWireLoadBody(r, v, false);
@@ -4536,17 +4577,23 @@ const _measureStructsTableStat = <Map<int, _MF>>[
 const _measureUnionsTableStat = <Map<int, _MF>>[
 ];
 
-int tableStatWireMeasure(Uint8List data) {
+int tableStatWireMeasure(Uint8List data) => tableStatWireMeasureReason(data).$1;
+
+(int, String) tableStatWireMeasureReason(Uint8List data) {
+  return _tableStatWireMeasureFramed(data);
+}
+
+(int, String) _tableStatWireMeasureFramed(Uint8List data) {
   final r = TableWireReader(data, data.length);
-  if (data.length < 9 || data[0] != 1) return 0;
+  if (data.length < 9 || data[0] != 1) return (0, 'ok');
   final idCount = readU64(data, data.length - 8);
-  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return 0;
+  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return (0, 'ok');
   final idStart = data.length - 8 - idCount * 8;
-  if (idStart < 1) return 0;
+  if (idStart < 1) return (0, 'ok');
   final idSeen = <int>{};
   for (var k = 0; k < idCount; k++) {
     final id = readU64(data, idStart + k * 8);
-    if (!idSeen.add(id)) return 0;
+    if (!idSeen.add(id)) return (0, 'ok');
     r.refToId[k + 1] = id;
   }
   r.entryCount = idCount;
@@ -4555,7 +4602,7 @@ int tableStatWireMeasure(Uint8List data) {
   // the root body and every node record walk Go's extentScan rule (§6.2):
   // map entries, list and array elements, nested tables and union arms
   final rootScan = _ExtentScan(_measureStructsTableStat, _measureUnionsTableStat);
-  if (!rootScan.record(r, 0)) return -1;
+  if (!rootScan.record(r, 0)) return (-1, rootScan.overCap ? 'storage_over_cap' : 'ok');
   var total = _round(_round(8) + rootScan.at);
   final nodeSpec = <int, List<int>>{
   };
@@ -4582,37 +4629,41 @@ int tableStatWireMeasure(Uint8List data) {
       if (!r.skipKind(kind)) break;
     }
   }
-  if (unframed) return 0;
+  if (unframed) return (0, 'ok');
   var records = 0;
   var nodeTotal = 0;
   if (seen) {
     r.pos = pstart;
     final cnt = r.readLeb();
-    if (cnt == null) return 0;
+    if (cnt == null) return (0, 'ok');
     var read = 0;
     while (r.pos < pend) {
       final typeRef = r.readLeb();
-      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return 0;
+      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return (0, 'ok');
       final blen = r.readLeb();
-      if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
+      if (blen == null || blen < 0 || blen > pend - r.pos) return (0, 'ok');
       final tid = r.refToId[typeRef] ?? 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
         final over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);
         final nodeScan = _ExtentScan(_measureStructsTableStat, _measureUnionsTableStat);
-        if (!nodeScan.record(over, sn[1])) return -1;
+        nodeScan.base = total + nodeTotal;
+        if (!nodeScan.record(over, sn[1])) return (-1, nodeScan.overCap ? 'storage_over_cap' : 'ok');
         nodeTotal += _round(_round(sn[0]) + nodeScan.at);
       } else if (tid == _kBytesBlobId) {
       } else if (tid == _kStringBlobId) {
       }
+      if (total + nodeTotal > _kTableStorageCap) return (-1, 'storage_over_cap');
       r.pos += blen;
       records++;
       read++;
     }
-    if (read != cnt) return 0;
+    if (read != cnt) return (0, 'ok');
   }
-  return total + nodeTotal + (records + 1) * 16;
+  final size = total + nodeTotal + (records + 1) * 16;
+  if (size > _kTableStorageCap) return (-1, 'storage_over_cap');
+  return (size, 'ok');
 }
 
 const String tableStatWireLoadRetain = "TableStat: retention requires a variable root and its region directory";
@@ -4648,11 +4699,18 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   r.report = report;
   r.report.nonFiniteFloat = '';
   r.report._countRefused = false;
+  if (r.report._storageRefused) r.report.refused = false;
+  r.report._storageRefused = false;
   if (r.report.missingFields.isNotEmpty) r.report.refused = false;
   r.report.missingFields = '';
   final verdict = r.open();
   if (verdict == 1) { r.report.refused = true; return v; }
   if (verdict == 2) { r.report.malformed = true; return v; }
+  if (data.length > 772128951 && _tableMixedWireMeasureFramed(data).$2 == 'storage_over_cap') {
+    r.report.refused = true;
+    r.report._storageRefused = true;
+    return TableMixed();
+  }
   try {
     r.pos = 1;
     tableMixedWireLoadBody(r, v, false);
@@ -4755,17 +4813,23 @@ const _measureUnionsTableMixed = <Map<int, _MF>>[
   },
 ];
 
-int tableMixedWireMeasure(Uint8List data) {
+int tableMixedWireMeasure(Uint8List data) => tableMixedWireMeasureReason(data).$1;
+
+(int, String) tableMixedWireMeasureReason(Uint8List data) {
+  return _tableMixedWireMeasureFramed(data);
+}
+
+(int, String) _tableMixedWireMeasureFramed(Uint8List data) {
   final r = TableWireReader(data, data.length);
-  if (data.length < 9 || data[0] != 1) return 0;
+  if (data.length < 9 || data[0] != 1) return (0, 'ok');
   final idCount = readU64(data, data.length - 8);
-  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return 0;
+  if (idCount < 0 || idCount > 4096 || idCount > (data.length - 9) ~/ 8) return (0, 'ok');
   final idStart = data.length - 8 - idCount * 8;
-  if (idStart < 1) return 0;
+  if (idStart < 1) return (0, 'ok');
   final idSeen = <int>{};
   for (var k = 0; k < idCount; k++) {
     final id = readU64(data, idStart + k * 8);
-    if (!idSeen.add(id)) return 0;
+    if (!idSeen.add(id)) return (0, 'ok');
     r.refToId[k + 1] = id;
   }
   r.entryCount = idCount;
@@ -4774,7 +4838,7 @@ int tableMixedWireMeasure(Uint8List data) {
   // the root body and every node record walk Go's extentScan rule (§6.2):
   // map entries, list and array elements, nested tables and union arms
   final rootScan = _ExtentScan(_measureStructsTableMixed, _measureUnionsTableMixed);
-  if (!rootScan.record(r, 0)) return -1;
+  if (!rootScan.record(r, 0)) return (-1, rootScan.overCap ? 'storage_over_cap' : 'ok');
   var total = _round(_round(1352) + rootScan.at);
   final nodeSpec = <int, List<int>>{
   };
@@ -4801,37 +4865,41 @@ int tableMixedWireMeasure(Uint8List data) {
       if (!r.skipKind(kind)) break;
     }
   }
-  if (unframed) return 0;
+  if (unframed) return (0, 'ok');
   var records = 0;
   var nodeTotal = 0;
   if (seen) {
     r.pos = pstart;
     final cnt = r.readLeb();
-    if (cnt == null) return 0;
+    if (cnt == null) return (0, 'ok');
     var read = 0;
     while (r.pos < pend) {
       final typeRef = r.readLeb();
-      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return 0;
+      if (typeRef == null || typeRef < 1 || typeRef > r.entryCount) return (0, 'ok');
       final blen = r.readLeb();
-      if (blen == null || blen < 0 || blen > pend - r.pos) return 0;
+      if (blen == null || blen < 0 || blen > pend - r.pos) return (0, 'ok');
       final tid = r.refToId[typeRef] ?? 0;
       final bodyStart = r.pos;
       final sn = nodeSpec[tid];
       if (sn != null) {
         final over = TableWireReader.over(r.data.buffer.asUint8List(r.data.offsetInBytes + bodyStart, blen), r);
         final nodeScan = _ExtentScan(_measureStructsTableMixed, _measureUnionsTableMixed);
-        if (!nodeScan.record(over, sn[1])) return -1;
+        nodeScan.base = total + nodeTotal;
+        if (!nodeScan.record(over, sn[1])) return (-1, nodeScan.overCap ? 'storage_over_cap' : 'ok');
         nodeTotal += _round(_round(sn[0]) + nodeScan.at);
       } else if (tid == _kBytesBlobId) {
       } else if (tid == _kStringBlobId) {
       }
+      if (total + nodeTotal > _kTableStorageCap) return (-1, 'storage_over_cap');
       r.pos += blen;
       records++;
       read++;
     }
-    if (read != cnt) return 0;
+    if (read != cnt) return (0, 'ok');
   }
-  return total + nodeTotal + (records + 1) * 16;
+  final size = total + nodeTotal + (records + 1) * 16;
+  if (size > _kTableStorageCap) return (-1, 'storage_over_cap');
+  return (size, 'ok');
 }
 
 const String tableMixedWireLoadRetain = "TableMixed: retention requires a variable root and its region directory";
@@ -6131,7 +6199,7 @@ int _tableDamageFromJson(dynamic val, TableTextReport r, [int def = 0]) {
       case "Shielded": bits |= 32;
       case "Airborne": bits |= 64;
       case "Downed": bits |= 128;
-      default: r.unknown++;
+      default: if (item is String) { r.unknown++; } else { r.kindMismatch++; }
     }
   }
   return bits;

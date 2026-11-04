@@ -120,7 +120,8 @@ enum TableRefuseReason : int32_t
     batch_too_large,         // a batch past 256 bodies on write, or past the caller's room on read: nothing written or decoded
     text_ill_formed,         // used text that is not well-formed UTF-8 or paired UTF-16, refused by name (algorithm §4.5, fix 11)
     count_over_bound,        // a fixed-form count past the PLAN's bound, checked before any destination byte; never clamps (§3.4)
-    length_over_bound        // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    length_over_bound,       // a fixed-form text length past the PLAN's bound, the same rule (algorithm §4.5)
+    storage_over_cap         // a wire whose region measure passes the 2^40-byte storage cap, refused before any region is sized (§6.5, §11)
 };
 
 // WHY A READ WAS REFUSED, by name (docs/SPEC-TABLES.md §3.3, §11). A REFUSAL
@@ -193,6 +194,7 @@ struct TableMessageReason
     static constexpr TableRefuseReason text_ill_formed = TableRefuseReason::text_ill_formed;
     static constexpr TableRefuseReason count_over_bound = TableRefuseReason::count_over_bound;
     static constexpr TableRefuseReason length_over_bound = TableRefuseReason::length_over_bound;
+    static constexpr TableRefuseReason storage_over_cap = TableRefuseReason::storage_over_cap;
     static constexpr TableRefuseReason no_vocabulary = ::blockdemo::no_vocabulary;
     static constexpr TableRefuseReason second_announcement = ::blockdemo::second_announcement;
     static constexpr TableRefuseReason vocabulary_too_large = ::blockdemo::vocabulary_too_large;
@@ -322,7 +324,7 @@ struct TableFieldInfo;
 
 struct TableUnionArmInfo
 {
-    uint32_t offset;             // offsetof the arm's payload within the union storage
+    int64_t offset;              // offsetof the arm's payload within the union storage
     const TableTypeInfo * table; // the arm payload's descriptor, or NULL
     // AN ARM IS A FIELD LINE (docs/SPEC-TABLES.md §2.6): an arm that names no
     // declared type or table carries the FIELD descriptor a field of that
@@ -330,15 +332,15 @@ struct TableUnionArmInfo
     // a generic walk meets an arm's kind, width, bounds and companions where
     // it meets a field's. Exactly one of the two is non-NULL on a set arm.
     const TableFieldInfo * field;
-    uint32_t size;               // the arm's whole storage, which selection zero-establishes
+    int64_t size;                // the arm's whole storage, which selection zero-establishes
 };
 
 // A union field's shape: the tag, and the arms indexed by it. Arms run
 // [0, enum_max]; index 0 is the EMPTY arm and carries no payload.
 struct TableUnionInfo
 {
-    uint32_t tag_offset; // offsetof the tag within the union storage
-    uint32_t tag_size;   // sizeof the tag
+    int64_t tag_offset; // offsetof the tag within the union storage
+    int64_t tag_size;   // sizeof the tag
     const TableUnionArmInfo * arms;
 };
 
@@ -368,10 +370,10 @@ struct TableFieldInfo
     bool counted;           // a _count/_length int32 companion exists (counted arrays, strings, bytes)
     bool optional;          // a ?T field: a _present bool companion decides whether it rides
     int32_t array_bound;    // array capacity / string max length; 0 for plain scalars
-    uint32_t offset;        // offsetof the storage member
-    uint32_t elem_size;     // sizeof the member (element size for arrays)
-    uint32_t count_offset;  // offsetof the _count/_length companion, or 0xffffffff
-    uint32_t present_offset; // offsetof the _present companion, or 0xffffffff
+    int64_t offset;         // offsetof the storage member
+    int64_t elem_size;      // sizeof the member (element size for arrays)
+    int64_t count_offset;   // offsetof the _count/_length companion, or 0xffffffff
+    int64_t present_offset; // offsetof the _present companion, or 0xffffffff
     const TableTypeInfo * table; // nested table's descriptor, or NULL
     bool has_range;         // a declared [min, max] (int or float)
     double range_min;       // the float range; an integer range also has the exact columns below
@@ -452,7 +454,7 @@ struct TableFieldInfo
 struct TableTypeInfo
 {
     const char * name;   // schema type name
-    uint32_t size;       // sizeof the storage struct
+    int64_t size;        // sizeof the storage struct
     int32_t num_fields;
     const TableFieldInfo * fields;
     // put one instance back at its declared defaults, in place. A generic
@@ -10016,28 +10018,28 @@ inline const TableTypeInfo * PaddedFrameTableType();
 inline const TableTypeInfo * PaddedRowTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, false, false, false, 0, (uint32_t) offsetof( PaddedRow, tag ), (uint32_t) sizeof( PaddedRow::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, false, false, false, 0, (uint32_t) offsetof( PaddedRow, value ), (uint32_t) sizeof( PaddedRow::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, false, false, false, 0, (uint32_t) offsetof( PaddedRow, flag ), (uint32_t) sizeof( PaddedRow::flag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, false, false, false, 0, (uint32_t) offsetof( PaddedRow, id ), (uint32_t) sizeof( PaddedRow::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, true, false, 15, (uint32_t) offsetof( PaddedRow, label ), (uint32_t) sizeof( PaddedRow::label ), (uint32_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, true, false, false, 4, (uint32_t) offsetof( PaddedRow, slots ), (uint32_t) sizeof( PaddedRow::slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, false, false, true, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( PaddedRow::counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, false, false, false, 0, (int64_t) offsetof( PaddedRow, tag ), (int64_t) sizeof( PaddedRow::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, false, false, false, 0, (int64_t) offsetof( PaddedRow, value ), (int64_t) sizeof( PaddedRow::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, false, false, false, 0, (int64_t) offsetof( PaddedRow, flag ), (int64_t) sizeof( PaddedRow::flag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, false, false, false, 0, (int64_t) offsetof( PaddedRow, id ), (int64_t) sizeof( PaddedRow::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, true, false, 15, (int64_t) offsetof( PaddedRow, label ), (int64_t) sizeof( PaddedRow::label ), (int64_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, true, false, false, 4, (int64_t) offsetof( PaddedRow, slots ), (int64_t) sizeof( PaddedRow::slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, true, false, false, (int32_t) Team::Max, (int64_t) offsetof( PaddedRow, teams ), (int64_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, false, false, true, 0, (int64_t) offsetof( PaddedRow, counter ), (int64_t) sizeof( PaddedRow::counter ), 0xffffffffu, (int64_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "PaddedRow", (int64_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
 inline const TableTypeInfo * PaddedFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, false, false, false, 0, (uint32_t) offsetof( PaddedFrame, marker ), (uint32_t) sizeof( PaddedFrame::marker ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, false, false, false, 0, (uint32_t) offsetof( PaddedFrame, stamp ), (uint32_t) sizeof( PaddedFrame::stamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, true, true, false, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( PaddedFrame::rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, PaddedRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( PaddedFrame::blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, false, false, false, 0, (int64_t) offsetof( PaddedFrame, marker ), (int64_t) sizeof( PaddedFrame::marker ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, false, false, false, 0, (int64_t) offsetof( PaddedFrame, stamp ), (int64_t) sizeof( PaddedFrame::stamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, true, true, false, 64, (int64_t) offsetof( PaddedFrame, rows ), (int64_t) sizeof( PaddedFrame::rows[0] ), (int64_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, PaddedRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 12, (int64_t) offsetof( PaddedFrame, blob ), (int64_t) sizeof( PaddedFrame::blob[0] ), (int64_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
     };
-    static const TableTypeInfo info = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { PaddedFrameReset( *(PaddedFrame *) p ); }, TableDocNone, 0, NULL, false };
+    static const TableTypeInfo info = { "PaddedFrame", (int64_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { PaddedFrameReset( *(PaddedFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
 }
 
@@ -10071,6 +10073,21 @@ struct TableTextFormEdit
     const char * path;
     const char * text;
 };
+
+// TableTextFormLimits are the caller's finite resource limits (§16.9.4):
+// the document's bytes, its tokens (atoms and parentheses), its nodes
+// (lists), the bytes its strings decode to, and its list depth. A zero or
+// negative field takes the contract default (65536 bytes, 8192 tokens,
+// 4096 nodes, 65536 decoded bytes); depth never exceeds 128. A limit
+// exceeded refuses as text_limit.
+struct TableTextFormLimits
+{
+    int64_t bytes;
+    int64_t tokens;
+    int64_t nodes;
+    int64_t allocation;
+    int64_t depth;
+};
 #endif // BLOCKDEMO_SCHEMA_TABLE_TEXTFORM_EDIT
 
 // PaddedRowLoadTextForm reads one PaddedRow from the hand-editable text form
@@ -10078,6 +10095,10 @@ struct TableTextFormEdit
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PaddedRowLoadTextForm( const char * text, int64_t bytes, PaddedRow & value, const char ** refusal );
+
+// PaddedRowLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PaddedRowLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, PaddedRow & value, const char ** refusal );
 
 // PaddedRowLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then
@@ -10103,6 +10124,10 @@ bool PaddedRowEditTextForm( const char * document, int64_t document_bytes, const
 // against the field kinds and landed through the JSON walk. A refusal
 // names itself in *refusal (§16.9.4).
 bool PaddedFrameLoadTextForm( const char * text, int64_t bytes, PaddedFrame & value, const char ** refusal );
+
+// PaddedFrameLoadTextForm with LIMITS reads under the caller's limits (§16.9.4); a
+// zero or negative field takes the contract default, as the read above does.
+bool PaddedFrameLoadTextForm( const char * text, int64_t bytes, const TableTextFormLimits & limits, PaddedFrame & value, const char ** refusal );
 
 // PaddedFrameLoadTextForm with the DOCUMENT retains the source bytes (§16.9.3):
 // *document and *document_bytes are the caller's own text, so a read then

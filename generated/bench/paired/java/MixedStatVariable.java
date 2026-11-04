@@ -411,6 +411,13 @@ public final class MixedStatVariable {
             return null;
         }
         Value v = new Value();
+        TableVariable.Measure measure = new TableVariable.Measure();
+        long measured = loadMeasure(data, measure);
+        if (measured < 0 && "storage_over_cap".equals(measure.report.reason)) {
+            report.refused = true;
+            report.reason = measure.report.reason;
+            return null;
+        }
         report.rootTypeId = TYPE_ID;
         TableVariable.NodeTable nt = TableVariable.readNodeTable(r, report, false);
         if (nt.recs != null && !nt.bad) {
@@ -444,8 +451,7 @@ public final class MixedStatVariable {
         if (report.refused) {
             return null;
         }
-        TableVariable.Measure measure = new TableVariable.Measure();
-        if (loadMeasure(data, measure) < 0) {
+        if (measured < 0) {
             report.refused = true;
             if (measure.report.reason != null) {
                 report.reason = measure.report.reason;
@@ -477,7 +483,7 @@ public final class MixedStatVariable {
 
     // loadMeasure sizes the region a tolerant load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
-    private static final long RECORD_SIZE = 8;
+    private static final long RECORD_SIZE = 8L;
 
     private static long alignUp(long n, long a) {
         return (n + a - 1) & -a;
@@ -554,6 +560,13 @@ public final class MixedStatVariable {
             total += m.nodeBlobBytes + m.nodeTableBytes;
         }
         total += (records + 1) * 16;
+        // the storage cap (§11): each part is at most the cap, so the sum
+        // never overflows
+        if (total > TableVariable.STORAGE_CAP) {
+            m.report.refused = true;
+            m.report.reason = "storage_over_cap";
+            return -1;
+        }
         return total;
     }
 
@@ -712,6 +725,10 @@ public final class MixedStatVariable {
         int c = in.peek();
         if (c == '}') {
             in.p++;
+            if (!in.enter()) {
+                return null;
+            }
+            in.leave();
             TableJson.LabelEntry entry = in.labels.get(labelId);
             if (entry == null || entry.open) {
                 in.bad = true;
@@ -758,6 +775,9 @@ public final class MixedStatVariable {
     }
 
     static void jsonReadFieldsBody(TableJson.In in, Value v) {
+        if (!in.enter()) {
+            return;
+        }
         boolean[] seenField = new boolean[2];
         while (true) {
             int c = in.peek();
@@ -840,5 +860,6 @@ public final class MixedStatVariable {
             in.bad = true;
             return;
         }
+        in.leave();
     }
 }

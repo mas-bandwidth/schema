@@ -749,9 +749,9 @@ static void mode_golden( const Root * root, const char * path, bool as_dump )
         const uint64_t end = e + 1 < dir.count ? entry_offset( dir, e + 1 ) : data_length;
         if ( e + 1 < dir.count && end <= start )
             fail( "the directory does not ascend at entry %llu", (unsigned long long) e );
-        if ( end - start < type->size )
-            fail( "node %llu (%s) has %llu bytes before the next entry and needs %u",
-                  (unsigned long long) e, type->name, (unsigned long long) ( end - start ), type->size );
+        if ( end - start < (uint64_t) type->size )
+            fail( "node %llu (%s) has %llu bytes before the next entry and needs %lld",
+                  (unsigned long long) e, type->name, (unsigned long long) ( end - start ), (long long) type->size );
     }
 
     // (4) EVERY BYTE NO FIELD COVERS IS ZERO (§7.2). It is not tidiness: a
@@ -1982,6 +1982,7 @@ static const char * reason_name( graphdemo::TableRefuseReason reason )
         case graphdemo::text_ill_formed: return "text_ill_formed";
         case graphdemo::count_over_bound: return "count_over_bound";
         case graphdemo::length_over_bound: return "length_over_bound";
+        case graphdemo::storage_over_cap: return "storage_over_cap";
     }
     return "?";
 }

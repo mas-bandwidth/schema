@@ -2941,14 +2941,14 @@ func (g *tableGen) unionArmsLambda(un *ir.Union, hoisted bool) string {
 		// THE ARM OFFSET IS FROM THE UNION'S OWN BASE, with the tag at zero:
 		// a payload-free arm has no member to take an offset of, and its arm
 		// row is the offset the other arms share (docs/SPEC-TABLES.md §8.1)
-		offset := fmt.Sprintf("(uint32_t) offsetof( %s, %s )", un.Name, v.Name)
+		offset := fmt.Sprintf("(int64_t) offsetof( %s, %s )", un.Name, v.Name)
 		if v.Void() {
 			_, _, _, armOffset := ir.UnionLayout(g.unit, un)
 			offset = fmt.Sprintf("%d", armOffset)
 		}
 		fmt.Fprintf(&b, " { %s, %s, %s, %d },", offset, table, field, size)
 	}
-	fmt.Fprintf(&b, " }; static const TableUnionInfo info = { (uint32_t) offsetof( %s, type ), (uint32_t) sizeof( %s::type ), arms }; return &info; }",
+	fmt.Fprintf(&b, " }; static const TableUnionInfo info = { (int64_t) offsetof( %s, type ), (int64_t) sizeof( %s::type ), arms }; return &info; }",
 		un.Name, un.Name)
 	return b.String()
 }
@@ -3059,20 +3059,20 @@ func (g *tableGen) emitTableDescriptor(st *ir.Struct) {
 		}
 		if hoisted {
 			g.pf("};\n")
-			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), %d, %sTableFields, %s%s, %s, %v };\n",
+			g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (int64_t) sizeof( %s ), %d, %sTableFields, %s%s, %s, %v };\n",
 				st.Name, st.Name, st.Name, len(st.Fields), st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 		} else {
 			g.pf("    };\n")
-			g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), %d, fields, %s%s, %s, %v };\n",
+			g.pf("    %s TableTypeInfo info = { \"%s\", (int64_t) sizeof( %s ), %d, fields, %s%s, %s, %v };\n",
 				infoQualifier, st.Name, st.Name, len(st.Fields), resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 		}
 	case hoisted:
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
-		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
+		g.pf("inline const TableTypeInfo %sTableInfo = { \"%s\", (int64_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
 			st.Name, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 	default:
 		g.emitTagsStatic(st.Name+"_tags", st.Tags, qualifier, indent)
-		g.pf("    %s TableTypeInfo info = { \"%s\", (uint32_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
+		g.pf("    %s TableTypeInfo info = { \"%s\", (int64_t) sizeof( %s ), 0, NULL, %s%s, %s, %v };\n",
 			infoQualifier, st.Name, st.Name, resetLambda(st.Name), g.modeColumn(st), annotationColumns(st.Doc, st.Tags, st.Name+"_tags"), st.JsonArray)
 	}
 	if hoisted {
@@ -3176,14 +3176,14 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	// take the size of one member of it. cl runs out of heap space
 	// doing that for a multi-megabyte aggregate (C1060 on the block
 	// corpus, whose RenderFrame is 7.9 MB across ten fields).
-	elemSize := fmt.Sprintf("(uint32_t) sizeof( %s::%s )", sp.owner, sp.member)
+	elemSize := fmt.Sprintf("(int64_t) sizeof( %s::%s )", sp.owner, sp.member)
 	if isArray {
-		elemSize = fmt.Sprintf("(uint32_t) sizeof( %s::%s[0] )", sp.owner, sp.member)
+		elemSize = fmt.Sprintf("(int64_t) sizeof( %s::%s[0] )", sp.owner, sp.member)
 	}
 	if f.KeyEnum != "" {
 		// a keyed field's storage is the keyed type; its SLOTS are what
 		// a walker steps through, and offset already names the first
-		elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", g.keyedSlots(sp.owner+"::", f)+"[0]")
+		elemSize = fmt.Sprintf("(int64_t) sizeof( %s )", g.keyedSlots(sp.owner+"::", f)+"[0]")
 	}
 
 	countOffset := "0xffffffffu"
@@ -3192,14 +3192,14 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		if f.Type.Kind == ir.TBytes || f.Type.Kind == ir.TString || f.Type.Kind == ir.TWString {
 			companion = sp.member + "_length"
 		}
-		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s )", sp.owner, companion)
+		countOffset = fmt.Sprintf("(int64_t) offsetof( %s, %s )", sp.owner, companion)
 	}
 
 	elemSizeOverride := ""
 	if (f.Type.Pointer && f.Array == ir.ArrayNone) || f.Type.TextUnbounded() {
 		// a pointer's storage IS the reference slot: offset names it,
 		// elem_size is the slot's width, and there is no companion
-		elemSizeOverride = "(uint32_t) sizeof( TableRef )"
+		elemSizeOverride = "(int64_t) sizeof( TableRef )"
 		counted = false
 		bound = "0"
 	}
@@ -3218,13 +3218,13 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		isArray = true
 		counted = true
 		bound = "0"
-		countOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s.count )", sp.owner, sp.member)
+		countOffset = fmt.Sprintf("(int64_t) offsetof( %s, %s.count )", sp.owner, sp.member)
 		if f.IsMap() {
 			kind = tkTable
-			elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", f.MapEntry.Name)
+			elemSize = fmt.Sprintf("(int64_t) sizeof( %s )", f.MapEntry.Name)
 		} else {
 			kind = listElementWireKind(f)
-			elemSize = fmt.Sprintf("(uint32_t) sizeof( %s )", g.listElementType(f))
+			elemSize = fmt.Sprintf("(int64_t) sizeof( %s )", g.listElementType(f))
 		}
 	}
 	table := "NULL"
@@ -3347,7 +3347,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 
 	presentOffset := "0xffffffffu"
 	if f.Type.Optional {
-		presentOffset = fmt.Sprintf("(uint32_t) offsetof( %s, %s_present )", sp.owner, sp.member)
+		presentOffset = fmt.Sprintf("(int64_t) offsetof( %s, %s_present )", sp.owner, sp.member)
 	}
 
 	// the KEY's vocabulary on an enum-keyed array (docs/SPEC-TABLES.md §8):
@@ -3407,7 +3407,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			textList = 1
 		}
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (int64_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,

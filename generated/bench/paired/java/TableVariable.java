@@ -1328,6 +1328,13 @@ public final class TableVariable {
             if (r.report.refused) {
                 return;
             }
+            // the storage cap (§11), after every record: each record is at
+            // most the cap, so the sum never overflows
+            if (blobs + bodies > STORAGE_CAP) {
+                r.report.refused = true;
+                r.report.reason = "storage_over_cap";
+                return;
+            }
             r.off = bodyOff + n;
         }
         m.nodeRecords = count;
@@ -2070,4 +2077,8 @@ public final class TableVariable {
         }
         return raw;
     }
+
+    // STORAGE_CAP: a wire whose region measure passes it, 2^40 bytes, is
+    // refused as storage_over_cap before any value is built (§6.5, §11).
+    public static final long STORAGE_CAP = 1099511627776L;
 }
