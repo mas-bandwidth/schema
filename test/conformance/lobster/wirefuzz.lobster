@@ -168,8 +168,7 @@ def variable_one(name:string, data:string, retain:bool):
     schema_rt.release(rec)
     reply(record_measured(true, rep, false, false, measure, false, n, out))
 
-// message_one is a fixed message root (§3.3): the batch read against the
-// unit's own vocabulary, body one saved as a batch of one
+// message_one reads and writes the complete batch against the unit vocabulary.
 def message_one(name:string, data:string):
     let rep = schema_rt.LoadReport {}
     let bodies:[schema_rt.Record] = []
@@ -179,9 +178,8 @@ def message_one(name:string, data:string):
         reply(record(false, rep, rep.malformed, true, -1, ""))
         return
     assert length(bodies) > 0
-    let body = bodies[0]
     let saved_rep = schema_rt.LoadReport {}
-    let out, n = schema_rt.save_messages([body], saved_rep)
+    let out, n = schema_rt.save_messages(bodies, saved_rep)
     for(bodies) b:
         schema_rt.release(b)
     reply(record(true, rep, false, false, n, out))
