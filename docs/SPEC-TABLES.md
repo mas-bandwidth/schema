@@ -3034,6 +3034,11 @@ one of §4's events. **`LoadBuilder`'s NULL is the same refusal by the same
 name**: it answers `count_over_extent_cap`, it is not damage, so `malformed`
 is not set, and it moves no counter. Every builder read answers it this way:
 the tolerant read, the plain one, `ReadStrict` and the retaining loads.
+**When a read meets two refusals, the first in read order names it**: a NaN
+met before an over-cap count answers `non_finite_float`, and an over-cap count
+met first answers `count_over_extent_cap` (the `nan_then_over_cap` and
+`over_cap_then_nan` rows of
+`internal/codegen/goosetable/testdata/load_refusal_reasons.tsv`).
 **A caller that wants one answer for both paths measures first**,
 which is what §6.5 already tells a region caller to do.
 

@@ -35,10 +35,11 @@ import (
 // reasonRow is one pinned file.
 type reasonRow struct{ name, schema, wire, strict, form string }
 
-// reasonSchemas are the pin table's two units, as its header states them.
+// reasonSchemas are the pin table's three units, as its header states them.
 var reasonSchemas = map[string]string{
 	"measure": "package probe\n table Child { values []int32 }\n table Root { values []int32\n entries map[int32]int32\n child Child\n next *Root }\n",
 	"fixed":   "package probe\n fixed table Root { a int32\n flag bool\n small int8 | max = 5\n f float32 }\n",
+	"float":   "package probe\n table Root { f float32\n values []int32 }\n",
 }
 
 func reasonRows(t *testing.T) []reasonRow {
@@ -83,7 +84,7 @@ func loadReasons(t *testing.T, mutate func(string) string) []string {
 	t.Helper()
 	rows := reasonRows(t)
 	var bad []string
-	for _, schema := range []string{"measure", "fixed"} {
+	for _, schema := range []string{"measure", "fixed", "float"} {
 		g := generateFiles(t, map[string]string{"Probe.schema": reasonSchemas[schema]})
 		if mutate != nil {
 			files := maps.Clone(g.files)

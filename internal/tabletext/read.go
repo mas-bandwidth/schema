@@ -1290,6 +1290,7 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 	placed := 0
 	var spent int64
 	full := false
+	seen := 0 // the elements the text has spelled so far
 	bound := int(f.ArrayBound)
 	if f.Array == ir.ArrayList {
 		bound = math.MaxInt32
@@ -1315,8 +1316,14 @@ func (in *reader) readTextList(fv *Field, depth int) bool {
 			fv.Elems = append(fv.Elems, in.m.elementZero(f))
 		}
 		before := placed
+		seen++
 		switch {
 		case full:
+			// the total dropped this element; one past [..N] is counted all the
+			// same, as the wire counts both its count clamp and the total (§2.13)
+			if seen > bound {
+				in.report.Clamped++
+			}
 			if !in.skipValue(depth + 1) {
 				return false
 			}

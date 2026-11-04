@@ -142,7 +142,8 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 
 # THE TEXT-LIST TOTAL's control (docs/SPEC-TABLES.md §2.13): the total taken
 # out of the generated load, so a list past it keeps every element; the corpus
-# must go red on wire-text-total-past, and on nothing else.
+# must go red on the two wire rows past a total, wire-text-total-past and
+# wire-text-total-and-count, and on nothing else.
 .PHONY: schema-goose-runs-hostile-corpus-total-negative-control
 schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
@@ -152,10 +153,10 @@ schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
 		echo "NEGATIVE CONTROL FAILED: a load that ignores a text list's total left the corpus green"; exit 1; fi
-	@test "$$(grep -c '^FAIL ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log)" = 1 && grep -q '^FAIL wire-text-total-past: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log || { \
+	@test "$$(grep -c '^FAIL ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log)" = 2 && grep -q '^FAIL wire-text-total-past: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log && grep -q '^FAIL wire-text-total-and-count: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log || { \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
-		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on wire-text-total-past alone"; exit 1; }
-	@echo "goose hostile-corpus total negative control: a load that ignores the total reds wire-text-total-past, and only it"
+		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on the two wire rows past a total alone"; exit 1; }
+	@echo "goose hostile-corpus total negative control: a load that ignores the total reds wire-text-total-past and wire-text-total-and-count, and only them"
 
 # test-goose runs both (make/goose.mk) and their controls, which are seconds
 # beside them; the controls run in group goose-wire of the controls leg too.

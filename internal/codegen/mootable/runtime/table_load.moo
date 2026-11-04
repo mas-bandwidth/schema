@@ -263,6 +263,12 @@ local _numberingGood: boolean = true
 -- the builder-path storage refusal (Go CountRefusal): a collection count past
 -- the int32 cap discards the partial value and is NOT a malformed event
 local _countRefused: boolean = false
+-- the non-finite floats the walk had met when it met the first count past the
+-- cap: when a read meets two refusals, the first in read order names it
+-- (docs/SPEC-TABLES.md §2.9), so a NaN met before the count answers
+-- non_finite_float
+local _countNonFinite: number = 0
+local _countNonFiniteField: string? = nil
 
 -- A NaN OR AN INFINITY IS REFUSED ON ITS RAW BITS (docs/SPEC-TABLES.md §3.3;
 -- Go's NonFiniteRefusal): the walk goes on, so the framing verdict is the one
@@ -280,6 +286,17 @@ local function non_finite(report: any, named: any)
 end
 
 L.nonFinite = non_finite
+
+-- refuse_count records the first count past the int32 storage cap, and the
+-- non-finite floats the walk met before it (§2.9)
+local function refuse_count(report: any)
+	if _countRefused then
+		return
+	end
+	_countRefused = true
+	_countNonFinite = report.nonFinite or 0
+	_countNonFiniteField = report.nonFiniteField
+end
 
 -- scalar_at reads one scalar of wire kind `kind` for the field (or element)
 -- fd: the raw value, widened into fd's kind (§4), clamped to its declared
@@ -558,7 +575,7 @@ local function read_map(fd: any, r: any, report: any, v: any): boolean
 			if head.at > endpos then
 				report.malformed = true
 			else
-				_countRefused = true
+				refuse_count(report)
 			end
 			r.at = endpos
 			return true
@@ -872,7 +889,7 @@ local function array_body(fd: any, sub: any, report: any, v: any, headerEnd: num
 			if crossed then
 				report.malformed = true
 			else
-				_countRefused = true
+				refuse_count(report)
 			end
 			return false
 		end
@@ -1748,6 +1765,8 @@ function L.loadOpened(root: string, bytes: buffer, report: any): any
 	_table = o.table
 	_report = report
 	_countRefused = false
+	_countNonFinite = 0
+	_countNonFiniteField = nil
 	_pending = {}
 	_nodes = {}
 	local desc = S.lookup(root)
@@ -1827,9 +1846,18 @@ function L.loadOpened(root: string, bytes: buffer, report: any): any
 	resolve(report)
 	-- A COUNT ABOVE THE int32 STORAGE CAP (§2.9, §2.2) refuses the load: no
 	-- value, the report at rest but for the refusal and its name,
-	-- count_over_extent_cap, malformed not set
+	-- count_over_extent_cap, malformed not set. A NaN or an infinity the walk
+	-- met before the count is the first refusal in read order, so it names
+	-- the load instead: non_finite_float, the report at rest but for the
+	-- float (§3.3)
 	if _countRefused then
 		reset(report)
+		if _countNonFinite > 0 then
+			report.nonFinite = _countNonFinite
+			report.nonFiniteField = _countNonFiniteField
+			report.reason = "non_finite_float: " .. (_countNonFiniteField or "")
+			return nil
+		end
 		report.refused = 1
 		report.reason = "count_over_extent_cap"
 		return nil

@@ -29,7 +29,7 @@ func TestRustTextTotalNative(t *testing.T) {
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Totals"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(input), &r) || r.Clamped != 8 {
+	if !m.Read(v, []byte(input), &r) || r.Clamped != 10 {
 		t.Fatal(r)
 	}
 	expected := m.New(u.Tables["Totals"])
@@ -51,7 +51,7 @@ func TestRustTextTotalNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();let v=totals_from_json(%q,&mut r).unwrap();assert_eq!(r.clamped,8,"JSON streaming total");assert_eq!(r.clamped_field,"Totals.a");assert_eq!(totals_save(&v),expected);
+	fmt.Fprintf(&b, `let expected=vec!%s;let mut r=TableReport::default();let v=totals_from_json(%q,&mut r).unwrap();assert_eq!(r.clamped,10,"JSON streaming total");assert_eq!(r.clamped_field,"Totals.a");assert_eq!(totals_save(&v),expected);
 let wire=vec!%s;let mut r=TableReport::default();let back=totals_load(&wire,&mut r).unwrap();assert_eq!(r.clamped,10,"wire count plus element plus total");assert_eq!(r.clamped_field,"Totals.a");assert_eq!(totals_save(&back),expected);
 let mut store=TableRetain{bytes:Vec::with_capacity(4096),ids:Vec::with_capacity(4096)};let mut r=TableReport::default();let back=totals_load_retain(&wire,&mut store,&mut r).unwrap();assert_eq!(r.clamped,10);assert_eq!(totals_save_retain(&back,&mut store,&mut TableReport::default()),expected);
 `, rustByteVector(pin), input, rustByteVector(wire))
