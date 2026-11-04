@@ -11,7 +11,7 @@ import (
 func TestLobsterFixedCheckedRawStorageAndFloatRange(t *testing.T) {
 	u := lobsterUnitOf(t, `package rawcheck
 fixed table Row {
-    q fixed(4, 4)
+    q fixed(4, 4) | min = -8, max = 7
     b bits(8)
     f float32 | min = 0, max = 10, resolution = 0.01
 }
@@ -50,7 +50,7 @@ for(6) index:
     print("generic " + string(generic == "" and reason != ""))
 for(2) index:
     let row = rawcheck.NewRow()
-    row.Q = if index == 0: -128 else: 127
+    row.Q = if index == 0: -128 else: 112
     row.B = if index == 0: 0 else: 255
     row.F = if index == 0: 0.0 else: 10.0
     let n, wire, why = rawcheck.RowFixedSaveChecked([row], schema_rt.zeros(rawcheck.RowFixedMeasure(1)))
