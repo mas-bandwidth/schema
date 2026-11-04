@@ -194,8 +194,15 @@ func TableFixedFieldBytes(f *Field) int64 {
 	return payload
 }
 
-// TableFixedElementBytes is the constant of ONE element of a field.
+// TableFixedElementBytes is the constant of ONE element of a field, including
+// the used-length prefix of a bounded string, byte buffer or wide string.
 func TableFixedElementBytes(f *Field) int64 {
+	switch f.Type.Kind {
+	case TString, TBytes:
+		return TableFixedCountBytes + f.Type.Size
+	case TWString:
+		return TableFixedCountBytes + 2*f.Type.Size
+	}
 	if f.Type.Kind == TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *Struct:
