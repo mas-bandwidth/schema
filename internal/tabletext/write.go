@@ -813,7 +813,7 @@ func (m *Model) WriteValue(fv *Field) ([]byte, error) {
 	if err := ValidateRequiredValue(fv); err != nil {
 		return nil, err
 	}
-	if err := m.checkField("", fv, map[*Instance]bool{}); err != nil {
+	if err := m.checkField("", fv, &checkWalk{seen: map[*Instance]bool{}}); err != nil {
 		return nil, err
 	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}
@@ -832,7 +832,7 @@ func (m *Model) WriteElement(fv *Field, slot int) ([]byte, error) {
 	bad := func(format string, a ...any) error {
 		return &InvalidValue{Field: fv.Def.Name, Detail: fmt.Sprintf(format, a...)}
 	}
-	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, map[*Instance]bool{}, bad); err != nil {
+	if err := m.checkCell(fv.Def.Name, &fv.Elems[slot], fv.Def, &checkWalk{seen: map[*Instance]bool{}}, bad); err != nil {
 		return nil, err
 	}
 	w := &writer{graph: &graphOut{count: map[*Instance]int{}, labels: map[*Instance]uint64{}}}

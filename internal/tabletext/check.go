@@ -28,16 +28,36 @@ func (e *InvalidValue) Error() string {
 
 // CheckValue walks a value as the writers walk it (absent optionals, elided
 // guards and deprecated fields are not written, so they are not asked) and
-// answers the first value outside its declaration as an *InvalidValue.
+// answers the first value outside its declaration as an *InvalidValue. It is
+// the check of the writers that carry a flags mask by its names or at its
+// declared W bits, the text form and the message form, so a mask bit that
+// names no variant (one a newer writer appended) refuses there rather than
+// being dropped.
 func (m *Model) CheckValue(inst *Instance) error {
-	return m.checkInstance(inst, map[*Instance]bool{})
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}})
 }
 
-func (m *Model) checkInstance(inst *Instance, seen map[*Instance]bool) error {
-	if inst == nil || seen[inst] {
+// CheckFileValue is CheckValue for the file forms, variable and fixed, which
+// carry a flags mask whole as a u64 (docs/SPEC-TABLES.md §3, §3.4): a mask
+// bit above the declared variants is kept, as the read keeps it (§4, A TABLE
+// LOAD DOES NOT JUDGE A MASK AGAINST A RANGE), so a file an older build read
+// writes back byte for byte.
+func (m *Model) CheckFileValue(inst *Instance) error {
+	return m.checkInstance(inst, &checkWalk{seen: map[*Instance]bool{}, wholeMasks: true})
+}
+
+// checkWalk is one CheckValue walk: the instances already asked, and whether
+// the writer carries a flags mask whole.
+type checkWalk struct {
+	seen       map[*Instance]bool
+	wholeMasks bool
+}
+
+func (m *Model) checkInstance(inst *Instance, seen *checkWalk) error {
+	if inst == nil || seen.seen[inst] {
 		return nil
 	}
-	seen[inst] = true
+	seen.seen[inst] = true
 	guards := Guards(inst.Def)
 	for i := range inst.Fields {
 		fv := &inst.Fields[i]
@@ -54,7 +74,7 @@ func (m *Model) checkInstance(inst *Instance, seen map[*Instance]bool) error {
 	return nil
 }
 
-func (m *Model) checkField(owner string, fv *Field, seen map[*Instance]bool) error {
+func (m *Model) checkField(owner string, fv *Field, seen *checkWalk) error {
 	f := fv.Def
 	name := f.Name
 	if owner != "" {
@@ -101,7 +121,7 @@ func (m *Model) checkField(owner string, fv *Field, seen map[*Instance]bool) err
 	return m.checkCell(name, &fv.Cell, f, seen, bad)
 }
 
-func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen map[*Instance]bool, bad func(string, ...any) error) error {
+func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk, bad func(string, ...any) error) error {
 	if un := UnionOf(f); un != nil {
 		if cell.U == 0 {
 			return nil
@@ -136,7 +156,7 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen map[*Instan
 		return nil
 	}
 	if fl := FlagsOf(f); fl != nil {
-		if n := len(fl.Variants); n < 64 && cell.U>>uint(n) != 0 {
+		if n := len(fl.Variants); !seen.wholeMasks && n < 64 && cell.U>>uint(n) != 0 {
 			return bad("flags %s bits %#x name no variant", fl.Name, cell.U&^(uint64(1)<<uint(n)-1))
 		}
 		return nil

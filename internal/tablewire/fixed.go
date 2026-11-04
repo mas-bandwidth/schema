@@ -83,7 +83,7 @@ func fixedLayout(st *ir.Struct) ([]byte, uint64) {
 // EncodeFixed is one record of a fixed root as a form-3 file: the bytes the
 // reference's <T>FixedSave writes for a batch of one.
 func EncodeFixed(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
-	if err := m.CheckValue(inst); err != nil {
+	if err := m.CheckFileValue(inst); err != nil {
 		return nil, err
 	}
 	st := inst.Def
