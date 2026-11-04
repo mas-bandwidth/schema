@@ -920,7 +920,10 @@ namespace Example
             {
                 return false;
             }
-            Debug.Assert(value.InputsCount >= 0 && value.InputsCount <= (int)MaxInputsPerPacket, "value.InputsCount out of range [0, (int)MaxInputsPerPacket]"); // the count guards the loop (§6.3); an out-of-contract count is caller error
+            if (value.InputsCount < 0 || value.InputsCount > (int)MaxInputsPerPacket) // the count guards the loop (§6.3): refused in every build
+            {
+                return false;
+            }
             {
                 uint offsetValue = (uint)(value.InputsCount);
                 if (!batch.SerializeBits(ref offsetValue, 5))
