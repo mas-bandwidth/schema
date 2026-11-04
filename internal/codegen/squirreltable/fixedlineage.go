@@ -11,7 +11,10 @@
 package squirreltable
 
 import (
+	"fmt"
 	"sync"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/squirrel"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -31,8 +34,8 @@ type FixedLineageEntry struct {
 // lock records at commit, and it is how a test states an older entry without a
 // lock.
 func FixedLineageOf(u *ir.Unit, name string) (FixedLineageEntry, bool) {
-	for _, st := range ir.TableFixedRoots(u) {
-		if st.Name != name {
+	for _, st := range ir.TableFixedFormRoots(u) {
+		if st.Name != name || fixedRefusal(st) != "" || !fixedSupported(st) {
 			continue
 		}
 		w := fixedWalkRoot(st)
@@ -223,4 +226,366 @@ func fixedPlanWidens(src, dst int) bool {
 		return true
 	}
 	return src == ir.TableKindF32 && dst == ir.TableKindF64
+}
+
+type fixedLayoutNode struct {
+	id       uint64
+	kind     int
+	size     int64
+	children []*fixedLayoutNode
+}
+
+func fixedParseLayoutTree(b []byte) (*fixedLayoutNode, string) {
+	entries, ok := fixedLayoutEntries(b)
+	if !ok || len(entries) == 0 {
+		return nil, "layout_malformed"
+	}
+	i := 0
+	refusal := ""
+	var parse func() *fixedLayoutNode
+	parse = func() *fixedLayoutNode {
+		if i >= len(entries) {
+			return nil
+		}
+		e := entries[i]
+		i++
+		if !((e.kind >= 1 && e.kind <= 16) || (e.kind >= 18 && e.kind <= 30) || e.kind == 32 || e.kind == 33 || e.kind == fixedKindOptional || e.kind == 36) {
+			return nil
+		}
+		if e.kind == ir.TableKindEnum && e.children > 65535 {
+			refusal = "plan_too_large"
+			return &fixedLayoutNode{id: e.id, kind: e.kind, size: e.size}
+		}
+		n := &fixedLayoutNode{
+			id:   e.id,
+			kind: e.kind,
+			size: e.size,
+		}
+		for k := 0; k < e.children; k++ {
+			ch := parse()
+			if ch == nil {
+				return nil
+			}
+			n.children = append(n.children, ch)
+		}
+		return n
+	}
+	root := parse()
+	if refusal != "" {
+		return nil, refusal
+	}
+	if root == nil || i != len(entries) || root.kind != ir.TableKindTable {
+		return nil, "layout_malformed"
+	}
+	var checkBounds func(n *fixedLayoutNode) bool
+	checkBounds = func(n *fixedLayoutNode) bool {
+		if n.size < 0 || n.size > ir.TableFixedRecordMaxBytes {
+			return false
+		}
+		switch n.kind {
+		case ir.TableKindTable:
+			if n.size == 0 {
+				return false
+			}
+			var sum int64
+			for _, c := range n.children {
+				sum += c.size
+				if !checkBounds(c) {
+					return false
+				}
+			}
+			return sum == n.size
+		case fixedKindOptional:
+			if len(n.children) != 1 || 1+n.children[0].size != n.size {
+				return false
+			}
+			return checkBounds(n.children[0])
+		default:
+			for _, c := range n.children {
+				if !checkBounds(c) {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	if !checkBounds(root) {
+		return nil, "layout_record_too_large"
+	}
+	return root, ""
+}
+
+func fixedValidateLayout(b []byte) string {
+	_, reason := fixedParseLayoutTree(b)
+	return reason
+}
+
+func emitFixedPlanBody(m *Module, st *ir.Struct, layout []byte) {
+	root, reason := fixedParseLayoutTree(layout)
+	if reason != "" || root == nil {
+		return
+	}
+	emitFixedPlanStruct(m, st, root, 0, "v", "  ", "0")
+}
+
+func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt int64, expr, ind, dyn string) {
+	type childHit struct {
+		node *fixedLayoutNode
+		at   int64
+	}
+	byID := map[uint64]childHit{}
+	cur := baseAt
+	for _, c := range node.children {
+		if c.id != 0 {
+			if _, exists := byID[c.id]; !exists {
+				byID[c.id] = childHit{node: c, at: cur}
+			}
+		}
+		cur += c.size
+	}
+	for _, f := range st.Fields {
+		fid := ir.TableFieldWireId(f)
+		hit, ok := byID[fid]
+		if !ok {
+			continue
+		}
+		fExpr := expr + "." + squirrel.Member(f)
+		child := hit.node
+		cAt := hit.at
+		if f.Type.Optional {
+			if child.kind == fixedKindOptional && len(child.children) == 1 {
+				inner := child.children[0]
+				if !fixedPlanCompat(f, inner) {
+					continue
+				}
+				off := fmt.Sprintf("%d", cAt)
+				if dyn != "0" {
+					off = fmt.Sprintf("%d + %s", cAt, dyn)
+				}
+				m.Printf("%sif (at + %s + %d <= lim) {\n", ind, off, child.size)
+				m.Printf("%s  %sPresent = b[at + %s] != 0;\n", ind, fExpr, off)
+				m.Printf("%s  if (%sPresent) {\n", ind, fExpr)
+				emitFixedPlanDecodeValue(m, f, inner, cAt+1, fExpr, ind+"    ", dyn, false)
+				m.Printf("%s  }\n", ind)
+				m.Printf("%s}\n", ind)
+			} else if fixedPlanCompat(f, child) {
+				off := fmt.Sprintf("%d", cAt)
+				if dyn != "0" {
+					off = fmt.Sprintf("%d + %s", cAt, dyn)
+				}
+				m.Printf("%sif (at + %s + %d <= lim) {\n", ind, off, child.size)
+				m.Printf("%s  %sPresent = true;\n", ind, fExpr)
+				emitFixedPlanDecodeValue(m, f, child, cAt, fExpr, ind+"  ", dyn, false)
+				m.Printf("%s}\n", ind)
+			}
+		} else if fixedPlanCompat(f, child) {
+			off := fmt.Sprintf("%d", cAt)
+			if dyn != "0" {
+				off = fmt.Sprintf("%d + %s", cAt, dyn)
+			}
+			m.Printf("%sif (at + %s + %d <= lim) {\n", ind, off, child.size)
+			emitFixedPlanDecodeValue(m, f, child, cAt, fExpr, ind+"  ", dyn, false)
+			m.Printf("%s}\n", ind)
+		}
+	}
+}
+
+func fixedPlanCompat(f *ir.Field, node *fixedLayoutNode) bool {
+	if f == nil || node == nil {
+		return false
+	}
+	switch {
+	case f.KeyEnum != "":
+		return node.kind == ir.TableKindKeyed && len(node.children) == 2
+	case f.Array != ir.ArrayNone:
+		return node.kind == ir.TableKindArray && len(node.children) == 1
+	case f.Type.Kind == ir.TBytes:
+		return (node.kind == ir.TableKindArray || node.kind == ir.TableKindString) && node.size >= 4
+	case f.Type.Kind == ir.TString:
+		return node.kind == ir.TableKindString && node.size >= 4
+	case f.Type.Kind == ir.TWString:
+		return node.kind == ir.TableKindWstring && node.size >= 4
+	}
+	return fixedPlanElemCompat(f, node)
+}
+
+func fixedPlanElemCompat(f *ir.Field, node *fixedLayoutNode) bool {
+	if f.Type.Kind == ir.TNamed {
+		switch f.Type.Ref.(type) {
+		case *ir.Struct:
+			return node.kind == ir.TableKindTable
+		case *ir.Union:
+			return node.kind == ir.TableKindUnion
+		case *ir.Enum:
+			return node.kind == ir.TableKindEnum && node.size >= 1
+		case *ir.Flags:
+			return node.kind >= ir.TableKindU8 && node.kind <= ir.TableKindU64
+		}
+	}
+	dstKind := ir.TableWireScalarKind(f)
+	dstSize := fixedStorageBytes(f.Type)
+	if node.kind == dstKind && node.size == dstSize {
+		return true
+	}
+	return fixedPlanWidens(node.kind, dstKind) && node.size <= dstSize
+}
+
+func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at int64, expr, ind, dyn string, element bool) {
+	off := fmt.Sprintf("%d", at)
+	if dyn != "0" {
+		off = fmt.Sprintf("%d + %s", at, dyn)
+	}
+	if !element {
+		switch {
+		case f.KeyEnum != "" && node.kind == ir.TableKindKeyed && len(node.children) == 2:
+			elem := node.children[1]
+			if !fixedPlanElemCompat(f, elem) || elem.size <= 0 {
+				return
+			}
+			n := node.size / elem.size
+			if n > f.KeyEnumRef.Max {
+				n = f.KeyEnumRef.Max
+			}
+			iv := fmt.Sprintf("i%d", len(ind)/2)
+			m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", ind, iv, iv, n, iv)
+			emitFixedPlanDecodeValue(m, f, elem, at, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
+			m.Printf("%s}\n", ind)
+			return
+		case f.Array != ir.ArrayNone && node.kind == ir.TableKindArray && len(node.children) == 1:
+			elem := node.children[0]
+			if !fixedPlanElemCompat(f, elem) || elem.size <= 0 {
+				return
+			}
+			iv := fmt.Sprintf("i%d", len(ind)/2)
+			if f.Array == ir.ArrayCounted {
+				oldCap := (node.size - 4) / elem.size
+				capLim := f.ArrayBound
+				if oldCap < capLim {
+					capLim = oldCap
+				}
+				m.Printf("%slocal c = _rt_fixed.geti32(b, at + %s);\n", ind, off)
+				m.Printf("%sif (c < 0 || c > %d) return \"count_over_bound\";\n", ind, capLim)
+				m.Printf("%sif (%s.len() > c) %s.resize(c); while (%s.len() < c) %s.append(%s);\n", ind, expr, expr, expr, expr, elemZero(f))
+				m.Printf("%sfor (local %s = 0; %s < c; %s++) {\n", ind, iv, iv, iv)
+				emitFixedPlanDecodeValue(m, f, elem, at+4, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
+				m.Printf("%s}\n", ind)
+			} else {
+				n := node.size / elem.size
+				if n > f.ArrayBound {
+					n = f.ArrayBound
+				}
+				m.Printf("%swhile (%s.len() < %d) %s.append(%s);\n", ind, expr, f.ArrayBound, expr, elemZero(f))
+				m.Printf("%sfor (local %s = 0; %s < %d; %s++) {\n", ind, iv, iv, n, iv)
+				emitFixedPlanDecodeValue(m, f, elem, at, expr+"["+iv+"]", ind+"  ", dynAdd(dyn, iv+" * "+fmt.Sprint(elem.size)), true)
+				m.Printf("%s}\n", ind)
+			}
+			return
+		case fixedIsText(f):
+			oldCap := node.size - 4
+			if f.Type.Kind == ir.TWString {
+				oldCap = (node.size - 4) / 2
+			}
+			capLim := f.Type.Size
+			if oldCap < capLim {
+				capLim = oldCap
+			}
+			m.Printf("%slocal n = _rt_fixed.geti32(b, at + %s);\n", ind, off)
+			m.Printf("%sif (n < 0 || n > %d) return \"length_over_bound\";\n", ind, capLim)
+			switch f.Type.Kind {
+			case ir.TString:
+				m.Printf("%sif (_rt_fixed.textIllFormed(b, at + %s + 4, n)) return \"text_ill_formed\";\n", ind, off)
+				m.Printf("%slocal s = \"\"; for (local i = 0; i < n; i++) s += b[at + %s + 4 + i].tochar();\n", ind, off)
+				m.Printf("%s%s = s;\n", ind, expr)
+			case ir.TWString:
+				m.Printf("%slocal w = _rt_fixed.wideUnits(b, at + %s + 4, n);\n", ind, off)
+				m.Printf("%sif (w == null) return \"text_ill_formed\";\n", ind)
+				m.Printf("%s%s = w;\n", ind, expr)
+			default:
+				m.Printf("%s%s = blob(n); for (local i = 0; i < n; i++) %s[i] = b[at + %s + 4 + i];\n", ind, expr, expr, off)
+			}
+			return
+		}
+	}
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			emitFixedPlanStruct(m, r, node, at, expr, ind, dyn)
+			return
+		case *ir.Union:
+			nArms := len(node.children)
+			tagW := int64(1)
+			if nArms > 65535 {
+				tagW = 4
+			} else if nArms > 255 {
+				tagW = 2
+			}
+			m.Printf("%s%s.Type = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, tagW)
+			maxArms := nArms
+			if len(r.Variants) < maxArms {
+				maxArms = len(r.Variants)
+			}
+			m.Printf("%sif (%s.Type < 0 || %s.Type > %d) %s.Type = 0;\n", ind, expr, expr, maxArms, expr)
+			for i := 0; i < maxArms; i++ {
+				v := r.Variants[i]
+				armNode := node.children[i]
+				if v.F == nil || armNode == nil || armNode.kind == ir.TableKindNoPayload {
+					continue
+				}
+				if !fixedPlanCompat(v.F, armNode) {
+					continue
+				}
+				m.Printf("%sif (%s.Type == %d) {\n", ind, expr, i+1)
+				emitFixedPlanDecodeValue(m, v.F, armNode, at+tagW, expr+"."+ir.GoExportName(v.Name), ind+"  ", dyn, false)
+				m.Printf("%s}\n", ind)
+			}
+			return
+		case *ir.Enum:
+			land := "null"
+			if !element && f.HasDefault && f.DefVariant != "" && f.DefVariant != "None" {
+				land = squirrel.StringLit([]byte(f.DefVariant))
+			}
+			m.Printf("%s{\n", ind)
+			m.Printf("%s  local ev = _rt_fixed.getu(b, at + %s, %d);\n", ind, off, node.size)
+			m.Printf("%s  local val = null;\n", ind)
+			for i, v := range r.Variants {
+				kw := "if"
+				if i > 0 {
+					kw = "else if"
+				}
+				value := squirrel.StringLit([]byte(v))
+				if i < len(r.VariantDeprecated) && r.VariantDeprecated[i] {
+					value = land
+				}
+				m.Printf("%s  %s (ev == %d) val = %s;\n", ind, kw, i+1, value)
+			}
+			m.Printf("%s  %s = val;\n%s}\n", ind, expr, ind)
+			return
+		case *ir.Flags:
+			m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, node.size)
+			return
+		}
+	}
+	if node.size == 16 {
+		m.Printf("%s%s = [_rt_fixed.u64le(b, at + %s), _rt_fixed.u64le(b, at + %s + 8)];\n", ind, expr, off, off)
+		return
+	}
+	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
+		get := "getF64"
+		if node.size == 4 || node.kind == ir.TableKindF32 {
+			get = "getF32"
+		}
+		m.Printf("%s{\n%s  local x = _rt_fixed.%s(b, at + %s);\n", ind, ind, get, off)
+		m.Printf("%s  if (x == null) { _M.FixedField <- %s; return \"non_finite_float\"; }\n", ind, squirrel.StringLit([]byte(FloatOwner(m.Unit, f))))
+		m.Printf("%s  %s = x;\n%s}\n", ind, expr, ind)
+		return
+	}
+	if f.Type.Kind == ir.TBool {
+		m.Printf("%s%s = b[at + %s] != 0;\n", ind, expr, off)
+		return
+	}
+	if node.kind >= ir.TableKindU8 && node.kind <= ir.TableKindU64 || (node.kind >= ir.TableKindUFixed8 && node.kind <= ir.TableKindUFixed64) {
+		m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, node.size)
+		return
+	}
+	m.Printf("%s%s = _rt_fixed.get(b, at + %s, %d);\n", ind, expr, off, node.size)
 }
