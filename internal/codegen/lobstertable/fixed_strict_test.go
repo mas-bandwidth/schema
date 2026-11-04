@@ -1,6 +1,7 @@
 package lobstertable
 
 import (
+	"encoding/binary"
 	"fmt"
 	"maps"
 	"os"
@@ -29,7 +30,7 @@ fixed table Row {
     live [..2]Leaf
     values [2]int32
     ranged int32 | min = 0, max = 10
-    ratio float32 | min = 0, max = 1
+    ratio float32 | min = 0, max = 1, resolution = 0.01
     tier Tier
 }
 `
@@ -138,4 +139,47 @@ print(passed)
 			t.Fatal("boolean validation deletion escaped the native proof")
 		}
 	})
+}
+
+// A forged old ordinal can be inside the new enum's range. Widening must
+// validate the writer's extent before the destination range check sees it.
+func TestLobsterFixedOneReadEnumWiden(t *testing.T) {
+	schema := func(n int) string {
+		variants := []string{"First", "Second"}
+		for i := 3; i <= n; i++ {
+			variants = append(variants, fmt.Sprintf("V%d", i))
+		}
+		return "package enumwide\nenum Tier { " + strings.Join(variants, ", ") + " }\nfixed table Row {\n tier Tier\n seq int32 = 7\n}\n"
+	}
+	older, newer := schema(2), schema(256)
+	old := lobsterUnitOf(t, older)
+	entry, ok := FixedLineageOf(old, "Row")
+	if !ok {
+		t.Fatal("old Row is not fixed")
+	}
+	wire := make([]byte, 16)
+	wire[0] = 3
+	binary.LittleEndian.PutUint64(wire[8:], entry.Wire)
+	wire = binary.LittleEndian.AppendUint32(wire, uint32(len(entry.Layout)))
+	wire = append(wire, entry.Layout...)
+	wire = binary.LittleEndian.AppendUint64(wire, entry.Wire)
+	bodyAt := len(wire)
+	wire = append(wire, 2)
+	wire = binary.LittleEndian.AppendUint32(wire, 9)
+	forged := append([]byte(nil), wire...)
+	forged[bodyAt] = 3
+	out := runLobsterVersionProbe(t, newer, []string{older}, 0, `
+    let back = [enumwide.NewRow()]
+    let plan = enumwide.make_plan(4096)
+    let report = schema_rt.TableReport {}
+    assert_eq(enumwide.RowFixedLoad(back, read_in("good.bin"), plan, report), 1, "valid old enum widens")
+    assert_eq(int(back[0].Tier), 2, "valid ordinal preserved")
+    assert_eq(back[0].Seq, 9, "following field preserved")
+    assert_eq(enumwide.RowFixedLoad(back, read_in("bad.bin"), plan, report), -1, "forged old ordinal refuses")
+    assert_eq(back[0].Seq, 7, "refusal restores defaults")
+    print "PASS"
+`, map[string][]byte{"good.bin": wire, "bad.bin": forged})
+	if strings.TrimSpace(out) != "PASS" {
+		t.Fatalf("enum-width read: %q", out)
+	}
 }
