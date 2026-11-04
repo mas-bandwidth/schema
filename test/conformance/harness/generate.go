@@ -36,10 +36,9 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// cookedReportClean holds a cook's report to clean: any count is a reason the
-// fixture is not the tool's.
+// cookedReportClean checks admission; diagnostic counts are local.
 func cookedReportClean(inst Instance, r compiler.TableReport) bool {
-	return r.Silent()
+	return !r.Refused
 }
 
 type units struct {
@@ -113,7 +112,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return fmt.Errorf("%s: unpack: %w", inst.Name, err)
 		}
-		if !report.Silent() {
+		if report.Refused {
 			return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", inst.Name, report)
 		}
 		text, err := os.ReadFile(filepath.Join(one, inst.Root+".json"))
@@ -140,7 +139,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return fmt.Errorf("%s: pack: %w", inst.Name, err)
 		}
-		if !backReport.Silent() {
+		if backReport.Refused {
 			return fmt.Errorf("%s: the text this step wrote does not read clean: %+v", inst.Name, backReport)
 		}
 		if len(back) != len(wire) || string(back) != string(wire) {
@@ -189,20 +188,13 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 		if err != nil {
 			return err
 		}
-		wire, err := os.ReadFile(inst.Wire)
-		if err != nil {
-			return fmt.Errorf("%s: %w", cw.Instance, err)
-		}
 		for _, arm := range []struct {
 			path string
 			big  bool
 		}{{cw.Little, false}, {cw.Big, true}} {
-			cooked, _, report, err := u.c.Cook(unit, inst.Root, wire, compiler.CookOptions{Big: arm.big})
+			cooked, err := cookRecipe(unit, inst, cw, "", arm.big)
 			if err != nil {
 				return fmt.Errorf("%s: cook: %w", cw.Instance, err)
-			}
-			if !cookedReportClean(inst, report) {
-				return fmt.Errorf("%s: its own writer's bytes do not read clean: %+v", cw.Instance, report)
 			}
 			out, err := outPath(jsonDir, arm.path)
 			if err != nil {
@@ -271,6 +263,37 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 			return err
 		}
 		if err := pruneValues(valueDir, values); err != nil {
+			return err
+		}
+	}
+
+	// Retention capacity changes only which unknown records survive a later
+	// retaining save. Every accepted read still owes the complete known value.
+	for _, rc := range m.Retains {
+		unit, err := u.get(rc.Unit)
+		if err != nil {
+			return err
+		}
+		wire, err := os.ReadFile(rc.Wire)
+		if err != nil {
+			return err
+		}
+		model := tabletext.NewModel(unit)
+		root := model.Lookup(rc.Root)
+		if root == nil {
+			return fmt.Errorf("%s: unknown root %q", rc.Name, rc.Root)
+		}
+		value := model.New(root)
+		var report tabletext.Report
+		ok, err := tablewire.Decode(model, value, wire, &report)
+		if err != nil || !ok || report.Refused {
+			return fmt.Errorf("%s: retain input refused: %v", rc.Name, err)
+		}
+		path, err := outPath(jsonDir, rc.Value)
+		if err != nil {
+			return err
+		}
+		if err := writeValue(path, true, func() ([]byte, error) { return model.Write(value) }); err != nil {
 			return err
 		}
 	}
