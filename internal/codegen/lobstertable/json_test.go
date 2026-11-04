@@ -88,14 +88,16 @@ func jsonProgram(g *loadUnit, rows []jsonRow) string {
 		fmt.Fprintf(&b, "import .%s\n", m)
 	}
 	b.WriteString("import .load\nimport .schema_save\nimport .strict_and_refusals\nimport .json\n")
-	b.WriteString(`def instance(root:string, i:int, fixed:bool):
+	b.WriteString(`def instance(root:string, i:int):
     let rep = schema_rt.LoadReport {}
     let wire = read_file("w{i}")
     assert wire
     let golden = read_file("j{i}")
     assert golden
-    let rec = if fixed: schema_rt.json_read(root, golden, rep) else: schema_rt.load(root, wire, rep)
-    assert rec
+    let rec = schema_rt.load(root, wire, rep)
+    if not rec:
+        print("E{i} load " + root + ": " + rep.reason)
+        return
     let text, why = schema_rt.json_write(rec)
     if why != "":
         print("E{i} write: " + why)
@@ -128,7 +130,7 @@ def hostile(root:string, i:int):
 `)
 	for i, r := range rows {
 		if r.kind == "instance" {
-			fmt.Fprintf(&b, "instance(%s, %d, %t)\n", lobster.StringLit([]byte(r.root)), i, g.u.Tables[r.root].FixedDeclared)
+			fmt.Fprintf(&b, "instance(%s, %d)\n", lobster.StringLit([]byte(r.root)), i)
 		} else {
 			fmt.Fprintf(&b, "hostile(%s, %d)\n", lobster.StringLit([]byte(r.root)), i)
 		}
