@@ -68,6 +68,7 @@ var catalog = []Entry{
 	e("bench/js", "JavaScript runner", "bench/run.sh --only js", "bench/run.sh --only js"),
 	e("bench/lobster", "Lobster runner", "make bench-lobster-gate", "bench/run.sh --only lobster"),
 	e("bench/luau", "Luau runner", "make bench-luau-gate", "bench/run.sh --only luau"),
+	e("bench/python", "Python code-shape measurement (docs/PORT-PYTHON.md, D1)", "none", "make bench-python-shape"),
 	e("bench/paired", "paired before/after + fixed-form bytes", "make bench-paired-check", "make bench-paired-gate"),
 	e("bench/results", "committed CSV ledgers", "none", "bench/run.sh"),
 	e("bench/rust", "Rust runner", "bench/run.sh --only rust", "bench/run.sh --only rust"),

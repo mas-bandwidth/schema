@@ -1,0 +1,8 @@
+#!/bin/sh
+# THE PYTHON LEG's packet-text and packet-wide driver (test/packet-text/README.md):
+# the gate's main under the pinned interpreter $PYTHON (make/python-toolchain.mk
+# exports it; the floor runs set it to PYTHON_FLOOR), isolated, reading the
+# harness's lines on stdin.
+#
+# usage: driver <main.py> <generated dir>
+exec "${PYTHON:?the pinned interpreter: run through make, which exports PYTHON}" -I -B "$@"

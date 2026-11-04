@@ -643,6 +643,18 @@
       "python": "pin"
     },
     {
+      "name": "python-packet",
+      "when": "pull-request",
+      "why": "the Python leg's packet gates (make/python-packet.mk), on the pins .github/actions/python restores into dist/: the finite-float read and write controls (serialize.py's raw-bits checks patched out of a copy of the generated package, each failing exactly its .expected vectors), the constructor-default control, and the UTF-8 and wide-pairing controls, which must fail the C++ oracle's bit-flip agreement. They share build/schema-python and the packet-text harness and C++ drivers; the four measured about 20 s together on the studio.",
+      "targets": [
+        "packet-defaults-python-negative-control",
+        "packet-finite-python-negative-control",
+        "packet-utf8-python-negative-control",
+        "packet-wide-python-negative-control"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "python-serialize",
       "when": "pull-request",
       "why": "serialize.py's corpus runner (third_party/serialize.py, make/python-serialize.mk), on the pins .github/actions/python restores into dist/: the corpus test pointed at a root with no vectors must go red by that name. The eighteen per-rule sabotage controls run inside python-serialize-test itself. One interpreter run, under 1 s on the studio, so the row is the pins' cache restore.",

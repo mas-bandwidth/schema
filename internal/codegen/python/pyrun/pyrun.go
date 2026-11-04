@@ -26,6 +26,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // The pins make/python-toolchain.mk builds (docs/PORT-PYTHON.md, THE PIN).
@@ -162,4 +166,63 @@ func HexLines(t testing.TB, stdout []byte) [][]byte {
 		out = append(out, b)
 	}
 	return out
+}
+
+// LoadUnit parses and checks schema files, or every .schema file of a
+// directory, as one unit, or fails t.
+func LoadUnit(t testing.TB, paths ...string) *ir.Unit {
+	t.Helper()
+	var files []check.SourceFile
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		names := []string{p}
+		if info.IsDir() {
+			names = nil
+			entries, err := os.ReadDir(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, e := range entries {
+				if !e.IsDir() && strings.HasSuffix(e.Name(), ".schema") {
+					names = append(names, filepath.Join(p, e.Name()))
+				}
+			}
+		}
+		for _, name := range names {
+			data, err := os.ReadFile(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tree, perrs := parser.Parse(name, data)
+			if len(perrs) > 0 {
+				t.Fatalf("parse %s: %v", name, perrs[0])
+			}
+			files = append(files, check.SourceFile{
+				Path: name, Name: filepath.Base(name), Base: strings.TrimSuffix(filepath.Base(name), ".schema"),
+				Bytes: data, AST: tree,
+			})
+		}
+	}
+	u, errs := check.Unit(files)
+	if len(errs) > 0 {
+		t.Fatalf("check: %v", errs[0])
+	}
+	return u
+}
+
+// WriteTree writes generated files, keyed by their path relative to dir.
+func WriteTree(t testing.TB, dir string, files map[string][]byte) {
+	t.Helper()
+	for rel, data := range files {
+		p := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

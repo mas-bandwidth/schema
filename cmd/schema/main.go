@@ -953,6 +953,14 @@ func writeGenerated(dir string, files map[string][]byte, lang string, removeStal
 	}
 	defer func() { _ = out.Close() }() // only the directory handle; file writes close and report their own errors
 	for _, name := range names {
+		// a generator may emit a tree (the Python target's package and its
+		// _schema runtime), so a file's directories are made first, inside the
+		// output root
+		if d := filepath.Dir(name); d != "." {
+			if err := out.MkdirAll(d, 0o755); err != nil {
+				return err
+			}
+		}
 		if err := out.WriteFile(name, files[name], 0o644); err != nil {
 			return err
 		}

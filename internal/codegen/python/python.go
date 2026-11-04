@@ -2,16 +2,23 @@
 // package per unit, named for the unit's package, holding one module per schema
 // file and the runtime beside them, deterministic to the byte (SPEC §6.1).
 //
-//	<package>/__init__.py   the unit: its protocol id, Refused and InvalidValue
+//	<package>/__init__.py   the unit: its protocol id, Refused, InvalidValue, the modules
 //	<package>/py.typed      the package carries its own types (PEP 561)
-//	<package>/<Base>.py     one module per schema file
-//	<package>/_schema/      the runtime: the errors, and serialize.py vendored
+//	<package>/<Base>.py     one module per schema file: the packet surface
+//	<package>/_schema/      the runtime: the errors and helpers, and serialize.py vendored
 //
-// This is the skeleton (docs/PORT-PYTHON.md, THE LAYERS: P3). It carries no
-// declaration: a unit that declares anything is refused by name, naming the
-// layer that carries it, and a unit that declares nothing generates a package
-// that imports under both pinned interpreters and passes mypy in strict mode.
-// Every name the package spells is held to the rules of IDENTIFIERS first.
+// The packet surface (docs/PORT-PYTHON.md, THE VALUE MAPPING): constants,
+// enums and flags as int constant classes, and every type and union as a class
+// with __slots__ whose constructor builds every field at its declared default.
+// A type reads and writes the type wire (SPEC §4.3) over the vendored
+// serialize.py: T.read(data) returns the value or raises Refused, and
+// value.write() returns the bytes or raises InvalidValue. Tables are refused by
+// name: they arrive with the table layers.
+//
+// Every name the package spells is held to the rules of IDENTIFIERS first
+// (CheckNames). Every name the generated code invents for itself starts with
+// _s_, which no schema name may, and every module the generated code imports
+// is bound under that prefix, so no declaration can shadow one.
 package python
 
 import (
@@ -31,10 +38,10 @@ const ext = "py"
 const RuntimeDir = "_schema"
 
 // runtimeFS is the runtime, emitted verbatim under <package>/_schema/: the
-// errors module and serialize.py, vendored by sha256 (runtime/SERIALIZE_PIN,
-// TestVendoredPythonSerializeIsThePin). The all: prefix keeps the files whose
-// names start with an underscore (__init__.py, _core.py), which a bare
-// go:embed pattern leaves out.
+// errors and helpers, and serialize.py, vendored by sha256
+// (runtime/SERIALIZE_PIN, TestVendoredPythonSerializeIsThePin). The all:
+// prefix keeps the files whose names start with an underscore (__init__.py,
+// _core.py), which a bare go:embed pattern leaves out.
 //
 //go:embed all:runtime/_schema
 var runtimeFS embed.FS
@@ -45,7 +52,7 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if err := CheckNames(u); err != nil {
 		return nil, err
 	}
-	if err := refuseDeclarations(u); err != nil {
+	if err := refuseTables(u); err != nil {
 		return nil, err
 	}
 	pkg := u.Package
@@ -53,7 +60,11 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	bases := make([]string, 0, len(u.Files))
 	for _, f := range u.Files {
 		bases = append(bases, f.Base)
-		out[path.Join(pkg, f.Base+"."+ext)] = []byte(module(f))
+		text, err := module(u, f)
+		if err != nil {
+			return nil, err
+		}
+		out[path.Join(pkg, f.Base+"."+ext)] = []byte(text)
 	}
 	sort.Strings(bases)
 	out[path.Join(pkg, "__init__.py")] = []byte(packageInit(u, bases))
@@ -86,14 +97,10 @@ func Runtime() (map[string][]byte, error) {
 	return out, err
 }
 
-// refuseDeclarations refuses the first declaration of the unit, by name and
-// kind, naming the layer that carries its kind. The skeleton carries none.
-func refuseDeclarations(u *ir.Unit) error {
+// refuseTables refuses the first table of the unit, by name, naming the
+// layers that carry tables.
+func refuseTables(u *ir.Unit) error {
 	for _, f := range u.Files {
-		for _, d := range f.Decls {
-			kind, plural, name := declKind(d)
-			return fmt.Errorf("python: %s.schema declares %s %s, and the Python target does not carry %s yet (docs/PORT-PYTHON.md, THE LAYERS: P4 the packet wire)", f.Base, kind, name, plural)
-		}
 		for _, t := range f.Tables {
 			return fmt.Errorf("python: %s.schema declares table %s, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE LAYERS: P5 fixed tables, P6 variable tables)", f.Base, t.Name)
 		}
@@ -104,34 +111,11 @@ func refuseDeclarations(u *ir.Unit) error {
 	return nil
 }
 
-func declKind(d ir.Decl) (kind, plural, name string) {
-	switch d := d.(type) {
-	case *ir.Const:
-		return "const", "constants", d.Name
-	case *ir.Enum:
-		return "enum", "enums", d.Name
-	case *ir.Flags:
-		return "flags", "flags sets", d.Name
-	case *ir.Struct:
-		return "type", "types", d.Name
-	case *ir.Union:
-		return "union", "unions", d.Name
-	}
-	return "declaration", "declarations", fmt.Sprintf("%T", d)
-}
-
-// module is one schema file's module: its header and its docstring. The
-// declarations arrive with the packet layer.
-func module(f *ir.File) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", f.Base)
-	fmt.Fprintf(&b, "\"\"\"%s.schema.\"\"\"\n", f.Base)
-	return b.String()
-}
-
 // packageInit is the unit's __init__.py: the protocol id, the errors every
 // read and write raises, and one import per module so `import <package>`
-// loads the whole unit.
+// loads the whole unit. Declarations stay in their modules
+// (<package>.Wire.ProbeHeader): a declaration may share its name with a
+// module, and binding both here would shadow one with the other.
 func packageInit(u *ir.Unit, bases []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Code generated by the schema compiler from the unit %s. DO NOT EDIT.\n", u.Package)
@@ -150,4 +134,62 @@ func packageInit(u *ir.Unit, bases []string) string {
 	}
 	b.WriteString("]\n")
 	return b.String()
+}
+
+// module is one schema file's module: its header, its imports, and every
+// declaration in ir.EmissionOrder (SPEC §6.1).
+func module(u *ir.Unit, f *ir.File) (string, error) {
+	g := &gen{u: u, f: f, siblings: map[string]bool{}}
+	for _, d := range ir.EmissionOrder(f) {
+		var err error
+		switch d := d.(type) {
+		case *ir.Const:
+			g.emitConst(d)
+		case *ir.Enum:
+			g.emitEnum(d)
+		case *ir.Flags:
+			g.emitFlags(d)
+		case *ir.Struct:
+			err = g.emitStruct(d)
+		case *ir.Union:
+			err = g.emitUnion(d)
+		default:
+			err = fmt.Errorf("python: %s.schema: declaration %T is not carried", f.Base, d)
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	var h strings.Builder
+	fmt.Fprintf(&h, "# Code generated by the schema compiler from %s.schema. DO NOT EDIT.\n", f.Base)
+	h.WriteString("# SPDX-License-Identifier: NONE — this generated output is yours, under terms of\n")
+	h.WriteString("# your choice. See the LICENSE exception in the schema compiler; the compiler is\n")
+	h.WriteString("# AGPL-3.0, its output is not.\n")
+	fmt.Fprintf(&h, "\"\"\"%s.schema: package %s, protocol id 0x%016x.\"\"\"\n\n", f.Base, u.Package, u.ProtocolId)
+	h.WriteString("from __future__ import annotations\n\n")
+	h.WriteString("import typing as _s_t\n\n")
+	h.WriteString("from . import _schema as _s_rt\n")
+	h.WriteString("from ._schema import serialize as _s_ser\n")
+	sibs := make([]string, 0, len(g.siblings))
+	for s := range g.siblings {
+		sibs = append(sibs, s)
+	}
+	sort.Strings(sibs)
+	for _, s := range sibs {
+		fmt.Fprintf(&h, "from . import %s as _s_%s\n", s, s)
+	}
+	h.WriteString("\n")
+	for _, k := range g.consts {
+		h.WriteString(k)
+	}
+	if len(g.consts) > 0 {
+		h.WriteString("\n")
+	}
+	body := strings.TrimRight(g.b.String(), "\n")
+	if body != "" {
+		h.WriteString("\n")
+		h.WriteString(body)
+		h.WriteString("\n")
+	}
+	return h.String(), nil
 }

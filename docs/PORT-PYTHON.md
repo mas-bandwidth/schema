@@ -26,7 +26,7 @@ recommended"):
 
 | | decision | ruling |
 |---|---|---|
-| D1 | what runs | **Pure Python, standard library only.** In the packet layer the generator emits two code shapes for one type (straight-line code with locals bound, and a descriptor walk) and the leg keeps whichever measures faster. A mypyc build of the same source is a later add-on, shipped only if a benchmark justifies it. No C extension, no Cython |
+| D1 | what runs | **Pure Python, standard library only.** The generator emits the faster of two code shapes by measurement (THE CODE SHAPE). A mypyc build of the same source is a later add-on, shipped only if a benchmark justifies it. No C extension, no Cython |
 | D2 | which Python | **3.11 is the floor**, tested on 3.11 and on the newest stable CPython. Generated code and the runtime use nothing newer than 3.11 |
 | D3 | the toolchain | **CPython built from python.org source, pinned by sha256, into `dist/`**, as the Lua and Squirrel legs build theirs. The analyzer is mypy, installed from a hash-locked list. No system interpreter anywhere |
 | D4 | the bit layer | **serialize.py**, a serialize-family sibling at format 2.0 |
@@ -116,18 +116,22 @@ holds a value to its width.
 | `if` / `else` branches (§4.4) | both sides' fields are stored; a successful read sets the untaken side to its zero values, not its defaults (SPEC §5) | both at their defaults |
 
 **Enums are plain ints.** An enum is a class of `int` constants, one per
-variant spelled as the schema spells it, from 1, beside `None = 0` and `Max`,
-the spellings every leg uses (SPEC §4.2), with a name table. It is not an
-`enum.IntEnum`, which is slower to construct and to compare than an `int` on a
-hot path. A read refuses a value above `Max` (SPEC §4.2: no unnamed enum value
-exists), so a plain `int` never holds one either. A flags set is a class of
-mask constants with a name table, the same way.
+variant spelled as the schema spells it, from 1, beside `NONE = 0` and `MAX`
+(SPEC §4.2: `None` is a Python keyword, so the class spells both in capitals),
+with `EnumName<E>(value)` reading the name table. It is not an `enum.IntEnum`,
+which is slower to construct and to compare than an `int` on a hot path. A
+read refuses a value above `MAX` (SPEC §4.2: no unnamed enum value exists), so
+a plain `int` never holds one either. A union's tag is the same kind of class,
+`<Union>Type`, its members the arms' exported spellings (`ProbeShapeType.Slab`).
+A flags set is a class of mask constants (`Caps.Jump = 1 << 0`) with `COUNT`
+and `FlagName<F>(bit)`.
 
 **Classes.** Every type, table and union is a generated class with
 `__slots__`, so an attribute that is not a field is an `AttributeError`, not a
 silent new attribute. `__init__` builds every field at its default (SPEC §5),
 every nested value and union arm its own object, never one object shared by two
-slots. Generated classes define `__eq__` and `__repr__`, and are not hashable.
+slots. A type carries its worst case as `MAX_BITS` and `MAX_BYTES`. Generated
+classes define `__eq__` and `__repr__`, and are not hashable.
 `__eq__` compares floats by their bits, so `-0.0` and `0.0` differ, as their
 bytes on the wire do.
 
@@ -215,11 +219,38 @@ data = v.save()                # the bytes, or raises InvalidValue
   which receives the load's counters (`unknown`, `widened`, `retained`,
   `retain_lost`) on success only. A refused load leaves it as it was. A packet
   read has no report: the packet wire has nothing to count.
-- A writer validates the whole value before it writes a byte. `InvalidValue`
-  names the field path and the rule.
+- A refused write returns no byte: the writer checks each field against its
+  contract as it writes into a stream of its own, and on the first breach
+  drops the stream and raises `InvalidValue` naming the field path
+  (`ProbeArray.samples.weapon`) and the rule. Every rule the bit layer holds
+  (ranges, widths, finite floats, UTF-8, sizes) is serialize.py's own check;
+  the generator adds only what the schema knows (a float field holds a
+  `float`, an array its length, a nested field its class).
+- `read` and `write` are on types. A union rides inside a type, never alone.
 
 Exceptions cost nothing on the success path from CPython 3.11 (zero-cost
 `try`), which is part of why 3.11 is the floor.
+
+## THE CODE SHAPE
+
+D1 keeps the faster of two shapes. **The generator emits straight-line code**:
+per type, one write function and one read function with the stream's
+serialize.py methods bound to locals once, one guarded call per field, and one
+`Ref` carrying every scalar. The alternative, a descriptor walk (one generic
+loop over a table of field descriptors, making the same calls with the same
+guards), is slower on every type measured, so it is not emitted.
+
+Measured on studio (Apple Silicon, 2026-11-04), `make bench-python-shape`
+(`bench/python/shape.py`), 50,000 iterations each, microseconds per call:
+
+| type | write: straight, walk | read: straight, walk | interpreter |
+|---|---|---|---|
+| `Types.Input` (five float32s, eight bools) | 4.20, 6.50 (1.55x) | 4.75, 7.00 (1.48x) | 3.15.2 |
+| `Wire.ProbeBits` (wide bit fields) | 3.12, 4.08 (1.31x) | 3.15, 4.06 (1.29x) | 3.15.2 |
+| `Wire.Test` (ranged ints) | 2.26, 2.98 (1.32x) | 2.59, 3.25 (1.26x) | 3.15.2 |
+| `Types.Input` | 4.22, 6.28 (1.49x) | 4.75, 6.78 (1.43x) | 3.11.18 |
+
+The measurement is a functional run with the clock, never part of `make test`.
 
 ## THE BIT LAYER: serialize.py
 
@@ -254,11 +285,14 @@ every other leg's.
 per unit, named for the unit's package:
 
 ```
-<dir>/<package>/__init__.py      re-exports the unit's types, Refused and InvalidValue
+<dir>/<package>/__init__.py      PROTOCOL_ID, Refused, InvalidValue, and the modules
 <dir>/<package>/<Base>.py        one module per schema file
 <dir>/<package>/_schema/         the runtime: serialize.py and the table runtime
 ```
 
+- **Declarations stay in their modules** (`example.Wire.ProbeHeader`). A
+  declaration may share its name with a module of the unit, so the package
+  binds the modules and not the declarations.
 - **Relative imports only.** A module imports its siblings and the runtime as
   `from . import Wire` and `from ._schema import ...`, so the package works
   wherever the caller puts it, and two generated packages never share or shadow
@@ -318,7 +352,10 @@ Then, by rule, in the Python target:
   module names builtins unqualified. Fields are attributes and shadow nothing,
   so a field named `list` or `range` is legal.
 - **A field named for a generated member** (`read`, `write`, `load`, `save`,
-  `descriptor`) is refused by name. The emitter holds the list
+  `descriptor`, `MAX_BITS`, `MAX_BYTES`, and `type` on a union) is refused by
+  name, and so is an enum variant, flags member or union arm spelled like a
+  tag class's own member (`NONE`, `MAX`, `COUNT`), and a schema file spelled
+  like a name the package binds (`Refused`, `InvalidValue`, `PROTOCOL_ID`). The emitter holds the list
   (`generatedMembers`); the table layers claim their runtime's names in
   `internal/tablenames/python.go`, as every backend does.
 - **Enum variants** spelled `None` or `Max` are already refused by the checker
@@ -355,6 +392,12 @@ out as lowercase hex lines.**
   writes one answer file per case.
 - **The analyzer gate** runs mypy in strict mode over every generated tree and
   the runtime. A finding is a failure.
+- **The packet gates** (`make/python-packet.mk`) run each gate's main under
+  both pins against the generated package: `packet-finite-python`,
+  `packet-defaults-python`, and `packet-utf8-python` and `packet-wide-python`
+  through `test/packet-text/python/driver`, which the packet-text harness drives
+  against the C++ oracle. Each control patches one rule out of a copy of the
+  generated package with sed and must fail exactly that rule's vectors.
 
 ## THE REGISTER
 
@@ -374,7 +417,10 @@ or `—` with the platform's reason:
   conversion only ever sees a finite value, and `struct` converts every finite
   float32 exactly.
 
-A cell becomes ✅ when the layer that carries it lands with its proof.
+M4b is carried from the packet layer: every probe runs isolated with only its
+own directory on `sys.path`, so the generated package imports nothing but its
+own modules, its runtime and the standard library. A cell becomes ✅ when the
+layer that carries it lands with its proof.
 
 ## THE LAYERS
 
@@ -384,7 +430,7 @@ A cell becomes ✅ when the layer that carries it lands with its proof.
 | P1 | the pinned interpreters and analyzer, `toolchain-python` and its control | `port/python/p1-toolchain` |
 | P2 | serialize.py at format 2.0, staged in this tree, judged by the family corpus under both interpreters and mypy | `port/python/p2-serialize` |
 | P3 | the skeleton: the target behind its tag, the emitter packages, the register and roadmap columns | `port/python/p3-skeleton` |
-| P4 | the packet wire against the C++ goldens; the build tag dropped | `port/python/p4-packet` |
+| P4 | the packet wire against the C++ goldens and the packet gates; the target stays behind its build tag until the leg joins the builtins | `port/python/p4-packet` |
 | P5 | fixed tables, form 3 | `port/python/p5-fixed` |
 | P6 | variable tables: the one read | `port/python/p6-variable` |
 | P7 | the message form and retain-unknown | `port/python/p7-message-retain` |

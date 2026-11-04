@@ -7,7 +7,7 @@
 // design. The schema_leg_python tag keeps this target out of the builtins
 // until the packet surface has claims in compiler/*_test.go;
 // `go build -tags schema_leg_python` is `schema generate --lang python`. The
-// tag is dropped when the port joins the builtins (P4, the packet wire).
+// tag is dropped when the port joins the builtins.
 package compiler
 
 import (
@@ -19,14 +19,14 @@ type pythonTarget struct{}
 
 func (pythonTarget) Names() []string { return []string{"python"} }
 
-// Generate is the skeleton (docs/PORT-PYTHON.md, THE LAYERS: P3). The shared
-// refusal chain every port calls refuses, by name, each construct the target
-// does not carry, as it does for every skeleton (docs/PORT-GOOSE.md, THE
-// CARRIES PATTERN); the constructs keyed in compiler/carries.go are refused by
-// the driver against the python carries set, which compiler/carries_python.go
-// registers empty. Then the emitter holds every name to the leg's identifier
-// rules and refuses each declaration kind it does not carry yet, naming the
-// layer that carries it. A unit that declares nothing generates its package.
+// Generate is the packet surface (docs/PORT-PYTHON.md, THE LAYERS: P4). The
+// shared refusal chain every port calls refuses, by name, each construct the
+// target does not carry (docs/PORT-GOOSE.md, THE CARRIES PATTERN); the
+// constructs keyed in compiler/carries.go are refused by the driver against
+// the python carries set, which compiler/carries_python.go registers empty,
+// and compiler/carries_python_packet.go registers the packet-wire forms. Then
+// the emitter holds every name to the leg's identifier rules, refuses tables
+// by name, and generates the unit's package.
 func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
 		return nil, err

@@ -176,33 +176,15 @@ func TestPythonStrictGateGoesRed(t *testing.T) {
 	}
 }
 
-// TestPythonRefusesDeclarationsByName: the skeleton carries no declaration,
-// so each kind is refused by its kind and name, naming the layer that
-// carries it, and nothing is emitted.
-func TestPythonRefusesDeclarationsByName(t *testing.T) {
+// TestPythonRefusesTablesByName: tables arrive with the table layers, so a
+// table is refused by name, naming those layers, and nothing is emitted.
+func TestPythonRefusesTablesByName(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		decl ir.Decl
-		want string
-	}{
-		{&ir.Const{Name: "MaxPlayers"}, "declares const MaxPlayers, and the Python target does not carry constants yet (docs/PORT-PYTHON.md, THE LAYERS: P4 the packet wire)"},
-		{&ir.Enum{Name: "Weapon"}, "declares enum Weapon, and the Python target does not carry enums yet"},
-		{&ir.Flags{Name: "Caps"}, "declares flags Caps, and the Python target does not carry flags sets yet"},
-		{&ir.Struct{Name: "Player"}, "declares type Player, and the Python target does not carry types yet"},
-		{&ir.Union{Name: "Event"}, "declares union Event, and the Python target does not carry unions yet"},
-	}
-	for _, c := range cases {
-		u := emptyUnit("game", "Game")
-		u.Files[0].Decls = []ir.Decl{c.decl}
-		files, err := Generate(u)
-		if err == nil || !strings.Contains(err.Error(), "python: Game.schema "+c.want) {
-			t.Errorf("%T: got %v (%d files), want a refusal containing %q", c.decl, err, len(files), c.want)
-		}
-	}
 	u := emptyUnit("game", "Game")
 	u.Files[0].Tables = []*ir.Struct{{Name: "Fleet", IsTable: true}}
-	if _, err := Generate(u); err == nil || !strings.Contains(err.Error(), "declares table Fleet, and the Python target does not carry tables yet") {
-		t.Errorf("a table: got %v", err)
+	files, err := Generate(u)
+	if err == nil || !strings.Contains(err.Error(), "python: Game.schema declares table Fleet, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE LAYERS: P5 fixed tables, P6 variable tables)") {
+		t.Errorf("a table: got %v (%d files)", err, len(files))
 	}
 }
 
@@ -241,6 +223,11 @@ func TestPythonIdentifierRules(t *testing.T) {
 		{"field generated member", withDecl(&ir.Struct{Name: "Player", Fields: []*ir.Field{{Name: "save"}}}), "Player's field save is the name of a member the generated class defines"},
 		{"variant helper prefix", withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"_s_Laser"}}), "Weapon's variant _s_Laser starts with _s_"},
 		{"arm generated member", withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "load"}}}), "union Event's arm load is the name of a member"},
+		{"field class constant", withDecl(&ir.Struct{Name: "Player", Fields: []*ir.Field{{Name: "MAX_BITS"}}}), "Player's field MAX_BITS is the name of a member the generated class defines"},
+		{"variant tag member", withDecl(&ir.Enum{Name: "Weapon", Variants: []string{"NONE"}}), "enum Weapon's variant NONE is a name the generated class defines"},
+		{"flags tag member", withDecl(&ir.Flags{Name: "Caps", Variants: []string{"COUNT"}}), "flags Caps's member COUNT is a name the generated class defines"},
+		{"arm tag member", withDecl(&ir.Union{Name: "Event", Variants: []ir.UnionVariant{{Name: "m_a_x"}}}), "union Event's arm m_a_x is a name the generated tag class defines"},
+		{"module package name", emptyUnit("game", "Refused"), "a name the generated package reserves"},
 	}
 	for _, c := range refused {
 		err := CheckNames(c.unit)

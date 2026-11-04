@@ -16,7 +16,15 @@ const HelperPrefix = "_s_"
 // generatedMembers are the names the generated classes define beside their
 // fields (docs/PORT-PYTHON.md, ERRORS and THE VALUE MAPPING). A field spelled
 // like one would replace the member, so it is refused.
-var generatedMembers = wordSet(`read write load save descriptor`)
+var generatedMembers = wordSet(`read write load save descriptor MAX_BITS MAX_BYTES`)
+
+// tagMembers are the names an enum, a union tag or a flags class defines
+// beside its members: a member spelled like one is refused.
+var tagMembers = wordSet(`NONE MAX COUNT`)
+
+// packageNames are the names the package's __init__ binds beside the
+// modules: a schema file spelled like one is refused.
+var packageNames = wordSet(`InvalidValue PROTOCOL_ID Refused`)
 
 // CheckNames holds every name the generated package spells to
 // docs/PORT-PYTHON.md, IDENTIFIERS, and refuses the first that breaks a rule,
@@ -92,7 +100,7 @@ func checkModule(base string) error {
 	if pythonKeywords[base] {
 		return fmt.Errorf("python: the schema file %s.schema becomes the module %s.py, and %s is a Python keyword; rename the file", base, base, base)
 	}
-	if base == RuntimeDir || base == "__init__" || strings.HasPrefix(base, "__") || strings.HasPrefix(base, HelperPrefix) {
+	if base == RuntimeDir || base == "__init__" || packageNames[base] || strings.HasPrefix(base, "__") || strings.HasPrefix(base, HelperPrefix) {
 		return fmt.Errorf("python: the schema file %s.schema becomes the module %s.py, a name the generated package reserves; rename the file", base, base)
 	}
 	return nil
@@ -110,6 +118,9 @@ func checkDecl(file string, d ir.Decl) error {
 			if err := checkMemberName(file, d.Name, "variant", v); err != nil {
 				return err
 			}
+			if tagMembers[v] {
+				return fmt.Errorf("python: %s.schema: enum %s's variant %s is a name the generated class defines (NONE, MAX, COUNT); rename the variant", file, d.Name, v)
+			}
 		}
 	case *ir.Flags:
 		if err := checkDeclName(file, "flags", d.Name); err != nil {
@@ -118,6 +129,9 @@ func checkDecl(file string, d ir.Decl) error {
 		for _, v := range d.Variants {
 			if err := checkMemberName(file, d.Name, "flag", v); err != nil {
 				return err
+			}
+			if tagMembers[v] {
+				return fmt.Errorf("python: %s.schema: flags %s's member %s is a name the generated class defines (NONE, MAX, COUNT); rename the member", file, d.Name, v)
 			}
 		}
 	case *ir.Struct:
@@ -133,7 +147,10 @@ func checkDecl(file string, d ir.Decl) error {
 			if err := checkMemberName(file, d.Name, "arm", a.Name); err != nil {
 				return err
 			}
-			if generatedMembers[a.Name] {
+			if tagMembers[ir.GoExportName(a.Name)] {
+				return fmt.Errorf("python: %s.schema: union %s's arm %s is a name the generated tag class defines (NONE, MAX, COUNT); rename the arm", file, d.Name, a.Name)
+			}
+			if a.Name == "type" || generatedMembers[a.Name] {
 				return fmt.Errorf("python: %s.schema: union %s's arm %s is the name of a member the generated class defines (%s); rename the arm", file, d.Name, a.Name, memberList())
 			}
 		}

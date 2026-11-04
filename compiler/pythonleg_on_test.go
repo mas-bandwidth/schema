@@ -65,17 +65,31 @@ func TestPythonGeneratesAnEmptyUnitThroughTheDriver(t *testing.T) {
 	}
 }
 
-// TestPythonRefusesADeclarationThroughTheDriver: a declaration the skeleton
-// does not carry is refused by name at compile time, through the driver.
-func TestPythonRefusesADeclarationThroughTheDriver(t *testing.T) {
+// TestPythonGeneratesThePacketSurfaceThroughTheDriver: a declaration rides
+// the packet surface through the public driver, and a table is refused by
+// name, naming the layers that carry tables.
+func TestPythonGeneratesThePacketSurfaceThroughTheDriver(t *testing.T) {
 	t.Parallel()
 	c := New()
-	u, err := c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nconst MaxPlayers = 64\n"}))
+	u, err := c.Load(writeSchemas(t, map[string]string{"Game.schema": "package game\n\nconst MaxPlayers = 64\n\ntype Player\n{\n    health int32 | min = 0, max = 100\n}\n"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.Generate(u, "python", nil)
-	if err == nil || !strings.Contains(err.Error(), "Game.schema declares const MaxPlayers, and the Python target does not carry constants yet") {
-		t.Fatalf("got %v, want the const refused by name", err)
+	files, err := c.Generate(u, "python", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(files["game/Game.py"])
+	for _, want := range []string{"MaxPlayers: _s_t.Final = 64", "class Player:", "def _s_w_Player(", "def _s_r_Player("} {
+		if !strings.Contains(text, want) {
+			t.Errorf("game/Game.py lacks %q", want)
+		}
+	}
+	u, err = c.Load(writeSchemas(t, map[string]string{"Fleet.schema": "package fleet\n\ntable Fleet\n{\n    size int32\n}\n"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Generate(u, "python", nil); err == nil || !strings.Contains(err.Error(), "Fleet") {
+		t.Fatalf("got %v, want the table refused by name", err)
 	}
 }
