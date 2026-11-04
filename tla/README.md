@@ -357,3 +357,56 @@ Repeat for each of the six cfgs. The runs are recorded in `tla/RUNS.tsv`.
 
 The key order of a map's entries, which is not index arithmetic, and nesting
 deeper than one level below the node's own containers.
+
+# tla/NodeNumbering
+
+A model of the node NUMBERING the write algorithm pins (docs/SPEC-TABLES.md
+§3.1, §22.3): the first-visit order of one depth-first pre-order walk from the
+root over pointer edges, each body's slots in declaration order, a node
+numbered when it is first reached and descended into before the walk takes the
+next slot of the body it came from, a share taking the index it already has,
+and a pointer to a node still open on the walk's path refused as a cycle.
+
+The walk is the one a port writes, a loop over an explicit stack of `(node,
+next slot)` frames, and it is checked against the RECURSIVE definition the spec
+states. Every graph of `N = 4` nodes with two ordered pointer slots each is
+chosen at Init (390,625 graphs): trees, diamonds, shares reached from either
+side, self loops, cycles, and nodes the root never reaches. A by-value edge is
+not modelled separately: it descends in place, so it is the same walk with the
+body's slots spliced in at its field's position.
+
+## Properties
+
+- **TypeOK** — bounded state.
+- **MatchesPreOrder** — a finished walk's numbering is the recursive
+  definition's, index for index.
+- **OneIndexOneNode** — the indices are `1 .. next - 1`, each held by one node,
+  and exactly the nodes the root reaches hold one.
+- **CycleIsRefused** — a walk finishes exactly when the graph it reaches is
+  acyclic, and refuses exactly when it is not.
+- **Ends** — every walk finishes or refuses.
+
+## Reversed witnesses
+
+| cfg | switch | invariant violated | the bug it is |
+|---|---|---|---|
+| `MCNodeNumberingReverse.cfg` | `Reverse` | `MatchesPreOrder` | a body's slots walked last to first (the Go leg's `conformance-negative-control-write-order`, its `node-order` half, red on `edge_graph_diamond` and `node_diamond_chain`) |
+| `MCNodeNumberingBreadthFirst.cfg` | `BreadthFirst` | `MatchesPreOrder` | the walk takes the oldest frame first, breadth first: `1 -> (2, 3)`, `2 -> 4` numbers `3` before `4` (the order `edge_graph_diamond` pins against). A breadth-first walk also refuses legal DAGs as cycles, which this cfg leaves unchecked so the numbering is what goes red |
+
+## Running
+
+From this directory:
+
+```
+nice -n 19 timeout 300s java -Xmx4g -cp /opt/tla/tla2tools.jar tlc2.TLC \
+  -workers 8 -config MCNodeNumbering.cfg -metadir "$JOB/tlc-MCNodeNumbering" NodeNumbering
+```
+
+Repeat for each of the three cfgs. The runs are recorded in `tla/RUNS.tsv`.
+
+## What this does not prove
+
+The id table's first-use order and the bytes a record writes (the conformance
+gate holds those), by-value edges (the graphs are POINTER-ONLY: a by-value edge
+splices its body's slots in at its field's position, which is the same walk),
+and graphs past four nodes and two slots a node.

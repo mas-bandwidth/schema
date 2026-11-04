@@ -16,6 +16,7 @@ section is cited rather than restated.
 MANIFEST.txt          the registry: every case, by kind
 reports.txt           the read report of every evolution case  (generated)
 report-values/<case>.json  the value an evolution read leaves  (generated)
+rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
 json-hostile/<case>.value.json  the value its read leaves      (generated)
@@ -37,11 +38,12 @@ the end of the line.
 
 ```
 unit         <key> <schema path>...
-instance     <name> <unit> <root> <wire file> [no-text]
+instance     <name> <unit> <root> <wire file> [no-text | hand-text]
 connection   <key> <unit> <build version> <announcement wire file>
 message      <name> <connection> <root> <file-form wire> <message-form wire>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
 report       <case> <unit> <root> <wire file>
+rewrite      <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
 json-hostile <case> <unit> <root> <tree> <verdict>
 cook         <case> <unit> <root> <dump file>
@@ -65,6 +67,12 @@ refusal      <forgery> <reason>
   refuses. `harness generate` writes none and the harness asks no leg for one.
   The marker is the data saying so on the instance's own line, which is louder
   than a missing file quietly tolerated.
+  **`hand-text` says the text at `json/<name>.json` is HAND-AUTHORED** rather
+  than written from the wire: its map keys arrive out of order, so a leg's
+  `json-read` holds the leg's BUILDER sort to the canonical bytes
+  (docs/SPEC-TABLES.md §22.2.1). `harness generate` packs the text and requires
+  the instance's wire back instead of rewriting the text, and the `json-write`
+  surface asks no leg for it, because a writer's text is canonical.
 - **`connection`** is one CONNECTION's announced id table
   (docs/SPEC-TABLES.md §3.3): the unit whose whole vocabulary it carries, the
   BUILD VERSION that keys it, and the announcement itself, which is an ordinary
@@ -115,6 +123,16 @@ refusal      <forgery> <reason>
   class. The counters and the verdict live in `reports.txt`, keyed by `<case>`,
   and the §16 text of the value a read that reads leaves lives in
   `report-values/<case>.json`; both are the oracle's.
+- **`rewrite`** is an input every leg READS AND WRITES BACK
+  (docs/SPEC-TABLES.md §22.7): the reader's unit and root and the input wire.
+  The expected answer is `rewrite/<case>.bin`, the canonical bytes, which
+  `harness generate` writes as the oracle's read of the input followed by its
+  write of the value, and refuses to write unless they are a fixed point (read
+  and written again, the same bytes). Every `report` row and `framing` row that
+  reads has a rewrite row of the same name, which the harness's tests hold; the
+  rest are hand-built spellings no conforming writer produces (fields out of
+  declaration order, an id table out of first-use order, a field written
+  twice).
 - **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
   (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
   against the parent, damage and where reading resumes, the node-table scan.

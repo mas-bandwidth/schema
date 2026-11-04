@@ -1,0 +1,106 @@
+package main
+
+import (
+	"bytes"
+	"os"
+	"testing"
+)
+
+// EVERY INPUT THAT READS IS A REWRITE ROW (docs/SPEC-TABLES.md §22.7): each
+// report row whose pinned verdict reads and each framing row whose hand verdict
+// reads is read by every leg and written back, so a row added to either list
+// without its rewrite row would be an input no leg is held to writing.
+func TestEveryReadingRowIsARewriteRow(t *testing.T) {
+	m, pinned, _ := corpus(t)
+	rows := map[string]RewriteCase{}
+	for _, rw := range m.Rewrites {
+		rows[rw.Name] = rw
+	}
+	need := func(name, unit, root, wire string) {
+		rw, ok := rows[name]
+		if !ok {
+			t.Errorf("%s reads and has no rewrite row: add `rewrite %s %s %s %s`", name, name, unit, root, wire)
+			return
+		}
+		if rw.Unit != unit || rw.Root != root || rw.Wire != wire {
+			t.Errorf("rewrite %s reads %s %s %s, and its source row reads %s %s %s", name, rw.Unit, rw.Root, rw.Wire, unit, root, wire)
+		}
+	}
+	for _, r := range m.Reports {
+		if c := pinned[r.Name]; !c.Malformed && !c.Refused {
+			need(r.Name, r.Unit, r.Root, r.Wire)
+		}
+	}
+	for _, fc := range m.Framings {
+		if !fc.Damaged && !fc.Refused {
+			need(fc.Name, fc.Unit, fc.Root, fc.Wire)
+		}
+	}
+}
+
+// THE CANONICAL BYTES ARE THE ORACLE'S, AND A FIXED POINT: each committed
+// rewrite/<case>.bin is what the oracle writes for its input today, and what it
+// writes again for itself. A canonical file edited by hand, or an oracle whose
+// writer moved, is red here before any leg is asked.
+func TestRewriteCanonicalBytesAreTheOraclesFixedPoint(t *testing.T) {
+	m, _, u := corpus(t)
+	if len(m.Rewrites) == 0 {
+		t.Fatal("the manifest names no rewrite row")
+	}
+	for _, rw := range m.Rewrites {
+		unit, err := u.get(rw.Unit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input, err := os.ReadFile(rw.Wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pinned, err := os.ReadFile(rw.Canonical)
+		if err != nil {
+			t.Fatalf("%s: %v — run: make conformance-generate", rw.Name, err)
+		}
+		got, err := rewriteOnce(unit, rw.Root, input)
+		if err != nil {
+			t.Errorf("%s: %v", rw.Name, err)
+			continue
+		}
+		if !bytes.Equal(got, pinned) {
+			t.Errorf("%s: the oracle writes %d bytes, and %d are pinned", rw.Name, len(got), len(pinned))
+			continue
+		}
+		again, err := rewriteOnce(unit, rw.Root, pinned)
+		if err != nil || !bytes.Equal(again, pinned) {
+			t.Errorf("%s: the canonical bytes are not a fixed point (%v)", rw.Name, err)
+		}
+	}
+}
+
+// A REWRITE ROW THAT CHANGES NOTHING TESTS NOTHING about canonicalization, so
+// the hand-built rows must be inputs that are NOT already canonical.
+func TestHandBuiltRewriteInputsAreNotCanonical(t *testing.T) {
+	m, _, _ := corpus(t)
+	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed", "rewrite_field_twice"} {
+		var rw *RewriteCase
+		for i := range m.Rewrites {
+			if m.Rewrites[i].Name == name {
+				rw = &m.Rewrites[i]
+			}
+		}
+		if rw == nil {
+			t.Errorf("the manifest names no rewrite row %s", name)
+			continue
+		}
+		input, err := os.ReadFile(rw.Wire)
+		if err != nil {
+			t.Fatal(err)
+		}
+		canonical, err := os.ReadFile(rw.Canonical)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Equal(input, canonical) {
+			t.Errorf("%s: the input is already canonical, so the row holds no writer to anything", name)
+		}
+	}
+}
