@@ -42,6 +42,9 @@ export type FieldDescriptor = {
 	-- measure sums (docs/SPEC-TABLES.md §6.5, §11)
 	es: number?,
 	ea: number?,
+	-- optText marks an optional text list (docs/SPEC-TABLES.md §2.13): the text
+	-- form writes each element as its string, or null when absent
+	optText: boolean?,
 	min: number?,
 	wide: boolean?,
 	f32: boolean?,
@@ -81,6 +84,7 @@ export type TableDescriptor = {
 	ralign: number?,
 	jsonArray: boolean?, -- docs/SPEC-TABLES.md §16.10
 	integrity: string?,
+	regionAlign: number?, -- docs/SPEC-TABLES.md §2.13.1, absent at the floor of eight
 	place: { tables: { string }, str: boolean, bytes: boolean },
 	fields: { FieldDescriptor },
 	new: () -> any,
