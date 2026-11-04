@@ -40,7 +40,11 @@ func TestLobsterUnitViewListing(t *testing.T) {
 	}
 	manifest, _ := readManifest(t)
 	for key, paths := range manifest {
-		units["manifest-"+key] = prefix(paths)
+		expanded, err := compiler.GatherPaths(prefix(paths))
+		if err != nil {
+			t.Fatal(err)
+		}
+		units["manifest-"+key] = expanded
 	}
 	printer, err := os.ReadFile(filepath.Join(root, "test/tables/view_lobster.lobstertext"))
 	if err != nil {
