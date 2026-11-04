@@ -23,13 +23,15 @@ const Lua Backend = 1 << 9
 // by the file that returns the table.
 var luaModuleKeys = map[string][]string{
 	"the unit's table module (<Package>Tables.lua)": {
-		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "Fixed", "FixedEnums",
+		"AnnounceRead", "Announcement", "BuildVersion", "BytesBlobTypeId", "DeprecatedVariants", "DocNone", "Fixed", "FixedEnums",
 		"FixedFields", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
 		"MessageVocabularyId", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
 		"StringBlobTypeId", "Tables", "TypedBodies", "Unions", "WireIds", "WriteFixed",
 	},
-	"the unit's type view (<Package>View.lua)": {"Package", "ProtocolId", "Registry", "Tables", "Types"},
+	"the unit's type view (<Package>View.lua)": {
+		"Constants", "DocNone", "Enums", "Flags", "Package", "ProtocolId", "Registry", "Tables", "Types", "Unions", "UnitView",
+	},
 	"block.lua":      {"BlockOpen", "ByteOrder", "Dump", "Layout", "Open"},
 	"blockbuild.lua": {"Begin", "BlockBytes", "BlockMaxBytes"},
 	"cook.lua":       {"Check", "Open"},

@@ -128,9 +128,7 @@ func generate(u *ir.Unit) (map[string][]byte, error) {
 		if !runtimeCarriesForm(u, base) {
 			continue
 		}
-		if unitDeclaresForms(u) {
-			data = gateDeclaredFormsRuntime(base, data)
-		}
+		data = gateDeclaredFormsRuntime(base, data)
 		out[base] = data
 	}
 	return out, nil
@@ -331,7 +329,8 @@ func emit(m *Module) {
 	// reserved blob type ids a directory names (§7.1, §7.4, §6.3)
 	m.Printf("_M.BuildVersion = %s\n", idLit(ir.BuildVersion(u)))
 	m.Printf("_M.BytesBlobTypeId = %s\n", idLit(ir.BytesTypeId))
-	m.Printf("_M.StringBlobTypeId = %s\n\n", idLit(ir.StringTypeId))
+	m.Printf("_M.StringBlobTypeId = %s\n", idLit(ir.StringTypeId))
+	m.Printf("_M.DocNone = \"\"\n\n")
 	// every id this build can name (ir.TableWireIds): a retaining save tells a
 	// nameable id from a retained one by it, and only a retained one takes an
 	// entry of the caller's id list (docs/SPEC-TABLES.md §6.6, THE RETAINED IDS)
@@ -412,6 +411,10 @@ func emitDescriptor(m *Module, st *ir.Struct, variable bool) {
 	m.Printf("  cook_align = %d,\n", ir.CookNodeAlign(m.Unit, st))
 	m.Printf("  cook_record = %d,\n", ir.CookExtentStart(m.Unit, st))
 	m.Printf("  region_align = %d,\n", regionAlign)
+	m.Printf("  doc = %s,\n", docLit(st.Doc))
+	if len(st.Tags) > 0 {
+		m.Printf("  tags = %s,\n", tagsLit(st.Tags))
+	}
 	m.Printf("  fields = {\n")
 	guards := structGuards(st)
 	for i, f := range st.Fields {
@@ -438,6 +441,10 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 	m.Printf("  align = %d,\n", align)
 	m.Printf("  tag = %d,\n", tag)
 	m.Printf("  arm_offset = %d,\n", armOffset)
+	m.Printf("  doc = %s,\n", docLit(un.Doc))
+	if len(un.Tags) > 0 {
+		m.Printf("  tags = %s,\n", tagsLit(un.Tags))
+	}
 	m.Printf("  arms = {\n")
 	slots := armSlots(un)
 	for i, v := range un.Variants {
@@ -447,12 +454,40 @@ func emitUnionDescriptor(m *Module, un *ir.Union) {
 		}
 		field := "nil"
 		if v.F != nil {
-			field = fieldDescriptorAt(m.Unit, v.F, i+1, fieldPieces(m.Unit, v.F))
+			af := *v.F
+			af.Doc = v.Doc
+			af.Tags = v.Tags
+			field = armFieldDescriptorAt(m.Unit, &af, i+1, armOffset, fieldPieces(m.Unit, v.F))
 		}
-		m.Printf("    { name = %q, slot = %q, tag = %d, id = %s, field = %s },\n", v.Name, slots[i], i+1, idLit(ir.TableWireId(wire)), field)
+		armTags := ""
+		if len(v.Tags) > 0 {
+			armTags = fmt.Sprintf(", tags = %s", tagsLit(v.Tags))
+		}
+		m.Printf("    { name = %q, slot = %q, tag = %d, id = %s, arm_offset = %d, doc = %s%s, field = %s },\n",
+			v.Name, slots[i], i+1, idLit(ir.TableWireId(wire)), armOffset, docLit(v.Doc), armTags, field)
 	}
 	m.Printf("  },\n")
 	m.Printf("}\n\n")
+}
+
+func docLit(doc string) string {
+	if doc == "" {
+		return "_M.DocNone"
+	}
+	return lua.ByteString([]byte(doc))
+}
+
+func tagsLit(tags []string) string {
+	parts := make([]string, len(tags))
+	for i, tag := range tags {
+		parts[i] = lua.ByteString([]byte(tag))
+	}
+	return lua.TableOf(parts)
+}
+
+func armFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, armOffset int64, pieces []ir.BlockFieldPiece) string {
+	s := guardedFieldDescriptorAt(u, f, ordinal, nil, pieces)
+	return strings.TrimSuffix(s, " }") + fmt.Sprintf(", arm_offset = %d }", armOffset)
 }
 
 // armSlots answers, per arm, the key of the union VALUE that holds the arm's
@@ -555,7 +590,10 @@ func guardedFieldDescriptorAt(u *ir.Unit, f *ir.Field, ordinal int, guard []guar
 	} else {
 		b.WriteString("key_type_name = \"\", keys = {}, ")
 	}
-	fmt.Fprintf(&b, "optional = %v, present = %q, ", f.Type.Optional, presentCompanion(f))
+	fmt.Fprintf(&b, "optional = %v, present = %q, doc = %s, ", f.Type.Optional, presentCompanion(f), docLit(f.Doc))
+	if len(f.Tags) > 0 {
+		fmt.Fprintf(&b, "tags = %s, ", tagsLit(f.Tags))
+	}
 	if len(guard) > 0 {
 		b.WriteString("guard = {")
 		for i, t := range guard {
@@ -731,7 +769,7 @@ func needsCompanion(f *ir.Field) bool {
 	if f.Array == ir.ArrayCounted {
 		return true
 	}
-	if f.Array != ir.ArrayNone || f.Type.Pointer {
+	if f.Array != ir.ArrayNone || f.Type.Pointer || f.Type.TextUnbounded() {
 		return false
 	}
 	switch f.Type.Kind {
@@ -778,7 +816,11 @@ func valueDescriptor(f *ir.Field, withDefault bool) string {
 			// element or a map key with no length bound, stored as one blob
 			// slot. No `bound =` rides, so no reader clamps and no map key is
 			// dropped for its length.
-			return "shape = \"string\", unbounded = true"
+			s := "shape = \"string\", unbounded = true"
+			if withDefault {
+				s += ", default = " + lua.ByteString(f.DefBytes)
+			}
+			return s
 		}
 		s := fmt.Sprintf("shape = \"string\", bound = %d", t.Size)
 		if withDefault {

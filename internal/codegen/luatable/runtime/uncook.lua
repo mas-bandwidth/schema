@@ -94,7 +94,11 @@ local function present_offset(T, f)
   local s = f.shape
   local cur
   if s == "string" then
-    cur = align_up(at + (f.bound or 0) + 1, 4) + 4
+    if f.unbounded then
+      cur = at + 8
+    else
+      cur = align_up(at + (f.bound or 0) + 1, 4) + 4
+    end
   elseif s == "wstring" then
     cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
   elseif s == "bytes" then
@@ -126,6 +130,8 @@ local function present_offset(T, f)
     cur = at + enum_width(f)
   elseif s == "int" then
     cur = at + f.width
+  elseif s == "wide" then
+    cur = at + 16
   else
     cur = at
   end
@@ -166,6 +172,8 @@ read_field = function(ctx, f, base)
     v = u8(ctx, at) ~= 0
   elseif s == "int" then
     v = int_at(ctx, at, f.width, f.signed)
+  elseif s == "wide" then
+    v = { lo = i64(ctx, at), hi = i64(ctx, at + 8) }
   elseif s == "flags" then
     -- a flags slot is a uint64 in every target (§7.2)
     v = int_at(ctx, at, 8, false)
@@ -185,6 +193,15 @@ read_field = function(ctx, f, base)
         return nil, false
       end
       v = string.unpack("<d", ctx.data, at + 1)
+    end
+  elseif s == "string" and f.unbounded then
+    local delta = i64(ctx, at)
+    if delta == 0 then
+      v = ""
+    else
+      local start = at + delta
+      local n = u32(ctx, start)
+      v = string.sub(ctx.data, start + 8 + 1, start + 8 + n)
     end
   elseif s == "string" or s == "bytes" then
     local n = i32(ctx, at + f.companion)
@@ -234,6 +251,7 @@ local function zero_elem(T, e)
   local s = e.shape
   if s == "bool" then return false end
   if s == "int" or s == "flags" then return 0 end
+  if s == "wide" then return { lo = 0, hi = 0 } end
   if s == "float" then return 0.0 end
   if s == "string" or s == "bytes" then return "" end
   if s == "wstring" then return {} end

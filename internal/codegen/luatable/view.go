@@ -1,21 +1,23 @@
 // THE TYPE VIEW (docs/SPEC-TABLES.md §8.2, §8.5): one module per unit,
 // <Package>View.lua, carrying a descriptor for every `type` the unit declares
 // — a type no table reaches included — and every declared `table`, on the
-// side of the table runtime. The descriptors are §8.1's surface: a walker
-// written against a table's descriptor walks a viewed type without being told
+// side of the table runtime. The descriptors are §8.1\x27s surface: a walker
+// written against a table\x27s descriptor walks a viewed type without being told
 // it is not a table.
 //
 // A type NO TABLE CLOSURE REACHES carries no table-wire identity (§8.2): its
-// fields' ids are 0, their json keys are nil, and an enum's variants carry id
+// fields\x27 ids are 0, their json keys are nil, and an enum\x27s variants carry id
 // 0, exactly as viewlisting pins them. A descriptor describes; it adds no
 // codec and no wire (§8.2). The view is emitted as a side file by a
-// RegisterPass, so the unit's table module is unchanged (§8.5). The pass
-// records the module in the package's view registry (ViewFile), which the
-// unit's test collects beside the table module.
+// RegisterPass, so the unit\x27s table module is unchanged (§8.5). The pass
+// records the module in the package\x27s view registry (ViewFile), which the
+// unit\x27s test collects beside the table module.
 package luatable
 
 import (
 	"fmt"
+	"math"
+	"math/big"
 	"sort"
 	"strings"
 	"sync"
@@ -33,11 +35,11 @@ func init() {
 // lock keyed by the unit pointer.
 var viewMu sync.Mutex
 
-// viewEmitted holds each unit's view module source as its pass emitted it,
+// viewEmitted holds each unit\x27s view module source as its pass emitted it,
 // keyed by the unit pointer (docs/SPEC-TABLES.md §8.5).
 var viewEmitted = map[*ir.Unit]string{}
 
-// ViewName is the unit's view module basename: capitalize(package) + "View"
+// ViewName is the unit\x27s view module basename: capitalize(package) + "View"
 // (docs/SPEC-TABLES.md §8.5).
 func ViewName(u *ir.Unit) string {
 	if u.Package == "" {
@@ -46,12 +48,22 @@ func ViewName(u *ir.Unit) string {
 	return strings.ToUpper(u.Package[:1]) + u.Package[1:] + "View"
 }
 
-// ViewFile returns the view module source a unit's pass emitted, if any.
+// ViewFile returns the view module source a unit\x27s pass emitted, building it
+// on demand for a table-free unit (§8.3).
 func ViewFile(u *ir.Unit) (string, bool) {
+	if u == nil {
+		return "", false
+	}
 	viewMu.Lock()
-	defer viewMu.Unlock()
 	src, ok := viewEmitted[u]
-	return src, ok
+	viewMu.Unlock()
+	if !ok {
+		src = buildViewSource(u)
+		viewMu.Lock()
+		viewEmitted[u] = src
+		viewMu.Unlock()
+	}
+	return src, true
 }
 
 // emitView writes <Package>View.lua. It runs as a pass so the view is a file
@@ -68,13 +80,10 @@ func emitView(m *Module) error {
 	return nil
 }
 
-// buildViewSource renders the unit's view module source.
+// buildViewSource renders the unit\x27s view module source.
 func buildViewSource(u *ir.Unit) string {
-	closure, _ := closure(u)
-	reached := map[string]bool{}
-	for _, st := range closure {
-		reached[st.Name] = true
-	}
+	reached := ir.TableClosure(u)
+	reachedVocab := ir.TableClosureVocabulary(u)
 	variable := ir.VariableTables(u)
 
 	var b strings.Builder
@@ -87,7 +96,8 @@ func buildViewSource(u *ir.Unit) string {
 	b.WriteString("-- A type no table closure reaches carries id 0 and no json key (§8.2).\n\n")
 	b.WriteString("local _M = {}\n\n")
 	fmt.Fprintf(&b, "_M.Package = %q\n", u.Package)
-	fmt.Fprintf(&b, "_M.ProtocolId = %s\n\n", idLit(u.ProtocolId))
+	fmt.Fprintf(&b, "_M.ProtocolId = %s\n", idLit(u.ProtocolId))
+	b.WriteString("_M.DocNone = \"\"\n\n")
 
 	types := typeNames(u)
 	fmt.Fprintf(&b, "-- the type descriptors, by name (docs/SPEC-TABLES.md §8.2)\n")
@@ -103,60 +113,74 @@ func buildViewSource(u *ir.Unit) string {
 		emitViewDescriptor(&b, u, u.Tables[name], variable[name], true, "_M.Tables")
 	}
 
+	emitViewConstants(&b, u)
+	emitViewEnums(&b, u, reachedVocab)
+	emitViewFlags(&b, u)
+	emitViewUnions(&b, u, reachedVocab)
+
 	fmt.Fprintf(&b, "-- the unit registry (docs/SPEC-TABLES.md §8.3)\n")
-	fmt.Fprintf(&b, "_M.Registry = { package = %q, protocol_id = %s, types = {", u.Package, idLit(u.ProtocolId))
+	fmt.Fprintf(&b, "_M.Registry = {\n  package = %q,\n  protocol_id = %s,\n  types = {", u.Package, idLit(u.ProtocolId))
 	for i, name := range types {
 		if i > 0 {
 			b.WriteString(",")
 		}
 		fmt.Fprintf(&b, " %q", name)
 	}
-	b.WriteString(" }, tables = {")
+	b.WriteString(" },\n  tables = {")
 	for i, name := range tables {
 		if i > 0 {
 			b.WriteString(",")
 		}
 		fmt.Fprintf(&b, " %q", name)
 	}
-	b.WriteString(" } }\n")
-	b.WriteString("\nreturn _M\n")
-	return b.String()
+	b.WriteString(" },\n  constants = _M.Constants,\n  enums = _M.Enums,\n  flags = _M.Flags,\n  unions = _M.Unions,\n}\n\n")
+	b.WriteString("function _M.UnitView()\n  return _M.Registry\nend\n\nreturn _M\n")
+	return string(lua.Format([]byte(b.String())))
 }
 
-// typeNames is every `type` the unit declares, by name (§8.3's name order).
+// typeNames is every `type` the unit declares, by name (§8.3\x27s name order).
 func typeNames(u *ir.Unit) []string {
-	names := make([]string, 0, len(u.Structs))
-	for name := range u.Structs {
-		names = append(names, name)
+	var names []string
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			if st, ok := d.(*ir.Struct); ok && !st.IsTable {
+				names = append(names, st.Name)
+			}
+		}
 	}
 	sort.Strings(names)
 	return names
 }
 
-// tableNames is every declared `table`, by name. A map's generated ENTRY
+// tableNames is every declared `table`, by name. A map\x27s generated ENTRY
 // table is claimed rather than declared and is not a registry row (§8.3).
 func tableNames(u *ir.Unit) []string {
-	names := make([]string, 0, len(u.Tables))
-	for name, st := range u.Tables {
-		if st.IsMapEntry() {
-			continue
+	var names []string
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if st.MapEntryOf == "" {
+				names = append(names, st.Name)
+			}
 		}
-		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names
+}
+
+func viewDeclFile(u *ir.Unit, name string) string {
+	if base, ok := u.DeclFile[name]; ok {
+		return base + ".schema"
+	}
+	return ""
 }
 
 // emitViewDescriptor writes one type or table descriptor into collection:
-// §8.1's columns plus the view's file/doc/tags (§8.2, §8.3). wire is false
+// §8.1\x27s columns plus the view\x27s file/doc/tags (§8.2, §8.3). wire is false
 // for a type no table closure reaches, whose table-wire columns are empty.
 func emitViewDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, variable, wire bool, collection string) {
 	layout := ir.RecordLayout(u, st)
 	regionAlign := ir.TableRegionAlign(u)
-	file := ""
-	if base, ok := u.DeclFile[st.Name]; ok {
-		file = base + ".schema"
-	}
+	file := viewDeclFile(u, st.Name)
 	fmt.Fprintf(b, "%s[%q] = {\n", collection, st.Name)
 	fmt.Fprintf(b, "  name = %q,\n", st.Name)
 	typeId := uint64(0)
@@ -168,8 +192,10 @@ func emitViewDescriptor(b *strings.Builder, u *ir.Unit, st *ir.Struct, variable,
 	fmt.Fprintf(b, "  variable = %v,\n", variable)
 	fmt.Fprintf(b, "  map_entry = %v,\n", st.IsMapEntry())
 	fmt.Fprintf(b, "  file = %q,\n", file)
-	fmt.Fprintf(b, "  doc = %s,\n", lua.ByteString([]byte(st.Doc)))
-	fmt.Fprintf(b, "  tags = %s,\n", viewTags(st.Tags))
+	fmt.Fprintf(b, "  doc = %s,\n", docLit(st.Doc))
+	if len(st.Tags) > 0 {
+		fmt.Fprintf(b, "  tags = %s,\n", tagsLit(st.Tags))
+	}
 	fmt.Fprintf(b, "  size = %d,\n", layout.Size)
 	fmt.Fprintf(b, "  align = %d,\n", layout.Align)
 	fmt.Fprintf(b, "  region_align = %d,\n", regionAlign)
@@ -189,24 +215,196 @@ func viewFieldDescriptor(f *ir.Field, ordinal int, wire bool) string {
 	if wire {
 		id = ir.TableFieldWireId(f)
 	}
-	if !wire {
-		return fmt.Sprintf("{ name = %q, id = %s, ordinal = %d, type = %q, optional = %v, tags = %s, doc = %s }",
-			f.Name, idLit(id), ordinal, ir.TableTypeSpelling(f), f.Type.Optional,
-			viewTags(f.Tags), lua.ByteString([]byte(f.Doc)))
+	spelling := ir.TableTypeSpelling(f)
+	var b strings.Builder
+	fmt.Fprintf(&b, "{ name = %q, ", f.Name)
+	if wire {
+		fmt.Fprintf(&b, "key = %q, ", ir.TableFieldJsonKey(f))
 	}
-	return fmt.Sprintf("{ name = %q, key = %q, id = %s, ordinal = %d, type = %q, optional = %v, tags = %s, doc = %s }",
-		f.Name, ir.TableFieldJsonKey(f), idLit(id), ordinal, ir.TableTypeSpelling(f), f.Type.Optional,
-		viewTags(f.Tags), lua.ByteString([]byte(f.Doc)))
+	fmt.Fprintf(&b, "id = %s, ordinal = %d, type = %q, type_name = %q, optional = %v",
+		idLit(id), ordinal, spelling, spelling, f.Type.Optional)
+	if f.Type.Kind == ir.TNamed {
+		fmt.Fprintf(&b, ", target = %q", f.Type.Name)
+	}
+	if len(f.Tags) > 0 {
+		fmt.Fprintf(&b, ", tags = %s", tagsLit(f.Tags))
+	}
+	fmt.Fprintf(&b, ", doc = %s }", docLit(f.Doc))
+	return b.String()
 }
 
-// viewTags renders a declaration's tags in declared order, nil when none.
-func viewTags(tags []string) string {
-	if len(tags) == 0 {
-		return "nil"
+func emitViewConstants(b *strings.Builder, u *ir.Unit) {
+	names := make([]string, 0, len(u.Consts))
+	for name := range u.Consts {
+		names = append(names, name)
 	}
-	parts := make([]string, len(tags))
-	for i, tag := range tags {
-		parts[i] = lua.ByteString([]byte(tag))
+	sort.Strings(names)
+	b.WriteString("_M.Constants = {\n")
+	for _, name := range names {
+		c := u.Consts[name]
+		intValue := int64(0)
+		real := uint64(0)
+		if c.IsFloat {
+			real = math.Float64bits(c.Float)
+		} else if c.Int != nil {
+			if c.Int.IsInt64() {
+				intValue = c.Int.Int64()
+			} else {
+				intValue = int64(c.Int.Uint64())
+			}
+		}
+		tags := ""
+		if len(c.Tags) > 0 {
+			tags = fmt.Sprintf(", tags = %s", tagsLit(c.Tags))
+		}
+		fmt.Fprintf(b, "  { name = %q, file = %q, type_name = %q, is_float = %v, int_value = %s, float_bits = %s, doc = %s%s },\n",
+			c.Name, viewDeclFile(u, c.Name), c.Storage, c.IsFloat, lua.IntLiteral(big.NewInt(intValue)), idLit(real), docLit(c.Doc), tags)
 	}
-	return lua.TableOf(parts)
+	b.WriteString("}\n\n")
+}
+
+func emitViewEnums(b *strings.Builder, u *ir.Unit, reached map[string]bool) {
+	names := make([]string, 0, len(u.Enums))
+	for name := range u.Enums {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	b.WriteString("_M.Enums = {\n")
+	for _, name := range names {
+		e := u.Enums[name]
+		tags := ""
+		if len(e.Tags) > 0 {
+			tags = fmt.Sprintf(", tags = %s", tagsLit(e.Tags))
+		}
+		fmt.Fprintf(b, "  {\n    name = %q, file = %q, max = %d, storage_bits = %d, doc = %s%s,\n    variants = {\n",
+			e.Name, viewDeclFile(u, e.Name), e.Max, e.StorageBits, docLit(e.Doc), tags)
+		fmt.Fprintf(b, "      { value = 0, name = \"None\", id = %s, doc = _M.DocNone },\n", idLit(0))
+		for i, v := range e.Variants {
+			id := uint64(0)
+			if reached[e.Name] {
+				id = ir.TableWireId(e.VariantWireName(i))
+			}
+			vtags := ""
+			if len(e.VariantTags[i]) > 0 {
+				vtags = fmt.Sprintf(", tags = %s", tagsLit(e.VariantTags[i]))
+			}
+			fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, doc = %s%s },\n",
+				i+1, v, idLit(id), docLit(e.VariantDocs[i]), vtags)
+		}
+		b.WriteString("    },\n  },\n")
+	}
+	b.WriteString("}\n\n")
+}
+
+func emitViewFlags(b *strings.Builder, u *ir.Unit) {
+	names := make([]string, 0, len(u.Flags))
+	for name := range u.Flags {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	b.WriteString("_M.Flags = {\n")
+	for _, name := range names {
+		f := u.Flags[name]
+		tags := ""
+		if len(f.Tags) > 0 {
+			tags = fmt.Sprintf(", tags = %s", tagsLit(f.Tags))
+		}
+		fmt.Fprintf(b, "  {\n    name = %q, file = %q, max = %d, storage_bits = %d, doc = %s%s,\n    variants = {\n",
+			f.Name, viewDeclFile(u, f.Name), len(f.Variants)-1, viewFlagsStorageBits(f), docLit(f.Doc), tags)
+		for i, v := range f.Variants {
+			vtags := ""
+			if len(f.VariantTags[i]) > 0 {
+				vtags = fmt.Sprintf(", tags = %s", tagsLit(f.VariantTags[i]))
+			}
+			fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, doc = %s%s },\n",
+				i, v, idLit(0), docLit(f.VariantDocs[i]), vtags)
+		}
+		b.WriteString("    },\n  },\n")
+	}
+	b.WriteString("}\n\n")
+}
+
+func emitViewUnions(b *strings.Builder, u *ir.Unit, reached map[string]bool) {
+	all := map[string]*ir.Union{}
+	var names []string
+	for name, un := range u.Unions {
+		names, all[name] = append(names, name), un
+	}
+	for name, un := range u.TableUnions {
+		names, all[name] = append(names, name), un
+	}
+	sort.Strings(names)
+	b.WriteString("_M.Unions = {\n")
+	for _, name := range names {
+		un := all[name]
+		_, _, _, payloadOffset := ir.UnionLayout(u, un)
+		tags := ""
+		if len(un.Tags) > 0 {
+			tags = fmt.Sprintf(", tags = %s", tagsLit(un.Tags))
+		}
+		fmt.Fprintf(b, "  {\n    name = %q, file = %q, max = %d, storage_bits = %d, payload_offset = %d, doc = %s%s,\n    variants = {\n",
+			un.Name, viewDeclFile(u, un.Name), un.Max, un.StorageBits, payloadOffset, docLit(un.Doc), tags)
+		fmt.Fprintf(b, "      { value = 0, name = \"None\", id = %s, doc = _M.DocNone },\n", idLit(0))
+		for i, arm := range un.Variants {
+			id := uint64(0)
+			if reached[un.Name] {
+				id = ir.TableWireId(arm.WireName())
+			}
+			atags := ""
+			if len(arm.Tags) > 0 {
+				atags = fmt.Sprintf(", tags = %s", tagsLit(arm.Tags))
+			}
+			switch {
+			case arm.Void():
+				fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, doc = %s%s },\n",
+					i+1, arm.Name, idLit(id), docLit(arm.Doc), atags)
+			case arm.Body():
+				collection := "_M.Types"
+				if u.Tables[arm.Type] != nil {
+					collection = "_M.Tables"
+				}
+				fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, payload_name = %q, payload = %s[%q], doc = %s%s },\n",
+					i+1, arm.Name, idLit(id), ir.FieldTypeSpelling(arm.F), collection, arm.Type, docLit(arm.Doc), atags)
+			default:
+				spelling := ir.FieldTypeSpelling(arm.F)
+				field := fmt.Sprintf("{ name = %q, type_name = %q, kind = %d, bound = %d, arm_offset = %d, doc = %s%s }",
+					arm.Name, spelling, viewArmKind(arm.F), viewArmBound(arm.F), payloadOffset, docLit(arm.Doc), atags)
+				fmt.Fprintf(b, "      { value = %d, name = %q, id = %s, payload_name = %q, field = %s, doc = %s%s },\n",
+					i+1, arm.Name, idLit(id), spelling, field, docLit(arm.Doc), atags)
+			}
+		}
+		b.WriteString("    },\n  },\n")
+	}
+	b.WriteString("}\n\n")
+}
+
+func viewFlagsStorageBits(f *ir.Flags) int {
+	for _, w := range []int{8, 16, 32, 64} {
+		if f.WireBits <= w {
+			return w
+		}
+	}
+	return 64
+}
+
+func viewArmKind(f *ir.Field) int {
+	switch {
+	case f.Type.Pointer:
+		return ir.TableKindPointer
+	case f.Type.Kind == ir.TBytes && !f.Type.Blob():
+		return ir.TableKindU8
+	}
+	return ir.TableWireScalarKind(f)
+}
+
+func viewArmBound(f *ir.Field) int64 {
+	switch {
+	case f.Type.Pointer && f.Array == ir.ArrayNone:
+		return 0
+	case f.Array != ir.ArrayNone:
+		return f.ArrayBound
+	case f.Type.Kind == ir.TBytes, f.Type.Kind == ir.TString, f.Type.Kind == ir.TWString:
+		return f.Type.Size
+	}
+	return 0
 }

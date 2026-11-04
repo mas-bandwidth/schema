@@ -90,7 +90,7 @@ local function elem_of(T, d)
     local row = T.Tables[d.target]
     if row == nil then error("block: no descriptor for record " .. tostring(d.target), 0) end
     return { size = row.size, align = row.align }
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" or (s == "string" and d.unbounded) then
     return { size = 8, align = 8 }
   end
   return { size = 1, align = 1 }
@@ -113,7 +113,7 @@ local function pieces(T, f, projection)
   local s = f.shape
   if s == "map" then
     p[#p + 1] = { size = 16, align = 8 }
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" or (s == "string" and f.unbounded) then
     p[#p + 1] = { size = 8, align = 8 }
   elseif s == "string" then
     p[#p + 1] = { size = f.bound + 1, align = 1 }
@@ -193,7 +193,7 @@ function B.Layout(T, name, projection)
       fl.bound = f.bound
       fl.elemSize = 0
       fl.countOffset = offsets[1].offset + 8
-    elseif f.shape == "string" or f.shape == "wstring" or f.shape == "bytes" then
+    elseif (f.shape == "string" and not f.unbounded) or f.shape == "wstring" or f.shape == "bytes" then
       fl.counted = true
       fl.isArray = f.shape == "bytes"
       fl.bound = f.bound

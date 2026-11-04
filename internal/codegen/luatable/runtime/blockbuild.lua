@@ -71,6 +71,9 @@ local function element_size(T, d)
     local w = math.floor(storage_bits_for(#d.variants) / 8)
     return w, w
   end
+  if s == "pointer" or s == "string_blob" or s == "bytes_blob" or (s == "string" and d.unbounded) then
+    return 8, 8
+  end
   if s == "table" then
     local sub = T.Tables[d.target]
     if sub ~= nil then return sub.size, sub.align end
@@ -103,7 +106,7 @@ local function pieces(T, d, projection)
   local s = d.shape
   if s == "map" then
     out[#out + 1] = { size = 16, align = 8 }
-  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" then
+  elseif s == "pointer" or s == "string_blob" or s == "bytes_blob" or (s == "string" and d.unbounded) then
     out[#out + 1] = { size = 8, align = 8 }
   elseif s == "string" then
     out[#out + 1] = { size = d.bound + 1, align = 1 }

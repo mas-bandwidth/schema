@@ -51,10 +51,6 @@ func TestLuaViewDescriptorsMatchGo(t *testing.T) {
 		if len(u.Tables) == 0 {
 			continue
 		}
-		if len(ir.TableWideFields(u)) > 0 {
-			refused = append(refused, fmt.Sprintf("%s: carries the wide kinds the listing does not spell yet", key))
-			continue
-		}
 		files, err := Generate(u)
 		if err != nil {
 			if !strings.Contains(err.Error(), "Lua") {
@@ -147,8 +143,10 @@ func viewLines(u *ir.Unit, listing string) map[string]string {
 			continue
 		}
 		id := table + "\x00" + field
-		want[id] = fmt.Sprintf("table %s field %s %s %s %s %s kind=%d elem_kind=%d elem_size=%d counted=%v UnboundedContainer=%v Unbounded=%v array_bound=%d key_type_name=%s keys=%s present=%s",
-			table, field, f[4], f[5], f[6], f[7],
+		jsonIdx := strings.Index(line, " json=")
+		tagsIdx := strings.Index(line, " tags=")
+		want[id] = fmt.Sprintf("table %s field %s %s kind=%d elem_kind=%d elem_size=%d counted=%v UnboundedContainer=%v Unbounded=%v array_bound=%d key_type_name=%s keys=%s present=%s",
+			table, field, line[jsonIdx+1:tagsIdx],
 			ir.TableWireFieldKind(fd), ir.TableWireElemKind(fd), viewElemSize(u, fd), viewCounted(fd),
 			fd.IsList() || fd.IsMap(), fd.Type.TextUnbounded(), viewArrayBound(fd),
 			fd.KeyEnum, viewKeys(fd), viewPresent(fd))
@@ -273,4 +271,56 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sortStrings(keys)
 	return keys
+}
+
+// TestLuaViewDescriptorsNegativeControl sabotages a field's elem_size and
+// type_name in TabledemoTables.lua and requires the viewLines comparison red.
+func TestLuaViewDescriptorsNegativeControl(t *testing.T) {
+	t.Parallel()
+	repo := filepath.Join("..", "..", "..")
+	units := manifestUnits(t, filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt"))
+	var paths []string
+	for _, p := range units["tabledemo"] {
+		paths = append(paths, filepath.Join(repo, p))
+	}
+	u := luarun.LoadUnit(t, paths...)
+	want := viewLines(u, viewlisting.Listing(u))
+	mod := ModuleName(u) + ".lua"
+	for _, tc := range []struct {
+		name string
+		from string
+		to   string
+	}{
+		{"elem_size", "elem_size = 4,", "elem_size = 8,"},
+		{"type_name", `type_name = "int32",`, `type_name = "int64",`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			files, err := Generate(u)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(files[mod])
+			if !strings.Contains(text, tc.from) {
+				t.Fatalf("missing sabotage anchor %q in %s", tc.from, mod)
+			}
+			files[mod] = []byte(strings.Replace(text, tc.from, tc.to, 1))
+			dir := t.TempDir()
+			luarun.WriteFiles(t, dir, files)
+			if err := os.WriteFile(filepath.Join(dir, "main.lua"), []byte(viewProbe(ModuleName(u))), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			out := string(luarun.Run(t, dir, "main.lua", nil))
+			diff := false
+			for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+				if line != "" && want[viewLineID(line)] != line {
+					diff = true
+					break
+				}
+			}
+			if !diff {
+				t.Fatalf("NEGATIVE CONTROL FAILED: %s sabotage left TestLuaViewDescriptorsMatchGo green", tc.name)
+			}
+		})
+	}
 }
