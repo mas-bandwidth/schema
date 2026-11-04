@@ -76,12 +76,14 @@ for([-1, 256]) invalid:
     let refused, refusal = schema_rt.save_reasoned(rec)
     print("invalid " + string(refused == "" and refusal != ""))
 row.Loadout = "x"
-let short_n, _, short_why = bytearray.RowFixedSaveChecked([row], schema_rt.zeros(bytearray.RowFixedMeasure(1)))
-print("short " + string(short_n == -1 and short_why != ""))
+let short_buffer = schema_rt.zeros(bytearray.RowFixedMeasure(1))
+let short_n, short_wire, short_why = bytearray.RowFixedSaveChecked([row], short_buffer)
+print("short " + string(short_n == -1 and short_why != "" and short_wire == short_buffer))
 row.Loadout = bytes
 row.LiveCount = 0
-let min_n, _, min_why = bytearray.RowFixedSaveChecked([row], schema_rt.zeros(bytearray.RowFixedMeasure(1)))
-print("minimum " + string(min_n == -1 and min_why != ""))
+let min_buffer = schema_rt.zeros(bytearray.RowFixedMeasure(1))
+let min_n, min_wire, min_why = bytearray.RowFixedSaveChecked([row], min_buffer)
+print("minimum " + string(min_n == -1 and min_why != "" and min_wire == min_buffer))
 bytearray.RowReset(back)
 print("reset " + string(back.Loadout == schema_rt.zeros(4) and back.LiveCount == 1 and back.Live == schema_rt.zeros(4) and not back.OptionalPresent and back.Optional.Loadout == schema_rt.zeros(4)))
 `
