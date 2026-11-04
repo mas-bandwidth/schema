@@ -7,8 +7,8 @@
 // The `wire` surface holds a leg to this over the instances, whose wires are
 // already canonical, so reading and writing one is the identity. A rewrite row
 // is an input that is NOT canonical, or not written by the reader's own build:
-// an evolution wire (a field this reader cannot name, a widened or clamped
-// value, a repeated field), a framing vector that reads, and the hand-built
+// an evolution wire (a field this reader cannot name, a widened
+// value), a framing vector that reads, and the hand-built
 // non-canonical spellings of §22 (fields out of declaration order, an id table
 // out of first-use order). Each leg's answer is its own Save, and the canonical
 // bytes are the one byte string §22's write algorithm owes for the value the

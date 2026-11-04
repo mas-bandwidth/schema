@@ -1404,11 +1404,10 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 # legal wire no conforming writer produces, so the leg that reads it must write
 # the canonical bytes back. Fields out of declaration order with the id table
 # no longer in first-use order; the id table reversed and every reference
-# renumbered; and a field written twice, the earlier occurrence holding another
-# value, which the last occurrence overrides (§3).
+# renumbered. (A field written twice is damage under the one read, §3, and
+# refuses: it is no rewrite row.)
 rewrite rewrite_fields_reversed scalars     SimState      testdata/wire/tables/rewrite_fields_reversed.bin
 rewrite rewrite_ids_reversed    backenddemo LoginRequest  testdata/wire/tables/rewrite_ids_reversed.bin
-rewrite rewrite_field_twice     backenddemo StorePurchase testdata/wire/tables/rewrite_field_twice.bin
 
 # THE WRITE-ALGORITHM EDGES (docs/SPEC-TABLES.md §22): one value per degree of
 # freedom a writer has, each a trap for one wrong implementation of it. Map keys

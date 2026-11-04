@@ -131,8 +131,7 @@ refusal      <forgery> <reason>
   and written again, the same bytes). Every `report` row and `framing` row that
   reads has a rewrite row of the same name, which the harness's tests hold; the
   rest are hand-built spellings no conforming writer produces (fields out of
-  declaration order, an id table out of first-use order, a field written
-  twice).
+  declaration order, an id table out of first-use order).
 - **`framing`** is one hand-built wire per rule and bound of the FRAMING layer
   (docs/LAYERS/1-framing.md): the record scan, the `L` bounds, the header read
   against the parent, damage and where reading resumes, the node-table scan.

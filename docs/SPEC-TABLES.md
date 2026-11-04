@@ -20074,7 +20074,7 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 | surface | what each leg reads | what it writes | held to |
 |---|---|---|---|
 | `wire` | every instance's canonical wire | `Save` of the value | the instance's own wire, byte for byte |
-| `rewrite` | every input that READS and is not canonical: each evolution (`report`) row and each framing row that reads, and the hand-built spellings of this section (fields out of declaration order, an id table out of first-use order, a field written twice) | `Save` of the value the read leaves | the canonical bytes the oracle writes for that value, `testdata/conformance/tables/rewrite/<case>.bin` |
+| `rewrite` | every input that READS and is not canonical: each evolution (`report`) row and each framing row that reads, and the hand-built spellings of this section (fields out of declaration order, an id table out of first-use order) | `Save` of the value the read leaves | the canonical bytes the oracle writes for that value, `testdata/conformance/tables/rewrite/<case>.bin` |
 | `message` | every message-form batch | `SaveMessages` | the batch, byte for byte |
 | `retain-save` | every retention row | `SaveRetain` | the pinned save |
 | `cook-write` | every instance's wire | `Cook`, both byte orders | `schema cook`'s bytes |
@@ -20082,7 +20082,7 @@ BYTES ON EVERY WRITING SURFACE** (test/conformance/README.md):
 
 **THE GATE'S EXCEPTIONS, NAMED.** A value no writer can write is not a
 rewrite row: a blob named from two slots (`blob_shared`, §2.5) is refused at
-save by every writer, so its instances answer the named refusal on `wire` and
+save by every writer, so its instances refuse on `wire` and
 it has no canonical bytes (and under the strict read it is refused on read as
 well). **Form `3`'s bytes are not a harness surface**: they are held per leg
 against the C++ reference's byte oracle, `make tables-fixedform-corpus`

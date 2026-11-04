@@ -80,7 +80,7 @@ func TestRewriteCanonicalBytesAreTheOraclesFixedPoint(t *testing.T) {
 // the hand-built rows must be inputs that are NOT already canonical.
 func TestHandBuiltRewriteInputsAreNotCanonical(t *testing.T) {
 	m, _, _ := corpus(t)
-	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed", "rewrite_field_twice"} {
+	for _, name := range []string{"rewrite_fields_reversed", "rewrite_ids_reversed"} {
 		var rw *RewriteCase
 		for i := range m.Rewrites {
 			if m.Rewrites[i].Name == name {
