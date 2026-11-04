@@ -1278,12 +1278,16 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
     -- reference map reader keeps it.
     local vf = fd.value_field
     local null_ref = false
+    local keep_default = false
     if not skip and value_shape(inp) == 'z' and (vf.shape == "pointer"
         or vf.shape == "string_blob" or vf.shape == "bytes_blob") then
       null_ref = true
     elseif not skip and value_shape(inp) ~= shape_of(T, vf) then
+      -- a value of the wrong shape is skipped and counted, and its entry stays
+      -- at the value's default (§16.2), as the Go reference keeps it
       report.kindMismatch = report.kindMismatch + 1
       skip = true
+      keep_default = true
     end
     if null_ref then
       literal(inp, "null")
@@ -1292,6 +1296,11 @@ local function read_map(T: any, fd: any, inp: Input, holder: any, key: any, dept
       out[kval] = false
     elseif skip then
       if not skip_value(inp, depth + 2, graph) then return false end
+      if keep_default then
+        if seen[kval] then report.duplicate = report.duplicate + 1 end
+        seen[kval] = true
+        out[kval] = zero_elem(T, vf)
+      end
     else
       if seen[kval] then report.duplicate = report.duplicate + 1 end
       seen[kval] = true
