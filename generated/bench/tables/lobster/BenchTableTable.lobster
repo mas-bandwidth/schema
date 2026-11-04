@@ -7,6 +7,7 @@
 import .schema_runtime
 import .schema_tables
 import .descriptors
+import .descriptors_load
 import .BenchTable
 import .block_form
 import .cook
