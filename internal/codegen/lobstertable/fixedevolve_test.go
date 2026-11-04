@@ -131,7 +131,7 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
 					// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): an oracle
 					// file that still carries a NaN or an infinity (the C++
 					// corpus before finite-tables #2232 regenerates it) is
-					// refused by the strict and the tolerant read alike, named
+					// refused by the single fixed read, named
 					body := fmt.Sprintf(`
     let data = read_in("in.bin")
     let back:[%s.%s] = []
@@ -142,8 +142,8 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     assert_eq(n, -1, "a non-finite float refuses the strict read")
     assert_true(r.reason == "non_finite_float: %s.%s" and r.non_finite_float == "%s.%s", "named: " + r.reason)
     let t = schema_rt.TableReport {}
-    let m = %s.%sFixedLoadTolerant(back, data, plan, t)
-    assert_eq(m, -1, "a non-finite float refuses the tolerant read")
+    let m = %s.%sFixedLoad(back, data, plan, t)
+    assert_eq(m, -1, "a non-finite float refuses a repeated read")
     assert_true(schema_rt.fixed_report_err(t) == "non_finite_float", "err: " + schema_rt.fixed_report_err(t))
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table, table, field, table, field, pkg, table)
@@ -453,13 +453,11 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     for(8): push(back, %s.New%s())
     let r = schema_rt.TableReport {}
     let plan = %s.make_plan(4096)
-    let n = %s.%sFixedLoadTolerant(back, read_in("in.bin"), plan, r)
-    assert_eq(n, 1, "forged ordinal reads 1 record")
-    assert_true(r.verdict == schema_rt.TableOpenExact and r.reason == "" and not r.malformed, "not refused")
-    assert_eq(int(back[0].Tier), 0, "forged ordinal lands None (0)")
-    assert_eq(back[0].Seq, 9, "seq == 9")
-    assert_eq(r.clamped, 1, "clamped == 1")
-    assert_true(r.unknown == 0 and r.kind_mismatch == 0 and r.widened == 0 and r.duplicate == 0, "other counters 0")
+    let n = %s.%sFixedLoad(back, read_in("in.bin"), plan, r)
+    assert_eq(n, -1, "forged ordinal refuses whole batch")
+    assert_true(r.reason != "", "refusal recorded")
+    assert_eq(int(back[0].Tier), 0, "destination enum reset")
+    assert_eq(back[0].Seq, 0, "destination record reset")
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table)
 		}
@@ -495,13 +493,11 @@ func TestLobsterFixedFormEvolution(t *testing.T) {
     for(8): push(back, %s.New%s())
     let r = schema_rt.TableReport {}
     let plan = %s.make_plan(4096)
-    let n = %s.%sFixedLoadTolerant(back, read_in("in.bin"), plan, r)
-    assert_eq(n, 1, "forged union tag reads 1 record")
-    assert_true(r.verdict == schema_rt.TableOpenExact and r.reason == "" and not r.malformed, "not refused")
-    assert_eq(int(back[0].Pick.Type), 0, "forged union tag lands None (0)")
-    assert_eq(back[0].Seq, 15, "seq == 15")
-    assert_eq(r.clamped, 1, "clamped == 1")
-    assert_true(r.unknown == 0 and r.kind_mismatch == 0 and r.widened == 0 and r.duplicate == 0, "other counters 0")
+    let n = %s.%sFixedLoad(back, read_in("in.bin"), plan, r)
+    assert_eq(n, -1, "forged union tag refuses whole batch")
+    assert_true(r.reason != "", "refusal recorded")
+    assert_eq(int(back[0].Pick.Type), 0, "destination union reset")
+    assert_eq(back[0].Seq, 0, "destination record reset")
     print "PASS"
 `, pkg, table, pkg, table, pkg, pkg, table)
 		}
@@ -733,7 +729,7 @@ func TestLobsterFixedFormNamesEveryRefusal(t *testing.T) {
     back[0].W = 0x5A
     let r = schema_rt.TableReport {}
     assert_eq(%s.%sFixedLoad(back, "", plan, r), -1, "empty")
-    assert_true(r.malformed and r.reason == "truncated" and back[0].X == 0x5A, "truncated empty")
+    assert_true(r.malformed and r.reason == "truncated" and back[0].X == 0, "truncated empty resets destination")
 
     // 2. form 1 -> previous_form
     let f1 = write_int8_le(schema_rt.zeros(10), 0, 1)
@@ -879,14 +875,12 @@ fixed table CheckedHost | integrity = "crc32c" {
     assert_eq(rprobe.CheckedHostFixedLoad(back, f_wide_sealed, plan, r), -1, "text_ill_formed wide")
     assert_true(r.verdict == schema_rt.TableOpenRefused and r.reason == "text_ill_formed", "text_ill_formed wide reason")
 
-    // 19. clamped on strict FixedLoad vs FixedLoadTolerant (val = 150 > 100)
+    // 19. an out-of-range value refuses the batch and resets the destination.
     let f_clamp = write_int32_le(substring(wire, 0, length(wire)), rec_body + 48, 150)
     let ign_5, f_clamp_sealed = schema_rt.fixed_integrity_seal(f_clamp, need - 4)
     assert_eq(ign_5, need, "seal 5")
-    assert_eq(rprobe.CheckedHostFixedLoadTolerant(back, f_clamp_sealed, plan, r), 1, "tolerant clamp returns 1")
-    assert_true(r.clamped == 1 and back[0].Val == 100, "tolerant clamped Val == 100")
-    assert_eq(rprobe.CheckedHostFixedLoad(back, f_clamp_sealed, plan, r), -1, "strict FixedLoad refuses clamped")
-    assert_true(r.clamped == 1 and schema_rt.fixed_report_err(r) == "clamped" and back[0].Val == 0, "strict FixedLoad resets destination on clamp")
+    assert_eq(rprobe.CheckedHostFixedLoad(back, f_clamp_sealed, plan, r), -1, "FixedLoad refuses out-of-range value")
+    assert_true(r.reason == "out_of_range" and back[0].Val == 0, "FixedLoad resets destination on refusal")
 
     // 20. layout_record_too_large via fixed_lineage_plans
     let mine, pwhy = schema_rt.fixed_parse_layout(rprobe.CheckedHostFixedLayoutBytes())

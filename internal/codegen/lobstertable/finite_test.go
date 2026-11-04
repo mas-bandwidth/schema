@@ -378,7 +378,7 @@ func TestLobsterTablesAreFiniteOnlyNegativeControl(t *testing.T) {
 }
 
 // finiteFixed holds the fixed form: a hand-made record whose float is a NaN
-// or an infinity is refused by FixedLoad and FixedLoadTolerant as
+// or an infinity is refused by FixedLoad as
 // non_finite_float: Row.<field>; the checked save refuses one as
 // invalid_value (Go's FixedCheckBody) and the plain save answers "".
 func finiteFixed(t *testing.T) {
