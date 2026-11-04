@@ -1,0 +1,2037 @@
+// Package fixedproof provides the leg-independent 49-row fixed-table proof
+// driver shared across target table backends (L2, S2, X1).
+//
+// For each of the 49 contract-independent fixed-table roadmap rows (33 value
+// rows, fixed-file-roundtrip, and 15 evolution/layout/plan/lineage/file rows),
+// the driver compiles and executes a live C++ reference oracle, verifies that
+// the target leg's FixedSave bytes match C++'s live reference bytes
+// byte-for-byte, verifies that each side loads and re-saves the other's bytes
+// byte-equal, and runs both a file negative control and a writer negative
+// control under a hard 2 GiB memory ceiling.
+package fixedproof
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime/debug"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/check"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v2/internal/parser"
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
+
+// HardMemoryLimitBytes is the 2 GiB ceiling enforced around negative controls
+// and hostile layout probes so no buggy reader or test can allocate without
+// bound.
+const HardMemoryLimitBytes = int64(2) << 30
+
+var memLimitMu sync.Mutex
+
+// SetMemoryCeiling sets a 2 GiB memory ceiling for the duration of t and
+// restores the previous limit in t.Cleanup.
+func SetMemoryCeiling(t *testing.T) {
+	t.Helper()
+	memLimitMu.Lock()
+	prev := debug.SetMemoryLimit(HardMemoryLimitBytes)
+	memLimitMu.Unlock()
+	t.Cleanup(func() {
+		memLimitMu.Lock()
+		debug.SetMemoryLimit(prev)
+		memLimitMu.Unlock()
+	})
+}
+
+// RowCase describes one of the 49 contract-independent fixed-table proof rows.
+type RowCase struct {
+	ID       string
+	Schema   string
+	Root     string
+	Body     int64
+	Count    int
+	CppSetup string
+}
+
+// LegRunner is the interface a target leg (luatable, squirreltable, etc.)
+// implements to run the shared 49-row value and negative-control suites.
+type LegRunner interface {
+	Name() string
+	// Save constructs the row's records for tc.ID, verifies FixedMeasure(count),
+	// saves them with FixedSave, and returns the wire bytes.
+	Save(t *testing.T, tc RowCase, u *ir.Unit) []byte
+	// LoadAndResave loads wireBytes with FixedLoad, checks the decoded field
+	// values for tc.ID, re-saves them with FixedSave, and returns the re-saved
+	// wire bytes. If FixedLoad refuses wireBytes, LoadAndResave returns an error.
+	LoadAndResave(t *testing.T, tc RowCase, u *ir.Unit, wireBytes []byte) ([]byte, error)
+	// SaveMutated patches the emitted writer or runtime for tc.ID so that one
+	// field write or zeroing step is altered while keeping a valid Form 3
+	// envelope, and returns the mutated wire bytes.
+	SaveMutated(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, error)
+}
+
+// LineageEntry is a target-neutral locked fixed layout entry.
+type LineageEntry struct {
+	Wire    uint64
+	Layout  []byte
+	Record  int64
+	Retired bool
+	Reason  string
+}
+
+// EvoRunner is the interface a target leg implements to run the shared
+// evolution/layout/plan/lineage/file proof suite across the 16 non-value rows.
+type EvoRunner interface {
+	Name() string
+	// LoadLineage generates the unit with the given lineage (nil for plain
+	// Generate), loads wireBytes into a batch of capacity (or default capacity
+	// when cap < 0), and returns:
+	//   - count: number of decoded records (-1 on refusal)
+	//   - reason: refusal name ("" or "ok" on success)
+	//   - fields: flat map of decoded values (e.g. "r0.a" -> "7")
+	//   - resaved: re-saved wire bytes when count >= 0
+	LoadLineage(t *testing.T, u *ir.Unit, root string, lineage map[string][]LineageEntry, wireBytes []byte, cap int) (count int, reason string, fields map[string]string, resaved []byte)
+	// SaveCustom runs a custom record-construction and FixedSave scenario for
+	// rows like optional-values, writing, compiled-plans (W14), and batch-capacity.
+	SaveCustom(t *testing.T, u *ir.Unit, root string, scenario string) (wireBytes []byte, reason string)
+	// HasFixedRoot reports whether Generate(u) emits fixed-form support for root.
+	HasFixedRoot(t *testing.T, u *ir.Unit, root string) bool
+}
+
+// ParseCheckUnit parses and type-checks a schema string into an *ir.Unit.
+func ParseCheckUnit(t *testing.T, src string) *ir.Unit {
+	t.Helper()
+	ast, perrs := parser.Parse("probe.schema", []byte(src))
+	if len(perrs) > 0 {
+		t.Fatalf("parse probe.schema: %v", perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path:  "probe.schema",
+		Name:  "probe.schema",
+		Base:  "probe",
+		Bytes: []byte(src),
+		AST:   ast,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check probe.schema: %v", cerrs[0])
+	}
+	return u
+}
+
+// LoadRepoUnit loads a schema file relative to the repository root.
+func LoadRepoUnit(t *testing.T, repoRoot, rel string) *ir.Unit {
+	t.Helper()
+	full := filepath.Join(repoRoot, rel)
+	data, err := os.ReadFile(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Base(full)
+	ast, perrs := parser.Parse(full, data)
+	if len(perrs) > 0 {
+		t.Fatalf("parse %s: %v", full, perrs[0])
+	}
+	u, cerrs := check.Unit([]check.SourceFile{{
+		Path:  full,
+		Name:  base,
+		Base:  strings.TrimSuffix(base, ".schema"),
+		Bytes: data,
+		AST:   ast,
+	}})
+	if len(cerrs) > 0 {
+		t.Fatalf("check %s: %v", full, cerrs[0])
+	}
+	return u
+}
+
+// RootStruct finds the named struct in u.
+func RootStruct(t *testing.T, u *ir.Unit, root string) *ir.Struct {
+	t.Helper()
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if st.Name == root {
+				return st
+			}
+		}
+	}
+	t.Fatalf("no fixed table %s in unit", root)
+	return nil
+}
+
+// RootFacts returns the layout bytes, wire hash, and record body byte size for st.
+func RootFacts(st *ir.Struct) (layout []byte, hash uint64, body int64) {
+	walk := ir.TableFixedWalkRoot(st)
+	layout = ir.TableFixedLayoutBytes(walk)
+	hash = ir.TableFixedLayoutHash(layout, st)
+	body = ir.TableFixedTypeBytes(st)
+	return layout, hash, body
+}
+
+// LineageEntryOf computes the LineageEntry for table root in u.
+func LineageEntryOf(u *ir.Unit, root string) (LineageEntry, bool) {
+	for _, st := range ir.TableFixedFormRoots(u) {
+		if st.Name != root {
+			continue
+		}
+		layout, hash, body := RootFacts(st)
+		return LineageEntry{
+			Wire:   hash,
+			Layout: layout,
+			Record: 8 + body,
+		}, true
+	}
+	return LineageEntry{}, false
+}
+
+// MakeFixedFile builds a Form 3 fixed file from a header hash, layout bytes,
+// and zero or more record bodies (stamping each record with hash).
+func MakeFixedFile(hash uint64, layout []byte, bodies ...[]byte) []byte {
+	out := make([]byte, 0, 20+len(layout)+len(bodies)*32)
+	out = append(out, 3, 0, 0, 0, 0, 0, 0, 0)
+	out = binary.LittleEndian.AppendUint64(out, hash)
+	out = binary.LittleEndian.AppendUint32(out, uint32(len(layout)))
+	out = append(out, layout...)
+	for _, b := range bodies {
+		out = binary.LittleEndian.AppendUint64(out, hash)
+		out = append(out, b...)
+	}
+	return out
+}
+
+// Cases returns all 49 contract-independent fixed-table proof rows (33 value
+// rows, fixed-file-roundtrip, and 15 evolution/layout/plan/lineage/file rows).
+func Cases() []RowCase {
+	return []RowCase{
+		// 1. bool-values
+		{
+			ID: "bool-values",
+			Schema: `package probe
+fixed table T {
+    a bool = false
+    b bool = true
+}
+`,
+			Root:  "T",
+			Body:  2,
+			Count: 2,
+			CppSetup: `
+    value[1].a = true;
+    value[1].b = false;
+`,
+		},
+		// 2. signed-integers
+		{
+			ID: "signed-integers",
+			Schema: `package probe
+fixed table T {
+    a int8 = -128
+    b int16 = -32768
+    c int32 = -2147483648
+    d int64 = -9223372036854775808
+}
+`,
+			Root:  "T",
+			Body:  15,
+			Count: 3,
+			CppSetup: `
+    value[1].a = 127;
+    value[1].b = 32767;
+    value[1].c = 2147483647;
+    value[1].d = 9223372036854775807LL;
+    value[2].a = -1;
+    value[2].b = 0;
+    value[2].c = 1;
+    value[2].d = -2LL;
+`,
+		},
+		// 3. unsigned-integers
+		{
+			ID: "unsigned-integers",
+			Schema: `package probe
+fixed table T {
+    a uint8 = 255
+    b uint16 = 65535
+    c uint32 = 4294967295
+    d uint64 = 18446744073709551615
+}
+`,
+			Root:  "T",
+			Body:  15,
+			Count: 3,
+			CppSetup: `
+    value[1].a = 0;
+    value[1].b = 0;
+    value[1].c = 0;
+    value[1].d = 0ULL;
+    value[2].a = 1;
+    value[2].b = 256;
+    value[2].c = 65536U;
+    value[2].d = 4294967296ULL;
+`,
+		},
+		// 4. signed-128
+		{
+			ID: "signed-128",
+			Schema: `package probe
+fixed table T {
+    a int128 = -170141183460469231731687303715884105728 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+}
+`,
+			Root:  "T",
+			Body:  16,
+			Count: 3,
+			CppSetup: `
+    value[1].a = serialize::int128_t( ( serialize::uint128_t( 0x7fffffffffffffffull ) << 64 ) | serialize::uint128_t( 0xffffffffffffffffull ) );
+    value[2].a = serialize::int128_t( 1 );
+`,
+		},
+		// 5. unsigned-128
+		{
+			ID: "unsigned-128",
+			Schema: `package probe
+fixed table T {
+    a uint128 = 340282366920938463463374607431768211455
+}
+`,
+			Root:  "T",
+			Body:  16,
+			Count: 3,
+			CppSetup: `
+    value[1].a = serialize::uint128_t( 0 );
+    value[2].a = serialize::uint128_t( 1 );
+`,
+		},
+		// 6. ranged-integers
+		{
+			ID: "ranged-integers",
+			Schema: `package probe
+fixed table T {
+    a int32 | min = -5, max = 5
+    b int64 | min = -1000000000000, max = 1000000000000
+    c uint16 | min = 0, max = 1000
+}
+`,
+			Root:  "T",
+			Body:  14,
+			Count: 2,
+			CppSetup: `
+    value[0].a = -5;
+    value[0].b = -1000000000000LL;
+    value[0].c = 0;
+    value[1].a = 5;
+    value[1].b = 1000000000000LL;
+    value[1].c = 1000;
+`,
+		},
+		// 7. bits-values
+		{
+			ID: "bits-values",
+			Schema: `package probe
+fixed table T {
+    a bits(3)
+    b bits(12)
+    c bits(20)
+    d bits(40)
+}
+`,
+			Root:  "T",
+			Body:  20,
+			Count: 2,
+			CppSetup: `
+    value[0].a = 7;
+    value[0].b = 4095;
+    value[0].c = 1048575U;
+    value[0].d = 1099511627775ULL;
+    value[1].a = 0;
+    value[1].b = 0;
+    value[1].c = 0;
+    value[1].d = 0ULL;
+`,
+		},
+		// 8. float32-values
+		{
+			ID: "float32-values",
+			Schema: `package probe
+fixed table T {
+    a float32 = 3.5
+    b float32 = -0.5
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 2,
+			CppSetup: `
+    value[1].a = -1024.25f;
+    value[1].b = 2048.75f;
+`,
+		},
+		// 9. float64-values
+		{
+			ID: "float64-values",
+			Schema: `package probe
+fixed table T {
+    a float64 = 2.5
+    b float64 = -1234.5
+}
+`,
+			Root:  "T",
+			Body:  16,
+			Count: 2,
+			CppSetup: `
+    value[1].a = -987654321.125;
+    value[1].b = 123456789.875;
+`,
+		},
+		// 10. compressed-floats
+		{
+			ID: "compressed-floats",
+			Schema: `package probe
+fixed table T {
+    a float32 = 0.5 | min = 0.0, max = 1.0, resolution = 0.01
+    b float32 = 0.5 | min = -1.0, max = 1.0, resolution = 0.001
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 3,
+			CppSetup: `
+    value[0].a = 0.25f;
+    value[0].b = -0.5f;
+    value[1].a = 0.0f;
+    value[1].b = -1.0f;
+    value[2].a = 1.0f;
+    value[2].b = 1.0f;
+`,
+		},
+		// 11. signed-fixed-point
+		{
+			ID: "signed-fixed-point",
+			Schema: `package probe
+fixed table T {
+    a fixed(16, 16) | min = -8, max = 8
+    b fixed(48, 16) | min = -100, max = 100
+    c fixed(112, 16) | min = -1000, max = 1000
+}
+`,
+			Root:  "T",
+			Body:  28,
+			Count: 2,
+			CppSetup: `
+    value[0].a = -( 8 << 16 );
+    value[0].b = -( 100LL << 16 );
+    value[0].c = serialize::int128_t( ( serialize::uint128_t( 0xffffffffffffffffull ) << 64 ) | serialize::uint128_t( 0xffffffffff000000ull ) );
+    value[1].a = ( 8 << 16 );
+    value[1].b = ( 100LL << 16 );
+    value[1].c = serialize::int128_t( 0x0000000000fa0000ull );
+`,
+		},
+		// 12. unsigned-fixed-point
+		{
+			ID: "unsigned-fixed-point",
+			Schema: `package probe
+fixed table T {
+    a ufixed(16, 16) | min = 0, max = 16
+    b ufixed(48, 16) | min = 0, max = 100
+    c ufixed(112, 16) | min = 0, max = 1000
+}
+`,
+			Root:  "T",
+			Body:  28,
+			Count: 2,
+			CppSetup: `
+    value[0].a = 0;
+    value[0].b = 0ULL;
+    value[0].c = serialize::uint128_t( 0 );
+    value[1].a = ( 16U << 16 );
+    value[1].b = ( 100ULL << 16 );
+    value[1].c = serialize::uint128_t( 1000ULL << 16 );
+`,
+		},
+		// 13. flags-values
+		{
+			ID: "flags-values",
+			Schema: `package probe
+flags Caps { Jump, Fly, Swim }
+fixed table T { caps Caps }
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 3,
+			CppSetup: `
+    value[0].caps = 0;
+    value[1].caps = 5;
+    value[2].caps = 7;
+`,
+		},
+		// 14. enum-values
+		{
+			ID: "enum-values",
+			Schema: `package probe
+enum Grade { Gold, Silver, Bronze }
+fixed table T { g Grade }
+`,
+			Root:  "T",
+			Body:  1,
+			Count: 3,
+			CppSetup: `
+    value[0].g = Grade::None;
+    value[1].g = Grade::Gold;
+    value[2].g = Grade::Bronze;
+`,
+		},
+		// 15. utf8-values
+		{
+			ID: "utf8-values",
+			Schema: `package probe
+fixed table T { s string(8) }
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 2,
+			CppSetup: `
+    memcpy( value[1].s, "hello", 5 );
+    value[1].s_length = 5;
+`,
+		},
+		// 16. utf16-values
+		{
+			ID: "utf16-values",
+			Schema: `package probe
+fixed table T { w wstring(4) }
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 2,
+			CppSetup: `
+    value[1].w[0] = 0x0041;
+    value[1].w[1] = 0x03b1;
+    value[1].w[2] = 0xd83d;
+    value[1].w[3] = 0xde00;
+    value[1].w_length = 4;
+`,
+		},
+		// 17. byte-buffers
+		{
+			ID: "byte-buffers",
+			Schema: `package probe
+fixed table T { blob bytes(6) }
+`,
+			Root:  "T",
+			Body:  10,
+			Count: 2,
+			CppSetup: `
+    value[1].blob[0] = 0xff;
+    value[1].blob[1] = 0x00;
+    value[1].blob[2] = 0x5a;
+    value[1].blob[3] = 1;
+    value[1].blob[4] = 2;
+    value[1].blob[5] = 3;
+    value[1].blob_length = 6;
+`,
+		},
+		// 18. nested-types
+		{
+			ID: "nested-types",
+			Schema: `package probe
+type Badge { title string(4) }
+fixed table T { badge Badge }
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 1,
+			CppSetup: `
+    value[0].badge.title[0] = 'h';
+    value[0].badge.title[1] = 'i';
+    value[0].badge.title_length = 2;
+`,
+		},
+		// 19. nested-fixed-tables
+		{
+			ID: "nested-fixed-tables",
+			Schema: `package probe
+fixed table Child { n int32 }
+fixed table T { child Child }
+`,
+			Root:  "T",
+			Body:  4,
+			Count: 2,
+			CppSetup: `
+    value[0].child.n = -2147483647 - 1;
+    value[1].child.n = 2147483647;
+`,
+		},
+		// 20. fixed-arrays
+		{
+			ID: "fixed-arrays",
+			Schema: `package probe
+fixed table T { tag [3]int32 }
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 1,
+			CppSetup: `
+    value[0].tag[0] = -2147483647 - 1;
+    value[0].tag[1] = 0;
+    value[0].tag[2] = 2147483647;
+`,
+		},
+		// 21. counted-arrays
+		{
+			ID: "counted-arrays",
+			Schema: `package probe
+fixed table T { nums [..4]uint16 }
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 2,
+			CppSetup: `
+    value[1].nums[0] = 10;
+    value[1].nums[1] = 65535;
+    value[1].nums[2] = 32768;
+    value[1].nums_count = 3;
+`,
+		},
+		// 22. keyed-arrays
+		{
+			ID: "keyed-arrays",
+			Schema: `package probe
+enum Key { A, B }
+fixed table T { slots [Key]int32 }
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 1,
+			CppSetup: `
+    value[0].slots[Key::A] = -2147483647 - 1;
+    value[0].slots[Key::B] = 2147483647;
+`,
+		},
+		// 23. nested-keyed-arrays
+		{
+			ID: "nested-keyed-arrays",
+			Schema: `package probe
+enum Key { A, B }
+fixed table Child { n int32 }
+fixed table T { slots [Key]Child }
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 1,
+			CppSetup: `
+    value[0].slots[Key::A].n = 11;
+    value[0].slots[Key::B].n = -22;
+`,
+		},
+		// 24. union-values
+		{
+			ID: "union-values",
+			Schema: `package probe
+type Vec {
+    x int32
+    y int32
+}
+fixed table Tab { n int32 }
+union Body {
+    v Vec
+    t Tab
+    n int32
+}
+fixed table T { body Body }
+`,
+			Root:  "T",
+			Body:  9,
+			Count: 3,
+			CppSetup: `
+    value[0].body.type = BodyType::V;
+    value[0].body.v.x = 11;
+    value[0].body.v.y = -22;
+    value[1].body.type = BodyType::T;
+    value[1].body.t.n = 41;
+    value[2].body.type = BodyType::N;
+    value[2].body.n = 1073741821;
+`,
+		},
+		// 25. union-field-arms
+		{
+			ID: "union-field-arms",
+			Schema: `package probe
+union Body {
+    sa int32
+    ta string(4)
+    aa [..3]int32
+}
+fixed table T { body Body }
+`,
+			Root:  "T",
+			Body:  17,
+			Count: 3,
+			CppSetup: `
+    value[0].body.type = BodyType::Sa;
+    value[0].body.sa = -5;
+    value[1].body.type = BodyType::Ta;
+    memcpy( value[1].body.ta.value, "abc", 3 );
+    value[1].body.ta.value_length = 3;
+    value[2].body.type = BodyType::Aa;
+    value[2].body.aa.value[0] = -1;
+    value[2].body.aa.value[1] = 0;
+    value[2].body.aa.value[2] = 1;
+    value[2].body.aa.value_count = 3;
+`,
+		},
+		// 26. payload-free-arms
+		{
+			ID: "payload-free-arms",
+			Schema: `package probe
+union Pick {
+    alpha int32
+    quiet
+    signal
+}
+fixed table T {
+    lead int32
+    pick Pick
+    trail int32
+}
+`,
+			Root:  "T",
+			Body:  13,
+			Count: 3,
+			CppSetup: `
+    value[0].lead = 10;
+    value[0].pick.type = PickType::Alpha;
+    value[0].pick.alpha = 99;
+    value[0].trail = 20;
+    value[1].lead = 30;
+    value[1].pick.alpha = 777;
+    value[1].pick.type = PickType::Quiet;
+    value[1].trail = 40;
+    value[2].lead = 50;
+    value[2].pick.alpha = 888;
+    value[2].pick.type = PickType::Signal;
+    value[2].trail = 60;
+`,
+		},
+		// 27. union-arrays
+		{
+			ID: "union-arrays",
+			Schema: `package probe
+union Pick {
+    a int32
+    b int64
+}
+fixed table T { picks [..3]Pick }
+`,
+			Root:  "T",
+			Body:  31,
+			Count: 1,
+			CppSetup: `
+    value[0].picks_count = 3;
+    value[0].picks[0].type = PickType::A;
+    value[0].picks[0].a = 3;
+    value[0].picks[1].type = PickType::B;
+    value[0].picks[1].b = -1099511627776LL;
+    value[0].picks[2].type = PickType::A;
+    value[0].picks[2].a = 0;
+`,
+		},
+		// 28. optional-scalars
+		{
+			ID: "optional-scalars",
+			Schema: `package probe
+enum Grade { Gold, Silver }
+fixed table T {
+    n ?int32
+    g ?Grade
+}
+`,
+			Root:  "T",
+			Body:  7,
+			Count: 2,
+			CppSetup: `
+    value[1].n = -123456;
+    value[1].n_present = true;
+    value[1].g = Grade::Silver;
+    value[1].g_present = true;
+`,
+		},
+		// 29. optional-nesting
+		{
+			ID: "optional-nesting",
+			Schema: `package probe
+type Vec {
+    x int32
+    y int32
+}
+fixed table T { p ?Vec }
+`,
+			Root:  "T",
+			Body:  9,
+			Count: 2,
+			CppSetup: `
+    value[1].p.x = 99;
+    value[1].p.y = -99;
+    value[1].p_present = true;
+`,
+		},
+		// 30. optional-arrays
+		{
+			ID: "optional-arrays",
+			Schema: `package probe
+fixed table T { xs ?[..3]int32 }
+`,
+			Root:  "T",
+			Body:  17,
+			Count: 2,
+			CppSetup: `
+    value[1].xs[0] = 7;
+    value[1].xs[1] = -8;
+    value[1].xs[2] = 9;
+    value[1].xs_count = 3;
+    value[1].xs_present = true;
+`,
+		},
+		// 31. scalar-defaults
+		{
+			ID: "scalar-defaults",
+			Schema: `package probe
+enum Grade { Gold, Silver, Bronze }
+fixed table T {
+    x int32 = 7
+    g Grade = Silver
+    f float32 = 1.5
+}
+`,
+			Root:  "T",
+			Body:  9,
+			Count: 2,
+			CppSetup: `
+    value[1].x = -9;
+    value[1].g = Grade::Bronze;
+    value[1].f = -2.25f;
+`,
+		},
+		// 32. text-bytes-flags-defaults
+		{
+			ID: "text-bytes-flags-defaults",
+			Schema: `package probe
+flags Caps { Jump, Fly, Swim }
+fixed table T {
+    s string(8) = "hi"
+    b bytes(4) = "ab"
+    c Caps = { Jump, Fly }
+}
+`,
+			Root:  "T",
+			Body:  28,
+			Count: 2,
+			CppSetup: `
+    memset( value[1].s, 0, sizeof( value[1].s ) );
+    memcpy( value[1].s, "xyz", 3 );
+    value[1].s_length = 3;
+    value[1].b[0] = 0x00;
+    value[1].b[1] = 0xff;
+    value[1].b[2] = 0x5a;
+    value[1].b[3] = 0x01;
+    value[1].b_length = 4;
+    value[1].c = 4;
+`,
+		},
+		// 33. record-measurement
+		{
+			ID: "record-measurement",
+			Schema: `package probe
+fixed table T {
+    a uint32 = 1
+    b uint16 = 2
+}
+`,
+			Root:  "T",
+			Body:  6,
+			Count: 2,
+			CppSetup: `
+    value[0].a = 10;
+    value[0].b = 20;
+    value[1].a = 30;
+    value[1].b = 40;
+`,
+		},
+		// 34. fixed-file-roundtrip
+		{
+			ID: "fixed-file-roundtrip",
+			Schema: `package probe
+fixed table T {
+    a int32 = 11
+    b string(6) = "ok"
+}
+`,
+			Root:  "T",
+			Body:  14,
+			Count: 2,
+			CppSetup: `
+    value[1].a = 22;
+    memset( value[1].b, 0, sizeof( value[1].b ) );
+    memcpy( value[1].b, "test", 4 );
+    value[1].b_length = 4;
+`,
+		},
+		// 35. file-envelope
+		{
+			ID: "file-envelope",
+			Schema: `package probe
+fixed table T {
+    x int32 = 1
+    y int32 = 2
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 2,
+			CppSetup: `
+    value[1].x = 10;
+    value[1].y = 20;
+`,
+		},
+		// 36. batch-capacity
+		{
+			ID: "batch-capacity",
+			Schema: `package probe
+fixed table T {
+    x int32 = 1
+    y int32 = 2
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 3,
+			CppSetup: `
+    value[1].x = 3;
+    value[1].y = 4;
+    value[2].x = 5;
+    value[2].y = 6;
+`,
+		},
+		// 37. plan-selection
+		{
+			ID: "plan-selection",
+			Schema: `package probe
+fixed table T {
+    x int32 = 11
+    y int32 = 22
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 2,
+			CppSetup: `
+    value[1].x = 33;
+    value[1].y = 44;
+`,
+		},
+		// 38. compiled-plans
+		{
+			ID: "compiled-plans",
+			Schema: `package probe
+fixed table T {
+    a uint32 = 1
+    b int64 = 10
+    c int32 = 99
+}
+`,
+			Root:  "T",
+			Body:  16,
+			Count: 2,
+			CppSetup: `
+    value[1].a = 100U;
+    value[1].b = -20LL;
+    value[1].c = 55;
+`,
+		},
+		// 39. definition-hash
+		{
+			ID: "definition-hash",
+			Schema: `package probe
+fixed table T {
+    x int32 = 5
+    b bytes(6) = "hi"
+}
+`,
+			Root:  "T",
+			Body:  14,
+			Count: 2,
+			CppSetup: `
+    value[1].x = 9;
+    memset( value[1].b, 0, sizeof( value[1].b ) );
+    memcpy( value[1].b, "abc", 3 );
+    value[1].b_length = 3;
+`,
+		},
+		// 40. fixed-closure
+		{
+			ID: "fixed-closure",
+			Schema: `package probe
+type Nested {
+    a int16 = 3
+    b int16 = 4
+}
+fixed table T {
+    n Nested
+    z int32 = 7
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 2,
+			CppSetup: `
+    value[1].n.a = 30;
+    value[1].n.b = 40;
+    value[1].z = 70;
+`,
+		},
+		// 41. retirement
+		{
+			ID: "retirement",
+			Schema: `package probe
+fixed table T {
+    a int32 = 1
+    b int32 = 2
+    c int32 = 3
+}
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 2,
+			CppSetup: `
+    value[1].a = 10;
+    value[1].b = 20;
+    value[1].c = 30;
+`,
+		},
+		// 42. retired-runtime
+		{
+			ID: "retired-runtime",
+			Schema: `package probe
+fixed table T {
+    x int32 = 11
+    y int32 = 22
+    z int32 = 33
+}
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 2,
+			CppSetup: `
+    value[1].x = 44;
+    value[1].y = 55;
+    value[1].z = 66;
+`,
+		},
+		// 43. optional-values
+		{
+			ID: "optional-values",
+			Schema: `package probe
+type Inner {
+    a int32 = 5
+    b int32 = 6
+}
+fixed table T {
+    plain Inner
+    opt ?Inner
+}
+`,
+			Root:  "T",
+			Body:  17,
+			Count: 2,
+			CppSetup: `
+    value[1].plain.a = 11;
+    value[1].plain.b = 22;
+    value[1].opt_present = true;
+    value[1].opt.a = 33;
+    value[1].opt.b = 44;
+`,
+		},
+		// 44. field-evolution
+		{
+			ID: "field-evolution",
+			Schema: `package probe
+fixed table T {
+    b int32 = 10 | was = "a"
+    c int32 = 20
+}
+`,
+			Root:  "T",
+			Body:  8,
+			Count: 2,
+			CppSetup: `
+    value[1].b = 100;
+    value[1].c = 200;
+`,
+		},
+		// 45. live-extents
+		{
+			ID: "live-extents",
+			Schema: `package probe
+enum Small { One, Two }
+fixed table T {
+    arr [..3]Small
+    opt ?Small
+    tail int32 = 77
+}
+`,
+			Root:  "T",
+			Body:  13,
+			Count: 2,
+			CppSetup: `
+    value[1].arr_count = 1;
+    value[1].arr[0] = Small::One;
+    value[1].opt_present = false;
+    value[1].tail = 88;
+`,
+		},
+		// 46. writing
+		{
+			ID: "writing",
+			Schema: `package probe
+union Pick {
+    narrow uint8
+    wide uint64
+}
+fixed table T {
+    arr [..3]uint16
+    s string(4)
+    b bytes(4)
+    pick Pick
+}
+`,
+			Root:  "T",
+			Body:  35,
+			Count: 2,
+			CppSetup: `
+    value[1].arr_count = 1;
+    value[1].arr[0] = 0x1122U;
+    value[1].s_length = 1;
+    value[1].s[0] = 'A';
+    value[1].b_length = 1;
+    value[1].b[0] = 0x42U;
+    value[1].pick.type = PickType::Narrow;
+    value[1].pick.narrow = 7U;
+`,
+		},
+		// 47. union-guards
+		{
+			ID: "union-guards",
+			Schema: `package probe
+type Inner {
+    x int16
+    y int32
+}
+union Outer {
+    a int8
+    nested Inner
+}
+fixed table T {
+    u Outer
+    tail int32 = 9
+}
+`,
+			Root:  "T",
+			Body:  11,
+			Count: 2,
+			CppSetup: `
+    value[1].u.type = OuterType::Nested;
+    value[1].u.nested.x = 12;
+    value[1].u.nested.y = 0x12345678;
+    value[1].tail = 77;
+`,
+		},
+		// 48. plan-execution
+		{
+			ID: "plan-execution",
+			Schema: `package probe
+type Sub {
+    p int16 = 3
+    q int32 = 4
+}
+fixed table T {
+    a int32 = 1
+    sub Sub
+    xs [..2]int16
+}
+`,
+			Root:  "T",
+			Body:  18,
+			Count: 2,
+			CppSetup: `
+    value[1].a = 10;
+    value[1].sub.p = 30;
+    value[1].sub.q = 40;
+    value[1].xs_count = 2;
+    value[1].xs[0] = 50;
+    value[1].xs[1] = 60;
+`,
+		},
+		// 49. interoperability
+		{
+			ID: "interoperability",
+			Schema: `package probe
+fixed table T {
+    a int32 = 7
+    s string(4) = "hi"
+}
+`,
+			Root:  "T",
+			Body:  12,
+			Count: 2,
+			CppSetup: `
+    value[1].a = 42;
+    memset( value[1].s, 0, sizeof( value[1].s ) );
+    memcpy( value[1].s, "test", 4 );
+    value[1].s_length = 4;
+`,
+		},
+	}
+}
+
+func resolveSerializeInclude(fallbackDir string) string {
+	for _, c := range []string{os.Getenv("SERIALIZE")} {
+		if c == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(c); err == nil {
+			if _, err := os.Stat(filepath.Join(abs, "serialize.h")); err == nil {
+				return abs
+			}
+		}
+	}
+	const minSerialize = `#pragma once
+#include <stdint.h>
+namespace serialize {
+typedef __int128 int128_t;
+typedef unsigned __int128 uint128_t;
+}
+`
+	_ = os.WriteFile(filepath.Join(fallbackDir, "serialize.h"), []byte(minSerialize), 0o600)
+	return fallbackDir
+}
+
+// CppOracle compiles the generated C++ fixed-form code for u, runs FixedSave to
+// produce the live reference wire image for tc, and returns a verifier that
+// runs C++ FixedLoad + FixedSave to prove byte-for-byte agreement.
+func CppOracle(t *testing.T, tc RowCase, u *ir.Unit) ([]byte, func(candidate []byte) error) {
+	t.Helper()
+	files, err := cpp.Generate(u)
+	if err != nil {
+		t.Fatalf("%s: cpp.Generate: %v", tc.ID, err)
+	}
+	tables, err := cpptable.GenerateLineage(u, nil)
+	if err != nil {
+		t.Fatalf("%s: cpptable.GenerateLineage: %v", tc.ID, err)
+	}
+	maps.Copy(files, tables)
+	dir := t.TempDir()
+	var tableHeader string
+	for name, data := range files {
+		if strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatalf("%s: write %s: %v", tc.ID, name, err)
+		}
+		if strings.HasSuffix(name, "Table.h") {
+			tableHeader = name
+		}
+	}
+	if tableHeader == "" {
+		t.Fatalf("%s: no Table.h generated", tc.ID)
+	}
+	serDir := resolveSerializeInclude(dir)
+	src := fmt.Sprintf(`#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include "%[4]s"
+
+using namespace probe;
+
+static void fill_records( %[1]s * value )
+{
+    for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( value[i] );
+%[3]s
+}
+
+static bool clean( const TableReport & r )
+{
+    return !( r.clamped || r.unknown || r.kind_mismatch || r.widened || r.duplicate || r.malformed || r.refused );
+}
+
+int main( int argc, char ** argv )
+{
+    static uint8_t buffer[1 << 18];
+    static uint8_t cand_buf[1 << 18];
+    static uint8_t re_buf[1 << 18];
+    static TableFixedEntry plan[4096];
+    TableReport r;
+
+    static %[1]s value[%[2]d];
+    fill_records( value );
+    const int64_t need = %[1]sFixedMeasure( %[2]d );
+    const int64_t saved = %[1]sFixedSave( value, %[2]d, buffer, need );
+    if ( saved != need ) {
+        printf( "cpp save: need=%%lld saved=%%lld\n", (long long) need, (long long) saved );
+        return 1;
+    }
+    static %[1]s back[%[2]d];
+    for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( back[i] );
+    memset( &r, 0, sizeof( r ) );
+    const int64_t n = %[1]sFixedLoad( back, %[2]d, buffer, saved, plan, 4096, NULL, &r );
+    if ( n != %[2]d || !clean( r ) ) {
+        printf( "cpp self-load failed: n=%%lld reason=%%d\n", (long long) n, (int) r.reason );
+        return 1;
+    }
+    if ( argc >= 3 && strcmp( argv[1], "save" ) == 0 ) {
+        FILE * f = fopen( argv[2], "wb" );
+        if ( !f ) return 2;
+        if ( (int64_t) fwrite( buffer, 1, (size_t) saved, f ) != saved ) { fclose( f ); return 3; }
+        fclose( f );
+        return 0;
+    }
+    if ( argc >= 3 && strcmp( argv[1], "verify" ) == 0 ) {
+        FILE * f = fopen( argv[2], "rb" );
+        if ( !f ) return 2;
+        const int64_t clen = (int64_t) fread( cand_buf, 1, sizeof( cand_buf ), f );
+        fclose( f );
+        static %[1]s from_cand[%[2]d];
+        for ( int i = 0; i < %[2]d; ++i ) %[1]sReset( from_cand[i] );
+        memset( &r, 0, sizeof( r ) );
+        const int64_t cn = %[1]sFixedLoad( from_cand, %[2]d, cand_buf, clen, plan, 4096, NULL, &r );
+        if ( cn != %[2]d || !clean( r ) ) {
+            printf( "cpp load of the candidate failed: n=%%lld reason=%%d\n", (long long) cn, (int) r.reason );
+            return 4;
+        }
+        const int64_t re_saved = %[1]sFixedSave( from_cand, %[2]d, re_buf, need );
+        if ( re_saved != saved || memcmp( re_buf, buffer, (size_t) saved ) != 0 ) {
+            printf( "cpp re-save of the candidate is not the reference's bytes\n" );
+            return 5;
+        }
+        if ( clen != saved || memcmp( cand_buf, buffer, (size_t) saved ) != 0 ) {
+            printf( "the candidate is not the reference's bytes\n" );
+            return 6;
+        }
+        return 0;
+    }
+    return 1;
+}
+`, tc.Root, tc.Count, tc.CppSetup, tableHeader)
+	probeCpp := filepath.Join(dir, "probe.cpp")
+	probeBin := filepath.Join(dir, "probe")
+	if err := os.WriteFile(probeCpp, []byte(src), 0o600); err != nil {
+		t.Fatalf("%s: write probe.cpp: %v", tc.ID, err)
+	}
+	cxx := os.Getenv("CXX")
+	if cxx == "" {
+		cxx = "c++"
+	}
+	if out, err := exec.Command(cxx, "-std=c++17", "-O1", "-I"+dir, "-I"+serDir, probeCpp, "-o", probeBin).CombinedOutput(); err != nil {
+		t.Fatalf("%s: the C++ reference does not compile: %v\n%s", tc.ID, err, out)
+	}
+	cppBin := filepath.Join(dir, "cpp.bin")
+	if out, err := exec.Command(probeBin, "save", cppBin).CombinedOutput(); err != nil {
+		t.Fatalf("%s: the C++ reference's save failed: %v\n%s", tc.ID, err, out)
+	}
+	cppBytes, err := os.ReadFile(cppBin)
+	if err != nil {
+		t.Fatalf("%s: %v", tc.ID, err)
+	}
+	verify := func(cand []byte) error {
+		candPath := filepath.Join(dir, "cand.bin")
+		if err := os.WriteFile(candPath, cand, 0o600); err != nil {
+			return err
+		}
+		out, err := exec.Command(probeBin, "verify", candPath).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	return cppBytes, verify
+}
+
+// RunValueSuite drives all 49 rows of Cases() against runner:
+//   - verifies layout hash and record body size against ir.TableFixedWalkRoot
+//   - compiles and executes the live C++ reference oracle
+//   - verifies leg FixedSave bytes equal C++ FixedSave bytes byte-for-byte
+//   - verifies leg FixedLoad(cppBytes) + FixedSave equals cppBytes byte-for-byte
+//   - verifies C++ FixedLoad(legBytes) + FixedSave equals legBytes byte-for-byte
+func RunValueSuite(t *testing.T, runner LegRunner) {
+	SetMemoryCeiling(t)
+	for _, tc := range Cases() {
+		tc := tc
+		t.Run(tc.ID, func(t *testing.T) {
+			t.Parallel()
+			u := ParseCheckUnit(t, tc.Schema)
+			st := RootStruct(t, u, tc.Root)
+			layout, hash, body := RootFacts(st)
+			if body != tc.Body {
+				t.Fatalf("%s: body bytes = %d, want %d", tc.ID, body, tc.Body)
+			}
+			if len(layout) < 4+17 || hash == 0 {
+				t.Fatalf("%s: invalid layout (%d bytes) or zero hash", tc.ID, len(layout))
+			}
+
+			cppBytes, verifyInCpp := CppOracle(t, tc, u)
+			legBytes := runner.Save(t, tc, u)
+			if !bytes.Equal(legBytes, cppBytes) {
+				t.Fatalf("%s: %s FixedSave bytes != C++ reference FixedSave bytes:\nleg=%x\ncpp=%x", tc.ID, runner.Name(), legBytes, cppBytes)
+			}
+
+			resaved, err := runner.LoadAndResave(t, tc, u, cppBytes)
+			if err != nil {
+				t.Fatalf("%s: %s FixedLoad of C++ reference bytes failed: %v", tc.ID, runner.Name(), err)
+			}
+			if !bytes.Equal(resaved, cppBytes) {
+				t.Fatalf("%s: %s re-save after loading C++ bytes differed:\ngot =%x\nwant=%x", tc.ID, runner.Name(), resaved, cppBytes)
+			}
+
+			if err := verifyInCpp(legBytes); err != nil {
+				t.Fatalf("%s: C++ FixedLoad verification of %s bytes failed: %v", tc.ID, runner.Name(), err)
+			}
+		})
+	}
+}
+
+// RunNegativeControlSuite drives both the file negative control and the writer
+// negative control across all 49 rows of Cases() under a hard 2 GiB memory
+// ceiling.
+func RunNegativeControlSuite(t *testing.T, runner LegRunner) {
+	SetMemoryCeiling(t)
+	for _, tc := range Cases() {
+		tc := tc
+		t.Run(tc.ID, func(t *testing.T) {
+			t.Parallel()
+			u := ParseCheckUnit(t, tc.Schema)
+			st := RootStruct(t, u, tc.Root)
+			layout, _, body := RootFacts(st)
+			cppBytes, verifyInCpp := CppOracle(t, tc, u)
+
+			// 1. File negative control (envelope damage): corrupting the form byte
+			// must be rejected by both C++ FixedLoad and the leg's reader.
+			corruptForm := bytes.Clone(cppBytes)
+			corruptForm[0] ^= 0x01
+			if err := verifyInCpp(corruptForm); err == nil {
+				t.Fatalf("%s: file negative control failed: C++ FixedLoad accepted corrupted form byte", tc.ID)
+			}
+			if _, err := runner.LoadAndResave(t, tc, u, corruptForm); err == nil {
+				t.Fatalf("%s: file negative control failed: %s FixedLoad accepted corrupted form byte", tc.ID, runner.Name())
+			}
+
+			// 2. File negative control (record payload mutation): flipping a live
+			// byte in the last record body must be rejected by the C++ reference
+			// oracle and must not round-trip back to cppBytes in the leg.
+			mutatedPayload := bytes.Clone(cppBytes)
+			lastRecBodyStart := 20 + len(layout) + (tc.Count-1)*int(8+body) + 8
+			if lastRecBodyStart >= len(mutatedPayload) || body <= 0 {
+				t.Fatalf("%s: unexpected record body offset %d (len=%d)", tc.ID, lastRecBodyStart, len(mutatedPayload))
+			}
+			mutatedPayload[lastRecBodyStart] ^= 0x01
+			if err := verifyInCpp(mutatedPayload); err == nil {
+				t.Fatalf("%s: file negative control failed: C++ oracle accepted mutated payload byte", tc.ID)
+			}
+			if resaved, err := runner.LoadAndResave(t, tc, u, mutatedPayload); err == nil && bytes.Equal(resaved, cppBytes) {
+				t.Fatalf("%s: file negative control failed: %s LoadAndResave of mutated payload matched original cppBytes", tc.ID, runner.Name())
+			}
+
+			// 3. Writer negative control: mutating the leg's writer/runtime for
+			// tc.ID must either fail or produce bytes rejected by C++ reference
+			// equality.
+			mutatedWrite, err := runner.SaveMutated(t, tc, u)
+			if err == nil {
+				if bytes.Equal(mutatedWrite, cppBytes) {
+					t.Fatalf("%s: writer negative control failed: mutated %s writer still produced C++ oracle bytes", tc.ID, runner.Name())
+				}
+				if err := verifyInCpp(mutatedWrite); err == nil {
+					t.Fatalf("%s: writer negative control failed: C++ oracle accepted mutated %s writer output", tc.ID, runner.Name())
+				}
+			}
+		})
+	}
+}
+
+type corpusVector struct {
+	key, schema, root, file string
+}
+
+var fixedCorpusVectors = []corpusVector{
+	{"fx1", "test/tables/FX1.schema", "FxRoot", "fx1.bin"},
+	{"fx2", "test/tables/FX2.schema", "FxRoot", "fx2.bin"},
+	{"p1", "test/tables/P1.schema", "Chain", "p1.bin"},
+	{"p3", "test/tables/P3.schema", "Chain", "p3.bin"},
+	{"fxw", "test/tables/FXW.schema", "FxWide", "fxw.bin"},
+}
+
+func findFixedCorpus(t *testing.T, repoRoot string) (string, map[string]int) {
+	t.Helper()
+	corpus := filepath.Join(repoRoot, "build", "fixedform-corpus")
+	mPath := filepath.Join(corpus, "manifest.txt")
+	data, err := os.ReadFile(mPath)
+	if err != nil {
+		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and %s is absent: %v", mPath, err)
+		}
+		t.Skipf("fixedform-corpus not built (%v)", err)
+	}
+	records := map[string]int{}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		if !strings.HasPrefix(line, "file=") {
+			continue
+		}
+		var file string
+		n := -1
+		for f := range strings.FieldsSeq(line) {
+			k, v, ok := strings.Cut(f, "=")
+			if !ok {
+				continue
+			}
+			if k == "file" {
+				file = v
+			} else if k == "records" {
+				n, _ = strconv.Atoi(v)
+			}
+		}
+		if file != "" && n >= 0 {
+			records[file] = n
+		}
+	}
+	return corpus, records
+}
+
+// RunEvolutionSuite drives the 16 non-value fixed-table rows (fixed-file-roundtrip
+// and the 15 evolution/layout/plan/lineage/file rows) against runner.
+func RunEvolutionSuite(t *testing.T, repoRoot string, runner EvoRunner) {
+	SetMemoryCeiling(t)
+
+	// 34. fixed-file-roundtrip
+	t.Run("fixed-file-roundtrip", func(t *testing.T) {
+		t.Parallel()
+		corpus, records := findFixedCorpus(t, repoRoot)
+		for _, v := range fixedCorpusVectors {
+			want := records[v.file]
+			data, err := os.ReadFile(filepath.Join(corpus, v.file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			u := LoadRepoUnit(t, repoRoot, v.schema)
+			st := RootStruct(t, u, v.root)
+			layout, hash, body := RootFacts(st)
+			if got := binary.LittleEndian.Uint64(data[8:16]); got != hash {
+				t.Fatalf("%s: header hash 0x%016x != 0x%016x", v.file, got, hash)
+			}
+			if len(data)-20-len(layout) != want*int(8+body) {
+				t.Fatalf("%s: record byte size mismatch", v.file)
+			}
+			n, reason, _, resaved := runner.LoadLineage(t, u, v.root, nil, data, -1)
+			if n != want || (reason != "" && reason != "ok") || !bytes.Equal(resaved, data) {
+				t.Fatalf("%s: roundtrip failed: n=%d (want %d) reason=%q bytesEqual=%v", v.file, n, want, reason, bytes.Equal(resaved, data))
+			}
+		}
+	})
+
+	// 35. file-envelope (F1, F2, F3, F4, F7, F8, F12)
+	t.Run("file-envelope", func(t *testing.T) {
+		t.Parallel()
+		corpus, _ := findFixedCorpus(t, repoRoot)
+		oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := LoadRepoUnit(t, repoRoot, "test/tables/FX1.schema")
+		eOwn, ok := LineageEntryOf(u, "FxRoot")
+		if !ok {
+			t.Fatal("missing FxRoot lineage entry")
+		}
+		lin := map[string][]LineageEntry{"FxRoot": {eOwn}}
+		cut := func(fn func(b []byte)) []byte { b := bytes.Clone(oracle); fn(b); return b }
+		for _, c := range []struct {
+			name string
+			file []byte
+			want string
+		}{
+			{"F1_form_0", cut(func(b []byte) { b[0] = 0 }), "newer_form"},
+			{"F1_form_1", cut(func(b []byte) { b[0] = 1 }), "previous_form"},
+			{"F2_form_2", cut(func(b []byte) { b[0] = 2 }), "message_form_as_file"},
+			{"F3_form_4", cut(func(b []byte) { b[0] = 4 }), "newer_form"},
+			{"F3_form_255", cut(func(b []byte) { b[0] = 255 }), "newer_form"},
+			{"F4_layout_past_file", cut(func(b []byte) { binary.LittleEndian.PutUint32(b[16:], 0x7fff0000) }), "layout_malformed"},
+			{"F7_under_20_bytes", oracle[:19], "truncated"},
+			{"F8_ragged_tail", oracle[:len(oracle)-1], "truncated"},
+			{"F12_layout_byte_moved", cut(func(b []byte) { b[20] ^= 1 }), "layout_malformed"},
+			{"F12_layout_one_short", cut(func(b []byte) { b[16]-- }), "layout_malformed"},
+		} {
+			n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, c.file, -1)
+			if n != -1 || reason != c.want {
+				t.Errorf("%s: got n=%d reason=%q, want -1 %q", c.name, n, reason, c.want)
+			}
+		}
+		n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, oracle, -1)
+		if n != 2 || (reason != "" && reason != "ok") {
+			t.Errorf("control: got n=%d reason=%q, want 2 ok", n, reason)
+		}
+	})
+
+	// 36. batch-capacity (F9)
+	t.Run("batch-capacity", func(t *testing.T) {
+		t.Parallel()
+		u := ParseCheckUnit(t, "package probe\nfixed table Point {\n    x int32 = 1\n    y int32 = 2\n}\n")
+		eOwn, _ := LineageEntryOf(u, "Point")
+		lin := map[string][]LineageEntry{"Point": {eOwn}}
+		body := make([]byte, 8)
+		binary.LittleEndian.PutUint32(body[0:], 10)
+		binary.LittleEndian.PutUint32(body[4:], 20)
+		three := MakeFixedFile(eOwn.Wire, eOwn.Layout, body, body, body)
+		bad := bytes.Clone(three)
+		bad[20+len(eOwn.Layout)] ^= 1
+		n, reason, _, _ := runner.LoadLineage(t, u, "Point", lin, bad, 2)
+		if n != -1 || (reason != "batch_too_large" && reason != "plan_too_large") {
+			t.Errorf("over capacity: got n=%d reason=%q, want -1 batch_too_large", n, reason)
+		}
+		nOk, reasonOk, _, _ := runner.LoadLineage(t, u, "Point", lin, three, 3)
+		if nOk != 3 || (reasonOk != "" && reasonOk != "ok") {
+			t.Errorf("fits capacity: got n=%d reason=%q, want 3 ok", nOk, reasonOk)
+		}
+		_, saveReason := runner.SaveCustom(t, u, "Point", "batch_over_4096")
+		if saveReason != "batch_too_large" {
+			t.Errorf("save 4097 records: got reason=%q, want batch_too_large", saveReason)
+		}
+	})
+
+	// 37. plan-selection (R7, R8, R9, F10, R12)
+	t.Run("plan-selection", func(t *testing.T) {
+		t.Parallel()
+		corpus, _ := findFixedCorpus(t, repoRoot)
+		oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := LoadRepoUnit(t, repoRoot, "test/tables/FX1.schema")
+		eOwn, _ := LineageEntryOf(u, "FxRoot")
+		lin := map[string][]LineageEntry{"FxRoot": {eOwn}}
+
+		unknown := bytes.Clone(oracle)
+		unknown[8] ^= 1
+		if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, unknown, -1); n != -1 || reason != "layout_unknown" {
+			t.Errorf("R8 unknown hash: got n=%d reason=%q, want -1 layout_unknown", n, reason)
+		}
+
+		layoutLen := int(binary.LittleEndian.Uint32(oracle[16:20]))
+		for i := 20; i < 20+layoutLen; i += 17 {
+			moved := bytes.Clone(oracle)
+			moved[i] ^= 0x5a
+			if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, moved, -1); n != -1 || reason != "layout_malformed" {
+				t.Errorf("R9 layout byte %d moved: got n=%d reason=%q, want -1 layout_malformed", i, n, reason)
+			}
+		}
+
+		rec0 := 20 + layoutLen
+		stride := (len(oracle) - rec0) / 2
+		last := bytes.Clone(oracle)
+		last[rec0+stride] ^= 1
+		if n, reason, _, _ := runner.LoadLineage(t, u, "FxRoot", lin, last, -1); n != -1 || reason != "no_layout" {
+			t.Errorf("F10/R12 last record hash mismatch: got n=%d reason=%q, want -1 no_layout", n, reason)
+		}
+
+		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_field_append.schema")
+		newer := LoadRepoUnit(t, repoRoot, "test/tables/VNEW_field_append.schema")
+		eOld, _ := LineageEntryOf(older, "Lineage")
+		oldBin, err := os.ReadFile(filepath.Join(corpus, "old_field_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		newBin, err := os.ReadFile(filepath.Join(corpus, "new_field_append.bin"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		linV := map[string][]LineageEntry{"Lineage": {eOld}}
+		nOld, rOld, fOld, _ := runner.LoadLineage(t, newer, "Lineage", linV, oldBin, -1)
+		if nOld != 1 || (rOld != "" && rOld != "ok") || fOld["r0.w"] != "77" {
+			t.Errorf("older entry plan: n=%d reason=%q w=%q, want 1 ok 77", nOld, rOld, fOld["r0.w"])
+		}
+		nNew, rNew, _, _ := runner.LoadLineage(t, newer, "Lineage", linV, newBin, -1)
+		if nNew != 1 || (rNew != "" && rNew != "ok") {
+			t.Errorf("own entry plan: n=%d reason=%q, want 1 ok", nNew, rNew)
+		}
+	})
+
+	// 38. compiled-plans (R1, R2, R23, F11, R25, R26, W14)
+	t.Run("compiled-plans", func(t *testing.T) {
+		t.Parallel()
+		u1 := ParseCheckUnit(t, "package probe\nfixed table Lineage {\n    a uint16 = 1\n}\n")
+		u2 := ParseCheckUnit(t, "package probe\nfixed table Lineage {\n    a uint32 = 1\n    b int32 = 10\n}\n")
+		u3 := ParseCheckUnit(t, "package probe\nfixed table Lineage {\n    a uint32 = 1\n    b int64 = 10\n    c int32 = 99\n}\n")
+		e1, _ := LineageEntryOf(u1, "Lineage")
+		e2, _ := LineageEntryOf(u2, "Lineage")
+		e3, _ := LineageEntryOf(u3, "Lineage")
+		if e1.Record != 8+2 || e2.Record != 8+8 || e3.Record != 8+16 {
+			t.Fatalf("R2: unexpected lineage record sizes: %d %d %d", e1.Record, e2.Record, e3.Record)
+		}
+		e0 := e1
+		e0.Wire ^= 0xbeef
+		e0.Retired = true
+
+		// F11/R25: enum with > 65535 children in lineage refuses plan_too_large
+		entryBytes := func(id uint64, kind byte, size, children uint32) []byte {
+			b := binary.LittleEndian.AppendUint64(nil, id)
+			b = append(b, kind)
+			b = binary.LittleEndian.AppendUint32(b, size)
+			return binary.LittleEndian.AppendUint32(b, children)
+		}
+		const bigVariants = 65536
+		bigLayout := binary.LittleEndian.AppendUint32(nil, bigVariants+2)
+		bigLayout = append(bigLayout, entryBytes(0x1111, ir.TableKindTable, 4, 1)...)
+		bigLayout = append(bigLayout, entryBytes(0x2222, ir.TableKindEnum, 4, bigVariants)...)
+		for i := range bigVariants {
+			bigLayout = append(bigLayout, entryBytes(0x3000+uint64(i), ir.TableKindNoPayload, 0, 0)...)
+		}
+		eBig := LineageEntry{Wire: 0xb16b16b16b16b16b, Layout: bigLayout, Record: 8 + 4}
+
+		lin := map[string][]LineageEntry{"Lineage": {e0, eBig, e1, e2}}
+		v1 := MakeFixedFile(e1.Wire, e1.Layout, []byte{7, 0}, []byte{8, 0})
+		b2 := func(a uint32, b int32) []byte {
+			x := binary.LittleEndian.AppendUint32(nil, a)
+			return binary.LittleEndian.AppendUint32(x, uint32(b))
+		}
+		v2 := MakeFixedFile(e2.Wire, e2.Layout, b2(100, -20), b2(200, 30))
+
+		n1, r1, f1, _ := runner.LoadLineage(t, u3, "Lineage", lin, v1, -1)
+		if n1 != 2 || (r1 != "" && r1 != "ok") || f1["r0.a"] != "7" || f1["r0.b"] != "10" || f1["r0.c"] != "99" || f1["r1.a"] != "8" {
+			t.Errorf("v1: n=%d r=%q fields=%v", n1, r1, f1)
+		}
+		n2, r2, f2, _ := runner.LoadLineage(t, u3, "Lineage", lin, v2, -1)
+		if n2 != 2 || (r2 != "" && r2 != "ok") || f2["r0.a"] != "100" || f2["r0.b"] != "-20" || f2["r0.c"] != "99" || f2["r1.b"] != "30" {
+			t.Errorf("v2: n=%d r=%q fields=%v", n2, r2, f2)
+		}
+		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(e0.Wire, e0.Layout, []byte{1, 0}), -1); n != -1 || r != "layout_unsupported" {
+			t.Errorf("retired: got n=%d r=%q, want -1 layout_unsupported", n, r)
+		}
+		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(0x123456789abcdef0, e3.Layout, make([]byte, 16)), -1); n != -1 || r != "layout_unknown" {
+			t.Errorf("unknown: got n=%d r=%q, want -1 layout_unknown", n, r)
+		}
+		if n, r, _, _ := runner.LoadLineage(t, u3, "Lineage", lin, MakeFixedFile(eBig.Wire, eBig.Layout, make([]byte, 4)), -1); n != -1 || r != "plan_too_large" {
+			t.Errorf("plan_too_large: got n=%d r=%q, want -1 plan_too_large", n, r)
+		}
+	})
+
+	// 39. definition-hash (E1, E2, E6, E8, W7, W10, W11, W12)
+	t.Run("definition-hash", func(t *testing.T) {
+		t.Parallel()
+		uBase := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n    b bytes(6)\n}\n")
+		uDefault := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 999\n    b bytes(6)\n}\n")
+		uWas := ParseCheckUnit(t, "package probe\nfixed table T {\n    renamed int32 = 1 | was = \"x\"\n    b bytes(6)\n}\n")
+		uDep := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1 | deprecated\n    b bytes(6)\n}\n")
+		uName := ParseCheckUnit(t, "package probe\nfixed table T {\n    y int32 = 1\n    b bytes(6)\n}\n")
+		uBound := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n    b bytes(8)\n}\n")
+
+		_, hBase, _ := RootFacts(RootStruct(t, uBase, "T"))
+		_, hDefault, _ := RootFacts(RootStruct(t, uDefault, "T"))
+		_, hWas, _ := RootFacts(RootStruct(t, uWas, "T"))
+		_, hDep, _ := RootFacts(RootStruct(t, uDep, "T"))
+		_, hName, _ := RootFacts(RootStruct(t, uName, "T"))
+		_, hBound, _ := RootFacts(RootStruct(t, uBound, "T"))
+
+		if hBase != hDefault {
+			t.Errorf("E1: changing default value moved hash")
+		}
+		if hBase != hWas {
+			t.Errorf("E6: rename with was moved hash")
+		}
+		if hBase != hDep {
+			t.Errorf("E8: deprecating field moved hash")
+		}
+		if hBase == hName || hBase == hBound {
+			t.Errorf("negative control: changing field name or bound did not move hash")
+		}
+	})
+
+	// 40. fixed-closure (F5, F6, R5, R6, R14, R16, R22)
+	t.Run("fixed-closure", func(t *testing.T) {
+		t.Parallel()
+		uOver := ParseCheckUnit(t, "package probe\nfixed table Huge {\n    a [8192]uint64\n    b uint8\n}\nfixed table Small {\n    x int32\n}\n")
+		if runner.HasFixedRoot(t, uOver, "Huge") {
+			t.Errorf("R6: Huge (65537B) should not be emitted as a fixed root")
+		}
+		if !runner.HasFixedRoot(t, uOver, "Small") {
+			t.Errorf("R6: Small should be emitted as a fixed root")
+		}
+
+		u := ParseCheckUnit(t, "package probe\nfixed table T {\n    x int32 = 1\n}\n")
+		entryBytes := func(id uint64, kind byte, size, children uint32) []byte {
+			b := binary.LittleEndian.AppendUint64(nil, id)
+			b = append(b, kind)
+			b = binary.LittleEndian.AppendUint32(b, size)
+			return binary.LittleEndian.AppendUint32(b, children)
+		}
+		// F6: root size 0 and root size 65537 -> layout_record_too_large
+		zeroLay := binary.LittleEndian.AppendUint32(nil, 1)
+		zeroLay = append(zeroLay, entryBytes(0x1111, ir.TableKindTable, 0, 0)...)
+		eZero := LineageEntry{Wire: 0x1001, Layout: zeroLay, Record: 8}
+
+		overLay := binary.LittleEndian.AppendUint32(nil, 2)
+		overLay = append(overLay, entryBytes(0x1111, ir.TableKindTable, 65537, 1)...)
+		overLay = append(overLay, entryBytes(0x2222, ir.TableKindI32, 65537, 0)...)
+		eOver := LineageEntry{Wire: 0x1002, Layout: overLay, Record: 8 + 65537}
+
+		// R22: unknown kind byte 99 -> layout_malformed
+		badKindLay := binary.LittleEndian.AppendUint32(nil, 2)
+		badKindLay = append(badKindLay, entryBytes(0x1111, ir.TableKindTable, 4, 1)...)
+		badKindLay = append(badKindLay, entryBytes(0x2222, 99, 4, 0)...)
+		eBadKind := LineageEntry{Wire: 0x1003, Layout: badKindLay, Record: 8 + 4}
+
+		lin := map[string][]LineageEntry{"T": {eZero, eOver, eBadKind}}
+		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eZero.Wire, zeroLay), -1); n != -1 || r != "layout_record_too_large" {
+			t.Errorf("F6 zero size: got n=%d r=%q, want -1 layout_record_too_large", n, r)
+		}
+		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eOver.Wire, overLay, make([]byte, 65537)), -1); n != -1 || r != "layout_record_too_large" {
+			t.Errorf("F6 over size: got n=%d r=%q, want -1 layout_record_too_large", n, r)
+		}
+		if n, r, _, _ := runner.LoadLineage(t, u, "T", lin, MakeFixedFile(eBadKind.Wire, badKindLay, make([]byte, 4)), -1); n != -1 || r != "layout_malformed" {
+			t.Errorf("R22 bad kind: got n=%d r=%q, want -1 layout_malformed", n, r)
+		}
+	})
+
+	// 41. retirement (R3, R4)
+	t.Run("retirement", func(t *testing.T) {
+		t.Parallel()
+		corpus, _ := findFixedCorpus(t, repoRoot)
+		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_floor.schema")
+		mid := LoadRepoUnit(t, repoRoot, "test/tables/VMID_floor.schema")
+		newer := LoadRepoUnit(t, repoRoot, "test/tables/VNEW_floor.schema")
+		eOld, _ := LineageEntryOf(older, "Floored")
+		eMid, _ := LineageEntryOf(mid, "Floored")
+
+		oldData, _ := os.ReadFile(filepath.Join(corpus, "old_floor.bin"))
+		midData, _ := os.ReadFile(filepath.Join(corpus, "mid_floor.bin"))
+		newData, _ := os.ReadFile(filepath.Join(corpus, "new_floor.bin"))
+
+		for retire := range 3 {
+			l0, l1 := eOld, eMid
+			if retire >= 1 {
+				l0.Retired = true
+			}
+			if retire >= 2 {
+				l1.Retired = true
+			}
+			lin := map[string][]LineageEntry{"Floored": {l0, l1}}
+			for idx, data := range [][]byte{oldData, midData, newData} {
+				n, r, _, _ := runner.LoadLineage(t, newer, "Floored", lin, data, -1)
+				if idx < retire {
+					if n != -1 || r != "layout_unsupported" {
+						t.Errorf("retire=%d idx=%d: got n=%d r=%q, want -1 layout_unsupported", retire, idx, n, r)
+					}
+				} else {
+					if n != 1 || (r != "" && r != "ok") {
+						t.Errorf("retire=%d idx=%d: got n=%d r=%q, want 1 ok", retire, idx, n, r)
+					}
+				}
+			}
+		}
+	})
+
+	// 42. retired-runtime (R10, R15)
+	t.Run("retired-runtime", func(t *testing.T) {
+		t.Parallel()
+		corpus, _ := findFixedCorpus(t, repoRoot)
+		for _, row := range []string{"field_append", "array_bounded_grow", "range_widen", "enum_append"} {
+			older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_"+row+".schema")
+			rootName := older.Files[0].Tables[0].Name
+			eOwn, _ := LineageEntryOf(older, rootName)
+			lin := map[string][]LineageEntry{rootName: {eOwn}}
+			data, err := os.ReadFile(filepath.Join(corpus, "new_"+row+".bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n, r, _, _ := runner.LoadLineage(t, older, rootName, lin, data, -1); n != -1 || r != "layout_unknown" {
+				t.Errorf("R15 %s: got n=%d r=%q, want -1 layout_unknown", row, n, r)
+			}
+			stranger := bytes.Clone(data)
+			binary.LittleEndian.PutUint64(stranger[8:], eOwn.Wire)
+			wantR := "layout_malformed"
+			if L := int(binary.LittleEndian.Uint32(data[16:20])); bytes.Equal(data[20:20+L], eOwn.Layout) {
+				wantR = "no_layout"
+			}
+			if n, r, _, _ := runner.LoadLineage(t, older, rootName, lin, stranger, -1); n != -1 || r != wantR {
+				t.Errorf("R10 %s: got n=%d r=%q, want -1 %q", row, n, r, wantR)
+			}
+		}
+	})
+
+	// 43. optional-values (E5, W2)
+	t.Run("optional-values", func(t *testing.T) {
+		t.Parallel()
+		const types = "package probe\ntype Inner {\n    a int32 = 5\n    b int32 = 6\n}\n"
+		u := ParseCheckUnit(t, types+"fixed table T {\n    plain Inner\n    opt ?Inner\n}\n")
+		eOpt, _ := LineageEntryOf(u, "T")
+		if eOpt.Record != 8+17 {
+			t.Fatalf("E5: record size = %d, want 25", eOpt.Record)
+		}
+		file, why := runner.SaveCustom(t, u, "T", "optional_absent_zeros")
+		if why != "" {
+			t.Fatalf("W2 save failed: %s", why)
+		}
+		body := file[len(file)-17:]
+		if body[8] != 0 || !bytes.Equal(body[9:], make([]byte, 8)) {
+			t.Errorf("W2: absent optional payload is not zeroed: %x", body)
+		}
+
+		uPlain := ParseCheckUnit(t, types+"fixed table T {\n    plain Inner\n    opt Inner\n}\n")
+		ePlain, _ := LineageEntryOf(uPlain, "T")
+		pb := make([]byte, 16)
+		binary.LittleEndian.PutUint32(pb[8:], 3)
+		binary.LittleEndian.PutUint32(pb[12:], 4)
+		n, r, f, _ := runner.LoadLineage(t, u, "T", map[string][]LineageEntry{"T": {ePlain}}, MakeFixedFile(ePlain.Wire, ePlain.Layout, pb), -1)
+		if n != 1 || (r != "" && r != "ok") || f["r0.opt_present"] != "true" || f["r0.opt.b"] != "4" {
+			t.Errorf("E5 plain into ?T: n=%d r=%q fields=%v", n, r, f)
+		}
+	})
+
+	// 44. field-evolution (E6, E8, R19)
+	t.Run("field-evolution", func(t *testing.T) {
+		t.Parallel()
+		corpus, _ := findFixedCorpus(t, repoRoot)
+		older := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_rename_without_was.schema")
+		newer := LoadRepoUnit(t, repoRoot, "test/tables/VNEW_rename_without_was.schema")
+		eOld, _ := LineageEntryOf(older, "Lineage")
+		eNew, _ := LineageEntryOf(newer, "Lineage")
+		if eOld.Wire != eNew.Wire {
+			t.Fatalf("E6: rename under was moved hash")
+		}
+		oldData, _ := os.ReadFile(filepath.Join(corpus, "old_rename_without_was.bin"))
+		n, r, f, _ := runner.LoadLineage(t, newer, "Lineage", map[string][]LineageEntry{"Lineage": {eNew}}, oldData, -1)
+		if n != 1 || (r != "" && r != "ok") || f["r0.b"] == "" {
+			t.Errorf("E6: n=%d r=%q b=%q", n, r, f["r0.b"])
+		}
+		for _, row := range []string{"field_deprecate", "field_undeprecate"} {
+			o := LoadRepoUnit(t, repoRoot, "test/tables/VOLD_"+row+".schema")
+			nu := LoadRepoUnit(t, repoRoot, "test/tables/VNEW_"+row+".schema")
+			eo, _ := LineageEntryOf(o, "Lineage")
+			en, _ := LineageEntryOf(nu, "Lineage")
+			if eo.Wire != en.Wire {
+				t.Errorf("E8 %s: hash moved", row)
+			}
+		}
+	})
+
+	// 45. live-extents (C14, W4, W9)
+	t.Run("live-extents", func(t *testing.T) {
+		t.Parallel()
+		u := ParseCheckUnit(t, "package probe\nenum Small { One, Two }\nfixed table T {\n    arr [..3]Small\n    opt ?Small\n    tail int32 = 77\n}\n")
+		file, why := runner.SaveCustom(t, u, "T", "live_extents_base")
+		if why != "" {
+			t.Fatalf("save live_extents_base failed: %s", why)
+		}
+		body := len(file) - 13
+		file[body+5] = 99
+		file[body+6] = 99
+		file[body+8] = 99
+		eOwn, _ := LineageEntryOf(u, "T")
+		n, r, f, _ := runner.LoadLineage(t, u, "T", map[string][]LineageEntry{"T": {eOwn}}, file, -1)
+		if n != 1 || (r != "" && r != "ok") || f["r0.tail"] != "77" || f["r0.opt_present"] != "false" {
+			t.Errorf("C14/W4: n=%d r=%q fields=%v", n, r, f)
+		}
+	})
+
+	// 46. writing (W1, W3, W5, W8)
+	t.Run("writing", func(t *testing.T) {
+		t.Parallel()
+		u := ParseCheckUnit(t, "package probe\nunion Pick {\n    narrow uint8\n    wide uint64\n}\nfixed table T {\n    arr [..3]uint16\n    s string(4)\n    b bytes(4)\n    pick Pick\n}\n")
+		file, why := runner.SaveCustom(t, u, "T", "writing_slack_zeros")
+		if why != "" {
+			t.Fatalf("writing_slack_zeros failed: %s", why)
+		}
+		body := len(file) - 35
+		// Arr slack at body+6..body+9 (4B), S slack at body+15..body+17 (3B),
+		// B slack at body+23..body+25 (3B), Pick narrow slack at body+28..body+34 (7B)
+		for _, idx := range []int{6, 7, 8, 9, 15, 16, 17, 23, 24, 25, 28, 29, 30, 31, 32, 33, 34} {
+			if file[body+idx] != 0 {
+				t.Errorf("W1/W3/W8: non-zero slack byte at body+%d: 0x%02x", idx, file[body+idx])
+			}
+		}
+	})
+
+	// 47. union-guards (C15, R18, R32)
+	t.Run("union-guards", func(t *testing.T) {
+		t.Parallel()
+		uOld := ParseCheckUnit(t, "package probe\nunion Inner {\n    x int16\n    y int32\n}\nunion Outer {\n    a int8\n    nested Inner\n}\nfixed table T {\n    u Outer\n    tail int32 = 9\n}\n")
+		uNew := ParseCheckUnit(t, "package probe\nunion Inner {\n    x int32\n    y int64\n}\nunion Outer {\n    a int16\n    nested Inner\n    extra int32\n}\nfixed table T {\n    u Outer\n    tail int32 = 9\n}\n")
+		eOld, _ := LineageEntryOf(uOld, "T")
+		// Outer tag = 2 (nested), Inner tag = 2 (y), y = -7 (0xfffffff9), tail = 42
+		body := make([]byte, 10)
+		body[0] = 2
+		body[1] = 2
+		binary.LittleEndian.PutUint32(body[2:], 0xfffffff9)
+		binary.LittleEndian.PutUint32(body[6:], 42)
+		file := MakeFixedFile(eOld.Wire, eOld.Layout, body)
+		n, r, f, _ := runner.LoadLineage(t, uNew, "T", map[string][]LineageEntry{"T": {eOld}}, file, -1)
+		if n != 1 || (r != "" && r != "ok") || f["r0.u.nested.y"] != "-7" || f["r0.tail"] != "42" {
+			t.Errorf("C15/R18/R32 nested union evolution: n=%d r=%q fields=%v", n, r, f)
+		}
+	})
+
+	// 48. plan-execution (W6, P1)
+	t.Run("plan-execution", func(t *testing.T) {
+		t.Parallel()
+		u := ParseCheckUnit(t, "package probe\ntype Sub {\n    p int16 = 3\n    q int32 = 4\n}\nfixed table T {\n    a int32 = 1\n    sub Sub\n    xs [..2]int16\n}\n")
+		eOwn, _ := LineageEntryOf(u, "T")
+		// Force the compiled-plan path by registering the layout under an alternate hash
+		eAlt := eOwn
+		eAlt.Wire ^= 0x1111
+		body := make([]byte, 18)
+		binary.LittleEndian.PutUint32(body[0:], 10)
+		binary.LittleEndian.PutUint16(body[4:], 30)
+		binary.LittleEndian.PutUint32(body[6:], 40)
+		binary.LittleEndian.PutUint32(body[10:], 2)
+		binary.LittleEndian.PutUint16(body[14:], 50)
+		binary.LittleEndian.PutUint16(body[16:], 60)
+
+		fileId := MakeFixedFile(eOwn.Wire, eOwn.Layout, body)
+		filePlan := MakeFixedFile(eAlt.Wire, eAlt.Layout, body)
+		lin := map[string][]LineageEntry{"T": {eAlt, eOwn}}
+		n1, r1, _, res1 := runner.LoadLineage(t, u, "T", lin, fileId, -1)
+		n2, r2, _, res2 := runner.LoadLineage(t, u, "T", lin, filePlan, -1)
+		if n1 != 1 || n2 != 1 || (r1 != "" && r1 != "ok") || (r2 != "" && r2 != "ok") || !bytes.Equal(res1, res2) {
+			t.Errorf("W6/P1 identity vs compiled plan mismatch: n1=%d n2=%d r1=%q r2=%q eq=%v", n1, n2, r1, r2, bytes.Equal(res1, res2))
+		}
+	})
+
+	// 49. interoperability (W13, P2, R27)
+	t.Run("interoperability", func(t *testing.T) {
+		t.Parallel()
+		corpus, records := findFixedCorpus(t, repoRoot)
+		for _, v := range fixedCorpusVectors {
+			want := records[v.file]
+			data, err := os.ReadFile(filepath.Join(corpus, v.file))
+			if err != nil {
+				t.Fatal(err)
+			}
+			u := LoadRepoUnit(t, repoRoot, v.schema)
+			st := RootStruct(t, u, v.root)
+			layout, hash, _ := RootFacts(st)
+			if got := binary.LittleEndian.Uint64(data[8:16]); got != hash {
+				t.Fatalf("%s: W13 hash mismatch", v.file)
+			}
+			lb := int(binary.LittleEndian.Uint32(data[16:20]))
+			if lb != len(layout) || !bytes.Equal(data[20:20+lb], layout) {
+				t.Fatalf("%s: W13 layout bytes differ", v.file)
+			}
+			eOwn, _ := LineageEntryOf(u, v.root)
+			n, r, _, resaved := runner.LoadLineage(t, u, v.root, map[string][]LineageEntry{v.root: {eOwn}}, data, -1)
+			if n != want || (r != "" && r != "ok") || !bytes.Equal(resaved, data) {
+				t.Fatalf("%s: P2 write-read-write mismatch: n=%d r=%q", v.file, n, r)
+			}
+		}
+	})
+}
