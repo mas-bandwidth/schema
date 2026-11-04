@@ -23,6 +23,14 @@ export const TableVariableForm = 1;
 // distinctness proof never runs past it. kTableProbeBound in the C++ reference.
 export const TableVariableEntryBound = 4096n;
 
+// THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure
+// passes 2^40 bytes is refused as storage_over_cap. Every size under it is an
+// exact JavaScript number. TableVariableStorageOverCap is the answer an extent
+// walk gives for a list or map term that would pass it; the term is refused
+// before it is added.
+export const TableStorageCap = 1099511627776;
+const TableVariableStorageOverCap = -2;
+
 // THE RESERVED IDS the language holds back (docs/SPEC-TABLES.md §3.1, §5).
 export const TableNodeTableId = 0xffffffffffffffffn;
 export const TableBuildVersionId = 0xfffffffffffffffen;
@@ -1388,6 +1396,7 @@ function TableVariableLoad(c, bytes, report, retain) {
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
   if (TableVariableCountRefused(report)) { report.refused = 0; report.reason = null; }
+  if (report.refused && report.reason === "storage_over_cap") { report.refused = 0; report.reason = null; }
   // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
   // its own damage, so a report a caller hands in already marked malformed
   // stays marked and does not refuse a clean wire.
@@ -1400,6 +1409,16 @@ function TableVariableLoad(c, bytes, report, retain) {
     const damaged = report.malformed;
     report.malformed = carried || damaged;
     return c.variable || damaged ? null : c.make();
+  }
+  // THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire longer than the root's
+  // gate is measured before anything is built, and one whose region measure
+  // passes the cap is refused by name without a damage event. A shorter wire
+  // cannot pass it.
+  if (c.measure !== undefined && bytes.length > c.gate && c.measure(bytes)[1] === "storage_over_cap") {
+    report.refused = 1; report.reason = "storage_over_cap";
+    report.malformed = carried;
+    if (retain !== null) { retain.reset(); }
+    return null;
   }
   const table = open.table;
   const v = c.make();
@@ -2034,7 +2053,7 @@ function TableVariableExtent(c, r, ids, at) {
     }
     if (fd.s === "union") {
       const rr = TableVariableUnionBodyExtent(fd.u, r, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
       continue;
     }
@@ -2046,7 +2065,7 @@ function TableVariableExtent(c, r, ids, at) {
     switch (fd.s) {
       case "tab": case "arr": case "bytes": case "map": case "keyed": {
         const rr = TableVariableContainerExtent(fd, r, ids, at);
-        if (rr < 0) { return -1; }
+        if (rr < 0) { return rr; }
         at = rr;
         continue;
       }
@@ -2093,13 +2112,13 @@ function TableVariableElementsExtent(e, sub, ids, at, n) {
       const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
       sub.at += elen;
       const rr = TableVariableExtent(e.c, er, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
     }
   } else if (e.s === "union") {
     for (let i = 0; i < n && sub.at < sub.end; i++) {
       const rr = TableVariableUnionBodyExtent(e.u, sub, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
     }
   }
@@ -2121,6 +2140,7 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
     const floor = ek === 13 ? 2 : ek === 17 ? 1 : Math.max(1, tableRetainWidth(ek));
     if (n > Math.floor((sub.end - sub.at) / floor)) { return -1; }
     at = TableVariableRound(at, fd.eal);
+    if (n > 0 && fd.esz > 0 && n > Math.floor((TableStorageCap - at) / fd.esz)) { return TableVariableStorageOverCap; }
     at += n * fd.esz;
   }
   if (fd.plain) {
@@ -2145,6 +2165,7 @@ function TableVariableMapExtent(fd, sub, ids, at) {
   if (n > 0x7fffffff) { return -1; }
   if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }
   at = TableVariableRound(at, fd.eal);
+  if (n > 0 && fd.esz > 0 && n > Math.floor((TableStorageCap - at) / fd.esz)) { return TableVariableStorageOverCap; }
   at += n * fd.esz;
   for (let i = 0; i < n && sub.at < sub.end; i++) {
     const elen = sub.leb();
@@ -2152,7 +2173,7 @@ function TableVariableMapExtent(fd, sub, ids, at) {
     const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
     sub.at += elen;
     const rr = TableVariableExtent(fd.c, er, ids, at);
-    if (rr < 0) { return -1; }
+    if (rr < 0) { return rr; }
     at = rr;
   }
   return at;
@@ -2174,7 +2195,7 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
     if (sub.bad) { return at; }
     if (fd.e.s === "union") {
       const rr = TableVariableUnionBodyExtent(fd.e.u, sub, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
       continue;
     }
@@ -2183,7 +2204,7 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
     const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
     sub.at += elen;
     const rr = TableVariableExtent(fd.e.c, er, ids, at);
-    if (rr < 0) { return -1; }
+    if (rr < 0) { return rr; }
     at = rr;
   }
   return at;
@@ -4517,6 +4538,7 @@ const TableVariableCodecs = {
     typeId: 0x85df369cdca746b3n,
     variable: false,
     sz: 1376, al: 16,
+    gate: 746950833, measure: (bytes) => FixedTableLoadMeasureFramed(bytes),
     entry: false,
     fields: [
       { n: "value", key: "value", id: 0x7ce4fd9430e80cean, o: 0, k: 13, s: "tab", js: "o", t: "BenchMixed" },
@@ -5142,17 +5164,25 @@ export function FixedTableFromJson(text, report) {
 }
 
 export function FixedTableLoadMeasure(bytes) {
-  if (bytes.length < 9) { return 1392; }
-  if (bytes[0] !== TableVariableForm) { return 1392; }
+  return FixedTableLoadMeasureReason(bytes)[0];
+}
+
+export function FixedTableLoadMeasureReason(bytes) {
+  return FixedTableLoadMeasureFramed(bytes);
+}
+
+function FixedTableLoadMeasureFramed(bytes) {
+  if (bytes.length < 9) { return [1392, null]; }
+  if (bytes[0] !== TableVariableForm) { return [1392, null]; }
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = dv.getBigUint64(bytes.length - 8, true);
-  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return 1392; }
+  if (count > TableVariableEntryBound || count > BigInt(Math.floor((bytes.length - 9) / 8))) { return [1392, null]; }
   const first = bytes.length - 8 - Number(count) * 8;
   const ids = [];
   const seen = new Set();
   for (let i = 0; i < Number(count); i++) {
     const id = dv.getBigUint64(first + i * 8, true);
-    if (seen.has(id)) { return 1392; }
+    if (seen.has(id)) { return [1392, null]; }
     seen.add(id);
     ids.push(id);
   }
@@ -5161,7 +5191,7 @@ export function FixedTableLoadMeasure(bytes) {
     while (true) {
       const ref = w.leb();
       if (w.bad) { break; }
-      if (ref === 0) { if (w.at !== w.end) { return 1392; } break; }
+      if (ref === 0) { if (w.at !== w.end) { return [1392, null]; } break; }
       if (ref > ids.length) { break; }
       if (w.at >= w.end) { break; }
       const kind = w.u8();
@@ -5170,7 +5200,8 @@ export function FixedTableLoadMeasure(bytes) {
   }
   const r = new TableVariableReader(bytes, 1, first);
   const at = TableVariableExtent(TableVariableCodecs.FixedTable, r, ids, 0);
-  if (at < 0) { return 1392; }
+  if (at === TableVariableStorageOverCap) { return [-1, "storage_over_cap"]; }
+  if (at < 0) { return [1392, null]; }
   let data = TableVariableRound(1376 + at, 16);
   const nr = new TableVariableReader(bytes, 1, first);
   let present = false, bad = false, payload = null;
@@ -5206,19 +5237,23 @@ export function FixedTableLoadMeasure(bytes) {
     if (cc !== undefined) {
       const br = new TableVariableReader(bytes, payload.at, payload.at + tlen);
       const ba = TableVariableExtent(cc, br, ids, 0);
-      if (ba < 0) { return -1; }
+      if (ba === TableVariableStorageOverCap) { return [-1, "storage_over_cap"]; }
+      if (ba < 0) { return [-1, null]; }
       data += TableVariableRound(cc.sz + ba, 16);
     } else if (tid === TableStringBlobId && place.str) {
-      if (tlen > 0xffffffff) { return -1; }
+      if (tlen > 0xffffffff) { return [-1, null]; }
       data += TableVariableRound(8 + tlen + 1, 16);
     } else if (tid === TableBytesBlobId && place.bytes) {
-      if (tlen > 0xffffffff) { return -1; }
+      if (tlen > 0xffffffff) { return [-1, null]; }
       data += TableVariableRound(8 + tlen, 16);
     }
+    if (data > TableStorageCap) { return [-1, "storage_over_cap"]; }
     payload.at += tlen;
     records++;
   }
-  return data + (records + 1) * 16;
+  const size = data + (records + 1) * 16;
+  if (size > TableStorageCap) { return [-1, "storage_over_cap"]; }
+  return [size, null];
 }
 
 export function FixedTableLoadRetain(bytes, retain, report) {

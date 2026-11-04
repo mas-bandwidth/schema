@@ -1,6 +1,7 @@
 package gotable
 
 import (
+	"github.com/mas-bandwidth/schema/v2/internal/memceiling"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,8 @@ import (
 // through the node scan.
 func TestStorageCapRefusedAtMeasure(t *testing.T) {
 	t.Setenv("GOTOOLCHAIN", "go1.26.0")
+	// a leg that stops refusing builds toward 2^40 bytes; the guard kills it at 4 GiB
+	memceiling.Guard(t, memceiling.Default)
 	dir, err := filepath.Abs("../../../testdata/wire/tables/storage-cap")
 	if err != nil {
 		t.Fatal(err)

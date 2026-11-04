@@ -806,6 +806,10 @@ pub enum TableReason {
     TimestampNotRfc3339,
     IntegrityMismatch,
     MissingRequired,
+    /// A WIRE WHOSE REGION MEASURE PASSES THE 2^40-BYTE STORAGE CAP
+    /// (docs/SPEC-TABLES.md §6.5, §11): the measure refuses it before any
+    /// value is built, and the load refuses it by this name.
+    StorageOverCap,
 }
 
 /// The variable reader uses the Go reference's refusal vocabulary (§5).
@@ -845,6 +849,7 @@ impl TableReason {
             TableReason::TimestampNotRfc3339 => "timestamp_not_rfc3339",
             TableReason::IntegrityMismatch => "integrity_mismatch",
             TableReason::MissingRequired => "missing_required",
+            TableReason::StorageOverCap => "storage_over_cap",
         }
     }
 }

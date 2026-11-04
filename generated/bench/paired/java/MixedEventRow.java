@@ -16,7 +16,7 @@ public final class MixedEventRow {
     private MixedEventRow() {}
 
     /** the union's own size and alignment, from the ONE layout model (§19.3). */
-    public static final int size = 20;
+    public static final long size = 20;
 
     public static final int align = 4;
 
@@ -29,7 +29,7 @@ public final class MixedEventRow {
      * where each ARM starts, in declaration order — checked by TableCookLayout against the
      * descriptors below (§19.3).
      */
-    static final int[] offsets = {4, 4, 4};
+    static final long[] offsets = {4, 4, 4};
 
     /** the TAG: 0 is None, k is the k-th declared arm. */
     public static long tag(byte[] data, int at) {

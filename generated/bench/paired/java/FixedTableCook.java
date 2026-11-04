@@ -280,7 +280,7 @@ public final class FixedTableCook {
     //
     // It answers the TARGET's offset, or -1, which is null AND a delta whose
     // record does not lie wholly inside the region.
-    public int at(int slot, int size) {
+    public int at(int slot, long size) {
         long delta = TableBytes.i64(data, slot);
         if (delta == 0 || size < 0) {
             return -1;

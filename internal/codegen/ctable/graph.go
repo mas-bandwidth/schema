@@ -869,13 +869,14 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 
 	}
 	g.pf("static SCHEMA_UNUSED int64_t %s(const TableReader * reader, int64_t * data_out, int64_t * records_out)\n{\n", g.sym(n, "load_layout"))
-	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id;\n    int64_t data=%s(reader), records=0;\n    if(data<0) { return -1; }\n", g.sym(n, "wire_storage"))
+	g.pf("    TableNodeScan scan=table_node_scan_begin(reader); TableReader body; uint64_t id;\n    int64_t data=%s(reader), records=0;\n    if(data<0) { return -1; }\n    if(data>SCHEMA_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* the storage cap (docs/SPEC-TABLES.md §11) */\n", g.sym(n, "wire_storage"))
 	g.pf("    while (table_node_scan_next(&scan,&id,&body)) {\n        const TableNodeType * type=%s(id);\n", g.sym(n, "node_lookup"))
-	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; }\n        records++;\n    }\n")
+	g.pf("        if (type!=NULL) { int64_t size=table_node_wire_storage(type,&body); if (size<0 || size>INT64_MAX-data) { return -1; } data+=size; if (data>SCHEMA_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } }\n        records++;\n    }\n")
 	g.pf("    if (records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || (records+1)*(int64_t)sizeof(TableNodeDirEntry)>INT64_MAX-data) { return -1; }\n")
+	g.pf("    if (data+(records+1)*(int64_t)sizeof(TableNodeDirEntry)>SCHEMA_TABLE_STORAGE_CAP) { reader->report->reason=SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP; return -1; } /* each term is at most the cap, so the sum never overflows */\n")
 	g.pf("    *data_out=data; *records_out=records; return data+(records+1)*(int64_t)sizeof(TableNodeDirEntry);\n}\n")
 	strictShared := ""
-	if !g.retain {
+	if !g.retain && len(ir.BlobPointerFields(g.unit)) > 0 {
 		helper := g.sym(n, "wire_blob_shared")
 		g.pf("static SCHEMA_UNUSED int %s(const uint8_t * wire, int64_t bytes, int64_t total);\n", helper)
 		strictShared = fmt.Sprintf("    if(total>=0 && %s(wire,file_bytes,total)) { if(reason!=NULL) { *reason=SCHEMA_TABLE_REFUSE_BLOB_SHARED; } return -1; }\n", helper)
@@ -900,7 +901,7 @@ func (g *tableGen) emitGraphPublic(st *ir.Struct) {
 	g.pf("    total=%s(&reader,&data,&records); return total>=0 ? total : -1;\n}\n", g.sym(n, "load_layout"))
 	g.emitCycleRoot(st)
 	g.emitGraphLoad(st)
-	if !g.retain {
+	if !g.retain && len(ir.BlobPointerFields(g.unit)) > 0 {
 		n := st.Name
 		helper := g.sym(n, "wire_blob_shared")
 		g.pf("/* THE STRICT READ refuses a blob another slot named by name (docs/SPEC-TABLES.md §2.5): the reason path decodes once into a temporary region and reads the tolerant report's count. It fails CLOSED: an allocation or decode failure refuses rather than treating the wire as unshared. */\n")
@@ -967,7 +968,7 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 		g.pf("    if(wire_bytes>0 && wire!=NULL && wire[0]==1) { wire_bytes-=4; }\n")
 	}
 	g.pf("    if(!table_wire_open(&reader,wire,wire_bytes,report)) { report->malformed=report->malformed||malformed_before; return NULL; }\n")
-	g.pf("    total=%s(&reader,&data,&records); report->reason=(TableRefuseReason)reason_before;\n", g.sym(n, "load_layout"))
+	g.pf("    report->reason=SCHEMA_TABLE_REFUSE_OK; total=%s(&reader,&data,&records);\n    if(total<0 && report->reason==SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP) { report->refused=1; report->refuse_reason=SCHEMA_TABLE_REFUSE_STORAGE_OVER_CAP; report->malformed=malformed_before; return NULL; } /* the storage cap (docs/SPEC-TABLES.md §11), refused by name before any region or builder is filled */\n    report->reason=(TableRefuseReason)reason_before;\n", g.sym(n, "load_layout"))
 	g.pf("    if(total<0) {\n        %sBuilder builder; TableNodeScan scan; TableReader body; uint64_t id; %s * root;\n        if(region!=NULL && region_bytes>0 && ((uintptr_t)region & (kTableAlign-1))==0) { memset(region,0,(size_t)region_bytes); }\n        records=0; scan=table_node_scan_begin(&reader); while(table_node_scan_next(&scan,&id,&body)) { records++; }\n        if(records>=INT64_MAX/(int64_t)sizeof(TableNodeDirEntry)-1 || !%s(&builder)) { report->malformed=1; return NULL; }\n        root=%s(&builder); directory=(TableNodeDirEntry *)table_allocate(builder.arena.allocator,(records+1)*(int64_t)sizeof(TableNodeDirEntry));\n        if(root==NULL || directory==NULL) { table_release(builder.arena.allocator,directory); %s(&builder); report->malformed=1; return NULL; }\n        directory[0].offset=(uint64_t)builder.root_ref.value; directory[0].type_id=UINT64_C(0x%016x);\n        memset(&nodes,0,sizeof(nodes)); nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.arena=1;%s\n        sink.region=NULL; sink.worker=&builder.main;\n        (void)%s(&reader,root,&nodes,directory,&sink);\n        table_release(builder.arena.allocator,directory); table_release(builder.arena.allocator,nodes.blob_named); %s(&builder);\n        if(table_non_finite_refused(report,non_finite_before)) { report->malformed=report->malformed||malformed_before; return NULL; }\n        if(nodes.refused && !report->malformed) { report->refused=1; report->reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->refuse_reason=SCHEMA_TABLE_REFUSE_COUNT_OVER_EXTENT_CAP; report->malformed=malformed_before; return NULL; }\n        report->malformed=1; return NULL;\n    }\n", n, n, g.api(n, "builder_init"), g.api(n, "builder_root"), g.api(n, "builder_shutdown"), ir.TableWireId(st.WireName()), blobNamedAllocFallback, g.sym(n, "load_graph"), g.api(n, "builder_shutdown"))
 	g.pf("    if(region==NULL || region_bytes<total || ((uintptr_t)region & (kTableAlign-1))!=0) { report->malformed=1; return NULL; }\n    memset(region,0,(size_t)total); directory=(TableNodeDirEntry *)(void *)(region+data);\n")
 	g.pf("    directory[0].offset=0; directory[0].type_id=UINT64_C(0x%016x);\n", ir.TableWireId(st.WireName()))

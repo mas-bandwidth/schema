@@ -89,6 +89,7 @@ var catalog = []Entry{
 	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),
 	e("internal/mapwalk", "map walk", "go test ./internal/mapwalk", "go test ./internal/mapwalk"),
+	e("internal/memceiling", "memory ceiling for storage-cap tests", "go test ./internal/memceiling", "go test ./internal/memceiling"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
 	e("internal/parser", "recursive-descent parser", "go test ./internal/parser", "go test ./internal/parser"),
 	e("internal/publicapi", "external-module API gate", "go test ./internal/publicapi", "go test ./internal/publicapi"),

@@ -18,7 +18,7 @@ public final class BenchMixedRow {
     private BenchMixedRow() {}
 
     /** the record's own size and alignment, from the ONE layout model (§19.3). */
-    public static final int size = 1376;
+    public static final long size = 1376;
 
     public static final int align = 16;
 
@@ -26,7 +26,7 @@ public final class BenchMixedRow {
      * where each field starts, in declaration order — the accessors' own constants, which
      * TableBlockLayout / TableCookLayout check against the descriptors below (§19.3).
      */
-    static final int[] offsets = {
+    static final long[] offsets = {
         0, 4, 8, 16, 24, 32, 40, 48, 56, 64, 580, 1224, 1244, 1248, 1268, 1288, 1292, 1296, 1300,
         1304, 1312, 1328, 1344, 1348, 1352, 1356, 1360
     };

@@ -1143,7 +1143,7 @@ static partial class Program
                     else
                     {
                         into.Append("  ").Append(at).Append(" = ");
-                        DumpScalar(into, value, f.Kind, f.ElemSize);
+                        DumpScalar(into, value, f.Kind, (int)f.ElemSize); // a scalar's width, at most 16
                         into.Append('\n');
                     }
                 }

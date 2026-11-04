@@ -1716,6 +1716,7 @@ public static partial class TableWire
     public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
     {
         if (report == null) { report = Ignored; }
+        ReadOnlySpan<byte> file = bytes;
         type.Reset(value);
         report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
         if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
@@ -1738,6 +1739,10 @@ public static partial class TableWire
         if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
         Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
         if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+        // THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire long enough to command more than
+        // 2^40 bytes of region storage is measured before anything is built, and refused by name.
+        if (file.Length > type.StorageWireFloor && LoadMeasure(type, file, out string capReason) < 0 && capReason == "storage_over_cap")
+        { report.Refused = true; report.Reason = "storage_over_cap"; return Finish(report, Verdict.Refused); }
         bool malformedBefore = report.Malformed;
         report.Malformed = false;
         // Managed collections grow only after each bounded element. The actual

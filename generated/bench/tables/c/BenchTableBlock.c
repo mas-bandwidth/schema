@@ -44,20 +44,20 @@ int schema_benchtable_table_entity_block_open_(benchtable_table_entity_block_t *
    row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */
 static const benchtable_table_block_field_info_t schema_benchtable_table_entity_block_fields_[] = {
     /* TableEntity (the projection) */
-    { "entity_id", 24u, 4u, 7, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "pos_x", 28u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "pos_y", 32u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "pos_z", 36u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "yaw", 40u, 4u, 7, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "pitch", 44u, 4u, 7, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "vel_x", 48u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "vel_y", 52u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "vel_z", 56u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "health", 60u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "weapon", 64u, 1u, 7, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 1u, 0xffffffffu, NULL },
-    { "damage", 72u, 8u, 9, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 8u, 0xffffffffu, NULL },
-    { "moving", 80u, 1u, 1, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 1u, 0xffffffffu, NULL },
-    { "firing", 81u, 1u, 1, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 1u, 0xffffffffu, NULL },
+    { "entity_id", 24u, 4u, 7, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "pos_x", 28u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "pos_y", 32u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "pos_z", 36u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "yaw", 40u, 4u, 7, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "pitch", 44u, 4u, 7, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "vel_x", 48u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "vel_y", 52u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "vel_z", 56u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "health", 60u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "weapon", 64u, 1u, 7, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 1u, UINT64_MAX, NULL },
+    { "damage", 72u, 8u, 9, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 8u, UINT64_MAX, NULL },
+    { "moving", 80u, 1u, 1, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 1u, UINT64_MAX, NULL },
+    { "firing", 81u, 1u, 1, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 1u, UINT64_MAX, NULL },
 };
 
 const benchtable_table_block_info_t schema_benchtable_table_entity_block_info_ = { "TableEntity", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 88u, 8u, 14, schema_benchtable_table_entity_block_fields_ };
@@ -95,8 +95,8 @@ int schema_benchtable_table_stat_block_open_(benchtable_table_stat_block_t * blo
    row's. One name for the whole graph (docs/SPEC-TABLES.md §11). */
 static const benchtable_table_block_field_info_t schema_benchtable_table_stat_block_fields_[] = {
     /* TableStat (the projection) */
-    { "stat_id", 24u, 4u, 6, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
-    { "delta", 28u, 4u, 4, 0, 0xffffffffu, 0xffffffffu, 0xffffffffu, 0u, 0, 0, 0, 0, 4u, 0xffffffffu, NULL },
+    { "stat_id", 24u, 4u, 6, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
+    { "delta", 28u, 4u, 4, 0, UINT64_MAX, UINT64_MAX, UINT64_MAX, 0u, 0, 0, 0, 0, 4u, UINT64_MAX, NULL },
 };
 
 const benchtable_table_block_info_t schema_benchtable_table_stat_block_info_ = { "TableStat", SCHEMA_BENCHTABLE_BUILD_VERSION_VALUE, 32u, 8u, 2, schema_benchtable_table_stat_block_fields_ };

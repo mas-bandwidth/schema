@@ -90,7 +90,7 @@ namespace Wide
     {
         internal bool MapKey = false;
         internal int Ordinal;
-        internal int NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
+        internal long NativeOffset, NativeElementSize, NativeCountOffset, NativePresentOffset;
         internal int MessageSlot = 0;
         internal bool MessageBounded = false, MessageSigned = false;
         internal UInt128 MessageMin = 0, MessageMax = 0;
@@ -202,7 +202,8 @@ namespace Wide
         public bool Dynamic, Map, TextList, Unbounded;
         public string TextField;
         public long TextTotal;
-        public int StorageSize, StorageAlign;
+        public long StorageSize;
+        public int StorageAlign;
         public ulong PointerTypeId;
         public byte BlobKind;
         public Func<object, byte[]> GetBuffer;
@@ -252,7 +253,11 @@ namespace Wide
     public sealed class TableTypeInfo
     {
         public Func<object> Create;
-        public int StorageSize, StorageAlign, RegionAlign;
+        public long StorageSize;
+        public int StorageAlign, RegionAlign;
+        // the longest wire that cannot command more than the storage cap (docs/SPEC-TABLES.md §11);
+        // a managed Load of a longer one measures before it builds
+        public long StorageWireFloor = long.MaxValue;
         public bool Variable;
         public bool Integrity;
         public bool JsonArray;
@@ -3590,6 +3595,12 @@ namespace Wide
             }
 
             static long Align(long value, int alignment) { return (value + alignment - 1) & -(long)alignment; }
+            // THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire whose region measure passes it is
+            // refused as storage_over_cap, and no count times an element size is summed past it.
+            internal const long StorageCap = 1099511627776;
+            // a list or map term past the storage cap is refused before it is summed
+            internal static bool StorageTermOverCap(long aligned, ulong count, long size)
+            { return size > 0 && count > 0 && (aligned > StorageCap || count > (ulong)((StorageCap - aligned) / size)); }
             static bool ExtentBody(Reader r, TableTypeInfo type, ref long at, ref string reason)
             {
                 while (r.Ref(out ulong reference, out ulong id) && reference != 0 && r.Has(1))
@@ -3616,7 +3627,9 @@ namespace Wide
                         if (n > int.MaxValue) { reason = "count_over_extent_cap"; return false; }
                         int floor = sourceKind == 13 ? 2 : sourceKind == 12 || sourceKind == 15 || sourceKind == 17 || sourceKind == 30 ? 1 : Width(sourceKind);
                         if (floor < 1 || n > (ulong)((a.Buffer.Length - a.Offset) / floor)) { reason = "count_over_length"; return false; }
-                        at = Align(at, f.StorageAlign) + (long)n * f.StorageSize;
+                        long aligned = Align(at, f.StorageAlign);
+                        if (StorageTermOverCap(aligned, n, f.StorageSize)) { reason = "storage_over_cap"; return false; }
+                        at = aligned + (long)n * f.StorageSize;
                     }
                     for (ulong i = 0; i < n && a.Has(1); i++)
                     {
@@ -3705,16 +3718,19 @@ namespace Wide
                 if (bytes.Length < 9) { return -1; }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { return -1; }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { return -1; }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { return -1; } } }
+                if (!DistinctVocabulary(ids)) { return -1; }
                 Reader root = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(root)) { return -1; }
                 long extent = 0;
                 if (!ExtentBody(root, type, ref extent, ref reason)) { return -1; }
                 long size = Align(Align(type.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
-                if (!NodeFrames(root, out Reader payload, out int nodes)) { return size + 16; }
+                if (size > StorageCap) { reason = "storage_over_cap"; return -1; }
+                if (!NodeFrames(root, out Reader payload, out int nodes)) { if (size + 16 > StorageCap) { reason = "storage_over_cap"; return -1; } return size + 16; }
                 Reader scan = payload;
                 for (int i = 0; i < nodes; i++)
                 {
@@ -3726,7 +3742,10 @@ namespace Wide
                     extent = 0;
                     if (!ExtentBody(body, candidate, ref extent, ref reason)) { return -1; }
                     size += Align(Align(candidate.StorageSize, type.RegionAlign) + extent, type.RegionAlign);
+                    if (size > StorageCap) { reason = "storage_over_cap"; return -1; }
                 }
+                // each term is at most the cap, so the sum never overflows
+                if (size + (nodes + 1L) * 16 > StorageCap) { reason = "storage_over_cap"; return -1; }
                 return size + (nodes + 1L) * 16;
             }
 
@@ -3877,10 +3896,12 @@ namespace Wide
                 if (bytes.Length < 9) { Damage(report); return Finish(report, Verdict.Damaged); }
                 ulong count = Read64(bytes, bytes.Length - 8);
                 if (count > (ulong)(bytes.Length - 9) / 8) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE BOUNDED-WORK CONTRACT (docs/SPEC-TABLES.md §3): a table that
+                // claims more than 4096 entries is malformed.
+                if (count > 4096) { Damage(report); return Finish(report, Verdict.Damaged); }
                 int end = bytes.Length - 8 - (int)count * 8;
                 ReadOnlySpan<byte> ids = bytes.Slice(end, (int)count * 8);
-                for (int i = 0; i < ids.Length; i += 8)
-                { for (int j = 0; j < i; j += 8) { if (Read64(ids, i) == Read64(ids, j)) { Damage(report); return Finish(report, Verdict.Damaged); } } }
+                if (!DistinctVocabulary(ids)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), ids);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader payload = default; int versions = 0, vocabularies = 0; bool terminated = false;
@@ -4434,7 +4455,7 @@ namespace Wide
                     return arm == null || NativeField(ref w, at + f.Arms.NativeArmOffset, union, arm, extentAt, ref extent);
                 }
                 UInt128 raw = f.GetWide != null ? f.GetWide(value, index) : f.GetRaw(value, index);
-                w.Put(at, raw, f.NativeElementSize); return true;
+                w.Put(at, raw, (int)f.NativeElementSize); return true; // a scalar's width, at most 16
             }
             static long NativeRecordBytes(TableTypeInfo type)
             { return NativeExtent(type) ? Align(type.StorageSize, Math.Max(8, type.StorageAlign)) : type.StorageSize; }
@@ -5444,32 +5465,24 @@ namespace Wide
                     if (field.Optional && placed) { field.SetPresent(value, true); }
                 }
             }
+            // DistinctVocabulary proves the id table's entries distinct (docs/SPEC-TABLES.md
+            // §3, THE DISTINCTNESS CHECK IS BOUNDED WORK); every caller has refused a
+            // table above 4096 entries first. Under sixteen entries a pairwise scan is
+            // at most 120 comparisons. From sixteen up the ids are copied to a stack
+            // array of at most 32 KiB and sorted (MemoryExtensions.Sort, introsort:
+            // O(n log n) whatever the ids are), and a repeat sits beside its twin. A
+            // hash probe would let ids crafted onto one slot cost n(n-1)/2.
             static bool DistinctVocabulary(ReadOnlySpan<byte> vocabulary)
             {
                 int count = vocabulary.Length / 8;
                 if (count >= 16)
                 {
-                    // Slots store ordinal+1, so the identity zero remains an ordinary
-                    // identity. At most 4096 entries occupy 8192 slots: even deliberately
-                    // colliding identities reach an empty slot after at most 4096
-                    // occupied probes, so the whole walk is bounded and allocation-free
-                    // (docs/SPEC-TABLES.md §3, the bounded-work contract).
-                    Span<ushort> slots = stackalloc ushort[8192];
-                    slots.Clear();
-                    for (int i = 0; i < count; i++)
-                    {
-                        ulong id = Read64(vocabulary, i * 8);
-                        int slot = (int)(unchecked(id * 0x9e3779b97f4a7c15ul) >> 51);
-                        while (slots[slot] != 0)
-                        {
-                            if (id == Read64(vocabulary, (slots[slot] - 1) * 8)) { return false; }
-                            slot = (slot + 1) & 8191;
-                        }
-                        slots[slot] = (ushort)(i + 1);
-                    }
+                    Span<ulong> ids = stackalloc ulong[count];
+                    for (int i = 0; i < count; i++) { ids[i] = Read64(vocabulary, i * 8); }
+                    ids.Sort();
+                    for (int i = 1; i < count; i++) { if (ids[i] == ids[i - 1]) { return false; } }
                     return true;
                 }
-                // Tiny vocabularies avoid scratch initialization.
                 for (int i = 0; i < vocabulary.Length; i += 8)
                 {
                     ulong id = Read64(vocabulary, i);
@@ -5482,6 +5495,7 @@ namespace Wide
             public static Verdict Load(object value, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableReport report)
             {
                 if (report == null) { report = Ignored; }
+                ReadOnlySpan<byte> file = bytes;
                 type.Reset(value);
                 report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (bytes.Length == 0) { Damage(report); return Finish(report, Verdict.Damaged); }
@@ -5504,6 +5518,10 @@ namespace Wide
                 if (!DistinctVocabulary(vocabulary)) { Damage(report); return Finish(report, Verdict.Damaged); }
                 Reader r = new Reader(bytes.Slice(1, end - 1), vocabulary);
                 if (EndsEarly(r)) { Damage(report); return Finish(report, Verdict.Damaged); }
+                // THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire long enough to command more than
+                // 2^40 bytes of region storage is measured before anything is built, and refused by name.
+                if (file.Length > type.StorageWireFloor && LoadMeasure(type, file, out string capReason) < 0 && capReason == "storage_over_cap")
+                { report.Refused = true; report.Reason = "storage_over_cap"; return Finish(report, Verdict.Refused); }
                 bool malformedBefore = report.Malformed;
                 report.Malformed = false;
                 // Managed collections grow only after each bounded element. The actual
@@ -5593,7 +5611,7 @@ namespace Wide
             public const int HeaderBytes = 16;
             public const int HashAt = 8;
             public const uint NoGuard = 0xFFFFFFFFu;
-            public const int MaxDepth = 32;
+            public const int MaxDepth = 64;
             public const uint RecordMaxBytes = 65536;
 
             // The opcodes for plan entries

@@ -17,6 +17,12 @@ use std::rc::Rc;
 const ID_TABLE_PROBE_BOUND: usize = 4096;
 #[allow(dead_code)]
 const ID_TABLE_PROBE_SLOTS: usize = 8192;
+/// The storage cap a wire's region measure is refused past, 2^40 bytes, and the
+/// measure's internal answer for it (docs/SPEC-TABLES.md §6.5, §11).
+#[allow(dead_code)]
+const TABLE_STORAGE_CAP: i64 = 1099511627776;
+#[allow(dead_code)]
+const TABLE_MEASURE_OVER_CAP: i64 = -2;
 use super::table_enums::*;
 
 /// MixedChatEvent — a variable-table storage struct (docs/SPEC-TABLES.md §3).

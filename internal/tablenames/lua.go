@@ -27,7 +27,7 @@ var luaModuleKeys = map[string][]string{
 		"FixedFields", "FixedUnions", "Keyed", "LoadMessages", "LoadMessagesTolerant", "MeasureMessages", "MessageBatchMax",
 		"MessageEntries", "MessageNodeId", "MessageRefBits", "MessageRoots", "MessageVersionId", "MessageVocabulary",
 		"MessageVocabularyId", "Package", "ReadFixed", "ReadFixedTolerant", "RegionAlign", "Registry", "SaveMessages",
-		"StringBlobTypeId", "Tables", "TypedBodies", "Unions", "WireIds", "WriteFixed",
+		"StorageScale", "StringBlobTypeId", "Tables", "TypedBodies", "Unions", "WireIds", "WriteFixed",
 	},
 	"the unit's type view (<Package>View.lua)": {"Package", "ProtocolId", "Registry", "Tables", "Types"},
 	"block.lua":      {"BlockOpen", "ByteOrder", "Dump", "Layout", "Open"},

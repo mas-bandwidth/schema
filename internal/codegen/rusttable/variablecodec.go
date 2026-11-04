@@ -44,6 +44,9 @@ func (g *gen) variableCodecModule() []byte {
 	b.WriteString("/// The reader's id-table distinctness bound and open-addressing probe capacity (docs/SPEC-TABLES.md §3).\n")
 	b.WriteString("#[allow(dead_code)]\nconst ID_TABLE_PROBE_BOUND: usize = 4096;\n")
 	b.WriteString("#[allow(dead_code)]\nconst ID_TABLE_PROBE_SLOTS: usize = 8192;\n")
+	b.WriteString("/// The storage cap a wire's region measure is refused past, 2^40 bytes, and the\n/// measure's internal answer for it (docs/SPEC-TABLES.md §6.5, §11).\n")
+	fmt.Fprintf(&b, "#[allow(dead_code)]\nconst TABLE_STORAGE_CAP: i64 = %d;\n", ir.MaxSizeBytes)
+	b.WriteString("#[allow(dead_code)]\nconst TABLE_MEASURE_OVER_CAP: i64 = -2;\n")
 	for _, other := range g.unit.Files {
 		if other.Base == g.file.Base {
 			continue
@@ -1879,11 +1882,17 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let ids: &[u64] = &ids_buf[..count];\n")
 	fmt.Fprintf(b, "    let mut retain = retain;\n")
 	if !st.FixedDeclared {
-		measure := fnName + "_load_measure"
-		if st.Integrity == "crc32c" {
-			measure += "_body"
-		}
-		fmt.Fprintf(b, "    if %s(wire) < 0 {\n", measure)
+		fmt.Fprintf(b, "    let measured = %s_load_measure_raw(wire);\n", fnName)
+		fmt.Fprintf(b, "    if measured == TABLE_MEASURE_OVER_CAP {\n")
+		fmt.Fprintf(b, "        // THE STORAGE CAP (docs/SPEC-TABLES.md §6.5, §11): a wire whose measure\n")
+		fmt.Fprintf(b, "        // passes 2^40 bytes is refused by name before any value is built, the\n")
+		fmt.Fprintf(b, "        // damage history kept, and nothing is retained.\n")
+		fmt.Fprintf(b, "        if let Some(store) = retain { store.bytes.clear(); store.ids.clear(); }\n")
+		fmt.Fprintf(b, "        report.refused = true;\n")
+		fmt.Fprintf(b, "        report.reason = TableReason::StorageOverCap;\n")
+		fmt.Fprintf(b, "        return None;\n")
+		fmt.Fprintf(b, "    }\n")
+		fmt.Fprintf(b, "    if measured < 0 {\n")
 		fmt.Fprintf(b, "        // A FRAMING THE CONTAINER CANNOT OPEN loads nothing (§3, §6.5). A\n")
 		fmt.Fprintf(b, "        // NON-FINITE FLOAT the walk meets before the damage still outranks it\n")
 		fmt.Fprintf(b, "        // (docs/SPEC-TABLES.md §3.3), as in the oracle, whose walk runs ahead\n")
@@ -2033,17 +2042,30 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 		}
 	}
 	fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
-	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
-	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
+	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened\n")
+	fmt.Fprintf(b, "/// or its measure passes the storage cap (§11).\n")
+	fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+	fmt.Fprintf(b, "    %s_load_measure_reason(wire).0\n}\n\n", fnName)
+	fmt.Fprintf(b, "/// %s_load_measure_reason — the same measure with its refusal by name\n", fnName)
+	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §6.5, §11): (-1, StorageOverCap) for a wire whose\n")
+	fmt.Fprintf(b, "/// measure passes the 2^40-byte storage cap, (-1, another reason) for a file\n")
+	fmt.Fprintf(b, "/// that cannot be opened, and (bytes, None) otherwise.\n")
+	fmt.Fprintf(b, "pub fn %s_load_measure_reason(wire: &[u8]) -> (i64, TableReason) {\n", fnName)
+	fmt.Fprintf(b, "    if wire.is_empty() { return (-1, TableReason::WireDamaged); }\n")
+	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { return (-1, TableReason::UnknownForm); }\n")
 	if st.Integrity == "crc32c" {
-		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
-		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
-		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return -1; };\n")
-		fmt.Fprintf(b, "    %s_load_measure_body(wire)\n}\n\n", fnName)
-		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n", fnName)
-	} else {
-		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return (-1, TableReason::IntegrityMismatch); };\n")
 	}
+	fmt.Fprintf(b, "    match %s_load_measure_raw(wire) {\n", fnName)
+	fmt.Fprintf(b, "        TABLE_MEASURE_OVER_CAP => (-1, TableReason::StorageOverCap),\n")
+	fmt.Fprintf(b, "        n if n < 0 => (-1, TableReason::WireDamaged),\n")
+	fmt.Fprintf(b, "        n => (n, TableReason::None),\n")
+	fmt.Fprintf(b, "    }\n}\n\n")
+	fmt.Fprintf(b, "/// %s_load_measure_raw — the measure over a wire whose integrity trailer is\n", fnName)
+	fmt.Fprintf(b, "/// already removed: TABLE_MEASURE_OVER_CAP past the storage cap, -1 for a\n")
+	fmt.Fprintf(b, "/// framing it cannot open.\n")
+	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
+	fmt.Fprintf(b, "fn %s_load_measure_raw(wire: &[u8]) -> i64 {\n", fnName)
 	fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { return -1; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());\n")
@@ -2125,13 +2147,14 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 				continue
 			}
 			seen[id] = true
-			fmt.Fprintf(b, "                    0x%016x => { let extra = nested_measure(0x%016x, &wire[off..off + bl as usize], ids, 0); if extra < 0 { return -1; } cur_blob += round(round(%d) + extra); }\n", id, id, ir.RecordLayout(g.unit, n).Size)
+			fmt.Fprintf(b, "                    0x%016x => { let extra = nested_measure(0x%016x, &wire[off..off + bl as usize], ids, 0); if extra < 0 { return extra; } cur_blob += round(round(%d) + extra); }\n", id, id, ir.RecordLayout(g.unit, n).Size)
 		}
 		fmt.Fprintf(b, "                    _ => {}\n")
 		fmt.Fprintf(b, "                }\n")
 	}
 	fmt.Fprintf(b, "                off += bl as usize;\n")
 	fmt.Fprintf(b, "                recs += 1;\n")
+	fmt.Fprintf(b, "                if cur_blob > TABLE_STORAGE_CAP { return TABLE_MEASURE_OVER_CAP; } // the storage cap (§11), after every record\n")
 	fmt.Fprintf(b, "            }\n")
 	fmt.Fprintf(b, "            if off != sub || declared != recs as u64 { return -1; }\n")
 	fmt.Fprintf(b, "            records = recs;\n")
@@ -2186,7 +2209,7 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
                                     if p >= sub { break; }
                                     let Some(n) = leb_read(&wire[..sub], &mut p) else { break; };
                                     if n > (sub - p) as u64 { break; }
-                                    if nested_measure(0x%016x, &wire[p..p + n as usize], ids, 0) < 0 { return -1; }
+                                    let extent = nested_measure(0x%016x, &wire[p..p + n as usize], ids, 0); if extent < 0 { return extent; }
                                     p += n as usize;
                                 }
                             }
@@ -2211,8 +2234,10 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "        if !leb_skip(wire, &mut off, end, kind) { return -1; }\n")
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let root_at = nested_measure(0x%016x, &wire[1..end], ids, 0);\n", ir.TableWireId(st.WireName()))
-	fmt.Fprintf(b, "    if root_at < 0 { return -1; }\n")
-	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + (records + 1) * 16\n", rootSize)
+	fmt.Fprintf(b, "    if root_at < 0 { return root_at; }\n")
+	fmt.Fprintf(b, "    let total = round(round(%d) + root_at) + blob_total + (records + 1) * 16;\n", rootSize)
+	fmt.Fprintf(b, "    if total > TABLE_STORAGE_CAP { return TABLE_MEASURE_OVER_CAP; } // the storage cap (§11): each part is at most the cap, so the sum never overflows\n")
+	fmt.Fprintf(b, "    total\n")
 	fmt.Fprintf(b, "}\n\n")
 }
 

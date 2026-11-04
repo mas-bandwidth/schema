@@ -645,6 +645,7 @@ function TableVariableLoad(c, bytes, report, retain) {
   // this read's own non-finite refusal (§3.3)
   report.nonFiniteFloat = "";
   if (TableVariableCountRefused(report)) { report.refused = 0; report.reason = null; }
+  if (report.refused && report.reason === "storage_over_cap") { report.refused = 0; report.reason = null; }
   // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): this read judges
   // its own damage, so a report a caller hands in already marked malformed
   // stays marked and does not refuse a clean wire.
@@ -657,6 +658,16 @@ function TableVariableLoad(c, bytes, report, retain) {
     const damaged = report.malformed;
     report.malformed = carried || damaged;
     return c.variable || damaged ? null : c.make();
+  }
+  // THE STORAGE CAP (docs/SPEC-TABLES.md §11): a wire longer than the root's
+  // gate is measured before anything is built, and one whose region measure
+  // passes the cap is refused by name without a damage event. A shorter wire
+  // cannot pass it.
+  if (c.measure !== undefined && bytes.length > c.gate && c.measure(bytes)[1] === "storage_over_cap") {
+    report.refused = 1; report.reason = "storage_over_cap";
+    report.malformed = carried;
+    if (retain !== null) { retain.reset(); }
+    return null;
   }
   const table = open.table;
   const v = c.make();
@@ -1291,7 +1302,7 @@ function TableVariableExtent(c, r, ids, at) {
     }
     if (fd.s === "union") {
       const rr = TableVariableUnionBodyExtent(fd.u, r, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
       continue;
     }
@@ -1303,7 +1314,7 @@ function TableVariableExtent(c, r, ids, at) {
     switch (fd.s) {
       case "tab": case "arr": case "bytes": case "map": case "keyed": {
         const rr = TableVariableContainerExtent(fd, r, ids, at);
-        if (rr < 0) { return -1; }
+        if (rr < 0) { return rr; }
         at = rr;
         continue;
       }
@@ -1350,13 +1361,13 @@ function TableVariableElementsExtent(e, sub, ids, at, n) {
       const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
       sub.at += elen;
       const rr = TableVariableExtent(e.c, er, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
     }
   } else if (e.s === "union") {
     for (let i = 0; i < n && sub.at < sub.end; i++) {
       const rr = TableVariableUnionBodyExtent(e.u, sub, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
     }
   }
@@ -1378,6 +1389,7 @@ function TableVariableArrayExtent(fd, sub, ids, at) {
     const floor = ek === 13 ? 2 : ek === 17 ? 1 : Math.max(1, tableRetainWidth(ek));
     if (n > Math.floor((sub.end - sub.at) / floor)) { return -1; }
     at = TableVariableRound(at, fd.eal);
+    if (n > 0 && fd.esz > 0 && n > Math.floor((TableStorageCap - at) / fd.esz)) { return TableVariableStorageOverCap; }
     at += n * fd.esz;
   }
   if (fd.plain) {
@@ -1402,6 +1414,7 @@ function TableVariableMapExtent(fd, sub, ids, at) {
   if (n > 0x7fffffff) { return -1; }
   if (n > Math.floor((sub.end - sub.at) / 2)) { return -1; }
   at = TableVariableRound(at, fd.eal);
+  if (n > 0 && fd.esz > 0 && n > Math.floor((TableStorageCap - at) / fd.esz)) { return TableVariableStorageOverCap; }
   at += n * fd.esz;
   for (let i = 0; i < n && sub.at < sub.end; i++) {
     const elen = sub.leb();
@@ -1409,7 +1422,7 @@ function TableVariableMapExtent(fd, sub, ids, at) {
     const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
     sub.at += elen;
     const rr = TableVariableExtent(fd.c, er, ids, at);
-    if (rr < 0) { return -1; }
+    if (rr < 0) { return rr; }
     at = rr;
   }
   return at;
@@ -1431,7 +1444,7 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
     if (sub.bad) { return at; }
     if (fd.e.s === "union") {
       const rr = TableVariableUnionBodyExtent(fd.e.u, sub, ids, at);
-      if (rr < 0) { return -1; }
+      if (rr < 0) { return rr; }
       at = rr;
       continue;
     }
@@ -1440,7 +1453,7 @@ function TableVariableKeyedExtent(fd, sub, ids, at) {
     const er = new TableVariableReader(sub.b, sub.at, sub.at + elen);
     sub.at += elen;
     const rr = TableVariableExtent(fd.e.c, er, ids, at);
-    if (rr < 0) { return -1; }
+    if (rr < 0) { return rr; }
     at = rr;
   }
   return at;

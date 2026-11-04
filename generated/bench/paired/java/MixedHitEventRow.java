@@ -18,7 +18,7 @@ public final class MixedHitEventRow {
     private MixedHitEventRow() {}
 
     /** the record's own size and alignment, from the ONE layout model (§19.3). */
-    public static final int size = 16;
+    public static final long size = 16;
 
     public static final int align = 4;
 
@@ -26,7 +26,7 @@ public final class MixedHitEventRow {
      * where each field starts, in declaration order — the accessors' own constants, which
      * TableBlockLayout / TableCookLayout check against the descriptors below (§19.3).
      */
-    static final int[] offsets = {0, 4, 8, 12};
+    static final long[] offsets = {0, 4, 8, 12};
 
     public static int targetId(byte[] data, int at) {
         return TableBytes.i32(data, at + 0);

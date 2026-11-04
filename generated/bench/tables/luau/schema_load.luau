@@ -1970,6 +1970,225 @@ local function witness(root: string, b: buffer, k: string): string?
 	return nil
 end
 
+-- THE STORAGE MEASURE (docs/SPEC-TABLES.md §6.5, §11): the region bytes a
+-- load of this wire commands, the measure of Go's LoadMeasure and the Lua
+-- leg's (internal/tablewire FileRegionMeasure): the root's record and each
+-- node record's, each rounded to the region alignment with the list and map
+-- extents its body names, a blob record's header and bytes, and 16 bytes of
+-- attribution per record and for the root. It answers the size, or nil and
+-- the refusal's name. Past the 2^40-byte storage cap it refuses
+-- storage_over_cap: each extent term (a count times an element size) is
+-- checked against the cap before it is added, and the running total after the
+-- root and after every node record, so no sum passes the cap and every one
+-- stays exact in a double.
+local STORAGE_CAP = 1099511627776 -- 2^40, ir.MaxSizeBytes
+
+local function round_up(n: number, a: number): number
+	return math.floor((n + a - 1) / a) * a
+end
+
+-- a framed payload: its L, then the cursor past it; nil for a payload that
+-- runs past its parent, which ends the parent's walk
+local function extent_body(r: any): (number?, number?)
+	local n = r_leb(r)
+	if r.bad or n > r.e - r.at then
+		r.at = r.e
+		return nil, nil
+	end
+	local at = r.at
+	r.at = at + n
+	return at, at + n
+end
+
+local function arm_is_pointer(f: any): boolean
+	if f == nil then return false end
+	local s = f.s
+	if s == "ptr" or s == "sblob" or s == "bblob" then return true end
+	if s == "arr" and f.e ~= nil then
+		local es = f.e.s
+		if es == "ptr" or es == "sblob" or es == "bblob" then return true end
+	end
+	return false
+end
+
+local measure_record: (ids: { any }, scan: any, desc: any, b: buffer, at: number, e: number) -> string?
+local measure_field: (ids: { any }, scan: any, f: any, b: buffer, at: number, e: number) -> string?
+local measure_union: (ids: { any }, scan: any, un: any, r: any) -> string?
+
+-- measure_record walks one body's fields, adding the extents they name to
+-- scan.at; it answers nil, or the refusal's name
+measure_record = function(ids: { any }, scan: any, desc: any, b: buffer, at: number, e: number): string?
+	local r = new_reader(b, at, e)
+	local byId = fields_by_id(desc)
+	while true do
+		local ref = r_leb(r)
+		if r.bad or ref <= 0 then return nil end
+		if ref > #ids or r.at >= r.e then return nil end
+		local id = ids[ref]
+		local kind = r_u8(r)
+		local f = byId[id]
+		if f == nil then
+			if not skip(r, kind) then return nil end
+		elseif kind == 15 and f.s == "union" then
+			local why = measure_union(ids, scan, S.lookup(f.t), r)
+			if why ~= nil then return why end
+		elseif kind ~= 13 and kind ~= 14 and kind ~= 16 then
+			if not skip(r, kind) then return nil end
+		else
+			local pat, pe = extent_body(r)
+			if pat == nil then return nil end
+			if kind == f.k then
+				local why = measure_field(ids, scan, f, b, pat :: number, pe :: number)
+				if why ~= nil then return why end
+			end
+		end
+	end
+end
+
+measure_field = function(ids: { any }, scan: any, f: any, b: buffer, at: number, e: number): string?
+	local s = f.s
+	if s == "ptr" or s == "sblob" or s == "bblob" then return nil end
+	if s == "map" or s == "arr" then
+		local r = new_reader(b, at, e)
+		if r.e - r.at < 2 then return nil end
+		local kind = r_u8(r)
+		local expected = if s == "map" then 13 else f.ek
+		if kind ~= expected and not widens(kind, expected) then return nil end
+		local count = r_leb(r)
+		if r.bad then return nil end
+		if s == "map" or f.array == "list" then
+			if count > 0x7fffffff then return "count_over_extent_cap" end
+			local floor = width_of(kind)
+			if kind == 17 then floor = 1 end
+			if kind == 13 then floor = 2 end
+			if floor < 1 then floor = 1 end
+			if count > math.floor((r.e - r.at) / floor) then return "count_over_length" end
+			local size: number, align: number = f.es or 0, f.ea or 1
+			scan.at = round_up(scan.at, align)
+			-- the extent term is checked before it is added (§11)
+			if count > 0 and size > 0 and count > math.floor((STORAGE_CAP - scan.at) / size) then
+				return "storage_over_cap"
+			end
+			scan.at += count * size
+		end
+		if kind ~= 13 and kind ~= 15 then return nil end
+		local keyed = s == "arr" and f.array == "keyed"
+		local i = 0
+		while i < count and r.at < r.e do
+			i += 1
+			if keyed then
+				r_leb(r)
+				if r.bad then return nil end
+			end
+			if kind == 15 then
+				if f.e ~= nil and f.e.s == "union" then
+					local why = measure_union(ids, scan, S.lookup(f.e.t), r)
+					if why ~= nil then return why end
+				else
+					return nil
+				end
+			else
+				local pat, pe = extent_body(r)
+				if pat == nil then return nil end
+				local st = nil
+				if s == "map" then
+					st = S.lookup(f.t)
+				elseif f.e ~= nil and f.e.s == "tab" then
+					st = S.lookup(f.e.t)
+				end
+				if st ~= nil then
+					local why = measure_record(ids, scan, st, b, pat :: number, pe :: number)
+					if why ~= nil then return why end
+				end
+			end
+		end
+		return nil
+	end
+	if s == "tab" then return measure_record(ids, scan, S.lookup(f.t), b, at, e) end
+	return nil
+end
+
+measure_union = function(ids: { any }, scan: any, un: any, r: any): string?
+	local ref = r_leb(r)
+	if r.bad then
+		r.at = r.e
+		return nil
+	end
+	if ref == 0 then return nil end
+	if ref > #ids or r.at >= r.e then
+		r.at = r.e
+		return nil
+	end
+	local id = ids[ref]
+	r_u8(r)
+	local pat, pe = extent_body(r)
+	if pat == nil then return nil end
+	for _, arm in un.arms do
+		if arm.id == id and not arm_is_pointer(arm) then
+			if arm.s == "union" then
+				return measure_union(ids, scan, S.lookup(arm.t), new_reader(r.b, pat :: number, pe :: number))
+			end
+			return measure_field(ids, scan, arm, r.b, pat :: number, pe :: number)
+		end
+	end
+	return nil
+end
+
+-- LoadMeasure(root, bytes): the storage measure above, or nil and the name of
+-- the refusal: unknown_form for a form byte other than 1, integrity_mismatch,
+-- wire_damaged for a file whose id table or node table does not frame,
+-- count_over_extent_cap and count_over_length for a list or map count, and
+-- storage_over_cap.
+function L.LoadMeasure(root: string, bytes: buffer?): (number?, string?)
+	local d = S.lookup(root)
+	if bytes == nil or buffer.len(bytes) < 1 then return nil, "wire_damaged" end
+	local b = bytes :: buffer
+	if buffer.readu8(b, 0) ~= 1 then return nil, "unknown_form" end
+	if d.integrity ~= nil and d.integrity ~= "" then
+		local body = integrityOpen(b)
+		if body == nil then return nil, "integrity_mismatch" end
+		b = body
+	end
+	local scratch = { malformed = false, refused = 0 }
+	local o = open(b, scratch)
+	if o == nil then return nil, "wire_damaged" end
+	local ids = o.table
+	local align: number = d.ralign or 8
+	local function size_of(st: any, sb: buffer, at: number, e: number): (number?, string?)
+		local scan = { at = 0 }
+		local why = measure_record(ids, scan, st, sb, at, e)
+		if why ~= nil then return nil, why end
+		return round_up(round_up(st.size or 0, align) + scan.at, align), nil
+	end
+	local rootSize, why = size_of(d, b, 1, o.e)
+	if rootSize == nil then return nil, why end
+	local total: number = rootSize :: number
+	if total > STORAGE_CAP then return nil, "storage_over_cap" end
+	local raw = node_table_scan(b, ids, o.e, scratch)
+	if raw == nil then return nil, "wire_damaged" end
+	local nodes = place_types(d)
+	for _, rec in raw do
+		local st = nodes[rec.tid]
+		local n: number = 0
+		if st ~= nil then
+			local size, nwhy = size_of(st, rec.body, 0, buffer.len(rec.body))
+			if size == nil then return nil, nwhy end
+			n = size :: number
+		elseif (rec.tid == BytesBlobId and d.place.bytes) or (rec.tid == StringBlobId and d.place.str) then
+			local blen = buffer.len(rec.body)
+			if blen > 0xffffffff then return nil, "blob_over_size_cap" end
+			n = 8 + blen
+			if rec.tid == StringBlobId then n += 1 end
+			n = round_up(n, align)
+		end
+		total += n
+		if total > STORAGE_CAP then return nil, "storage_over_cap" end
+	end
+	total += (#raw + 1) * 16
+	if total > STORAGE_CAP then return nil, "storage_over_cap" end
+	return total, nil
+end
+
 -- the report's reset: every counter at rest, no reason, no field
 local function reset(report: any)
 	report.malformed = false
@@ -2020,6 +2239,13 @@ function L.ReadStrict(root: string, bytes: buffer, report: any): any
 	if fr == nil or (top ~= nil and top.term + 1 ~= fr.e) then
 		rep.malformed = true
 		rep.reason = "wire_damaged"
+		return nil
+	end
+	-- THE STORAGE CAP (docs/SPEC-TABLES.md §6.5, §11): a wire whose measure
+	-- passes it is refused by name before anything is built
+	local _, storage = L.LoadMeasure(root, bytes)
+	if storage == "storage_over_cap" then
+		rep.reason = "storage_over_cap"
 		return nil
 	end
 	local opened = open(b, rep)

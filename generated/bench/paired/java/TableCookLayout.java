@@ -80,7 +80,7 @@ public final class TableCookLayout {
     }
 
     private static void record(
-            String what, int size, int align, int[] offsets, TableCookInfo info) {
+            String what, long size, int align, long[] offsets, TableCookInfo info) {
         number(what + " size", size, info.size);
         number(what + " align", align, info.align);
         number(what + " field count", offsets.length, info.numFields);
@@ -89,7 +89,7 @@ public final class TableCookLayout {
         }
     }
 
-    private static void number(String what, int accessors, int descriptors) {
+    private static void number(String what, long accessors, long descriptors) {
         if (accessors != descriptors) {
             throw new IllegalStateException(
                     "schema cook layout: "

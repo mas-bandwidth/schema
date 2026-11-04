@@ -91,6 +91,10 @@ struct FieldDesc {
     text_total: i64,          // a text list's `| total = N` (docs/SPEC-TABLES.md
                               // §2.13): the most bytes its elements hold in
                               // all; 0 for none
+    es: i64,                  // a list's element or a map's entry storage and
+    ea: i64,                  // alignment (ir.ListElementLayout, ir.RecordLayout),
+                              // the extent term the storage measure sums
+                              // (docs/SPEC-TABLES.md §6.5, §11); 0 on the rest
 }
 
 // TableDesc is one table — or a packet type a table reaches by value, which
@@ -110,6 +114,10 @@ struct TableDesc {
     doc: const u8[:],         // the declaration's own `///` block (§8.1)
     num_tags: i32,            // and its tags, in DECLARED order
     tags: const (const u8[:])[:],
+    size: i64,                // the record's storage and alignment
+    align: i64,               // (ir.RecordLayout) and the unit's region
+    ralign: i64,              // alignment (ir.TableRegionAlign), the storage
+                              // measure's facts (docs/SPEC-TABLES.md §6.5, §11)
 }
 
 // TableDocNone is THE ONE EMPTY DOC (docs/SPEC-TABLES.md §8.1, §8.7): every

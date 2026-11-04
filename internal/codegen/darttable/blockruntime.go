@@ -68,7 +68,8 @@ enum TableRefuseReason {
   batchTooLarge('batch_too_large'),
   textIllFormed('text_ill_formed'),
   countOverBound('count_over_bound'),
-  lengthOverBound('length_over_bound');
+  lengthOverBound('length_over_bound'),
+  storageOverCap('storage_over_cap');
 
   final String word;
   const TableRefuseReason(this.word);

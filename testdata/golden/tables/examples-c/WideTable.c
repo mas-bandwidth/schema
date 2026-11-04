@@ -3280,12 +3280,12 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_wide_blob_fields_[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, label ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->label ), (uint32_t) offsetof( tabledemo_wide_blob_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, payload ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->payload[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, payload_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, 1, 0, 1, 0, 0, 70000, (uint32_t) offsetof( tabledemo_wide_blob_t, samples ), (uint32_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->samples[0] ), (uint32_t) offsetof( tabledemo_wide_blob_t, samples_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 70000, (uint64_t) offsetof( tabledemo_wide_blob_t, label ), (uint64_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->label ), (uint64_t) offsetof( tabledemo_wide_blob_t, label_length ), UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, 1, 0, 1, 0, 0, 70000, (uint64_t) offsetof( tabledemo_wide_blob_t, payload ), (uint64_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->payload[0] ), (uint64_t) offsetof( tabledemo_wide_blob_t, payload_length ), UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, 1, 0, 1, 0, 0, 70000, (uint64_t) offsetof( tabledemo_wide_blob_t, samples ), (uint64_t) sizeof( ( (tabledemo_wide_blob_t *) 0 )->samples[0] ), (uint64_t) offsetof( tabledemo_wide_blob_t, samples_count ), UINT64_MAX, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
 };
 
-const tabledemo_table_type_info_t schema_tabledemo_wide_blob_info_ = { "WideBlob", (uint32_t) sizeof( tabledemo_wide_blob_t ), 3, schema_tabledemo_wide_blob_fields_, schema_tabledemo_wide_blob_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
+const tabledemo_table_type_info_t schema_tabledemo_wide_blob_info_ = { "WideBlob", (uint64_t) sizeof( tabledemo_wide_blob_t ), 3, schema_tabledemo_wide_blob_fields_, schema_tabledemo_wide_blob_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 int schema_tabledemo_wide_blob_from_json_( tabledemo_wide_blob_t * value, const char * text, int64_t bytes, tabledemo_table_report_t * report )
 {
