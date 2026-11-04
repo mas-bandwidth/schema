@@ -441,7 +441,7 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	val := model.New(root)
 	var report tabletext.Report
 	ok, err := tablewire.Decode(model, val, mutant, &report)
-	if !ok || err != nil || report.Malformed || report.Unknown != 2 || report.KindMismatch != 2 {
+	if !ok || err != nil || report.Refused || report.Unknown != 2 {
 		t.Fatalf("Decode(mutant) = (%v, %v, %+v)", ok, err, report)
 	}
 	wantSave, err := tablewire.Encode(model, val)
@@ -463,7 +463,7 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	var rreport tabletext.Report
 	rt := tablewire.Retain{Capacity: 4096, IdCapacity: 512}
 	ok, err = tablewire.DecodeRetain(retainModel, rval, mutant, &rt, &rreport)
-	if !ok || err != nil || rreport.Malformed || rreport.Unknown != 2 || rreport.KindMismatch != 2 {
+	if !ok || err != nil || rreport.Refused || rreport.Unknown != 2 {
 		t.Fatalf("DecodeRetain(mutant) = (%v, %v, %+v)", ok, err, rreport)
 	}
 	var sreport tabletext.Report
@@ -478,7 +478,7 @@ func TestUnknownKeyedSlotSkipsElementByLengthElixir(t *testing.T) {
 	}
 	badKey[12] = 0x00
 	var badReport tabletext.Report
-	if ok, err := tablewire.Decode(model, model.New(root), badKey, &badReport); ok || err != nil || !badReport.Malformed || badReport.Unknown != 1 {
+	if ok, err := tablewire.Decode(model, model.New(root), badKey, &badReport); ok || !tablewire.ReadRefusal(err) {
 		t.Fatalf("Decode(badKey) = (%v, %v, %+v), want ok=false malformed=true unknown=1", ok, err, badReport)
 	}
 
@@ -544,7 +544,7 @@ IO.puts("UNKNOWN_KEYED_SLOT_OK")
 		hex.EncodeToString(wantSave),
 		hex.EncodeToString(wantRetainSave),
 		hex.EncodeToString(badKey),
-		rreport.Unknown, rreport.KindMismatch, rreport.Retained, rreport.RetainLost,
+		rreport.Unknown, 0, rreport.Retained, rreport.RetainLost,
 		sreport.Retained, sreport.RetainLost,
 	)
 

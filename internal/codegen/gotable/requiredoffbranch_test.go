@@ -48,7 +48,7 @@ func TestReq(t *testing.T){
 	var r TableReport
 	got := regFor(buf[:n], &r)
 	if got == nil { t.Fatalf("off-branch round trip refused: %+v", r) }
-	if r.MissingRequired != 0 { t.Fatalf("off-branch demanded req: %+v", r) }
+	if r.Refused() { t.Fatalf("off-branch demanded req: %+v", r) }
 	// branch ON, present: reads.
 	c.Active = true
 	c.Req = 7
@@ -64,7 +64,7 @@ func TestReq(t *testing.T){
 	n = LegacySave(&lg, buf)
 	r = TableReport{}
 	if got = regFor(buf[:n], &r); got != nil { t.Fatalf("on-branch missing read as present") }
-	if r.MissingRequired != 1 { t.Fatalf("want MissingRequired=1, got %+v", r) }
+	if !r.Refused() { t.Fatalf("want MissingRequired=1, got %+v", r) }
 	if r.Reason != "missing_required: req" { t.Fatalf("want reason %q, got %q", "missing_required: req", r.Reason) }
 	if _, err := CurrentReadStrict(buf[:n]); err == nil { t.Fatal("strict read accepted a missing required field") } else {
 		var m TableMissingRequired
@@ -80,10 +80,10 @@ func TestReq(t *testing.T){
 		jb := &CurrentBuilder{}
 		if !jb.Init() { t.Fatal("builder Init") }
 		jr := TableReport{}
-		ok := CurrentFromJSONTolerantWith(jb, text, &jr, options)
+		ok := CurrentFromJSONWith(jb, text, &jr, options)
 		if !jb.Lock() { t.Fatal("builder Lock") }
 		if !ok { t.Fatalf("JSON off-branch round trip refused: options %+v text %s report %+v", options, text, jr) }
-		if jr.MissingRequired != 0 { t.Fatalf("JSON off-branch demanded req: options %+v text %s report %+v", options, text, jr) }
+		if jr.Refused() { t.Fatalf("JSON off-branch demanded req: options %+v text %s report %+v", options, text, jr) }
 	}
 	var jlegacy Legacy
 	jlegacy.Active = true
@@ -93,13 +93,13 @@ func TestReq(t *testing.T){
 	jb := &CurrentBuilder{}
 	if !jb.Init() { t.Fatal("builder Init") }
 	jr := TableReport{}
-	if CurrentFromJSONTolerantWith(jb, jtext, &jr, TableJSONOptions{}) { t.Fatalf("JSON on-branch missing read as present: %s", jtext) }
-	if jr.MissingRequired != 1 || jr.Reason != "missing_required: req" { t.Fatalf("JSON on-branch missing: want MissingRequired=1 reason missing_required: req, got %+v text %s", jr, jtext) }
+	if CurrentFromJSONWith(jb, jtext, &jr, TableJSONOptions{}) { t.Fatalf("JSON on-branch missing read as present: %s", jtext) }
+	if !jr.Refused() || jr.Reason != "missing_required: req" { t.Fatalf("JSON on-branch missing: want MissingRequired=1 reason missing_required: req, got %+v text %s", jr, jtext) }
 	sb := &CurrentBuilder{}
 	if !sb.Init() { t.Fatal("builder Init") }
 	jr = TableReport{}
 	if CurrentFromJSONWith(sb, jtext, &jr, TableJSONOptions{}) { t.Fatalf("JSON strict read accepted a missing required field: %s", jtext) }
-	if jr.MissingRequired != 1 { t.Fatalf("JSON strict on-branch missing: want MissingRequired=1, got %+v", jr) }
+	if !jr.Refused() { t.Fatalf("JSON strict on-branch missing: want MissingRequired=1, got %+v", jr) }
 }
 `
 	runGenerated(t, schema, body)

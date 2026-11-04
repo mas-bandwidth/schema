@@ -32,12 +32,12 @@ func (g *tableGen) unboundedHolder(f *ir.Field) string {
 
 // emitReadUnboundedText reads one unbounded value inside its record's body
 // (§2.13.1): its L, then well-formed UTF-8 with no zero byte, placed as a blob
-// record carved from the node's extent (or the builder's arena). Never clamped.
+// record carved from the node's extent (or the builder's arena).
 func (g *tableGen) emitReadUnboundedText(f *ir.Field, expr, ind string) {
 	holder := g.unboundedHolder(f)
-	g.pf("%ssub, ok := r.Body(); if !ok { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); return false }\n", ind, holder)
-	g.pf("%sif !tableUTF8Valid(sub.Buffer) { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); %s = 0; break }\n", ind, holder, expr)
-	g.pf("%sif !tableTextPlace(&r.Nodes.Carve, &%s, sub.Buffer) { if r.Nodes.Carve.Refused { return false }; r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, expr, holder)
+	bad := refuse("TableRefuseWireDamaged", holder, "return false")
+	g.pf("%ssub, ok := r.Body(); if !ok || !tableUTF8Valid(sub.Buffer) { %s }\n", ind, bad)
+	g.pf("%sif !tableTextPlace(&r.Nodes.Carve, &%s, sub.Buffer) { if r.Nodes.Carve.Refused { return false }; %s }\n", ind, expr, bad)
 }
 
 // emitReadUnboundedTextElement reads one element of a plain unbounded text
@@ -46,9 +46,9 @@ func (g *tableGen) emitReadUnboundedTextElement(f *ir.Field, expr, ind string) {
 	v := ir.TextListValue(f)
 	value := expr + "." + member(v)
 	holder := f.TextListElem().MapEntryOf
-	g.pf("%selem, ok := sub.Body(); if !ok { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, holder)
-	g.pf("%sif !tableUTF8Valid(elem.Buffer) { r.Report.Malformed = true; tableTextMalformed(r.Report, %q); %sReset(&%s); break }\n", ind, holder, f.Type.Name, expr)
-	g.pf("%sif !tableTextPlace(&sub.Nodes.Carve, &%s, elem.Buffer) { if sub.Nodes.Carve.Refused { r.Take(sub); return false }; r.Report.Malformed = true; tableTextMalformed(r.Report, %q); break }\n", ind, value, holder)
+	bad := refuse("TableRefuseWireDamaged", holder, "return false")
+	g.pf("%selem, ok := sub.Body(); if !ok || !tableUTF8Valid(elem.Buffer) { %s }\n", ind, bad)
+	g.pf("%sif !tableTextPlace(&sub.Nodes.Carve, &%s, elem.Buffer) { if sub.Nodes.Carve.Refused { r.Take(sub); return false }; %s }\n", ind, value, bad)
 }
 
 // emitUnboundedTextListSurface emits an unbounded-element text list's
@@ -178,7 +178,7 @@ func unboundedTextJson(u *ir.Unit, s string, walk bool) string {
 		textListCount = 0
 	}
 	s = tableSourceReplace(s, "n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", "if v.Unbounded{t,ok:=tableTextBytes((*TableRef)(unsafe.Add(p,uintptr(v.Offset))),nil);if !ok{return false};tableJSONWriteString(out,t);return true};n:=tableJSONCount(p,v);if n<0||n>v.ArrayBound{return false};tableJSONWriteString(out,tableJSONBytes(unsafe.Add(p,uintptr(v.Offset)),n));return true}", textListCount)
-	s = tableSourceReplace(s, "if key.Kind==12 {if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{", "if key.Kind==12 {if key.Unbounded {memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};k.text=unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n));k.blob=ref;_,ok=in.scanString(k.text)}else if n>key.ArrayBound {in.report.Clamped++;in.pos=probe.pos;good=false}else{", 1)
+	s = tableSourceReplace(s, "if key.Kind==12 {if n>key.ArrayBound {in.report.Refuse(TableRefuseOutOfRange,\"\");in.pos=probe.pos;good=false}else{", "if key.Kind==12 {if key.Unbounded {memory,ref:=in.graph.alloc(9+int64(n));if memory==nil{in.bad=true;return false};*(*TableBlob)(memory)=TableBlob{Length:uint32(n)};k.text=unsafe.Slice((*byte)(unsafe.Add(memory,8)),int(n));k.blob=ref;_,ok=in.scanString(k.text)}else if n>key.ArrayBound {in.report.Refuse(TableRefuseOutOfRange,\"\");in.pos=probe.pos;good=false}else{", 1)
 	s = tableSourceReplace(s, "entry.Reset(slot);tableMapStoreKey(slot,key,k);", "entry.Reset(slot);if !tableMapStoreKeyed(slot,key,k,nil){in.bad=true;return false};", 1)
 	s = tableSourceReplace(s, "// ---- json walk: end ----", unboundedTextJsonSource+"// ---- json walk: end ----", 1)
 	return s

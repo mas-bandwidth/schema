@@ -81,17 +81,8 @@ func TestRowR19(t *testing.T) {
 	if rep.Unknown != 0 {
 		t.Errorf("unknown = %d, want 0", rep.Unknown)
 	}
-	if rep.KindMismatch != 0 {
-		t.Errorf("kind_mismatch = %d, want 0", rep.KindMismatch)
-	}
 	if rep.Widened != 0 {
 		t.Errorf("widened = %d, want 0", rep.Widened)
-	}
-	if rep.Clamped != 0 {
-		t.Errorf("clamped = %d, want 0", rep.Clamped)
-	}
-	if rep.Duplicate != 0 {
-		t.Errorf("duplicate = %d, want 0", rep.Duplicate)
 	}
 }
 
@@ -108,7 +99,7 @@ func TestRowR19NegativeControl(t *testing.T) {
 	rep := readM2Wire(wire)
 
 	// A malformed wire should be rejected (empty report = read refused)
-	if rep.Unknown != 0 || rep.KindMismatch != 0 {
+	if rep.Unknown != 0 {
 		// If we get here, the read didn't properly reject the malformed wire
 		t.Error("malformed wire should be rejected")
 	}

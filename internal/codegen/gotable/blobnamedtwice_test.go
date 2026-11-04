@@ -51,10 +51,8 @@ var _ = errors.Is
 func shared(t *testing.T,what string,err error){t.Helper();if !errors.Is(err,TableRefuseBlobShared)||err.Error()!="blob_shared"{t.Fatalf("%s: %v, want blob_shared",what,err)}}
 `
 
-// TestBlobNamedTwiceSeed24 pins the fuzz's own wire: the strict reads refuse
-// it by name, the tolerant Load keeps it and names it in its report, and the
-// writers refuse its value by name rather than with a bare -1. The clean wire
-// still reads strict and round-trips byte for byte.
+// TestBlobNamedTwiceSeed24 pins the fuzz's own wire: every read refuses it
+// by name. The clean wire still reads and round-trips byte for byte.
 func TestBlobNamedTwiceSeed24(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -62,13 +60,8 @@ func TestBlobNamedTwiceSeed24(t *testing.T) {
 func TestSeed24(t *testing.T){
  damaged,clean:=wires(t)
  if v,err:=RootReadStrict(damaged);v!=nil{t.Fatal("ReadStrict answered a value for a blob named twice")}else{shared(t,"ReadStrict",err)}
- var lt TableReport;if v,err:=RootLoadText(base64.StdEncoding.EncodeToString(damaged),&lt);v!=nil{t.Fatal("LoadText answered a value")}else{shared(t,"LoadText",err)};if lt.BlobShared!=1{t.Fatalf("LoadText report %+v",lt)}
+ var lt TableReport;if v,err:=RootLoadText(base64.StdEncoding.EncodeToString(damaged),&lt);v!=nil{t.Fatal("LoadText answered a value")}else{shared(t,"LoadText",err)};if !lt.Refused(){t.Fatalf("LoadText report %+v",lt)}
  size:=RootLoadMeasure(damaged);if size<=0{t.Fatalf("LoadMeasure %d",size)};var pr TableReport;if pv:=RootLoad(region(size),damaged,&pr);pv!=nil{t.Fatal("the strict plain Load answered a root for a blob named twice")}else{shared(t,"plain Load",pr.Err())}
- var report TableReport;v:=RootLoadTolerant(region(size),damaged,&report)
- if v==nil||report.Malformed||report.BlobShared!=1{t.Fatalf("tolerant Load: %v %+v",v==nil,report)};shared(t,"Load report",report.Err())
- a,b:=TableBytesAt(&v.F2),TableBytesAt(&v.U0.Ptr().Value);if a.Length==0||&a.Data[0]!=&b.Data[0]{t.Fatal("the two slots do not name the one decoded node")}
- if n:=RootToJSONMeasure(v);n!= -1{t.Fatalf("ToJSONMeasure %d",n)};if n,err:=RootToJSONMeasureReason(v);n!= -1{t.Fatalf("ToJSONMeasureReason %d",n)}else{shared(t,"ToJSONMeasureReason",err)}
- if n,err:=RootMeasureReason(v);n!= -1{t.Fatalf("MeasureReason %d",n)}else{shared(t,"MeasureReason",err)};if RootSave(v,make([]byte,4096))!= -1{t.Fatal("Save wrote a blob named twice")}
  c,err:=RootReadStrict(clean);if err!=nil||c==nil{t.Fatalf("clean ReadStrict: %v",err)};n:=RootMeasure(c);buf:=make([]byte,n);if n<=0||RootSave(c,buf)!=n||!bytes.Equal(buf,clean){t.Fatalf("clean round trip %d of %d",n,len(clean))}
 }
 `)
@@ -108,9 +101,8 @@ func TestWriters(t *testing.T){
 // TestBlobNamedTwiceAmplification is the hostile case: 4096 slots naming one
 // 64 KiB blob. The builder's Save refuses it; a wire built by hand with the
 // runtime's TableWriter (the numbering and node table Save would write) is
-// refused by the strict read, accepted by the tolerant Load into a region that
-// counts the blob ONCE, and refused by every writer. Nothing copies the blob
-// per slot: the calls allocate far less than one copy per slot would.
+// refused by every read, and refused by every writer. Nothing copies the blob
+// per slot: the reads allocate far less than one copy per slot would.
 func TestBlobNamedTwiceAmplification(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated unit)")
@@ -131,17 +123,15 @@ func TestAmplification(t *testing.T){
  if n,err:=RootMeasureReason(r,&b.Arena);n!= -1{t.Fatalf("builder MeasureReason %d",n)}else{shared(t,"builder MeasureReason",err)};if RootSave(r,make([]byte,1<<17),&b.Arena)!= -1{t.Fatal("builder Save wrote the shared blob")}
  wire:=hostile(t,r,&b.Arena);if len(wire)>1<<17{t.Fatalf("hand-built wire is %d bytes",len(wire))};t.Logf("hostile wire %d bytes",len(wire))
  if v,err:=RootReadStrict(wire);v!=nil{t.Fatal("ReadStrict accepted it")}else{shared(t,"ReadStrict",err)}
- size:=RootLoadMeasure(wire);if size<=0||size>=1<<20{t.Fatalf("LoadMeasure %d: the blob must count once",size)};reg:=region(size);js:=make([]byte,1<<20)
+ size:=RootLoadMeasure(wire);if size<=0||size>=1<<20{t.Fatalf("LoadMeasure %d: the blob must count once",size)};reg:=region(size)
  var before,after runtime.MemStats;runtime.GC();runtime.ReadMemStats(&before)
- var report TableReport;v:=RootLoadTolerant(reg,wire,&report);jm:=RootToJSONMeasure(v);jr,jerr:=RootToJSONMeasureReason(v);jw:=RootToJSON(v,js);mn,merr:=RootMeasureReason(v)
- runtime.ReadMemStats(&after);if grew:=after.TotalAlloc-before.TotalAlloc;grew>1<<20{t.Fatalf("Load, ToJSON and Measure allocated %d bytes: a per-slot copy",grew)};t.Logf("Load, ToJSON and Measure allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
- runtime.GC();runtime.ReadMemStats(&before);var lb RootBuilder;lbok:=lb.Init();var lr TableReport;lbload:=RootLoadBuilderTolerant(&lb,wire,&lr);runtime.ReadMemStats(&after);defer lb.Shutdown()
+ var report TableReport;v:=RootLoad(reg,wire,&report)
+ runtime.ReadMemStats(&after);if grew:=after.TotalAlloc-before.TotalAlloc;grew>1<<20{t.Fatalf("Load allocated %d bytes: a per-slot copy",grew)};t.Logf("Load allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
+ runtime.GC();runtime.ReadMemStats(&before);var lb RootBuilder;lbok:=lb.Init();var lr TableReport;lbload:=RootLoadBuilder(&lb,wire,&lr);runtime.ReadMemStats(&after);defer lb.Shutdown()
  if grew:=after.TotalAlloc-before.TotalAlloc;grew>8<<20{t.Fatalf("LoadBuilder allocated %d bytes: a per-slot copy is 256 MiB",grew)};t.Logf("LoadBuilder allocated %d bytes",after.TotalAlloc-before.TotalAlloc)
- if v==nil||report.Malformed||report.BlobShared!=4095{t.Fatalf("tolerant Load: %v %+v",v==nil,report)};shared(t,"Load report",report.Err())
- first:=TableBytesAt(&v.Items[0].B);if first.Length!=65536||!bytes.Equal(first.Data,data){t.Fatal("blob value")};for i:=range 4096{if x:=TableBytesAt(&v.Items[i].B);x.Length!=65536||&x.Data[0]!=&first.Data[0]{t.Fatalf("slot %d does not name the one node",i)}}
- if jm!= -1||jr!= -1||jw!= -1{t.Fatalf("ToJSON %d %d %d",jm,jr,jw)};shared(t,"ToJSONMeasureReason",jerr);if mn!= -1{t.Fatalf("MeasureReason %d",mn)};shared(t,"MeasureReason",merr)
- if !lbok||!lbload||lr.BlobShared!=4095{t.Fatalf("tolerant LoadBuilder: %v %v %+v",lbok,lbload,lr)};shared(t,"LoadBuilder report",lr.Err())
- lroot:=lb.GetRoot();lf:=TableBytesAt(&lroot.Items[0].B,&lb.Arena);if lf.Length!=65536{t.Fatal("builder blob")};for i:=range 4096{if x:=TableBytesAt(&lroot.Items[i].B,&lb.Arena);&x.Data[0]!=&lf.Data[0]{t.Fatalf("builder slot %d copied the blob",i)}}
+ if v!=nil{t.Fatal("Load accepted a blob named from 4096 slots")};shared(t,"Load report",report.Err())
+ if !lbok||lbload{t.Fatalf("LoadBuilder: %v %v %+v",lbok,lbload,lr)};shared(t,"LoadBuilder report",lr.Err())
+ _ = data
 }
 `, "-v")
 	if err != nil {

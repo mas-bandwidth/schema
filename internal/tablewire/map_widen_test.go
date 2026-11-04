@@ -19,67 +19,57 @@ func TestMapKeyWidenCountsOnceAndValueStillCounts(t *testing.T) {
 	value := target.New(target.Lookup("Root"))
 	var report tabletext.Report
 	ok, err := tablewire.Decode(target, value, wire, &report)
-	if err != nil || !ok || report.Widened != 3 || report.Malformed || report.KindMismatch != 0 {
+	if err != nil || !ok || report.Widened != 3 || report.Refused {
 		t.Fatalf("map contributes one, values two: %+v, %v", report, err)
 	}
 }
 
-func TestSkippedMapRepeatPreservesEarlierValue(t *testing.T) {
+// A REPEATED FIELD ID IS DAMAGE (docs/SPEC-TABLES.md §4, §6.5), whatever the
+// repeat carries: a foreign element kind, a body too short for its header, or
+// a count that cannot complete. The negative control is the wire without the
+// repeat, which reads and writes back byte-identical.
+func TestMapFieldRepeatRefuses(t *testing.T) {
 	m := listModel(t, "package probe\ntable Root { entries map[int32]int32 }\n")
 	original := place(t, m, "Root", `{"entries":{"3":9}}`)
 	wire, err := tablewire.Encode(m, original)
 	if err != nil {
 		t.Fatal(err)
 	}
+	control := m.New(m.Lookup("Root"))
+	var clean tabletext.Report
+	if ok, err := tablewire.Decode(m, control, wire, &clean); !ok || err != nil {
+		t.Fatalf("control: %v %+v", err, clean)
+	}
+	if back, err := tablewire.Encode(m, control); err != nil || !bytes.Equal(back, wire) {
+		t.Fatalf("control: wrote %x, want %x (%v)", back, wire, err)
+	}
 	trailer := len(wire) - 8 - int(binary.LittleEndian.Uint64(wire[len(wire)-8:]))*8
-	for _, tc := range []struct {
-		repeat  []byte
-		damaged bool
-	}{
-		{[]byte{1, 14, 2, 5, 0}, false},   // a foreign element kind: kind_mismatch, skipped
-		{[]byte{1, 14, 0}, false},         // a body too short for a header: inert
-		{[]byte{1, 14, 2, 13, 128}, true}, // a count that cannot complete: damage
+	for _, repeat := range [][]byte{
+		{1, 14, 2, 5, 0},    // a foreign element kind
+		{1, 14, 0},          // a body too short for a header
+		{1, 14, 2, 13, 128}, // a count that cannot complete
 	} {
-		repeat := tc.repeat
 		damaged := append([]byte(nil), wire[:trailer-1]...)
 		damaged = append(damaged, repeat...)
 		damaged = append(damaged, wire[trailer-1:]...)
-		value := m.New(m.Lookup("Root"))
 		var report tabletext.Report
-		_, err = tablewire.Decode(m, value, damaged, &report)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if report.Malformed != tc.damaged {
-			t.Fatalf("repeat %x: malformed %v, want %v", repeat, report.Malformed, tc.damaged)
-		}
-		want := wire
-		if tc.damaged {
-			// DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md §4): the
-			// root is handed back at its declared defaults
-			if want, err = tablewire.Encode(m, m.New(m.Lookup("Root"))); err != nil {
-				t.Fatal(err)
-			}
-		}
-		encoded, err := tablewire.Encode(m, value)
-		if err != nil || !bytes.Equal(encoded, want) {
-			t.Fatalf("repeat %x: the value is %x, want %x (%+v %v)", repeat, encoded, want, report, err)
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Root")), damaged, &report); ok || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged {
+			t.Fatalf("repeat %x: %v %v, want wire_damaged", repeat, ok, err)
 		}
 	}
 }
 
-// A repeated key selects its final occurrence, including a later widening kind
-// (SPEC-TABLES 2.8). A stale mismatch must not empty an otherwise valid map.
-func TestMapRepeatedKeyLastKindWins(t *testing.T) {
+// A key field repeated inside one map entry is a repeated field id, damage on
+// the wire alone, whichever kinds the occurrences carry (§4, §6.5).
+func TestMapRepeatedKeyRefuses(t *testing.T) {
 	m := listModel(t, "package probe\ntable Root { entries map[uint32]int32 }\n")
 	for _, tc := range []struct {
-		name            string
-		keys            []byte
-		count, mismatch int
+		name string
+		keys []byte
 	}{
-		{"bad_then_widened", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 7}, 1, 1},
-		{"widened_then_bad", []byte{2, 6, 7, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0}, 0, 1},
-		{"bad_then_exact", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 8, 7, 0, 0, 0}, 1, 1},
+		{"bad_then_widened", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 7}},
+		{"widened_then_bad", []byte{2, 6, 7, 2, 9, 0, 0, 0, 0, 0, 0, 0, 0}},
+		{"bad_then_exact", []byte{2, 9, 0, 0, 0, 0, 0, 0, 0, 0, 2, 8, 7, 0, 0, 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			entry := append(append([]byte(nil), tc.keys...), 0)
@@ -96,13 +86,8 @@ func TestMapRepeatedKeyLastKindWins(t *testing.T) {
 				if region {
 					decode = tablewire.DecodeRegion
 				}
-				ok, err := decode(m, v, wire, &report)
-				field, _ := v.FieldByKey("entries")
-				if !ok || err != nil || report.Malformed || len(field.Entries) != tc.count || report.KindMismatch != tc.mismatch {
-					t.Fatalf("region=%v count=%d report=%+v ok=%v err=%v", region, len(field.Entries), report, ok, err)
-				}
-				if tc.count != 0 && tabletext.MapKeyOf(field.Def, field.Entries[0].Tab).U != 7 {
-					t.Fatal("last key value was not kept")
+				if ok, err := decode(m, v, wire, &report); ok || tablewire.RefusalReason(err) != tablewire.ReasonWireDamaged {
+					t.Fatalf("region=%v: %v %v, want wire_damaged", region, ok, err)
 				}
 			}
 		})

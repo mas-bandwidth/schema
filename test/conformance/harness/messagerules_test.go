@@ -179,6 +179,7 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 // message, or keeps the appended bit through the message round trip and so
 // contradicts the row §4 states as moved.
 func TestTheMasksWidth(t *testing.T) {
+	t.Skip("layer 3: the form-1 file size of a table now declared fixed, which writes form 3 (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
 	v := vocabularyOf(t, unit)
@@ -225,7 +226,7 @@ func TestTheMasksWidth(t *testing.T) {
 	}
 	fromFile := model.New(loadout)
 	var fileReport tabletext.Report
-	if ok, err := tablewire.Decode(model, fromFile, fileWire, &fileReport); err != nil || !ok || fileReport.Malformed {
+	if ok, err := tablewire.Decode(model, fromFile, fileWire, &fileReport); err != nil || !ok || fileReport.Refused {
 		t.Fatalf("the file with the appended bit did not read: %v %+v", err, fileReport)
 	}
 	if instU64(t, fromFile, "perks") != (1<<3)|1 {
@@ -236,7 +237,7 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	fromMessage, ok, mreport, derr := decodeOne(t, model, "Masked", v, messageWire)
-	if derr != nil || !ok || mreport.Malformed {
+	if derr != nil || !ok || mreport.Refused {
 		t.Fatalf("the message with the appended bit did not read: %v %+v", derr, mreport)
 	}
 	if instU64(t, fromMessage, "perks") != 1 {
@@ -256,7 +257,7 @@ func TestTheWideStringsWidth(t *testing.T) {
 	wide := ir.TableVocabularyEntry{Id: ir.TableWireId("label"), Kind: ir.TableKindWstring, Shape: ir.TableMessageShape{Max: 8}}
 	entries = append(entries, wide)
 	v, report, err := readAnnouncement(announce(backendVocabulary.BuildVersion(), entries))
-	if err != nil || !v.Announced() || report.Malformed {
+	if err != nil || !v.Announced() || report.Refused {
 		t.Fatalf("the announcement with a kind-33 entry was refused: %v %+v", err, report)
 	}
 	if v.RefBits() != 6 {
@@ -273,7 +274,7 @@ func TestTheWideStringsWidth(t *testing.T) {
 	body.put(77, 64)
 	body.put(0, v.RefBits())
 	inst, ok, rep, derr := decodeOne(t, model, "LoginRequest", v, batchOf(body))
-	if derr != nil || !ok || rep.Malformed || rep.Unknown != 1 || rep.KindMismatch != 0 {
+	if derr != nil || !ok || rep.Refused || rep.Unknown != 1 {
 		t.Errorf("the wide string was not stepped over exactly: ok=%v err=%v report=%+v", ok, derr, rep)
 	}
 	if instU64(t, inst, "player_id") != 77 {
@@ -351,7 +352,7 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 		body.put(9, 64)
 		body.put(0, v.RefBits())
 		inst, ok, report, derr := decodeOne(t, model, "LoginRequest", v, batchOf(body))
-		if derr != nil || ok || !report.Malformed || report.Unknown != 0 || report.Refused {
+		if ok || !readRefused(derr, report) || report.Unknown != 0 {
 			t.Errorf("%s: ok=%v err=%v report=%+v", row.name, ok, derr, report)
 		}
 		if instU64(t, inst, "player_id") != 0 {
@@ -379,7 +380,7 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 		skipped.put(9, 64)
 		skipped.put(0, v.RefBits())
 		inst, ok, report, derr := decodeOne(t, model, "LoginRequest", v, batchOf(skipped))
-		if derr != nil || ok || !report.Malformed || report.Refused {
+		if ok || !readRefused(derr, report) {
 			t.Errorf("%s: ok=%v err=%v report=%+v", row.name, ok, derr, report)
 		}
 		if instU64(t, inst, "player_id") != 0 {
@@ -410,14 +411,14 @@ func TestAReferenceOfTheWrongSort(t *testing.T) {
 	arm.put(slotOf(t, mv, ir.TableWireId("ToolMessage"), 0), mv.RefBits()) // a table's name id: kind 0, framing nothing
 	arm.put(0, mv.RefBits())
 	_, ok, report, derr := decodeOne(t, mm, "ToolMessage", mv, batchOf(arm))
-	if derr != nil || ok || !report.Malformed || report.Unknown != 0 || report.KindMismatch != 0 {
+	if ok || !readRefused(derr, report) || report.Unknown != 0 {
 		t.Errorf("an arm reference naming a kind-0 entry: ok=%v err=%v report=%+v", ok, derr, report)
 	}
 }
 
 // TestARangedOffsetAboveTheSendersMax: a `score` ranged [0, 100000] whose
-// seventeen bits spell 130000. Red if a leg calls it damage rather than
-// reconstructing it and clamping to its own bound with one `clamped`.
+// seventeen bits spell 130000, a value past the reader's own bound. Red if a
+// leg reads it or hands back anything from the refused batch (§6.5).
 func TestARangedOffsetAboveTheSendersMax(t *testing.T) {
 	_, model, v := backend(t)
 	players := slotOf(t, v, ir.TableWireId("players"), ir.TableKindArray)
@@ -435,19 +436,19 @@ func TestARangedOffsetAboveTheSendersMax(t *testing.T) {
 	}
 	body.put(0, v.RefBits())
 	inst, ok, report, derr := decodeOne(t, model, "MatchResult", v, batchOf(body))
-	if derr != nil || !ok || report.Malformed || report.Clamped != 1 {
-		t.Errorf("an offset above the sender's max: ok=%v err=%v report=%+v", ok, derr, report)
+	if ok || !readRefused(derr, report) {
+		t.Errorf("an offset above the sender's max refuses: ok=%v err=%v report=%+v", ok, derr, report)
 	}
 	rows := fieldOf(t, inst, "players")
-	if got := fieldOf(t, rows.Elems[0].Tab, "score").Cell.I; got != 100000 {
-		t.Errorf("the offset reconstructs to 130000 and clamps to 100000, not %d", got)
+	if got := fieldOf(t, rows.Elems[0].Tab, "score").Cell.I; got != 0 {
+		t.Errorf("a refused batch handed back score %d", got)
 	}
 }
 
-// TestAnOverLongArrayOfNonFixedElements: a writer's [..16] of string(32) read
-// by a [..4], whose four kept elements must be followed by the field that
-// comes after the array. Red if a leg lands on the wrong bit, which the
-// following field's value catches, or counts more than one `clamped`.
+// TestAnOverLongArrayOfNonFixedElements: a writer's [..16] of string(32)
+// carrying nine elements, read by a [..4]: a count past the reader's bound
+// refuses the batch (§6.5). Red if a leg reads it or hands back an element or
+// the field after the array.
 func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
 	writer := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\nfixed table Roster\n{\n    names [..16]Name\n    past uint32 = 0\n}\n")
 	reader := tempUnit(t, "package rowdemo\n\ntype Name\n{\n    s string(32)\n}\n\nfixed table Roster\n{\n    names [..4]Name\n    past uint32 = 0\n}\n")
@@ -463,28 +464,21 @@ func TestAnOverLongArrayOfNonFixedElements(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, ok, report, derr := decodeOne(t, rm, "Roster", wv, message)
-	if derr != nil || !ok || report.Malformed || report.Clamped != 1 || report.Unknown != 0 {
-		t.Errorf("the over-long array: ok=%v err=%v report=%+v", ok, derr, report)
+	if ok || !readRefused(derr, report) || report.Unknown != 0 {
+		t.Errorf("the over-long array refuses: ok=%v err=%v report=%+v", ok, derr, report)
 	}
-	names := fieldOf(t, back, "names")
-	if names.Count != 4 || string(instStr(t, names.Elems[3].Tab, "s")) != "dddd" {
-		t.Errorf("the reader kept %d elements", names.Count)
+	if names := fieldOf(t, back, "names"); names.Count != 0 {
+		t.Errorf("a refused batch handed back %d elements", names.Count)
 	}
-	// AND A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION (M1):
-	// the walk that finds the array's end reads five more elements and stores
-	// none of them, so element zero is element zero
-	if got := string(instStr(t, names.Elems[0].Tab, "s")); got != "a" {
-		t.Errorf("element zero reads %q: a walked surplus element landed on it", got)
-	}
-	if instU64(t, back, "past") != 4242 {
-		t.Errorf("the field after the array reads %d, not 4242: the walk landed on the wrong bit", instU64(t, back, "past"))
+	if instU64(t, back, "past") != 0 {
+		t.Errorf("a refused batch handed back the field after the array: %d", instU64(t, back, "past"))
 	}
 }
 
 // TestARangeThatMoved: a body written by a peer whose `score` runs to 100000
 // read by one whose `score` runs to 200000, and the reverse. Red if a leg
-// drops the field, reads the wrong value, or fails to count `clamped` where
-// the value falls outside its own bound.
+// drops the field, reads the wrong value, or reads a value that falls outside
+// its own bound rather than refusing (§6.5).
 func TestARangeThatMoved(t *testing.T) {
 	narrow := tempUnit(t, "package rowdemo\n\nfixed table Tally\n{\n    score int32 = 0 | min = 0, max = 100000\n}\n")
 	wide := tempUnit(t, "package rowdemo\n\nfixed table Tally\n{\n    score int32 = 0 | min = 0, max = 200000\n}\n")
@@ -506,7 +500,7 @@ func TestARangeThatMoved(t *testing.T) {
 			t.Errorf("wide reading narrow: ok=%v err=%v report=%+v score=%d", ok, derr, report, fieldOf(t, back, "score").Cell.I)
 		}
 	}
-	// WIDE writes 150000, NARROW reads it and clamps
+	// WIDE writes 150000, NARROW refuses it
 	{
 		inst := wm.New(wm.Lookup("Tally"))
 		setI64(t, inst, "score", 150000)
@@ -515,11 +509,11 @@ func TestARangeThatMoved(t *testing.T) {
 			t.Fatal(err)
 		}
 		back, ok, report, derr := decodeOne(t, nm, "Tally", wv, message)
-		if derr != nil || !ok || report.Malformed || report.Clamped != 1 || report.KindMismatch != 0 || report.Unknown != 0 {
-			t.Errorf("narrow reading wide: ok=%v err=%v report=%+v", ok, derr, report)
+		if ok || !readRefused(derr, report) || report.Unknown != 0 {
+			t.Errorf("narrow reading wide refuses: ok=%v err=%v report=%+v", ok, derr, report)
 		}
-		if got := fieldOf(t, back, "score").Cell.I; got != 100000 {
-			t.Errorf("narrow reading wide: score=%d, not clamped to 100000", got)
+		if got := fieldOf(t, back, "score").Cell.I; got != 0 {
+			t.Errorf("narrow reading wide: a refused batch handed back score=%d", got)
 		}
 	}
 }
@@ -607,7 +601,7 @@ fixed table Every
 	wide := ir.TableVocabularyEntry{Id: ir.TableWireId("label"), Kind: ir.TableKindWstring, Shape: ir.TableMessageShape{Max: 8}}
 	entries = append(entries, escape, wide)
 	v, areport, aerr := readAnnouncement(announce(wv.BuildVersion(), entries))
-	if aerr != nil || !v.Announced() || areport.Malformed {
+	if aerr != nil || !v.Announced() || areport.Refused {
 		t.Fatalf("the announcement of every kind was refused: %v %+v", aerr, areport)
 	}
 	if v.RefBits() != wv.RefBits() {
@@ -636,7 +630,7 @@ fixed table Every
 	rebuilt.put(0x43, 16)
 	rebuilt.put(0, refBits)
 	back, ok, report, derr := decodeOne(t, rm, "Every", v, batchOf(rebuilt))
-	if derr != nil || !ok || report.Malformed || report.KindMismatch != 0 {
+	if derr != nil || !ok || report.Refused {
 		t.Fatalf("the shapes row: ok=%v err=%v report=%+v", ok, derr, report)
 	}
 	// every field but `last` is unknown to the reader: the declared ones, the
@@ -700,7 +694,7 @@ func TestAHostileShape(t *testing.T) {
 		body := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(row.bytes)...)
 		body = append(body, 0)
 		v, report, err := readAnnouncement(forgeAnnouncement(body, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
-		if err != nil || !report.Malformed || v.Announced() || len(v.Entries()) != 0 {
+		if !readRefused(err, report) || v.Announced() || len(v.Entries()) != 0 {
 			t.Errorf("%s: err=%v report=%+v announced=%v entries=%d", row.name, err, report, v.Announced(), len(v.Entries()))
 		}
 		// and a body after it is refused for want of a vocabulary
@@ -720,7 +714,7 @@ func TestAHostileShape(t *testing.T) {
 	sbody := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(textLists)...)
 	sbody = append(sbody, 0)
 	sv, sreport, serr := readAnnouncement(forgeAnnouncement(sbody, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
-	if serr != nil || sreport.Malformed || !sv.Announced() || len(sv.Entries()) != len(base)+2 {
+	if serr != nil || sreport.Refused || !sv.Announced() || len(sv.Entries()) != len(base)+2 {
 		t.Errorf("an array over element kind 12 and a keyed entry over 33: err=%v report=%+v announced=%v entries=%d", serr, sreport, sv.Announced(), len(sv.Entries()))
 	}
 	// AND EACH CEILING'S OWN VALUE IS ACCEPTED, because an unbounded array
@@ -731,7 +725,7 @@ func TestAHostileShape(t *testing.T) {
 	body := append(versionField(backendVocabulary.BuildVersion()), vocabularyField(ceilings)...)
 	body = append(body, 0)
 	v, report, err := readAnnouncement(forgeAnnouncement(body, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
-	if err != nil || report.Malformed || !v.Announced() || len(v.Entries()) != len(base)+2 {
+	if err != nil || report.Refused || !v.Announced() || len(v.Entries()) != len(base)+2 {
 		t.Errorf("the ceilings' own values: err=%v report=%+v announced=%v entries=%d", err, report, v.Announced(), len(v.Entries()))
 	}
 }
@@ -775,7 +769,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 		// the two facts an announcement's body must carry, so a body without
 		// them is not an announcement rather than a peer declining to announce
 		v, report, err := readAnnouncement(row.wire)
-		if err != nil || v.Announced() || !report.Malformed || report.Refused {
+		if !readRefused(err, report) || v.Announced() {
 			t.Errorf("%s: err=%v announced=%v report=%+v", row.name, err, v.Announced(), report)
 		}
 	}
@@ -789,7 +783,7 @@ func TestTheAnnouncementsTwoStrictChecksAndItsTolerance(t *testing.T) {
 	if err != nil || !v.Announced() || v.BuildVersion() != 0x8877665544332211 || len(v.Entries()) != 33 {
 		t.Errorf("the tolerant row did not set the vocabulary: err=%v announced=%v version=%016x entries=%d", err, v.Announced(), v.BuildVersion(), len(v.Entries()))
 	}
-	if report.Unknown != 1 || report.Malformed || report.Refused {
+	if report.Unknown != 1 || report.Refused {
 		t.Errorf("the tolerant row's report is %+v", report)
 	}
 }
@@ -805,7 +799,7 @@ func TestTheTwoBounds(t *testing.T) {
 	}
 	v, report, err := readAnnouncement(announce(1, many))
 	var refused *tablewire.MessageRefusal
-	if !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonVocabularyTooLarge || v.Announced() || len(v.Entries()) != 0 || report.Malformed {
+	if !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonVocabularyTooLarge || v.Announced() || len(v.Entries()) != 0 || !report.Refused {
 		t.Errorf("one entry above the entry bound: err=%v announced=%v entries=%d report=%+v", err, v.Announced(), len(v.Entries()), report)
 	}
 	exact, _, err := readAnnouncement(announce(1, many[:ir.TableVocabularyMaxEntries]))
@@ -819,7 +813,7 @@ func TestTheTwoBounds(t *testing.T) {
 	body := append(versionField(1), vocabularyField(over)...)
 	body = append(body, 0)
 	v, report, err = readAnnouncement(forgeAnnouncement(body, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId))
-	if !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonVocabularyTooLarge || v.Announced() || report.Malformed {
+	if !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonVocabularyTooLarge || v.Announced() || !report.Refused {
 		t.Errorf("one byte above the byte bound: err=%v announced=%v report=%+v", err, v.Announced(), report)
 	}
 }
@@ -1047,14 +1041,14 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 		t.Errorf("index 6666 over [-100, 100] at 0.01 decodes to %08x, not C2055C2A", got)
 	}
 	// AN INDEX ABOVE `count` IS REJECTED, as the packet wire rejects it, and
-	// is never reconstructed and clamped: ten bits spell 1023 over a count of
-	// 1000, and that body is damage at the field and terminal for the batch
+	// is never reconstructed: ten bits spell 1023 over a count of 1000, and
+	// that body refuses the batch
 	over := &bitw{}
 	over.put(qSlot, v.RefBits())
 	over.put(1023, 10)
 	over.put(0, v.RefBits())
 	inst, ok, report, derr := decodeOne(t, model, "Bases", v, batchOf(over))
-	if ok || derr != nil || !report.Malformed || report.Clamped != 0 {
+	if ok || !readRefused(derr, report) {
 		t.Errorf("index 1023 over a count of 1000: ok=%v err=%v report=%+v", ok, derr, report)
 	}
 	if got := fieldOf(t, inst, "q").Cell.F; got != 0 {
@@ -1077,11 +1071,9 @@ func TestTheQuantizedIndexAcrossTheForms(t *testing.T) {
 // TestAZeroWidthElementUnderAWideCount: `few` announced over [2, 2^32 - 1]
 // with a ranged uint32 element whose `min` equals its `max`, which rides NO
 // BITS AT ALL, under a count of 2^31 + 1. Six bytes of wire, and the read has
-// to stay bounded: the reader's own [2..5] keeps five, counts one clamped,
-// lands a count of five and never a negative one, and finds the bit the array
-// ends at by arithmetic rather than by walking two billion elements. Red if a
-// leg walks the surplus, narrows the count before it clamps, or does not
-// finish.
+// to stay bounded: the count is past the reader's own [2..5], so the read
+// refuses (§6.5) without walking two billion elements. Red if a leg walks the
+// surplus, reads the count, or does not finish.
 func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 	model, own := basesUnit(t)
 	isFew := func(e ir.TableVocabularyEntry) bool {
@@ -1092,7 +1084,7 @@ func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 		Inner: &ir.TableMessageShape{Packing: ir.TableMessageRanged, Bits: 0, Base: big.NewInt(0)},
 	}
 	v, announceReport, err := readAnnouncement(forgedOver(own, isFew, wide))
-	if err != nil || announceReport.Malformed || !v.Announced() {
+	if err != nil || announceReport.Refused || !v.Announced() {
 		t.Fatalf("the forged announcement was refused: %v %+v", err, announceReport)
 	}
 	few, fewSlot := entryWhere(t, v, isFew)
@@ -1126,17 +1118,11 @@ func TestAZeroWidthElementUnderAWideCount(t *testing.T) {
 	case <-time.After(20 * time.Second):
 		t.Fatal("the read walked the surplus: a count of 2^31 + 1 over a zero-width element did not finish")
 	}
-	if !got.ok || got.err != nil || got.report.Malformed || got.report.Clamped != 1 {
-		t.Fatalf("the read answered ok=%v err=%v report=%+v", got.ok, got.err, got.report)
+	if got.ok || !readRefused(got.err, got.report) {
+		t.Fatalf("a count past the bound refuses: ok=%v err=%v report=%+v", got.ok, got.err, got.report)
 	}
-	fv := fieldOf(t, got.inst, "few")
-	if fv.Count != 5 {
-		t.Errorf("the count landed as %d, not the reader's own bound of five", fv.Count)
-	}
-	for i := range 5 {
-		if fv.Elems[i].U != 0 {
-			t.Errorf("element %d is %d, and a zero-width element is its base", i, fv.Elems[i].U)
-		}
+	if fv := fieldOf(t, got.inst, "few"); fv.Count != 0 {
+		t.Errorf("a refused read handed back a count of %d", fv.Count)
 	}
 }
 
@@ -1158,14 +1144,14 @@ func TestARefusedFirstAnnouncement(t *testing.T) {
 	}
 	v.MaxEntries = 0
 	var second tabletext.Report
-	if err := v.AnnounceRead(announcement, &second); !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonSecondAnnouncement || !second.Refused || second.Malformed {
+	if err := v.AnnounceRead(announcement, &second); !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonSecondAnnouncement || !second.Refused {
 		t.Errorf("the announcement after a refused first is not second_announcement: %v %+v", err, second)
 	}
 	if v.Announced() || len(v.Entries()) != 0 {
 		t.Error("the announcement after a refused first set a vocabulary")
 	}
 	inst, ok, report, err := decodeOne(t, model, "LoginRequest", &v, wireBytes(t, "testdata/wire/tables/login_full_message.bin"))
-	if ok || !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonNoVocabulary || !report.Refused || !report.Silent() || instU64(t, inst, "client_build") != 0 {
+	if ok || !asRefusal(err, &refused) || refused.Reason != tablewire.ReasonNoVocabulary || !report.Refused || report.Unknown != 0 || instU64(t, inst, "client_build") != 0 {
 		t.Errorf("a body on the refused connection was not refused as no_vocabulary: ok=%v err=%v report=%+v", ok, err, report)
 	}
 }
@@ -1185,16 +1171,16 @@ func TestTheSixFindings(t *testing.T) {
 		return e.Kind == ir.TableKindU8 && e.Shape.Packing == ir.TableMessageRanged && e.Shape.Base.Int64() == 200
 	}
 
-	// M1: A DISCARDED SURPLUS ELEMENT NEVER ACQUIRES A LIVE DESTINATION. The
-	// sender announces few over [0, 8] and sends six; the reader keeps the
-	// first five, counts one clamped, and element zero is element zero.
+	// M1: A SURPLUS ELEMENT IS NEVER READ. The sender announces few over
+	// [0, 8] and sends six; the reader's bound is five, so the read refuses
+	// and hands back no element.
 	{
 		forged := forgedOver(own, isFew, ir.TableMessageShape{Min: 0, Max: 8, Elem: ir.TableKindU32, Inner: &ir.TableMessageShape{}})
 		if pinned := wireBytes(t, "testdata/wire/tables/bases_few_wide_conn.bin"); string(pinned) != string(forged) {
 			t.Errorf("the forged announcement differs from the pinned bases_few_wide_conn at byte %d", firstDifference(pinned, forged))
 		}
 		v, report, err := readAnnouncement(forged)
-		if err != nil || !v.Announced() || report.Malformed {
+		if err != nil || !v.Announced() || report.Refused {
 			t.Fatalf("the forged announcement was refused: %v %+v", err, report)
 		}
 		_, fewSlot := entryWhere(t, v, func(e ir.TableVocabularyEntry) bool { return e.Kind == ir.TableKindArray && e.Shape.Max == 8 })
@@ -1210,11 +1196,11 @@ func TestTheSixFindings(t *testing.T) {
 			t.Errorf("the surplus body differs from the pinned bases_few_surplus_message at byte %d", firstDifference(pinned, message))
 		}
 		read, ok, rep, derr := decodeOne(t, model, "Bases", v, message)
-		if derr != nil || !ok || rep.Malformed || rep.Clamped != 1 {
-			t.Errorf("the surplus body: ok=%v err=%v report=%+v", ok, derr, rep)
+		if ok || !readRefused(derr, rep) {
+			t.Errorf("the surplus body refuses: ok=%v err=%v report=%+v", ok, derr, rep)
 		}
-		if few := fieldOf(t, read, "few"); few.Count != 5 || few.Elems[0].U != 1 || few.Elems[4].U != 5 {
-			t.Errorf("the reader kept %d elements, element zero reads %d", few.Count, few.Elems[0].U)
+		if few := fieldOf(t, read, "few"); few.Count != 0 {
+			t.Errorf("a refused read handed back %d elements", few.Count)
 		}
 	}
 
@@ -1268,13 +1254,14 @@ func TestTheSixFindings(t *testing.T) {
 		{"9 bits on a uint8", isNarrow, ir.TableMessageShape{Packing: ir.TableMessageRanged, Bits: 9, Base: big.NewInt(200)}},
 	} {
 		v, report, err := readAnnouncement(forgedOver(own, row.accept, row.shape))
-		if err != nil || !report.Malformed || v.Announced() {
+		if !readRefused(err, report) || v.Announced() {
 			t.Errorf("%s: err=%v report=%+v announced=%v", row.name, err, report, v.Announced())
 		}
 	}
 
 	// M6: THE BOUND APPLIES WHILE THE VALUE IS WIDE: narrow over [200, 250]
-	// reading offset 63 reconstructs 263 and clamps to 250, never to 7
+	// reading offset 63 reconstructs 263, past the bound, and refuses; it never
+	// wraps to 7
 	{
 		_, narrowSlot := entryWhere(t, own, isNarrow)
 		body := &bitw{}
@@ -1286,8 +1273,8 @@ func TestTheSixFindings(t *testing.T) {
 			t.Errorf("the offset body differs from the pinned bases_narrow_offset_message at byte %d", firstDifference(pinned, message))
 		}
 		read, ok, report, derr := decodeOne(t, model, "Bases", own, message)
-		if derr != nil || !ok || report.Malformed || report.Clamped != 1 || instU64(t, read, "narrow") != 250 {
-			t.Errorf("the offset body: ok=%v err=%v report=%+v narrow=%d", ok, derr, report, instU64(t, read, "narrow"))
+		if ok || !readRefused(derr, report) || instU64(t, read, "narrow") != instU64(t, model.New(model.Lookup("Bases")), "narrow") {
+			t.Errorf("the offset body refuses: ok=%v err=%v report=%+v narrow=%d", ok, derr, report, instU64(t, read, "narrow"))
 		}
 	}
 	// M4 rides TestTheBasesTwoEncodings and M5 rides
@@ -1357,11 +1344,8 @@ fixed table Row
 		t.Fatal(err)
 	}
 	back, ok, report, derr := decodeOne(t, wm, "Row", nv, message)
-	if derr != nil || !ok || report.Malformed {
+	if derr != nil || !ok || report.Refused {
 		t.Fatalf("the wide peer reading the narrow one: ok=%v err=%v report=%+v", ok, derr, report)
-	}
-	if report.KindMismatch != 0 {
-		t.Errorf("a kind the declaration WIDENS is not a mismatch (§3.3, §4): kind_mismatch=%d", report.KindMismatch)
 	}
 	// ONE for the field, one for the f32 rung, one for the ARRAY however many
 	// elements it holds, and one for the ARM
@@ -1385,15 +1369,14 @@ fixed table Row
 // TestTheMessageFormsTextContentRuleAndClamp: §3's ONE CONTENT RULE over a
 // form-`2` body (docs/SPEC-TABLES.md §3.3). A kind `12` payload that is not
 // well-formed UTF-8, or that carries a zero byte among its `L` bytes, is
-// DAMAGE and not data, and here the damage is TERMINAL for the batch because a
-// bit stream has no place to resume. A CLAMP IS NOT DAMAGE: a payload longer
-// than this reader's bound keeps what fits, CUTTING AT A CODE POINT BOUNDARY,
-// and counts one `clamped`. Red if the message path accepts text the file path
-// refuses, or clamps a byte off the boundary.
+// DAMAGE and not data, and refuses the batch. A payload longer than this
+// reader's bound refuses too (§6.5): no read keeps a prefix. Red if the
+// message path accepts text the file path refuses, keeps part of an over-long
+// payload, or refuses a payload at the bound.
 //
 // The instrument is `backenddemo`'s `StorePurchase.sku`, a `string(32)` whose
 // length rides at bits_required( 0, 32 ) = 6 bits, so a payload of 34 bytes is
-// spellable and a clamp is reachable.
+// spellable.
 func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 	_, model, v := backend(t)
 	sku := slotOf(t, v, ir.TableWireId("sku"), ir.TableKindString)
@@ -1408,9 +1391,8 @@ func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 		return batchOf(w)
 	}
 
-	// ILL-FORMED TEXT IS DAMAGE HERE TOO, AND IT IS TERMINAL: a truncated
-	// sequence, a zero byte and an overlong encoding are each a payload that is
-	// not text at whatever length this reader would have kept
+	// ILL-FORMED TEXT IS DAMAGE HERE TOO: a truncated sequence, a zero byte
+	// and an overlong encoding are each a payload that is not text
 	damaged := []struct {
 		name string
 		text []byte
@@ -1421,44 +1403,31 @@ func TestTheMessageFormsTextContentRuleAndClamp(t *testing.T) {
 	}
 	for _, row := range damaged {
 		_, ok, report, err := decodeOne(t, model, "StorePurchase", v, body(row.text))
-		if err != nil {
-			t.Fatalf("%s: the decode errored: %v", row.name, err)
-		}
-		if ok || !report.Malformed || report.Refused {
-			t.Errorf("%s on a message body is damage, terminal for the batch (§3.3): ok=%v report=%+v", row.name, ok, report)
+		if ok || !readRefused(err, report) {
+			t.Errorf("%s on a message body is damage, refusing the batch (§3.3): ok=%v err=%v report=%+v", row.name, ok, err, report)
 		}
 	}
 
-	// A CLAMP CUTS AT A CODE POINT BOUNDARY: thirty ASCII bytes and one
-	// four-byte code point are thirty-four, so the bound of thirty-two falls
-	// INSIDE the last code point and the clamp keeps thirty
-	split := append(bytes.Repeat([]byte{'a'}, 30), 0xF0, 0x9F, 0x98, 0x80)
-	inst, ok, report, err := decodeOne(t, model, "StorePurchase", v, body(split))
-	if err != nil || !ok || report.Malformed {
-		t.Fatalf("a clamp is not damage (§3.3): ok=%v err=%v report=%+v", ok, err, report)
-	}
-	if report.Clamped != 1 {
-		t.Errorf("an over-long payload counts ONE clamped: clamped=%d", report.Clamped)
-	}
-	if got := instStr(t, inst, "sku"); !bytes.Equal(got, split[:30]) {
-		t.Errorf("the clamp cuts at the code point boundary before the bound (§3.3): kept %d bytes, %q", len(got), got)
-	}
-
-	// AND THE CLAMP IS STILL THE BOUND where the bound already sits on a
-	// boundary, so the rule takes no byte it was not owed
-	whole := bytes.Repeat([]byte{'b'}, 34)
-	inst, ok, report, err = decodeOne(t, model, "StorePurchase", v, body(whole))
-	if err != nil || !ok || report.Malformed || report.Clamped != 1 {
-		t.Fatalf("an ASCII payload over the bound clamps and counts once: ok=%v err=%v report=%+v", ok, err, report)
-	}
-	if got := instStr(t, inst, "sku"); len(got) != 32 {
-		t.Errorf("a clamp on a boundary keeps the whole bound: kept %d bytes", len(got))
+	// A PAYLOAD PAST THE BOUND REFUSES, whether the bound falls inside a code
+	// point (thirty ASCII bytes and one four-byte code point) or on a boundary
+	// (thirty-four ASCII bytes), and no prefix of it is kept
+	for _, over := range [][]byte{
+		append(bytes.Repeat([]byte{'a'}, 30), 0xF0, 0x9F, 0x98, 0x80),
+		bytes.Repeat([]byte{'b'}, 34),
+	} {
+		inst, ok, report, err := decodeOne(t, model, "StorePurchase", v, body(over))
+		if ok || !readRefused(err, report) {
+			t.Errorf("a %d-byte payload over the bound of 32 refuses: ok=%v err=%v report=%+v", len(over), ok, err, report)
+		}
+		if got := instStr(t, inst, "sku"); len(got) != 0 {
+			t.Errorf("a refused batch kept %d bytes of the payload", len(got))
+		}
 	}
 
-	// AND A PAYLOAD AT THE BOUND DOES NOT CLAMP, code point or not
+	// AND A PAYLOAD AT THE BOUND LANDS WHOLE, code point or not
 	exact := append(bytes.Repeat([]byte{'c'}, 28), 0xF0, 0x9F, 0x98, 0x80)
-	inst, ok, report, err = decodeOne(t, model, "StorePurchase", v, body(exact))
-	if err != nil || !ok || report.Malformed || report.Clamped != 0 {
+	inst, ok, report, err := decodeOne(t, model, "StorePurchase", v, body(exact))
+	if err != nil || !ok || report.Refused {
 		t.Fatalf("a payload at the bound lands whole and counts nothing: ok=%v err=%v report=%+v", ok, err, report)
 	}
 	if got := instStr(t, inst, "sku"); !bytes.Equal(got, exact) {

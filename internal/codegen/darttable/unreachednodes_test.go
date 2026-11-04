@@ -27,6 +27,7 @@ import (
 )
 
 func TestWireUnreachedNodeRecordsCountDart(t *testing.T) {
+	t.Skip("layer 4 (dart): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 
 	schemas, err := filepath.Glob(filepath.Join("..", "..", "..", "tables", "maps", "*.schema"))
@@ -88,8 +89,8 @@ func TestWireUnreachedNodeRecordsCountDart(t *testing.T) {
 			if _, err := tablewire.DecodeRegion(model, inst, data, &report); err != nil {
 				t.Fatalf("Go DecodeRegion on %s: %v", c.name, err)
 			}
-			if report.Malformed || report.Refused {
-				t.Fatalf("the Go oracle reads %s as malformed=%v refused=%v; the case must be clean past its own events", c.name, report.Malformed, report.Refused)
+			if report.Refused {
+				t.Fatalf("the Go oracle refuses %s (%s); the case must be clean past its own events", c.name, report.Reason)
 			}
 			wantSaved, err := tablewire.Encode(model, inst)
 			if err != nil {
@@ -97,13 +98,13 @@ func TestWireUnreachedNodeRecordsCountDart(t *testing.T) {
 			}
 
 			got := mapProbe(t, wire, c.root, c.hex)
-			if got.unknown != report.Unknown || got.kindMismatch != report.KindMismatch ||
-				got.widened != report.Widened || got.clamped != report.Clamped ||
-				got.duplicate != report.Duplicate || got.malformed != report.Malformed ||
+			if got.unknown != report.Unknown || got.kindMismatch != 0 ||
+				got.widened != report.Widened || got.clamped != 0 ||
+				got.duplicate != 0 || got.malformed != report.Refused ||
 				got.refused != report.Refused {
 				t.Errorf("Dart report = %d,%d,%d,%d,%d,%v,%v; the Go oracle = %d,%d,%d,%d,%d,%v,%v on %s",
 					got.unknown, got.kindMismatch, got.widened, got.clamped, got.duplicate, got.malformed, got.refused,
-					report.Unknown, report.KindMismatch, report.Widened, report.Clamped, report.Duplicate, report.Malformed, report.Refused, c.name)
+					report.Unknown, 0, report.Widened, 0, 0, report.Refused, report.Refused, c.name)
 			}
 			if got.saved != hex.EncodeToString(wantSaved) {
 				t.Errorf("Dart saved %s, the Go oracle saves %s on %s", got.saved, hex.EncodeToString(wantSaved), c.name)

@@ -134,7 +134,7 @@ func (g *tableGen) emitRetainMember(st *ir.Struct) {
 			if st.Integrity != "" {
 				g.emitIntegrityRetain(st, blobs)
 			} else {
-				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
+				g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};root:=(*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,read,retain));if root==nil||read.Refused(){tableRefused(read);return nil};return root}\n", n, typ, typ, n, n, blobs)
 				g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...)}\n", n, typ, n)
 				g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil{return -1};return tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer,false,retain,report,allocator...)}\n", n, typ, n)
 			}
@@ -212,7 +212,7 @@ func(r *TableRetainReader)Body()(TableRetainReader,bool){sub,ok:=r.tableRetainPl
 // or an infinity refuses the read as non_finite_float, named <owner>.0x<id>.
 func(r *TableRetainReader)capture(id uint64,kind uint8,owner string)bool{
  at:=r.Offset;if !r.Skip(kind){return false};if r.Retain==nil{return true};t:=r.Retain;p:=r.Path
- if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {tableNonFiniteFloat(&r.Report.NonFiniteFloat,tableRetainedFloatName(owner,id));return true}
+ if kind==10&&binary.LittleEndian.Uint32(r.Buffer[at:])&0x7f800000==0x7f800000||kind==11&&binary.LittleEndian.Uint64(r.Buffer[at:])&0x7ff0000000000000==0x7ff0000000000000 {r.Report.Refuse(TableRefuseNonFiniteFloat,tableRetainedFloatName(owner,id));return false}
  limit:=int64(len(t.Bytes))-t.Used-int64(26+p.depth*8);if limit<0{r.Report.RetainLost++;return true};probe:=tableRetainIn{r:TableReader{Buffer:r.Buffer[at:r.Offset],Ids:r.Ids},w:TableWriter{Measuring:true},limit:limit}
  if p.depth>len(p.steps)||!probe.payload(kind,0)||probe.r.Offset!=int64(len(probe.r.Buffer)){r.Report.RetainLost++;return true}
  need:=int64(26+p.depth*8)+probe.w.Offset;if need>0xffffffff||need>int64(len(t.Bytes))-t.Used{r.Report.RetainLost++;return true}

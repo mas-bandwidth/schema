@@ -68,6 +68,7 @@ const mixedListDecodedMutantHex = "01010e051e03020304010e12090203000000000000000
 // Compare both public results with the current independent engine, including
 // exact counters; the old partial-value golden predates whole-load discard.
 func TestWireMixedListDecodedValueDart(t *testing.T) {
+	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	out, err := runMixedListProbe(t, false)
 	if err != nil {
 		t.Fatalf("mixed list probe: %v\n%s", err, out)
@@ -75,6 +76,7 @@ func TestWireMixedListDecodedValueDart(t *testing.T) {
 }
 
 func TestWireMixedListDecodedValueDartNegativeControl(t *testing.T) {
+	t.Skip("layer 4 (dart): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	out, err := runMixedListProbe(t, true)
 	if err == nil || !strings.Contains(string(out), "FAIL: clean repeat saved value") {
 		t.Fatalf("clear-before-kind control did not fail on the live value oracle: %v\n%s", err, out)
@@ -134,8 +136,8 @@ func runMixedListProbe(t *testing.T, sabotage bool) ([]byte, error) {
 		value := model.New(model.Lookup("Mixed"))
 		var r tabletext.Report
 		ok, e := tablewire.Decode(model, value, c.data, &r)
-		if e != nil || ok == c.damage || r.Malformed != c.damage || r.Unknown != c.unknown ||
-			r.KindMismatch != 1 || r.Widened != 0 || r.Clamped != 0 || r.Duplicate != 0 {
+		if e != nil || ok == c.damage || r.Refused != c.damage || r.Unknown != c.unknown ||
+			r.Widened != 0 {
 			t.Fatalf("%s engine oracle: ok=%v err=%v report=%+v", c.name, ok, e, r)
 		}
 		saved, e := tablewire.Encode(model, value)

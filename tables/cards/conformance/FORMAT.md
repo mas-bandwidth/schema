@@ -86,24 +86,26 @@ tables/cards/cards.go.
 
 ### The read report
 
-`X.report` is one `Name=value` line per counter of the Go `TableReport`
-(tables/cards/cards.go, `type Report = TableReport`), in the order the Go type
-declares its fields and spelled as the Go fields are:
+`X.report` is the report of an accepted read, eight `Name=value` lines in this
+order. The first four are the counters of the Go `TableReport`
+(tables/cards/cards.go, `type Report = TableReport`), spelled as the Go fields
+are. The read is strict (docs/SPEC-TABLES.md §4): a kind mismatch, an
+out-of-range value, a repeat or damage refuses the whole load, so on an
+accepted read the last four lines are always zero and `false`:
 
 ```
 Retained=<n>
 RetainLost=<n>
 Widened=<n>
 Unknown=<n>
-KindMismatch=<n>
-Clamped=<n>
-Duplicate=<n>
-Malformed=<true|false>
+KindMismatch=0
+Clamped=0
+Duplicate=0
+Malformed=false
 ```
 
-The strings `Reason` and `Verdict`, the two build-version fields and the
-layout hash are not counters and never ride. A clean read is seven zeroes and
-`Malformed=false`.
+The refusal fields (`Verdict`, `Reason`, `Refusal`, `Field`), the two build-version fields and the layout hash are not
+counters and never ride. A clean read is seven zeroes and `Malformed=false`.
 
 ### The view
 

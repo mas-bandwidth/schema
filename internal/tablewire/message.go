@@ -6,7 +6,7 @@
 // CONNECTION's table rather than a trailer of its own. The table is the UNIT's
 // whole vocabulary in a compiler-settled order, announced once a connection
 // per direction by an ordinary form-`1` file, and everything else about the
-// wire, the elision rules, §4's tolerance and every malformed rule, is §3's
+// wire, the elision rules, §4's evolution and every damage rule, is §3's
 // unchanged.
 package tablewire
 
@@ -36,7 +36,7 @@ const (
 	ReasonNewerForm MessageReason = iota
 	// ReasonNoVocabulary is a form-`2` message that arrived before the
 	// announcement, or after one that was refused. Nothing is decoded, the
-	// reader holds no table for the connection, and `malformed` does not fire.
+	// reader holds no table for the connection, and nothing is decoded.
 	ReasonNoVocabulary
 	// ReasonSecondAnnouncement is a second announcement on a connection. It
 	// does not replace the table, does not amend it and changes nothing. The
@@ -186,10 +186,10 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // rule already covers the announcement because it IS a file, with TWO STRICT
 // CHECKS over the body: the BUILD VERSION present, exactly once, under kind
 // `9`, eight bytes wide, and the VOCABULARY present, exactly once, under kind
-// `14` over element kind `6`. Every other field is ordinary and tolerant, so
+// `14` over element kind `6`. Every other field is ordinary evolution, so
 // an unknown one is skipped and counted and the announcement can GAIN a field
 // in a later minor without a lockstep redeploy. A FAILED STRICT CHECK IS
-// MALFORMED: the two checks are the two facts the body must carry, so a body
+// DAMAGE: the two checks are the two facts the body must carry, so a body
 // without them is not an announcement.
 //
 // A HOSTILE SHAPE IS A HOSTILE WIDTH, and every width is checked here and
@@ -201,7 +201,7 @@ func Announce(u *ir.Unit) []byte { return ir.TableAnnouncement(u) }
 // announces one), which is a file and takes §3's rule that
 // a wire it cannot read whole is malformed whole.
 //
-// A refused announcement sets NO VOCABULARY, and a malformed one sets none
+// A refused announcement sets NO VOCABULARY, and a damaged one sets none
 // either. The BUILD VERSION is kept the moment it is read, refusal or not, so
 // that a refusal on this connection names it.
 func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
@@ -213,24 +213,26 @@ func (v *Vocabulary) AnnounceRead(data []byte, report *tabletext.Report) error {
 	// the first set anything, so an endpoint cannot buy a second resolve by having
 	// its first refused (§3.3).
 	if v.announced || v.refused {
-		report.Refused = true
+		report.Refuse(ReasonSecondAnnouncement.String())
 		return &MessageRefusal{Reason: ReasonSecondAnnouncement, BuildVersion: v.buildVersion}
 	}
 	err := v.announceRead(data, report)
 	if !v.announced {
 		v.refused = true
 	}
+	if err != nil {
+		refuseReport(report, err)
+	}
 	return err
 }
 
 // announceRead is the one read a connection gets.
 func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
+	damage := func(detail string) error { return &Refusal{Reason: ReasonWireDamaged, Detail: detail} }
 	if len(data) < 1 {
-		report.Malformed = true
-		return nil
+		return damage("no form byte")
 	}
 	if data[0] != ir.TableWireForm {
-		report.Refused = true
 		if data[0] == ir.TableWireMessageForm {
 			// an ANNOUNCEMENT is a file, so a message where one was expected
 			// is the same refusal a file reader gives it
@@ -239,17 +241,19 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 		return &MessageRefusal{Reason: ReasonNewerForm}
 	}
 	if len(data) < 9 {
-		report.Malformed = true
-		return nil
+		return damage("an announcement shorter than its id table")
 	}
 	body, ids, ok := trailer(data)
 	if !ok {
-		report.Malformed = true
-		return nil
+		return damage("the id table cannot be read whole")
 	}
-	if end, terminated := bodyExtent(body, ids); terminated && end != len(body) {
-		report.Malformed = true
-		return nil
+	if end, terminated := bodyExtent(body, ids); !terminated || end != len(body) {
+		return damage("the body does not end at the id table")
+	}
+	// THE ANNOUNCEMENT IS A FILE, and every condition decidable from the wire
+	// alone applies to every byte of it (§6.5)
+	if err := checkAnnouncement(body, ids); err != nil {
+		return err
 	}
 	version, vocabulary, read, oversize := announcementFields(body, ids, v.byteBound(), report)
 	// THE BUILD VERSION IS KEPT THE MOMENT IT IS READ, refusal or not, so that
@@ -257,7 +261,6 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 	// and a refused announcement still sets none.
 	v.buildVersion = version
 	if oversize {
-		report.Refused = true
 		return &MessageRefusal{Reason: ReasonVocabularyTooLarge, BuildVersion: version}
 	}
 	// A FAILED STRICT CHECK IS DAMAGE, not a refusal (§3.3). The announcement
@@ -267,16 +270,13 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 	// run of bytes, each say the bytes are not an announcement rather than
 	// that this endpoint declined to announce.
 	if !read {
-		report.Malformed = true
-		return nil
+		return damage("an announcement without its build version and vocabulary")
 	}
 	entries, good := decodeVocabulary(vocabulary)
 	if !good {
-		report.Malformed = true
-		return nil
+		return damage("a vocabulary that cannot be read whole")
 	}
 	if len(entries) > v.bound() {
-		report.Refused = true
 		return &MessageRefusal{Reason: ReasonVocabularyTooLarge, BuildVersion: version}
 	}
 	v.entries = entries
@@ -288,12 +288,11 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 // tolerance and applies the two strict checks. `oversize` is the byte bound,
 // read off the vocabulary field's own length before an entry is touched.
 func announcementFields(body []byte, ids []uint64, byteBound int, report *tabletext.Report) (version uint64, vocabulary []byte, read, oversize bool) {
-	r := &wireReader{buf: body, report: report, ids: ids}
+	r := &wireReader{buf: body, report: report, ids: ids, fail: &readFail{}}
 	seenVersion, seenVocabulary := 0, 0
 	for {
 		ref, ok := r.leb()
 		if !ok {
-			report.Malformed = true
 			return 0, nil, false, false
 		}
 		if ref == 0 {
@@ -301,7 +300,6 @@ func announcementFields(body []byte, ids []uint64, byteBound int, report *tablet
 		}
 		id, named := r.id(ref)
 		if !named || !r.has(1) {
-			report.Malformed = true
 			return 0, nil, false, false
 		}
 		kind := r.u8()
@@ -337,7 +335,6 @@ func announcementFields(body []byte, ids []uint64, byteBound int, report *tablet
 		default:
 			report.Unknown++
 			if !r.skip(kind) {
-				report.Malformed = true
 				return 0, nil, false, false
 			}
 		}
@@ -404,6 +401,9 @@ func decodeVocabulary(in []byte) ([]ir.TableVocabularyEntry, bool) {
 // caller reports it and carries on rather than propagating an error.
 func Refused(err error) bool {
 	if _, form := errors.AsType[*FormRefusal](err); form {
+		return true
+	}
+	if _, fixed := errors.AsType[*FixedRefusal](err); fixed {
 		return true
 	}
 	_, message := errors.AsType[*MessageRefusal](err)

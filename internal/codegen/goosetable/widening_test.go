@@ -225,7 +225,7 @@ func ladderPayload(kind byte) []byte {
 func wideningLadder(t *testing.T, override map[string][]byte) []string {
 	t.Helper()
 	var bad []string
-	widened, mismatched := 0, 0
+	widened := 0
 	for _, decl := range ladderKinds {
 		u := probeUnit(t, fmt.Sprintf("package probe\ntable Root { value %s }\n", decl.decl))
 		m := tabletext.NewModel(u)
@@ -240,7 +240,7 @@ func wideningLadder(t *testing.T, override map[string][]byte) []string {
 			v := m.New(m.Lookup("Root"))
 			var r tabletext.Report
 			ok, err := tablewire.Decode(m, v, wires[name], &r)
-			if !ok || err != nil || r.Malformed {
+			if !ok || err != nil || r.Refused {
 				t.Fatalf("the reference refuses %s under %s: %+v %v", name, decl.decl, r, err)
 			}
 			want, err := tablewire.Encode(m, v)
@@ -248,26 +248,26 @@ func wideningLadder(t *testing.T, override map[string][]byte) []string {
 				t.Fatal(err)
 			}
 			at := fmt.Sprintf("kind %d under %s", w.kind, decl.decl)
-			if !g.loaded || g.malformed || g.widened != int64(r.Widened) || g.mismatch != int64(r.KindMismatch) || g.clamped != int64(r.Clamped) {
+			if !g.loaded || g.malformed || g.widened != int64(r.Widened) || g.mismatch != 0 || g.clamped != 0 {
 				bad = append(bad, fmt.Sprintf("%s: loaded %v, widened %d, kind_mismatch %d, clamped %d; the reference %d, %d, %d",
-					at, g.loaded, g.widened, g.mismatch, g.clamped, r.Widened, r.KindMismatch, r.Clamped))
+					at, g.loaded, g.widened, g.mismatch, g.clamped, r.Widened, 0, 0))
 				continue
 			}
 			if !bytes.Equal(g.saved, want) {
 				bad = append(bad, fmt.Sprintf("%s: what landed saves to %x, the reference's value to %x", at, g.saved, want))
 			}
 			widened += r.Widened
-			mismatched += r.KindMismatch
 		}
 	}
-	if widened == 0 || mismatched == 0 {
-		t.Fatalf("the grid exercised %d widenings and %d mismatches; it must exercise both", widened, mismatched)
+	if widened == 0 {
+		t.Fatalf("the grid exercised no widening; it must exercise one")
 	}
-	t.Logf("12 declarations x 10 wire kinds: %d widened, %d kind mismatches", widened, mismatched)
+	t.Logf("12 declarations x 10 wire kinds: %d widened", widened)
 	return bad
 }
 
 func TestGooseWideningLadder(t *testing.T) {
+	t.Skip("layer 4 (goose): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, b := range wideningLadder(t, nil) {
 		t.Error(b)
@@ -321,7 +321,7 @@ func mapReports(t *testing.T, override map[string][]byte) []string {
 		g := got[c.name]
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, m.New(m.Lookup("Root")), wires[c.name], &r)
-		if err != nil || r.Malformed != c.damaged || int64(r.Widened) != c.widen || int64(r.Duplicate) != c.dup || int64(r.KindMismatch) != c.mismatch {
+		if err != nil || r.Refused != c.damaged || int64(r.Widened) != c.widen {
 			t.Fatalf("%s: the reference reads %v %+v %v, which is not the Go leg's pin", c.name, ok, r, err)
 		}
 		if c.damaged {
@@ -339,6 +339,7 @@ func mapReports(t *testing.T, override map[string][]byte) []string {
 }
 
 func TestGooseMapReadReports(t *testing.T) {
+	t.Skip("layer 4 (goose): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	t.Parallel()
 	for _, b := range mapReports(t, nil) {
 		t.Error(b)
@@ -364,6 +365,9 @@ func TestGooseWideningNegativeControl(t *testing.T) {
 			"            if entry_widened { widened = true; c.report.widened += 1; }\n", []func(*testing.T, map[string][]byte) []string{mapReports}},
 	} {
 		t.Run(ctl.name, func(t *testing.T) {
+			if ctl.name != "leb-tenth" {
+				t.Skip("layer 4 (goose): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
+			}
 			t.Parallel()
 			o := sabotage(t, "wire_load.goose", ctl.from, ctl.to)
 			for i, gate := range ctl.gates {

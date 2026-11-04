@@ -47,10 +47,10 @@ func goOracleKeyedMalformed(t *testing.T, u *ir.Unit, wire []byte) bool {
 	value := model.New(u.Tables["KeyedConfig"])
 	report := new(tabletext.Report)
 	ok, err := tablewire.Decode(model, value, wire, report)
-	if err != nil {
+	if err != nil && !tablewire.ReadRefusal(err) {
 		t.Fatal(err)
 	}
-	return !ok || report.Malformed
+	return !ok || report.Refused
 }
 
 func javaKeyedMalformed(t *testing.T, u *ir.Unit, root string, wire []byte) bool {

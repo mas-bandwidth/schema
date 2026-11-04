@@ -1,10 +1,8 @@
-// A text list's TOTAL on the read (docs/SPEC-TABLES.md §2.13): the engine
-// keeps the longest prefix whose byte lengths sum within the reader's
-// `| total = N`, drops the first element that would carry the sum past it and
-// every element after, and counts `clamped` once, naming the field. The
-// writer declares no total, which is how a wire past the reader's total
-// exists at all. `make tables-wire-text-total-negative-control` removes the
-// clamp and requires this test to go red.
+// A text list's TOTAL on the read (docs/SPEC-TABLES.md §2.13, §4): a list
+// whose element byte lengths sum past the reader's `| total = N` refuses the
+// read length_over_bound, and so does a count past the reader's bound; a list
+// within both reads whole. The writer declares no total, which is how a wire
+// past the reader's total exists at all.
 package tablewire_test
 
 import (
@@ -52,7 +50,7 @@ func texts(inst *tabletext.Instance, field int) []string {
 	return out
 }
 
-func TestTextTotalClampsTheReadToAPrefix(t *testing.T) {
+func TestTextTotalRefusesPastTheTotal(t *testing.T) {
 	const wrote = `{"names":["abcde","fghij","k","lmno"],` +
 		`"maybe":["abcde",null,"fghij","k"],` +
 		`"repos":["abcde","fghij","k","lmno"],` +
@@ -83,14 +81,14 @@ func TestTextTotalClampsTheReadToAPrefix(t *testing.T) {
 			back := m.New(m.Lookup("Save"))
 			var r tabletext.Report
 			ok, err := tablewire.Decode(m, back, wire, &r)
-			if err != nil || !ok {
-				t.Fatalf("decode: ok=%v err=%v", ok, err)
+			if c.clamped > 0 {
+				if ok || !tablewire.ReadRefusal(err) || !r.Refused {
+					t.Fatalf("decode past the total or bound: ok=%v err=%v", ok, err)
+				}
+				return
 			}
-			if r.Clamped != c.clamped || r.Malformed || r.Unknown != 0 || r.KindMismatch != 0 {
-				t.Errorf("report %+v, want clamped %d and nothing else", r, c.clamped)
-			}
-			if c.clamped > 0 && r.Reason != "clamped: Save.names" {
-				t.Errorf("reason %q, want the first clamped field named, clamped: Save.names", r.Reason)
+			if err != nil || !ok || !r.Silent() {
+				t.Fatalf("decode: ok=%v err=%v %+v", ok, err, r)
 			}
 			for i, want := range c.want {
 				if got := strings.Join(texts(back, i), " "); got != want {

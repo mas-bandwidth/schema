@@ -165,7 +165,7 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -173,55 +173,47 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x6580790b036f0c6f: // active
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.active")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Active"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Active = b != 0
 			}
 		case 0x2281498aa0200e40: // speed
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.speed")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.speed")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Patrol.speed")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Speed = v
@@ -229,24 +221,18 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			}
 		case 0x247f0e7f55aacfbd: // has_target
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.has_target")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: HasTarget"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.HasTarget = b != 0
 			}
@@ -254,66 +240,52 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
-						} else if v > 1000 {
-							v = 1000
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
+						if v < 0 || v > 1000 {
+							r.Report.Refuse(TableRefuseOutOfRange, "Patrol.target_id")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.TargetID = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.target_id")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
-				} else if v > 1000 {
-					v = 1000
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
+				if v < 0 || v > 1000 {
+					r.Report.Refuse(TableRefuseOutOfRange, "Patrol.target_id")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.TargetID = int32(v)
 			}
 		case 0xb8c758d8bd1845d4: // wander
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.wander")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.wander")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Patrol.wander")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Wander = v
@@ -321,41 +293,30 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 			}
 		case 0x3bf8fbbad1587cdd: // note
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.note")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Note[:])
-				value.NoteLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 8 {
-				keep = tableUTF8Clamp(sub.Buffer, 8)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 8 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "Patrol.note")
+				return false
 			}
 			clear(value.Note[:])
-			copy(value.Note[:keep], sub.Buffer)
-			value.NoteLength = int32(keep)
+			copy(value.Note[:], sub.Buffer)
+			value.NoteLength = int32(len(sub.Buffer))
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -365,7 +326,18 @@ func PatrolLoadBody(r *TableReader, value *Patrol) bool {
 const PatrolLoadRetainBuilder = "Patrol: retention requires a region round trip through the VARIABLE form"
 
 func PatrolLoadRetain(region, wire []byte, retain *TableRetain, report *TableReport) *Patrol {
-	return (*Patrol)(tableRegionLoadRetain(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report, retain))
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	root := (*Patrol)(tableRegionLoadRetain(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, read, retain))
+	if root == nil || read.Refused() {
+		tableRefused(read)
+		return nil
+	}
+	return root
 }
 func PatrolMeasureRetain(value *Patrol, retain *TableRetain, allocator ...TableAllocator) int64 {
 	return tableRegionSaveRetain(unsafe.Pointer(value), PatrolTableType(), nil, true, retain, nil, allocator...)
@@ -518,7 +490,7 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			ref, ok = r.lebWide()
 		}
 		if !ok {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		if ref == 0 {
@@ -526,55 +498,47 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 		}
 		fieldID, ok := r.Resolve(ref)
 		if !ok || !r.Has(1) {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		kind := r.Get8()
 		if fieldID == 0xfffffffffffffffe || fieldID == 0xfffffffffffffffd || r.Nested && fieldID == 0xffffffffffffffff {
-			r.Report.Malformed = true
+			r.Report.Refuse(TableRefuseWireDamaged, "")
 			return false
 		}
 		switch fieldID {
 		case 0x6580790b036f0c6f: // active
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.active")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: Active"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.Active = b != 0
 			}
 		case 0x2281498aa0200e40: // speed
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.speed")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.speed")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Patrol.speed")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Speed = v
@@ -582,24 +546,18 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			}
 		case 0x247f0e7f55aacfbd: // has_target
 			if kind != 1 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.has_target")
+				return false
 			}
 			if !r.Has(1) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get8()
 				if b > 1 {
-					r.Report.Malformed = true
-					if r.Report.Reason == "" {
-						r.Report.Reason = "malformed: HasTarget"
-					}
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.HasTarget = b != 0
 			}
@@ -607,66 +565,52 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			if kind != 4 {
 				if tableKindWidens(kind, 4) {
 					if !r.Has(tableKindBytes(kind)) {
-						r.Report.Malformed = true
+						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					{
 						v := r.Signed(kind)
-						if v < 0 {
-							v = 0
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
-						} else if v > 1000 {
-							v = 1000
-							r.Report.Clamped++
-							tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
+						if v < 0 || v > 1000 {
+							r.Report.Refuse(TableRefuseOutOfRange, "Patrol.target_id")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
 						}
 						value.TargetID = int32(v)
 					}
 					r.Report.Widened++
 					break
 				}
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.target_id")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				v := int32(r.Get32())
-				if v < 0 {
-					v = 0
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
-				} else if v > 1000 {
-					v = 1000
-					r.Report.Clamped++
-					tableTextClamped(&r.Report.ClampedField, "Patrol.target_id")
+				if v < 0 || v > 1000 {
+					r.Report.Refuse(TableRefuseOutOfRange, "Patrol.target_id")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				}
 				value.TargetID = int32(v)
 			}
 		case 0xb8c758d8bd1845d4: // wander
 			if kind != 10 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.wander")
+				return false
 			}
 			if !r.Has(4) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 			{
 				b := r.Get32()
 				if b&0x7f800000 == 0x7f800000 {
-					tableNonFiniteFloat(&r.Report.NonFiniteFloat, "Patrol.wander")
+					r.Report.Refuse(TableRefuseNonFiniteFloat, "Patrol.wander")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
 				} else {
 					v := math.Float32frombits(b)
 					value.Wander = v
@@ -674,41 +618,30 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 			}
 		case 0x3bf8fbbad1587cdd: // note
 			if kind != 12 {
-				r.Report.KindMismatch++
-				if !r.Skip(kind) {
-					r.Report.Malformed = true
-					return false
-				}
-				break
-			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseKindMismatch, "Patrol.note")
 				return false
 			}
-			if !tableUTF8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Note[:])
-				value.NoteLength = 0
-				break
+			sub, ok := r.Body()
+			if !ok || !tableUTF8Valid(sub.Buffer) {
+				r.Report.Refuse(TableRefuseWireDamaged, "")
+				return false
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 8 {
-				keep = tableUTF8Clamp(sub.Buffer, 8)
-				r.Report.Clamped++
+			if len(sub.Buffer) > 8 {
+				r.Report.Refuse(TableRefuseLengthOverBound, "Patrol.note")
+				return false
 			}
 			clear(value.Note[:])
-			copy(value.Note[:keep], sub.Buffer)
-			value.NoteLength = int32(keep)
+			copy(value.Note[:], sub.Buffer)
+			value.NoteLength = int32(len(sub.Buffer))
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind, "Patrol") {
-				r.Report.Malformed = true
+				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
 		}
@@ -722,11 +655,7 @@ func PatrolLoadMeasureReason(wire []byte) (int64, error) {
 	size, _, _, reason := tableRegionMeasureReason(wire, PatrolTableType(), PatrolTableType().NodeType, 0)
 	return size, tableRefuseError(reason)
 }
-
-// PatrolLoadTolerant is the TOLERANT region read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it accepts every wire the
-// framing walk accepts and returns its root, with the counters counted onto the report passed; damage
-// returns nil and hands back nothing (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-func PatrolLoadTolerant(region, wire []byte, report *TableReport) *Patrol {
+func PatrolLoadRegion(region, wire []byte, report *TableReport) *Patrol {
 	return (*Patrol)(tableRegionLoad(region, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report))
 }
 func PatrolMeasure(value *Patrol, context ...TableWriteContext) int64 {
@@ -742,16 +671,12 @@ func PatrolSave(value *Patrol, buffer []byte, context ...TableWriteContext) int6
 	arena, allocator := tableWriteOptions(context)
 	return tableRegionSave(unsafe.Pointer(value), PatrolTableType(), buffer, false, arena, allocator)
 }
-
-// PatrolLoadBuilderTolerant is the TOLERANT builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): it reads the value into
-// the builder, with the counters counted onto the report passed; damage answers false with the builder's
-// root at its defaults (mas-bandwidth/schema docs/SPEC-TABLES.md §4).
-func PatrolLoadBuilderTolerant(b *PatrolBuilder, wire []byte, report *TableReport) bool {
+func PatrolLoadBuilderRead(b *PatrolBuilder, wire []byte, report *TableReport) bool {
 	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, PatrolTableType(), PatrolTableType().NodeType, 0, report)
 }
 
-// PatrolLoad is the plain region read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): a nil root for whatever
-// PatrolReadStrict refuses; a supplied report receives THIS read's report, and report.Err() is the reason.
+// PatrolLoad is the region read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): the root, or nil when it refuses; a supplied
+// report receives this read's report, and report.Err() is the reason.
 func PatrolLoad(region, wire []byte, report *TableReport) *Patrol {
 	read := report
 	if read == nil {
@@ -759,16 +684,16 @@ func PatrolLoad(region, wire []byte, report *TableReport) *Patrol {
 	} else {
 		*read = TableReport{}
 	}
-	root := PatrolLoadTolerant(region, wire, read)
-	if root == nil || read.Err() != nil {
+	root := PatrolLoadRegion(region, wire, read)
+	if root == nil || read.Refused() {
+		tableRefused(read)
 		return nil
 	}
 	return root
 }
 
-// PatrolLoadBuilder is the plain builder read, and it is STRICT (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): false for whatever
-// PatrolReadStrict refuses, and the builder is then only shut down; a supplied report receives THIS read's
-// report, and report.Err() is the reason.
+// PatrolLoadBuilder is the builder read (mas-bandwidth/schema docs/SPEC-TABLES.md §4, §6.5): false when it refuses, and the builder is
+// then only shut down; a supplied report receives this read's report, and report.Err() is the reason.
 func PatrolLoadBuilder(b *PatrolBuilder, wire []byte, report *TableReport) bool {
 	read := report
 	if read == nil {
@@ -776,11 +701,14 @@ func PatrolLoadBuilder(b *PatrolBuilder, wire []byte, report *TableReport) bool 
 	} else {
 		*read = TableReport{}
 	}
-	ok := PatrolLoadBuilderTolerant(b, wire, read)
-	return ok && read.Err() == nil
+	if !PatrolLoadBuilderRead(b, wire, read) || read.Refused() {
+		tableRefused(read)
+		return false
+	}
+	return true
 }
 
-// PatrolReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.
+// PatrolReadStrict is PatrolLoadBuilder under one call (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): its own builder, the value or the typed reason.
 func PatrolReadStrict(wire []byte) (*Patrol, error) {
 	var b PatrolBuilder
 	size := PatrolLoadMeasure(wire)
@@ -789,13 +717,9 @@ func PatrolReadStrict(wire []byte) (*Patrol, error) {
 		return nil, TableRefuseAllocationFailed
 	}
 	var report TableReport
-	ok := PatrolLoadBuilderTolerant(&b, wire, &report)
-	if err := report.Err(); err != nil || !ok {
+	if !PatrolLoadBuilder(&b, wire, &report) {
 		b.Shutdown()
-		if err == nil {
-			err = TableRefuseWireDamaged
-		}
-		return nil, err
+		return nil, report.Err()
 	}
 	if !b.Lock() {
 		b.Shutdown()
