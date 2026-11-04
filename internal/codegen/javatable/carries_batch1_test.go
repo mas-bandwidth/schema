@@ -111,14 +111,24 @@ public final class Main {
         check(jv2.loOnly == 1000 && jv2.hiOnly == -1000 && jv2.u64Lo == -1L && jv2.u8Hi == 0, "unclamped ends");
         check(jrep2.clamped == 0, "expected 0 clamps on open ends, got " + jrep2.clamped);
 
-        // 2. Fixed form load clamping on one-sided bounds (including uint64 | min = 100)
+        // 2. Fixed form load clamping on one-sided bounds (including uint64 | min = 100).
+        // The writer refuses the off-range values (docs/SPEC.md §5.1, -ea), so the
+        // record that carries them is forged at the body's offsets.
         ClampRowFixed.Value fv = new ClampRowFixed.Value();
         fv.loOnly = 3;
         fv.hiOnly = 77;
         fv.u64Lo = 50L;
         fv.u8Hi = (byte) 240;
         byte[] fbuf = new byte[ClampRowFixed.bodyBytes];
-        ClampRowFixed.writeBody(fbuf, 0, fv);
+        boolean refused = false;
+        try {
+            ClampRowFixed.writeBody(fbuf, 0, fv);
+        } catch (AssertionError contract) {
+            refused = true;
+        }
+        check(refused, "the fixed writer wrote off-range values");
+        java.nio.ByteBuffer.wrap(fbuf).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            .putInt(0, 3).putInt(4, 77).putLong(8, 50L).put(16, (byte) 240);
         TableFixed.Report frep = new TableFixed.Report();
         ClampRowFixed.Value floaded = new ClampRowFixed.Value();
         ClampRowFixed.scatter(fbuf, 0, floaded, frep);

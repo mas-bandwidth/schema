@@ -270,7 +270,9 @@ public final class BenchMixedVariable {
         if (v.entities.size() < 1 || v.entities.size() > 8) return false;
         if (v.stats.size() > 80) return false;
         if (v.loadout.size() > 4) return false;
-        if (TableVariable.utf8Len(v.playerName) > 15L) return false;
+        if (!TableVariable.textWellFormed(v.playerName)
+                || TableVariable.utf8Len(v.playerName) > 15L)
+            return false;
         if (v.payload != null && v.payload.length > 16) return false;
         if ((v.crcHint >>> 24) != 0) return false;
         if ((long) v.extra < 0 || (long) v.extra > 255) return false;
@@ -1758,6 +1760,7 @@ public final class BenchMixedVariable {
 
     public static byte[] toJson(Value v) {
         TableVariable.NodeGraph graph = new TableVariable.NodeGraph();
+        graph.text = true;
         graph.setOpen(v, true);
         if (!buildGraph(graph, v)) {
             return null;

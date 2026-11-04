@@ -176,14 +176,77 @@ public final class BenchMixedFixed {
         TableFixed.put32(b, at + 1232, v.idleTicks);
     }
 
-    // checkWrite is writeBody's contract walk, called once through `assert`.
-    // THE WRITE-SIDE CHECKS ARE DEBUG ONLY: without -ea the writer trusts,
-    // which is what makes a save one template and a straight line of stores.
-    private static boolean checkWrite(Value v) {
-        assert v.entitiesCount >= 1 && v.entitiesCount <= 8;
-        assert v.statsCount >= 0 && v.statsCount <= 80;
-        assert v.playerNameLength >= 0 && v.playerNameLength <= 15;
-        assert v.payloadLength >= 0 && v.payloadLength <= 16;
+    // checkWrite is the write contract (docs/SPEC.md §5.1) over one value
+    // and everything it holds by value: false on the first field that holds
+    // what its declaration does not admit. It runs through `assert` alone,
+    // so without -ea the writer trusts.
+    static boolean checkWrite(Value v) {
+        if ((v.sequence >>> 16) != 0) {
+            return false;
+        }
+        if ((long) v.ackSequence < 0 || (long) v.ackSequence > 65535) {
+            return false;
+        }
+        if (Long.compareUnsigned(v.nonce, 0L) < 0
+                || Long.compareUnsigned(v.nonce, 0xffffffffffffffffL) > 0) {
+            return false;
+        }
+        if (v.worldTime < -1000000000000L || v.worldTime > 1000000000000L) {
+            return false;
+        }
+        if ((v.frameTick >>> 48) != 0) {
+            return false;
+        }
+        if (v.entitiesCount < 1 || v.entitiesCount > 8) {
+            return false;
+        }
+        for (int i = 0; i < v.entitiesCount; i++) {
+            if (!MixedEntityFixed.checkWrite(v.entities[i])) {
+                return false;
+            }
+        }
+        if (v.statsCount < 0 || v.statsCount > 80) {
+            return false;
+        }
+        for (int i = 0; i < v.statsCount; i++) {
+            if (!MixedStatFixed.checkWrite(v.stats[i])) {
+                return false;
+            }
+        }
+        if (!MixedEventFixed.checkWrite(v.gameEvent)) {
+            return false;
+        }
+        if (v.playerNameLength < 0 || v.playerNameLength > 15) {
+            return false;
+        }
+        if (!TableFixed.utf8WellFormed(v.playerName, v.playerNameLength)) {
+            return false;
+        }
+        if (v.payloadLength < 0 || v.payloadLength > 16) {
+            return false;
+        }
+        if ((v.crcHint >>> 24) != 0) {
+            return false;
+        }
+        if ((long) v.extra < 0 || (long) v.extra > 255) {
+            return false;
+        }
+        if ((long) v.idleTicks < 0 || (long) v.idleTicks > 15) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * checkWrite over the first count values of a batch, asserted before a save stores its first
+     * byte.
+     */
+    public static boolean checkWriteBatch(Value[] values, int count) {
+        for (int k = 0; k < count; k++) {
+            if (values[k] != null && !checkWrite(values[k])) {
+                return false;
+            }
+        }
         return true;
     }
 
