@@ -198,7 +198,7 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, wr := range m.WriteRefusals {
 		// the line is the whole question: which value, and what damage the
 		// driver puts into it in code before it writes (§16.14, W0)
-		fmt.Fprintf(&b, "write-refusal %s %s %s %s %s\n", wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Damage)
+		fmt.Fprintf(&b, "json-write-refusal %s %s %s %s %s\n", wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Damage)
 	}
 	for _, c := range m.Connections {
 		fmt.Fprintf(&b, "connection %s %s 0x%016x %s\n", c.Key, c.Unit, c.BuildVersion, c.Wire)

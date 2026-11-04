@@ -17774,7 +17774,7 @@ key and in a value, float32 values whose twice-rounded check stops early
 (`text_float32_double_round`), pre-epoch and fractional timestamps, the
 integer and base64 boundaries, and a pointer chain exactly at the depth cap
 (`graph_chain_text`, 128 nodes) that every reader takes and every writer
-writes. The `write-refusal` rows (testdata/conformance/tables/FORMAT.md) hold
+writes. The `json-write-refusal` rows (testdata/conformance/tables/FORMAT.md) hold
 W0 on the same surface, where the answer is `refused`: the same chain one
 node past the cap (`graph_chain_past_cap`), and storage built in code holding
 ill-formed UTF-8 (`text_refuse_illformed`) or an unpaired surrogate

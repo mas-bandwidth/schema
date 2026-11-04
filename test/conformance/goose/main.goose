@@ -226,7 +226,7 @@ fn surface_json(lines: const u8[:][:], unit: const u8[:], writing: bool) {
 fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
-        if f.len < 6 || f[0] != "write-refusal" || f[2] != unit { continue; }
+        if f.len < 6 || f[0] != "json-write-refusal" || f[2] != unit { continue; }
         var data: u8[>..] = [];
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
@@ -248,7 +248,7 @@ fn surface_write_refusal(lines: const u8[:][:], unit: const u8[:]) {
 }
 
 // damage_text puts into the root record's top-level text field what no read
-// delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): the bytes
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the bytes
 // 61 FF 62 in a narrow field, the UTF-16LE units 0061 D800 0062 in a wide one.
 // The bytes are appended to the data store and the field's slot (the record's
 // fields sit in descriptor order) is pointed at them.

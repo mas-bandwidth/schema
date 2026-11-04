@@ -217,8 +217,8 @@ struct Codec
     bool ( *cook )( const void *, void *, uint64_t, int );
     void * ( *make )();
     void ( *reset )( void * );
-    // puts a write-refusal line's damage into a loaded value (FORMAT.md,
-    // `write-refusal`): false when the root has no such text field
+    // puts a json-write-refusal line's damage into a loaded value (FORMAT.md,
+    // `json-write-refusal`): false when the root has no such text field
     bool ( *damage )( void *, const std::string &, bool );
 };
 
@@ -382,7 +382,7 @@ struct VarCodec
     bool ( *cook )( const void *, void *, uint64_t, int );
     bool ( *json_read )( const char *, int64_t, Report *, std::vector<uint8_t> & );
     bool ( *to_json )( const void *, std::vector<char> & );
-    // the two raw calls the write-refusal rows hold apart
+    // the two raw calls the json-write-refusal rows hold apart
     int64_t ( *to_json_measure )( const void * );
     int64_t ( *to_json_into )( const void *, char *, int64_t );
 };
@@ -1272,8 +1272,8 @@ static int surface_json_write( const std::string & out )
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
-        if ( f[0] != "write-refusal" ) continue;
-        if ( f.size() < 6 ) { fprintf( stderr, "driver: a write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
+        if ( f[0] != "json-write-refusal" ) continue;
+        if ( f.size() < 6 ) { fprintf( stderr, "driver: a json-write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
         std::vector<uint8_t> wire;
         if ( !slurp( f[4].c_str(), wire ) ) { fprintf( stderr, "driver: cannot read %s\n", f[4].c_str() ); return 1; }
         const std::string & damage = f[5];

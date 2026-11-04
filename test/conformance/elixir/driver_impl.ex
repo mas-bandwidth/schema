@@ -619,7 +619,7 @@ defmodule Driver do
     # wire, then the line's damage put into storage in code, then to_json,
     # which must refuse. This leg has one to_json and no separate measure, so
     # one call answers for both.
-    for [name, unit, root, wire, damage] <- rows(rows, "write-refusal") do
+    for [name, unit, root, wire, damage] <- rows(rows, "json-write-refusal") do
       case table_module(unit) do
         nil ->
           write_absent(outdir, name <> ".json")
@@ -1104,7 +1104,7 @@ defmodule Driver do
   end
 
   # damage_text puts into a fixed root's top-level text field what no read
-  # delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`). A narrow
+  # delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`). A narrow
   # field holds the bytes 61 FF 62 exactly. A wide field is held as UTF-8, so
   # the units 0061 D800 0062 are put as the nearest value that is not text:
   # "a", D800's generalized UTF-8 encoding ED A0 80, then "b".

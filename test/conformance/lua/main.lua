@@ -278,7 +278,7 @@ local function surfaceJsonRead(all, outdir)
 end
 
 -- damageText puts into a fixed root's top-level text field what no read
--- delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): a narrow
+-- delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): a narrow
 -- field is a Lua string, which holds the bytes 61 FF 62 as they are; a wide
 -- field is its array of UTF-16 units, here 0061 D800 0062.
 local function damageText(v, damage)
@@ -312,7 +312,7 @@ local function surfaceJsonWrite(all, outdir)
   -- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the wire,
   -- then the line's damage put into storage in code, then ToJson, which must
   -- refuse. The Lua writer has no separate measure: ToJson is the one call.
-  for _, f in ipairs(kind(all, "write-refusal")) do
+  for _, f in ipairs(kind(all, "json-write-refusal")) do
     local u = unit(f[3])
     if not u then
       absent(outdir, f[2] .. ".json", NOT_GENERATED)

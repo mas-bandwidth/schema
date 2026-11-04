@@ -1326,7 +1326,7 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     // wire, then the line's damage put into storage in code, then ToJson,
     // which must refuse. This leg's ToJson is <root>_to_json_checked, one walk
     // that is measure and write at once, so one call answers for both.
-    for f in manifest.of_kind("write-refusal") {
+    for f in manifest.of_kind("json-write-refusal") {
         let data = slurp(&f[4]);
         let answer = with_root!(f[2].as_str(), f[3].as_str(), |load, _save, to_json, _from| {
             let mut report = Default::default();
@@ -1351,7 +1351,7 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
     }
 }
 
-// What a write-refusal line's damage did to storage.
+// What a json-write-refusal line's damage did to storage.
 enum Damage {
     // the damage is in the value, for ToJson to answer
     Placed,
@@ -1363,7 +1363,7 @@ enum Damage {
 }
 
 // damage_text puts into a fixed root's top-level text field what no read
-// delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): the
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
 // bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
 // The field is reached by the root's concrete type.
 fn damage_text(value: &mut dyn std::any::Any, damage: &str) -> Damage {

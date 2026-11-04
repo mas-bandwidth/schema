@@ -307,7 +307,7 @@ if (mode == "json-read" || mode == "json-write") {
   // instead is the answer, which the harness scores red.
   if (write) foreach (ln in lines) {
     local f = splitFields(ln);
-    if (f.len() < 6 || f[0] != "write-refusal") continue;
+    if (f.len() < 6 || f[0] != "json-write-refusal") continue;
     local cname = f[1]; local unit = f[2]; local root = f[3]; local wirepath = f[4]; local damage = f[5];
     local outname = cname + ".json";
     if (!generated(unit)) { writeAbsent(outname); continue; }

@@ -1338,6 +1338,6 @@ instance graph_chain_text          graphdemo         Scene         testdata/wire
 # and no text can deliver — a narrow field's ill-formed UTF-8
 # and a wide field's unpaired surrogate — and the writer refuses rather than
 # replacing either with U+FFFD.
-write-refusal graph_chain_past_cap  graphdemo Scene         testdata/wire/tables/graph_chain_past_cap.bin none
-write-refusal text_refuse_illformed tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin       narrow:name
-write-refusal text_refuse_unpaired  widedemo  Stamp         testdata/wire/tables/wide_stamp.bin          wide:label
+json-write-refusal graph_chain_past_cap  graphdemo Scene         testdata/wire/tables/graph_chain_past_cap.bin none
+json-write-refusal text_refuse_illformed tabledemo ProfileConfig testdata/wire/tables/profile_elide.bin       narrow:name
+json-write-refusal text_refuse_unpaired  widedemo  Stamp         testdata/wire/tables/wide_stamp.bin          wide:label

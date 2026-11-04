@@ -454,8 +454,8 @@ static int surface_json_write( const char * out )
         char * text;
         char name[512];
         int ok, wide;
-        if ( strcmp( f->field[0], "write-refusal" ) != 0 ) { continue; }
-        if ( f->count < 6 ) { fprintf( stderr, "driver: a write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
+        if ( strcmp( f->field[0], "json-write-refusal" ) != 0 ) { continue; }
+        if ( f->count < 6 ) { fprintf( stderr, "driver: a json-write-refusal line is <case> <unit> <root> <wire> <damage>\n" ); return 1; }
         codec = find_codec( f->field[2], f->field[3] );
         snprintf( name, sizeof( name ), "%s.json", f->field[1] );
         if ( codec == NULL || codec->to_json == NULL ) { if ( !spill_absent( out, name ) ) { return 1; } continue; }

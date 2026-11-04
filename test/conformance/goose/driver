@@ -329,7 +329,7 @@ for key in $(awk '$1 == "unit" { print $2 }' "$1"); do
 				if (!no_text) print $2 (s == "json-write" ? ".json" : "") " absent target-refuses-schema";
 				next
 			}
-			s == "json-write" && $1 == "write-refusal" && $3 == k { print $2 ".json absent target-refuses-schema"; next }
+			s == "json-write" && $1 == "json-write-refusal" && $3 == k { print $2 ".json absent target-refuses-schema"; next }
 			(s == "message" && $1 == "message" && unit_of[$3] == k) ||
 			(s == "wire" && $1 == "instance" && $3 == k) ||
 			(s == "report" && $1 == "report" && $3 == k) ||

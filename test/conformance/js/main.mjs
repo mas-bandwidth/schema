@@ -994,7 +994,7 @@ async function surfaceJsonWrite(lines, outDir) {
   // then the line's damage put into storage in code, then ToJson, which must
   // refuse. ToJson is this leg's measure and write in one call, so one null
   // answers both.
-  for (const f of kind(lines, "write-refusal")) {
+  for (const f of kind(lines, "json-write-refusal")) {
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1] + ".json"); continue; }
     const v = codec.load(new Uint8Array(readFileSync(f[4])), codec.report());
@@ -1006,7 +1006,7 @@ async function surfaceJsonWrite(lines, outDir) {
 }
 
 // damageText puts into a root's top-level text field what no read delivers
-// (testdata/conformance/tables/FORMAT.md, `write-refusal`). A narrow and a wide
+// (testdata/conformance/tables/FORMAT.md, `json-write-refusal`). A narrow and a wide
 // string are both a JS string here, which holds UTF-16 units, not bytes: the
 // row's bytes 61 FF 62 have no JS string spelling, so `narrow:` holds the
 // nearest value that is not text, "a\uD800b", an unpaired surrogate, the same

@@ -770,7 +770,7 @@ static partial class Program
         // THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
         // wire, then the line's damage put into storage in code, then ToJson,
         // which must return -1 from measure and write alike
-        foreach (string[] f in Kind("write-refusal"))
+        foreach (string[] f in Kind("json-write-refusal"))
         {
             Codec codec = Find(f[2], f[3]);
             if (codec == null) { SpillAbsent(outDir, f[1] + ".json"); continue; }
@@ -807,7 +807,7 @@ static partial class Program
     }
 
     // DamageText puts into a fixed root's top-level text field what no read
-    // delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): the
+    // delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
     // bytes 61 FF 62 in a narrow field (byte[]), the units 0061 D800 0062 in a
     // wide one (char[]). The field is reached by reflection on its generated
     // name and its Length companion.

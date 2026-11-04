@@ -418,7 +418,7 @@ func readReports(path string) (map[string]Counts, error) {
 	return out, nil
 }
 
-// oracleRefusesWrite loads a write-refusal row's wire with the oracle, applies
+// oracleRefusesWrite loads a json-write-refusal row's wire with the oracle, applies
 // its damage in code, and requires the oracle's writer to refuse the value.
 func oracleRefusesWrite(unit *ir.Unit, wr WriteRefusal) error {
 	root := unit.Tables[wr.Root]

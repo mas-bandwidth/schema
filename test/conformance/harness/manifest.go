@@ -562,9 +562,9 @@ func ReadManifest(path, jsonDir string) (*Manifest, error) {
 				return nil, fmt.Errorf("%s: refused-by= needs go-refusal= to name the refusal", where)
 			}
 			m.Instances = append(m.Instances, inst)
-		case "write-refusal":
+		case "json-write-refusal":
 			if len(f) != 6 {
-				return nil, fmt.Errorf("%s: write-refusal takes case, unit, root, wire and damage", where)
+				return nil, fmt.Errorf("%s: json-write-refusal takes case, unit, root, wire and damage", where)
 			}
 			damage := f[5]
 			if damage != "none" && !strings.HasPrefix(damage, "narrow:") && !strings.HasPrefix(damage, "wide:") {

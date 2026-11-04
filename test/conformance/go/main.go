@@ -421,7 +421,7 @@ func surfaceJsonWrite(lines []line, out string) error {
 	// wire, then the line's damage put into storage in code, then ToJson, which
 	// must return -1 from measure and write alike
 	for _, f := range lines {
-		if f[0] != "write-refusal" {
+		if f[0] != "json-write-refusal" {
 			continue
 		}
 		c := findCodec(f[2], f[3])
@@ -460,7 +460,7 @@ func surfaceJsonWrite(lines []line, out string) error {
 }
 
 // damageText puts into a fixed root's top-level text field what no read
-// delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): the
+// delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the
 // bytes 61 FF 62 in a narrow field, the units 0061 D800 0062 in a wide one.
 // The field is reached by reflection on its generated name and its Length.
 func damageText(value any, damage string) error {

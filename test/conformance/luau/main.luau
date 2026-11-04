@@ -324,7 +324,7 @@ local function surfaceJsonRead(lines: { { string } })
 end
 
 -- damageText puts into a fixed root's top-level text field what no read
--- delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): the bytes
+-- delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): the bytes
 -- 61 FF 62 in a narrow field, the UTF-16 units 0061 D800 0062 (little-endian
 -- in the field's buffer) in a wide one. The field is its exported slot and the
 -- slot's Length.
@@ -371,7 +371,7 @@ local function surfaceJsonWrite(lines: { { string } })
 	-- wire, then the line's damage put into storage in code, then ToJson,
 	-- which must refuse. The Luau writer has no separate measure: ToJson is
 	-- the one call.
-	for _, f in kind(lines, "write-refusal") do
+	for _, f in kind(lines, "json-write-refusal") do
 		local u = unit(f[3])
 		if u == nil or rootOf(u, f[4]) == nil then
 			say(f[2] .. ".json", nil)

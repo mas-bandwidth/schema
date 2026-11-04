@@ -1768,7 +1768,7 @@ int surfaceJsonWrite(String outDir) {
   // then the line's damage put into storage in code, then ToJson, which must
   // refuse. ToJson is this leg's measure and write in one call, and it refuses
   // by throwing, so one refusal answers both.
-  for (final f in kind('write-refusal')) {
+  for (final f in kind('json-write-refusal')) {
     final write = jsonWriteRefusalWriter(f[2], f[3], File(f[4]).readAsBytesSync(), f[5]);
     if (write == null) {
       spillAbsent(outDir, '${f[1]}.json');
@@ -1785,7 +1785,7 @@ int surfaceJsonWrite(String outDir) {
   return 0;
 }
 
-// _notText is what `write-refusal`'s damage puts into a text field
+// _notText is what `json-write-refusal`'s damage puts into a text field
 // (testdata/conformance/tables/FORMAT.md). A narrow and a wide string are both
 // a Dart String here, which holds UTF-16 units, not bytes: the row's bytes
 // 61 FF 62 have no String spelling, so `narrow:` holds the nearest value that

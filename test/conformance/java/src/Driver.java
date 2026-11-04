@@ -974,7 +974,7 @@ public final class Driver {
         // wire, then the line's damage put into storage in code, then toJson,
         // which must refuse (null). Java has one writer entry, so measure and
         // write are the same call.
-        for (String[] f : kind("write-refusal")) {
+        for (String[] f : kind("json-write-refusal")) {
             try {
                 VariableCodec codec = variableCodec(f[2], f[3]);
                 if (codec == null) { spillAbsent(out, f[1] + ".json"); continue; }
@@ -990,7 +990,7 @@ public final class Driver {
     }
 
     // damageText puts into a root's top-level text field what no read delivers
-    // (testdata/conformance/tables/FORMAT.md, `write-refusal`). A wide field is
+    // (testdata/conformance/tables/FORMAT.md, `json-write-refusal`). A wide field is
     // a char[], so it takes the units 0061 D800 0062 exactly. A narrow field is
     // a java.lang.String, which holds UTF-16 and cannot hold the bytes 61 FF 62:
     // the nearest value in it that is not text is the lone surrogate "a\uD800b".

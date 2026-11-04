@@ -49,7 +49,7 @@ cook-write   <instance> <little-endian file> <big-endian file>
 block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 refusal      <forgery> <reason>
-write-refusal <case> <unit> <root> <wire file> <damage>
+json-write-refusal <case> <unit> <root> <wire file> <damage>
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
@@ -66,7 +66,7 @@ write-refusal <case> <unit> <root> <wire file> <damage>
   refuses. `harness generate` writes none and the harness asks no leg for one.
   The marker is the data saying so on the instance's own line, which is louder
   than a missing file quietly tolerated.
-- **`write-refusal`** is one value the TEXT WRITER must refuse
+- **`json-write-refusal`** is one value the TEXT WRITER must refuse
   (docs/SPEC-TABLES.md §16.14, W0), answered on the `json-write` surface as
   `<case>.json` holding `refused` and a newline. The driver loads `<wire file>`
   at `<root>`, then applies `<damage>` in code: `none` writes the value as

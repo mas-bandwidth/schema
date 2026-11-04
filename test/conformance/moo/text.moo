@@ -5,7 +5,7 @@
 --
 --   json-read     FromJson json/<name>.json, Save, the bytes
 --   json-write    Load the wire file, ToJson, the text
---                 and, for a write-refusal line, the damage put into storage in
+--                 and, for a json-write-refusal line, the damage put into storage in
 --                 code first, then `refused\n` when ToJson refuses
 --   json-hostile  FromJson <tree>/<root>.json, the report as
 --                 `u,k,w,c,d,m,verdict\n` and the §16 text of the value it
@@ -27,7 +27,7 @@ return function(ctx: any): { [string]: Surface }
 	end
 
 	-- damageText puts into a fixed root's top-level text field what no read
-	-- delivers (testdata/conformance/tables/FORMAT.md, `write-refusal`): a
+	-- delivers (testdata/conformance/tables/FORMAT.md, `json-write-refusal`): a
 	-- narrow field is a moo string, which holds the bytes 61 FF 62 as they are;
 	-- a wide field is its buffer of UTF-16LE units, here 0061 D800 0062, and the
 	-- slot's Length.
@@ -98,7 +98,7 @@ return function(ctx: any): { [string]: Surface }
 			-- THE VALUES THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the
 			-- wire, then the line's damage put into storage in code, then
 			-- ToJsonMeasure and ToJson, which must both refuse
-			for _, f in ctx.kind("write-refusal") do
+			for _, f in ctx.kind("json-write-refusal") do
 				if not carried(nil, f[3]) then
 					ctx.say(f[2] .. ".json", nil)
 					continue
