@@ -256,11 +256,10 @@ func TestLuauTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	inputs["duplicate"] = dupWire
 	var goReport tabletext.Report
 	back := m.New(m.Lookup("Bounded"))
-	if ok, err := tablewire.Decode(m, back, dupTwin, &goReport); !ok || err != nil {
-		t.Fatalf("the Go load of the repeated-key wire: ok=%v err=%v %+v", ok, err, goReport)
-	}
-	if goReport.Duplicate != 1 || goReport.Malformed {
-		t.Fatalf("the Go load of the repeated-key wire reports %+v, want one duplicate and no damage", goReport)
+	// a repeated map key is damage (docs/SPEC-TABLES.md §4): the Go load
+	// refuses it, and the leg owes the refusal
+	if ok, err := tablewire.Decode(m, back, dupTwin, &goReport); ok || !tablewire.ReadRefusal(err) {
+		t.Fatalf("the Go load of the repeated-key wire does not refuse: ok=%v err=%v %+v", ok, err, goReport)
 	}
 
 	g := luauUnboundedTextGenerated(t, u)
@@ -292,7 +291,7 @@ func TestLuauTableUnboundedTextListsAndMapKeys(t *testing.T) {
 		}
 	}
 	dup := got["duplicate"]
-	wantDup := fmt.Sprintf("duplicate:%d:false:", goReport.Duplicate)
+	wantDup := "duplicate:REFUSED:"
 	if !strings.HasPrefix(dup, wantDup) {
 		t.Errorf("duplicate: the Luau load's verdict does not match the Go load's %+v\n got  %s", goReport, dup)
 	}
