@@ -621,8 +621,15 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.pf("%s}\n", ind)
 			return
 		}
+		// A BARE FLOAT IS FINITE (SPEC §4.3, §5.1): a NaN or an infinity is
+		// caller error, refused debug-only, because the runtime's write_float
+		// sends whatever bits it is handed. Finiteness is spelled x - x == 0,
+		// serialize.h's own idiom (NaN and both infinities fail it), so the
+		// header needs no <cmath>.
+		g.pf("%sserialize_assert( %s - %s == 0.0f ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)\n", ind, name, name)
 		g.pf("%swrite_float( stream, %s );\n", ind, name)
 	case ir.TFloat64:
+		g.pf("%sserialize_assert( %s - %s == 0.0 ); // a NaN or an infinity is refused (SPEC §4.3, §5.1)\n", ind, name, name)
 		g.pf("%swrite_double( stream, %s );\n", ind, name)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic

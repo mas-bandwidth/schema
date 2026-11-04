@@ -2154,3 +2154,47 @@ test-c: tables-c-cycle
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
 build/tables-generated-c/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+
+# THE PACKET WRITER'S FINITE RULE, C side (SPEC §4.3, §5.1): a NaN or an
+# infinity in a plain float32 or float64 is refused by serialize.c's own
+# serialize_write_float and serialize_write_double, whose serialize_assert holds
+# the writer's contract debug-only, so the generated writer carries no second
+# copy. test/packet-finite/native's checker, compiled as C, writes each
+# non-finite pattern in a forked child and requires the abort, and writes the
+# finite edges bit exact.
+build/packet-finite/c/.stamp: bin/schema test/packet-finite/Finite.schema
+	@rm -rf build/packet-finite/c && mkdir -p build/packet-finite/c
+	./bin/schema generate --lang c --out build/packet-finite/c/generated test/packet-finite/Finite.schema
+	@touch $@
+
+build/packet-finite/c/checker: build/packet-finite/c/.stamp test/packet-finite/native/main.c
+	$(CC) -std=c99 -Wall -Wextra -Werror -ffp-contract=off -I$(SERIALIZE_C) -Ibuild/packet-finite/c/generated \
+		test/packet-finite/native/main.c $(SERIALIZE_C)/serialize.c -lm -o $@
+
+.PHONY: packet-finite-c packet-finite-write-negative-control-c
+packet-finite-c: build/packet-finite/c/checker
+	./build/packet-finite/c/checker
+
+# The check lives in the runtime, so the control deletes the runtime's two
+# write asserts from a COPY of serialize.c's header and requires the checker
+# to fail exactly the non-finite write vectors write.expected names, the finite
+# edges staying green. Nothing tracked, and nothing of the sibling, is written to.
+packet-finite-write-negative-control-c: packet-finite-c
+	@rm -rf build/packet-finite/c-negative && mkdir -p build/packet-finite/c-negative/runtime
+	@cp $(SERIALIZE_C)/serialize.c build/packet-finite/c-negative/runtime/serialize.c
+	@n=$$(grep -c -e 'serialize_assert( serialize_float_bits_are_finite( bits ) );' \
+		-e 'serialize_assert( serialize_double_bits_are_finite( bits ) );' $(SERIALIZE_C)/serialize.h); \
+		[ "$$n" = 2 ] || { echo "NEGATIVE CONTROL FAILED: expected the runtime's two finite write asserts, found $$n"; exit 1; }
+	@sed -e '/serialize_assert( serialize_float_bits_are_finite( bits ) );/d' \
+		-e '/serialize_assert( serialize_double_bits_are_finite( bits ) );/d' \
+		$(SERIALIZE_C)/serialize.h > build/packet-finite/c-negative/runtime/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -ffp-contract=off -Ibuild/packet-finite/c-negative/runtime -Ibuild/packet-finite/c/generated \
+		test/packet-finite/native/main.c build/packet-finite/c-negative/runtime/serialize.c -lm -o build/packet-finite/c-negative/checker
+	@if ./build/packet-finite/c-negative/checker > build/packet-finite/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the C runtime finite assert was removed and the checker stayed green'; exit 1; fi
+	@sed -n 's|^FAILED: \([^:]*\):.*|\1|p' build/packet-finite/c-negative/log | LC_ALL=C sort > build/packet-finite/c-negative/failed
+	@diff -u test/packet-finite/native/write.expected build/packet-finite/c-negative/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the removed C finite assert did not fail exactly the write vectors'; cat build/packet-finite/c-negative/log; exit 1; }
+	@echo "packet finite C negative control: the removed write assert fails exactly $$(wc -l < build/packet-finite/c-negative/failed | tr -d ' ') vectors"
+
+test-c: packet-finite-c packet-finite-write-negative-control-c
