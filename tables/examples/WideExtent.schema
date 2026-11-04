@@ -1,0 +1,10 @@
+// The variable extent witness replaces the historical oversized fixed positive
+// in shared conformance. WideBlob and its fixed lineage remain unchanged.
+package tabledemo
+
+table WideExtent
+{
+    label   string(70000)
+    payload bytes(MaxBlobBytes)
+    samples [..70000]uint16
+}
