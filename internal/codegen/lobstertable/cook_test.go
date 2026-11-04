@@ -365,3 +365,48 @@ run()
 	}
 	t.Logf("negative control: one magic byte changed, Open refused the cook")
 }
+
+// TestLobsterCookUnboundedTextNegativeControl writes a null slot where an
+// unbounded text's blob reference belongs (docs/SPEC-TABLES.md §2.13.1) and
+// requires the feature_full cook, the one row that holds unbounded text, to
+// go red against the tool's file while root_full, which holds none, stays
+// byte for byte the tool's.
+func TestLobsterCookUnboundedTextNegativeControl(t *testing.T) {
+	t.Parallel()
+	const from = "        co_u64(o, at, blob - at, c.big)\n"
+	const to = "        co_u64(o, at, 0, c.big)\n"
+	seen := map[string]bool{}
+	for _, r := range cookWriteRows(t) {
+		if r.name != "feature_full" && r.name != "root_full" {
+			continue
+		}
+		g := generateCookUnit(t, r)
+		path := filepath.Join(g.dir, "cook.lobster")
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(string(src), from) != 1 {
+			t.Fatalf("the unbounded text's slot write is not in cook.lobster exactly once")
+		}
+		if err := os.WriteFile(path, []byte(strings.Replace(string(src), from, to, 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want, err := os.ReadFile(filepath.Join(root, r.little))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := runCookProbe(t, g, r, nil)
+		same := string(out.little) == string(want)
+		if r.name == "feature_full" && same {
+			t.Fatal("NEGATIVE CONTROL FAILED: with the blob reference written null, the feature_full cook still matched the tool's")
+		}
+		if r.name == "root_full" && !same {
+			t.Fatalf("NEGATIVE CONTROL FAILED: the sabotage also moved root_full, which holds no unbounded text: %s", divergence(string(out.little), string(want)))
+		}
+		seen[r.name] = true
+	}
+	if !seen["feature_full"] || !seen["root_full"] {
+		t.Fatalf("the control did not find both rows: %v", seen)
+	}
+}

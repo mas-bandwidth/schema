@@ -42,6 +42,16 @@ let json_guard_registry:[JsonGuard] = []
 let json_array_registry:[string] = []
 let json_text_list_registry:[FieldDescriptor] = []
 
+// A TEXT LIST's `| total = N` on the JSON read (docs/SPEC-TABLES.md §2.13):
+// the total and the `Table.field` its clamp names, registered by the unit for
+// each text list that declares one.
+class JsonTextTotal:
+    fd:FieldDescriptor
+    total:int
+    of:string
+
+let json_text_total_registry:[JsonTextTotal] = []
+
 // json_fd_of is the descriptor a table field or a union arm names.
 def json_fd_of(owner:string, field:string) -> FieldDescriptor?:
     let d = lookup_table(owner)
@@ -78,6 +88,18 @@ def json_text_list(owner:string, field:string):
     let f = json_fd_of(owner, field)
     if f:
         push(json_text_list_registry, f)
+
+// json_text_total registers a text list's total (§2.13).
+def json_text_total(owner:string, field:string, total:int, of:string):
+    let f = json_fd_of(owner, field)
+    if f:
+        push(json_text_total_registry, JsonTextTotal { fd: f, total: total, of: of })
+
+def j_text_total_of(f:FieldDescriptor) -> JsonTextTotal?:
+    for(json_text_total_registry) x:
+        if x.fd == f:
+            return x
+    return nil
 
 // json_array_table marks a `json = "array"` table (§16.10).
 def json_array_table(name:string):
@@ -1601,7 +1623,12 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
     sl.count = placed
     return true
 
-// j_read_text_list places a TEXT LIST's plain array of strings (§2.13).
+// j_read_text_list places a TEXT LIST's plain array of strings (§2.13), as
+// Go's tabletext readTextList does: an element past N drops and counts
+// clamped, a bounded element clamps at M, an unbounded one (§2.13.1) never
+// clamps for its length, a non-string element is kind_mismatch, and a list's
+// `| total` keeps the longest prefix within it, counting the element that
+// crossed it and any element past N after it.
 def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     if j_peek(r) != '[':
@@ -1612,6 +1639,9 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
         sl.elems[i] = element_zero(f)
     sl.count = 0
     var placed = 0
+    var spent = 0
+    var full = false
+    var seen = 0
     var bound = f.bound
     let list = f.array == "list"
     if list:
@@ -1619,6 +1649,8 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
         sl.elems = []
     let vf = table_of(elem_of(f).t).fields[0]
     let optional = vf.present != ""
+    let bound_m = if vf.s == "text": -1 else: vf.bound
+    let tot = j_text_total_of(f)
     while true:
         var c = j_peek(r)
         if c == ']':
@@ -1627,9 +1659,16 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
         if c == 0:
             r.bad = true
             return false
-        if list and placed == length(sl.elems):
+        if not full and list and placed == length(sl.elems):
             push(sl.elems, element_zero(f))
-        if placed >= bound:
+        let before = placed
+        seen++
+        if full:
+            if seen > bound:
+                r.report.clamped++
+            if not j_skip_value(r, depth + 1):
+                return false
+        elif placed >= bound:
             r.report.clamped++
             if not j_skip_value(r, depth + 1):
                 return false
@@ -1643,7 +1682,7 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
                 return false
             placed++
         else:
-            let out, clamped, ok = j_scan_stored(r, if vf.s == "text": -1 else: vf.bound)
+            let out, clamped, ok = j_scan_stored(r, bound_m)
             if not ok:
                 return false
             if clamped:
@@ -1655,6 +1694,25 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
                 if optional:
                     t.fields[0].present = true
             placed++
+        if placed > before:
+            if tot and tot.total > 0:
+                var n = 0
+                let rec = sl.elems[placed - 1].tab
+                if rec:
+                    let v = rec.fields[0]
+                    if v.fd.present == "" or v.present:
+                        n = length(v.cell.s)
+                if n <= tot.total - spent:
+                    spent += n
+                else:
+                    r.report.clamped++
+                    if r.report.reason == "":
+                        r.report.reason = "clamped: " + tot.of
+                    sl.elems[placed - 1] = element_zero(f)
+                    placed--
+                    full = true
+                    if list:
+                        truncate(sl.elems, placed)
         c = j_peek(r)
         if c == ',':
             r.pos++

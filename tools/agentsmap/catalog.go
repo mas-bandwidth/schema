@@ -173,6 +173,7 @@ var catalog = []Entry{
 	e("tools/matrix", "language matrix page", "make matrix-check", "make matrix"),
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
 	e("tools/negativecontrols", "negative-control enumerator", "go test ./tools/negativecontrols", "go run ./tools/negativecontrols check"),
+	e("tools/pgroup", "process-group runner for CI steps", "go test ./tools/pgroup", "go run ./tools/pgroup -- make test"),
 	e("tools/releasediff", "previous-release differential (#463)", "make release-differential-negative-control", "make release-differential"),
 	e("tools/releasetag", "promotion and release tags", "go test ./tools/releasetag", "make release"),
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),

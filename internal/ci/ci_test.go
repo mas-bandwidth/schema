@@ -924,11 +924,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanLegs: planLegs,
 	}
 	for _, wantKey := range []string{
-		"ci-fast.yml:block-gate",
-		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
-		"ci-fast.yml:lint-fast",
-		"ci-fast.yml:plan",
 		"ci-full.yml:pins",
 		"schema-cs-runs-hostile-corpus.yml:corpus",
 		"schema-dart-generated-strict-analyze-gate.yml:fast",
@@ -1115,11 +1111,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		gotKeys = append(gotKeys, sh.Key())
 	}
 	wantKeys := []string{
-		"ci-fast.yml:block-gate",
-		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:leg-gate",
-		"ci-fast.yml:lint-fast",
-		"ci-fast.yml:plan",
 		"ci-full.yml:go-test",
 		"ci-full.yml:leg-tagged",
 		"ci-full.yml:pins",
