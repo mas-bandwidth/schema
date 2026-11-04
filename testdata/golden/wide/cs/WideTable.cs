@@ -654,8 +654,9 @@ namespace Wide
             }
 
             // a counted field's companion: a string's length, a bytes' length, a
-            // counted array's count. Bounded by the declared extent on the way out, so
-            // a storage invariant a caller broke cannot walk off the end of the array.
+            // counted array's count, bounded by the declared extent. The read side's
+            // text budget measures a just-read element with it; the writer reads the
+            // companion as set and refuses one out of bounds (StorageCount).
             static int Count(object value, TableFieldInfo f)
             {
                 if (!f.Counted) { return f.ArrayBound; }
@@ -1368,24 +1369,40 @@ namespace Wide
                 }
             }
 
+            // A count or a length indexes the value's own storage, so the writer reads
+            // it as the caller set it, and one past its declared bound, negative, or
+            // past the array that holds it is refused in every build before it indexes
+            // anything (docs/SPEC.md §5.1): never clamped into a different value.
+            static bool StorageCount(object value, TableFieldInfo f, out int count)
+            {
+                count = f.Counted ? f.GetCount(value) : f.ArrayBound;
+                if (count < 0 || f.Counted && !f.Dynamic && count > f.ArrayBound) { return false; }
+                if (f.Kind == 33 && !f.IsArray) { return count <= f.GetChars(value).Length; }
+                if (f.GetBuffer != null) { return count <= f.GetBuffer(value).Length; }
+                return true;
+            }
+
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
                 if (f.TextTotal>0 && !TableWire.TextFits(value,f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 33)
                 {
-                    WriteChars(ref o, f.GetChars(value).AsSpan(0, Count(value, f))); return true;
+                    if (!StorageCount(value, f, out int units)) { return false; }
+                    WriteChars(ref o, f.GetChars(value).AsSpan(0, units)); return true;
                 }
                 if (f.Kind == 12 && !f.TextList)
                 {
+                    if (!StorageCount(value, f, out int used)) { return false; }
                     // ill-formed text is refused; a zero byte is spelled \u0000 (docs/SPEC-TABLES.md §16.3)
-                    if (!TableWire.TextWellFormed(f.GetBuffer(value).AsSpan(0, Count(value,f)))) { return false; }
-                    WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
+                    if (!TableWire.TextWellFormed(f.GetBuffer(value).AsSpan(0, used))) { return false; }
+                    WriteString(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, used));
                     return true;
                 }
                 if (IsBytes(f))
                 {
-                    WriteBase64(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, Count(value, f)));
+                    if (!StorageCount(value, f, out int used)) { return false; }
+                    WriteBase64(ref o, new ReadOnlySpan<byte>(f.GetBuffer(value), 0, used));
                     return true;
                 }
                 if (IsKeyed(f))
@@ -1416,7 +1433,7 @@ namespace Wide
                 }
                 if (f.IsArray)
                 {
-                    int count = Count(value, f);
+                    if (!StorageCount(value, f, out int count)) { return false; }
                     if (count == 0)
                     {
                         o.Text("[]");
@@ -3001,14 +3018,27 @@ namespace Wide
             {
                 Out o = new Out();
                 o.Buffer = buffer;
-                o.Measuring = measuring;
+                o.Measuring = true;
                 o.Offset = 0;
                 o.Overflow = false;
                 if (info.Variable) { o.Graph = TableWire.Number(value, info); if (o.Graph == null) { return -1; } }
+                // THE WALK MEASURES FIRST: every refusal (ill-formed text, a count or a
+                // length past its storage, a value the text cannot spell) and the
+                // buffer's own size are answered before the first output byte, so a
+                // refused write leaves the caller's buffer untouched.
                 if (!WriteValue(ref o, value, info, 0)) { return -1; }
                 // THE CANONICAL TEXT ENDS WITH EXACTLY ONE NEWLINE (§16.1). Every
                 // writer emits it — this one, the C++ walk and schema unpack — and
                 // every reader accepts a text with or without.
+                long size = o.Offset + 1;
+                if (measuring) { return size; }
+                if (size > buffer.Length) { return -1; }
+                o.Measuring = false;
+                o.Offset = 0;
+                // a shared node's label is handed out on its first reference, so the
+                // write walk numbers from the start again, as the measure walk did
+                if (o.Graph != null) { o.Graph.Labels.Clear(); }
+                if (!WriteValue(ref o, value, info, 0)) { return -1; }
                 o.Put((byte)'\n');
                 if (o.Overflow) { return -1; }
                 return o.Offset;
