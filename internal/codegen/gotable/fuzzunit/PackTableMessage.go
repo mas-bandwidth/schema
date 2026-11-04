@@ -20,6 +20,9 @@ func GunnerSettingsSaveMessageBody(w *TableMessageWriter, value *GunnerSettings)
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			w.Put(11, TableMessageRefBitsHere)
 			if value.Reaction-value.Reaction != 0 {
+				w.Over++
+			}
+			if value.Reaction-value.Reaction != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
@@ -306,6 +309,9 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
 			w.Put(14, TableMessageRefBitsHere)
 			if value.Health-value.Health != 0 {
+				w.Over++
+			}
+			if value.Health-value.Health != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
@@ -314,6 +320,9 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			w.Put(15, TableMessageRefBitsHere)
+			if value.Mass-value.Mass != 0 {
+				w.Over++
+			}
 			if value.Mass-value.Mass != 0 {
 				return false
 			}
@@ -331,6 +340,9 @@ func ShipEntrySaveMessageBody(w *TableMessageWriter, value *ShipEntry) bool {
 			}
 			w.Put(uint64(value.HardpointsCount)-0, 3)
 			for i := range int(value.HardpointsCount) {
+				if value.Hardpoints[i] < 0 || value.Hardpoints[i] > 8 {
+					w.Over++
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Hardpoints[i]), uint64(0))
 			}
 		}
@@ -669,6 +681,9 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 	{
 		if value.TickRate != 60 {
 			w.Put(7, TableMessageRefBitsHere)
+			if value.TickRate < 1 || value.TickRate > 240 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 8, Packing: 1, Bits: 8, Base: [2]uint64{0x1, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.TickRate), uint64(0))
 		}
 	}
@@ -715,6 +730,9 @@ func GlobalSettingsSaveMessageBody(w *TableMessageWriter, value *GlobalSettings)
 			w.Put(10, TableMessageRefBitsHere)
 			w.Put(uint64(3)-3, 0)
 			for i := range int(3) {
+				if value.SpawnDelays[i]-value.SpawnDelays[i] != 0 {
+					w.Over++
+				}
 				if value.SpawnDelays[i]-value.SpawnDelays[i] != 0 {
 					return false
 				}
@@ -1121,6 +1139,9 @@ func PackConfigSaveMessageBody(w *TableMessageWriter, value *PackConfig) bool {
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
+				if value.Thresholds[i] < 0 || value.Thresholds[i] > 1000 {
+					w.Over++
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 10, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Thresholds[i]), uint64(0))
 			}
 		}

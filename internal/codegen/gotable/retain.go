@@ -186,7 +186,7 @@ const goRetainRuntime = `
 // TableRetain owns no storage. The caller supplies both bounded buffers; a
 // whole unknown record that does not fit is dropped and counted once.
 // Maximum nesting of a retained resolved payload (SPEC-TABLES §6.6).
-const tableRetainWalkDepthMax = 64
+const tableRetainWalkDepthMax = 128
 type TableRetainID struct { Id uint64; Slot int }
 type TableRetain struct { Bytes []byte; Ids []TableRetainID; Used int64; Count int; idUsed int; base unsafe.Pointer; directory []TableNodeDirEntry }
 type tableRetainStep struct {ordinal,index uint32}

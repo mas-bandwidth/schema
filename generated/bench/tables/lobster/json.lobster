@@ -2330,6 +2330,8 @@ def j_place_map_key(entry:Record, kf:FieldDescriptor, key:string) -> int:
 // the caller's existing record untouched.
 def json_read_into(rec:Record, text:string, report:LoadReport) -> bool:
     read_reset(report)
+    if not rec.d.json_form:
+        return read_refuse(report, "json_form_not_carried")
     let candidate = new_record(rec.d)
     let r = JsonReader { text: text, report: report, graph: rec.d.variable }
     if length(text) >= 3 and text[0] == 0xEF and text[1] == 0xBB and text[2] == 0xBF:
@@ -2904,6 +2906,8 @@ def j_write_base64(w:JsonWriter, data:string):
 // reference engine's Write, then "\n"): the text and "", or "" and why the value has no text spelling (a
 // non-finite float, a value no variant names, a cycle, a shared blob).
 def json_write(rec:Record) -> string, string:
+    if not rec.d.json_form:
+        return "", "json_form_not_carried"
     let w = JsonWriter {}
     let root = j_node_entry(w, rec)
     root.open = true

@@ -26,7 +26,7 @@ import (
 func Encode(m *tabletext.Model, inst *tabletext.Instance) ([]byte, error) {
 	// A WRITER REFUSES A VALUE OUTSIDE ITS DECLARATION (docs/SPEC-TABLES.md
 	// §5): it never clamps and never truncates (tabletext.CheckValue).
-	if err := m.CheckValue(inst); err != nil {
+	if err := m.CheckFileValue(inst); err != nil {
 		return nil, err
 	}
 	if FixedRoot(m, inst.Def) {

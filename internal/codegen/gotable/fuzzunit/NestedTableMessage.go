@@ -33,6 +33,9 @@ func ArchiveConfigSaveMessageBody(w *TableMessageWriter, value *ArchiveConfig) b
 	{
 		if value.Count != 1 {
 			w.Put(2, TableMessageRefBitsHere)
+			if value.Count < 0 || value.Count > 100 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
 		}
 	}

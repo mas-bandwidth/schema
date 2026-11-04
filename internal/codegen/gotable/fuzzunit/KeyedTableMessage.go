@@ -19,6 +19,9 @@ func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 	{
 		if value.SpawnCount != 4 {
 			w.Put(98, TableMessageRefBitsHere)
+			if value.SpawnCount < 0 || value.SpawnCount > 64 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SpawnCount), uint64(0))
 		}
 	}
@@ -243,6 +246,9 @@ func GunnerConfigSaveMessageBody(w *TableMessageWriter, value *GunnerConfig) boo
 		if math.Float32bits(value.Reaction) != math.Float32bits(0.2) {
 			w.Put(11, TableMessageRefBitsHere)
 			if value.Reaction-value.Reaction != 0 {
+				w.Over++
+			}
+			if value.Reaction-value.Reaction != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Reaction)), uint64(0))
@@ -464,6 +470,9 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
 			w.Put(100, TableMessageRefBitsHere)
 			if value.Damage-value.Damage != 0 {
+				w.Over++
+			}
+			if value.Damage-value.Damage != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Damage)), uint64(0))
@@ -472,6 +481,9 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
 			w.Put(101, TableMessageRefBitsHere)
+			if value.Cooldown-value.Cooldown != 0 {
+				w.Over++
+			}
 			if value.Cooldown-value.Cooldown != 0 {
 				return false
 			}
@@ -716,6 +728,9 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 		if math.Float32bits(value.Health) != math.Float32bits(100.0) {
 			w.Put(14, TableMessageRefBitsHere)
 			if value.Health-value.Health != 0 {
+				w.Over++
+			}
+			if value.Health-value.Health != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Health)), uint64(0))
@@ -724,6 +739,9 @@ func HullConfigSaveMessageBody(w *TableMessageWriter, value *HullConfig) bool {
 	{
 		if math.Float32bits(value.Mass) != math.Float32bits(1.0) {
 			w.Put(15, TableMessageRefBitsHere)
+			if value.Mass-value.Mass != 0 {
+				w.Over++
+			}
 			if value.Mass-value.Mass != 0 {
 				return false
 			}
@@ -1458,6 +1476,9 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 					return false
 				}
 				w.Put(slot, TableMessageRefBitsHere)
+				if value.PerTeam[i] < 0 || value.PerTeam[i] > 100000 {
+					w.Over++
+				}
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 17, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PerTeam[i]), uint64(0))
 			}
 		}

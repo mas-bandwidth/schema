@@ -86,7 +86,7 @@ func mustHex(s string) []byte {
 }
 
 // The tblframe Cfg id table every Cfg vector shares, in slot order (the
-// numbering the r1_cfg golden uses for its first ten), so that a byte script
+// numbering the historical form-1 r1_cfg pin used for its first ten), so a script
 // reads against one map: 1 grade, 2 Silver, 3 effect, 4 ward, 5 charge, 6
 // buff, 7 multiplier, 8 grades, 9 Gold, 10 tally, 11 Bronze, 12 ping, 13
 // amount, 14 boost, 15 power, 16 zzz (an id no Cfg declares).

@@ -315,6 +315,9 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 		if math.Float32bits(value.Damage) != math.Float32bits(21.0) {
 			w.Put(100, TableMessageRefBitsHere)
 			if value.Damage-value.Damage != 0 {
+				w.Over++
+			}
+			if value.Damage-value.Damage != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Damage)), uint64(0))
@@ -324,6 +327,9 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 		if math.Float32bits(value.Speed) != math.Float32bits(500.0) {
 			w.Put(102, TableMessageRefBitsHere)
 			if value.Speed-value.Speed != 0 {
+				w.Over++
+			}
+			if value.Speed-value.Speed != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Speed)), uint64(0))
@@ -332,12 +338,18 @@ func WeaponConfigSaveMessageBody(w *TableMessageWriter, value *WeaponConfig) boo
 	{
 		if value.Penetration != 1 {
 			w.Put(103, TableMessageRefBitsHere)
+			if value.Penetration < 0 || value.Penetration > 10 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 4, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Penetration), uint64(0))
 		}
 	}
 	{
 		if value.Channel != 0 {
 			w.Put(104, TableMessageRefBitsHere)
+			if value.Channel > 63 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 6, Packing: 1, Bits: 6, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Channel), uint64(0))
 		}
 	}
@@ -1377,6 +1389,9 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 		if math.Float64bits(value.Precision) != math.Float64bits(0.0) {
 			w.Put(47, TableMessageRefBitsHere)
 			if value.Precision-value.Precision != 0 {
+				w.Over++
+			}
+			if value.Precision-value.Precision != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Precision), uint64(0))
@@ -1394,6 +1409,9 @@ func ProfileConfigSaveMessageBody(w *TableMessageWriter, value *ProfileConfig) b
 			w.Put(48, TableMessageRefBitsHere)
 			w.Put(uint64(4)-4, 0)
 			for i := range int(4) {
+				if value.Ratings[i]-value.Ratings[i] != 0 {
+					w.Over++
+				}
 				if value.Ratings[i]-value.Ratings[i] != 0 {
 					return false
 				}
@@ -2003,12 +2021,18 @@ func AttachmentSaveMessageBody(w *TableMessageWriter, value *AttachmentRow) bool
 	{
 		if value.Slot != 0 {
 			w.Put(3, TableMessageRefBitsHere)
+			if value.Slot < 0 || value.Slot > 7 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 3, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Slot), uint64(0))
 		}
 	}
 	{
 		if math.Float32bits(value.Power) != math.Float32bits(1.0) {
 			w.Put(4, TableMessageRefBitsHere)
+			if value.Power-value.Power != 0 {
+				w.Over++
+			}
 			if value.Power-value.Power != 0 {
 				return false
 			}
@@ -2132,6 +2156,9 @@ func BuffSaveMessageBody(w *TableMessageWriter, value *BuffRow) bool {
 		if math.Float32bits(value.Multiplier) != math.Float32bits(1.0) {
 			w.Put(5, TableMessageRefBitsHere)
 			if value.Multiplier-value.Multiplier != 0 {
+				w.Over++
+			}
+			if value.Multiplier-value.Multiplier != 0 {
 				return false
 			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 10, Packing: 0, Bits: 32, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(math.Float32bits(value.Multiplier)), uint64(0))
@@ -2217,6 +2244,9 @@ func DebuffSaveMessageBody(w *TableMessageWriter, value *DebuffRow) bool {
 	{
 		if value.Amount != 0 {
 			w.Put(6, TableMessageRefBitsHere)
+			if value.Amount < 0 || value.Amount > 100 {
+				w.Over++
+			}
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Over, TableMessageShape{Kind: 4, Packing: 1, Bits: 7, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Amount), uint64(0))
 		}
 	}

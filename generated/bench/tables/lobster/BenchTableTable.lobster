@@ -14,6 +14,7 @@ import .cook
 import .fixed
 import .fixedevolve
 import .json
+import .load
 import .message
 import .text_form
 import .wide_kinds
@@ -152,6 +153,8 @@ let TableEntityDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x3161723596c6cba8, // FNV-1a 64 of TableEntity (§3.1)
     table: true,
     fixed: true,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -184,6 +187,8 @@ let TableStatDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x296aa8e669b99c95, // FNV-1a 64 of TableStat (§3.1)
     table: true,
     fixed: true,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -204,6 +209,8 @@ let TableMixedDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x439ae459d6f88a8e, // FNV-1a 64 of TableMixed (§3.1)
     table: true,
     fixed: true,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -250,6 +257,8 @@ let TableHitEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x746c6429cbf8aba8, // FNV-1a 64 of TableHitEvent (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -272,6 +281,8 @@ let TableChatEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x969901d577faad3b, // FNV-1a 64 of TableChatEvent (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -292,6 +303,8 @@ let TablePickupEventDescriptor = schema_rt.table(schema_rt.TableDescriptor {
     id: 0x78a8188d74947ded, // FNV-1a 64 of TablePickupEvent (§3.1)
     table: false,
     fixed: false,
+    json_form: true,
+    cook_form: true,
     variable: false,
     place_tables: []::string,
     place_str: false,
@@ -1287,7 +1300,7 @@ def TableEntityFixedSave(values:[TableEntity]) -> string:
 // TableEntityFixedDecode reads a TRUSTED form-3 file of TableEntity records written by this
 // build's own layout (TableEntity, §2), asserting the header and every record
 // hash. It is not a read of untrusted data: TableEntityFixedLoad is the strict
-// read and TableEntityFixedLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).
+// read (docs/SPEC-TABLES.md §6.5).
 def TableEntityFixedDecode(data:string) -> [TableEntity]:
     let layout = TableEntityFixedLayoutBytes()
     assert read_uint8_le(data, 0) == 3
@@ -1393,7 +1406,7 @@ def TableStatFixedSave(values:[TableStat]) -> string:
 // TableStatFixedDecode reads a TRUSTED form-3 file of TableStat records written by this
 // build's own layout (TableStat, §2), asserting the header and every record
 // hash. It is not a read of untrusted data: TableStatFixedLoad is the strict
-// read and TableStatFixedLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).
+// read (docs/SPEC-TABLES.md §6.5).
 def TableStatFixedDecode(data:string) -> [TableStat]:
     let layout = TableStatFixedLayoutBytes()
     assert read_uint8_le(data, 0) == 3
@@ -1537,7 +1550,7 @@ def TableHitEventFixedSave(values:[TableHitEvent]) -> string:
 // TableHitEventFixedDecode reads a TRUSTED form-3 file of TableHitEvent records written by this
 // build's own layout (TableHitEvent, §2), asserting the header and every record
 // hash. It is not a read of untrusted data: TableHitEventFixedLoad is the strict
-// read and TableHitEventFixedLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).
+// read (docs/SPEC-TABLES.md §6.5).
 def TableHitEventFixedDecode(data:string) -> [TableHitEvent]:
     let layout = TableHitEventFixedLayoutBytes()
     assert read_uint8_le(data, 0) == 3
@@ -1643,7 +1656,7 @@ def TableChatEventFixedSave(values:[TableChatEvent]) -> string:
 // TableChatEventFixedDecode reads a TRUSTED form-3 file of TableChatEvent records written by this
 // build's own layout (TableChatEvent, §2), asserting the header and every record
 // hash. It is not a read of untrusted data: TableChatEventFixedLoad is the strict
-// read and TableChatEventFixedLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).
+// read (docs/SPEC-TABLES.md §6.5).
 def TableChatEventFixedDecode(data:string) -> [TableChatEvent]:
     let layout = TableChatEventFixedLayoutBytes()
     assert read_uint8_le(data, 0) == 3
@@ -1749,7 +1762,7 @@ def TablePickupEventFixedSave(values:[TablePickupEvent]) -> string:
 // TablePickupEventFixedDecode reads a TRUSTED form-3 file of TablePickupEvent records written by this
 // build's own layout (TablePickupEvent, §2), asserting the header and every record
 // hash. It is not a read of untrusted data: TablePickupEventFixedLoad is the strict
-// read and TablePickupEventFixedLoadTolerant the tolerant one (docs/SPEC-TABLES.md §6.5).
+// read (docs/SPEC-TABLES.md §6.5).
 def TablePickupEventFixedDecode(data:string) -> [TablePickupEvent]:
     let layout = TablePickupEventFixedLayoutBytes()
     assert read_uint8_le(data, 0) == 3
@@ -1816,68 +1829,18 @@ def TableEntityFixedScatter(data:string, at:int, v:TableEntity):
     v.Moving = read_uint8_le(data, at + 49) != 0
     v.Firing = read_uint8_le(data, at + 50) != 0
 
-def TableEntityFixedClampBody(v:TableEntity, report:schema_rt.TableReport):
-    if schema_rt.ult(4095, v.EntityId):
-        v.EntityId = 4095
-        report.clamped += 1
-    if v.PosX < -16383:
-        v.PosX = -16383
-        report.clamped += 1
-    elif v.PosX > 16383:
-        v.PosX = 16383
-        report.clamped += 1
-    if v.PosY < -16383:
-        v.PosY = -16383
-        report.clamped += 1
-    elif v.PosY > 16383:
-        v.PosY = 16383
-        report.clamped += 1
-    if v.PosZ < -16383:
-        v.PosZ = -16383
-        report.clamped += 1
-    elif v.PosZ > 16383:
-        v.PosZ = 16383
-        report.clamped += 1
-    if schema_rt.ult(511, v.Yaw):
-        v.Yaw = 511
-        report.clamped += 1
-    if schema_rt.ult(511, v.Pitch):
-        v.Pitch = 511
-        report.clamped += 1
-    if v.VelX < -2048:
-        v.VelX = -2048
-        report.clamped += 1
-    elif v.VelX > 2047:
-        v.VelX = 2047
-        report.clamped += 1
-    if v.VelY < -2048:
-        v.VelY = -2048
-        report.clamped += 1
-    elif v.VelY > 2047:
-        v.VelY = 2047
-        report.clamped += 1
-    if v.VelZ < -2048:
-        v.VelZ = -2048
-        report.clamped += 1
-    elif v.VelZ > 2047:
-        v.VelZ = 2047
-        report.clamped += 1
-    if v.Health < 0:
-        v.Health = 0
-        report.clamped += 1
-    elif v.Health > 1000:
-        v.Health = 1000
-        report.clamped += 1
-    if schema_rt.ult(15, int(v.Weapon)):
-        v.Weapon = TableWeaponNone
-        report.clamped += 1
-
-def TableEntityFixedCheckBody(v:TableEntity) -> bool:
+def TableEntityFixedBoundsBody(v:TableEntity) -> bool:
     if (schema_rt.ult(4095, v.EntityId)):
+        return false
+    if (v.PosX < -2147483648) or (v.PosX > 2147483647):
         return false
     if (v.PosX < -16383) or (v.PosX > 16383):
         return false
+    if (v.PosY < -2147483648) or (v.PosY > 2147483647):
+        return false
     if (v.PosY < -16383) or (v.PosY > 16383):
+        return false
+    if (v.PosZ < -2147483648) or (v.PosZ > 2147483647):
         return false
     if (v.PosZ < -16383) or (v.PosZ > 16383):
         return false
@@ -1885,11 +1848,19 @@ def TableEntityFixedCheckBody(v:TableEntity) -> bool:
         return false
     if (schema_rt.ult(511, v.Pitch)):
         return false
+    if (v.VelX < -2147483648) or (v.VelX > 2147483647):
+        return false
     if (v.VelX < -2048) or (v.VelX > 2047):
+        return false
+    if (v.VelY < -2147483648) or (v.VelY > 2147483647):
         return false
     if (v.VelY < -2048) or (v.VelY > 2047):
         return false
+    if (v.VelZ < -2147483648) or (v.VelZ > 2147483647):
+        return false
     if (v.VelZ < -2048) or (v.VelZ > 2047):
+        return false
+    if (v.Health < -2147483648) or (v.Health > 2147483647):
         return false
     if (v.Health < 0) or (v.Health > 1000):
         return false
@@ -1897,8 +1868,44 @@ def TableEntityFixedCheckBody(v:TableEntity) -> bool:
         return false
     return true
 
-def TableEntityFixedClamp(v:TableEntity, report:schema_rt.TableReport):
-    TableEntityFixedClampBody(v, report)
+def TableEntityFixedCheckBody(v:TableEntity) -> bool:
+    if (schema_rt.ult(4095, v.EntityId)):
+        return false
+    if (v.PosX < -2147483648) or (v.PosX > 2147483647):
+        return false
+    if (v.PosX < -16383) or (v.PosX > 16383):
+        return false
+    if (v.PosY < -2147483648) or (v.PosY > 2147483647):
+        return false
+    if (v.PosY < -16383) or (v.PosY > 16383):
+        return false
+    if (v.PosZ < -2147483648) or (v.PosZ > 2147483647):
+        return false
+    if (v.PosZ < -16383) or (v.PosZ > 16383):
+        return false
+    if (schema_rt.ult(511, v.Yaw)):
+        return false
+    if (schema_rt.ult(511, v.Pitch)):
+        return false
+    if (v.VelX < -2147483648) or (v.VelX > 2147483647):
+        return false
+    if (v.VelX < -2048) or (v.VelX > 2047):
+        return false
+    if (v.VelY < -2147483648) or (v.VelY > 2147483647):
+        return false
+    if (v.VelY < -2048) or (v.VelY > 2047):
+        return false
+    if (v.VelZ < -2147483648) or (v.VelZ > 2147483647):
+        return false
+    if (v.VelZ < -2048) or (v.VelZ > 2047):
+        return false
+    if (v.Health < -2147483648) or (v.Health > 2147483647):
+        return false
+    if (v.Health < 0) or (v.Health > 1000):
+        return false
+    if schema_rt.ult(15, int(v.Weapon)):
+        return false
+    return true
 
 let TableEntityFixedBodyBytes = 51
 let TableEntityFixedDst:[schema_rt.TableFixedDst] = [
@@ -1971,58 +1978,57 @@ def TableEntityFixedSaveChecked(values:[TableEntity], buffer:string) -> int, str
     let out = write_substring(buffer, 0, wire, false)
     return need, out, ""
 
-def TableEntityFixedLoad(values:[TableEntity], data:string, plan:[schema_rt.TableFixedEntry], report:schema_rt.TableReport?) -> int:
-    let r = if report: report else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(r)
-    let n = TableEntityFixedLoadTolerant(values, data, plan, r)
-    if n < 0:
-        return -1
-    if schema_rt.fixed_report_err(r) != "":
-        for(n) k:
-            TableEntityReset(values[k])
-        return -1
-    return n
-
-def TableEntityFixedLoadTolerant(values:[TableEntity], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+def TableEntityFixedLoad(values:[TableEntity], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
     let report = if report_in: report_in else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report)
     let data = data_in
     if length(data) < 1:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableEntityReset(failed)
         return -1
     let form = read_uint8_le(data, 0)
     if form != schema_rt.TableFixedForm:
         if form == 1:
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
         if form == 2:
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
     if length(data) < schema_rt.TableFixedHeaderBytes + 4:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableEntityReset(failed)
         return -1
     var r_idx = 1
     while r_idx < schema_rt.TableFixedHashAt:
         if read_uint8_le(data, r_idx) != 0:
             report.malformed = true
             report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableEntityReset(failed)
             return -1
         r_idx += 1
     let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
     if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
     let pick = schema_rt.fixed_select(TableEntityFixedKnown, hash)
     if pick < 0:
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
     if pick < TableEntityFixedFloor:
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
     let known = TableEntityFixedKnown[pick]
     if layout_bytes != known.layout_bytes:
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     for(layout_bytes) l_i:
         if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     var entries = TableEntityFixedPlan.entries
     var entry_count = TableEntityFixedPlan.count
@@ -2033,40 +2039,51 @@ def TableEntityFixedLoadTolerant(values:[TableEntity], data_in:string, plan:[sch
     if hash != TableEntityFixedHash:
         let lane = TableEntityFixedLineagePlans[pick]
         if lane.why != "":
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, lane.why)
         entries = lane.entries
         entry_count = lane.count
         holes = TableEntityFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableEntityReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
     if entry_count > length(plan):
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
     if record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableEntityReset(failed)
         return -1
     let n = rest / record_bytes
     if n > length(values):
+        for(values) failed: TableEntityReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
-        let why = schema_rt.fixed_text_refusal(entries, entry_count, data, rec_at + 8)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
         if why != "":
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, why)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(51), TableEntityFixedResetImage, holes)
         let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
         if why != "":
+            for(values) failed: TableEntityReset(failed)
             return schema_rt.fixed_refuse(report, why)
         img = img2
         TableEntityFixedScatter(img, 0, values[k])
-        schema_rt.fixed_forged_bounds(entries, entry_count, data, rec_at + 8, report)
-        TableEntityFixedClamp(values[k], report)
+        if not TableEntityFixedBoundsBody(values[k]):
+            for(values) failed: TableEntityReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
     report.unknown += census_unknown
     report.kind_mismatch += census_kind
     return n
@@ -2086,26 +2103,23 @@ def TableStatFixedScatter(data:string, at:int, v:TableStat):
     v.StatId = read_uint32_le(data, at + 0)
     v.Delta = read_int32_le(data, at + 4)
 
-def TableStatFixedClampBody(v:TableStat, report:schema_rt.TableReport):
-    if schema_rt.ult(255, v.StatId):
-        v.StatId = 255
-        report.clamped += 1
-    if v.Delta < -512:
-        v.Delta = -512
-        report.clamped += 1
-    elif v.Delta > 511:
-        v.Delta = 511
-        report.clamped += 1
-
-def TableStatFixedCheckBody(v:TableStat) -> bool:
+def TableStatFixedBoundsBody(v:TableStat) -> bool:
     if (schema_rt.ult(255, v.StatId)):
+        return false
+    if (v.Delta < -2147483648) or (v.Delta > 2147483647):
         return false
     if (v.Delta < -512) or (v.Delta > 511):
         return false
     return true
 
-def TableStatFixedClamp(v:TableStat, report:schema_rt.TableReport):
-    TableStatFixedClampBody(v, report)
+def TableStatFixedCheckBody(v:TableStat) -> bool:
+    if (schema_rt.ult(255, v.StatId)):
+        return false
+    if (v.Delta < -2147483648) or (v.Delta > 2147483647):
+        return false
+    if (v.Delta < -512) or (v.Delta > 511):
+        return false
+    return true
 
 let TableStatFixedBodyBytes = 8
 let TableStatFixedDst:[schema_rt.TableFixedDst] = [
@@ -2151,58 +2165,57 @@ def TableStatFixedSaveChecked(values:[TableStat], buffer:string) -> int, string,
     let out = write_substring(buffer, 0, wire, false)
     return need, out, ""
 
-def TableStatFixedLoad(values:[TableStat], data:string, plan:[schema_rt.TableFixedEntry], report:schema_rt.TableReport?) -> int:
-    let r = if report: report else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(r)
-    let n = TableStatFixedLoadTolerant(values, data, plan, r)
-    if n < 0:
-        return -1
-    if schema_rt.fixed_report_err(r) != "":
-        for(n) k:
-            TableStatReset(values[k])
-        return -1
-    return n
-
-def TableStatFixedLoadTolerant(values:[TableStat], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+def TableStatFixedLoad(values:[TableStat], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
     let report = if report_in: report_in else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report)
     let data = data_in
     if length(data) < 1:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableStatReset(failed)
         return -1
     let form = read_uint8_le(data, 0)
     if form != schema_rt.TableFixedForm:
         if form == 1:
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
         if form == 2:
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
     if length(data) < schema_rt.TableFixedHeaderBytes + 4:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableStatReset(failed)
         return -1
     var r_idx = 1
     while r_idx < schema_rt.TableFixedHashAt:
         if read_uint8_le(data, r_idx) != 0:
             report.malformed = true
             report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableStatReset(failed)
             return -1
         r_idx += 1
     let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
     if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
     let pick = schema_rt.fixed_select(TableStatFixedKnown, hash)
     if pick < 0:
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
     if pick < TableStatFixedFloor:
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
     let known = TableStatFixedKnown[pick]
     if layout_bytes != known.layout_bytes:
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     for(layout_bytes) l_i:
         if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     var entries = TableStatFixedPlan.entries
     var entry_count = TableStatFixedPlan.count
@@ -2213,40 +2226,51 @@ def TableStatFixedLoadTolerant(values:[TableStat], data_in:string, plan:[schema_
     if hash != TableStatFixedHash:
         let lane = TableStatFixedLineagePlans[pick]
         if lane.why != "":
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, lane.why)
         entries = lane.entries
         entry_count = lane.count
         holes = TableStatFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableStatReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
     if entry_count > length(plan):
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
     if record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableStatReset(failed)
         return -1
     let n = rest / record_bytes
     if n > length(values):
+        for(values) failed: TableStatReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
-        let why = schema_rt.fixed_text_refusal(entries, entry_count, data, rec_at + 8)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
         if why != "":
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, why)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableStatFixedResetImage, holes)
         let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
         if why != "":
+            for(values) failed: TableStatReset(failed)
             return schema_rt.fixed_refuse(report, why)
         img = img2
         TableStatFixedScatter(img, 0, values[k])
-        schema_rt.fixed_forged_bounds(entries, entry_count, data, rec_at + 8, report)
-        TableStatFixedClamp(values[k], report)
+        if not TableStatFixedBoundsBody(values[k]):
+            for(values) failed: TableStatReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
     report.unknown += census_unknown
     report.kind_mismatch += census_kind
     return n
@@ -2272,34 +2296,31 @@ def TableHitEventFixedScatter(data:string, at:int, v:TableHitEvent):
     v.HitKind = read_int32_le(data, at + 8)
     v.Crit = read_uint8_le(data, at + 12) != 0
 
-def TableHitEventFixedClampBody(v:TableHitEvent, report:schema_rt.TableReport):
-    if schema_rt.ult(4095, v.TargetId):
-        v.TargetId = 4095
-        report.clamped += 1
-    if v.Damage < 0:
-        v.Damage = 0
-        report.clamped += 1
-    elif v.Damage > 4095:
-        v.Damage = 4095
-        report.clamped += 1
-    if v.HitKind < 0:
-        v.HitKind = 0
-        report.clamped += 1
-    elif v.HitKind > 7:
-        v.HitKind = 7
-        report.clamped += 1
-
-def TableHitEventFixedCheckBody(v:TableHitEvent) -> bool:
+def TableHitEventFixedBoundsBody(v:TableHitEvent) -> bool:
     if (schema_rt.ult(4095, v.TargetId)):
         return false
+    if (v.Damage < -2147483648) or (v.Damage > 2147483647):
+        return false
     if (v.Damage < 0) or (v.Damage > 4095):
+        return false
+    if (v.HitKind < -2147483648) or (v.HitKind > 2147483647):
         return false
     if (v.HitKind < 0) or (v.HitKind > 7):
         return false
     return true
 
-def TableHitEventFixedClamp(v:TableHitEvent, report:schema_rt.TableReport):
-    TableHitEventFixedClampBody(v, report)
+def TableHitEventFixedCheckBody(v:TableHitEvent) -> bool:
+    if (schema_rt.ult(4095, v.TargetId)):
+        return false
+    if (v.Damage < -2147483648) or (v.Damage > 2147483647):
+        return false
+    if (v.Damage < 0) or (v.Damage > 4095):
+        return false
+    if (v.HitKind < -2147483648) or (v.HitKind > 2147483647):
+        return false
+    if (v.HitKind < 0) or (v.HitKind > 7):
+        return false
+    return true
 
 let TableHitEventFixedBodyBytes = 13
 let TableHitEventFixedDst:[schema_rt.TableFixedDst] = [
@@ -2347,58 +2368,57 @@ def TableHitEventFixedSaveChecked(values:[TableHitEvent], buffer:string) -> int,
     let out = write_substring(buffer, 0, wire, false)
     return need, out, ""
 
-def TableHitEventFixedLoad(values:[TableHitEvent], data:string, plan:[schema_rt.TableFixedEntry], report:schema_rt.TableReport?) -> int:
-    let r = if report: report else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(r)
-    let n = TableHitEventFixedLoadTolerant(values, data, plan, r)
-    if n < 0:
-        return -1
-    if schema_rt.fixed_report_err(r) != "":
-        for(n) k:
-            TableHitEventReset(values[k])
-        return -1
-    return n
-
-def TableHitEventFixedLoadTolerant(values:[TableHitEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+def TableHitEventFixedLoad(values:[TableHitEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
     let report = if report_in: report_in else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report)
     let data = data_in
     if length(data) < 1:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableHitEventReset(failed)
         return -1
     let form = read_uint8_le(data, 0)
     if form != schema_rt.TableFixedForm:
         if form == 1:
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
         if form == 2:
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
     if length(data) < schema_rt.TableFixedHeaderBytes + 4:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableHitEventReset(failed)
         return -1
     var r_idx = 1
     while r_idx < schema_rt.TableFixedHashAt:
         if read_uint8_le(data, r_idx) != 0:
             report.malformed = true
             report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableHitEventReset(failed)
             return -1
         r_idx += 1
     let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
     if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
     let pick = schema_rt.fixed_select(TableHitEventFixedKnown, hash)
     if pick < 0:
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
     if pick < TableHitEventFixedFloor:
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
     let known = TableHitEventFixedKnown[pick]
     if layout_bytes != known.layout_bytes:
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     for(layout_bytes) l_i:
         if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     var entries = TableHitEventFixedPlan.entries
     var entry_count = TableHitEventFixedPlan.count
@@ -2409,40 +2429,51 @@ def TableHitEventFixedLoadTolerant(values:[TableHitEvent], data_in:string, plan:
     if hash != TableHitEventFixedHash:
         let lane = TableHitEventFixedLineagePlans[pick]
         if lane.why != "":
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, lane.why)
         entries = lane.entries
         entry_count = lane.count
         holes = TableHitEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableHitEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
     if entry_count > length(plan):
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
     if record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableHitEventReset(failed)
         return -1
     let n = rest / record_bytes
     if n > length(values):
+        for(values) failed: TableHitEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
-        let why = schema_rt.fixed_text_refusal(entries, entry_count, data, rec_at + 8)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
         if why != "":
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(13), TableHitEventFixedResetImage, holes)
         let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
         if why != "":
+            for(values) failed: TableHitEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
         img = img2
         TableHitEventFixedScatter(img, 0, values[k])
-        schema_rt.fixed_forged_bounds(entries, entry_count, data, rec_at + 8, report)
-        TableHitEventFixedClamp(values[k], report)
+        if not TableHitEventFixedBoundsBody(values[k]):
+            for(values) failed: TableHitEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
     report.unknown += census_unknown
     report.kind_mismatch += census_kind
     return n
@@ -2462,26 +2493,23 @@ def TableChatEventFixedScatter(data:string, at:int, v:TableChatEvent):
     v.Channel = read_int32_le(data, at + 0)
     v.Speaker = read_uint32_le(data, at + 4)
 
-def TableChatEventFixedClampBody(v:TableChatEvent, report:schema_rt.TableReport):
-    if v.Channel < 0:
-        v.Channel = 0
-        report.clamped += 1
-    elif v.Channel > 3:
-        v.Channel = 3
-        report.clamped += 1
-    if schema_rt.ult(4095, v.Speaker):
-        v.Speaker = 4095
-        report.clamped += 1
-
-def TableChatEventFixedCheckBody(v:TableChatEvent) -> bool:
+def TableChatEventFixedBoundsBody(v:TableChatEvent) -> bool:
+    if (v.Channel < -2147483648) or (v.Channel > 2147483647):
+        return false
     if (v.Channel < 0) or (v.Channel > 3):
         return false
     if (schema_rt.ult(4095, v.Speaker)):
         return false
     return true
 
-def TableChatEventFixedClamp(v:TableChatEvent, report:schema_rt.TableReport):
-    TableChatEventFixedClampBody(v, report)
+def TableChatEventFixedCheckBody(v:TableChatEvent) -> bool:
+    if (v.Channel < -2147483648) or (v.Channel > 2147483647):
+        return false
+    if (v.Channel < 0) or (v.Channel > 3):
+        return false
+    if (schema_rt.ult(4095, v.Speaker)):
+        return false
+    return true
 
 let TableChatEventFixedBodyBytes = 8
 let TableChatEventFixedDst:[schema_rt.TableFixedDst] = [
@@ -2527,58 +2555,57 @@ def TableChatEventFixedSaveChecked(values:[TableChatEvent], buffer:string) -> in
     let out = write_substring(buffer, 0, wire, false)
     return need, out, ""
 
-def TableChatEventFixedLoad(values:[TableChatEvent], data:string, plan:[schema_rt.TableFixedEntry], report:schema_rt.TableReport?) -> int:
-    let r = if report: report else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(r)
-    let n = TableChatEventFixedLoadTolerant(values, data, plan, r)
-    if n < 0:
-        return -1
-    if schema_rt.fixed_report_err(r) != "":
-        for(n) k:
-            TableChatEventReset(values[k])
-        return -1
-    return n
-
-def TableChatEventFixedLoadTolerant(values:[TableChatEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+def TableChatEventFixedLoad(values:[TableChatEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
     let report = if report_in: report_in else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report)
     let data = data_in
     if length(data) < 1:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableChatEventReset(failed)
         return -1
     let form = read_uint8_le(data, 0)
     if form != schema_rt.TableFixedForm:
         if form == 1:
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
         if form == 2:
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
     if length(data) < schema_rt.TableFixedHeaderBytes + 4:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableChatEventReset(failed)
         return -1
     var r_idx = 1
     while r_idx < schema_rt.TableFixedHashAt:
         if read_uint8_le(data, r_idx) != 0:
             report.malformed = true
             report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TableChatEventReset(failed)
             return -1
         r_idx += 1
     let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
     if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
     let pick = schema_rt.fixed_select(TableChatEventFixedKnown, hash)
     if pick < 0:
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
     if pick < TableChatEventFixedFloor:
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
     let known = TableChatEventFixedKnown[pick]
     if layout_bytes != known.layout_bytes:
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     for(layout_bytes) l_i:
         if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     var entries = TableChatEventFixedPlan.entries
     var entry_count = TableChatEventFixedPlan.count
@@ -2589,40 +2616,51 @@ def TableChatEventFixedLoadTolerant(values:[TableChatEvent], data_in:string, pla
     if hash != TableChatEventFixedHash:
         let lane = TableChatEventFixedLineagePlans[pick]
         if lane.why != "":
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, lane.why)
         entries = lane.entries
         entry_count = lane.count
         holes = TableChatEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TableChatEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
     if entry_count > length(plan):
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
     if record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TableChatEventReset(failed)
         return -1
     let n = rest / record_bytes
     if n > length(values):
+        for(values) failed: TableChatEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
-        let why = schema_rt.fixed_text_refusal(entries, entry_count, data, rec_at + 8)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
         if why != "":
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TableChatEventFixedResetImage, holes)
         let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
         if why != "":
+            for(values) failed: TableChatEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
         img = img2
         TableChatEventFixedScatter(img, 0, values[k])
-        schema_rt.fixed_forged_bounds(entries, entry_count, data, rec_at + 8, report)
-        TableChatEventFixedClamp(values[k], report)
+        if not TableChatEventFixedBoundsBody(values[k]):
+            for(values) failed: TableChatEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
     report.unknown += census_unknown
     report.kind_mismatch += census_kind
     return n
@@ -2642,26 +2680,23 @@ def TablePickupEventFixedScatter(data:string, at:int, v:TablePickupEvent):
     v.ItemId = read_uint32_le(data, at + 0)
     v.Amount = read_int32_le(data, at + 4)
 
-def TablePickupEventFixedClampBody(v:TablePickupEvent, report:schema_rt.TableReport):
-    if schema_rt.ult(1023, v.ItemId):
-        v.ItemId = 1023
-        report.clamped += 1
-    if v.Amount < 0:
-        v.Amount = 0
-        report.clamped += 1
-    elif v.Amount > 255:
-        v.Amount = 255
-        report.clamped += 1
-
-def TablePickupEventFixedCheckBody(v:TablePickupEvent) -> bool:
+def TablePickupEventFixedBoundsBody(v:TablePickupEvent) -> bool:
     if (schema_rt.ult(1023, v.ItemId)):
+        return false
+    if (v.Amount < -2147483648) or (v.Amount > 2147483647):
         return false
     if (v.Amount < 0) or (v.Amount > 255):
         return false
     return true
 
-def TablePickupEventFixedClamp(v:TablePickupEvent, report:schema_rt.TableReport):
-    TablePickupEventFixedClampBody(v, report)
+def TablePickupEventFixedCheckBody(v:TablePickupEvent) -> bool:
+    if (schema_rt.ult(1023, v.ItemId)):
+        return false
+    if (v.Amount < -2147483648) or (v.Amount > 2147483647):
+        return false
+    if (v.Amount < 0) or (v.Amount > 255):
+        return false
+    return true
 
 let TablePickupEventFixedBodyBytes = 8
 let TablePickupEventFixedDst:[schema_rt.TableFixedDst] = [
@@ -2707,58 +2742,57 @@ def TablePickupEventFixedSaveChecked(values:[TablePickupEvent], buffer:string) -
     let out = write_substring(buffer, 0, wire, false)
     return need, out, ""
 
-def TablePickupEventFixedLoad(values:[TablePickupEvent], data:string, plan:[schema_rt.TableFixedEntry], report:schema_rt.TableReport?) -> int:
-    let r = if report: report else: schema_rt.TableReport {}
-    schema_rt.fixed_reset_report(r)
-    let n = TablePickupEventFixedLoadTolerant(values, data, plan, r)
-    if n < 0:
-        return -1
-    if schema_rt.fixed_report_err(r) != "":
-        for(n) k:
-            TablePickupEventReset(values[k])
-        return -1
-    return n
-
-def TablePickupEventFixedLoadTolerant(values:[TablePickupEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
+def TablePickupEventFixedLoad(values:[TablePickupEvent], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:
     let report = if report_in: report_in else: schema_rt.TableReport {}
     schema_rt.fixed_reset_report(report)
     let data = data_in
     if length(data) < 1:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TablePickupEventReset(failed)
         return -1
     let form = read_uint8_le(data, 0)
     if form != schema_rt.TableFixedForm:
         if form == 1:
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefusePreviousForm)
         if form == 2:
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseMessageFormAsFile)
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNewerForm)
     if length(data) < schema_rt.TableFixedHeaderBytes + 4:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TablePickupEventReset(failed)
         return -1
     var r_idx = 1
     while r_idx < schema_rt.TableFixedHashAt:
         if read_uint8_le(data, r_idx) != 0:
             report.malformed = true
             report.reason = schema_rt.TableRefuseReservedNotZero
+            for(values) failed: TablePickupEventReset(failed)
             return -1
         r_idx += 1
     let layout_bytes = read_uint32_le(data, schema_rt.TableFixedHeaderBytes)
     if layout_bytes < 0 or layout_bytes + schema_rt.TableFixedHeaderBytes + 4 > length(data):
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     let hash = read_uint64_le(data, schema_rt.TableFixedHashAt)
     let pick = schema_rt.fixed_select(TablePickupEventFixedKnown, hash)
     if pick < 0:
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnknown, hash)
     if pick < TablePickupEventFixedFloor:
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse_hash(report, schema_rt.TableRefuseLayoutUnsupported, hash)
     let known = TablePickupEventFixedKnown[pick]
     if layout_bytes != known.layout_bytes:
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     for(layout_bytes) l_i:
         if read_uint8_le(data, schema_rt.TableFixedHeaderBytes + 4 + l_i) != read_uint8_le(known.layout, l_i):
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseLayoutMalformed)
     var entries = TablePickupEventFixedPlan.entries
     var entry_count = TablePickupEventFixedPlan.count
@@ -2769,43 +2803,174 @@ def TablePickupEventFixedLoadTolerant(values:[TablePickupEvent], data_in:string,
     if hash != TablePickupEventFixedHash:
         let lane = TablePickupEventFixedLineagePlans[pick]
         if lane.why != "":
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, lane.why)
         entries = lane.entries
         entry_count = lane.count
         holes = TablePickupEventFixedLineageHoles[pick]
         census_unknown = lane.unknown
         census_kind = lane.kind_mismatch
+    if census_kind != 0:
+        for(values) failed: TablePickupEventReset(failed)
+        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)
     if entry_count > length(plan):
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)
     let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes
     let rest = length(data) - records_start
     if record_bytes <= 8 or (rest % record_bytes) != 0:
         report.malformed = true
         report.reason = schema_rt.TableRefuseTruncated
+        for(values) failed: TablePickupEventReset(failed)
         return -1
     let n = rest / record_bytes
     if n > length(values):
+        for(values) failed: TablePickupEventReset(failed)
         return schema_rt.fixed_refuse(report, schema_rt.TableRefuseBatchTooLarge)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         if read_uint64_le(data, rec_at) != hash:
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, schema_rt.TableRefuseNoLayout)
-        let why = schema_rt.fixed_text_refusal(entries, entry_count, data, rec_at + 8)
+        let why = schema_rt.fixed_value_refusal(entries, entry_count, data, rec_at + 8)
         if why != "":
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
     for(n) k:
         let rec_at = records_start + k * record_bytes
         var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(8), TablePickupEventFixedResetImage, holes)
         let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)
         if why != "":
+            for(values) failed: TablePickupEventReset(failed)
             return schema_rt.fixed_refuse(report, why)
         img = img2
         TablePickupEventFixedScatter(img, 0, values[k])
-        schema_rt.fixed_forged_bounds(entries, entry_count, data, rec_at + 8, report)
-        TablePickupEventFixedClamp(values[k], report)
+        if not TablePickupEventFixedBoundsBody(values[k]):
+            for(values) failed: TablePickupEventReset(failed)
+            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)
     report.unknown += census_unknown
     report.kind_mismatch += census_kind
     return n
+
+class TableEntityFixedRecordCodec : schema_rt.FixedRecordCodec
+    def read_fixed(data:string, report:schema_rt.LoadReport) -> schema_rt.Record?:
+        let rows = [NewTableEntity()]
+        let plan:[schema_rt.TableFixedEntry] = []
+        for(TableEntityFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+        let native = schema_rt.TableReport {}
+        let n = TableEntityFixedLoad(rows, data, plan, native)
+        if n != 1:
+            schema_rt.read_refuse(report, if native.reason != "": native.reason else: "record_count")
+            return nil
+        let rec = schema_rt.new_record(TableEntityDescriptor)
+        let bridge_1 = rec.fields[0]
+        bridge_1.cell.i = rows[0].EntityId
+        let bridge_2 = rec.fields[1]
+        bridge_2.cell.i = rows[0].PosX
+        let bridge_3 = rec.fields[2]
+        bridge_3.cell.i = rows[0].PosY
+        let bridge_4 = rec.fields[3]
+        bridge_4.cell.i = rows[0].PosZ
+        let bridge_5 = rec.fields[4]
+        bridge_5.cell.i = rows[0].Yaw
+        let bridge_6 = rec.fields[5]
+        bridge_6.cell.i = rows[0].Pitch
+        let bridge_7 = rec.fields[6]
+        bridge_7.cell.i = rows[0].VelX
+        let bridge_8 = rec.fields[7]
+        bridge_8.cell.i = rows[0].VelY
+        let bridge_9 = rec.fields[8]
+        bridge_9.cell.i = rows[0].VelZ
+        let bridge_10 = rec.fields[9]
+        bridge_10.cell.i = rows[0].Health
+        let bridge_11 = rec.fields[10]
+        bridge_11.cell.i = int(rows[0].Weapon)
+        let bridge_12 = rec.fields[11]
+        bridge_12.cell.i = rows[0].Damage
+        let bridge_13 = rec.fields[12]
+        bridge_13.cell.b = rows[0].Moving
+        let bridge_14 = rec.fields[13]
+        bridge_14.cell.b = rows[0].Firing
+        return rec
+    def write_fixed(rec:schema_rt.Record) -> string, string:
+        let row = NewTableEntity()
+        if rec.d.name != "TableEntity" or length(rec.fields) != 14: return "", "invalid_value"
+        let bridge_1 = rec.fields[0]
+        if bridge_1.fd.id != 0x23fcfd6678e36712: return "", "invalid_value"
+        row.EntityId = bridge_1.cell.i
+        let bridge_2 = rec.fields[1]
+        if bridge_2.fd.id != 0xcb4b37357667310e: return "", "invalid_value"
+        row.PosX = bridge_2.cell.i
+        let bridge_3 = rec.fields[2]
+        if bridge_3.fd.id != 0xcb4b3835766732c1: return "", "invalid_value"
+        row.PosY = bridge_3.cell.i
+        let bridge_4 = rec.fields[3]
+        if bridge_4.fd.id != 0xcb4b353576672da8: return "", "invalid_value"
+        row.PosZ = bridge_4.cell.i
+        let bridge_5 = rec.fields[4]
+        if bridge_5.fd.id != 0xb54d8e19798e16e8: return "", "invalid_value"
+        row.Yaw = bridge_5.cell.i
+        let bridge_6 = rec.fields[5]
+        if bridge_6.fd.id != 0x53a9f665a90cc1b1: return "", "invalid_value"
+        row.Pitch = bridge_6.cell.i
+        let bridge_7 = rec.fields[6]
+        if bridge_7.fd.id != 0x6cede6b6eb60ee67: return "", "invalid_value"
+        row.VelX = bridge_7.cell.i
+        let bridge_8 = rec.fields[7]
+        if bridge_8.fd.id != 0x6cede5b6eb60ecb4: return "", "invalid_value"
+        row.VelY = bridge_8.cell.i
+        let bridge_9 = rec.fields[8]
+        if bridge_9.fd.id != 0x6cede8b6eb60f1cd: return "", "invalid_value"
+        row.VelZ = bridge_9.cell.i
+        let bridge_10 = rec.fields[9]
+        if bridge_10.fd.id != 0x7f69d4b5288ba9cf: return "", "invalid_value"
+        row.Health = bridge_10.cell.i
+        let bridge_11 = rec.fields[10]
+        if bridge_11.fd.id != 0xa0b610205f2c6e01: return "", "invalid_value"
+        row.Weapon = TableWeapon(bridge_11.cell.i)
+        let bridge_12 = rec.fields[11]
+        if bridge_12.fd.id != 0x7f6308be8ab37fc0: return "", "invalid_value"
+        row.Damage = bridge_12.cell.i
+        let bridge_13 = rec.fields[12]
+        if bridge_13.fd.id != 0x11a44fc1d1243da7: return "", "invalid_value"
+        row.Moving = bridge_13.cell.b
+        let bridge_14 = rec.fields[13]
+        if bridge_14.fd.id != 0x7674cfd19b9031ca: return "", "invalid_value"
+        row.Firing = bridge_14.cell.b
+        let n, wire, why = TableEntityFixedSaveChecked([row], schema_rt.zeros(TableEntityFixedMeasure(1)))
+        return (if n < 0: "" else: wire), why
+
+schema_rt.register_fixed_record_codec(TableEntityFixedRecordCodec { name: "TableEntity" })
+
+class TableStatFixedRecordCodec : schema_rt.FixedRecordCodec
+    def read_fixed(data:string, report:schema_rt.LoadReport) -> schema_rt.Record?:
+        let rows = [NewTableStat()]
+        let plan:[schema_rt.TableFixedEntry] = []
+        for(TableStatFixedPlanMax): push(plan, schema_rt.TableFixedEntry {})
+        let native = schema_rt.TableReport {}
+        let n = TableStatFixedLoad(rows, data, plan, native)
+        if n != 1:
+            schema_rt.read_refuse(report, if native.reason != "": native.reason else: "record_count")
+            return nil
+        let rec = schema_rt.new_record(TableStatDescriptor)
+        let bridge_1 = rec.fields[0]
+        bridge_1.cell.i = rows[0].StatId
+        let bridge_2 = rec.fields[1]
+        bridge_2.cell.i = rows[0].Delta
+        return rec
+    def write_fixed(rec:schema_rt.Record) -> string, string:
+        let row = NewTableStat()
+        if rec.d.name != "TableStat" or length(rec.fields) != 2: return "", "invalid_value"
+        let bridge_1 = rec.fields[0]
+        if bridge_1.fd.id != 0x80ab75f0866dbf65: return "", "invalid_value"
+        row.StatId = bridge_1.cell.i
+        let bridge_2 = rec.fields[1]
+        if bridge_2.fd.id != 0x52076675ec13a0c1: return "", "invalid_value"
+        row.Delta = bridge_2.cell.i
+        let n, wire, why = TableStatFixedSaveChecked([row], schema_rt.zeros(TableStatFixedMeasure(1)))
+        return (if n < 0: "" else: wire), why
+
+schema_rt.register_fixed_record_codec(TableStatFixedRecordCodec { name: "TableStat" })
 
 schema_rt.json_flags("TableEntity", "damage", ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"]::string)
 // BenchTableMessageUnit — the unit's announcement and build version, the message

@@ -140,3 +140,27 @@ func TestGeneratedFixedSlackNegativeControl(t *testing.T) {
 		t.Errorf("negative control: the generated read refuses slack and the differential did not go red on a verdict\n%s", out)
 	}
 }
+
+// mutate returns a copy of image with one to three bytes past the five-byte
+// file header rewritten: a bit flip, a boundary byte or a random byte, so the
+// mutants reach the bool, present, count, length, tag and ordinal bytes and
+// the slack behind them.
+func mutate(rng *rand.Rand, image []byte) []byte {
+	out := append([]byte(nil), image...)
+	if len(out) <= 5 {
+		return out
+	}
+	boundary := []byte{0, 1, 2, 0x7f, 0x80, 0xfe, 0xff}
+	for n := 1 + rng.Intn(3); n > 0; n-- {
+		at := 5 + rng.Intn(len(out)-5)
+		switch rng.Intn(3) {
+		case 0:
+			out[at] ^= 1 << uint(rng.Intn(8))
+		case 1:
+			out[at] = boundary[rng.Intn(len(boundary))]
+		default:
+			out[at] = byte(rng.Intn(256))
+		}
+	}
+	return out
+}
