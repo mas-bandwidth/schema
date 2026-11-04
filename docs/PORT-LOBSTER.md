@@ -139,6 +139,15 @@ named refusals and a renamed package under the native compiler.
 `TestLobsterUnitViewIncludesUnreachedFiles` checks table-free and mixed units,
 all six sets, and a missing constant-module import as its negative control.
 
+`make tables-lobster-view` runs `TestLobsterUnitViewListing`: the native view
+printer byte-compares every `VIEW_CORPUS` and table-manifest unit with the
+shared IR listing (§8.7), including field type spellings, source filenames,
+closure-only wire identity, vocabulary widths, union payloads, docs and tags.
+Descriptor-ID and arm-offset mutations must change the listing. The union
+arm and payload offsets describe the shared region/cook projection, not VM
+addresses; the printer compares those independently emitted columns.
+The package-wide `test-lobster` gate includes this test as well.
+
 ## THE NUMBER MODEL
 
 Measured on the pin (hetzner2 and hulk, 2026-10-19): Lobster has ONE integer

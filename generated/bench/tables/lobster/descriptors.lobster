@@ -24,6 +24,8 @@ class ViewVariant:
 
 // A ViewVocabulary is one enum, flags or union declaration (§8.3).
 class ViewVocabulary:
+    // Payload base in the shared region/cook projection.
+    payload_offset:int = 0
     max:int = 0
     storage_bits:int = 0
     name:string
@@ -82,8 +84,8 @@ def view_table(d:TableDescriptor, file:string, doc:string, tags:[string]):
 def view_type(d:TableDescriptor, file:string, doc:string, tags:[string]):
     push(view_types, ViewType { name: d.name, file: file, table: false, d: d, doc: doc, tags: tags })
 
-def view_vocabulary(name:string, file:string, doc:string, tags:[string], variants:[ViewVariant], kind:string, max:int, storage_bits:int):
-    let v = ViewVocabulary { max: max, storage_bits: storage_bits, name: name, file: file, variants: variants, doc: doc, tags: tags }
+def view_vocabulary(name:string, file:string, doc:string, tags:[string], variants:[ViewVariant], kind:string, max:int, storage_bits:int, payload_offset:int):
+    let v = ViewVocabulary { payload_offset: payload_offset, max: max, storage_bits: storage_bits, name: name, file: file, variants: variants, doc: doc, tags: tags }
     if kind == "enum":
         push(view_enums, v)
     elif kind == "flags":
