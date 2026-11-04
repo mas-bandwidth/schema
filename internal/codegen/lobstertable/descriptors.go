@@ -28,6 +28,9 @@ func emitDescriptors(g *lobster.Gen) error {
 	if !have {
 		g.Runtimes = append(g.Runtimes, "descriptors")
 	}
+	if len(g.Unit.Tables) != 0 {
+		g.Runtimes = append(g.Runtimes, "descriptors_load")
+	}
 	base := g.File.Base + ".schema"
 	g.Pf("schema_rt.set_unit(%s, %s)\n", lobster.StringLit([]byte(g.Unit.Package)), idLit(g.Unit.ProtocolId))
 	for _, t := range g.File.Tables {

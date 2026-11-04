@@ -1,6 +1,10 @@
 package lobstertable
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/ir"
+)
 
 func TestLobsterRuntimePackageBindingScan(t *testing.T) {
 	source := `// let comment_name = 1
@@ -36,11 +40,11 @@ def sample(argument:int, generic, callback:fun(nested:int)):
 
 func TestLobsterRuntimePackageBindingRefusal(t *testing.T) {
 	for _, name := range []string{"report", "cell", "rec", "w", "v", "r", "s"} {
-		if err := checkRuntimePackageName(name); err == nil {
+		if err := checkRuntimePackageName(&ir.Unit{Package: name, Tables: map[string]*ir.Struct{"Root": {}}}); err == nil {
 			t.Errorf("runtime package %s accepted", name)
 		}
 	}
-	if err := checkRuntimePackageName("stella_registry_probe"); err != nil {
+	if err := checkRuntimePackageName(&ir.Unit{Package: "stella_registry_probe"}); err != nil {
 		t.Fatal(err)
 	}
 }

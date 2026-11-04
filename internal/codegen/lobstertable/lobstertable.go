@@ -67,15 +67,18 @@ func Register(name string, fn Part) {
 	sort.Slice(parts, func(i, j int) bool { return parts[i].name < parts[j].name })
 }
 
-// Generate returns <Base>Table.lobster for every file that declares a table
-// or any other declaration, plus the runtime modules and unit registry.
-// Table-free files participate in reflection without changing packet codecs.
+// Generate returns table modules, runtime modules and the unit registry.
+// A table-free unit emits its metadata in the view alone, with descriptor
+// primitives but no table modules or codecs. Packet codecs are unchanged.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
 	if len(u.Files) == 0 {
 		return map[string][]byte{}, nil
 	}
 	if err := Refuse(u); err != nil {
 		return nil, err
+	}
+	if len(u.Tables) == 0 {
+		return generateViewOnly(u)
 	}
 	out := map[string][]byte{}
 	reach := closure(u)
@@ -92,9 +95,6 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 		g.Import(f.Base) // unreferenced packet types still supply reflection accessors
 		emitFile(g, reach)
 		for _, p := range parts {
-			if len(u.Tables) == 0 && p.name != "descriptors" {
-				continue
-			}
 			if err := p.fn(g); err != nil {
 				return nil, fmt.Errorf("lobster %s: %s: %w", p.name, f.Base, err)
 			}
@@ -122,32 +122,59 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	out[u.Package+"View.lobster"] = []byte(strings.Replace(string(view.Assemble()),
 		fmt.Sprintf("from %s.schema.", u.Files[0].Base),
 		fmt.Sprintf("from package %s (all schema files).", u.Package), 1))
-	if len(u.Tables) == 0 {
-		// Reflection is opt-in. Include only the transitive runtime imports
-		// needed by the descriptor modules, not unrelated table codecs.
-		runtimes := Runtime()
-		var include func([]byte)
-		include = func(src []byte) {
-			for _, line := range strings.Split(string(src), "\n") {
-				name, ok := strings.CutPrefix(strings.TrimSpace(line), "import .")
-				if !ok {
-					continue
-				}
-				name += ".lobster"
-				data, exists := runtimes[name]
-				if !exists || out[name] != nil {
-					continue
-				}
-				out[name] = data
-				include(data)
+	maps.Copy(out, runtimeForUnit(u))
+	return out, nil
+}
+
+// runtimeForUnit is the exact table-runtime set this unit emits. Keeping the
+// selection shared with the package-name guard prevents unused codecs from
+// rejecting a valid packet-only package.
+func runtimeForUnit(u *ir.Unit) map[string][]byte {
+	all := Runtime()
+	if len(u.Tables) != 0 {
+		return all
+	}
+	out := map[string][]byte{}
+	var include func(string)
+	include = func(name string) {
+		data, exists := all[name]
+		if !exists || out[name] != nil {
+			return
+		}
+		out[name] = data
+		for _, line := range strings.Split(string(data), "\n") {
+			if dep, ok := strings.CutPrefix(strings.TrimSpace(line), "import ."); ok {
+				include(dep + ".lobster")
 			}
 		}
-		for _, src := range out {
-			include(src)
-		}
-	} else {
-		maps.Copy(out, Runtime())
 	}
+	include("descriptors.lobster")
+	return out
+}
+
+func generateViewOnly(u *ir.Unit) (map[string][]byte, error) {
+	g := lobster.NewGen(u, u.Files[0])
+	g.Kind, g.Suffix = "unit registry", "View"
+	g.Runtimes = []string{"descriptors"}
+	// Register every descriptor before a vocabulary looks up its payload.
+	// File order cannot turn an existing payload's descriptor into nil.
+	for _, f := range u.Files {
+		g.File = f
+		g.Import(f.Base)
+		emitFile(g, nil)
+	}
+	for _, f := range u.Files {
+		g.File = f
+		if err := emitDescriptors(g); err != nil {
+			return nil, err
+		}
+	}
+	g.File = u.Files[0]
+	g.Pf("def UnitView() -> schema_rt.UnitView:\n    return schema_rt.unit_view()\n")
+	out := runtimeForUnit(u)
+	out[u.Package+"View.lobster"] = []byte(strings.Replace(string(g.Assemble()),
+		fmt.Sprintf("from %s.schema.", u.Files[0].Base),
+		fmt.Sprintf("from package %s (all schema files).", u.Package), 1))
 	return out, nil
 }
 
@@ -156,13 +183,13 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 // refuses the third after it writes — an import cycle between table modules
 // (docs/PORT-LOBSTER.md, THE RUNTIME LAYOUT).
 func Refuse(u *ir.Unit) error {
-	if err := checkRuntimePackageName(u.Package); err != nil {
+	if err := checkRuntimePackageName(u); err != nil {
 		return err
 	}
 	if err := checkReflectionNames(u); err != nil {
 		return err
 	}
-	if err := lobster.CheckBases(u, Runtime()); err != nil {
+	if err := lobster.CheckBases(u, runtimeForUnit(u)); err != nil {
 		return err
 	}
 	bases := map[string]bool{}
@@ -173,7 +200,7 @@ func Refuse(u *ir.Unit) error {
 		if strings.EqualFold(f.Base, u.Package+"View") {
 			return fmt.Errorf("schema file %s collides with the Lobster unit registry %sView.lobster; rename the file", f.Base, u.Package)
 		}
-		if bases[strings.ToLower(f.Base+"Table")] {
+		if len(u.Tables) != 0 && bases[strings.ToLower(f.Base+"Table")] {
 			return fmt.Errorf("schema files %s and %sTable collide — the Lobster table surface writes %sTable.lobster as %s's table module; rename one file", f.Base, f.Base, f.Base, f.Base)
 		}
 	}
@@ -374,6 +401,10 @@ func emitUnionDescriptor(g *lobster.Gen, un *ir.Union) {
 // requireHome imports the table module that registers a descriptor, so a
 // walk that names it by string finds it registered.
 func requireHome(g *lobster.Gen, name string) {
+	if len(g.Unit.Tables) == 0 {
+		// All table-free descriptors live in the unit view itself.
+		return
+	}
 	for _, f := range g.Unit.Files {
 		hit := false
 		for _, t := range f.Tables {

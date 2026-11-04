@@ -9,6 +9,7 @@ import (
 	"text/scanner"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 type bindingToken struct {
@@ -88,28 +89,28 @@ func runtimeBindings(source string) map[string]bool {
 	return names
 }
 
-var runtimePackageBindings = sync.OnceValue(func() map[string]string {
+var runtimePackageBindings = sync.OnceValue(func() map[string]map[string]bool {
 	files := Runtime()
+	maps.Copy(files, lobster.Runtime())
+	out := map[string]map[string]bool{}
+	for path, data := range files {
+		out[path] = runtimeBindings(string(data))
+	}
+	return out
+})
+
+func checkRuntimePackageName(u *ir.Unit) error {
+	files := runtimeForUnit(u)
 	maps.Copy(files, lobster.Runtime())
 	var paths []string
 	for path := range files {
 		paths = append(paths, path)
 	}
 	sort.Strings(paths)
-	out := map[string]string{}
 	for _, path := range paths {
-		for name := range runtimeBindings(string(files[path])) {
-			if out[name] == "" {
-				out[name] = path
-			}
+		if runtimePackageBindings()[path][u.Package] {
+			return fmt.Errorf("lobster: package %s collides with a runtime binding in %s; rename the package because Lobster resolves package names before local member access", u.Package, path)
 		}
-	}
-	return out
-})
-
-func checkRuntimePackageName(name string) error {
-	if path, ok := runtimePackageBindings()[name]; ok {
-		return fmt.Errorf("lobster: package %s collides with a runtime binding in %s; rename the package because Lobster resolves package names before local member access", name, path)
 	}
 	return nil
 }

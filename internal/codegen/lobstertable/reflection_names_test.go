@@ -1,12 +1,13 @@
 package lobstertable_test
 
 import (
-	"github.com/mas-bandwidth/schema/v2/compiler"
-	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobstertable"
 )
 
 func TestLobsterUnitViewGeneratedNames(t *testing.T) {
@@ -50,6 +51,35 @@ func TestLobsterUnitViewGeneratedNames(t *testing.T) {
 			}
 			check(tc.source, true)
 			check(strings.ReplaceAll(tc.source, tc.name, tc.name+"User"), false)
+		})
+	}
+}
+
+// Variant members flatten into the package namespace and can collide with a
+// descriptor even though no schema declaration uses the complete spelling.
+func TestLobsterUnitViewVocabularyMemberNames(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"enum", "flags"} {
+		t.Run(kind, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "Probe.schema")
+			for _, variant := range []string{"BetaDescriptor", "BetaDescriptorUser"} {
+				source := "package namesprobe\ntype AlphaBeta { n int32 }\n" + kind + " Alpha { " + variant + " }\n"
+				if err := os.WriteFile(path, []byte(source), 0644); err != nil {
+					t.Fatal(err)
+				}
+				u, err := compiler.New().Load([]string{path})
+				if err != nil {
+					t.Fatal(err)
+				}
+				out, err := lobstertable.Generate(u)
+				if variant == "BetaDescriptor" {
+					if err == nil || !strings.Contains(err.Error(), "generated reflection name AlphaBetaDescriptor") || len(out) != 0 {
+						t.Fatalf("missing atomic named refusal: files=%d err=%v", len(out), err)
+					}
+				} else if err != nil {
+					t.Fatalf("renamed variant refused: %v", err)
+				}
+			}
 		})
 	}
 }

@@ -73,11 +73,29 @@ print("whole unit passed")
 			if err != nil {
 				t.Fatal(err)
 			}
-			const anchor = "import .ConstantsTable\n"
-			if strings.Count(string(raw), anchor) != 1 {
-				t.Fatal("constant module import must occur once")
+			patched := string(raw)
+			if tables {
+				const anchor = "import .ConstantsTable\n"
+				if strings.Count(patched, anchor) != 1 {
+					t.Fatal("constant module import must occur once")
+				}
+				patched = strings.Replace(patched, anchor, "", 1)
+			} else {
+				var kept []string
+				removed := 0
+				for _, line := range strings.Split(patched, "\n") {
+					if strings.HasPrefix(line, "schema_rt.view_constant(") {
+						removed++
+					} else {
+						kept = append(kept, line)
+					}
+				}
+				if removed != 2 {
+					t.Fatalf("want two constant registration anchors, got %d", removed)
+				}
+				patched = strings.Join(kept, "\n")
 			}
-			if err := os.WriteFile(entry, []byte(strings.Replace(string(raw), anchor, "", 1)), 0644); err != nil {
+			if err := os.WriteFile(entry, []byte(patched), 0644); err != nil {
 				t.Fatal(err)
 			}
 			control := `import .probeView
@@ -201,6 +219,29 @@ func TestLobsterUnitViewRuntimePackages(t *testing.T) {
 				t.Fatal(err)
 			}
 			if got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))); got != "renamed package passed" {
+				t.Fatal(got)
+			}
+		})
+	}
+}
+
+func TestLobsterUnitViewTableFreeRuntimePackages(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"big", "cf", "ct", "bl"} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "Probe.schema")
+			if err := os.WriteFile(path, []byte("package "+name+"\ntype Payload { n int32 }\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			g, err := generateLoadUnit(t, []string{path})
+			if err != nil {
+				t.Fatalf("unused table runtime binding reserved package: %v", err)
+			}
+			program := "import ." + name + "View\nlet view_result = " + name + ".UnitView()\nassert length(view_result.types) == 1\nassert length(view_result.tables) == 0\nprint(\"packet package passed\")\n"
+			if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(program), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(lobsterrun.Run(t, g.dir, "main.lobster", nil))); got != "packet package passed" {
 				t.Fatal(got)
 			}
 		})
