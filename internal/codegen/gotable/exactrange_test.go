@@ -12,7 +12,7 @@ fixed table Big {
 	w int128 | min = -1267650600228229401496703205376, max = 1267650600228229401496703205376
 }
 `, `package probe
-import("testing";"bytes")
+import("testing";"bytes";"errors")
 func TestExact(t *testing.T) {
 	if BigTableFields[0].RangeIntMax != 9007199254740993 {
 		t.Fatalf("n RangeIntMax = %d", BigTableFields[0].RangeIntMax)
@@ -29,8 +29,8 @@ func TestExact(t *testing.T) {
 	var v Big
 	var r TableReport
 	text := []byte("{\"n\":9007199254740994,\"m\":-9223372036854775808,\"u\":18446744073709551615}")
-	if !BigFromJSON(&v, text, &r) || v.N != 9007199254740993 || v.M != -9223372036854775807 || v.U != 18446744073709551614 {
-		t.Fatalf("clamp read %+v report %+v", v, r)
+	if BigFromJSON(&v, text, &r) || !errors.Is(r.Err(), TableRefuseOutOfRange) {
+		t.Fatalf("a value one past each exact bound read %+v report %+v", v, r)
 	}
 	v = Big{}
 	v.N = 9007199254740993

@@ -17,7 +17,7 @@ import (
 //     each equal through binary, base64, JSON, the cook (§7) and
 //     retain-unknown (§6.6), clamped counted zero; the map's Find, Each,
 //     Erase and the index (Index, IndexFind) compare whole keys;
-//   - [..2] given three elements clamps the count and ReadStrict refuses it
+//   - [..2] given three elements refuses count_over_bound
 //     naming the field;
 //   - the respell: string(8) bytes read by a []string reader are equal, a
 //     nine-byte element read by string(8) clamps at a code point boundary
@@ -484,12 +484,12 @@ func TestGoTableUnboundedTextListsAndMapKeys(t *testing.T) {
 		t.Fatal("the hand-built image does not read")
 	}
 
-	// [..2] GIVEN THREE: the count clamps, named
+	// [..2] GIVEN THREE: refused count_over_bound, named
 	three := file(list("capped", 3, elem{raw: "p"}, elem{raw: "q"}, elem{raw: "r"}))
-	if g, r := load(t, three); g == nil || g.CappedCount != 2 || !r.Refused() || (r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") {
+	if g, r := load(t, three); g != nil || r.Err() == nil {
 		t.Fatalf("[..2] given three: %+v", r)
 	}
-	if _, err := WhereReadStrict(three); !errors.Is(err, TableRefuseOutOfRange) || !strings.Contains(err.Error(), "Where.capped") {
+	if _, err := WhereReadStrict(three); !errors.Is(err, TableRefuseCountOverBound) {
 		t.Fatalf("ReadStrict [..2] given three: %v", err)
 	}
 

@@ -23,10 +23,7 @@ import (
 
 func aligned(t *testing.T, wire []byte) []byte {
 	t.Helper()
-	size := PatrolLoadMeasure(wire)
-	if size < 0 {
-		return nil
-	}
+	size := max(PatrolLoadMeasure(wire), 0)
 	raw := make([]byte, size+64)
 	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
 	return raw[off : off+uintptr(size)]

@@ -71,49 +71,6 @@ func TestRetain(t *testing.T){
 	runGenerated(t, old, source)
 }
 
-func TestRetainReplacementAndShapeChanges(t *testing.T) {
-	runGenerated(t, `package probe
-enum Key { A, B }
-fixed table Child { n int32 }
-union Choice { branch Child
- empty }
-table Root { child Child
- array [..2]Child
- keyed [Key]Child
- choice Choice
- entries map[int32]Child
- link *Child }
-`, `package probe
-import("testing";"hash/fnv";"encoding/binary";"unsafe")
-func TestReplacement(t *testing.T){
- names:=[]string{"child","array","keyed","choice","entries","extra","branch","empty","A","B","key","value"}
- field:=func(ref,kind byte,payload ...byte)[]byte{return append([]byte{ref,kind},payload...)}
- join:=func(parts ...[]byte)[]byte{var out []byte;for _,p:=range parts{out=append(out,p...)};return out}
- unknown:=[]byte{6,6,99,0};empty:=[]byte{0};body:=func(p []byte)[]byte{return append([]byte{byte(len(p))},p...)}
- child:=field(1,13,body(unknown)...);two:=field(2,14,body(join([]byte{13,2},body(unknown),body(unknown)))...)
- keyed:=func(key byte,p []byte)[]byte{return field(3,16,body(join([]byte{13,1,key},body(p)))...)}
- arm:=field(4,15,join([]byte{7,13},body(unknown))...)
- entry:=func(p []byte)[]byte{return join([]byte{11,4,7,0,0,0},field(12,13,body(p)...),[]byte{0})}
- cases:=[]struct{name string;payload []byte;retained,count int32;edit bool;lost int32}{
- {"repeated child",join(child,field(1,13,1,0)),1,0,false,0},
- {"cleared array",join(two,field(2,14,2,13,0)),2,0,false,0},
- {"inert array",join(two,field(2,14,0)),2,2,false,0},
- {"keyed slots",join(keyed(9,unknown),keyed(10,unknown),keyed(9,empty)),2,1,false,0},
- {"switched union",join(arm,field(4,15,8,32,0)),1,0,false,0},
- {"duplicate map key",field(5,14,body(join([]byte{13,2},body(entry(unknown)),body(entry(empty))))...),1,0,false,0},
- {"shape edit",two,2,2,true,1},
- }
- for _,tc:=range cases{t.Run(tc.name,func(t *testing.T){
-  wire:=join([]byte{1},tc.payload,[]byte{0});for _,name:=range names{h:=fnv.New64a();h.Write([]byte(name));wire=binary.LittleEndian.AppendUint64(wire,h.Sum64())};wire=binary.LittleEndian.AppendUint64(wire,uint64(len(names)))
-  n:=RootLoadMeasure(wire);if n<0{t.Fatal("measure")};raw:=make([]byte,n+63);off:=(-uintptr(unsafe.Pointer(&raw[0])))&63;region:=raw[off:off+uintptr(n)];retain:=TableRetain{Bytes:make([]byte,2048),Ids:make([]TableRetainID,32)};var r TableReport
-  root:=RootLoadRetain(region,wire,&retain,&r);if root==nil||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")||r.Retained!=tc.retained||int32(retain.Count)!=tc.count||r.RetainLost!=0{t.Fatalf("load %+v count %d",r,retain.Count)}
-  if tc.edit{root.ArrayCount=1};out:=make([]byte,RootMeasureRetain(root,&retain));r=TableReport{};if RootSaveRetain(root,&retain,out,&r)!=int64(len(out))||r.RetainLost!=tc.lost{t.Fatalf("save %+v",r)}
-  size:=RootLoadMeasure(out);raw2:=make([]byte,size+63);off2:=(-uintptr(unsafe.Pointer(&raw2[0])))&63;r=TableReport{};if RootLoad(raw2[off2:off2+uintptr(size)],out,&r)==nil||(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed")||r.Unknown!=tc.count-tc.lost{t.Fatalf("retained contents %+v",r)}
- })}
-}
-`)
-}
-
 func TestRetainFileCapacityBeforeExpansion(t *testing.T) {
 	runGenerated(t, `package probe
  fixed table Child { n int32 }

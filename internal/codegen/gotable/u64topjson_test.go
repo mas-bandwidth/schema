@@ -25,15 +25,10 @@ func TestTop(t *testing.T) {
 	if v.U != 18446744073709551615 || v.H != 9223372036854775809 || r.Refused() {
 		t.Fatalf("in-range u64 read %+v report %+v", v, r)
 	}
-	v, r = Top{}, TableReport{}
-	// the clamp is the TOLERANT read's answer (docs/SPEC-TABLES.md §6.5) ...
-	if !TopFromJSON(&v, []byte("{\"u\":0,\"h\":5}"), &r) || v.U != 1 || v.H != 9223372036854775808 || !r.Refused() {
-		t.Fatalf("under-min u64 read %+v report %+v", v, r)
-	}
-	// ... and the strict plain FromJSON refuses it, with the count
+	// a value under the range refuses out_of_range (docs/SPEC-TABLES.md §4)
 	v, r = Top{}, TableReport{}
 	if TopFromJSON(&v, []byte("{\"u\":0,\"h\":5}"), &r) || !r.Refused() || !errors.Is(r.Err(), TableRefuseOutOfRange) {
-		t.Fatalf("plain under-min u64 read: report %+v, want a clamped refusal", r)
+		t.Fatalf("plain under-min u64 read: report %+v, want out_of_range", r)
 	}
 }
 `)

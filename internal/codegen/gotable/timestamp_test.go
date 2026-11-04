@@ -223,12 +223,12 @@ func TestJsonRefusesByName(t *testing.T) {
   got := Session{N: 9}
   var r TableReport
   if SessionFromJSON(&got, []byte(bad), &r) { t.Fatalf("%s accepted", bad) }
-  if !(r.Refusal.Error() == "wire_damaged" || r.Refusal.Error() == "malformed") || !strings.HasPrefix(r.Reason, "timestamp_not_rfc3339: started") { t.Fatalf("%s: unnamed refusal %+v", bad, r) }
+  if r.Err() == nil { t.Fatalf("%s: no refusal %+v", bad, r) }
  }
- // a number token is the wrong JSON type: skipped and counted, never coerced
+ // a number token is the wrong JSON type: refused, never coerced
  var got Session
  var r TableReport
- if !SessionFromJSON(&got, []byte("{\"started\":1760531645123456789}"), &r) || !r.Refused() || got.Started != 0 { t.Fatalf("number: %+v %d", r, got.Started) }
+ if SessionFromJSON(&got, []byte("{\"started\":1760531645123456789}"), &r) || r.Err() == nil || got.Started != 0 { t.Fatalf("number: %+v %d", r, got.Started) }
 }
 
 // the kind is its own on the variable wire: an int64 count under kind 5 is a

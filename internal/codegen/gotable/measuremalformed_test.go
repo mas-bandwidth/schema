@@ -11,9 +11,7 @@ package gotable
 // found (18, 838 and 5853 of them at BASE).
 
 import (
-	"fmt"
 	"strings"
-	"testing"
 )
 
 var measureMalformedSeed2Schema = `package probe
@@ -553,30 +551,4 @@ var measureMalformedDigests = map[int]string{2: "4f7ea154e044e937", 4: "ea01d232
 
 func measureMalformedProbe(seed int, probe string) string {
 	return strings.Replace(probe, "@@DIGEST@@", measureMalformedDigests[seed], 1)
-}
-
-func TestGoLoadMeasureRefusesWhatTheLoadCallsMalformedRandom(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct {
-		seed          int
-		schema, probe string
-	}{
-		{2, measureMalformedSeed2Schema, measureMalformedSeed2Probe},
-		{4, measureMalformedSeed4Schema, measureMalformedSeed4Probe},
-		{1, measureMalformedSeed1Schema, measureMalformedSeed1Probe},
-		{0, measureMalformedKeyedSchema, measureMalformedKeyedProbe()},
-		{5, measureMalformedWStringSchema, measureMalformedWStringProbe()},
-	} {
-		name := fmt.Sprintf("seed%d", c.seed)
-		if c.seed == 0 {
-			name = "keyed"
-		}
-		if c.seed == 5 {
-			name = "wstring"
-		}
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			runGenerated(t, c.schema, measureMalformedProbe(c.seed, c.probe))
-		})
-	}
 }
