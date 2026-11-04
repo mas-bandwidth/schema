@@ -59,6 +59,12 @@ const (
 	// where nothing is decoded and the returned count says what the wire
 	// carries. A caller reads the reason and then reads the two numbers.
 	ReasonBatchTooLarge
+	// ReasonInvalidValue is a WRITE refused because a value is outside its
+	// field's domain (docs/SPEC-TABLES.md §22.6, SPEC.md §5): a ranged or
+	// fixed-point value off its bounds, a `bits(N)` past N bits, a count or a
+	// length past its bound. Nothing is written: the bit stream never masks a
+	// value to the low bits of its width.
+	ReasonInvalidValue
 )
 
 func (r MessageReason) String() string {
@@ -75,6 +81,8 @@ func (r MessageReason) String() string {
 		return "message_form_as_file"
 	case ReasonBatchTooLarge:
 		return "batch_too_large"
+	case ReasonInvalidValue:
+		return "invalid_value"
 	}
 	return fmt.Sprintf("MessageReason(%d)", int(r))
 }
