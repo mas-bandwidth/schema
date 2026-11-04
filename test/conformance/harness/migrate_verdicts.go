@@ -103,6 +103,9 @@ func migrateVerdicts(m *Manifest, manifest, jsonDir string) error {
 	if err := writeFileAtomic(manifest, []byte(strings.Join(lines, "\n"))); err != nil {
 		return err
 	}
+	if len(changes) == 0 {
+		return nil
+	}
 	ledger := "# Single-read verdict migration\n\nInputs are unchanged. Accepted framing values were checked against their existing authored goldens. Counter tuples are retired; refused inputs owe no value.\n\n| Surface | Case | Previous expectation | Admission |\n| --- | --- | --- | --- |\n" + strings.Join(changes, "\n") + "\n"
 	return writeFileAtomic(filepath.Join(filepath.Dir(jsonDir), "VERDICT-MIGRATION.md"), []byte(ledger))
 }

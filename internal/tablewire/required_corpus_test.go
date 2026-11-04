@@ -90,8 +90,8 @@ func TestRequiredPins(t *testing.T) {
    value:=Root{A:tc.a,B:tc.b,C:tc.c};wire:=make([]byte,RootMeasure(&value));if RootSave(&value,wire)!=int64(len(wire)) || !bytes.Equal(wire,pin){t.Fatalf("independent write %%s: %%x want %%x",tc.name,wire,pin)}
   }
   var b RootBuilder;if !b.Init(){t.Fatal("builder init")};var r TableReport
-  ok:=RootLoadBuilderTolerant(&b,pin,&r);b.Shutdown()
-  if ok!=(tc.reason=="") || r.Reason!=tc.reason || r.Refused || (r.MissingRequired!=0)!=(tc.reason!=""){t.Fatalf("independent read %%s: %%v %%+v",tc.name,ok,r)}
+  ok:=RootLoadBuilderRead(&b,pin,&r);b.Shutdown()
+  if ok!=(tc.reason=="") || r.Reason!=tc.reason || r.Refused!=!ok {t.Fatalf("independent read %%s: %%v %%+v",tc.name,ok,r)}
  }
 }
 `, corpus))
