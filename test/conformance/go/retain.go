@@ -16,9 +16,6 @@ func retainSurface(lines []line, out string, saves bool) error {
 		if f[0] != "retain" {
 			continue
 		}
-		if saves && f[len(f)-1] == "-" {
-			continue
-		}
 		if f[2] != "tblrt1" || f[3] != "Node" {
 			if err := spillAbsent(out, f[1]); err != nil {
 				return err
@@ -31,7 +28,10 @@ func retainSurface(lines []line, out string, saves bool) error {
 		}
 		n := tblrt1.NodeLoadMeasure(wire)
 		if n < 0 {
-			return fmt.Errorf("%s measure refused", f[1])
+			if err := spill(out, f[1], []byte("refused\n")); err != nil {
+				return err
+			}
+			continue
 		}
 		raw := make([]byte, n+63)
 		off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
@@ -54,10 +54,26 @@ func retainSurface(lines []line, out string, saves bool) error {
 			report = tblrt1.TableReport{}
 		}
 		root := tblrt1.NodeLoadRetain(region, wire, &store, &report)
-		if root == nil || report.Refused() {
-			return fmt.Errorf("%s load failed: %+v", f[1], report)
+		if root == nil {
+			if err := spill(out, f[1], []byte("refused\n")); err != nil {
+				return err
+			}
+			continue
 		}
-		retained, lost, unknown := report.Retained, report.RetainLost, report.Unknown
+		if !saves {
+			size := tblrt1.NodeToJSONMeasure(root)
+			if size < 0 {
+				return fmt.Errorf("%s: known retained value has no canonical JSON", f[1])
+			}
+			value := make([]byte, size)
+			if tblrt1.NodeToJSON(root, value) != size {
+				return fmt.Errorf("%s: retained value writer disagreed with measure", f[1])
+			}
+			if err := spill(out, f[1], append([]byte("read\n"), value...)); err != nil {
+				return err
+			}
+			continue
+		}
 		n = tblrt1.NodeMeasureRetain(root, &store)
 		if n < 0 {
 			return fmt.Errorf("%s retaining measure refused", f[1])
@@ -66,14 +82,10 @@ func retainSurface(lines []line, out string, saves bool) error {
 		if tblrt1.NodeSaveRetain(root, &store, wireOut, &report) != n {
 			return fmt.Errorf("%s retaining save refused", f[1])
 		}
-		saveLost := report.RetainLost - lost
 		again := make([]byte, n)
 		var second tblrt1.TableReport
-		if tblrt1.NodeSaveRetain(root, &store, again, &second) != n || !bytes.Equal(again, wireOut) || second.RetainLost != saveLost {
+		if tblrt1.NodeSaveRetain(root, &store, again, &second) != n || !bytes.Equal(again, wireOut) {
 			return fmt.Errorf("%s save is not repeatable", f[1])
-		}
-		if !saves {
-			wireOut = []byte(fmt.Sprintf("%d,%d,%d %d\n", retained, lost, unknown, saveLost))
 		}
 		if err := spill(out, f[1], wireOut); err != nil {
 			return err
