@@ -6213,8 +6213,10 @@ packet wire and the reason carries over unchanged: a file rides a mask as a raw
 `uint64` under kind `9`, so an older build loads the bits a newer one appended,
 holds them, and writes them back unharmed, and a message rides a mask at W bits,
 W being the writer's own variant count, so a build that loaded appended bits out
-of a file and then puts that same mask on a message DROPS them by width, with no
-counter on either wire able to say so. **The reason the row moves is
+of a file and then puts that same mask on a message has bits the message cannot
+carry: **the message save REFUSES it** (a writer never truncates), and so
+does the JSON write, which has no name for such a bit (§16.3). The file save
+writes the mask whole, so a file read then written back is byte-identical. **The reason the row moves is
 BANDWIDTH**, which is this form's whole design statement: sixty-four bits for a
 three-bit mask is the single largest fixed overspend a small message has, and a
 mask is the one payload whose file width comes from its storage rather than from
@@ -6681,10 +6683,11 @@ tag (above). And a compressed float rides as its QUANTIZED INDEX under SPEC.md
 §4.3's rule (the announcement, above), where the file carries the raw float
 and holds it to its bounds. The first and the third are the two exceptions to
 the round trip, and each is stated: a file carrying a mask's bits above the
-writer's W, saved as a message, drops them by width, and a file carrying a
-compressed float OFF the announced grid, saved as a message, carries the
-nearest grid point, so file to message to file reproduces a mask only inside W
-and a float only when it already lies on the grid. The second is not an
+writer's W cannot be saved as a message (the message save refuses it, never
+truncating it), and a file carrying a compressed float OFF the announced grid,
+saved as a message, carries the nearest grid point, so file to message to file
+reproduces a mask only inside W and a float only when it already lies on the
+grid. The second is not an
 exception, because a name is the value on both forms and the variable form already
 carries it. A value that is on the grid and inside W reproduces its file byte
 for byte, which is what every vector below is.
@@ -7895,10 +7898,13 @@ three and not one.
   This one IS a wire fact: a reader holds an untrusted peer's layout to the same
   65536 (`layout_record_too_large`, above), so a record past it is one no
   conforming reader decodes, and emitting a writer for it would be emitting
-  bytes nobody can read. A fixed table past it therefore **KEEPS FORM `1`,
-  WHICH IT NEVER LOST**, and the compiler names it and its size rather than
-  dropping the form in silence. The two sides agree by construction: the writer
-  never produces a record the reader's own bound refuses.
+  bytes nobody can read. A fixed table past it therefore **HAS NO FILE FORM**:
+  its file save refuses (it does not fall back to form `1`), every read at its
+  root refuses form `1` as at every declared fixed root (the reader expects a
+  fixed table, and this is not one), and the compiler names it and its size.
+  It keeps the by-value storage, the cook and the block form (§19). The two
+  sides agree by construction: the writer never produces a record the reader's
+  own bound refuses.
 
   **THIS IS NOT A COMPILE REFUSAL, AND THE `fixed` KEYWORD DOES NOT MAKE IT ONE
   — because the keyword declares the CLASS and this bound is the FORM's.** The
@@ -7906,7 +7912,7 @@ three and not one.
   number. §12.1's render frame at 7.5 MB and §2.8's `WideBlob` at 280 KB are
   **declared `fixed table`** — they have to be, because the class is what gives
   them a by-value storage, a cook and a block form (§19) — and they were never
-  form-`3` tables at all, form `3` being younger than both. **Refusing to
+  form-`3` tables at all. **Refusing to
   compile them would be refusing the CLASS over a bound belonging to one of its
   wires**, and it would make two of this specification's own worked examples
   things the compiler rejects. What the keyword refuses is a construct that
@@ -8087,9 +8093,11 @@ exists to prevent.
 - **A DECLARED `fixed table` PAST THE RECORD CEILING IS A FIXED TABLE THAT DOES
   NOT CARRY THIS FORM.** §12.1's render frame at 7.5 MB and §2.8's `WideBlob`
   are exactly that: legitimate `fixed table` declarations of megabytes, carrying
-  a by-value storage, a cook and a block form, and never form-`3` tables at all.
-  **The CLASS and the FORM are two different words**, and this section's bounds
-  are the FORM's. The compiler names them; it does not refuse them.
+  a by-value storage, a cook and a block form, and no file form: a read at
+  their root refuses form `1`, and a file save of one refuses rather than
+  falling back to form `1`. **The CLASS and the FORM are two different words**,
+  and this section's bounds are the FORM's. The compiler names them; it does
+  not refuse to compile them.
 - **A DECLARED `fixed table` PAST THE 4096-LEAF CAP IS A COMPILE ERROR; A
   DERIVED ONE WARNS AND KEEPS FORM `1`.** A plan is laid down as static data in
   an array the compiler sizes, so the cap is the REFERENCE's and not the wire's.
@@ -8784,8 +8792,8 @@ flags Perks { Shielded, Hardened, Cloaked, Turbo } // v2: WRONG — an insert
 // Cloaked. The compiler retains no history and cannot see this.
 
 flags Perks { Shielded, Cloaked, Turbo, Hardened } // v2: RIGHT — appended
-// every stored bit keeps its meaning; an old reader ignores bit 3, a new
-// reader sees it clear in old data.
+// every stored bit keeps its meaning; an old reader keeps bit 3 and writes it
+// back in a file, a new reader sees it clear in old data.
 ```
 
 Removing a flags variant frees no bit either: retire the name, keep the
@@ -8807,8 +8815,9 @@ carries a mask in W raw bits, W being the reader's own variant count (SPEC.md
 puts that same mask on a packet DROPS them by width, silently, with no counter
 on either wire able to say so. **The MESSAGE FORM takes the packet wire's rule
 here** (§3.3), for the packet wire's reason, bandwidth: a form-`2` body writes a
-mask at its declared W bits rather than as kind `9`'s raw `uint64`, so a mask on
-a message drops appended bits exactly as a mask on a packet does. This is the
+mask at its declared W bits rather than as kind `9`'s raw `uint64`, so a mask with
+appended bits cannot ride a message: the message save REFUSES it rather than
+drop them, because a table writer never truncates. This is the
 one row of this table the message form moves, and §3.3
 states it as a departure. A build that ferries masks between the forms keeps its
 own bits inside its own W, or carries the mask in a FILE.
