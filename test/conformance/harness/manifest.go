@@ -50,13 +50,7 @@ type Instance struct {
 // WireRefusal answers the named wire writer refusal lang owes for this
 // instance, or "" when it owes the committed bytes.
 func (inst Instance) WireRefusal(lang string) string {
-	if inst.GoWireRefusal == "" {
-		return ""
-	}
-	if lang == "go" || slices.Contains(inst.WireRefusedBy, lang) {
-		return inst.GoWireRefusal
-	}
-	return ""
+	return inst.GoWireRefusal
 }
 
 // Counts is a read report (docs/SPEC-TABLES.md §4), which is the whole
@@ -228,13 +222,9 @@ func (h Hostile) Carries(lang string) bool {
 	return slices.Contains(h.CarriedBy, lang)
 }
 
-// VerdictFor is the answer lang owes for this row: the standard's verdict when
-// it carries the rule, and the row's uncarried verdict when it does not.
+// VerdictFor returns the standard admission verdict for every port.
 func (h Hostile) VerdictFor(lang string) string {
-	if h.Carries(lang) || h.Uncarried == "" {
-		return h.Verdict()
-	}
-	return h.Uncarried
+	return h.Verdict()
 }
 
 // Cook is a cooked file (docs/SPEC-TABLES.md §7) and the canonical node dump its
