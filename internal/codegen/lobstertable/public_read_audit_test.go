@@ -82,6 +82,8 @@ func auditUnknownDepthWire(levels int, leaf string) []byte {
 		inner, kind = []byte{4, 1, 1, 4, 7, 0, 0, 0}, 16
 	} else if leaf == "text-array" {
 		inner, kind = []byte{12, 1, 1, 'x'}, 14
+	} else if leaf == "scalar-union" {
+		inner = []byte{1, 15, 1, 4, 4, 7, 0, 0, 0, 0}
 	}
 	if leaf == "union-wrapper" {
 		for i := 0; i < levels; i++ {
@@ -108,7 +110,7 @@ func auditUnknownDepthWire(levels int, leaf string) []byte {
 }
 
 func TestLobsterBinaryDepthEveryPublicRead(t *testing.T) {
-	for _, leaf := range []string{"table", "array", "keyed", "text-array", "union-wrapper", "union-table"} {
+	for _, leaf := range []string{"table", "array", "keyed", "text-array", "scalar-union", "union-wrapper", "union-table"} {
 		for _, depth := range []int{128, 129} {
 			t.Run(fmt.Sprintf("%s/depth=%d", leaf, depth), func(t *testing.T) {
 				g := auditUnit(t, "package audit\ntable Probe { z int32 }\n")

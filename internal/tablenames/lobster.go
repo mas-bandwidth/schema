@@ -150,7 +150,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"string_shape", "sub", "sub_to", "table_of", "table_shape", "text_boundary", "text_list_shape",
 		"text_valid", "trailer", "u8", "union_cell", "union_shape", "unlink_unreached", "value_edges",
 		"wide_boundary", "wide_shape", "wide_units", "wide_valid", "widens",
-		"read_refuse", "read_reset", "WireCheck", "wire_scalar", "wire_payload", "wire_content", "wire_body", "wire_graph", "wire_check",
+		"read_refuse", "read_reset", "WireCheck", "binary_max_depth", "wire_scalar", "wire_payload", "wire_content", "wire_content_at", "wire_body", "wire_graph", "wire_check",
 	},
 	"message.lobster": {
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",

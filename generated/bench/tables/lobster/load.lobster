@@ -1946,6 +1946,9 @@ class WireCheck:
     edges:[int] = []
     node_lo:int = -1
     node_hi:int = -1
+    depth:int = 0
+
+let binary_max_depth = 128
 
 def wire_scalar(c:WireCheck, r:Reader, kind:int) -> bool:
     let w = kind_width(kind)
@@ -1999,6 +2002,19 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
     return read_refuse(c.st.report, "wire_damaged")
 
 def wire_content(c:WireCheck, r:Reader, kind:int) -> bool:
+    let nested = kind >= 13 and kind <= 16
+    if nested:
+        if c.depth >= binary_max_depth:
+            return read_refuse(c.st.report, "depth_over_bound")
+        c.depth++
+    let ok = wire_content_at(c, r, kind)
+    if nested:
+        c.depth--
+    return ok
+
+// Structured kinds 13 through 16 add a level, including a nested union.
+// A scalar arm's length adds none. Pointer records start at depth zero.
+def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
     if kind == 12:
         if not text_valid(r.b, r.off, r.hi - r.off):
             return read_refuse(c.st.report, "wire_damaged")

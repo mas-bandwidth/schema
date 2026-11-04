@@ -1271,6 +1271,10 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
         let borrow = if ult(lo, s.base_lo): 1 else: 0
         lo = lo - s.base_lo
         hi = hi - s.base_hi - borrow
+        // A file keeps all flags bits, but a message carries only W bits.
+        // Refuse an unrepresentable unsigned mask before mw_put narrows it.
+        if kind == 9 and s.bits < 64 and shr(lo, s.bits) != 0:
+            return false
     if s.packing == 2:
         let value = fround(v.f)
         var ratio = fround(fround(value - s.qmin) / s.qdelta)
