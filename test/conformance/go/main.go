@@ -84,6 +84,7 @@ type codec struct {
 	fromJson      func(value any, text []byte, rep *report) bool
 	toJsonMeasure func(value any) int64
 	toJson        func(value any, buffer []byte) int64
+	cookInput     func([]byte, string, string) (any, error)
 	cookMeasure   func(any) int64
 	cook          func(any, []byte, bool) bool
 }
@@ -95,7 +96,7 @@ type codec struct {
 //
 // R is the UNIT's own TableReport — the generated surface is per package, so
 // there are as many report types as units — and `snap` narrows it to the one
-// shape the harness's five counters need.
+// local diagnostic shape; only the read result is compared across ports.
 func row[T any, R any, O ~uint8](
 	unit, root string,
 	reset func(*T),
@@ -248,16 +249,9 @@ func surfaceReport(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.load(value, wire, &rep)
-		malformed := "false"
-		if rep.malformed || !ok && !rep.refused {
-			malformed = "true"
-		}
-		verdict := "read"
-		if rep.refused {
-			verdict = "refused"
-		}
-		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
-		if !rep.refused && malformed == "false" {
+		text := []byte("refused\n")
+		if ok {
+			text = []byte("read\n")
 			if text, err = appendValue(c, value, text, f[1]); err != nil {
 				return err
 			}
@@ -270,12 +264,11 @@ func surfaceReport(lines []line, out string) error {
 }
 
 // appendValue is the value half of a `report`, `framing` and `json-hostile`
-// answer (test/conformance/README.md): the §16 text of the value the read
-// left, after the report line. A codec with no text writer answers the line
-// alone, and the harness names the missing value.
+// answer (test/conformance/README.md): the complete §16 value after `read`.
+// An accepted answer without its value cannot establish read conformance.
 func appendValue(c *codec, value any, head []byte, name string) ([]byte, error) {
 	if c.toJson == nil {
-		return head, nil
+		return nil, fmt.Errorf("%s: no canonical value writer", name)
 	}
 	size := c.toJsonMeasure(value)
 	if size < 0 {
@@ -289,9 +282,8 @@ func appendValue(c *codec, value any, head []byte, name string) ([]byte, error) 
 }
 
 // surfaceFraming is THE FRAMING VECTORS (docs/LAYERS/1-framing.md): the read
-// report as the `report` surface prints it, then the §16 text of the value the
-// read left, unless the row says `no-value` or the read was refused. A derived
-// line is `framing <case> <unit> <root> <wire> [no-value]`.
+// verdict, then the complete §16 value on acceptance. Refusals carry no value.
+// A derived line is `framing <case> <unit> <root> <wire>`.
 func surfaceFraming(lines []line, out string) error {
 	for _, f := range lines {
 		if f[0] != "framing" {
@@ -311,32 +303,12 @@ func surfaceFraming(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		ok := c.load(value, wire, &rep)
-		malformed := "false"
-		if rep.malformed || !ok && !rep.refused {
-			malformed = "true"
-		}
-		verdict := "read"
-		if rep.refused {
-			verdict = "refused"
-		}
-		text := []byte(fmt.Sprintf("%d,%d,%d,%d,%d,%s,%s\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate, malformed, verdict))
-		noValue := len(f) > 5 && f[5] == "no-value"
-		if !rep.refused && !noValue {
-			if c.toJson == nil {
-				if err := spillAbsent(out, f[1]); err != nil {
-					return err
-				}
-				continue
+		text := []byte("refused\n")
+		if ok {
+			text, err = appendValue(c, value, []byte("read\n"), f[1])
+			if err != nil {
+				return err
 			}
-			size := c.toJsonMeasure(value)
-			if size < 0 {
-				return fmt.Errorf("%s: ToJSONMeasure refused the value", f[1])
-			}
-			buffer := make([]byte, size)
-			if c.toJson(value, buffer) != size {
-				return fmt.Errorf("%s: ToJSON did not write ToJSONMeasure's answer", f[1])
-			}
-			text = append(text, buffer...)
 		}
 		if err := spill(out, f[1], text); err != nil {
 			return err
@@ -514,8 +486,8 @@ func surfaceForgeryResult(kind string, lines []line, out string, reasons bool) e
 }
 
 // surfaceJsonHostile is the text form's hostile battery (§16.2, §16.3, §17.5):
-// one tree per rule the page states, and the verdict is `refused` or the §4
-// report the read produces. The tree is what `schema pack` reads, so the text
+// one tree per rule the page states. Acceptance carries the complete §16
+// value; refusal carries no value. The tree is what `schema pack` reads, so the text
 // is <tree>/<root>.json (§17).
 func surfaceJsonHostile(lines []line, out string) error {
 	for _, f := range lines {
@@ -537,8 +509,8 @@ func surfaceJsonHostile(lines []line, out string) error {
 		var rep report
 		ok := c.fromJson(value, text, &rep)
 		answer := []byte("refused\n")
-		if ok && !rep.malformed {
-			answer = []byte(fmt.Sprintf("%d,%d,%d,%d,%d,false,read\n", rep.unknown, rep.kindMismatch, rep.widened, rep.clamped, rep.duplicate))
+		if ok {
+			answer = []byte("read\n")
 			if answer, err = appendValue(c, value, answer, f[1]); err != nil {
 				return err
 			}

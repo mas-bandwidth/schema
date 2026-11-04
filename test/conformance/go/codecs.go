@@ -587,7 +587,7 @@ var codecTable = []codec{
 			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 		}),
 
-	regionRow("blobdemo", "Catalog", blobdemo.CatalogLoadMeasure, blobdemo.CatalogLoad, blobdemo.CatalogMeasure, blobdemo.CatalogSave,
+	withCookInput(regionRow("blobdemo", "Catalog", blobdemo.CatalogLoadMeasure, blobdemo.CatalogLoad, blobdemo.CatalogMeasure, blobdemo.CatalogSave,
 		func(text []byte, r *blobdemo.TableReport) (*blobdemo.Catalog, []byte, bool) {
 			var b blobdemo.CatalogBuilder
 			if !b.Init() {
@@ -602,7 +602,7 @@ var codecTable = []codec{
 		},
 		blobdemo.CatalogToJSONMeasure, blobdemo.CatalogToJSON, blobdemo.CatalogCookMeasure, blobdemo.CatalogCookFrom, func(r *blobdemo.TableReport) report {
 			return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
-		}, blobdemo.CatalogMeasureReason),
+		}, blobdemo.CatalogMeasureReason), cookCatalogInput),
 
 	regionRow("blobdemo", "Asset", blobdemo.AssetLoadMeasure, blobdemo.AssetLoad, blobdemo.AssetMeasure, blobdemo.AssetSave,
 		func(text []byte, r *blobdemo.TableReport) (*blobdemo.Asset, []byte, bool) {
