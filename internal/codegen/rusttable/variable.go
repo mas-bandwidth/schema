@@ -773,6 +773,16 @@ pub fn table_float_refuse(ids: &mut IdTable, at: &str) {
     }
 }
 
+/// A COUNT OVER ITS BOUND (docs/SPEC.md §5.1): a counted array holding more
+/// than its Max elements, or an arm's bytes(N) longer than N, is refused BY
+/// NAME in every build (at is <owner>.<field>), as a NaN is: <root>_save
+/// panics with the name and <root>_save_checked returns it as the Err.
+pub fn table_bound_refuse(ids: &mut IdTable, at: &str) {
+    if ids.refused.is_none() {
+        ids.refused = Some(format!("invalid_value: {at}"));
+    }
+}
+
 /// Walk past a payload the reader does not store, by kind (§4), bounded by the
 /// enclosing body's end. The fixed-width kinds skip their width; the framed
 /// kinds read L and skip L bytes; a reference-shaped kind (pointer, enum) reads
