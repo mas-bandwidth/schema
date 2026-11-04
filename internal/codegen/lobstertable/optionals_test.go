@@ -419,7 +419,7 @@ func TestLobsterOptionals(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", unit, err)
 		}
-		g, err := generateLoadUnit(t, paths)
+		g, err := generateVariableFixtureUnit(t, paths)
 		if err != nil {
 			t.Fatalf("unit %s: %v", unit, err)
 		}
@@ -438,7 +438,7 @@ func TestLobsterOptionals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, paths)
+	g, err := generateVariableFixtureUnit(t, paths)
 	if err != nil {
 		t.Fatalf("optional-map probe: %v", err)
 	}
@@ -509,7 +509,7 @@ func TestLobsterOptionals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rg, err := generateLoadUnit(t, reqPaths)
+	rg, err := generateVariableFixtureUnit(t, reqPaths)
 	if err != nil {
 		t.Fatalf("required probe: %v", err)
 	}
@@ -578,7 +578,7 @@ func TestLobsterOptionalsNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, paths)
+	g, err := generateVariableFixtureUnit(t, paths)
 	if err != nil {
 		t.Fatal(err)
 	}

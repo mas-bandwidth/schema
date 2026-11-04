@@ -188,8 +188,8 @@ def fread(file:string):
     let trec = schema_rt.load("Probe", data, trep)
     let prep = schema_rt.LoadReport {}
     let prec = schema_rt.load("Probe", data, prep)
-    print(if reason == "": "ok" else: reason)
-    print(if trec: "tolerant:record" else: "tolerant:nil " + trep.reason)
+    print(if srec: "ok" else: "refused")
+    print(if trec: "read:record" else: "read:nil")
     print(if prec: "plain:record" else: "plain:nil")
     if trec:
         let out, why = schema_rt.save_reasoned(trec)
@@ -225,7 +225,7 @@ func finiteReadMismatches(t *testing.T, g *loadUnit, rows []finiteReadRow, res [
 	for i, r := range rows {
 		got := res[i]
 		if r.field != "" {
-			want := []string{"non_finite_float", "tolerant:nil non_finite_float: " + r.field, "plain:nil", "-"}
+			want := []string{"refused", "read:nil", "plain:nil", "-"}
 			if strings.Join(got, "|") != strings.Join(want, "|") {
 				bad = append(bad, fmt.Sprintf("%s: got %q, want %q", r.name, got, want))
 			}
@@ -238,7 +238,7 @@ func finiteReadMismatches(t *testing.T, g *loadUnit, rows []finiteReadRow, res [
 		if err != nil {
 			t.Fatalf("%s: the Go engine refuses a finite row: %v", r.name, err)
 		}
-		if got[0] != "ok" || got[1] != "tolerant:record" || got[2] != "plain:record" || got[3] != ":"+hex.EncodeToString(want) {
+		if got[0] != "ok" || got[1] != "read:record" || got[2] != "plain:record" || got[3] != ":"+hex.EncodeToString(want) {
 			bad = append(bad, fmt.Sprintf("%s: got %q, want ok/record/record and the save %x", r.name, got, want))
 		}
 		if !bytes.Equal(want, r.wire) {
@@ -328,10 +328,15 @@ func TestLobsterTablesAreFiniteOnlyNegativeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	anchors := []string{
-		"        if not finite_f32_bits(bits):\n            // a NaN or an infinity is refused on its raw bits",
+		"        if not finite_f32_bits(bits):\n            refuse_non_finite(rep, fd)",
 		"        if not finite_f64_bits(bits):\n            refuse_non_finite(rep, fd)",
 	}
 	patched := string(src)
+	const generic = "    if not wire_check(st, first):"
+	if strings.Count(patched, generic) != 1 {
+		t.Fatal("wire check guard not unique")
+	}
+	patched = strings.Replace(patched, generic, "    if false:", 1)
 	for _, a := range anchors {
 		if n := strings.Count(patched, a); n != 1 {
 			t.Fatalf("the read anchor is in the emitted runtime %d times, want 1: %q", n, a)

@@ -25,6 +25,8 @@ const saveDump = `def saverun(root:string, file:string):
     assert data
     let rep = schema_rt.LoadReport {}
     let rec = schema_rt.load(root, data, rep)
+    if not rec:
+        print("refused save input: " + root + " / " + file)
     assert rec
     let out = schema_rt.save(rec)
     let h = hexs(out)
@@ -73,8 +75,10 @@ func goSave(g *loadUnit, rootName string, wire []byte) ([]byte, error) {
 	m := tabletext.NewModel(g.u)
 	inst := m.New(m.Lookup(rootName))
 	var rep tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
+	if ok, err := tablewire.Decode(m, inst, wire, &rep); err != nil {
 		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("reference refused input")
 	}
 	return tablewire.Encode(m, inst)
 }
@@ -214,30 +218,9 @@ func TestLobsterTableSaveRoundTripsEveryInstance(t *testing.T) {
 // green.
 func TestLobsterTableSaveNegativeControl(t *testing.T) {
 	t.Parallel()
-	units, _ := readManifest(t)
-	var row loadRow
-	found := false
-	for _, r := range loadRows(t) {
-		if r.kind == "instance" && r.name == "root_full" {
-			row, found = r, true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("the manifest names no instance root_full")
-	}
-	paths, err := compiler.GatherPaths(prefix(units[row.unit]))
-	if err != nil {
-		t.Fatal(err)
-	}
-	g, err := generateLoadUnit(t, paths)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wire, err := os.ReadFile(filepath.Join(root, row.wire))
-	if err != nil {
-		t.Fatal(err)
-	}
+	g := probeUnit(t)
+	wire := probeWire(t, g)
+	row := loadRow{kind: "instance", name: "variable-probe", unit: "probe", root: "Root", data: wire}
 	want, err := goSave(g, row.root, wire)
 	if err != nil {
 		t.Fatal(err)

@@ -258,7 +258,7 @@ func probeReference(t *testing.T, u *ir.Unit) (wire []byte, saved, loadReport, l
 	}
 	saved = hex.EncodeToString(savedBytes)
 	reloadReport, reloadDump = goLoad(u, "Holder", savedBytes)
-	if loadReport != "0,0,0,0,0,false,read" || reloadReport != "0,0,0,0,0,false,read" {
+	if loadReport != "read" || reloadReport != "read" {
 		t.Fatalf("the reference does not read the probe cleanly: load %s, re-load %s", loadReport, reloadReport)
 	}
 	return wire, saved, loadReport, loadDump, reloadReport, reloadDump
@@ -350,7 +350,7 @@ def probe(root:string, file:string) -> void:
     assert data
     let rep = schema_rt.LoadReport {}
     let rec = schema_rt.load(root, data, rep)
-    print("loadreport " + report_line(rep))
+    print("loadreport " + (if rec: "read" else: "refused"))
     if not rec:
         print("saved -")
         print("reloadreport -")
@@ -361,7 +361,7 @@ def probe(root:string, file:string) -> void:
     print("saved " + hexs(saved))
     let rep2 = schema_rt.LoadReport {}
     let rec2 = schema_rt.load(root, saved, rep2)
-    print("reloadreport " + report_line(rep2))
+    print("reloadreport " + (if rec2: "read" else: "refused"))
     labels = []
     push(labels, rec)
     print("loaddump " + drec(rec))

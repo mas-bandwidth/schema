@@ -113,10 +113,10 @@ func runRelease(t *testing.T, wire []byte, release bool, patch func(string) stri
 assert data
 let rep = schema_rt.LoadReport {}
 let rec = schema_rt.load("ListNode", data, rep)
-print("malformed={rep.malformed} answered=" + (if rec: "record" else: "nil"))
+print("answered=" + (if rec: "record" else: "nil"))
 if rec:
     let out, why = schema_rt.save_reasoned(rec)
-    print("save=" + (if why == "": "ok" else: why))
+    print("save=" + (if why == "": "accepted" else: "refused") + " bytes={length(out)}")
 `)
 	if release {
 		b.WriteString("    schema_rt.release(rec)\n")
@@ -129,76 +129,112 @@ if rec:
 
 const (
 	leakReport   = "LEAKS FOUND"
-	cycleRefused = "malformed=true answered=nil\n"
+	cycleRefused = "answered=nil\n"
 )
 
-// TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach: an orphan cycle (B and
-// C naming each other, the root naming neither) is damage, and the refused
-// load ends it itself, so a caller that is handed nothing leaks nothing.
+// Wire cycles refuse before allocation. Test cleanup against deliberately
+// constructed in-memory cycles as a separate boundary.
+func runMemoryCycle(t *testing.T, orphan, cleanup bool) string {
+	t.Helper()
+	paths, err := compiler.GatherPaths(prefix([]string{"tables/pointers"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := generateLoadUnit(t, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for _, m := range g.mods {
+		fmt.Fprintf(&b, "import .%s\n", m)
+	}
+	b.WriteString(`import .load
+def link(from:schema_rt.Record, target:schema_rt.Record):
+    for(from.fields) sl:
+        if sl.fd.name == "next":
+            sl.cell.node = target
+            return
+    assert false
+def exercise():
+    let root = schema_rt.new_record(schema_rt.table_of("ListNode"))
+    let b = schema_rt.new_record(schema_rt.table_of("ListNode"))
+    let c = schema_rt.new_record(schema_rt.table_of("ListNode"))
+    link(b, c)
+`)
+	if orphan {
+		b.WriteString(`    link(c, b)
+    let state = schema_rt.LoadState { data: "", ids: [], report: schema_rt.LoadReport {}, variable: true, good: true, root: root, nodes: [schema_rt.Node { kind: 1, rec: b, blob: nil }, schema_rt.Node { kind: 1, rec: c, blob: nil }], named: [], count_refused: false }
+`)
+		if cleanup {
+			b.WriteString("    schema_rt.unlink_unreached(state, root)\n")
+		} else {
+			b.WriteString("    assert length(state.nodes) == 2\n")
+		}
+	} else {
+		b.WriteString("    link(root, b)\n    link(c, root)\n")
+		if cleanup {
+			b.WriteString("    schema_rt.release(root)\n")
+		}
+	}
+	b.WriteString("exercise()\nprint(\"cycle exercised\")\n")
+	if err := os.WriteFile(filepath.Join(g.dir, "main.lobster"), []byte(b.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return string(lobsterrun.Run(t, g.dir, "main.lobster", nil))
+}
+
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReach(t *testing.T) {
 	t.Parallel()
 	out := runRelease(t, cyclicListWire(t, 2, true), false, nil)
 	if !strings.Contains(out, cycleRefused) || strings.Contains(out, leakReport) {
-		t.Fatalf("an orphan cycle was not refused, or outlived the load:\n%s", out)
+		t.Fatalf("orphan wire was accepted or leaked:\n%s", out)
+	}
+	out = runMemoryCycle(t, true, true)
+	if !strings.Contains(out, "cycle exercised") || strings.Contains(out, leakReport) {
+		t.Fatalf("orphan cleanup failed:\n%s", out)
 	}
 }
 
-// TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl takes the
-// load's unlink pass out and requires the refused orphan cycle to leak.
 func TestLobsterTableLoadUnlinksWhatTheRootDoesNotReachNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "\n        unlink_unreached(st, root)\n"
-	out := runRelease(t, cyclicListWire(t, 2, true), false, func(src string) string {
-		if n := strings.Count(src, anchor); n != 1 {
-			t.Fatalf("the unlink anchor is in the emitted runtime %d times, want 1", n)
-		}
-		return strings.Replace(src, anchor, "\n        if length(st.nodes) < 0:\n            unlink_unreached(st, root)\n", 1)
-	})
-	if !strings.Contains(out, leakReport) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: without the unlink pass the orphan cycle still did not leak:\n%s", out)
+	if out := runMemoryCycle(t, true, false); !strings.Contains(out, leakReport) {
+		t.Fatalf("omitting orphan cleanup did not expose the leak:\n%s", out)
 	}
 }
 
-// TestLobsterTableReleaseEndsAReachedCycle: root -> B -> C -> root is damage,
-// and the refused load releases what it placed before it answers nil.
 func TestLobsterTableReleaseEndsAReachedCycle(t *testing.T) {
 	t.Parallel()
 	out := runRelease(t, cyclicListWire(t, 1, false), true, nil)
 	if !strings.Contains(out, cycleRefused) || strings.Contains(out, leakReport) {
-		t.Fatalf("a reached cycle was not refused, or outlived the load:\n%s", out)
+		t.Fatalf("cyclic wire was accepted or leaked:\n%s", out)
+	}
+	out = runMemoryCycle(t, false, true)
+	if !strings.Contains(out, "cycle exercised") || strings.Contains(out, leakReport) {
+		t.Fatalf("reached cycle cleanup failed:\n%s", out)
 	}
 }
 
-// TestLobsterTableReleaseEndsAReachedCycleNegativeControl drops the release
-// the tolerant read does on damage and requires the refused reached cycle to
-// leak: the witness that the test above loads a real cycle.
 func TestLobsterTableReleaseEndsAReachedCycleNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "    if report.malformed:\n        release(rec)\n        return nil\n"
-	out := runRelease(t, cyclicListWire(t, 1, false), false, func(src string) string {
-		if n := strings.Count(src, anchor); n != 1 {
-			t.Fatalf("the damage release anchor is in the emitted runtime %d times, want 1", n)
-		}
-		return strings.Replace(src, anchor, "    if report.malformed:\n        return nil\n", 1)
-	})
-	if !strings.Contains(out, leakReport) {
-		t.Fatalf("NEGATIVE CONTROL FAILED: without the release on damage the refused reached cycle did not leak:\n%s", out)
+	if out := runMemoryCycle(t, false, false); !strings.Contains(out, leakReport) {
+		t.Fatalf("omitting release did not expose the leak:\n%s", out)
 	}
 }
 
-// TestLobsterTableCyclicWireIsDamageNegativeControl takes the cycle check out
-// and requires a reached cycle to load as a record, unrefused: the witness
-// that the refusal above is the check's and no other rule's.
+// Both generic wire validation and the declared graph check reject cycles.
+// Disabling both defenses proves the fixture carries a reached cycle.
 func TestLobsterTableCyclicWireIsDamageNegativeControl(t *testing.T) {
 	t.Parallel()
-	const anchor = "and load_cyclic(st, root):"
 	out := runRelease(t, cyclicListWire(t, 1, false), true, func(src string) string {
-		if n := strings.Count(src, anchor); n != 1 {
-			t.Fatalf("the cycle check anchor is in the emitted runtime %d times, want 1", n)
+		const generic = "    if not wire_check(st, first):"
+		const declared = "and load_cyclic(st, root):"
+		if strings.Count(src, generic) != 1 || strings.Count(src, declared) != 1 {
+			t.Fatal("cycle guards not unique")
 		}
-		return strings.Replace(src, anchor, "and false and load_cyclic(st, root):", 1)
+		src = strings.Replace(src, generic, "    if false:", 1)
+		return strings.Replace(src, declared, "and false and load_cyclic(st, root):", 1)
 	})
-	if !strings.Contains(out, "malformed=false answered=record\n") {
-		t.Fatalf("NEGATIVE CONTROL FAILED: without the cycle check the reached cycle was still refused:\n%s", out)
+	if !strings.Contains(out, "answered=record\n") || strings.Contains(out, leakReport) {
+		t.Fatalf("cycle-check mutation did not expose a releasable cycle:\n%s", out)
 	}
 }

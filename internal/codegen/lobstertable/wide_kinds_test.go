@@ -242,7 +242,7 @@ func TestLobsterWideKinds(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unit %s: %v", key, err)
 		}
-		g, err := generateLoadUnit(t, paths)
+		g, err := generateVariableFixtureUnit(t, paths)
 		if err != nil {
 			t.Logf("unit %s is refused, so its rows are not compared: %v", key, err)
 			continue
@@ -258,7 +258,7 @@ func TestLobsterWideKinds(t *testing.T) {
 	if err := os.WriteFile(src, []byte(wideKindsSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, []string{src})
+	g, err := generateVariableFixtureUnit(t, []string{src})
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestLobsterWideKindsNegativeControl(t *testing.T) {
 	if err := os.WriteFile(src, []byte(wideKindsSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g, err := generateLoadUnit(t, []string{src})
+	g, err := generateVariableFixtureUnit(t, []string{src})
 	if err != nil {
 		t.Fatalf("the surface refuses the wide-kind sample: %v", err)
 	}
