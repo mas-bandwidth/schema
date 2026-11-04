@@ -158,8 +158,8 @@ const (
 	TableRefuseMissingRequired
 	// The fixed form's own refusals (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §21.3,
 	// mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-	// fixed-form refusal name is a TableRefuseReason member, appended after
-	// TableRefuseMissingRequired so no existing value renumbers, in §6.5's table order so
+	// fixed-form refusal name is a TableRefuseReason member, following
+	// TableRefuseMissingRequired, in §6.5's table order so
 	// names, order and spelling agree in all ports. Each member's Error() is its
 	// snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 	// that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
@@ -2238,4 +2238,4 @@ func TableMessageBatchClose(r *TableMessageReader) bool {
 }
 
 // Version identifies this runtime. A generated unit asserts it.
-const Version uint64 = 0x1f2ceeb8586f448d
+const Version uint64 = 0xce68391e35c7ccbd

@@ -39,8 +39,8 @@ TableRefuseBlobShared
 TableRefuseMissingRequired
 // The fixed form's own refusals (docs/SPEC-TABLES.md §6.5, §21.3,
 // docs/FIXED-FORM-ALGORITHM.md §5.3), folded into the one refusal enum: every
-// fixed-form refusal name is a TableRefuseReason member, appended after
-// TableRefuseMissingRequired so no existing value renumbers, in §6.5's table order so
+// fixed-form refusal name is a TableRefuseReason member, following
+// TableRefuseMissingRequired, in §6.5's table order so
 // names, order and spelling agree in all ports. Each member's Error() is its
 // snake_case name, and TableReport.Err() maps a fixed report whose Reason is
 // that name to the member, so errors.Is(err, TableRefuseLayoutUnknown) holds
