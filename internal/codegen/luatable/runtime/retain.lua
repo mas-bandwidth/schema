@@ -138,6 +138,9 @@ end
 -- the retaining save numbers the same graph the same way. A blob named twice
 -- is one node here, as it was before the walk was shared.
 local guard_holds, count_of, map_entries = D.guard_holds, D.count_of, D.map_entries
+-- THE WRITE CONTRACT (descriptor.lua D.int_ok and its peers) is the same test
+-- the plain save makes: a value its field cannot carry refuses (false).
+local int_ok, len_ok, count_ok, well_formed = D.int_ok, D.len_ok, D.count_ok, D.text_ok
 
 local function number_nodes(T, desc, root)
   return D.number_nodes(T, desc, root, false)
@@ -244,6 +247,7 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
     if not val then return true, false end
     w_u8(w, 1)
   elseif s == "int" or s == "flags" then
+    if not int_ok(e, val) then return false end
     if (val or 0) == 0 then return true, false end
     w_int(w, e.width, e.signed, val or 0)
   elseif s == "float" then
@@ -253,9 +257,11 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
     if not w_float(w, e.f32, val) then return false end
   elseif s == "string" then
     if val == nil or #val == 0 then return true, false end
+    if not len_ok(e, val) or not well_formed(e, val) then return false end
     w_raw(w, val)
   elseif s == "wstring" then
     if val == nil or #val == 0 then return true, false end
+    if not len_ok(e, val) or not well_formed(e, val) then return false end
     for i = 1, #val do
       w_raw(w, string.pack("<I2", val[i]))
     end
@@ -284,6 +290,7 @@ local function write_keyed_one(T, ids, nodes, e, val, w, path, ord, retain, repo
     if not write_union(T, ids, nodes, u, val, w, path, ord, retain, report) then return false end
   elseif s == "bytes" then
     if val == nil or #val == 0 then return true, false end
+    if not len_ok(e, val) then return false end
     w_u8(w, 6)
     w_leb(w, #val)
     w_raw(w, val)
@@ -307,6 +314,7 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       w_u8(w, x and 1 or 0)
     end
   elseif s == "int" or s == "flags" then
+    if not int_ok(fd, x) then return false end
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
@@ -319,6 +327,7 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       if not w_float(w, fd.f32, x) then return false end
     end
   elseif s == "string" then
+    if not len_ok(fd, x) or not well_formed(fd, x) then return false end
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 12)
@@ -328,6 +337,7 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
   elseif s == "wstring" then
     -- WIDE TEXT (§2.13, gotable write.go TWString): its UTF-16 code units,
     -- little-endian, L their byte count; it rides when it holds a unit
+    if not len_ok(fd, x) or not well_formed(fd, x) then return false end
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, fd.kind)
@@ -337,6 +347,7 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       end
     end
   elseif s == "bytes" then
+    if not len_ok(fd, x) then return false end
     if fd.optional or not at_default(fd, v) then
       w_leb(w, id_ref(ids, fd.id))
       w_u8(w, 14)
@@ -449,6 +460,7 @@ write_field = function(T, ids, nodes, fd, v, w, path, retain, report)
       w_leb(w, outer.n)
       w_raw(w, table.concat(outer.parts))
     else
+      if not count_ok(fd, x) then return false end
       if not fd.optional and at_default(fd, v) then return true end
       local n = count_of(fd, x)
       w_leb(w, id_ref(ids, fd.id))
@@ -513,6 +525,7 @@ write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
   if s == "bool" then
     w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then
+    if not int_ok(e, val) then return false end
     w_int(body, e.width, e.signed, val or 0)
   elseif s == "float" then
     if not w_float(body, e.f32, val or 0.0) then return false end
@@ -542,10 +555,12 @@ write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
     if not write_union(T, ids, nodes, u, val, body, path, ord, retain, report) then return false end
   elseif s == "string" then
     val = val or ""
+    if not len_ok(e, val) or not well_formed(e, val) then return false end
     w_leb(body, #val)
     w_raw(body, val)
   elseif s == "wstring" then
     val = val or {}
+    if not len_ok(e, val) or not well_formed(e, val) then return false end
     local parts = {}
     for i = 1, #val do
       parts[#parts + 1] = string.pack("<I2", val[i])
@@ -554,6 +569,7 @@ write_element = function(T, ids, nodes, e, val, body, path, ord, retain, report)
     w_raw(body, table.concat(parts))
   elseif s == "bytes" then
     val = val or ""
+    if not len_ok(e, val) then return false end
     w_leb(body, #val)
     w_raw(body, val)
   else
@@ -968,16 +984,20 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
   if s == "bool" then
     w_u8(body, val and 1 or 0)
   elseif s == "int" or s == "flags" then
+    if not int_ok(f, val) then return false end
     w_int(body, f.width, f.signed, val or 0)
   elseif s == "float" then
     if not w_float(body, f.f32, val) then return false end
   elseif s == "string" then
+    if not len_ok(f, val) or not well_formed(f, val) then return false end
     w_raw(body, val)
   elseif s == "wstring" then
+    if not len_ok(f, val) or not well_formed(f, val) then return false end
     for i = 1, #val do
       w_raw(body, string.pack("<I2", val[i]))
     end
   elseif s == "bytes" then
+    if not len_ok(f, val) then return false end
     w_u8(body, 6)
     w_leb(body, #val)
     w_raw(body, val)
@@ -1002,6 +1022,7 @@ write_union_at = function(T, ids, nodes, f, val, body, path, ord, retain, report
     local inner = T.Unions[f.target]
     if not write_union(T, ids, nodes, inner, val, body, path, ord, retain, report) then return false end
   elseif s == "array" then
+    if not count_ok(f, val) then return false end
     local n = count_of(f, val)
     w_u8(body, f.elem_kind)
     w_leb(body, n)
@@ -1438,7 +1459,7 @@ function S.MeasureRetain(T, name, v, retain)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, nil)
-  if saved == nil then return nil, D.refuse_non_finite(T, name, v) end
+  if saved == nil then return nil, D.refuse_write(T, name, v) end
   return #saved
 end
 
@@ -1457,7 +1478,7 @@ function S.SaveRetain(T, name, v, retain, report)
   local refused = D.refuse_deprecated(T, name, v)
   if refused ~= nil then return nil, refused end
   local saved = save_retain(T, name, v, retain, report)
-  if saved == nil then return nil, D.refuse_non_finite(T, name, v) end
+  if saved == nil then return nil, D.refuse_write(T, name, v) end
   count_lost(retain, report)
   return saved
 end
