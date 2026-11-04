@@ -687,6 +687,9 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 	if f.Deprecated {
 		return false
 	}
+	if len(lobsterScalarStorageBounds(f, "x")) != 0 {
+		return true
+	}
 	// A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the writer's contract
 	// refuses a NaN or an infinity, so every float is checked.
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
@@ -711,6 +714,9 @@ func fixedCheckNeededField(f *ir.Field, seen map[string]bool) bool {
 func fixedBoundNeeded(f *ir.Field, chk bool) bool {
 	if chk && f.Deprecated {
 		return false
+	}
+	if chk && len(lobsterScalarStorageBounds(f, "x")) != 0 {
+		return true
 	}
 	if f.Array == ir.ArrayCounted && chk {
 		return true
@@ -964,7 +970,13 @@ func emitFixedBoundElement(g *lobster.Gen, f *ir.Field, expr, ind string, pass f
 		}
 	}
 
-	emitted := applyBounds(lobsterScalarRangeBounds(f, expr))
+	emitted := false
+	if chk {
+		emitted = applyBounds(lobsterScalarStorageBounds(f, expr))
+	}
+	if applyBounds(lobsterScalarRangeBounds(f, expr)) {
+		emitted = true
+	}
 	if b, ok := lobsterScalarWidthBound(f, expr); ok {
 		if applyBounds([]lobsterScalarBound{b}) {
 			emitted = true
@@ -1075,6 +1087,24 @@ func lobsterScalarWidthBound(f *ir.Field, expr string) (lobsterScalarBound, bool
 	maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
 	lit := lobster.IntLit(maxv)
 	return lobsterScalarBound{fmt.Sprintf("schema_rt.ult(%s, %s)", lit, expr), lit}, true
+}
+
+// Lobster stores every narrow integer in a signed 64-bit int. A checked
+// writer must reject values outside the declared storage before Put narrows
+// them. uint64 already uses all 64 bits (including negative int bit patterns).
+func lobsterScalarStorageBounds(f *ir.Field, expr string) []lobsterScalarBound {
+	if f.Type.Kind != ir.TInt || f.Type.Width >= 64 {
+		return nil
+	}
+	lo, hi := tableStorageRange(f.Type.Signed, f.Type.Width)
+	lower, upper := lobster.IntLit(lo), lobster.IntLit(hi)
+	if f.Type.Signed {
+		return []lobsterScalarBound{
+			{fmt.Sprintf("%s < %s", expr, lower), lower},
+			{fmt.Sprintf("%s > %s", expr, upper), upper},
+		}
+	}
+	return []lobsterScalarBound{{fmt.Sprintf("schema_rt.ult(%s, %s)", upper, expr), upper}}
 }
 
 // ---- Canonical Flat Body Prefill Image & Destination Table ------------------
