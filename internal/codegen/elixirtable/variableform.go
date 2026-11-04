@@ -290,8 +290,7 @@ var armVoidLines = []struct {
 	text  string
 	count int
 }{
-	{"      %{t: :void} -> acc\n", 1},
-	{"      {:ok, %{t: :void}} -> acc\n", 1},
+	{"      {:ok, %{t: :void}} -> acc\n", 2},
 	{"        %{t: :void} -> \"null\"\n", 1},
 	{"      {:ok, %{t: :void}} ->\n        if input == nil,\n          do: {{name, nil}, report},\n          else: {nil, %{report | kind_mismatch: report.kind_mismatch + 1}}\n\n", 1},
 }
@@ -387,7 +386,7 @@ func withOnlyVoidArms(runtime string) string {
 	replacements := [][2]string{
 		{"      {:ok, a} -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)\n", ""},
 		{"  defp collect_union_nodes(union, {arm, payload}, acc) do\n", "  defp collect_union_nodes(union, {arm, _payload}, acc) do\n"},
-		{"      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)\n", ""},
+		{"      {:ok, a} -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)\n", ""},
 		{"  defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do\n", "  defp tally_field(%{t: :union, elem: union}, {arm, _payload}, acc) do\n"},
 		{"        _ -> json_field(a, if(payload == nil, do: a.default, else: payload), depth + 1)\n", ""},
 		{"  defp json_arm(union, {arm, payload}, depth) do\n", "  defp json_arm(union, {arm, _payload}, depth) do\n"},
@@ -3182,7 +3181,15 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp written_value(%{t: :union} = f, v), do: written_arm(f.elem, v)
 
-  defp written_value(%{t: t} = f, v) when t in [:string, :bytes] do
+  # a string is well-formed UTF-8 as well: storage that holds ill-formed text
+  # is refused by every writer, and a zero byte is not ill-formed
+  defp written_value(%{t: :string} = f, v) do
+    if not is_binary(v) or not String.valid?(v) or
+         (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
+       do: throw(:invalid_value)
+  end
+
+  defp written_value(%{t: :bytes} = f, v) do
     if not is_binary(v) or (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
       do: throw(:invalid_value)
   end
@@ -3260,7 +3267,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp written_element(%{elem_kind: 12} = f, e) do
     size = Map.get(f, :size, 0)
-    if not is_binary(e) or (size > 0 and byte_size(e) > size), do: throw(:invalid_value)
+
+    if not is_binary(e) or not String.valid?(e) or (size > 0 and byte_size(e) > size),
+      do: throw(:invalid_value)
   end
 
   defp written_element(_f, _e), do: :ok
@@ -3746,6 +3755,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         Process.delete(:elixir_json_refuse)
       end
     end
+  catch
+    # the reference count walks every union before the text does, so an arm
+    # the union does not declare refuses there (docs/SPEC.md §5.1)
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def from_json(table, text) when is_binary(text) do
@@ -3861,9 +3874,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      %{t: :void} -> acc
-      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, %{t: :void}} -> acc
+      {:ok, a} -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+      # an arm the union does not declare refuses the text (docs/SPEC.md §5.1)
+      :error -> throw(:invalid_value)
     end
   end
 

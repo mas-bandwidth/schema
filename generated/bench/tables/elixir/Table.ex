@@ -3829,7 +3829,15 @@ defmodule Benchtable.Table do
 
   defp written_value(%{t: :union} = f, v), do: written_arm(f.elem, v)
 
-  defp written_value(%{t: t} = f, v) when t in [:string, :bytes] do
+  # a string is well-formed UTF-8 as well: storage that holds ill-formed text
+  # is refused by every writer, and a zero byte is not ill-formed
+  defp written_value(%{t: :string} = f, v) do
+    if not is_binary(v) or not String.valid?(v) or
+         (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
+       do: throw(:invalid_value)
+  end
+
+  defp written_value(%{t: :bytes} = f, v) do
     if not is_binary(v) or (not Map.get(f, :unbounded, false) and byte_size(v) > f.size),
       do: throw(:invalid_value)
   end
@@ -3907,7 +3915,9 @@ defmodule Benchtable.Table do
 
   defp written_element(%{elem_kind: 12} = f, e) do
     size = Map.get(f, :size, 0)
-    if not is_binary(e) or (size > 0 and byte_size(e) > size), do: throw(:invalid_value)
+
+    if not is_binary(e) or not String.valid?(e) or (size > 0 and byte_size(e) > size),
+      do: throw(:invalid_value)
   end
 
   defp written_element(_f, _e), do: :ok
@@ -4393,6 +4403,10 @@ defmodule Benchtable.Table do
         Process.delete(:elixir_json_refuse)
       end
     end
+  catch
+    # the reference count walks every union before the text does, so an arm
+    # the union does not declare refuses there (docs/SPEC.md §5.1)
+    :invalid_value -> {:error, :invalid_value}
   end
 
   def from_json(table, text) when is_binary(text) do
@@ -4500,8 +4514,10 @@ defmodule Benchtable.Table do
   end
 
   defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do
-    case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+    case Map.fetch(Map.fetch!(@unions, union).by_name, arm) do
+      {:ok, a} -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)
+      # an arm the union does not declare refuses the text (docs/SPEC.md §5.1)
+      :error -> throw(:invalid_value)
     end
   end
 
