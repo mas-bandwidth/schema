@@ -283,8 +283,8 @@ print("ok")
 	}{
 		{
 			name:   "align",
-			anchor: "    local align = math.max(BLOCK_ALIGN, stride_align(a.stride))\n    offset = align_up(offset, align)",
-			repl:   "    local align = math.max(BLOCK_ALIGN, stride_align(a.stride))\n    offset = align_up(offset, 1)",
+			anchor: "    local count = counts[a.name] or 0\n    local align = math.max(BLOCK_ALIGN, stride_align(a.stride))\n    offset = align_up(offset, align)",
+			repl:   "    local count = counts[a.name] or 0\n    local align = math.max(BLOCK_ALIGN, stride_align(a.stride))\n    offset = align_up(offset, 1)",
 		},
 		{
 			name:   "count",

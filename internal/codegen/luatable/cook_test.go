@@ -296,12 +296,13 @@ func TestLuaCookOpenNegativeControls(t *testing.T) {
 			mutate: func(f []byte) []byte { le.PutUint64(f[40:], 3); return f },
 		},
 		{
-			name:   "directory_sentinel",
-			anchor: "if e.offset == NOT_MATERIALIZED then return \"bad_layout\" end",
-			repl:   "if false then return \"bad_layout\" end",
+			name:   "companion_bound",
+			anchor: "  if n < 0 or n > bound then return false end",
+			repl:   "  if false then return false end",
 			want:   "bad_layout",
 			mutate: func(f []byte) []byte {
-				le.PutUint64(f[h.AttribOffset()+16:], ^uint64(0))
+				at := h.DataOffset() + cookSlot(t, u, m, "Scene", "name", 1)
+				le.PutUint32(f[at:], 1<<20)
 				return f
 			},
 		},
