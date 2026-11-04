@@ -50,6 +50,7 @@ block        <name> <unit> <block file> <dump file>
 forgery      <name> <kind> <subject> <base> <pointer> <offset> <width> <value> <extent> <verdict> <label>
 refusal      <forgery> <reason>
 write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
+write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 ```
 
 - **`unit`** names a compilation unit by the key every other line uses.
@@ -187,10 +188,19 @@ write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
   `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
   an enum by its raw ordinal, `tag` a union by its raw tag (a lawful tag takes
   its arm at the arm's declared defaults), and `float` one of `nan`, `inf` or
-  `-inf`. `<verdict>` is `refused` or `wrote`, and the derived manifest
+  `-inf`, `bytes` a narrow text's exact bytes in hex, and `units` a wide
+  text's exact UTF-16 units, four hex digits each. `<verdict>` is `refused`
+  or `wrote`, and the derived manifest
   withholds it. The driver writes `refused`, `wrote` or, where the leg's own
   types cannot hold the value at all, `unrepresentable`, which answers a
   `refused` row and no other.
+  **The same row drives three more writers, one line kind and one surface
+  each**: `write-refusal-fixed` saves the value through the fixed form's
+  `FixedSave` as a batch of one; `write-refusal-message` saves it through
+  `SaveMessages` as a batch of one, and its `<unit>` column is a `connection`
+  key whose announced vocabulary the batch is written against; and
+  `write-refusal-json` writes it through the text writer, where `wrote` means
+  the text was written and spells the value (a zero byte or unit as `\u0000`).
 
 A forgery is carried as a PATCH rather than as a whole file because a patch is
 what a person can review. The harness materialises the file and hands a driver a
