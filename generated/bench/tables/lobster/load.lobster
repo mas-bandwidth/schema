@@ -1588,6 +1588,7 @@ def map_key(body:Reader, k:FieldDescriptor, entry:Record) -> Value, bool, bool, 
         if id == map_key_id:
             if kind != want and widens(kind, want):
                 widened = true
+                kind_bad = false
                 if not scalar_at(scan, cell, k, want, kind):
                     return cell, false, kind_bad, widened
                 continue
