@@ -887,6 +887,11 @@ func RangedSignedLoad(value *RangedSigned, data []byte, report *TableReport) boo
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		RangedSignedReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedSignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)
@@ -2591,6 +2596,11 @@ func RangedUnsignedLoad(value *RangedUnsigned, data []byte, report *TableReport)
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		RangedUnsignedReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedUnsignedLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)
@@ -3804,6 +3814,11 @@ func RangedWidthsLoad(value *RangedWidths, data []byte, report *TableReport) boo
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		RangedWidthsReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RangedWidthsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

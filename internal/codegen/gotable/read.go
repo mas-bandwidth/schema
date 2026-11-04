@@ -147,6 +147,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 	if st.Integrity != "" {
 		g.pf("\tvar ok bool\n\tif data, ok = tableIntegrityOpen(data, read); !ok { %sReset(value); return false }\n", n)
 	}
+	if g.hasFixedForm(st) {
+		g.pf("\tif len(data) > 0 && data[0] == 1 {\n\t\ttableFixedRefuse(read, TableRefusePreviousForm.Error())\n\t\t%sReset(value)\n\t\treturn false\n\t}\n", n)
+	}
 	g.pf("\tr, verdict := tableOpenChecked(data, read)\n")
 	g.pf("\tif verdict != TableOpenOk || !%sLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {\n", n)
 	g.pf("\t\ttableRefused(read)\n\t\t%sReset(value)\n\t\treturn false\n\t}\n\treturn true\n}\n\n", n)

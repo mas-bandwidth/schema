@@ -332,6 +332,11 @@ func GunnerSettingsLoad(value *GunnerSettings, data []byte, report *TableReport)
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		GunnerSettingsReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GunnerSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)
@@ -931,6 +936,11 @@ func ShipEntryLoad(value *ShipEntry, data []byte, report *TableReport) bool {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		ShipEntryReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ShipEntryLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -1696,6 +1706,11 @@ func GlobalSettingsLoad(value *GlobalSettings, data []byte, report *TableReport)
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		GlobalSettingsReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GlobalSettingsLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2902,6 +2917,11 @@ func PackConfigLoad(value *PackConfig, data []byte, report *TableReport) bool {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		PackConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !PackConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

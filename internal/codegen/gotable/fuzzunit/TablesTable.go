@@ -481,6 +481,11 @@ func RootConfigLoad(value *RootConfig, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		RootConfigReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !RootConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)
@@ -1297,6 +1302,11 @@ func WeaponConfigLoad(value *WeaponConfig, data []byte, report *TableReport) boo
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		WeaponConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !WeaponConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2401,6 +2411,11 @@ func LoadoutConfigLoad(value *LoadoutConfig, data []byte, report *TableReport) b
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		LoadoutConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !LoadoutConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -3858,6 +3873,11 @@ func ProfileConfigLoad(value *ProfileConfig, data []byte, report *TableReport) b
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		ProfileConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ProfileConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {

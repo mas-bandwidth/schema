@@ -213,6 +213,11 @@ func ArchiveConfigLoad(value *ArchiveConfig, data []byte, report *TableReport) b
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		ArchiveConfigReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !ArchiveConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)

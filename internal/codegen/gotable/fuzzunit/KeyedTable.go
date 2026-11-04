@@ -355,6 +355,11 @@ func TeamConfigLoad(value *TeamConfig, data []byte, report *TableReport) bool {
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		TeamConfigReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TeamConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)
@@ -727,6 +732,11 @@ func GunnerConfigLoad(value *GunnerConfig, data []byte, report *TableReport) boo
 	} else {
 		*read = TableReport{}
 	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		GunnerConfigReset(value)
+		return false
+	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !GunnerConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
 		tableRefused(read)
@@ -1092,6 +1102,11 @@ func TurretConfigLoad(value *TurretConfig, data []byte, report *TableReport) boo
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		TurretConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !TurretConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -1766,6 +1781,11 @@ func HullConfigLoad(value *HullConfig, data []byte, report *TableReport) bool {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		HullConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !HullConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
@@ -2908,6 +2928,11 @@ func KeyedConfigLoad(value *KeyedConfig, data []byte, report *TableReport) bool 
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if len(data) > 0 && data[0] == 1 {
+		tableFixedRefuse(read, TableRefusePreviousForm.Error())
+		KeyedConfigReset(value)
+		return false
 	}
 	r, verdict := tableOpenChecked(data, read)
 	if verdict != TableOpenOk || !KeyedConfigLoadBody(&r, value) || r.Offset != int64(len(r.Buffer)) || read.Refused() {
