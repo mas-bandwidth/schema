@@ -723,13 +723,20 @@ jobs:
       # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
       # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
       # runner's temp so a self-hosted runner keeps nothing between runs.
+      # A host without the python3-venv package (ensurepip absent) gets the
+      # same venv with the system pip installing into it.
       - name: the pinned clang-format (C and C++ legs)
         if: matrix.leg == 'c' || matrix.leg == 'cpp'
         run: |
           set -euo pipefail
           pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          python3 -m venv "$RUNNER_TEMP/clang-format"
-          "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
           echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/clang-format/bin/clang-format" --version
 
