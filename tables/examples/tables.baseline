@@ -51,7 +51,7 @@ table LoadoutConfig
 
 table PackConfig
     field version id=0xbb62c62c9808ea37 kind=8 default=1
-    field global id=0x7fb43557b54149ce kind=13 type=GlobalSettings
+    field settings id=0x7fb43557b54149ce kind=13 type=GlobalSettings was=global
     field ships id=0x294a5c4913e1ad44 kind=16 elem=13 type=ShipEntry array=keyed bound=3 key=ShipType
     field thresholds id=0x9cda940a344e1571 kind=16 elem=4 array=keyed bound=3 key=Difficulty min=0 max=1000
     field reserves id=0x77707fccd201c228 kind=14 elem=13 type=ShipEntry array=bounded bound=3
@@ -228,3 +228,6 @@ union Effect
 
 ### 2026-09-04 — the id-table wire: sixty-four-bit identity, the enum kind, and rendering version 7 (docs/SPEC-TABLES.md §3, §5, §18.1)
 - baseline REGENERATED over an unreadable one (baseline version 6, this compiler writes 7); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
+
+### 2026-11-04 (UTC) — PackConfig.global is renamed settings under was = "global": global is a Python keyword (SPEC §4.6), the wire id is kept, and the JSON key is now settings
+- PackConfig.settings: renamed under was = "global", which keeps the wire id and NOT the text key — the JSON key is now "settings"; pair json = "global" if an existing text must still read (docs/SPEC-TABLES.md §16.4) [warn]

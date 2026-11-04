@@ -215,11 +215,11 @@ public final class Main {
                 tabledemo.TableFixed.plan(4096), new short[4096], tabledemo.PackConfigFixed.image(), r);
         check(n == 2, "pack.bin: two records");
         check(!r.refused && !r.malformed && r.clamped == 0, "pack.bin: a clean read moves no counter");
-        check(v[0].version == 7 && v[0].global.tickRate == 120, "pack: the scalars");
+        check(v[0].version == 7 && v[0].settings.tickRate == 120, "pack: the scalars");
         // AN ENUM RIDES ITS ORDINAL, FROM 1: Hard is the third variant.
-        check(v[0].global.difficulty == tabledemo.Pack.Difficulty.HARD, "pack: an enum rides its ORDINAL, from 1");
-        check(textOf(v[0].global.buildNote, v[0].global.buildNoteLength).equals("first build"), "pack: text at its length");
-        check(v[0].global.spawnDelays[2] == 1.5f, "pack: a fixed array of floats");
+        check(v[0].settings.difficulty == tabledemo.Pack.Difficulty.HARD, "pack: an enum rides its ORDINAL, from 1");
+        check(textOf(v[0].settings.buildNote, v[0].settings.buildNoteLength).equals("first build"), "pack: text at its length");
+        check(v[0].settings.spawnDelays[2] == 1.5f, "pack: a fixed array of floats");
         check(v[0].ships[1].hardpointsCount == 2, "pack: a COUNTED array's used count");
         check(v[0].ships[1].hardpoints[1] == 2, "pack: a counted array's element");
         check(v[0].reservesCount == 2, "pack: a counted array OF TABLES");

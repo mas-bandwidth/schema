@@ -195,10 +195,10 @@ fn the_write(dir: &str) {
     tabledemo::pack_config_fixed_load(&mut values, &golden, &mut plan, &mut remap, &mut report);
     let v = values[0];
     check(v.version == 7, "pack: a scalar");
-    check(v.global.tick_rate == 120, "pack: a nested table's scalar");
-    check(v.global.difficulty == 3, "pack: an enum rides its ORDINAL, from 1");
-    check(v.global.build_note[..11] == *b"first build", "pack: a nested string");
-    check(v.global.spawn_delays[1] == 1.0, "pack: a fixed array of floats");
+    check(v.settings.tick_rate == 120, "pack: a nested table's scalar");
+    check(v.settings.difficulty == 3, "pack: an enum rides its ORDINAL, from 1");
+    check(v.settings.build_note[..11] == *b"first build", "pack: a nested string");
+    check(v.settings.spawn_delays[1] == 1.0, "pack: a fixed array of floats");
     check(v.ships[1].hardpoints_count == 2, "pack: a COUNTED array's used count");
     check(v.ships[1].hardpoints[1] == 2, "pack: a counted array's elements");
     check(v.reserves_count == 2, "pack: a counted array OF TABLES");

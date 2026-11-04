@@ -15,6 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
 	"github.com/mas-bandwidth/schema/v2/internal/scanner"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // isSchemaKeyword reports whether the schema grammar itself reserves w, so a
@@ -47,7 +48,7 @@ func TestReservedWordsOfEveryLanguageWhateverTheTarget(t *testing.T) {
 	for _, want := range []struct{ word, langs string }{
 		{"func", "Go"},
 		{"select", "Go"},
-		{"class", "C#, C++, Dart, Java, JavaScript, Lobster, and Squirrel"},
+		{"class", "C#, C++, Dart, Java, JavaScript, Lobster, Python, and Squirrel"},
 		{"self", "Elixir, Goose, and Rust"},
 		{"local", "Lua, Luau, Squirrel, and moo"},
 		{"end", "Elixir, Lua, Luau, and moo"},
@@ -112,6 +113,12 @@ func TestEveryReservedWordAsEveryNameKindIsRefused(t *testing.T) {
 				if k.escaped {
 					langs = slices.DeleteFunc(slices.Clone(langs), func(l string) bool { return l == "Go" })
 				}
+				// None and Max are every enum's and union's own names: the
+				// variant rule refuses them first and alone (SPEC §4.2, §4.8;
+				// TestReservedEnumVariantDrawsOneDiagnostic)
+				if (k.name == "enum variant" || k.name == "union arm") && reservedEnumVariant(ir.GoExportName(w)) {
+					continue
+				}
 				errs, parsed := reservedProbeErrors(t, k.mk(w))
 				if !parsed {
 					if !isSchemaKeyword(w) {
@@ -150,10 +157,10 @@ func TestEveryReservedWordAsEveryNameKindIsRefused(t *testing.T) {
 
 // TestEveryLanguageHasItsWords: each row of the one table names a language,
 // the --lang spellings that generate it and a non-empty word list, and the
-// fifteen supported languages are all there.
+// sixteen supported languages are all there.
 func TestEveryLanguageHasItsWords(t *testing.T) {
 	t.Parallel()
-	want := []string{"C", "C++", "C#", "Go", "Rust", "Java", "JavaScript", "Dart", "Elixir", "Lua", "Luau", "moo", "Squirrel", "Goose", "Lobster"}
+	want := []string{"C", "C++", "C#", "Go", "Rust", "Java", "JavaScript", "Dart", "Elixir", "Lua", "Luau", "moo", "Squirrel", "Goose", "Lobster", "Python"}
 	if got := ReservedLanguages(); !slices.Equal(got, want) {
 		t.Fatalf("ReservedLanguages() = %v, want %v", got, want)
 	}

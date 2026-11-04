@@ -494,16 +494,16 @@ void corpusFiles(String dir) {
     for (var k = 0; k < 2; k++) {
       final v = values[k];
       check(v.version == 7 + k, 'pack[$k].version');
-      check(v.global.tickRate == 120 - k, 'pack[$k].global.tick_rate');
+      check(v.settings.tickRate == 120 - k, 'pack[$k].settings.tick_rate');
       check(
-        text(v.global.buildNote, v.global.buildNoteLength) ==
+        text(v.settings.buildNote, v.settings.buildNoteLength) ==
             (k == 0 ? 'first build' : 'second build'),
-        'pack[$k].global.build_note',
+        'pack[$k].settings.build_note',
       );
       for (var i = 0; i < 3; i++) {
         check(
-          v.global.spawnDelays[i] == 0.5 * (i + 1 + k),
-          'pack[$k].global.spawn_delays[$i]',
+          v.settings.spawnDelays[i] == 0.5 * (i + 1 + k),
+          'pack[$k].settings.spawn_delays[$i]',
         );
       }
       for (var s = 0; s < 3; s++) {
@@ -3287,9 +3287,9 @@ void boundsCase() {
   // counts nothing on its own; the stain then goes into the slack.
   final one = demo.PackConfig();
   one.version = 7;
-  one.global.tickRate = 120;
-  one.global.buildNote.setRange(0, 5, 'clean'.codeUnits);
-  one.global.buildNoteLength = 5;
+  one.settings.tickRate = 120;
+  one.settings.buildNote.setRange(0, 5, 'clean'.codeUnits);
+  one.settings.buildNoteLength = 5;
   for (var s = 0; s < 3; s++) {
     one.ships[s].hardpointsCount = 1;
     one.ships[s].hardpoints[0] = s + 1;

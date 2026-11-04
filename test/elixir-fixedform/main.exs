@@ -364,11 +364,11 @@ Leg.eq(
 
 [p0, p1v] = pack
 Leg.eq("pack[0].version", p0.version, 7)
-Leg.eq("pack[0].global.tick_rate", p0.global.tick_rate, 120)
+Leg.eq("pack[0].settings.tick_rate", p0.settings.tick_rate, 120)
 # THE ORDINAL IS THE VARIANT'S POSITION IN THE LAYOUT, from 1, and 0 is None.
-Leg.eq("pack[0].global.difficulty = Hard", p0.global.difficulty, :hard)
-Leg.eq("pack[0].global.build_note", p0.global.build_note, "first build")
-Leg.eq("pack[0].global.spawn_delays", p0.global.spawn_delays, [0.5, 1.0, 1.5])
+Leg.eq("pack[0].settings.difficulty = Hard", p0.settings.difficulty, :hard)
+Leg.eq("pack[0].settings.build_note", p0.settings.build_note, "first build")
+Leg.eq("pack[0].settings.spawn_delays", p0.settings.spawn_delays, [0.5, 1.0, 1.5])
 Leg.eq("pack[0].ships[0].display_name", Enum.at(p0.ships, 0).display_name, "fighter")
 Leg.eq("pack[0].ships[0].hardpoints (a COUNT, then MAX)", Enum.at(p0.ships, 0).hardpoints, [1])
 Leg.eq("pack[0].ships[1].hardpoints", Enum.at(p0.ships, 1).hardpoints, [1, 2])
@@ -376,7 +376,7 @@ Leg.eq("pack[0].ships[2].gunner.callsign", Enum.at(p0.ships, 2).gunner.callsign,
 Leg.eq("pack[0].thresholds", p0.thresholds, [100, 200, 300])
 Leg.eq("pack[0].reserves", length(p0.reserves), 2)
 Leg.eq("pack[0].reserves[1].display_name", Enum.at(p0.reserves, 1).display_name, "spare-b")
-Leg.eq("pack[1].global.difficulty = Easy", p1v.global.difficulty, :easy)
+Leg.eq("pack[1].settings.difficulty = Easy", p1v.settings.difficulty, :easy)
 
 # ---------------------------------------------------------------------------
 # THE READ: ANOTHER WRITER'S LAYOUT, through a plan compiled from it

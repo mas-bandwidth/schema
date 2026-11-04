@@ -99,13 +99,13 @@ std::vector<uint8_t> one_lawful_pack( int64_t & body_at, const char * case_name 
     tabledemo::PackConfig v;
     tabledemo::PackConfigReset( v );
     v.version = 9;
-    v.global.tick_rate = 120;
-    v.global.difficulty = tabledemo::Difficulty::Hard;
-    v.global.build_note_length = 6;
-    std::memcpy( v.global.build_note, "lawful", 6 );
-    v.global.spawn_delays[0] = 0.25f;
-    v.global.spawn_delays[1] = 0.5f;
-    v.global.spawn_delays[2] = 0.75f;
+    v.settings.tick_rate = 120;
+    v.settings.difficulty = tabledemo::Difficulty::Hard;
+    v.settings.build_note_length = 6;
+    std::memcpy( v.settings.build_note, "lawful", 6 );
+    v.settings.spawn_delays[0] = 0.25f;
+    v.settings.spawn_delays[1] = 0.5f;
+    v.settings.spawn_delays[2] = 0.75f;
     for ( int i = 0; i < 3; ++i )
     {
         tabledemo::ShipEntry & s = v.ships.slots[i];
@@ -154,13 +154,13 @@ void poison( tabledemo::PackConfig & back )
 {
     tabledemo::PackConfigReset( back );
     back.version = 0xDEADBEEFu;
-    back.global.tick_rate = 0x5A5A5A5Au;
-    back.global.difficulty = tabledemo::Difficulty::None;
-    back.global.build_note_length = -5;
-    std::memset( back.global.build_note, 0xA5, sizeof( back.global.build_note ) );
-    back.global.spawn_delays[0] = -1.5f;
-    back.global.spawn_delays[1] = -2.5f;
-    back.global.spawn_delays[2] = -3.5f;
+    back.settings.tick_rate = 0x5A5A5A5Au;
+    back.settings.difficulty = tabledemo::Difficulty::None;
+    back.settings.build_note_length = -5;
+    std::memset( back.settings.build_note, 0xA5, sizeof( back.settings.build_note ) );
+    back.settings.spawn_delays[0] = -1.5f;
+    back.settings.spawn_delays[1] = -2.5f;
+    back.settings.spawn_delays[2] = -3.5f;
     for ( int i = 0; i < 3; ++i )
     {
         tabledemo::ShipEntry & s = back.ships.slots[i];
@@ -212,13 +212,13 @@ bool neighbours_land( const tabledemo::PackConfig & back )
 {
     bool near = true;
     near = near && back.version == 9;
-    near = near && back.global.tick_rate == 120;
-    near = near && back.global.difficulty == tabledemo::Difficulty::Hard;
-    near = near && back.global.build_note_length == 6
-        && std::memcmp( back.global.build_note, "lawful", 6 ) == 0;
-    near = near && back.global.spawn_delays[0] == 0.25f
-        && back.global.spawn_delays[1] == 0.5f
-        && back.global.spawn_delays[2] == 0.75f;
+    near = near && back.settings.tick_rate == 120;
+    near = near && back.settings.difficulty == tabledemo::Difficulty::Hard;
+    near = near && back.settings.build_note_length == 6
+        && std::memcmp( back.settings.build_note, "lawful", 6 ) == 0;
+    near = near && back.settings.spawn_delays[0] == 0.25f
+        && back.settings.spawn_delays[1] == 0.5f
+        && back.settings.spawn_delays[2] == 0.75f;
     for ( int i = 0; i < 3; ++i )
     {
         const tabledemo::ShipEntry & s = back.ships.slots[i];

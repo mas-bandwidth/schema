@@ -1,0 +1,68 @@
+name: python leg
+
+# THE PYTHON LEG (docs/PORT-PYTHON.md): `make test-python` on the pinned
+# interpreters, on Linux and macOS. The pins are CPython 3.11.18 (the floor),
+# CPython 3.15.2 (the newest stable release) and mypy 1.18.2, built and
+# installed into dist/ by `make dist-python`; .github/actions/python restores
+# them from a cache keyed on every version, sha256 and the analyzer's lock,
+# and checks the restored tree against the pins before anything runs on it.
+# No step runs an interpreter from PATH.
+#
+# A GITHUB-HOSTED RUNNER, so a fork's pull request may run it: the job runs
+# the repository's own code against pinned tools and holds no secret.
+
+on:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'make/python*'
+      - '.github/workflows/python-leg.yml'
+      - '.github/actions/python/**'
+      - 'third_party/serialize.py/**'
+      - 'compiler/*python*'
+      - 'internal/codegen/python/**'
+      - 'internal/codegen/pythontable/**'
+      - 'internal/tablenames/python.go'
+      - 'test/conformance/python/**'
+      - 'ir/**'
+      - 'internal/check/**'
+  pull_request:
+    paths:
+      - 'make/python*'
+      - '.github/workflows/python-leg.yml'
+      - '.github/actions/python/**'
+      - 'third_party/serialize.py/**'
+      - 'compiler/*python*'
+      - 'internal/codegen/python/**'
+      - 'internal/codegen/pythontable/**'
+      - 'internal/tablenames/python.go'
+      - 'test/conformance/python/**'
+      - 'ir/**'
+      - 'internal/check/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.event_name, github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: make test-python (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: ./.github/actions/python
+      - name: make test-python
+        run: make -j"$(getconf _NPROCESSORS_ONLN)" test-python

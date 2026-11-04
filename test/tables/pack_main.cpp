@@ -63,12 +63,12 @@ static void build( PackConfig & config )
 {
     config.version = 7;
 
-    config.global.tick_rate = 120;
-    config.global.difficulty = Difficulty::Hard;
-    set_string( config.global.build_note, config.global.build_note_length, "corpus" );
-    config.global.spawn_delays[0] = 0.5f;
-    config.global.spawn_delays[1] = 1.25f;
-    config.global.spawn_delays[2] = 2.0f;
+    config.settings.tick_rate = 120;
+    config.settings.difficulty = Difficulty::Hard;
+    set_string( config.settings.build_note, config.settings.build_note_length, "corpus" );
+    config.settings.spawn_delays[0] = 0.5f;
+    config.settings.spawn_delays[1] = 1.25f;
+    config.settings.spawn_delays[2] = 2.0f;
 
     ShipEntry & fighter = config.ships[ShipType::Fighter];
     set_string( fighter.display_name, fighter.display_name_length, "Fighter" );
@@ -132,13 +132,13 @@ static bool same_ship( const ShipEntry & a, const ShipEntry & b )
 static bool same_config( const PackConfig & a, const PackConfig & b )
 {
     if ( a.version != b.version ) { return false; }
-    if ( a.global.tick_rate != b.global.tick_rate ) { return false; }
-    if ( a.global.difficulty != b.global.difficulty ) { return false; }
-    if ( a.global.build_note_length != b.global.build_note_length ) { return false; }
-    if ( memcmp( a.global.build_note, b.global.build_note, (size_t) a.global.build_note_length ) != 0 ) { return false; }
+    if ( a.settings.tick_rate != b.settings.tick_rate ) { return false; }
+    if ( a.settings.difficulty != b.settings.difficulty ) { return false; }
+    if ( a.settings.build_note_length != b.settings.build_note_length ) { return false; }
+    if ( memcmp( a.settings.build_note, b.settings.build_note, (size_t) a.settings.build_note_length ) != 0 ) { return false; }
     for ( int32_t i = 0; i < 3; i++ )
     {
-        if ( a.global.spawn_delays[i] != b.global.spawn_delays[i] ) { return false; }
+        if ( a.settings.spawn_delays[i] != b.settings.spawn_delays[i] ) { return false; }
     }
     // every stored slot is a named variant's: nothing is stored for None
     for ( int32_t i = 0; i < 3; i++ )
