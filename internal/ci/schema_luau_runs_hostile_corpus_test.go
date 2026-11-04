@@ -624,7 +624,7 @@ func TestLuauVocabularyDefaultEntryBound(t *testing.T) {
 		var r tabletext.Report
 		err := v.AnnounceRead(data, &r)
 		switch {
-		case err == nil && !r.Malformed:
+		case err == nil && !r.Refused:
 			want[name] = "accept\t-"
 		case err != nil:
 			var mr *tablewire.MessageRefusal
