@@ -1334,15 +1334,17 @@ fn surface_json_write(manifest: &Manifest, out: &str) {
                 fail(&format!("{}: load refused {}", f[1], f[4]));
             };
             match damage_text(&mut v, &f[5]) {
-                Damage::Placed => match to_json(&v) {
+                Damage::Placed => Some(match to_json(&v) {
                     Some(text) => text.into_bytes(),
                     None => b"refused\n".to_vec(),
-                },
-                Damage::NotHeld => b"refused\n".to_vec(),
+                }),
+                // the row asks for a value this leg cannot hold, so the
+                // writer is never asked: ABSENT, not a refusal it did not make
+                Damage::NotHeld => None,
             }
         });
         let name = format!("{}.json", f[1]);
-        match answer {
+        match answer.flatten() {
             Some(text) => spill(out, &name, &text),
             None => spill_absent(out, &name),
         }
@@ -1356,7 +1358,7 @@ enum Damage {
     // the storage type cannot hold it: a narrow string is a Rust String,
     // which is well-formed UTF-8 by construction, so the bytes 61 FF 62 are
     // refused by String::from_utf8 before any value holds them, and no
-    // text that is not text reaches the writer
+    // text that is not text reaches the writer; the row answers ABSENT
     NotHeld,
 }
 
