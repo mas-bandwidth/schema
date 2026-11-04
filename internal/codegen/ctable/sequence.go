@@ -476,9 +476,11 @@ func (g *tableGen) emitListRead(f *ir.Field, dst, bounded string) {
 	} else {
 		g.pf("                    elem_kind=table_reader_get8(&sub); if(!table_reader_leb(&sub,&count)) { r->report->malformed=1; break; }\n")
 	}
-	g.pf("                    if(elem_kind!=%d) { if(!(%s)) { r->report->kind_mismatch++; break; } r->report->widened++; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
+	g.pf("                    if(elem_kind!=%d && !(%s)) { r->report->kind_mismatch++; break; }\n", kind, wireElementWidenTest(f, kind, "elem_kind"))
 	g.retainReplace(f, "                    ")
-	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, g.sequenceAlign(f))
+	// a widened element kind counts once the count is known to land: the
+	// fill's count-cap refusal moves no counter (docs/SPEC-TABLES.md §2.9)
+	g.pf("                    fill=table_sequence_fill(r->nodes ? r->nodes->sink : NULL,&%s,count,sizeof(%s),%d);\n                    if(fill.refused) { r->nodes->refused=1; return 0; }\n                    if(elem_kind!=%d) { r->report->widened++; }\n                    if(!fill.ok) { r->report->malformed=1; break; }\n", dst, typ, g.sequenceAlign(f), kind)
 	if f.IsTextList() && f.TextTotal > 0 {
 		g.pf("                    int64_t spent=0;\n")
 	}

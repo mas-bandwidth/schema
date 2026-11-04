@@ -952,6 +952,20 @@ readFieldArray = function(fd, r, T, table, v, report, st, selection = null) {
 
 // THE ELEMENTS of an array whose header (element kind, count) is read, out of
 // a reader bounded by the array's own body.
+// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13): the bytes the list's
+// elements hold so far, the last one just appended. An element that would carry
+// the sum past the total is removed and counted clamped, and the caller stops
+// reading, so the list keeps the longest prefix within the total.
+local textTotalKeeps = function(fd, out, spent, report) {
+  if (!("total" in fd)) return true;
+  local el = out[out.len() - 1];
+  local n = (fd.textlist == 2 && !el.ValuePresent) ? 0 : el.Value.len();
+  if (n <= fd.total - spent[0]) { spent[0] += n; return true; }
+  out.pop();
+  report.clamped = report.clamped + 1;
+  return false;
+};
+
 readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
   local want = fd.shape == "bytes" ? 6 : fd.elem.kind;
   if (ek != want) {
@@ -959,7 +973,9 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       report.kindMismatch = report.kindMismatch + 1;
       return ARRAY_FOREIGN;
     }
-    report.widened = report.widened + 1;
+    // a list count past the int32 storage cap refuses the read before the
+    // widening counts: the refusal moves no counter (docs/SPEC-TABLES.md §2.9)
+    if (!(fd.list && count > 0x7fffffff)) report.widened = report.widened + 1;
   }
   local keep = count;
   if (fd.list) {
@@ -984,6 +1000,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     // its own L and bytes, landed in the element record's one `value` string.
     local d = tableDesc(T, fd.elem.table);
     local out = [];
+    local spent = [0];
     for (local i = 0; i < keep; i++) {
       local L = leb(r);
       if (r.bad || r.at + L > r.end) { report.malformed = true; break; }
@@ -993,6 +1010,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
       inst.Value = dec.s;
       out.append(inst);
       r.at += L;
+      if (!textTotalKeeps(fd, out, spent, report)) break;
     }
     v[fd.member] = out;
     return ARRAY_SELECTED;
@@ -1035,8 +1053,10 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
     v[fd.member] = out;
     return ARRAY_SELECTED;
   }
+  local spent = [0];
   for (local i = 0; i < keep; i++) {
     local reached = r.at < r.end;
+    local placed = out.len();
     if (!readElement(fd, fd.elem, r, T, table, out, report, st, ek)) {
       // AN ELEMENT OF AN ARRAY OF UNIONS IS RESET THE MOMENT ITS ARM ID IS READ
       // (docs/SPEC-TABLES.md §4), before the kind and the arm length are
@@ -1048,6 +1068,7 @@ readArrayElems = function(fd, r, ek, count, T, table, v, report, st) {
         out.append(unionDesc(T, fd.elem.table).make());
       break;
     }
+    if (fd.textlist != 0 && out.len() > placed && !textTotalKeeps(fd, out, spent, report)) break;
   }
   if (!fd.list && !fd.counted) {
     // A FIXED [N] ARRAY KEEPS ITS N SLOTS (docs/SPEC-TABLES.md §2.9, §4): the
@@ -1316,10 +1337,10 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
   if (report.getdelegate() == null) report.nonFiniteFloat <- null;
   if (report.malformed == null) report.malformed <- false;
   if (report.refused == null) report.refused <- false;
-  if (!report.rawin("countRefusal")) {
-    if (report.getdelegate() == null) report.countRefusal <- false;
-    else report.countRefusal = false;
-  }
+  // THIS READ'S OWN count refusal: one an earlier read left on a reused
+  // report does not refuse this one
+  if (report.getdelegate() == null) report.countRefusal <- false;
+  else if (!report.rawin("countRefusal")) report.countRefusal = false;
 
   if (bytes.len() < 1) { report.malformed = true; return null; }
   if ((bytes[0] & 0xff) != FORM_VARIABLE) { report.refused = true; return null; }
@@ -1405,8 +1426,28 @@ _M.loadTolerant <- function(T, rootName, bytes, report, retain = null, trailerCh
       if (report.countRefusal) break;
     }
   }
-  local finished = bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  local finished = report.countRefusal ? false : bodyRead(c, newReader(bytes, 1, end), T, table, v, report, st, false);
+  // A COUNT PAST THE INT32 STORAGE CAP REFUSES THE READ BY NAME
+  // (docs/SPEC-TABLES.md §2.9): the walk stopped at it, nothing is resolved,
+  // the partial value is discarded, and the report says refused with the
+  // reason count_over_extent_cap. It is not damage, so malformed stays unset
+  // and no counter moves for it. A non-finite float the walk met before it
+  // outranks it (§3.3). A strict caller (ReadStrict, refusal.nut) reads the
+  // refusal off its own report.
+  if (report.countRefusal && st.nonFinite == null) {
+    if ("stopped" in report) report.stopped = true;
+    if (report.getdelegate() == null) {
+      report.refused = true;
+      report.reason <- "count_over_extent_cap";
+    }
+    return null;
+  }
   resolve(st, c, report);
+  // A CYCLIC WIRE IS DAMAGE (docs/SPEC-TABLES.md §3.1, §4): the graph the load
+  // stored is walked once every index has resolved, by the save's own
+  // numbering, which refuses a reference to a node whose descent is open.
+  if (!report.malformed && _require("schema_table_save").numberForCook(T, rootName, v) == null)
+    report.malformed = true;
   // WHETHER THE ROOT BODY READ TO ITS OWN TERMINATOR (docs/SPEC-TABLES.md §4,
   // §4.2): a builder whose root body stopped holds a partial value, which a
   // builder caller discards. It is told only to a caller whose report

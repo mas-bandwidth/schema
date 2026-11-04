@@ -64,7 +64,10 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 # conformance-negative-control-luau-framing  the id table's 4096-entry bound
 #                                            (docs/LAYERS/1-framing.md: framing
 #                                            red, wire and report green)
-.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing
+# conformance-negative-control-luau-cycle    the cycle check (docs/SPEC-TABLES.md
+#                                            §3.1, §4: framing red on
+#                                            node_cycle_*, wire and report green)
+.PHONY: conformance-negative-control-luau-emitter conformance-negative-control-luau-walk conformance-negative-control-luau-framing conformance-negative-control-luau-cycle
 conformance-negative-control-luau-emitter: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control report
@@ -76,3 +79,7 @@ conformance-negative-control-luau-walk: build/conformance-harness $(LUAU_CONFORM
 conformance-negative-control-luau-framing: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
 	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
 	sh test/conformance/luau/negative-control framing
+
+conformance-negative-control-luau-cycle: build/conformance-harness $(LUAU_CONFORMANCE_DRIVER)/units.luau
+	@if [ ! -x "$(LUAU)" ]; then $(MAKE) dist-luau; fi
+	sh test/conformance/luau/negative-control cycle
