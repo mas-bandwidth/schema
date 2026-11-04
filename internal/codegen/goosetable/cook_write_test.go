@@ -249,7 +249,7 @@ func toolCook(t *testing.T, m *tabletext.Model, root string, wire []byte, big bo
 	t.Helper()
 	inst := m.New(m.Lookup(root))
 	var report tabletext.Report
-	if _, err := tablewire.Decode(m, inst, wire, &report); err != nil || report.Malformed {
+	if _, err := tablewire.Decode(m, inst, wire, &report); err != nil || report.Refused {
 		t.Fatalf("the tool does not decode the %s wire: %v %+v", root, err, report)
 	}
 	cooked, err := tablecook.Cook(m, inst, tablecook.Options{Big: big})

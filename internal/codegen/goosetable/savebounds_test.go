@@ -182,7 +182,7 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 	m := tabletext.NewModel(u)
 	v := m.New(u.Tables["Root"])
 	var r tabletext.Report
-	if !m.Read(v, []byte(`{"choice":{"leaf":{"s":"arm"}},"note":"n"}`), &r) || r.Malformed {
+	if !m.Read(v, []byte(`{"choice":{"leaf":{"s":"arm"}},"note":"n"}`), &r) || r.Refused {
 		t.Fatalf("union text: %+v", r)
 	}
 	unionWire, err := tablewire.Encode(m, v)
@@ -193,7 +193,7 @@ func saveBounds(t *testing.T, override map[string][]byte) (string, string, bool)
 	wm := tabletext.NewModel(wu)
 	wv := wm.New(wu.Tables["Root"])
 	text := fmt.Sprintf(`{"note":"n","extra":{"s":%q}}`, strings.Repeat("q", 32))
-	if !wm.Read(wv, []byte(text), &r) || r.Malformed {
+	if !wm.Read(wv, []byte(text), &r) || r.Refused {
 		t.Fatalf("retain text: %+v", r)
 	}
 	retainWire, err := tablewire.Encode(wm, wv)

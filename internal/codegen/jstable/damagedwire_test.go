@@ -86,10 +86,10 @@ func TestDamagedWireLoadsNothingJavaScript(t *testing.T) {
 			for _, w := range wires {
 				var rep tabletext.Report
 				ok, decErr := tablewire.Decode(m, m.New(def), w.bytes, &rep)
-				if decErr != nil {
+				if decErr != nil && !tablewire.ReadRefusal(decErr) {
 					t.Fatalf("%s (%s): oracle Decode returned error: %v", tc.name, w.label, decErr)
 				}
-				if ok || !rep.Malformed {
+				if ok || !tablewire.ReadRefusal(decErr) {
 					t.Fatalf("%s (%s): the engine does not read the wire as damage: ok=%v %+v", tc.name, w.label, ok, rep)
 				}
 				wantSummary := "loaded=false|malformed=true"

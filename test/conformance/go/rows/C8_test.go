@@ -11,15 +11,15 @@ import (
 //
 // THE LAW:
 //   A fixed-point field's bounds are in VALUE UNITS and its storage is raw,
-//   so both ends are shifted by F first; a bits(N) clamps to 2^N - 1.
+//   so both ends are shifted by F first; a bits(N) past 2^N - 1 refuses.
 
 func TestRowC8(t *testing.T) {
 	// ================================================================
-	// PART 1: bits(N) clamps to 2^N - 1
+	// PART 1: bits(N) past 2^N - 1 refuses
 	// ================================================================
 	// RangedWidths has bits(12) (max 2^12-1 = 4095) and bits(48)
 	// (max 2^48-1 = 281474976710655). The variable-form save writes raw
-	// storage; load clamps past the bit width to the declared maximum.
+	// storage; a load past the bit width refuses (docs/SPEC-TABLES.md §4).
 
 	{
 		val := tabledemo.RangedWidths{
@@ -38,13 +38,13 @@ func TestRowC8(t *testing.T) {
 		if !ok {
 			t.Fatal("RangedWidthsLoad failed")
 		}
-		if back.B12 != 3000 || report.Clamped != 0 {
-			t.Fatalf("bits(N): value=4095 was clean; got B12=%d clamped=%d", back.B12, report.Clamped)
+		if back.B12 != 3000 {
+			t.Fatalf("bits(N): value=3000 was clean; got B12=%d %+v", back.B12, report)
 		}
 
 		// bits(12): the writer REFUSES 4096 (the writer-refusal test below
 		// pins that half of the rule), so hand-forge a wire that reads 4096
-		// and check the load clamps it back to 4095. The B12 lane is a
+		// and check the load refuses it. The B12 lane is a
 		// little-endian 16-bit field; save it at its in-range maximum (4095
 		// = 0x0FFF, bytes ff 0f) and overwrite those two bytes with 4096
 		// = 0x1000 (bytes 00 10).
@@ -63,17 +63,8 @@ func TestRowC8(t *testing.T) {
 
 		var back2 tabledemo.RangedWidths
 		var report2 tabledemo.TableReport
-		// The row pins the clamp itself (value and count), which the plain read now
-		// refuses (docs/SPEC-TABLES.md §6.5), so it reads through the tolerant twin.
-		ok2 := tabledemo.RangedWidthsLoadTolerant(&back2, buf2[:n2], &report2)
-		if !ok2 {
-			t.Fatal("RangedWidthsLoad b12 forged failed")
-		}
-		if back2.B12 != 4095 {
-			t.Fatalf("bits(N): forged 4096 -> want 4095 (2^12-1), got %d", back2.B12)
-		}
-		if report2.Clamped != 1 {
-			t.Fatalf("bits(N): want 1 clamped, got %d", report2.Clamped)
+		if tabledemo.RangedWidthsLoad(&back2, buf2[:n2], &report2) || report2.Err() == nil {
+			t.Fatalf("bits(N): forged 4096 read: %+v", report2)
 		}
 
 		// bits(48): max 2^48-1 = 281474976710655; same hand-forge for a
@@ -99,20 +90,11 @@ func TestRowC8(t *testing.T) {
 
 		var back3 tabledemo.RangedWidths
 		var report3 tabledemo.TableReport
-		// The row pins the clamp itself (value and count), which the plain read now
-		// refuses (docs/SPEC-TABLES.md §6.5), so it reads through the tolerant twin.
-		ok3 := tabledemo.RangedWidthsLoadTolerant(&back3, buf3[:n3], &report3)
-		if !ok3 {
-			t.Fatal("RangedWidthsLoad b48 forged failed")
-		}
-		if back3.B48 != 281474976710655 {
-			t.Fatalf("bits(N): forged 300000000000000 -> want 281474976710655 (2^48-1), got %d", back3.B48)
-		}
-		if report3.Clamped != 1 {
-			t.Fatalf("bits(N): b48 want 1 clamped, got %d", report3.Clamped)
+		if tabledemo.RangedWidthsLoad(&back3, buf3[:n3], &report3) || report3.Err() == nil {
+			t.Fatalf("bits(N): forged 300000000000000 read: %+v", report3)
 		}
 
-		// bits(32) fills its lane exactly — no clamp fires (negative control)
+		// bits(32) fills its lane exactly and reads (negative control)
 		val.B48 = 0
 		val.B12 = 0
 		val.B32 = 0xFFFFFFFF
@@ -128,9 +110,8 @@ func TestRowC8(t *testing.T) {
 		if !ok4 {
 			t.Fatal("RangedWidthsLoad b32 max failed")
 		}
-		if back4.B32 != 0xFFFFFFFF || report4.Clamped != 0 {
-			t.Fatalf("bits(N): bits(32) filling its lane clamps nothing; B32=%d clamped=%d",
-				back4.B32, report4.Clamped)
+		if back4.B32 != 0xFFFFFFFF {
+			t.Fatalf("bits(N): bits(32) filling its lane; B32=%d %+v", back4.B32, report4)
 		}
 	}
 
@@ -140,65 +121,82 @@ func TestRowC8(t *testing.T) {
 	// SimState.tilt is fixed(4,4) | min = -8, max = 7. F = 4, so the
 	// shifted bounds are [-8*16, 7*16] = [-128, 112].
 	//
-	// The law says "both ends are shifted by F first". To prove it:
-	//   - raw value 8 is past the value-unit max (7) but INSIDE the
-	//     shifted max (112) → must NOT clamp
-	//   - raw value 113 is past the shifted max → clamps to 112
+	// The law says "both ends are shifted by F first". To prove it, raw
+	// storage is forged into a saved fixed file and read:
+	//   - raw 8 is past the value-unit max (7) but INSIDE the shifted max
+	//     (112), and reads
+	//   - raw 112, exactly the shifted max, reads
+	//   - raw 113 is past the shifted max, and refuses (docs/SPEC-TABLES.md §4)
 
 	{
-		var sim scalardemo.SimState
-		sim.Tilt = 8 // past value-unit max 7, inside shifted max 112
-		var clamped int32
-		scalardemo.SimStateFixedClampBody(&sim, &clamped)
-		if sim.Tilt != 8 || clamped != 0 {
-			t.Fatalf("F-shift: raw 8 (past value-unit max) survives; tilt=%d clamped=%d",
-				sim.Tilt, clamped)
+		zero := make([]byte, scalardemo.SimStateFixedMeasure(1))
+		if scalardemo.SimStateFixedSave([]scalardemo.SimState{{}}, zero) < 0 {
+			t.Fatal("SimStateFixedSave failed")
 		}
-
-		sim = scalardemo.SimState{}
-		sim.Tilt = 113 // one past shifted max
-		scalardemo.SimStateFixedClampBody(&sim, &clamped)
-		if sim.Tilt != 112 || clamped != 1 {
-			t.Fatalf("F-shift: 113 -> want 112 (shifted max), got tilt=%d clamped=%d",
-				sim.Tilt, clamped)
+		plan := make([]scalardemo.TableFixedEntry, 64)
+		// read forges raw into the field set marks (set stores 1, so the first
+		// byte that differs from the zero file is the field's first byte)
+		read := func(set func(*scalardemo.SimState), width int, raw int64) (scalardemo.SimState, int64, scalardemo.TableReport) {
+			var probe scalardemo.SimState
+			set(&probe)
+			wire := make([]byte, len(zero))
+			if scalardemo.SimStateFixedSave([]scalardemo.SimState{probe}, wire) < 0 {
+				t.Fatal("SimStateFixedSave probe failed")
+			}
+			at := -1
+			for i := range wire {
+				if wire[i] != zero[i] {
+					at = i
+					break
+				}
+			}
+			if at < 0 {
+				t.Fatal("probe field not isolated")
+			}
+			for k := 0; k < width; k++ {
+				wire[at+k] = byte(raw >> (8 * k))
+			}
+			var got [1]scalardemo.SimState
+			var report scalardemo.TableReport
+			n := scalardemo.SimStateFixedLoad(got[:], wire, plan, &report)
+			return got[0], n, report
 		}
+		tilt := func(v *scalardemo.SimState) { v.Tilt = 1 }
+		angle := func(v *scalardemo.SimState) { v.Angle = 1 }
+		speed := func(v *scalardemo.SimState) { v.Speed = 1 }
 
-		// value at exactly the shifted max: clean
-		sim = scalardemo.SimState{}
-		sim.Tilt = 112
-		clamped = 0
-		scalardemo.SimStateFixedClampBody(&sim, &clamped)
-		if sim.Tilt != 112 || clamped != 0 {
-			t.Fatalf("F-shift: raw 112 (exactly shifted max) clamps nothing; tilt=%d clamped=%d",
-				sim.Tilt, clamped)
+		if v, n, r := read(tilt, 1, 8); n != 1 || r.Err() != nil || v.Tilt != 8 {
+			t.Fatalf("F-shift: raw 8 (past value-unit max) reads; n=%d tilt=%d %+v", n, v.Tilt, r)
+		}
+		if v, n, r := read(tilt, 1, 112); n != 1 || r.Err() != nil || v.Tilt != 112 {
+			t.Fatalf("F-shift: raw 112 (exactly shifted max) reads; n=%d tilt=%d %+v", n, v.Tilt, r)
+		}
+		if _, n, r := read(tilt, 1, 113); n != -1 || r.Err() == nil {
+			t.Fatalf("F-shift: raw 113 (past shifted max) read: n=%d %+v", n, r)
 		}
 
 		// angle: fixed(16,16) | min=-180, max=180, F=16
 		// shifted bounds: [-11796480, 11796480]
-		sim = scalardemo.SimState{}
-		sim.Angle = 11796481 // one past shifted max
-		clamped = 0
-		scalardemo.SimStateFixedClampBody(&sim, &clamped)
-		if sim.Angle != 11796480 || clamped != 1 {
-			t.Fatalf("F-shift: angle 11796481 -> want 11796480; angle=%d clamped=%d",
-				sim.Angle, clamped)
+		if v, n, r := read(angle, 4, 11796480); n != 1 || r.Err() != nil || v.Angle != 11796480 {
+			t.Fatalf("F-shift: angle 11796480 reads; n=%d angle=%d %+v", n, v.Angle, r)
+		}
+		if _, n, r := read(angle, 4, 11796481); n != -1 || r.Err() == nil {
+			t.Fatalf("F-shift: angle 11796481 read: n=%d %+v", n, r)
 		}
 
 		// ufixed(16,16) ping-style field: speed is ufixed(16,16)
 		// min=0, max=1000, F=16 → raw bounds [0, 65536000]
-		sim = scalardemo.SimState{}
-		sim.Speed = 65536001 // one past shifted max
-		clamped = 0
-		scalardemo.SimStateFixedClampBody(&sim, &clamped)
-		if sim.Speed != 65536000 || clamped != 1 {
-			t.Fatalf("F-shift: speed 65536001 -> want 65536000; speed=%d clamped=%d",
-				sim.Speed, clamped)
+		if v, n, r := read(speed, 4, 65536000); n != 1 || r.Err() != nil || v.Speed != 65536000 {
+			t.Fatalf("F-shift: speed 65536000 reads; n=%d speed=%d %+v", n, v.Speed, r)
+		}
+		if _, n, r := read(speed, 4, 65536001); n != -1 || r.Err() == nil {
+			t.Fatalf("F-shift: speed 65536001 read: n=%d %+v", n, r)
 		}
 	}
 }
 
 // TestRowC8WriterRefusesOutOfRange — the other half of the LAW: the writer
-// refuses a value its reader would clamp (docs/FIXED-FORM-ALGORITHM.md §3.1),
+// refuses a value its reader would refuse (docs/FIXED-FORM-ALGORITHM.md §3.1),
 // so Measure returns a negative size for an out-of-range value. TestRowC8
 // hand-forges the wire for exactly these values; this pins that the generator
 // refuses them, so the row never needs to ask the writer to write them.

@@ -93,10 +93,10 @@ func TestJavaFixMatchResultFileDamageRefused(t *testing.T) {
 			model := tabletext.NewModel(u)
 			value := model.New(u.Tables["MatchResult"])
 			report := new(tabletext.Report)
-			if _, derr := tablewire.Decode(model, value, tc.mutant, report); derr != nil {
+			if _, derr := tablewire.Decode(model, value, tc.mutant, report); derr != nil && !tablewire.ReadRefusal(derr) {
 				t.Fatalf("Go reference: err=%v report=%+v", derr, report)
 			}
-			if !report.Malformed {
+			if !report.Refused {
 				t.Fatalf("Go reference does not read this input as damaged: %+v", report)
 			}
 			wirePath := filepath.Join(t.TempDir(), "mutant.bin")

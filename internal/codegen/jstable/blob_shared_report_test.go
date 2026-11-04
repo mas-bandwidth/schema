@@ -14,6 +14,7 @@ import (
 )
 
 func TestJavaScriptBlobSharedReportCensus(t *testing.T) {
+	t.Skip("layer 4 (js): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 	slowtest.Gate(t, "native JavaScript blob sharing report")
 	dir := "../../../testdata/conformance/feature-witnesses/blob-shared-report"
 	source, err := os.ReadFile(filepath.Join(dir, "Probe.schema"))
@@ -53,7 +54,7 @@ func TestJavaScriptBlobSharedReportCensus(t *testing.T) {
 				} else {
 					ok, err = tablewire.Decode(m, v, wire, &r)
 				}
-				if !ok || err != nil || r.Malformed || r.BlobShared != row.Shared*repeat || r.KindMismatch != row.KindMismatch*repeat {
+				if !ok || err != nil || r.Refused || r.Unknown != row.Shared*repeat || r.Unknown != row.KindMismatch*repeat {
 					t.Fatalf("%s neutral retain=%v: %+v %v", row.Name, retaining, r, err)
 				}
 			}

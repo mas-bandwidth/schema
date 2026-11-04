@@ -56,10 +56,10 @@ func TestForgedPointerCycleIsDamage(t *testing.T) {
 	inst := m.New(m.Lookup("Scene"))
 	var r tabletext.Report
 	ok, derr := tablewire.Decode(m, inst, wire, &r)
-	if derr != nil {
-		t.Fatalf("the load errored rather than reporting damage: %v", derr)
+	if tablewire.RefusalReason(derr) != tablewire.ReasonWireDamaged {
+		t.Fatalf("the load answered %v, want the wire_damaged refusal", derr)
 	}
-	if ok || !r.Malformed {
+	if ok || !r.Refused {
 		t.Fatalf("a forged cycle loaded: ok=%v %+v", ok, r)
 	}
 	head, _ := inst.FieldByKey("head")
@@ -152,7 +152,7 @@ func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 		try[i+2] = 0
 		root := m.New(m.Lookup("Node"))
 		var report tabletext.Report
-		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Malformed {
+		if ok, err := tablewire.Decode(m, root, try, &report); !ok || err != nil || report.Refused {
 			continue
 		}
 		left, _ := root.FieldByKey("left")
@@ -169,12 +169,12 @@ func cycleGuardOff(t *testing.T, m *tabletext.Model, wire []byte) {
 	t.Fatal("no byte turns the guard off with the guarded slot kept")
 }
 
-// cycleRead loads one wire on the tolerant and region reads and
+// cycleRead loads one wire on the value and region reads and
 // demands one verdict of all of them.
 func cycleRead(t *testing.T, m *tabletext.Model, name string, wire []byte, load bool) {
 	t.Helper()
 	reads := map[string]func(*tabletext.Instance, *tabletext.Report) (bool, error){
-		"tolerant": func(inst *tabletext.Instance, r *tabletext.Report) (bool, error) {
+		"value": func(inst *tabletext.Instance, r *tabletext.Report) (bool, error) {
 			return tablewire.Decode(m, inst, wire, r)
 		},
 		"region": func(inst *tabletext.Instance, r *tabletext.Report) (bool, error) {
@@ -184,13 +184,13 @@ func cycleRead(t *testing.T, m *tabletext.Model, name string, wire []byte, load 
 	for how, read := range reads {
 		var r tabletext.Report
 		ok, err := read(m.New(m.Lookup("Node")), &r)
-		if err != nil {
+		if err != nil && !tablewire.ReadRefusal(err) {
 			t.Fatalf("%s (%s): %v", name, how, err)
 		}
-		if load && (!ok || r.Malformed) {
+		if load && (!ok || r.Refused) {
 			t.Errorf("%s (%s): an acyclic graph was refused: %+v", name, how, r)
 		}
-		if !load && (ok || !r.Malformed) {
+		if !load && (ok || !r.Refused) {
 			t.Errorf("%s (%s): a cyclic wire loaded: %+v", name, how, r)
 		}
 	}
@@ -248,7 +248,7 @@ func TestDiamondChainLoadsLinear(t *testing.T) {
 	go func() {
 		var r tabletext.Report
 		ok, err := tablewire.Decode(m, m.New(m.Lookup("Node")), wire, &r)
-		if err == nil && (!ok || r.Malformed) {
+		if err == nil && (!ok || r.Refused) {
 			err = errDiamondRefused
 		}
 		done <- err

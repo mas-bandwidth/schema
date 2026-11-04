@@ -17,7 +17,7 @@ var tableIntegrityTable = crc32.MakeTable(crc32.Castagnoli)
 func tableIntegrityOpen(wire []byte, report *TableReport) ([]byte, bool) {
  if len(wire) == 0 || wire[0] != 1 { return wire, true }
  if tableIntegrityHolds(wire) { return wire[:len(wire)-4], true }
- if report != nil { report.Verdict = TableOpenDamaged; report.Malformed = true; report.Reason = "integrity_mismatch" }
+ if report != nil { report.Verdict = TableOpenDamaged; report.Refuse(TableRefuseIntegrityMismatch, "") }
  return nil, false
 }
 
@@ -47,15 +47,13 @@ func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 	n, typ := st.Name, g.storageName(st.Name)
 	g.pf("func %sLoadMeasure(wire []byte) int64 { wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1};n,_,_:=tableRegionMeasure(wire,%sTableType(),%sTableType().NodeType,%d);return n }\n", n, n, n, blobmask)
 	g.pf("func %sLoadMeasureReason(wire []byte)(int64,error){wire,ok:=tableIntegrityOpen(wire,nil);if !ok {return -1,TableRefuseIntegrityMismatch};size,_,_,reason:=tableRegionMeasureReason(wire,%sTableType(),%sTableType().NodeType,%d);return size,tableRefuseError(reason)}\n", n, n, n, blobmask)
-	// The plain %sLoad and %sLoadBuilder are emitted by emitRegionMember as the STRICT reads over these
-	// tolerant twins (docs/SPEC-TABLES.md §6.5); the trailer check runs inside each twin.
-	g.pf("// %sLoadTolerant is the TOLERANT region read (docs/SPEC-TABLES.md §6.5, §2.14): the trailer is checked first,\n// then every wire the framing walk accepts returns its root, with the counters counted onto the report; damage\n// returns nil and hands back nothing (docs/SPEC-TABLES.md §4).\n", n)
-	g.pf("func %sLoadTolerant(region,wire []byte,report *TableReport) *%s { wire,ok:=tableIntegrityOpen(wire,report);if !ok {return nil};return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
+	// The plain %sLoad and %sLoadBuilder are emitted by emitRegionMember over
+	// these two (docs/SPEC-TABLES.md §6.5); the trailer is checked first in each.
+	g.pf("func %sLoadRegion(region,wire []byte,report *TableReport) *%s { wire,ok:=tableIntegrityOpen(wire,report);if !ok {return nil};return (*%s)(tableRegionLoad(region,wire,%sTableType(),%sTableType().NodeType,%d,report)) }\n", n, typ, typ, n, n, blobmask)
 	g.pf("func %sMeasure(value *%s,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);size:=tableRegionSave(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);if size<0 {return size};return size+4 }\n", n, typ, n)
 	g.pf("func %sMeasureReason(value *%s,context ...TableWriteContext)(int64,error){arena,allocator:=tableWriteOptions(context);size,reason:=tableRegionSaveReason(unsafe.Pointer(value),%sTableType(),nil,true,arena,allocator);if size>=0 {size+=4};return size,tableRefuseError(reason)}\n", n, typ, n)
 	g.pf("func %sSave(value *%s,buffer []byte,context ...TableWriteContext) int64 { arena,allocator:=tableWriteOptions(context);if len(buffer)<4 {return -1};return tableIntegritySeal(buffer,tableRegionSave(unsafe.Pointer(value),%sTableType(),buffer[:len(buffer)-4],false,arena,allocator)) }\n", n, typ, n)
-	g.pf("// %sLoadBuilderTolerant is the TOLERANT builder read (docs/SPEC-TABLES.md §6.5, §2.14): the trailer is\n// checked first, then the value is read into the builder, with the counters counted onto the report; damage\n// answers false with the builder's root at its defaults (docs/SPEC-TABLES.md §4).\n", n)
-	g.pf("func %sLoadBuilderTolerant(b *%sBuilder,wire []byte,report *TableReport) bool {wire,ok:=tableIntegrityOpen(wire,report);if !ok {return false};return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
+	g.pf("func %sLoadBuilderRead(b *%sBuilder,wire []byte,report *TableReport) bool {wire,ok:=tableIntegrityOpen(wire,report);if !ok {return false};return tableBuilderLoad(unsafe.Pointer(b.GetRoot()),b.root,&b.Main,wire,%sTableType(),%sTableType().NodeType,%d,report)}\n", n, n, n, n, blobmask)
 }
 
 // emitIntegrityRetain is the retaining round trip's file surface for a table
@@ -63,7 +61,7 @@ func (g *tableGen) emitIntegrityMember(st *ir.Struct, blobmask int) {
 // calls as the plain member's, with the trailer checked, counted and sealed.
 func (g *tableGen) emitIntegrityRetain(st *ir.Struct, blobs int) {
 	n, typ := st.Name, g.storageName(st.Name)
-	g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{wire,ok:=tableIntegrityOpen(wire,report);if !ok {return nil};return (*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,report,retain))}\n", n, typ, typ, n, n, blobs)
+	g.pf("func %sLoadRetain(region,wire []byte,retain *TableRetain,report *TableReport)*%s{read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};wire,ok:=tableIntegrityOpen(wire,read);if !ok {tableRefused(read);return nil};root:=(*%s)(tableRegionLoadRetain(region,wire,%sTableType(),%sTableType().NodeType,%d,read,retain));if root==nil||read.Refused(){tableRefused(read);return nil};return root}\n", n, typ, typ, n, n, blobs)
 	g.pf("func %sMeasureRetain(value *%s,retain *TableRetain,allocator ...TableAllocator)int64{size:=tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),nil,true,retain,nil,allocator...);if size<0 {return size};return size+4}\n", n, typ, n)
 	g.pf("func %sSaveRetain(value *%s,retain *TableRetain,buffer []byte,report *TableReport,allocator ...TableAllocator)int64{if report==nil||len(buffer)<4{return -1};return tableIntegritySeal(buffer,tableRegionSaveRetain(unsafe.Pointer(value),%sTableType(),buffer[:len(buffer)-4],false,retain,report,allocator...))}\n", n, typ, n)
 }

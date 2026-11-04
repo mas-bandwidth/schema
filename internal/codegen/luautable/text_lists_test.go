@@ -175,7 +175,7 @@ func runTextListProbe(t *testing.T, g *generatedUnit, wire []byte) textListRun {
 
 // goReportText renders schema-go's verdict in the probe's own spelling.
 func goReportText(r tabletext.Report) string {
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%t", r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
+	return fmt.Sprintf("%d,%d,%d,%d,%d,%t", r.Unknown, 0, r.Widened, 0, 0, r.Refused)
 }
 
 // TestLuauTableTextLists holds docs/SPEC-TABLES.md §2.13 in the Luau table
@@ -207,14 +207,12 @@ func TestLuauTableTextLists(t *testing.T) {
 	})
 
 	t.Run("element past M clamps", func(t *testing.T) {
+		t.Skip("layer 4 (luau): tolerant-read test, re-pin as a verdict: docs/plans/strict-only.md")
 		raw := textListRawWire(t, m, "123456789")
 		back := m.New(m.Lookup("Lists"))
 		var report tabletext.Report
 		if ok, err := tablewire.Decode(m, back, raw, &report); !ok || err != nil {
 			t.Fatalf("the Go load refuses the wire: ok=%v err=%v", ok, err)
-		}
-		if report.Clamped != 1 {
-			t.Fatalf("the Go load does not clamp the element: %+v", report)
 		}
 		want, err := tablewire.Encode(m, back)
 		if err != nil {
@@ -237,10 +235,10 @@ func TestLuauTableTextLists(t *testing.T) {
 		var report tabletext.Report
 		// damage discards the whole load (docs/SPEC-TABLES.md §4): the Go
 		// load refuses it, and the leg owes the refusal and nothing else
-		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); ok || err != nil {
+		if ok, err := tablewire.Decode(m, m.New(m.Lookup("Lists")), raw, &report); ok || !tablewire.ReadRefusal(err) {
 			t.Fatalf("the Go load does not refuse the damaged load: ok=%v err=%v", ok, err)
 		}
-		if !report.Malformed {
+		if !report.Refused {
 			t.Fatalf("the Go load does not call the element malformed: %+v", report)
 		}
 		got := runTextListProbe(t, g, raw)

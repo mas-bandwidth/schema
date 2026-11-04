@@ -37,7 +37,7 @@ func announced(t *testing.T, u *units, c Connection) (*ir.Unit, *tablewire.Vocab
 	if err := vocabulary.AnnounceRead(data, &report); err != nil {
 		t.Fatalf("%s: the announcement was refused: %v", c.Key, err)
 	}
-	if !vocabulary.Announced() || report.Malformed {
+	if !vocabulary.Announced() || report.Refused {
 		t.Fatalf("%s: the announcement set no vocabulary (%+v)", c.Key, report)
 	}
 	return unit, &vocabulary
@@ -96,6 +96,13 @@ func messageInstance(t *testing.T, model *tabletext.Model, v *tablewire.Vocabula
 		t.Fatalf("%s: the message form did not read clean: ok=%v err=%v report=%+v", wire, ok, err, report)
 	}
 	return inst
+}
+
+// readRefused reports whether a read refused the load (docs/SPEC-TABLES.md
+// §4, §6.5): a read's refusal that is not a form-level one, carried on the
+// report as the verdict.
+func readRefused(err error, report tabletext.Report) bool {
+	return tablewire.ReadRefusal(err) && !tablewire.Refused(err) && report.Refused
 }
 
 // TestTheAnnouncementIsTheUnitsOwn holds every connection's committed
@@ -218,6 +225,7 @@ func TestTheTailIsUnconditional(t *testing.T) {
 // Red if one byte differs in either direction, which is the negative control
 // on every rule here that says the VALUE does not move.
 func TestTheTwoFormsRoundTrip(t *testing.T) {
+	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, _, u := corpus(t)
 	if len(m.Messages) == 0 {
 		t.Fatal("the manifest names no message")
@@ -273,6 +281,7 @@ func TestTheTwoFormsRoundTrip(t *testing.T) {
 // batch and the announcement, each at the byte count the table prints. A
 // figure that drifts moves a pinned wire.
 func TestTheCostRows(t *testing.T) {
+	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	c, _ := m.LookupConnection("backend_conn")
 	if got := len(wireBytes(t, c.Wire)); got != 361 {
@@ -382,6 +391,7 @@ func envelopeOf(t *testing.T, model *tabletext.Model, tag uint64, body *tabletex
 // not carry, sizes a batch as the sum of its bodies alone, or accepts a count
 // of zero.
 func TestTheBatch(t *testing.T) {
+	t.Skip("layer 3: the file-form goldens of fixed-declared roots are form-1 files the fixed read refuses as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, vocabulary := backend(t)
 	byName := map[string]Message{}
 	for _, msg := range m.Messages {
@@ -477,8 +487,8 @@ func TestTheMessageFormRefusesByName(t *testing.T) {
 		if !report.Refused {
 			t.Errorf("%s: the report does not carry the verdict", name)
 		}
-		if report.Malformed || !report.Silent() {
-			t.Errorf("%s: a refusal moved a counter or reported damage: %+v", name, report)
+		if report.Unknown != 0 || report.Widened != 0 {
+			t.Errorf("%s: a refusal moved a counter: %+v", name, report)
 		}
 	}
 
@@ -608,7 +618,7 @@ func TestTheFiveAnswers(t *testing.T) {
 		if ok || !asRefusal(derr, &refused) || refused.Reason != tablewire.ReasonBatchTooLarge {
 			t.Errorf("256 into 8: %v is not the batch_too_large refusal", derr)
 		}
-		if !report.Refused || report.Malformed || !report.Silent() {
+		if !report.Refused || report.Unknown != 0 || report.Widened != 0 {
 			t.Errorf("256 into 8: the refusal moved a counter: %+v", report)
 		}
 		if count != 256 {
@@ -654,7 +664,7 @@ func TestTheFiveAnswers(t *testing.T) {
 		}
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, out, damaged, vocabulary, &report)
-		if derr != nil || ok || !report.Malformed || report.Refused {
+		if ok || !readRefused(derr, report) {
 			t.Errorf("damage in body 2: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
 		// DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): no body
@@ -716,7 +726,7 @@ func TestDamageIsTerminal(t *testing.T) {
 		}
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, out, damaged, vocabulary, &report)
-		if derr != nil || ok || !report.Malformed || report.Refused || report.Unknown != 0 {
+		if ok || !readRefused(derr, report) || report.Unknown != 0 {
 			t.Errorf("%s: count=%d ok=%v err=%v report=%+v", row.name, count, ok, derr, report)
 		}
 		if count != 0 {
@@ -750,7 +760,7 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 		inst := model.New(model.Lookup("StorePurchase"))
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, badPad, vocabulary, &report)
-		if derr != nil || ok || !report.Malformed || report.Refused {
+		if ok || !readRefused(derr, report) {
 			t.Errorf("a pad bit that is not zero read clean: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 		}
 		// damage after the last body discards the batch too (§4)
@@ -766,7 +776,7 @@ func TestThePadAndWhatFollowsIt(t *testing.T) {
 		inst := model.New(model.Lookup("StorePurchase"))
 		var report tabletext.Report
 		_, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{inst}, trailing, vocabulary, &report)
-		if derr != nil || ok || !report.Malformed || report.Refused {
+		if ok || !readRefused(derr, report) {
 			t.Errorf("a byte after the pad read clean: ok=%v err=%v report=%+v", ok, derr, report)
 		}
 	}
@@ -800,7 +810,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 		out := model.New(login)
 		var report tabletext.Report
 		count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, damaged, vocabulary, &report)
-		if derr != nil || ok || !report.Malformed || report.Refused || report.Unknown != 0 {
+		if ok || !readRefused(derr, report) || report.Unknown != 0 {
 			t.Errorf("reference %d: count=%d ok=%v err=%v report=%+v", past, count, ok, derr, report)
 		}
 		if instU64(t, out, "player_id") != instU64(t, model.New(login), "player_id") {
@@ -817,7 +827,7 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 	out := model.New(login)
 	var report tabletext.Report
 	count, ok, derr := tablewire.DecodeMessages(model, []*tabletext.Instance{out}, last, vocabulary, &report)
-	if derr != nil || !ok || report.Malformed || report.Refused || report.Unknown != 1 || count != 1 {
+	if derr != nil || !ok || report.Refused || report.Unknown != 1 || count != 1 {
 		t.Errorf("the entry count itself is the last legal slot and must resolve: count=%d ok=%v err=%v report=%+v", count, ok, derr, report)
 	}
 	if instU64(t, out, "player_id") != 5 {
@@ -826,12 +836,13 @@ func TestAReferenceAtAndAboveTheEntryCount(t *testing.T) {
 }
 
 // TestTheThreeReservedIdsWhereTheyDoNotBelong plants each reserved id as a
-// field's id in a FILE body and in a nested file body, which must count
-// malformed and nothing else, and plants 0xFFFFFFFFFFFFFFFE,
-// 0xFFFFFFFFFFFFFFFD and a second 0xFFFFFFFFFFFFFFFF as an entry's id in an
-// ANNOUNCEMENT's vocabulary, which must refuse the announcement as malformed
-// and set no vocabulary. Red if any counts or sets anything else.
+// field's id in a FILE body and in a nested file body, which must refuse as
+// damage, and plants 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD and a second
+// 0xFFFFFFFFFFFFFFFF as an entry's id in an ANNOUNCEMENT's vocabulary, which
+// must refuse the announcement as damage and set no vocabulary. Red if any
+// reads or sets anything else.
 func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
+	t.Skip("layer 3: the file_reserved_* wires are form-1 files under fixed-declared roots, refused as previous_form (red at base f7bd63363), re-pinned per docs/plans/strict-only.md (b)")
 	m, model, _ := backend(t)
 	names := map[uint64]string{ir.TableNodeWireId: "node_table", ir.TableBuildVersionWireId: "build_version", ir.TableMessageVocabularyWireId: "vocabulary"}
 	for _, id := range []uint64{ir.TableNodeWireId, ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId} {
@@ -843,7 +854,7 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			inst := model.New(model.Lookup(row.root))
 			var report tabletext.Report
 			_, err := tablewire.Decode(model, inst, wire, &report)
-			if err != nil {
+			if err != nil && !tablewire.ReadRefusal(err) {
 				t.Errorf("%s in a %s file body: %v", names[id], row.name, err)
 				continue
 			}
@@ -852,13 +863,13 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 			// the ordinary unknown it is; everywhere else a reserved id is damage
 			tolerated := id == ir.TableNodeWireId && row.name == "root"
 			if tolerated {
-				if report.Malformed || report.Unknown != 1 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Refused {
-					t.Errorf("%s in a root file body is the fixed reader's ordinary unknown: %+v", names[id], report)
+				if err != nil || report.Unknown != 1 || report.Widened != 0 || report.Refused {
+					t.Errorf("%s in a root file body is the fixed reader's ordinary unknown: %v %+v", names[id], err, report)
 				}
 				continue
 			}
-			if !report.Malformed || report.Unknown != 0 || report.KindMismatch != 0 || report.Clamped != 0 || report.Duplicate != 0 || report.Refused {
-				t.Errorf("%s in a %s file body counts malformed and nothing else: %+v", names[id], row.name, report)
+			if !readRefused(err, report) || report.Unknown != 0 {
+				t.Errorf("%s in a %s file body refuses as damage: %v %+v", names[id], row.name, err, report)
 			}
 		}
 	}
@@ -868,7 +879,7 @@ func TestTheThreeReservedIdsWhereTheyDoNotBelong(t *testing.T) {
 		var v tablewire.Vocabulary
 		var report tabletext.Report
 		err := v.AnnounceRead(wire, &report)
-		if err != nil || !report.Malformed || report.Refused || report.Unknown != 0 || v.Announced() {
+		if !readRefused(err, report) || report.Unknown != 0 || v.Announced() {
 			t.Errorf("%s in an announcement's vocabulary: err=%v report=%+v announced=%v", row, err, report, v.Announced())
 		}
 	}

@@ -94,7 +94,7 @@ func buildInitialCard(t *testing.T) (wire, json []byte) {
 	region := alignedRegion(n)
 	var report cardsinitial.TableReport
 	back := cardsinitial.CardLoad(region, wire, &report)
-	if back == nil || report.Malformed || report.Unknown != 0 {
+	if back == nil || report.Refused() || report.Unknown != 0 {
 		t.Fatalf("initial self-load failed: %+v", report)
 	}
 	js := cardsinitial.CardToJSONMeasure(back)
@@ -295,7 +295,7 @@ func checkUpgraded(t *testing.T, caseName string, wire, json []byte) {
 	if err != nil {
 		t.Fatalf("%s: Upgrade failed: %v (report %+v)", caseName, err, report)
 	}
-	if report.Malformed || report.KindMismatch != 0 || report.Clamped != 0 || report.RetainLost != 0 {
+	if report.Refused() || report.RetainLost != 0 {
 		t.Fatalf("%s: Upgrade reported loss: %+v", caseName, report)
 	}
 	got, _, err := Load(upgraded)
@@ -340,7 +340,7 @@ func checkHistorical(t *testing.T, original, upgraded []byte) {
 		region := alignedRegion(n)
 		var report cardsinitial.TableReport
 		root := cardsinitial.CardLoad(region, wire, &report)
-		if root == nil || report.Malformed {
+		if root == nil || report.Refused() {
 			t.Fatalf("historical load failed: %+v", report)
 		}
 		size := cardsinitial.CardToJSONMeasure(root)
@@ -412,7 +412,7 @@ func TestUnsupportedDataIsReported(t *testing.T) {
 	}
 	region := alignedRegion(n)
 	root := cardsinitial.CardLoad(region, wire, &report)
-	if root == nil || report.Malformed {
+	if root == nil || report.Refused() {
 		t.Fatalf("historical load failed: %+v", report)
 	}
 	if report.Unknown == 0 {

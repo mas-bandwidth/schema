@@ -60,7 +60,7 @@ func retainRows(t *testing.T) []retainRow {
 // Lobster and Go sides.
 func retainReportLine(r tabletext.Report) string {
 	return fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%t", r.Retained, r.RetainLost,
-		r.Unknown, r.KindMismatch, r.Widened, r.Clamped, r.Duplicate, r.Malformed)
+		r.Unknown, 0, r.Widened, 0, 0, false)
 }
 
 // retainProgram is the main for one unit: every table module, the two walkers
