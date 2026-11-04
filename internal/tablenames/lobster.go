@@ -153,7 +153,7 @@ var lobsterRuntimeNames = map[string][]string{
 	"message.lobster": {
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",
 		"MessageVocabulary", "MessageWriter", "announce", "announce_inner", "announce_measure", "announce_read",
-		"is_message_root", "load_messages", "load_messages_into", "load_messages_tolerant", "mb_align", "mb_get",
+		"is_message_root", "load_messages", "load_messages_into", "mb_align", "mb_get",
 		"mb_skip", "measure_messages", "message_arm_slots", "message_array", "message_batch_max",
 		"message_batch_ok", "message_bits", "message_body", "message_build_version", "message_bytes",
 		"message_cell", "message_compatible", "message_count", "message_entries_here", "message_entry",
