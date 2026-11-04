@@ -298,8 +298,8 @@ func TestLobsterRetainUnknown(t *testing.T) {
 	if compared != len(rows) {
 		t.Fatalf("%d of %d retain rows agree with the reference", compared, len(rows))
 	}
-	if compared != 8 {
-		t.Fatalf("compared %d retain rows, want the manifest's eight", compared)
+	if compared != 10 {
+		t.Fatalf("compared %d retain rows, want the manifest's ten", compared)
 	}
 	t.Logf("%d retain rows: load, save and re-load equal the reference's", compared)
 }
