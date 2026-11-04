@@ -176,14 +176,15 @@ func TestPythonStrictGateGoesRed(t *testing.T) {
 	}
 }
 
-// TestPythonRefusesTablesByName: tables arrive with the table layers, so a
-// table is refused by name, naming those layers, and nothing is emitted.
+// TestPythonRefusesTablesByName: a variable table arrives with P6, so it is
+// refused by name, naming that layer, and nothing is emitted
+// (TestPythonRefusesVariableTablesByName holds the rest of the rule).
 func TestPythonRefusesTablesByName(t *testing.T) {
 	t.Parallel()
 	u := emptyUnit("game", "Game")
 	u.Files[0].Tables = []*ir.Struct{{Name: "Fleet", IsTable: true}}
 	files, err := Generate(u)
-	if err == nil || !strings.Contains(err.Error(), "python: Game.schema declares table Fleet, and the Python target does not carry tables yet (docs/PORT-PYTHON.md, THE LAYERS: P5 fixed tables, P6 variable tables)") {
+	if err == nil || !strings.Contains(err.Error(), "python: Game.schema declares table Fleet, a variable table, and the Python target carries the fixed form only (docs/PORT-PYTHON.md, THE LAYERS: P6 variable tables)") {
 		t.Errorf("a table: got %v (%d files)", err, len(files))
 	}
 }

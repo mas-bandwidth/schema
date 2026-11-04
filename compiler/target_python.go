@@ -19,18 +19,25 @@ type pythonTarget struct{}
 
 func (pythonTarget) Names() []string { return []string{"python"} }
 
-// Generate is the packet surface (docs/PORT-PYTHON.md, THE LAYERS: P4). The
-// shared refusal chain every port calls refuses, by name, each construct the
-// target does not carry (docs/PORT-GOOSE.md, THE CARRIES PATTERN); the
-// constructs keyed in compiler/carries.go are refused by the driver against
-// the python carries set, which compiler/carries_python.go registers empty,
-// and compiler/carries_python_packet.go registers the packet-wire forms. Then
-// the emitter holds every name to the leg's identifier rules, refuses tables
-// by name, and generates the unit's package.
-func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
-	if err := ir.RefuseWideTableKinds(u, "python"); err != nil {
-		return nil, err
-	}
+// Generate is the NO-LINEAGE case: a unit whose lock the caller did not read,
+// or that has none. Every fixed table then carries the single entry it can
+// always compute, its own (docs/FIXED-FORM-ALGORITHM.md §5.9 #1).
+func (t pythonTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error) {
+	return t.GenerateLineage(u, opts, nil)
+}
+
+// GenerateLineage is the packet surface (docs/PORT-PYTHON.md, THE LAYERS: P4)
+// and the fixed form (P5). The shared refusal chain every port calls refuses,
+// by name, each construct the target does not carry (docs/PORT-GOOSE.md, THE
+// CARRIES PATTERN); the constructs keyed in compiler/carries.go are refused by
+// the driver against the python carries set (compiler/carries_python*.go).
+// The fixed form carries the wide and fixed-point kinds, so the target does
+// not refuse them here; the emitter refuses every table the fixed form does
+// not carry (a variable table, a fixed table past the form's ceiling, a union
+// with a table arm) by name. THE LINEAGE IS THE DRIVER'S (§5.9 #1):
+// compiler/generate.go reads the unit's lock once and hands the entries down
+// as data.
+func (pythonTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
 	if err := refuseWideText(u, "python"); err != nil {
 		return nil, err
 	}
@@ -46,12 +53,32 @@ func (pythonTarget) Generate(u *ir.Unit, _ Options) (map[string][]byte, error) {
 	if err := refuseLists(u, "python"); err != nil {
 		return nil, err
 	}
-	if err := refuseTables(u, "python"); err != nil {
-		return nil, err
+	return python.GenerateLineage(u, pythonTableLineage(u, lineage))
+}
+
+// pythonTableLineage is the lock's lineage in the Python backend's own
+// spelling; nil in, nil out. Each entry's Record is already the whole record.
+func pythonTableLineage(u *ir.Unit, lineage *FixedLineage) map[string][]python.FixedLineageEntry {
+	if lineage == nil {
+		return nil
 	}
-	return python.Generate(u)
+	out := map[string][]python.FixedLineageEntry{}
+	for _, st := range ir.TableFixedFormRoots(u) {
+		for _, e := range lineage.Entries(st.Name) {
+			out[st.Name] = append(out[st.Name], python.FixedLineageEntry{
+				Wire:    e.Wire,
+				Layout:  e.Layout,
+				Record:  e.Record,
+				Retired: e.Retired,
+				Reason:  e.Reason,
+			})
+		}
+	}
+	return out
 }
 
 func init() {
-	registerBuiltin(pythonTarget{}, false, false, false, false)
+	// tables and the unions a table closure holds: the fixed form carries
+	// both (the emitter refuses the variable ones by name)
+	registerBuiltin(pythonTarget{}, true, true, false, false)
 }

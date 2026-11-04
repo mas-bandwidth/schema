@@ -147,12 +147,13 @@ add.
 | `*bytes`, `*string` | `bytes` or `str`, or `None` | `None` |
 | `?T` | the value, or `None` for absent | `None` |
 | `[]T`, text lists | `list` | `[]` |
-| `[E]T` (§2.4) | the generated keyed-array class over a `list` of exactly `E.Max`, the element for variant k at index k − 1; its `[k]` refuses `None` and any key above `Max` with `KeyError`, as §2.4 requires of every port, so a plain negative index can never reach the last slot | each element at its default |
+| `[E]T` (§2.4) | a `KeyedArray` (the runtime's `_schema.fixed.KeyedArray`) over a `list` of exactly `E.Max`, the element for variant k at index k − 1; its `[k]` refuses `None`, any key above `Max`, a negative key and a `bool` with `KeyError`, as §2.4 requires of every port, so a plain negative index can never reach the last slot; `slots()` is the list. An `[E]T` inside a packet `type` is the plain `list` of `E.Max` the packet wire carries | each element at its default |
 | `map[K]V` | `dict`; the save writes it sorted by key | `{}` |
 | a union with table arms | as a packet union | `type = 0` |
 
-Each table class also carries its **descriptor**, the table as data
-(SPEC-TABLES §8.1), as a class attribute built once at import.
+A fixed table's form is laid down beside its class as data (THE FIXED FORM).
+The **descriptor**, the table as data for reflection (SPEC-TABLES §8.1),
+arrives with P9.
 
 ## THE NUMBER MODEL
 
@@ -215,10 +216,16 @@ data = v.save()                # the bytes, or raises InvalidValue
   a diagnostic. It is never compared across languages; only the verdict is.
 - A refusal carries no value and does not touch the caller's objects. A read
   builds a new value and returns it only when the whole input has been read.
-- A table load takes an optional `report=`, a `LoadReport` from the runtime,
-  which receives the load's counters (`unknown`, `widened`, `retained`,
-  `retain_lost`) on success only. A refused load leaves it as it was. A packet
-  read has no report: the packet wire has nothing to count.
+- A fixed table reads and writes a form-3 file, a batch of records:
+  `T.load_fixed(data, report=None)` returns every record as a `list[T]` or
+  raises `Refused`, and `T.save_fixed(values)` returns the file or raises
+  `InvalidValue` naming the record and the field (`Heat[0].label`).
+- A fixed load takes an optional `report`, a `_schema.fixed.Report`, whose one
+  counter is `widened`, set on success only; a refused load leaves it as it
+  was. A refusal for a layout hash (`layout_unknown`, `layout_unsupported`)
+  carries the file's hash as `Refused.layout_hash`. The variable form's report
+  (P6) adds its own counters. A packet read has no report: the packet wire has
+  nothing to count.
 - A refused write returns no byte: the writer checks each field against its
   contract as it writes into a stream of its own, and on the first breach
   drops the stream and raises `InvalidValue` naming the field path
@@ -251,6 +258,76 @@ Measured on studio (Apple Silicon, 2026-11-04), `make bench-python-shape`
 | `Types.Input` | 4.22, 6.28 (1.49x) | 4.75, 6.78 (1.43x) | 3.11.18 |
 
 The measurement is a functional run with the clock, never part of `make test`.
+
+## THE FIXED FORM
+
+Fixed tables ride form 3 (SPEC-TABLES §3.4), built from
+[FIXED-FORM-ALGORITHM.md](FIXED-FORM-ALGORITHM.md) as the strict-only contract
+(PR #2790) states it: one read, which returns every record or refuses, and one
+counter, `widened`.
+
+- **Data, not a parser.** Each fixed root's module lays down
+  `_s_fixed_<Root>`: its wire hash and record body size, its lineage (the
+  lock's entries, oldest first, its own last, and the floor) with each entry's
+  layout bytes, and its SHAPE (`_s_fs_<Name>`, the reader's own fields as
+  nodes of `_schema/fixed.py`). The layout bytes and every hash are the
+  compiler's (`ir.TableFixedLayoutBytes`, `ir.TableFixedLayoutHash`); the
+  runtime never derives a hash. The lineage is the driver's: the target's
+  `GenerateLineage` takes the entries `compiler/lineage.go` reads from the
+  lock.
+- **Select by hash, never parse a stranger** (§5.3). A file's hash selects its
+  lineage entry or refuses `layout_unknown`; below the floor is
+  `layout_unsupported`; a known hash over other layout bytes is
+  `layout_malformed`. The file's own layout is compared, never walked.
+- **Two lanes, one set of checks.** The build's own hash takes the IDENTITY
+  lane, the generated straight-line reader `_s_fl_<Name>`: each field at its
+  constant offset, each run of plain integers fused into one
+  `struct.unpack_from`. Any other entry takes its PLAN: the lock's layout
+  bytes matched against the shape by wire id, one reader closure per node,
+  built on first use and kept. A writer field the reader cannot name, or a
+  kind that moved off the widening ladder, is not a lawful widening (§5.2
+  MATCH, §5.4): that entry keeps the reason instead of a plan, and a file
+  under its hash refuses `layout_malformed`. Both lanes hold the same checks by
+  the same names: a bool or present byte past 1 is `wire_damaged`; a count or
+  length past the WRITER's bound is `count_over_bound` or
+  `length_over_bound`; ill-formed used text is `text_ill_formed`; a NaN or an
+  infinity is `non_finite_float`; a ranged value, a `bits(N)` past 2^N − 1, an
+  ordinal past the writer's variants or a tag past its arms is `out_of_range`.
+- **The writer's ranges.** A range is held at the WRITER's bounds for the
+  entry (§4.6, bill §12.5). The identity lane's writer is this build. A
+  lineage entry carries its writer's root-field ranges when the build holds
+  the writer's declaration (an older unit a test locks); an entry read from a
+  lock carries none, the digest naming no field, and is held to the reader's
+  own ranges, which a lawful lineage makes the wider. Carrying the writer's
+  ranges for a lock entry is owed; the reference carries them per entry from
+  its lineage convention (§4.6, §5.8 row 4).
+- **The write** validates every record against the table's own contract and
+  lays the live extent onto a zeroed record: a counted array's `count`
+  elements, text's used units, a union's taken arm, an absent optional's
+  present byte alone. A refused save returns no byte.
+
+**Where the older legs differ.** The moo leg's fixed form predates the
+strict-only contract: it normalizes a bool byte past 1, clamps a forged
+ordinal or a range to `None` or the bound and counts it, and counts a writer
+field it cannot name as `unknown`. The Python leg refuses each, by the names above, and counts a
+`bits(8)` read as `bits(12)` as `widened` (the u8 to u16 rung, §5.2 EMIT).
+
+**The shape, by measurement (D1).** The identity lane's straight-line reader
+against the plan, through the public `load_fixed`, on the reference's own
+files (`make bench-python-fixed-shape`, `bench/python/fixed_shape.py`; studio,
+2026-11-04, 2000 loads each, microseconds per load):
+
+| file | plan | straight-line | interpreter |
+|---|---|---|---|
+| `fx1.bin` (`FxRoot`, 2 records) | 5.30 | 3.82 (1.39x) | 3.15.2 |
+| `pack.bin` (`PackConfig`, 2 records) | 28.99 | 22.81 (1.27x) | 3.15.2 |
+| `keyed.bin` (`KeyedConfig`, 2 records) | 35.49 | 29.00 (1.22x) | 3.15.2 |
+| `fx1.bin` | 5.76 | 4.06 (1.42x) | 3.11.18 |
+| `pack.bin` | 31.70 | 23.02 (1.38x) | 3.11.18 |
+| `keyed.bin` | 41.40 | 32.13 (1.29x) | 3.11.18 |
+
+The straight-line reader is emitted for the identity lane; the plan stays for
+older entries, whose layouts a build reads through the same shape.
 
 ## THE BIT LAYER: serialize.py
 
@@ -317,8 +394,9 @@ per unit, named for the unit's package:
 | `internal/codegen/python` | the type surface's emitter (`Generate`), the identifier rules (`CheckNames`) and, from the packet layer, its codec |
 | `internal/codegen/python/runtime/_schema/` | the runtime, embedded and emitted verbatim: the errors, and serialize.py vendored by sha256 (`runtime/SERIALIZE_PIN`, `make vendor-serialize-python`) |
 | `internal/codegen/python/pyrun` | the test helper (THE HARNESS) |
-| `internal/codegen/pythontable` | the table surface's emitter and codec, from the table layers (P5) |
-| `internal/tablenames/python.go` | the table runtime's claimed names, from the table layers (P5) |
+| `internal/codegen/python/fixed.go`, `fixedline.go` | the fixed form: the table classes, the shapes, the identity readers and each root's lineage data (THE FIXED FORM) |
+| `internal/codegen/python/runtime/_schema/fixed.py` | the fixed form's runtime: the shape nodes, the plans, `load` and `save`, `KeyedArray` and `Report` |
+| `internal/tablenames/python.go` | the variable table runtime's claimed names, from P6 |
 | `make/python-toolchain.mk`, `make/python.mk`, `make/python-*.mk` | the pin, the leg, and one fragment per gate |
 | `test/conformance/python/` | the conformance driver and `ci.json` |
 
@@ -352,7 +430,8 @@ Then, by rule, in the Python target:
   module names builtins unqualified. Fields are attributes and shadow nothing,
   so a field named `list` or `range` is legal.
 - **A field named for a generated member** (`read`, `write`, `load`, `save`,
-  `descriptor`, `MAX_BITS`, `MAX_BYTES`, and `type` on a union) is refused by
+  `load_fixed`, `save_fixed`, `descriptor`, `MAX_BITS`, `MAX_BYTES`, and
+  `type` on a union) is refused by
   name, and so is an enum variant, flags member or union arm spelled like a
   tag class's own member (`NONE`, `MAX`, `COUNT`), and a schema file spelled
   like a name the package binds (`Refused`, `InvalidValue`, `PROTOCOL_ID`). The emitter holds the list
@@ -419,8 +498,11 @@ or `—` with the platform's reason:
 
 M4b is carried from the packet layer: every probe runs isolated with only its
 own directory on `sys.path`, so the generated package imports nothing but its
-own modules, its runtime and the standard library. A cell becomes ✅ when the
-layer that carries it lands with its proof.
+own modules, its runtime and the standard library. M5 is carried from the
+fixed layer: a table's `[E]T` indexes by key and refuses `None`, keys past
+`Max`, negative keys and bools at both ends
+(`TestPythonKeyedArrayRefusesBothEnds`, with its control). A cell becomes ✅
+when the layer that carries it lands with its proof.
 
 ## THE LAYERS
 
@@ -431,7 +513,7 @@ layer that carries it lands with its proof.
 | P2 | serialize.py at format 2.0, staged in this tree, judged by the family corpus under both interpreters and mypy | `port/python/p2-serialize` |
 | P3 | the skeleton: the target behind its tag, the emitter packages, the register and roadmap columns | `port/python/p3-skeleton` |
 | P4 | the packet wire against the C++ goldens and the packet gates; the target stays behind its build tag until the leg joins the builtins | `port/python/p4-packet` |
-| P5 | fixed tables, form 3 | `port/python/p5-fixed` |
+| P5 | fixed tables, form 3, against the C++ reference's corpus: the byte oracle both ways, every versioning row, every refusal by name, both lanes | `port/python/p5-fixed` |
 | P6 | variable tables: the one read | `port/python/p6-variable` |
 | P7 | the message form and retain-unknown | `port/python/p7-message-retain` |
 | P8 | JSON, the hand-editable text and base64 | `port/python/p8-text` |

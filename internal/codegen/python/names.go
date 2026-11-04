@@ -16,7 +16,7 @@ const HelperPrefix = "_s_"
 // generatedMembers are the names the generated classes define beside their
 // fields (docs/PORT-PYTHON.md, ERRORS and THE VALUE MAPPING). A field spelled
 // like one would replace the member, so it is refused.
-var generatedMembers = wordSet(`read write load save descriptor MAX_BITS MAX_BYTES`)
+var generatedMembers = wordSet(`read write load save descriptor load_fixed save_fixed MAX_BITS MAX_BYTES`)
 
 // tagMembers are the names an enum, a union tag or a flags class defines
 // beside its members: a member spelled like one is refused.

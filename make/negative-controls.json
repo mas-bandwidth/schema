@@ -664,6 +664,15 @@
       "python": "pin"
     },
     {
+      "name": "python-fixed",
+      "when": "pull-request",
+      "why": "the Python leg's fixed-form controls (docs/PORT-PYTHON.md, THE LAYERS: P5), on the pins .github/actions/python restores into dist/ and the C++ reference's fixed-form corpus: the byte oracle with an integer store skipped, the versioning gate with the id match broken, the ordinal and bool tests each removed from the emitted identity reader and from the runtime's plan, and the keyed array's refusal removed, each of which must turn its gate red. One go test run of internal/codegen/python, under 2 s of test time on the studio, so the row is the corpus build and the pins' cache restore.",
+      "targets": [
+        "tables-python-fixed-negative-controls"
+      ],
+      "python": "pin"
+    },
+    {
       "name": "moo-tables",
       "when": "pull-request",
       "why": "the moo port's RETAIN-UNKNOWN controls (docs/PORT-MOO.md), on the moo pin .github/actions/moo restores into dist/moo: the tail write of a kept record planted out of the emitted table_retain.moo (the manifest's retain_round_trip save then differs from its pinned file), and the fixed-class and nil-report refusals planted out (the same call then answers). Each is one go test of internal/codegen/mootable under SCHEMA_SLOW; measured under 1 s of test time each on the studio, so the row is the package's compile plus the pin's cache restore.",

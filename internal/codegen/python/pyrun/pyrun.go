@@ -226,3 +226,14 @@ func WriteTree(t testing.TB, dir string, files map[string][]byte) {
 		}
 	}
 }
+
+// LoadUnitSource is LoadUnit over one schema file written from src, as name,
+// into the test's own directory.
+func LoadUnitSource(t testing.TB, name, src string) *ir.Unit {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return LoadUnit(t, p)
+}
