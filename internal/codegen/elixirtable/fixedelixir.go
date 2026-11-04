@@ -471,9 +471,10 @@ func (g *fixedGen) writeElement(f *ir.Field, name string) []wseg {
 
 // fixedTextSegment is a text's or a byte run's used units as one binary
 // segment. TEXT IS WELL-FORMED ON THE WAY OUT (docs/SPEC.md §5.1): a string's
-// bytes are UTF-8 and a wstring's units are paired UTF-16, or the write raises
-// ArgumentError, as every other value its declaration cannot hold does; a zero
-// byte or unit is not ill-formed. A bytes(N) is any bytes.
+// bytes are UTF-8 and a wstring's units are paired UTF-16, neither holding a
+// zero byte or unit (the fixed reader refuses one as text_ill_formed), or the
+// write raises ArgumentError, as every other value its declaration cannot hold
+// does. A bytes(N) is any bytes.
 func fixedTextSegment(f *ir.Field, name string) string {
 	switch f.Type.Kind {
 	case ir.TString:
