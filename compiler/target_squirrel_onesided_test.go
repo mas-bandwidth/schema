@@ -30,6 +30,10 @@ func init() {
 
 const squirrelOneSidedSchema = "package probe\n\ntable OneSided\n{\n    a int64 | min = 0\n    b uint16 | max = 9\n}\n"
 
+// squirrelOneSidedWideSchema is the same table with its ranges dropped: the
+// writer of the out-of-range wires.
+const squirrelOneSidedWideSchema = "package probe\n\ntable OneSided\n{\n    a int64\n    b uint16\n}\n"
+
 const squirrelOneSidedProbe = `local inputs = dofile("inputs.nut", true);
 local schema = dofile("probe/schema_module.nut", true);
 local T = schema.require("ProbeTables");
@@ -65,10 +69,14 @@ func squirrelOneSidedOracle(t *testing.T, model *tabletext.Model, u *ir.Unit, tc
 	if tc.field == "b" {
 		idx = 1
 	}
-	write := model.New(st)
+	// the wire is written from the declaration WITHOUT its ranges: a writer
+	// refuses a value outside its declaration (docs/SPEC-TABLES.md §5), and an
+	// out-of-range wire is what the read under test is handed
+	wide := tabletext.NewModel(unitFromSource(t, squirrelOneSidedWideSchema))
+	write := wide.New(wide.Lookup("OneSided"))
 	write.Fields[idx].Cell.I = int64(tc.raw)
 	write.Fields[idx].Cell.U = tc.raw
-	wire, err := tablewire.Encode(model, write)
+	wire, err := tablewire.Encode(wide, write)
 	if err != nil {
 		t.Fatalf("%s: encode: %v", tc.name, err)
 	}

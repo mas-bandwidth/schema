@@ -238,6 +238,7 @@ func init() {
 		Name{Name: "tableRefused", What: "the form-1 wire runtime: a refused load names nothing (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireVerify", What: "the wire-alone check over a file, with the caller's scratch for the node graph (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireCheck", What: "the wire-alone check over every byte of a file (docs/SPEC-TABLES.md §4, §6.5)"},
+		Name{Name: "tableBinaryMaxDepth", What: "the binary nesting bound the wire-alone check holds (docs/SPEC-TABLES.md §4, binary_max_depth)"},
 		Name{Name: "tableWireUtf16Valid", What: "the wire-alone check: a wide string's code units pair (docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableWireBytesID", What: "the wire-alone check: the bytes kind's field id"},
 		Name{Name: "tableWireStringID", What: "the wire-alone check: the string kind's field id"},
@@ -503,6 +504,8 @@ func init() {
 		// payload.
 		Name{Name: "tableFixedTextIllFormed", What: "the fixed form: whether a text payload's USED units are well-formed (docs/SPEC-TABLES.md §4.12)"},
 		Name{Name: "tableFixedTextRefusal", What: "the fixed form: the text CONTENT refusal as a pre-scan of the plan's text entries (§4.12)"},
+		Name{Name: "tableFixedPresent", What: "the fixed form: the plan entry mark for an optional's present byte (§3.4, THE SLACK RULE)"},
+		Name{Name: "tableFixedDead", What: "the fixed form: whether a source offset lies in slack the pre-scan found (§3.4, THE SLACK RULE)"},
 		// THE FIXED LOAD'S REFUSAL NAMES — EXPORTED (docs/FIXED-FORM-ALGORITHM.md
 		// §5.3): one string constant per fixed-load refusal name, used by the
 		// emitted <T>FixedLoad in place of a literal so an adopter's
