@@ -896,13 +896,7 @@ func TableEntityMeasureMessages(values []*TableEntity, report *TableReport) int6
 	return 2 + w.Bits/8
 }
 func TableEntitySaveMessages(values []*TableEntity, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TableEntityMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1636,13 +1630,7 @@ func TableStatMeasureMessages(values []*TableStat, report *TableReport) int64 {
 	return 2 + w.Bits/8
 }
 func TableStatSaveMessages(values []*TableStat, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TableStatMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -2161,13 +2149,7 @@ func TableMixedMeasureMessages(values []*TableMixed, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func TableMixedSaveMessages(values []*TableMixed, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := TableMixedMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2

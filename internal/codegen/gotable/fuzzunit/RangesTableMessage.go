@@ -189,13 +189,7 @@ func RangedSignedMeasureMessages(values []*RangedSigned, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func RangedSignedSaveMessages(values []*RangedSigned, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := RangedSignedMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1257,13 +1251,7 @@ func RangedUnsignedMeasureMessages(values []*RangedUnsigned, report *TableReport
 	return 2 + w.Bits/8
 }
 func RangedUnsignedSaveMessages(values []*RangedUnsigned, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := RangedUnsignedMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -2226,13 +2214,7 @@ func RangedWidthsMeasureMessages(values []*RangedWidths, report *TableReport) in
 	return 2 + w.Bits/8
 }
 func RangedWidthsSaveMessages(values []*RangedWidths, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := RangedWidthsMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2

@@ -66,13 +66,7 @@ func ArchiveConfigMeasureMessages(values []*ArchiveConfig, report *TableReport) 
 	return 2 + w.Bits/8
 }
 func ArchiveConfigSaveMessages(values []*ArchiveConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := ArchiveConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2

@@ -78,13 +78,7 @@ func GunnerSettingsMeasureMessages(values []*GunnerSettings, report *TableReport
 	return 2 + w.Bits/8
 }
 func GunnerSettingsSaveMessages(values []*GunnerSettings, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := GunnerSettingsMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -403,13 +397,7 @@ func ShipEntryMeasureMessages(values []*ShipEntry, report *TableReport) int64 {
 	return 2 + w.Bits/8
 }
 func ShipEntrySaveMessages(values []*ShipEntry, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := ShipEntryMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -828,13 +816,7 @@ func GlobalSettingsMeasureMessages(values []*GlobalSettings, report *TableReport
 	return 2 + w.Bits/8
 }
 func GlobalSettingsSaveMessages(values []*GlobalSettings, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := GlobalSettingsMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
@@ -1295,13 +1277,7 @@ func PackConfigMeasureMessages(values []*PackConfig, report *TableReport) int64 
 	return 2 + w.Bits/8
 }
 func PackConfigSaveMessages(values []*PackConfig, buffer []byte, report *TableReport) int64 {
-	if len(values) < 1 || len(values) > TableMessageBatchMax {
-		if report != nil {
-			tableMessageRefuse(report, "batch_too_large")
-		}
-		return -1
-	}
-	if len(buffer) < 2 {
+	if need := PackConfigMeasureMessages(values, report); need < 0 || int64(len(buffer)) < need {
 		return -1
 	}
 	buffer[0] = 2
