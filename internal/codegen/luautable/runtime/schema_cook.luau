@@ -745,8 +745,16 @@ write_array = function(fd: any, holder: any, x: any, at: number, fl: any, w: any
 		if used == nil then return false end
 		put(w, piece_at(fd, 2, at), used, 4)
 	end
+	-- a [N]uint8 or [E]uint8 is a buffer, 0-based (docs/PORT-LUAU.md, THE TYPE
+	-- MAPPING): its slots are read as bytes, every other array is a 1-based list
+	local bytes = typeof(x) == "buffer"
 	for i = 1, n do
-		local el = x[i]
+		local el
+		if bytes then
+			el = if i <= buffer.len(x) then buffer.readu8(x, i - 1) else nil
+		else
+			el = x[i]
+		end
 		if el == nil then el = zero_elem(fd.e) end
 		if not write_value(fd.e, el, at + (i - 1) * es.size, w, index, nil) then return false end
 	end

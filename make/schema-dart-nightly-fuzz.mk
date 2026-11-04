@@ -41,6 +41,7 @@ DART_NIGHTLY_FUZZ_UNITS := \
 	blockhome:tables/blockhome \
 	lists:tables/lists \
 	maps:tables/maps \
+	widelist:tables/widelist \
 	messages:tables/messages \
 	pointers:tables/pointers \
 	scalars:tables/scalars \
