@@ -2,8 +2,10 @@ package lobstertable
 
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/ir"
 	"sort"
+
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/lobster"
+	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
 // Reflection shares the schema's namespace. Claim synthesized symbols before
@@ -25,6 +27,26 @@ func checkReflectionNames(u *ir.Unit) error {
 		}
 		claims[name] = owner
 		return nil
+	}
+	// Packet enum and flags members occupy this same namespace. Claim their
+	// flattened spellings before the view's descriptors and accessors.
+	for _, f := range u.Files {
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *ir.Enum:
+				for _, variant := range append([]string{"None"}, d.Variants...) {
+					if err := claim(lobster.VariantName(d.Name, variant), d.Name+"."+variant); err != nil {
+						return err
+					}
+				}
+			case *ir.Flags:
+				for _, variant := range d.Variants {
+					if err := claim(d.Name+variant, d.Name+"."+variant); err != nil {
+						return err
+					}
+				}
+			}
+		}
 	}
 	if err := claim("UnitView", "unit registry"); err != nil {
 		return err
