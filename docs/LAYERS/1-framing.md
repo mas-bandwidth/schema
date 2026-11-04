@@ -13,8 +13,8 @@ What holds the layer:
 - **Vectors** — the `framing` rows of `testdata/conformance/tables/MANIFEST.txt`,
   one per rule and bound, hand-built as `testdata/wire/tables/framing/*.bin`
   from the annotated byte scripts in
-  `test/conformance/harness/framing_vectors.go`, with the read report each
-  owes on its manifest line and the value each owes in
+  `test/conformance/harness/framing_vectors.go`, with the verdict each owes
+  on its manifest line and the value each owes in
   `testdata/conformance/tables/framing/<case>.json`. A row over DAMAGED bytes
   owes the refusal alone: its verdict is "refused" (recommended diagnostic
   `wire_damaged`), and its value is `-`, because a refused load returns nothing
@@ -23,11 +23,11 @@ What holds the layer:
   from an implementation's output.
 - **The oracle check** — `test/conformance/harness/framing_test.go` runs every
   vector through the Go engine (`internal/tablewire`), the reference every leg
-  is fuzzed against, and compares the engine's verdict — the value and `unknown`, or "refused" —
+  is fuzzed against, and compares the engine's verdict — the value, or "refused" —
   with the manifest's. The engine is held to this page.
 - **The surface** — `framing`, which runs the same vectors through every leg's
   driver (`test/conformance/README.md`, "The surfaces").
-- **The model** — `tla/Framing.tla`, a layout model of the record scan with
+- **The model** — `tla/Framing.tla`, landed by strict-only layer 1 (#2799), a layout model of the record scan with
   offsets, `L` and the header inside its body, in which damage ends the load
   (`DamageEndsLoad`), the header lies inside the field's `L`
   (`HeaderInsideBody`, with `ElementsInsideBody` and `HeaderDamageIsCrossing`)
@@ -220,7 +220,7 @@ damage, as a byte after the root's own terminator is: no writer emits them."
 count's elements are damage (D1).** §4: "bytes left inside an array's, keyed
 array's or map's `L` after its count's elements (an `L` of 3 holding the
 element kind, a count of 0 and one byte more)" is damage, decidable from the
-wire alone (§6.5). No writer emits them. Held by `tla/Framing.tla`
+wire alone (§6.5). No writer emits them. Held by `tla/Framing.tla` (layer 1, #2799)
 `EveryCaseRuled` and its witness `MCFramingTrailingElements`.
 
 ## D. Arrays, maps and keyed arrays: the header inside the body
