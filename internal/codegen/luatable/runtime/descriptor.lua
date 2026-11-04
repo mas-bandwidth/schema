@@ -64,6 +64,15 @@ check_value = function(T, where, d, v, elem)
     if type(v) ~= "boolean" or not (elem or v == d.default) then return fail(where, "bool at its default") end
   elseif s == "int" or s == "flags" then
     if math.type(v) ~= "integer" or not (elem or v == d.default) then return fail(where, "integer at its default") end
+  elseif s == "wide" then
+    if type(v) ~= "table" or math.type(v.lo) ~= "integer" or math.type(v.hi) ~= "integer" then
+      return fail(where, "wide integer at its default")
+    end
+    if elem then
+      if v.lo ~= 0 or v.hi ~= 0 then return fail(where, "wide element is born zero") end
+    elseif v.lo ~= d.default.lo or v.hi ~= d.default.hi then
+      return fail(where, "wide integer at its default")
+    end
   elseif s == "float" then
     if math.type(v) ~= "float" or not (elem or v == d.default) then return fail(where, "float at its default") end
   elseif s == "string" or s == "bytes" then

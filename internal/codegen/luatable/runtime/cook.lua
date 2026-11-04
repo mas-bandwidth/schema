@@ -191,6 +191,25 @@ local function companion(s, at, bound)
   return true
 end
 
+local function text_slot(s, at)
+  local delta = u64(s.data, at)
+  if delta == 0 then return true end
+  local start = array_extent(at, delta, BLOB_HEADER, 1, s.base, s.extent)
+  if start == nil or start % BLOB_ALIGN ~= 0 then return false end
+  local length = u32(s.data, start)
+  if length <= 0 then return false end
+  local need = BLOB_HEADER + length + 1
+  local finish
+  start, finish = array_extent(at, delta, need, 1, s.base, s.extent)
+  if start == nil then return false end
+  if string.byte(s.data, start + BLOB_HEADER + length + 1) ~= 0 then return false end
+  for _, other in ipairs(s.arrays) do
+    if start < other.finish and other.start < finish then return false end
+  end
+  s.arrays[#s.arrays + 1] = { start = start, finish = finish }
+  return true
+end
+
 local record, field, element, ref, key_order
 
 -- A REFERENCE (§7.4 clause 1): zero is null; any other delta resolves to
@@ -264,6 +283,8 @@ element = function(s, at, elem)
   end
   if elem.shape == "pointer" or elem.shape == "string_blob" or elem.shape == "bytes_blob" then
     return ref(s, at, elem)
+  elseif elem.shape == "string" and elem.unbounded then
+    return text_slot(s, at)
   elseif elem.shape == "string" or elem.shape == "bytes" or elem.shape == "wstring" then
     return companion(s, at + elem.companion, elem.bound)
   elseif elem.shape == "table" then
@@ -317,6 +338,16 @@ end
 -- an integer at its own signedness.
 local function used_bytes(s, key, _entry, at)
   at = at + key.at
+  if key.unbounded then
+    local delta = u64(s.data, at)
+    if delta == 0 then return "" end
+    local start = array_extent(at, delta, BLOB_HEADER, 1, s.base, s.extent)
+    if start == nil then return "" end
+    local n = u32(s.data, start)
+    if n <= 0 then return "" end
+    if array_extent(at, delta, BLOB_HEADER + n + 1, 1, s.base, s.extent) == nil then return "" end
+    return string.sub(s.data, start + BLOB_HEADER + 1, start + BLOB_HEADER + n)
+  end
   local n = i32(s.data, at + key.companion)
   if n < 0 then n = 0 end
   local cap = key.bound + 1
@@ -383,6 +414,10 @@ field = function(s, at, f)
       if not companion(s, at + f.companion, f.bound) then return false end
     end
     return true
+  end
+  if shape == "string" and f.unbounded then
+    if f.optional and string.byte(s.data, at + 8 + 1) == 0 then return u64(s.data, at) == 0 end
+    return text_slot(s, at)
   end
   if shape == "string" or shape == "bytes" or shape == "wstring" then return companion(s, at + f.companion, f.bound) end
   return element(s, at, f)

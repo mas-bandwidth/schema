@@ -200,6 +200,7 @@ write_field_value = function(T, f, x, at, w, index)
   elseif s == "array" then
     return write_array(T, f, x, at, w, index)
   elseif s == "string" then
+    if f.unbounded then return true end
     local str = x or ""
     if f.bound and #str > f.bound then str = str:sub(1, f.bound) end
     put(w, at, str)
@@ -338,7 +339,11 @@ present_offset = function(T, f)
   local s = f.shape
   local cur
   if s == "string" then
-    cur = align_up(at + (f.bound or 0) + 1, 4) + 4
+    if f.unbounded then
+      cur = at + 8
+    else
+      cur = align_up(at + (f.bound or 0) + 1, 4) + 4
+    end
   elseif s == "wstring" then
     cur = align_up(at + ((f.bound or 0) + 1) * 2, 4) + 4
   elseif s == "bytes" then
@@ -394,7 +399,7 @@ union_has_extent = function(T, un)
   return false
 end
 field_has_extent = function(T, f)
-  if f.shape == "map" or (f.shape == "array" and f.list) then return true end
+  if f.shape == "map" or (f.shape == "array" and f.list) or (f.shape == "string" and f.unbounded) then return true end
   if f.shape == "array" then return field_has_extent(T, f.elem) end
   if f.shape == "pointer" or f.shape == "string_blob" or f.shape == "bytes_blob" then return false end
   if f.shape == "table" then return record_has_extent(T, T.Tables[f.target]) end
@@ -414,6 +419,10 @@ carve_extent = function(T, desc, v, recordBase, extentBase, cursor, w)
       local x = v and v[f.name]
       if f.shape == "map" and type(x) == "table" and next(x) ~= nil then
         cursor.reason = "invalid_value: " .. desc.name .. "." .. f.name .. " is absent but holds map entries"
+        return false
+      end
+      if f.shape == "string" and f.unbounded and type(x) == "string" and #x > 0 then
+        cursor.reason = "invalid_value: " .. desc.name .. "." .. f.name .. " is absent but holds text"
         return false
       end
     else
@@ -474,6 +483,22 @@ carve_field = function(T, f, x, recordBase, extentBase, cursor, w)
         if not carve_element(T, f.elem, e, array + (i - 1) * size, extentBase, cursor, w) then return false end
       end
     end
+    return true
+  end
+  if s == "string" and f.unbounded then
+    local str = x or ""
+    local n = #str
+    if n == 0 then
+      put_uint(w, at, 0, 8)
+      return true
+    end
+    cursor.at = align_up(cursor.at, BLOB_ALIGN)
+    local start = cursor.at
+    cursor.at = start + align_up(BLOB_HEADER + n + 1, T.RegionAlign or 8)
+    local blob = extentBase + start
+    put_uint(w, at, blob - at, 8)
+    put_uint(w, blob, n, 4)
+    put(w, blob + BLOB_HEADER, str)
     return true
   end
   if s == "pointer" or s == "string_blob" or s == "bytes_blob" then return true end
