@@ -57,7 +57,7 @@ func TestTruncatedFieldPayloadElixir(t *testing.T) {
 				wire = binary.LittleEndian.AppendUint64(wire, 2)
 				var report tabletext.Report
 				ok, e := tablewire.Decode(m, m.New(u.Tables["Root"]), wire, &report)
-				if ok || e != nil || !report.Malformed {
+				if ok || !tablewire.ReadRefusal(e) {
 					t.Fatalf("%s/%d oracle: %v %+v %v", row.name, n, ok, report, e)
 				}
 				fmt.Fprintf(&probe, `wire=Base.decode16!(%q,case: :lower)
@@ -91,7 +91,7 @@ func TestPinnedNestedFloatFramingElixir(t *testing.T) {
 	}
 	var report tabletext.Report
 	ok, e := tablewire.Decode(m, m.New(u.Tables["RootConfig"]), wire, &report)
-	if ok || e != nil || !report.Malformed {
+	if ok || !tablewire.ReadRefusal(e) {
 		t.Fatalf("pinned oracle: %v %+v %v", ok, report, e)
 	}
 	probe := fmt.Sprintf(`alias Tabledemo.Table,as: T
@@ -110,7 +110,7 @@ IO.puts("PINNED_NESTED_FLOAT_OK")
 	var enumReport tabletext.Report
 	enumStore := tablewire.Retain{Capacity: 4096, IdCapacity: 256}
 	enumOK, e := tablewire.DecodeRetain(m, m.New(u.Tables["RootConfig"]), enumWire, &enumStore, &enumReport)
-	if e != nil || !enumOK || enumReport.Malformed || enumReport.Unknown != 1 || enumReport.RetainLost != 1 || enumReport.Retained != 0 {
+	if e != nil || !enumOK || enumReport.Refused || enumReport.Unknown != 1 || enumReport.RetainLost != 1 || enumReport.Retained != 0 {
 		t.Fatalf("pinned enum loss oracle: %v %+v %v", enumOK, enumReport, e)
 	}
 	probe += fmt.Sprintf(`
